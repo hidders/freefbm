@@ -76,17 +76,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build:linux
 
+      - name: List release directory
+        shell: bash
+        run: find release -type f | sort || echo "No release directory found"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: factum-${{ matrix.label }}
           path: |
-            dist/*.dmg
-            dist/*.zip
-            dist/*.exe
-            dist/*.AppImage
-            dist/*.deb
-          if-no-files-found: ignore
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: warn
 
   release:
     name: Publish GitHub Release
@@ -99,7 +103,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: factum-*
           merge-multiple: true
+
+      - name: List downloaded artifacts
+        run: find artifacts -type f | sort
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
