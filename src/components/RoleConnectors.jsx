@@ -1,0 +1,369 @@
+import React, { useEffect, useRef, useState } from 'react'
+import { useOrmStore } from '../store/ormStore'
+import { useDiagramElements } from '../hooks/useDiagramElements'
+import { entityBounds } from './ObjectTypeNode'
+import { ROLE_W, ROLE_H, ROLE_GAP, nestedFactBounds } from './FactTypeNode'
+
+const DOT_R = 4  // mandatory dot radius
+
+// ── geometry ──────────────────────────────────────────────────────────────────
+
+/**
+ * Returns the outward-facing cardinal anchor point on a role box.
+ *
+ * Candidate sides: N, S, W, E (mid-points of each edge).
+ * Inner edges are excluded — the east edge for every non-last role,
+ * and the west edge for every non-first role — so connectors always
+ * exit from the outer perimeter of the fact-type shape.
+ * The closest remaining candidate to (tx, ty) is returned.
+ */
+export function roleAnchor(fact, roleIndex, tx, ty) {
+  const n      = Math.max(fact.arity, 1)
+  const isFirst = roleIndex === 0
+  const isLast  = roleIndex === n - 1
+
+  if (fact.orientation === 'vertical') {
+    const totalH = n * ROLE_W + (n - 1) * ROLE_GAP
+    const startY = fact.y - totalH / 2
+    const roleTopY = startY + roleIndex * (ROLE_W + ROLE_GAP)
+    const leftX   = fact.x - ROLE_H / 2
+    const cx      = fact.x
+    const cy      = roleTopY + ROLE_W / 2
+
+    const candidates = [
+      { x: cx,            y: roleTopY,          side: 'N' },
+      { x: cx,            y: roleTopY + ROLE_W, side: 'S' },
+      { x: leftX,         y: cy,                side: 'W' },
+      { x: leftX + ROLE_H, y: cy,               side: 'E' },
+    ]
+    const allowed = candidates.filter(c => {
+      if (c.side === 'N' && !isFirst) return false
+      if (c.side === 'S' && !isLast)  return false
+      return true
+    })
+    let best = allowed[0], bestDist = Infinity
+    for (const p of allowed) {
+      const d = (p.x - tx) ** 2 + (p.y - ty) ** 2
+      if (d < bestDist) { bestDist = d; best = p }
+    }
+    return best
+  }
+
+  const startX = fact.x - (n * ROLE_W + (n - 1) * ROLE_GAP) / 2
+  const roleX  = startX + roleIndex * (ROLE_W + ROLE_GAP)
+  const roleY  = fact.y - ROLE_H / 2
+  const cx     = roleX + ROLE_W / 2
+  const cy     = roleY + ROLE_H / 2
+
+  const candidates = [
+    { x: cx,             y: roleY,          side: 'N' },
+    { x: cx,             y: roleY + ROLE_H, side: 'S' },
+    { x: roleX,          y: cy,             side: 'W' },
+    { x: roleX + ROLE_W, y: cy,             side: 'E' },
+  ]
+  const allowed = candidates.filter(c => {
+    if (c.side === 'E' && !isLast)  return false
+    if (c.side === 'W' && !isFirst) return false
+    return true
+  })
+
+  let best = allowed[0], bestDist = Infinity
+  for (const p of allowed) {
+    const d = (p.x - tx) ** 2 + (p.y - ty) ** 2
+    if (d < bestDist) { bestDist = d; best = p }
+  }
+  return best
+}
+
+/**
+ * Returns the nearest point on the border of a rect defined by {left,right,top,bottom,cx,cy}
+ * facing toward (tx, ty).
+ */
+function rectBorderPoint(b, tx, ty) {
+  const cx = b.cx, cy = b.cy
+  const dx = tx - cx, dy = ty - cy
+  if (dx === 0 && dy === 0) return { x: cx, y: cy }
+  const hw = (b.right - b.left) / 2
+  const hh = (b.bottom - b.top) / 2
+  const t  = Math.abs(dx) * hh > Math.abs(dy) * hw
+    ? hw / Math.abs(dx)
+    : hh / Math.abs(dy)
+  return { x: cx + dx * t, y: cy + dy * t }
+}
+
+function otBorderPoint(ot, tx, ty) {
+  return rectBorderPoint(entityBounds(ot), tx, ty)
+}
+
+/** Returns the border point and position for either a regular OT or an objectified fact. */
+function playerBorderPoint(ot, nestedFact, tx, ty) {
+  if (ot)         return rectBorderPoint(entityBounds(ot),      tx, ty)
+  if (nestedFact) return rectBorderPoint(nestedFactBounds(nestedFact), tx, ty)
+  return null
+}
+
+function playerXY(ot, nestedFact) {
+  if (ot)         return { x: ot.x,         y: ot.y }
+  if (nestedFact) return { x: nestedFact.x, y: nestedFact.y }
+  return null
+}
+
+// ── component ─────────────────────────────────────────────────────────────────
+
+export default function RoleConnectors({ mousePos }) {
+  const store = useOrmStore()
+  const { objectTypes, facts: visibleFacts } = useDiagramElements()
+  const otMap     = Object.fromEntries(objectTypes.map(o => [o.id, o]))
+  const nestedMap = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
+  const dotAtObject = store.mandatoryDotPosition === 'object'
+
+  // ── role-name label drag + inline edit ────────────────────────────────────
+  const dragRef = useRef(null)
+  const [liveDrag, setLiveDrag] = useState(null) // { factId, roleIndex, dx, dy } | null
+  const [editing, setEditing] = useState(null)   // { factId, roleIndex, draft } | null
+
+  useEffect(() => {
+    const onMove = (e) => {
+      const d = dragRef.current
+      if (!d) return
+      const zoom = useOrmStore.getState().zoom
+      const dx = d.origDx + (e.clientX - d.startX) / zoom
+      const dy = d.origDy + (e.clientY - d.startY) / zoom
+      setLiveDrag({ factId: d.factId, roleIndex: d.roleIndex, dx, dy })
+    }
+    const onUp = (e) => {
+      const d = dragRef.current
+      if (!d) return
+      dragRef.current = null
+      const wasDrag = (e.clientX - d.startX) ** 2 + (e.clientY - d.startY) ** 2 > 16
+      if (wasDrag) {
+        const zoom = useOrmStore.getState().zoom
+        const dx = d.origDx + (e.clientX - d.startX) / zoom
+        const dy = d.origDy + (e.clientY - d.startY) / zoom
+        useOrmStore.getState().updateRoleNameOffset(d.factId, d.roleIndex, { dx, dy })
+      }
+      setLiveDrag(null)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup',   onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup',   onUp)
+    }
+  }, [])
+
+  // Commit role-name edit when user clicks outside the foreignObject input
+  useEffect(() => {
+    if (!editing) return
+    const onDown = (e) => {
+      if (!e.target.closest?.('foreignObject')) {
+        store.updateRole(editing.factId, editing.roleIndex, { roleName: editing.draft.trim() })
+        setEditing(null)
+      }
+    }
+    window.addEventListener('mousedown', onDown, true)
+    return () => window.removeEventListener('mousedown', onDown, true)
+  }, [editing, store])
+
+  // ── build connector descriptors ────────────────────────────────────────────
+  const connectors = visibleFacts.flatMap(fact =>
+    fact.roles.map((role, ri) => {
+      if (!role.objectTypeId) return null
+      const ot       = otMap[role.objectTypeId]
+      const nf       = !ot ? nestedMap[role.objectTypeId] : null
+      if (!ot && !nf) return null
+
+      const { x: px, y: py } = playerXY(ot, nf)
+      const anchor = roleAnchor(fact, ri, px, py)
+      const border = playerBorderPoint(ot, nf, anchor.x, anchor.y)
+
+      let dotPos = null
+      if (role.mandatory) dotPos = dotAtObject ? border : anchor
+
+      // Connector midpoint
+      const mx = (anchor.x + border.x) / 2
+      const my = (anchor.y + border.y) / 2
+
+      // Auto perpendicular offset (used when no custom offset stored)
+      const edgeDx = border.x - anchor.x
+      const edgeDy = border.y - anchor.y
+      const len = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy) || 1
+      const autoOx = -edgeDy / len * 9
+      const autoOy =  edgeDx / len * 9
+
+      return {
+        key: `${fact.id}-${ri}`,
+        factId: fact.id, roleIndex: ri,
+        anchor, border, dotPos,
+        roleName: role.roleName || '',
+        mx, my, autoOx, autoOy,
+        customOffset: fact.roleNameOffsets?.[ri] ?? role.roleNameOffset ?? null,
+      }
+    }).filter(Boolean)
+  )
+
+  return (
+    <g>
+      {/* Connector lines */}
+      {connectors.map(({ key, anchor, border }) => (
+        <line key={key}
+          x1={border.x} y1={border.y}
+          x2={anchor.x} y2={anchor.y}
+          stroke="var(--col-fact)" strokeWidth={1.5} strokeOpacity={0.75}/>
+      ))}
+
+      {/* Role name labels — draggable, offset stored relative to connector midpoint */}
+      {store.showRoleNames && connectors.map(({ key, factId, roleIndex, roleName,
+                                                mx, my, autoOx, autoOy, customOffset }) => {
+        if (!roleName) return null
+
+        // Resolve current label position
+        const isDragging = liveDrag?.factId === factId && liveDrag?.roleIndex === roleIndex
+        let lx, ly, origDx, origDy
+        if (isDragging) {
+          lx = mx + liveDrag.dx;  ly = my + liveDrag.dy
+          origDx = liveDrag.dx;   origDy = liveDrag.dy
+        } else if (customOffset) {
+          lx = mx + customOffset.dx;  ly = my + customOffset.dy
+          origDx = customOffset.dx;   origDy = customOffset.dy
+        } else {
+          lx = mx + autoOx;  ly = my + autoOy
+          origDx = autoOx;   origDy = autoOy
+        }
+
+        const isEditingThis = editing?.factId === factId && editing?.roleIndex === roleIndex
+
+        const commitEdit = () => {
+          const trimmed = editing.draft.trim()
+          store.updateRole(editing.factId, editing.roleIndex, { roleName: trimmed })
+          setEditing(null)
+        }
+
+        if (isEditingThis) {
+          const W = Math.max(80, editing.draft.length * 8 + 24)
+          return (
+            <foreignObject key={`lbl-${key}`}
+              x={lx - W / 2} y={ly - 11} width={W} height={22}>
+              <input
+                // eslint-disable-next-line jsx-a11y/no-autofocus
+                autoFocus
+                value={editing.draft}
+                onChange={e => setEditing(prev => ({ ...prev, draft: e.target.value }))}
+                onBlur={commitEdit}
+                onKeyDown={e => {
+                  e.stopPropagation()
+                  if (e.key === 'Enter') { e.preventDefault(); commitEdit() }
+                  if (e.key === 'Escape') { e.stopPropagation(); setEditing(null) }
+                }}
+                onMouseDown={e => e.stopPropagation()}
+                style={{
+                  width: '100%', height: '100%',
+                  border: '1px solid #1a7fd4', borderRadius: 3, outline: 'none',
+                  background: '#fff', color: '#1a7fd4',
+                  fontSize: 12, fontFamily: "'Segoe UI', Helvetica, Arial, sans-serif",
+                  textAlign: 'center', padding: '0 4px', boxSizing: 'border-box',
+                }}
+              />
+            </foreignObject>
+          )
+        }
+
+        return (
+          <text key={`lbl-${key}`}
+            x={lx} y={ly}
+            textAnchor="middle" dominantBaseline="middle"
+            fontSize={12} fontFamily="'Segoe UI', Helvetica, Arial, sans-serif"
+            fill="#1a7fd4"
+            style={{ cursor: isDragging ? 'grabbing' : 'grab', userSelect: 'none' }}
+            onMouseDown={e => {
+              e.stopPropagation()
+              dragRef.current = {
+                factId, roleIndex,
+                startX: e.clientX, startY: e.clientY,
+                origDx, origDy,
+              }
+              setLiveDrag({ factId, roleIndex, dx: origDx, dy: origDy })
+            }}
+            onDoubleClick={e => {
+              e.stopPropagation()
+              const fact = useOrmStore.getState().facts.find(f => f.id === factId)
+              const role = fact?.roles[roleIndex]
+              setEditing({ factId, roleIndex, draft: role?.roleName || '' })
+            }}>
+            [{roleName}]
+          </text>
+        )
+      })}
+
+      {/* Draft line while user is assigning a role */}
+      {store.linkDraft?.type === 'roleAssign' && (() => {
+        const draft = store.linkDraft
+
+        if (draft.objectTypeId) {
+          // Object-type-first: line from object-type (or objectified fact) border toward mouse
+          const ot = otMap[draft.objectTypeId]
+          const nf = !ot ? nestedMap[draft.objectTypeId] : null
+          if (!ot && !nf) return null
+          const border = playerBorderPoint(ot, nf, mousePos.x, mousePos.y)
+          return (
+            <line key="draft"
+              x1={border.x} y1={border.y}
+              x2={mousePos.x} y2={mousePos.y}
+              stroke="var(--col-fact)" strokeWidth={1.5}
+              strokeDasharray="5 3" strokeOpacity={0.6}/>
+          )
+        }
+
+        if (draft.factId != null && draft.roleIndex != null) {
+          // Role-first: line from role-box anchor toward mouse
+          const fact = store.facts.find(f => f.id === draft.factId)
+          if (!fact) return null
+          const anchor = roleAnchor(fact, draft.roleIndex, mousePos.x, mousePos.y)
+          return (
+            <line key="draft"
+              x1={anchor.x} y1={anchor.y}
+              x2={mousePos.x} y2={mousePos.y}
+              stroke="var(--col-fact)" strokeWidth={1.5}
+              strokeDasharray="5 3" strokeOpacity={0.6}/>
+          )
+        }
+
+        return null
+      })()}
+    </g>
+  )
+}
+
+// ── MandatoryDots ─────────────────────────────────────────────────────────────
+// Rendered in Canvas *after* all object type and fact nodes so dots always
+// paint on top of the shapes they are linked to.
+
+export function MandatoryDots() {
+  const store      = useOrmStore()
+  const { objectTypes, facts: visibleFacts } = useDiagramElements()
+  const otMap      = Object.fromEntries(objectTypes.map(o => [o.id, o]))
+  const nestedMap  = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
+  const dotAtObject = store.mandatoryDotPosition === 'object'
+
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      {visibleFacts.flatMap(fact =>
+        fact.roles.map((role, ri) => {
+          if (!role.mandatory || !role.objectTypeId) return null
+          const ot = otMap[role.objectTypeId]
+          const nf = !ot ? nestedMap[role.objectTypeId] : null
+          if (!ot && !nf) return null
+          const { x: px, y: py } = playerXY(ot, nf)
+          const anchor = roleAnchor(fact, ri, px, py)
+          const border = playerBorderPoint(ot, nf, anchor.x, anchor.y)
+          const pos    = dotAtObject ? border : anchor
+          return (
+            <circle key={`dot-${fact.id}-${ri}`}
+              cx={pos.x} cy={pos.y} r={DOT_R}
+              fill="var(--col-mandatory)"/>
+          )
+        }).filter(Boolean)
+      )}
+    </g>
+  )
+}

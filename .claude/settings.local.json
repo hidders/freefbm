@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pkill -f \"electron\")",
+      "Bash(pkill -f \"vite\")",
+      "Bash(npm run:*)",
+      "Bash(npx vite:*)",
+      "Bash(npx electron-builder:*)",
+      "Bash(echo \"Started PID $!\")",
+      "Bash(echo \"PID: $!\")",
+      "Bash(xargs kill:*)",
+      "Bash(pkill -9 -f \"electron\")",
+      "Bash(pkill -9 -f \"vite\")",
+      "Bash(pkill -f \"electron .\")",
+      "Bash(grep -r \"\\\\b[a-zA-Z_$][a-zA-Z0-9_$]*[Gg]roup[a-zA-Z0-9_$]*\\\\b\" src --include=\"*.js\" --include=\"*.jsx\" -n)",
+      "Bash(grep -rn \"\\\\b[a-zA-Z_$][a-zA-Z0-9_$]*[Gg]roup[a-zA-Z0-9_$]*\\\\b\" src --include=\"*.js\" --include=\"*.jsx\")",
+      "WebFetch(domain:www.orm.net)",
+      "Bash(brew install:*)",
+      "Bash(pdftotext \"/Users/hidders/.claude/projects/-Users-hidders-Library-CloudStorage-OneDrive-Birkbeck-UniversityofLondon-Projects-Claude-test-ORM2-editor-orm2-editor/4bbe527f-5600-4ffa-a654-afd50c7f87c8/tool-results/webfetch-1776511424926-7zgdyy.pdf\" -)",
+      "Bash(pdftoppm:*)",
+      "Bash(magick /tmp/orm2page-6.png -crop 600x280+30+680 /tmp/ring_crop.png)",
+      "Bash(convert /tmp/orm2page-6.png -crop 600x280+30+680 /tmp/ring_crop.png)",
+      "Bash(sips -c 280 600 --padColor FFFFFF /tmp/orm2page-6.png --out /tmp/ring_sips.png)",
+      "Bash(ls /tmp/orm2hires*)",
+      "Bash(ls -lh /tmp/orm2_400*)",
+      "Bash(python3:*)",
+      "Bash(sips /tmp/orm2_400-6.png --cropToHeightWidth 700 3400 --cropOffset 2180 0 --out /tmp/ring_zoom.png)",
+      "Bash(sips /tmp/orm2_400-6.png --cropToHeightWidth 850 3400 --cropOffset 1700 0 --out /tmp/ring_zoom2.png)",
+      "Bash(node --input-type=module --eval ':*)",
+      "Bash(node --input-type=module)",
+      "Bash(sed:*)",
+      "Bash(node_modules/.bin/vite build:*)",
+      "Bash(ls:*)",
+      "Bash(npx electron:*)",
+      "Bash(jobs)",
+      "Bash(pkill -f \"orm2-editor.*[Ee]lectron\")",
+      "Bash(pkill -f \"wait-on\")",
+      "Bash(pkill -f \"concurrently\")"
+    ]
+  }
+}

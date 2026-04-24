@@ -1,0 +1,95 @@
+{
+  "name": "factum",
+  "version": "1.0.0",
+  "description": "Factum — ORM2 Conceptual Modelling Editor",
+  "main": "electron/main.cjs",
+  "author": {
+    "name": "hidders",
+    "url": "https://github.com/hidders"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/hidders/factum",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hidders/factum.git"
+  },
+  "scripts": {
+    "dev":         "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "start":       "electron .",
+    "build":       "vite build && electron-builder",
+    "build:mac":   "vite build && electron-builder --mac",
+    "build:win":   "vite build && electron-builder --win",
+    "build:linux": "vite build && electron-builder --linux",
+    "dist":        "vite build && electron-builder --mac --win --linux",
+    "preview":     "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.0",
+    "concurrently": "^8.2.0",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.0.0",
+    "vite": "^5.0.0",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.hidders.factum",
+    "productName": "Factum",
+    "copyright": "Copyright © 2026 hidders",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ],
+      "icon": "build/icon.icns"
+    },
+    "dmg": {
+      "title": "Factum ${version}",
+      "artifactName": "Factum-${version}-mac-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowDirChange": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "Factum-${version}-windows-setup.${ext}"
+    },
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb",      "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png",
+      "category": "Utility",
+      "artifactName": "Factum-${version}-linux-${arch}.${ext}"
+    },
+    "deb": {
+      "depends": ["libgtk-3-0", "libnotify4", "libnss3", "libxss1", "libxtst6", "xdg-utils", "libatspi2.0-0", "libuuid1"]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "hidders",
+      "repo": "factum"
+    }
+  }
+}
