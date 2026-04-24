@@ -2,7 +2,7 @@ import React, { useMemo, useCallback, useRef, useState, useEffect } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds, computeOtSize } from './ObjectTypeNode'
-import { factBounds } from './FactTypeNode'
+import { factBounds, nestedFactBounds, ROLE_W, ROLE_H, ROLE_GAP } from './FactTypeNode'
 
 const MM_W  = 170
 const MM_H  = 110
@@ -119,67 +119,65 @@ export default function Minimap() {
   const isEmpty = visOts.length === 0 && visFacts.length === 0
   if (isEmpty) return null
 
-  const TRANSITION = 'opacity 0.2s ease, transform 0.2s ease'
+  const PILL_W = 114
+  const panelW = collapsed ? PILL_W    : MM_W + 2
+  const panelH = collapsed ? HDR_H     : MM_H + HDR_H + 2
+  const panelR = collapsed ? HDR_H / 2 : 6
+
+  // Fixed pill anchor: just above the status bar (26px), to the left of the inspector
+  const pillLeft = window.innerWidth  - 258 - PILL_W
+  const pillTop  = window.innerHeight - 26 - 8 - HDR_H
+  const displayLeft = collapsed ? pillLeft : posX
+  const displayTop  = collapsed ? pillTop  : posY
 
   return (
     <>
-      {/* ── Collapsed pill ── */}
-      <button
-        onClick={() => setCollapsed(false)}
-        title="Open minimap"
-        style={{
-          position: 'fixed',
-          bottom: 34,
-          right: 258,
-          zIndex: 10,
-          display: 'flex', alignItems: 'center', gap: 5,
-          padding: '3px 10px',
-          background: 'var(--bg-raised)',
-          border: '1px solid var(--border)',
-          borderRadius: 12,
-          boxShadow: 'var(--shadow-md)',
-          cursor: 'pointer',
-          fontSize: 10,
-          color: 'var(--ink-muted)',
-          letterSpacing: '0.05em',
-          fontFamily: "'Segoe UI', Helvetica, Arial, sans-serif",
-          userSelect: 'none',
-          opacity: collapsed ? 0.9 : 0,
-          transform: collapsed ? 'scale(1)' : 'scale(0.9)',
-          pointerEvents: collapsed ? 'auto' : 'none',
-          transition: TRANSITION,
-        }}
-      >
-        <span style={{ fontSize: 12 }}>⊟</span>
-        <span style={{ textTransform: 'uppercase' }}>Minimap</span>
-        <span style={{ fontSize: 9, color: 'var(--ink-muted)' }}>
-          {Math.round(store.zoom * 100)}%
-        </span>
-      </button>
-
-      {/* ── Expanded panel ── */}
+      {/* ── Single morphing panel ── */}
       <div
         ref={panelRef}
+        onClick={collapsed ? () => setCollapsed(false) : undefined}
         style={{
           position: 'fixed',
-          left: posX,
-          top:  posY,
-          width: MM_W + 2,
+          left: displayLeft, top: displayTop,
+          width: panelW, height: panelH,
           background: 'var(--bg-surface)',
           border: '1px solid var(--border)',
-          borderRadius: 6,
+          borderRadius: panelR,
           overflow: 'hidden',
           boxShadow: 'var(--shadow-md)',
           userSelect: 'none',
           zIndex: 10,
           WebkitAppRegion: 'no-drag',
-          opacity: collapsed ? 0 : 0.93,
-          transform: collapsed ? 'scale(0.95)' : 'scale(1)',
-          pointerEvents: collapsed ? 'none' : 'auto',
-          transition: TRANSITION,
-          transformOrigin: 'bottom right',
+          cursor: collapsed ? 'pointer' : 'default',
+          transition: collapsed
+            ? 'width 0.28s ease, height 0.28s ease, border-radius 0.28s ease, left 0.28s ease, top 0.28s ease'
+            : 'width 0.28s ease, height 0.28s ease, border-radius 0.28s ease',
         }}
       >
+        {/* Pill label (fades in when collapsed) */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+          fontSize: 9, color: 'var(--ink-muted)',
+          letterSpacing: '0.05em', textTransform: 'uppercase',
+          fontFamily: "'Segoe UI', Helvetica, Arial, sans-serif",
+          whiteSpace: 'nowrap',
+          opacity: collapsed ? 1 : 0,
+          transition: collapsed ? 'opacity 0.14s ease 0.14s' : 'opacity 0.08s ease',
+          pointerEvents: 'none',
+        }}>
+          <span style={{ fontSize: 11 }}>⊟</span>
+          <span>minimap</span>
+          <span>{Math.round(store.zoom * 100)}%</span>
+        </div>
+
+        {/* Panel content (fades out when collapsed) */}
+        <div style={{
+          opacity: collapsed ? 0 : 1,
+          transition: collapsed ? 'opacity 0.1s ease' : 'opacity 0.18s ease 0.12s',
+          pointerEvents: collapsed ? 'none' : 'auto',
+        }}>
+
       {/* Drag handle header */}
       <div
         onMouseDown={handleHeaderMouseDown}
@@ -272,12 +270,40 @@ export default function Minimap() {
 
         {/* Fact types */}
         {visFacts.map(f => {
-          const isSel = store.selectedId === f.id
-          const fw = Math.max(2, f.arity * 30 * scale)
-          const fh = Math.max(2, 30 * scale)
+          const isSel  = store.selectedId === f.id
+          const isV    = f.orientation === 'vertical'
+          const n      = Math.max(f.arity, 1)
+          const long   = n * ROLE_W + (n - 1) * ROLE_GAP  // role-strip length
+          const short  = ROLE_H                             // role-strip thickness
+          // core role-bar rect (no bars/padding)
+          const rw = Math.max(2, (isV ? short : long) * scale)
+          const rh = Math.max(1, (isV ? long  : short) * scale)
+          const rx = wx(f.x) - rw / 2
+          const ry = wy(f.y) - rh / 2
+          if (f.objectified) {
+            const nb = nestedFactBounds(f)
+            const nw = Math.max(4, (nb.right - nb.left) * scale)
+            const nh = Math.max(3, (nb.bottom - nb.top) * scale)
+            return (
+              <g key={f.id}>
+                {/* outer entity box */}
+                <rect
+                  x={wx(nb.left)} y={wy(nb.top)} width={nw} height={nh} rx={2}
+                  fill={isSel ? 'var(--accent)' : 'var(--bg-raised)'}
+                  stroke={isSel ? 'var(--accent)' : 'var(--col-entity)'}
+                  strokeWidth={isSel ? 1.5 : 0.8} fillOpacity={isSel ? 0.4 : 1}/>
+                {/* inner role bar */}
+                <rect
+                  x={rx} y={ry} width={rw} height={rh} rx={0.5}
+                  fill={isSel ? 'var(--accent)' : '#f0ede8'}
+                  stroke={isSel ? 'var(--accent)' : 'var(--col-fact)'}
+                  strokeWidth={0.5} fillOpacity={isSel ? 0.5 : 1}/>
+              </g>
+            )
+          }
           return (
             <rect key={f.id}
-              x={wx(f.x) - fw/2} y={wy(f.y) - fh/2} width={fw} height={fh} rx={1}
+              x={rx} y={ry} width={rw} height={rh} rx={1}
               fill={isSel ? 'var(--accent)' : '#f0ede8'}
               stroke={isSel ? 'var(--accent)' : 'var(--col-fact)'}
               strokeWidth={isSel ? 1.5 : 0.7} fillOpacity={isSel ? 0.5 : 1}/>
@@ -363,7 +389,8 @@ export default function Minimap() {
           fill="none" stroke="var(--ink-3)"
           strokeWidth={1} strokeOpacity={0.4} strokeDasharray="3 2"/>
       </svg>
-      </div>
+        </div>{/* end panel content */}
+      </div>{/* end morphing panel */}
     </>
   )
 }

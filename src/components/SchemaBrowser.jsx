@@ -169,8 +169,6 @@ export default function SchemaBrowser() {
 
   const notInDiagram = [...entityGroup, ...valueGroup, ...factGroup]
 
-  const TRANSITION = 'opacity 0.2s ease, transform 0.2s ease'
-
   // Shared resize handle style
   const rHandle = (dir, extra) => ({
     position: 'absolute', zIndex: 2,
@@ -180,71 +178,71 @@ export default function SchemaBrowser() {
     ...extra,
   })
 
+  const PILL_W = 128
+  const panelW = collapsed ? PILL_W    : size.w
+  const panelH = collapsed ? HDR_H     : size.h
+  const panelR = collapsed ? HDR_H / 2 : 6
+
+  // Fixed pill anchor: just above the status bar, to the left of the minimap pill
+  const pillLeft = window.innerWidth  - 258 - 114 - 6 - PILL_W
+  const pillTop  = window.innerHeight - 26 - 8 - HDR_H
+  const displayLeft = collapsed ? pillLeft : posX
+  const displayTop  = collapsed ? pillTop  : posY
+
   return (
     <>
-      {/* ── Collapsed pill ── */}
-      <button
-        onClick={() => setCollapsed(false)}
-        title="Open schema browser"
-        style={{
-          position: 'fixed',
-          bottom: 34, right: 376,
-          zIndex: 10,
-          display: 'flex', alignItems: 'center', gap: 5,
-          padding: '3px 10px',
-          background: 'var(--bg-raised)',
-          border: '1px solid var(--border)',
-          borderRadius: 12,
-          boxShadow: 'var(--shadow-md)',
-          cursor: 'pointer',
-          fontSize: 10, color: 'var(--ink-muted)',
-          letterSpacing: '0.05em',
-          fontFamily: FONT,
-          userSelect: 'none',
-          opacity: collapsed ? 0.9 : 0,
-          transform: collapsed ? 'scale(1)' : 'scale(0.9)',
-          pointerEvents: collapsed ? 'auto' : 'none',
-          transition: TRANSITION,
-        }}
-      >
-        <span style={{ fontSize: 12 }}>⊞</span>
-        <span style={{ textTransform: 'uppercase' }}>Schema</span>
-        {notInDiagram.length > 0 && (
-          <span style={{
-            background: 'var(--col-subtype)', color: 'white',
-            borderRadius: 8, fontSize: 9, padding: '0 4px', lineHeight: '14px',
-            minWidth: 14, textAlign: 'center',
-          }}>
-            {notInDiagram.length}
-          </span>
-        )}
-      </button>
-
-      {/* ── Expanded panel ── */}
+      {/* ── Single morphing panel ── */}
       <div
         ref={panelRef}
+        onClick={collapsed ? () => setCollapsed(false) : undefined}
         style={{
           position: 'fixed',
-          left: posX, top: posY,
-          width: size.w, height: size.h,
+          left: displayLeft, top: displayTop,
+          width: panelW, height: panelH,
           background: 'var(--bg-surface)',
           border: '1px solid var(--border)',
-          borderRadius: 6,
+          borderRadius: panelR,
           overflow: 'hidden',
           boxShadow: 'var(--shadow-md)',
           userSelect: 'none',
           zIndex: 10,
           WebkitAppRegion: 'no-drag',
-          display: 'flex',
-          flexDirection: 'column',
           fontFamily: FONT,
-          opacity: collapsed ? 0 : 0.95,
-          transform: collapsed ? 'scale(0.95)' : 'scale(1)',
-          pointerEvents: collapsed ? 'none' : 'auto',
-          transition: TRANSITION,
-          transformOrigin: 'top left',
+          cursor: collapsed ? 'pointer' : 'default',
+          transition: collapsed
+            ? 'width 0.28s ease, height 0.28s ease, border-radius 0.28s ease, left 0.28s ease, top 0.28s ease'
+            : 'width 0.28s ease, height 0.28s ease, border-radius 0.28s ease',
         }}
       >
+        {/* Pill label (fades in when collapsed) */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+          fontSize: 9, color: 'var(--ink-muted)',
+          letterSpacing: '0.05em', textTransform: 'uppercase',
+          fontFamily: FONT, whiteSpace: 'nowrap',
+          opacity: collapsed ? 1 : 0,
+          transition: collapsed ? 'opacity 0.14s ease 0.14s' : 'opacity 0.08s ease',
+          pointerEvents: 'none',
+        }}>
+          <span style={{ fontSize: 11 }}>⊞</span>
+          <span>schema</span>
+          {notInDiagram.length > 0 && (
+            <span style={{
+              background: 'var(--col-subtype)', color: 'white',
+              borderRadius: 8, fontSize: 9, padding: '0 4px', lineHeight: '14px',
+              minWidth: 14, textAlign: 'center',
+            }}>{notInDiagram.length}</span>
+          )}
+        </div>
+
+        {/* Panel content (fades out when collapsed) */}
+        <div style={{
+          display: 'flex', flexDirection: 'column', height: '100%',
+          opacity: collapsed ? 0 : 1,
+          transition: collapsed ? 'opacity 0.1s ease' : 'opacity 0.18s ease 0.12s',
+          pointerEvents: collapsed ? 'none' : 'auto',
+        }}>
         {/* Drag handle header */}
         <div
           onMouseDown={handleHeaderMouseDown}
@@ -348,7 +346,8 @@ export default function SchemaBrowser() {
         <div style={rHandle('e')}  onMouseDown={e => handleResizeMouseDown(e, 'e')} />
         <div style={rHandle('s')}  onMouseDown={e => handleResizeMouseDown(e, 's')} />
         <div style={rHandle('se')} onMouseDown={e => handleResizeMouseDown(e, 'se')} />
-      </div>
+        </div>{/* end panel content */}
+      </div>{/* end morphing panel */}
     </>
   )
 }
