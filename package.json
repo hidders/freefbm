@@ -4,7 +4,8 @@
   "description": "Factum — ORM2 Conceptual Modelling Editor",
   "main": "electron/main.cjs",
   "author": {
-    "name": "hidders",
+    "name": "Jan Hidders",
+    "email": "hidders@gmail.com",
     "url": "https://github.com/hidders"
   },
   "license": "MIT",
