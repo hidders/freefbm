@@ -69,7 +69,7 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowDirChange": true,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "artifactName": "Factum-${version}-windows-setup.${ext}"
