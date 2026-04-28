@@ -338,15 +338,16 @@ export default function RoleConnectors({ mousePos }) {
 // Rendered in Canvas *after* all object type and fact nodes so dots always
 // paint on top of the shapes they are linked to.
 
-export function MandatoryDots() {
+export function MandatoryDots({ onContextMenu }) {
   const store      = useOrmStore()
   const { objectTypes, facts: visibleFacts } = useDiagramElements()
   const otMap      = Object.fromEntries(objectTypes.map(o => [o.id, o]))
   const nestedMap  = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
   const dotAtObject = store.mandatoryDotPosition === 'object'
+  const sel        = store.selectedMandatoryDot
 
   return (
-    <g style={{ pointerEvents: 'none' }}>
+    <g>
       {visibleFacts.flatMap(fact =>
         fact.roles.map((role, ri) => {
           if (!role.mandatory || !role.objectTypeId) return null
@@ -357,10 +358,22 @@ export function MandatoryDots() {
           const anchor = roleAnchor(fact, ri, px, py)
           const border = playerBorderPoint(ot, nf, anchor.x, anchor.y)
           const pos    = dotAtObject ? border : anchor
+          const isSelected = sel?.factId === fact.id && sel?.roleIndex === ri
           return (
             <circle key={`dot-${fact.id}-${ri}`}
               cx={pos.x} cy={pos.y} r={DOT_R}
-              fill="var(--col-mandatory)"/>
+              fill="var(--col-mandatory)"
+              style={{ cursor: 'pointer', filter: isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+              onClick={e => {
+                e.stopPropagation()
+                if (isSelected) store.deselectMandatoryDot()
+                else store.selectMandatoryDot(fact.id, ri)
+              }}
+              onContextMenu={e => {
+                e.preventDefault(); e.stopPropagation()
+                store.selectMandatoryDot(fact.id, ri)
+                onContextMenu?.(fact.id, ri, e)
+              }}/>
           )
         }).filter(Boolean)
       )}

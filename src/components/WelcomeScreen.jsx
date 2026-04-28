@@ -150,6 +150,11 @@ export default function WelcomeScreen() {
           <ShortcutRow keys={['U']}             label="Draw subtype arrow" />
           <ShortcutRow keys={['A']}             label="Role connector" />
           <ShortcutRow keys={['S']}             label="Select tool" />
+          <ShortcutRow keys={['M']}             label="Mandatory role" />
+          <ShortcutRow keys={['I']}             label="Internal uniqueness" />
+          <ShortcutRow keys={['Q']}             label="Internal frequency" />
+          <ShortcutRow keys={['R']}             label="Value range" />
+          <ShortcutRow keys={['C']}             label="Cardinality" />
           <ShortcutRow keys={['Del']}           label="Delete selected" />
           <ShortcutRow keys={['Esc']}           label="Cancel / deselect" />
           <ShortcutRow keys={['Ctrl','Z']}      label="Undo" />
@@ -158,17 +163,18 @@ export default function WelcomeScreen() {
           <ShortcutRow keys={['Ctrl','C']}      label="Copy selection" />
           <ShortcutRow keys={['Ctrl','X']}      label="Cut selection" />
           <ShortcutRow keys={['Ctrl','V']}      label="Paste" />
+          <ShortcutRow keys={['Ctrl','D']}      label="Duplicate selection" />
           <ShortcutRow keys={['↑↓←→']}         label="Move selected (10 px)" />
           <ShortcutRow keys={['Shift','↑↓←→']} label="Move selected (50 px)" />
           <ShortcutRow keys={['Shift','click']} label="Multi-select / deselect" />
-          <ShortcutRow keys={['Enter']}         label="Commit uniqueness / sequence construction" />
+          <ShortcutRow keys={['Enter']}         label="Commit multi-step construction" />
         </div>
 
         <div style={{ marginTop: 16, padding: '10px 12px', background: 'var(--bg-raised)',
           border: '1px solid var(--border-soft)', borderRadius: 5,
           fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.6 }}>
           <strong style={{ color: 'var(--ink-2)' }}>Connectors:</strong> Use the{' '}
-          <strong style={{ color: 'var(--ink-2)' }}>Connectors</strong> menu to link elements.{' '}
+          <strong style={{ color: 'var(--ink-2)' }}>Connectors</strong> section in the tool panel to link elements.{' '}
           <strong style={{ color: 'var(--ink-2)' }}>Role</strong> (or{' '}
           <kbd style={{ padding: '1px 5px', background:'var(--bg-deep)',
             border:'1px solid var(--border)', borderRadius:3 }}>A</kbd>

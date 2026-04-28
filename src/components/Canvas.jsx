@@ -16,27 +16,64 @@ const SNAP = 10  // grid snap in world units
 
 function snap(v) { return Math.round(v / SNAP) * SNAP }
 
-// ── Value Range pop-up ────────────────────────────────────────────────────────
-function ValueRangePopup({ title, range, onChange, x, y, onClose }) {
+// ── Shared popup positioning ─────────────────────────────────────────────────
+// Returns { left, top|bottom, maxHeight } that keep the popup within the viewport.
+function popupPos(x, y, popW) {
+  const MARGIN = 8, GAP = 16
+  const left = Math.max(MARGIN, Math.min(x - popW / 2, window.innerWidth - popW - MARGIN))
+  const spaceAbove = y - GAP
+  const spaceBelow = window.innerHeight - y - GAP
+  if (spaceAbove >= spaceBelow || spaceAbove >= 120) {
+    return { left, bottom: window.innerHeight - y + GAP,
+             maxHeight: Math.max(60, spaceAbove - MARGIN) }
+  }
+  return { left, top: y + GAP,
+           maxHeight: Math.max(60, spaceBelow - MARGIN) }
+}
+
+// ── Draggable popup hook ──────────────────────────────────────────────────────
+// Returns { dragOffset, onDragMouseDown } — apply transform + cursor to header.
+function usePopupDrag() {
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const onDragMouseDown = useCallback((e) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX - offset.x
+    const startY = e.clientY - offset.y
+    const onMove = (ev) => setOffset({ x: ev.clientX - startX, y: ev.clientY - startY })
+    const onUp   = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [offset.x, offset.y])
+  return { dragOffset: offset, onDragMouseDown }
+}
+
+// ── Frequency Range pop-up (stage 3 of internal frequency construction) ──────
+function FrequencyRangePopup({ range, onChange, x, y, onDone, onAbort }) {
   const ref = useRef(null)
+  const { dragOffset, onDragMouseDown } = usePopupDrag()
 
   useEffect(() => {
-    const onDown = (e) => { if (!ref.current?.contains(e.target)) onClose() }
+    const onDown = (e) => { if (!ref.current?.contains(e.target)) onAbort() }
     document.addEventListener('mousedown', onDown, true)
     return () => document.removeEventListener('mousedown', onDown, true)
-  }, [onClose])
+  }, [onAbort])
 
   const POP_W = 280
-  const left = Math.max(8, Math.min(x - POP_W / 2, window.innerWidth - POP_W - 8))
+  const pos = popupPos(x, y, POP_W)
 
   return createPortal(
     <div ref={ref}
-      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onClose() } }}
+      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onDone() } }}
       style={{
-        position: 'fixed',
-        left,
-        bottom: window.innerHeight - y + 16,
+        position: 'fixed', ...pos,
+        transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)`,
         width: POP_W,
+        overflowY: 'auto',
         background: 'var(--bg-surface)',
         border: '1px solid var(--border)',
         borderRadius: 6,
@@ -47,11 +84,93 @@ function ValueRangePopup({ title, range, onChange, x, y, onClose }) {
         fontSize: 12,
         color: 'var(--ink-2)',
       }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)',
-        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+      <div
+        onMouseDown={onDragMouseDown}
+        style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)',
+          textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8,
+          cursor: 'move', userSelect: 'none' }}>
+        Frequency Range
+      </div>
+      <ValueRangeEditor range={range} onChange={onChange} naturalNumbers={true}/>
+      <button
+        onClick={onDone}
+        style={{
+          marginTop: 8,
+          padding: '4px 12px',
+          background: 'var(--accent)',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 4,
+          cursor: 'pointer',
+          fontSize: 11,
+          fontFamily: 'var(--font-mono)',
+        }}>
+        Done
+      </button>
+    </div>,
+    document.body
+  )
+}
+
+// ── Value Range pop-up ────────────────────────────────────────────────────────
+function ValueRangePopup({ title, initialRange, onCommit, x, y, onClose, naturalNumbers }) {
+  const ref = useRef(null)
+  const [range, setRange] = React.useState(initialRange)
+  const { dragOffset, onDragMouseDown } = usePopupDrag()
+
+  useEffect(() => {
+    const onDown = (e) => { if (!ref.current?.contains(e.target)) onClose() }
+    document.addEventListener('mousedown', onDown, true)
+    return () => document.removeEventListener('mousedown', onDown, true)
+  }, [onClose])
+
+  const commit = () => { onCommit(range); onClose() }
+
+  const POP_W = 280
+  const pos = popupPos(x, y, POP_W)
+
+  return createPortal(
+    <div ref={ref}
+      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit() } }}
+      style={{
+        position: 'fixed',
+        ...pos,
+        transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)`,
+        width: POP_W,
+        overflowY: 'auto',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+        padding: '10px 12px',
+        zIndex: 10200,
+        fontFamily: 'var(--font-mono)',
+        fontSize: 12,
+        color: 'var(--ink-2)',
+      }}>
+      <div
+        onMouseDown={onDragMouseDown}
+        style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)',
+          textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8,
+          cursor: 'move', userSelect: 'none' }}>
         {title}
       </div>
-      <ValueRangeEditor range={range} onChange={onChange}/>
+      <ValueRangeEditor range={range} onChange={setRange} naturalNumbers={naturalNumbers}/>
+      <button
+        onClick={commit}
+        style={{
+          marginTop: 8,
+          padding: '4px 12px',
+          background: 'var(--accent)',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 4,
+          cursor: 'pointer',
+          fontSize: 11,
+          fontFamily: 'var(--font-mono)',
+        }}>
+        Done
+      </button>
     </div>,
     document.body
   )
@@ -86,6 +205,21 @@ export default function Canvas() {
   const handleNestedFactVrClick = useCallback((fact, clientX, clientY) => {
     store.setTool('select')
     setVrPopup({ nestedFactId: fact.id, x: clientX, y: clientY })
+  }, [store])
+
+  const handleOtCardinalityRangeClick = useCallback((ot, clientX, clientY) => {
+    store.setTool('select')
+    setVrPopup({ otId: ot.id, x: clientX, y: clientY, naturalNumbers: true, title: `Cardinality Range — ${ot.name || 'Object Type'}` })
+  }, [store])
+
+  const handleRoleCardinalityClick = useCallback((fact, roleIndex, clientX, clientY) => {
+    store.setTool('select')
+    setVrPopup({ factId: fact.id, roleIndex, x: clientX, y: clientY, naturalNumbers: true, title: `Cardinality Range — Role ${roleIndex + 1}` })
+  }, [store])
+
+  const handleNestedFactCrClick = useCallback((fact, clientX, clientY) => {
+    store.setTool('select')
+    setVrPopup({ nestedFactId: fact.id, x: clientX, y: clientY, naturalNumbers: true, title: `Cardinality Range — ${fact.objectifiedName || 'Nested Type'}` })
   }, [store])
 
 const handleMultiSelectionContextMenu = useCallback((e) => {
@@ -242,6 +376,121 @@ const handleMultiSelectionContextMenu = useCallback((e) => {
     })
   }, [store])
 
+  const handleIfContextMenu = useCallback((fact, ifId, e) => {
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      items: [
+        { label: 'Edit Frequency Range…', action: () => store.startFrequencyRangeEdit(fact.id, ifId) },
+        '---',
+        { label: 'Delete Frequency Constraint', danger: true,
+          action: () => store.removeInternalFrequency(fact.id, ifId) },
+      ],
+    })
+  }, [store])
+
+  const handleRoleValueContextMenu = useCallback((fact, roleIndex, e) => {
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      items: [
+        { label: 'Edit Value Range…', action: () => {
+            store.setTool('select')
+            setVrPopup({ factId: fact.id, roleIndex, x: e.clientX, y: e.clientY })
+          }},
+        '---',
+        { label: 'Delete Value Range', danger: true,
+          action: () => store.updateRole(fact.id, roleIndex, { valueRange: [] }) },
+      ],
+    })
+  }, [store])
+
+  const handleRoleCrContextMenu = useCallback((fact, roleIndex, e) => {
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      items: [
+        { label: 'Edit Cardinality Range…', action: () => {
+            store.setTool('select')
+            setVrPopup({ factId: fact.id, roleIndex, x: e.clientX, y: e.clientY,
+                         naturalNumbers: true, title: `Cardinality Range — Role ${roleIndex + 1}` })
+          }},
+        '---',
+        { label: 'Delete Cardinality Range', danger: true,
+          action: () => store.updateRole(fact.id, roleIndex, { cardinalityRange: [] }) },
+      ],
+    })
+  }, [store])
+
+  const handleNestedVrContextMenu = useCallback((fact, e) => {
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      items: [
+        { label: 'Edit Value Range…', action: () => {
+            store.setTool('select')
+            setVrPopup({ nestedFactId: fact.id, x: e.clientX, y: e.clientY })
+          }},
+        '---',
+        { label: 'Delete Value Range', danger: true,
+          action: () => store.updateFact(fact.id, { valueRange: null }) },
+      ],
+    })
+  }, [store])
+
+  const handleNestedCrContextMenu = useCallback((fact, e) => {
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      items: [
+        { label: 'Edit Cardinality Range…', action: () => {
+            store.setTool('select')
+            setVrPopup({ nestedFactId: fact.id, x: e.clientX, y: e.clientY,
+                         naturalNumbers: true, title: `Cardinality Range — ${fact.objectifiedName || 'Nested Type'}` })
+          }},
+        '---',
+        { label: 'Delete Cardinality Range', danger: true,
+          action: () => store.updateFact(fact.id, { cardinalityRange: null }) },
+      ],
+    })
+  }, [store])
+
+  const handleOtValueRangeContextMenu = useCallback((ot, e) => {
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      items: [
+        { label: 'Edit Value Range…', action: () => {
+            store.setTool('select')
+            setVrPopup({ otId: ot.id, x: e.clientX, y: e.clientY })
+          }},
+        '---',
+        { label: 'Delete Value Range', danger: true,
+          action: () => store.updateObjectType(ot.id, { valueRange: [] }) },
+      ],
+    })
+  }, [store])
+
+  const handleOtCardinalityRangeContextMenu = useCallback((ot, e) => {
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      items: [
+        { label: 'Edit Cardinality Range…', action: () => {
+            store.setTool('select')
+            setVrPopup({ otId: ot.id, x: e.clientX, y: e.clientY,
+                         naturalNumbers: true, title: `Cardinality Range — ${ot.name || 'Object Type'}` })
+          }},
+        '---',
+        { label: 'Delete Cardinality Range', danger: true,
+          action: () => store.updateObjectType(ot.id, { cardinalityRange: [] }) },
+      ],
+    })
+  }, [store])
+
+  const handleMandatoryDotContextMenu = useCallback((factId, roleIndex, e) => {
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      items: [
+        { label: 'Delete Mandatory Constraint', danger: true,
+          action: () => store.removeMandatoryRole(factId, roleIndex) },
+      ],
+    })
+  }, [store])
+
   const handleUniquenessBarContextMenu = useCallback((fact, ui, e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -363,6 +612,15 @@ const handleMultiSelectionContextMenu = useCallback((e) => {
     }
   }, [store.pan, store.zoom])
 
+  const worldToScreen = useCallback((wx, wy) => {
+    const rect = svgRef.current?.getBoundingClientRect()
+    if (!rect) return { x: 0, y: 0 }
+    return {
+      x: wx * store.zoom + store.pan.x + rect.left,
+      y: wy * store.zoom + store.pan.y + rect.top,
+    }
+  }, [store.pan, store.zoom])
+
   // ── background click / placement ────────────────────────────────────────
   const handleSVGMouseDown = useCallback((e) => {
     const isBackground = e.target === svgRef.current || e.target.closest('.canvas-bg')
@@ -385,9 +643,19 @@ const handleMultiSelectionContextMenu = useCallback((e) => {
     if (store.tool === 'addFact2')      { store.addFact(x, y, 2); store.setTool('select'); return }
     if (store.tool === 'addNestedFact')      { store.addNestedFact(x, y, 2); store.setTool('select'); return }
     if (store.tool === 'addNestedValueFact') { store.addNestedValueFact(x, y, 2); store.setTool('select'); return }
-    if (store.tool.startsWith('addConstraint:') && store.tool !== 'addConstraint:valueRange') {
+    if (store.tool.startsWith('addConstraint:') && store.tool !== 'addConstraint:valueRange' && store.tool !== 'addConstraint:cardinality') {
       store.addConstraint(store.tool.split(':')[1], x, y)
       store.setTool('select'); return
+    }
+    if (store.uniquenessConstruction) {
+      store.abandonUniquenessConstruction()
+      store.setTool('select')
+      return
+    }
+    if (store.frequencyConstruction) {
+      store.abandonFrequencyConstruction()
+      store.setTool('select')
+      return
     }
     if (store.sequenceConstruction) {
       store.abandonSequenceConstruction()
@@ -397,7 +665,7 @@ const handleMultiSelectionContextMenu = useCallback((e) => {
       }
       return
     }
-    if (store.tool === 'assignRole' || store.tool === 'addSubtype' || store.tool === 'toggleMandatory' || store.tool === 'addInternalUniqueness' || store.tool === 'addConstraint:valueRange') { store.setTool('select'); return }
+    if (store.tool === 'assignRole' || store.tool === 'addSubtype' || store.tool === 'toggleMandatory' || store.tool === 'addInternalUniqueness' || store.tool === 'addInternalFrequency' || store.tool === 'addConstraint:valueRange' || store.tool === 'addConstraint:cardinality') { store.setTool('select'); return }
     if (store.tool === 'connectConstraint') { store.clearSelection(); store.setTool('select'); return }
     if (store.tool === 'addTargetConnector') { store.clearLinkDraft(); store.setTool('select'); return }
     if (store.linkDraft) { store.clearLinkDraft(); return }
@@ -653,7 +921,14 @@ const handleMultiSelectionContextMenu = useCallback((e) => {
               onRoleContextMenu={(roleIndex, e) => handleRoleContextMenu(f, roleIndex, e)}
               onBarContextMenu={(ui, e) => handleUniquenessBarContextMenu(f, ui, e)}
               onRoleValueClick={(roleIndex, cx, cy) => handleRoleValueClick(f, roleIndex, cx, cy)}
-              onNestedVrClick={(cx, cy) => handleNestedFactVrClick(f, cx, cy)}/>
+              onNestedVrClick={(cx, cy) => handleNestedFactVrClick(f, cx, cy)}
+              onRoleCardinalityClick={(roleIndex, cx, cy) => handleRoleCardinalityClick(f, roleIndex, cx, cy)}
+              onNestedCrClick={(cx, cy) => handleNestedFactCrClick(f, cx, cy)}
+              onIfContextMenu={(ifId, e) => handleIfContextMenu(f, ifId, e)}
+              onRoleValueContextMenu={(ri, e) => handleRoleValueContextMenu(f, ri, e)}
+              onRoleCrContextMenu={(ri, e) => handleRoleCrContextMenu(f, ri, e)}
+              onNestedVrContextMenu={(e) => handleNestedVrContextMenu(f, e)}
+              onNestedCrContextMenu={(e) => handleNestedCrContextMenu(f, e)}/>
           ))}
           <RoleConnectors mousePos={mousePos}/>
           {visibleOts.map(ot => (
@@ -663,9 +938,12 @@ const handleMultiSelectionContextMenu = useCallback((e) => {
               isShared={sharedIds.has(ot.id)}
               onContextMenu={(e) => handleOtContextMenu(ot, e)}
               onDoubleClickValueRange={(cx, cy) => handleOtValueRangeClick(ot, cx, cy)}
-              onValueRangeClick={(cx, cy) => handleOtValueRangeClick(ot, cx, cy)}/>
+              onValueRangeClick={(cx, cy) => handleOtValueRangeClick(ot, cx, cy)}
+              onCardinalityRangeClick={(cx, cy) => handleOtCardinalityRangeClick(ot, cx, cy)}
+              onValueRangeContextMenu={(e) => handleOtValueRangeContextMenu(ot, e)}
+              onCardinalityRangeContextMenu={(e) => handleOtCardinalityRangeContextMenu(ot, e)}/>
           ))}
-          <MandatoryDots/>
+          <MandatoryDots onContextMenu={handleMandatoryDotContextMenu}/>
           <ConstraintNodes onDragStart={handleDragStart} mousePos={mousePos}
             onContextMenu={handleConstraintContextMenu}/>
           <ConstraintMemberLabels/>
@@ -715,25 +993,57 @@ const handleMultiSelectionContextMenu = useCallback((e) => {
       )}
 
       {vrPopup && (() => {
-        let title, range, onChange
-        if (vrPopup.factId != null) {
-          const fact = store.facts.find(f => f.id === vrPopup.factId)
-          range    = fact?.roles[vrPopup.roleIndex]?.valueRange
-          onChange = vr => store.updateRole(vrPopup.factId, vrPopup.roleIndex, { valueRange: vr })
-          title    = `Value Range — Role ${vrPopup.roleIndex + 1}`
-        } else if (vrPopup.nestedFactId != null) {
-          const fact = store.facts.find(f => f.id === vrPopup.nestedFactId)
-          range    = fact?.valueRange
-          onChange = vr => store.updateFact(vrPopup.nestedFactId, { valueRange: vr })
-          title    = `Value Range — ${fact?.objectifiedName || 'Nested Type'}`
+        let title, initialRange, onCommit
+        if (vrPopup.naturalNumbers) {
+          // Cardinality range popup
+          title = vrPopup.title
+          if (vrPopup.factId != null) {
+            const fact = store.facts.find(f => f.id === vrPopup.factId)
+            initialRange = fact?.roles[vrPopup.roleIndex]?.cardinalityRange
+            onCommit = vr => store.updateRole(vrPopup.factId, vrPopup.roleIndex, { cardinalityRange: vr })
+          } else if (vrPopup.nestedFactId != null) {
+            const fact = store.facts.find(f => f.id === vrPopup.nestedFactId)
+            initialRange = fact?.cardinalityRange
+            onCommit = vr => store.updateFact(vrPopup.nestedFactId, { cardinalityRange: vr })
+          } else {
+            const ot = store.objectTypes.find(o => o.id === vrPopup.otId)
+            initialRange = ot?.cardinalityRange
+            onCommit = vr => store.updateObjectType(vrPopup.otId, { cardinalityRange: vr })
+          }
         } else {
-          const ot = store.objectTypes.find(o => o.id === vrPopup.otId)
-          range    = ot?.valueRange
-          onChange = vr => store.updateObjectType(vrPopup.otId, { valueRange: vr })
-          title    = `Value Range — ${ot?.name || 'Object Type'}`
+          // Value range popup
+          if (vrPopup.factId != null) {
+            const fact = store.facts.find(f => f.id === vrPopup.factId)
+            initialRange = fact?.roles[vrPopup.roleIndex]?.valueRange
+            onCommit = vr => store.updateRole(vrPopup.factId, vrPopup.roleIndex, { valueRange: vr })
+            title    = `Value Range — Role ${vrPopup.roleIndex + 1}`
+          } else if (vrPopup.nestedFactId != null) {
+            const fact = store.facts.find(f => f.id === vrPopup.nestedFactId)
+            initialRange = fact?.valueRange
+            onCommit = vr => store.updateFact(vrPopup.nestedFactId, { valueRange: vr })
+            title    = `Value Range — ${fact?.objectifiedName || 'Nested Type'}`
+          } else {
+            const ot = store.objectTypes.find(o => o.id === vrPopup.otId)
+            initialRange = ot?.valueRange
+            onCommit = vr => store.updateObjectType(vrPopup.otId, { valueRange: vr })
+            title    = `Value Range — ${ot?.name || 'Object Type'}`
+          }
         }
-        return <ValueRangePopup title={title} range={range} onChange={onChange}
-          x={vrPopup.x} y={vrPopup.y} onClose={() => setVrPopup(null)}/>
+        return <ValueRangePopup title={title} initialRange={initialRange} onCommit={onCommit}
+          x={vrPopup.x} y={vrPopup.y} onClose={() => setVrPopup(null)}
+          naturalNumbers={vrPopup.naturalNumbers}/>
+      })()}
+
+      {store.frequencyConstruction?.stage === 3 && (() => {
+        const fc = store.frequencyConstruction
+        const sp = worldToScreen(fc.x, fc.y)
+        return <FrequencyRangePopup
+          range={fc.range ?? []}
+          onChange={range => store.updateFrequencyConstructionRange(range)}
+          x={sp.x} y={sp.y}
+          onDone={() => store.commitFrequencyConstruction()}
+          onAbort={() => { store.abandonFrequencyConstruction(); store.setTool('select') }}
+        />
       })()}
 
       {/* Snap indicator */}

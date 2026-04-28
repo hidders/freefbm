@@ -241,7 +241,7 @@ const VR_TYPES = [
   { value: 'range',  label: 'Range' },
 ]
 
-export function ValueRangeEditor({ range, onChange, naturalNumbers = false }) {
+export function ValueRangeEditor({ range, onChange, naturalNumbers = false, positiveIntegers = false }) {
   const specs = range || []
 
   const commit = (newSpecs) => onChange(newSpecs.length ? newSpecs : null)
@@ -268,7 +268,8 @@ export function ValueRangeEditor({ range, onChange, naturalNumbers = false }) {
 
   const inputStyle = { fontSize: 11, padding: '2px 4px', flex: 1, minWidth: 0 }
   const sepStyle = { fontSize: 11, color: 'var(--ink-muted)', flexShrink: 0, padding: '0 2px' }
-  const numProps = naturalNumbers ? { type: 'number', min: 0, step: 1 } : {}
+  const numProps = positiveIntegers ? { type: 'number', min: 1, step: 1 }
+    : naturalNumbers ? { type: 'number', min: 0, step: 1 } : {}
 
   return (
     <div>
@@ -340,6 +341,14 @@ function ObjectTypeInspector({ ot }) {
           />
         </Row>
       )}
+      <Row>
+        <Label>Cardinality Range</Label>
+        <ValueRangeEditor
+          naturalNumbers
+          range={ot.cardinalityRange}
+          onChange={vr => store.updateObjectType(ot.id, { cardinalityRange: vr })}
+        />
+      </Row>
       <DiagramList elementId={ot.id} kind={ot.kind} />
       <DangerBtn onClick={() => store.deleteObjectType(ot.id)}>
         Delete {ot.kind === 'entity' ? 'Entity' : 'Value'} Type
@@ -454,6 +463,14 @@ function RoleList({ fact, store }) {
                 onChange={vr => store.updateRole(fact.id, ri, { valueRange: vr })}
               />
             </Row>
+            <Row>
+              <Label>Cardinality Range</Label>
+              <ValueRangeEditor
+                naturalNumbers
+                range={role.cardinalityRange}
+                onChange={vr => store.updateRole(fact.id, ri, { cardinalityRange: vr })}
+              />
+            </Row>
           </div>
         )
       })}
@@ -465,7 +482,8 @@ function RoleList({ fact, store }) {
 function CompactRoleList({ fact, store }) {
   const [dragIndex, setDragIndex] = useState(null)
   const [overIndex, setOverIndex] = useState(null)
-  const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
+  const otMap     = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
+  const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
 
   const handleDragStart = useCallback((e, ri) => {
     e.dataTransfer.effectAllowed = 'move'
@@ -494,7 +512,9 @@ function CompactRoleList({ fact, store }) {
   return (
     <div>
       {fact.roles.map((role, ri) => {
-        const ot = otMap[role.objectTypeId]
+        const ot       = otMap[role.objectTypeId]
+        const nf       = !ot ? nestedMap[role.objectTypeId] : null
+        const player   = ot ? ot.name : nf ? nf.objectifiedName : null
         const isDragging = dragIndex === ri
         const isOver     = overIndex === ri && dragIndex !== ri
         return (
@@ -523,9 +543,10 @@ function CompactRoleList({ fact, store }) {
             </span>
             <span style={{ fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
-              color: ot ? 'var(--ink)' : 'var(--ink-muted)',
-              fontStyle: ot ? 'normal' : 'italic' }}>
-              {ot ? ot.name : '—'}
+              color: player ? 'var(--ink)' : 'var(--ink-muted)',
+              fontStyle: player ? 'normal' : 'italic' }}>
+              {player ?? '—'}
+              {nf && <span style={{ fontSize: 10, color: 'var(--ink-muted)', marginLeft: 3 }}>(nested)</span>}
             </span>
             {role.roleName && (
               <span style={{ fontSize: 10, color: 'var(--ink-muted)', flexShrink: 0,
@@ -590,6 +611,14 @@ function RoleInspector({ fact, roleIndex }) {
           onChange={vr => store.updateRole(fact.id, roleIndex, { valueRange: vr })}
         />
       </Row>
+      <Row>
+        <Label>Cardinality Range</Label>
+        <ValueRangeEditor
+          naturalNumbers
+          range={role.cardinalityRange}
+          onChange={vr => store.updateRole(fact.id, roleIndex, { cardinalityRange: vr })}
+        />
+      </Row>
     </Section>
   )
 }
@@ -617,7 +646,8 @@ function generatePermutations(n) {
 // onUpdatePart: (i, value) => void
 function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart }) {
   const n = fact.arity
-  const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
+  const otMap     = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
+  const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
   const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
   const handleBlur = (i, val) => {
@@ -636,7 +666,7 @@ function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart }) {
       {parts.map((seg, i) => (
         <React.Fragment key={i}>
           {/* inline-block span sized by hidden text; input overlays it absolutely */}
-          <span style={{ display: 'inline-block', position: 'relative', background: '#e8f5e9', borderRadius: 2, padding: '0 4px' }}>
+          <span style={{ display: 'inline-block', position: 'relative', background: '#fef6ec', borderRadius: 2, padding: '0 4px' }}>
             <span aria-hidden style={{
               visibility: 'hidden', whiteSpace: 'pre',
               fontSize: 12, fontFamily: FONT, padding: 0, margin: 0,
@@ -653,20 +683,28 @@ function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart }) {
                 position: 'absolute', inset: 0, width: '100%', height: '100%',
                 border: 'none', outline: 'none', background: 'transparent',
                 WebkitAppearance: 'none', appearance: 'none',
-                color: '#2a7a2a', fontSize: 12, fontFamily: FONT,
+                color: 'var(--ink-2)', fontSize: 12, fontFamily: FONT,
                 padding: '0 4px', margin: 0, boxSizing: 'border-box',
               }}
             />
           </span>
-          {i < n && (
-            <span style={{
-              color: '#7c4dbd', fontSize: 12, fontFamily: FONT, fontWeight: 700,
-              userSelect: 'none', whiteSpace: 'nowrap',
-              paddingLeft: '0.35em', paddingRight: '0.35em',
-            }}>
-              {otMap[fact.roles[roleOrder[i]]?.objectTypeId]?.name || '?'}
-            </span>
-          )}
+          {i < n && (() => {
+            const oid = fact.roles[roleOrder[i]]?.objectTypeId
+            const ot  = otMap[oid]
+            const nf  = nestedMap[oid]
+            const name  = ot?.name ?? nf?.objectifiedName ?? '?'
+            const isValue = ot?.kind === 'value' || nf?.objectifiedKind === 'value'
+            const color = isValue ? 'var(--col-value)' : 'var(--col-entity)'
+            return (
+              <span style={{
+                color, fontSize: 12, fontFamily: FONT, fontWeight: 700,
+                userSelect: 'none', whiteSpace: 'nowrap',
+                paddingLeft: '0.35em', paddingRight: '0.35em',
+              }}>
+                {name}
+              </span>
+            )
+          })()}
         </React.Fragment>
       ))}
     </div>
@@ -676,236 +714,246 @@ function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart }) {
 // ── Fact type inspector ───────────────────────────────────────────────────────
 function FactInspector({ fact }) {
   const store = useOrmStore()
-  const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const [selectedPerm, setSelectedPerm] = useState('')
 
-  return (
-    <>
-      <Section title={fact.objectified
-        ? `Nested ${fact.objectifiedKind === 'value' ? 'Value' : 'Entity'} Type (${fact.arity}-ary)`
-        : `Fact Type (${fact.arity}-ary)`}>
-        {/* Objectified name */}
-        {fact.objectified && (
-          <Row>
-            <Label>{fact.objectifiedKind === 'value' ? 'Value Name' : 'Entity Name'}</Label>
-            <TInput value={fact.objectifiedName || ''} placeholder="Name"
-              onChange={v => store.updateFact(fact.id, { objectifiedName: v })}/>
-          </Row>
+  // Shared: arity + readings + display options
+  const factTypeSection = (
+    <Section title={`Fact Type (${fact.arity}-ary)`}>
+      {/* Arity control */}
+      <Row>
+        <Label>Arity</Label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            onClick={() => store.setFactArity(fact.id, fact.arity - 1)}
+            disabled={fact.arity <= 1}
+            title="Remove last role"
+            style={{
+              width: 28, height: 28, fontSize: 16, lineHeight: 1,
+              background: 'var(--bg-raised)', border: '1px solid var(--border)',
+              borderRadius: 4, cursor: fact.arity <= 1 ? 'not-allowed' : 'pointer',
+              color: fact.arity <= 1 ? 'var(--ink-muted)' : 'var(--ink-2)',
+              fontFamily: 'var(--font-mono)',
+            }}>−</button>
+          <span style={{
+            minWidth: 32, textAlign: 'center', fontSize: 15, fontWeight: 600,
+            color: 'var(--ink)', fontFamily: 'var(--font-mono)',
+          }}>{fact.arity}</span>
+          <button
+            onClick={() => store.setFactArity(fact.id, fact.arity + 1)}
+            title="Add a role"
+            style={{
+              width: 28, height: 28, fontSize: 16, lineHeight: 1,
+              background: 'var(--bg-raised)', border: '1px solid var(--border)',
+              borderRadius: 4, cursor: 'pointer',
+              color: 'var(--ink-2)', fontFamily: 'var(--font-mono)',
+            }}>+</button>
+          <span style={{ fontSize: 10, color: 'var(--ink-muted)', marginLeft: 4 }}>
+            {fact.arity === 1 ? 'unary' : fact.arity === 2 ? 'binary'
+              : fact.arity === 3 ? 'ternary' : fact.arity === 4 ? 'quaternary'
+              : `${fact.arity}-ary`}
+          </span>
+        </div>
+        {fact.arity > fact.roles.length && (
+          <div style={{ fontSize: 10, color: '#c0392b', marginTop: 4 }}>
+            Roles trimmed — reassign object types as needed
+          </div>
         )}
-        {/* Reference mode — nested entity types only */}
-        {fact.objectified && fact.objectifiedKind !== 'value' && (
+      </Row>
+
+      {/* Primary reading */}
+      {(() => {
+        const defaultOrder = Array.from({ length: fact.arity }, (_, i) => i)
+        const parts = fact.readingParts || Array(fact.arity + 1).fill('')
+        return (
           <Row>
-            <Label>Reference Mode</Label>
-            <TInput value={fact.objectifiedRefMode || ''} placeholder="id / name / none"
-              onChange={v => store.updateFact(fact.id, { objectifiedRefMode: v })}/>
-          </Row>
-        )}
-        {/* Value Range — nested value types and nested entity types with reference mode */}
-        {fact.objectified && (fact.objectifiedKind === 'value' || (fact.objectifiedKind !== 'value' && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')) && (
-          <Row>
-            <Label>Value Range</Label>
-            <ValueRangeEditor
-              range={fact.valueRange}
-              onChange={vr => store.updateFact(fact.id, { valueRange: vr })}
-            />
-          </Row>
-        )}
-        {fact.objectified && (
-          <Row>
-            <Checkbox
-              label="Nested Reading"
-              checked={!!fact.nestedReading}
-              disabled={fact.orientation === 'vertical'}
-              onChange={v => {
-                const patch = { nestedReading: v }
-                if (!v && fact.readingAbove) { patch.readingAbove = false; patch.readingOffset = null }
-                store.updateFact(fact.id, patch)
+            <Label>Reading</Label>
+            <ReadingEditor
+              fact={fact} store={store}
+              parts={parts}
+              roleOrder={defaultOrder}
+              onUpdatePart={(i, val) => {
+                const newParts = [...parts]
+                newParts[i] = val
+                store.updateFact(fact.id, { readingParts: newParts })
               }}
             />
           </Row>
-        )}
-        {/* Orientation toggle */}
-        <Row>
-          <Checkbox
-            label="Show vertically"
-            checked={fact.orientation === 'vertical'}
-            onChange={v => {
-              const patch = { orientation: v ? 'vertical' : 'horizontal', readingOffset: null }
-              if (v && fact.nestedReading) patch.nestedReading = false
-              store.updateFact(fact.id, patch)
-            }}
-          />
-        </Row>
-        {/* Reading side */}
-        <Row>
-          <Checkbox
-            label={fact.orientation === 'vertical' ? 'Reading is shown right' : 'Reading is shown above'}
-            checked={!!fact.readingAbove}
-            disabled={fact.objectified && fact.orientation !== 'vertical' && !fact.nestedReading}
-            onChange={v => {
-              const patch = { readingAbove: v, readingOffset: null }
-              store.updateFact(fact.id, patch)
-            }}
-          />
-        </Row>
-        {/* Arity control */}
-        <Row>
-          <Label>Arity (number of roles)</Label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <button
-              onClick={() => store.setFactArity(fact.id, fact.arity - 1)}
-              disabled={fact.arity <= 1}
-              title="Remove last role"
-              style={{
-                width: 28, height: 28, fontSize: 16, lineHeight: 1,
-                background: 'var(--bg-raised)', border: '1px solid var(--border)',
-                borderRadius: 4, cursor: fact.arity <= 1 ? 'not-allowed' : 'pointer',
-                color: fact.arity <= 1 ? 'var(--ink-muted)' : 'var(--ink-2)',
-                fontFamily: 'var(--font-mono)',
-              }}>−</button>
-            <span style={{
-              minWidth: 32, textAlign: 'center', fontSize: 15, fontWeight: 600,
-              color: 'var(--ink)', fontFamily: 'var(--font-mono)',
-            }}>{fact.arity}</span>
-            <button
-              onClick={() => store.setFactArity(fact.id, fact.arity + 1)}
-              title="Add a role"
-              style={{
-                width: 28, height: 28, fontSize: 16, lineHeight: 1,
-                background: 'var(--bg-raised)', border: '1px solid var(--border)',
-                borderRadius: 4, cursor: 'pointer',
-                color: 'var(--ink-2)', fontFamily: 'var(--font-mono)',
-              }}>+</button>
-            <span style={{ fontSize: 10, color: 'var(--ink-muted)', marginLeft: 4 }}>
-              {fact.arity === 1 ? 'unary' : fact.arity === 2 ? 'binary'
-                : fact.arity === 3 ? 'ternary' : fact.arity === 4 ? 'quaternary'
-                : `${fact.arity}-ary`}
-            </span>
-          </div>
-          {fact.arity > fact.roles.length && (
-            <div style={{ fontSize: 10, color: '#c0392b', marginTop: 4 }}>
-              Roles trimmed — reassign object types as needed
+        )
+      })()}
+
+      {/* Alternative readings */}
+      {(fact.alternativeReadings || []).map(alt => {
+        const orderKey = JSON.stringify(alt.roleOrder)
+        const label = '(' + alt.roleOrder.map(i => i + 1).join(', ') + ')'
+        return (
+          <Row key={orderKey}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+              <Label>Reading {label}</Label>
+              <button onClick={() => store.removeAlternativeReading(fact.id, alt.roleOrder)}
+                style={{ background: 'none', color: '#c0392b', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
             </div>
-          )}
-        </Row>
-        {/* Primary reading */}
-        {(() => {
-          const defaultOrder = Array.from({ length: fact.arity }, (_, i) => i)
-          const parts = fact.readingParts || Array(fact.arity + 1).fill('')
-          return (
-            <Row>
-              <Label>Reading ({defaultOrder.map(i => i + 1).join(', ')})</Label>
-              <ReadingEditor
-                fact={fact} store={store}
-                parts={parts}
-                roleOrder={defaultOrder}
-                onUpdatePart={(i, val) => {
-                  const newParts = [...parts]
-                  newParts[i] = val
-                  store.updateFact(fact.id, { readingParts: newParts })
-                }}
-              />
-            </Row>
-          )
-        })()}
-
-        {/* Alternative readings */}
-        {(fact.alternativeReadings || []).map(alt => {
-          const orderKey = JSON.stringify(alt.roleOrder)
-          const label = '(' + alt.roleOrder.map(i => i + 1).join(', ') + ')'
-          return (
-            <Row key={orderKey}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
-                <Label>Reading {label}</Label>
-                <button onClick={() => store.removeAlternativeReading(fact.id, alt.roleOrder)}
-                  style={{ background: 'none', color: '#c0392b', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
-              </div>
-              <ReadingEditor
-                fact={fact} store={store}
-                parts={alt.parts}
-                roleOrder={alt.roleOrder}
-                onUpdatePart={(i, val) => {
-                  const newParts = [...alt.parts]
-                  newParts[i] = val
-                  store.updateAlternativeReading(fact.id, alt.roleOrder, newParts)
-                }}
-              />
-            </Row>
-          )
-        })}
-
-        {/* Add alternative reading */}
-        {fact.arity >= 2 && (() => {
-          const allPerms = generatePermutations(fact.arity)
-          const defaultKey = JSON.stringify(Array.from({ length: fact.arity }, (_, i) => i))
-          const usedKeys = new Set([
-            defaultKey,
-            ...(fact.alternativeReadings || []).map(r => JSON.stringify(r.roleOrder)),
-          ])
-          const available = allPerms.filter(p => !usedKeys.has(JSON.stringify(p)))
-          if (available.length === 0) return null
-          // Initialise selectedPerm to first available if empty or no longer available
-          const effectiveSel = available.some(p => JSON.stringify(p) === selectedPerm)
-            ? selectedPerm
-            : JSON.stringify(available[0])
-          return (
-            <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-              <select
-                value={effectiveSel}
-                onChange={e => setSelectedPerm(e.target.value)}
-                style={{ flex: 1, fontSize: 11 }}>
-                {available.map(p => {
-                  const key = JSON.stringify(p)
-                  return <option key={key} value={key}>({p.map(i => i + 1).join(', ')})</option>
-                })}
-              </select>
-              <button
-                onClick={() => {
-                  const roleOrder = JSON.parse(effectiveSel)
-                  store.updateAlternativeReading(fact.id, roleOrder, Array(fact.arity + 1).fill(''))
-                  setSelectedPerm('')
-                }}
-                style={{ padding: '2px 8px', fontSize: 11, background: 'var(--bg-raised)',
-                  border: '1px solid var(--border)', borderRadius: 3, cursor: 'pointer' }}>
-                + Add reading
-              </button>
-            </div>
-          )
-        })()}
-
-        {/* Reading display mode — binary facts only */}
-        {fact.arity === 2 && (
-          <Row>
-            <Label>Reading display</Label>
-            {[
-              { value: 'forward',  label: 'Forward only' },
-              { value: 'both',     label: 'Forward / Reverse' },
-              { value: 'reverse',  label: '◂  Reverse only' },
-            ].map(opt => (
-              <label key={opt.value} style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                fontSize: 12, color: 'var(--ink-2)', cursor: 'pointer', marginBottom: 3,
-              }}>
-                <input type="radio"
-                  name={`rdisplay-${fact.id}`}
-                  value={opt.value}
-                  checked={(fact.readingDisplay || 'forward') === opt.value}
-                  onChange={() => store.updateFact(fact.id, { readingDisplay: opt.value })}
-                  style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)' }}
-                />
-                {opt.label}
-              </label>
-            ))}
+            <ReadingEditor
+              fact={fact} store={store}
+              parts={alt.parts}
+              roleOrder={alt.roleOrder}
+              onUpdatePart={(i, val) => {
+                const newParts = [...alt.parts]
+                newParts[i] = val
+                store.updateAlternativeReading(fact.id, alt.roleOrder, newParts)
+              }}
+            />
           </Row>
-        )}
+        )
+      })}
 
-        <DiagramList elementId={fact.id} kind="fact" />
-        <DangerBtn onClick={() => store.deleteFact(fact.id)}>
-          {fact.objectified
-            ? (fact.objectifiedKind === 'value' ? 'Delete Nested Value Type' : 'Delete Nested Entity Type')
-            : 'Delete Fact Type'}
-        </DangerBtn>
-      </Section>
+      {/* Add alternative reading */}
+      {fact.arity >= 2 && (() => {
+        const allPerms = generatePermutations(fact.arity)
+        const defaultKey = JSON.stringify(Array.from({ length: fact.arity }, (_, i) => i))
+        const usedKeys = new Set([
+          defaultKey,
+          ...(fact.alternativeReadings || []).map(r => JSON.stringify(r.roleOrder)),
+        ])
+        const available = allPerms.filter(p => !usedKeys.has(JSON.stringify(p)))
+        if (available.length === 0) return null
+        const effectiveSel = available.some(p => JSON.stringify(p) === selectedPerm)
+          ? selectedPerm
+          : JSON.stringify(available[0])
+        return (
+          <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+            <select value={effectiveSel} onChange={e => setSelectedPerm(e.target.value)}
+              style={{ flex: 1, fontSize: 11 }}>
+              {available.map(p => {
+                const key = JSON.stringify(p)
+                return <option key={key} value={key}>({p.map(i => i + 1).join(', ')})</option>
+              })}
+            </select>
+            <button
+              onClick={() => {
+                const roleOrder = JSON.parse(effectiveSel)
+                store.updateAlternativeReading(fact.id, roleOrder, Array(fact.arity + 1).fill(''))
+                setSelectedPerm('')
+              }}
+              style={{ padding: '2px 8px', fontSize: 11, background: 'var(--bg-raised)',
+                border: '1px solid var(--border)', borderRadius: 3, cursor: 'pointer' }}>
+              + Add reading
+            </button>
+          </div>
+        )
+      })()}
+
+      {/* Reading display mode — binary facts only */}
+      {fact.arity === 2 && (
+        <Row>
+          <Label>Reading display</Label>
+          {[
+            { value: 'forward', label: 'Forward only' },
+            { value: 'both',    label: 'Forward / Reverse' },
+            { value: 'reverse', label: '◂  Reverse only' },
+          ].map(opt => (
+            <label key={opt.value} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: 12, color: 'var(--ink-2)', cursor: 'pointer', marginBottom: 3,
+            }}>
+              <input type="radio"
+                name={`rdisplay-${fact.id}`}
+                value={opt.value}
+                checked={(fact.readingDisplay || 'forward') === opt.value}
+                onChange={() => store.updateFact(fact.id, { readingDisplay: opt.value })}
+                style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)' }}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </Row>
+      )}
+
+      {/* Orientation */}
+      <Row>
+        <Checkbox
+          label="Show vertically"
+          checked={fact.orientation === 'vertical'}
+          onChange={v => {
+            const patch = { orientation: v ? 'vertical' : 'horizontal', readingOffset: null }
+            if (v && fact.nestedReading) patch.nestedReading = false
+            store.updateFact(fact.id, patch)
+          }}
+        />
+      </Row>
+
+      {/* Reading position */}
+      <Row>
+        <Checkbox
+          label={fact.orientation === 'vertical' ? 'Reading is shown right' : 'Reading is shown above'}
+          checked={!!fact.readingAbove}
+          disabled={fact.objectified && fact.orientation !== 'vertical' && !fact.nestedReading}
+          onChange={v => store.updateFact(fact.id, { readingAbove: v, readingOffset: null })}
+        />
+      </Row>
+
+      {/* For regular facts: Appears in + Delete here */}
+      {!fact.objectified && (
+        <>
+          <DiagramList elementId={fact.id} kind="fact" />
+          <DangerBtn onClick={() => store.deleteFact(fact.id)}>Delete Fact Type</DangerBtn>
+        </>
+      )}
+    </Section>
+  )
+
+  return (
+    <>
+      {fact.objectified ? (
+        <>
+          {/* Object-type identity */}
+          <Section title={`Nested ${fact.objectifiedKind === 'value' ? 'Value' : 'Entity'} Type`}>
+            <Row>
+              <Label>{fact.objectifiedKind === 'value' ? 'Value Name' : 'Entity Name'}</Label>
+              <TInput value={fact.objectifiedName || ''} placeholder="Name"
+                onChange={v => store.updateFact(fact.id, { objectifiedName: v })}/>
+            </Row>
+            {fact.objectifiedKind !== 'value' && (
+              <Row>
+                <Label>Reference Mode</Label>
+                <TInput value={fact.objectifiedRefMode || ''} placeholder="id / name / none"
+                  onChange={v => store.updateFact(fact.id, { objectifiedRefMode: v })}/>
+              </Row>
+            )}
+            {(fact.objectifiedKind === 'value' || (fact.objectifiedKind !== 'value' && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')) && (
+              <Row>
+                <Label>Value Range</Label>
+                <ValueRangeEditor
+                  range={fact.valueRange}
+                  onChange={vr => store.updateFact(fact.id, { valueRange: vr })}
+                />
+              </Row>
+            )}
+            <Row>
+              <Label>Cardinality Range</Label>
+              <ValueRangeEditor
+                naturalNumbers
+                range={fact.cardinalityRange}
+                onChange={vr => store.updateFact(fact.id, { cardinalityRange: vr })}
+              />
+            </Row>
+            <Row>
+              <Checkbox
+                label="Nested Reading"
+                checked={!!fact.nestedReading}
+                disabled={fact.orientation === 'vertical'}
+                onChange={v => {
+                  const patch = { nestedReading: v }
+                  if (!v && fact.readingAbove) { patch.readingAbove = false; patch.readingOffset = null }
+                  store.updateFact(fact.id, patch)
+                }}
+              />
+            </Row>
+          </Section>
+
+          {/* Fact-type structure */}
+          {factTypeSection}
+        </>
+      ) : factTypeSection}
 
       <Section title="Roles">
         <CompactRoleList fact={fact} store={store} />
@@ -928,11 +976,9 @@ function FactInspector({ fact }) {
                   style={{ cursor: 'pointer', accentColor: 'var(--col-mandatory)' }}/>
                 <span>Roles: {u.map(i => i + 1).join(', ')}</span>
               </label>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <button onClick={() => store.toggleUniqueness(fact.id, u)}
-                  style={{ background: 'none', color: '#c0392b', border: 'none',
-                    cursor: 'pointer', fontSize: 12 }}>✕</button>
-              </div>
+              <button onClick={() => store.toggleUniqueness(fact.id, u)}
+                style={{ background: 'none', color: '#c0392b', border: 'none',
+                  cursor: 'pointer', fontSize: 12 }}>✕</button>
             </div>
           )
         })}
@@ -945,6 +991,49 @@ function FactInspector({ fact }) {
           </button>
         )}
       </Section>
+
+      <Section title="Frequency Constraints">
+        {(fact.internalFrequency || []).length === 0 && (
+          <div style={{ color: 'var(--ink-muted)', fontSize: 11, marginBottom: 8 }}>None defined</div>
+        )}
+        {(fact.internalFrequency || []).map((ifItem) => (
+          <div key={ifItem.id} style={{ marginBottom: 8, paddingBottom: 8,
+            borderBottom: '1px solid var(--border-soft)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between',
+              alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontSize: 12, color: 'var(--ink-2)' }}>
+                Roles: {[...ifItem.roles].sort((a, b) => a - b).map(i => i + 1).join(', ')}
+              </span>
+              <button onClick={() => store.removeInternalFrequency(fact.id, ifItem.id)}
+                style={{ background: 'none', color: '#c0392b', border: 'none',
+                  cursor: 'pointer', fontSize: 12 }}>✕</button>
+            </div>
+            <ValueRangeEditor
+              positiveIntegers
+              range={ifItem.range}
+              onChange={vr => store.updateInternalFrequency(fact.id, ifItem.id, { range: vr })}
+            />
+          </div>
+        ))}
+        {fact.arity > 1 && (
+          <button onClick={() => store.startFrequencyConstruction(fact.id)}
+            style={{ marginTop: 6, padding: '4px 10px', fontSize: 11,
+              background: 'var(--bg-raised)', border: '1px solid var(--border)',
+              borderRadius: 3, color: 'var(--ink-2)', cursor: 'pointer' }}>
+            + Frequency Constraint
+          </button>
+        )}
+      </Section>
+
+      {/* For nested types: Appears in + Delete at the very bottom */}
+      {fact.objectified && (
+        <div style={{ marginBottom: 18 }}>
+          <DiagramList elementId={fact.id} kind="fact" />
+          <DangerBtn onClick={() => store.deleteFact(fact.id)}>
+            {fact.objectifiedKind === 'value' ? 'Delete Nested Value Type' : 'Delete Nested Entity Type'}
+          </DangerBtn>
+        </div>
+      )}
     </>
   )
 }
@@ -1482,7 +1571,9 @@ function ConstraintInspector({ c }) {
 // ── Main inspector ────────────────────────────────────────────────────────────
 export default function Inspector() {
   const store = useOrmStore()
-  const { selectedId, selectedKind, selectedRole } = store
+  const { selectedId, selectedKind, selectedRole,
+          selectedUniqueness, selectedMandatoryDot, selectedInternalFrequency,
+          selectedValueRange, selectedCardinalityRange } = store
 
   const [width, setWidth] = useState(240)
   const resizeRef = useRef(null)
@@ -1515,6 +1606,43 @@ export default function Inspector() {
   // Role inspector takes priority over fact inspector when a role is selected
   const roleFact = selectedRole ? store.facts.find(f => f.id === selectedRole.factId) : null
 
+  // Resolve internal constraint selections to the appropriate inspector content
+  let internalConstraintContent = null
+  if (!selectedId && !roleFact) {
+    if (selectedUniqueness) {
+      const f = store.facts.find(f => f.id === selectedUniqueness.factId)
+      if (f) internalConstraintContent = <FactInspector fact={f} />
+    } else if (selectedMandatoryDot) {
+      const f = store.facts.find(f => f.id === selectedMandatoryDot.factId)
+      if (f) internalConstraintContent = <RoleInspector fact={f} roleIndex={selectedMandatoryDot.roleIndex} />
+    } else if (selectedInternalFrequency) {
+      const f = store.facts.find(f => f.id === selectedInternalFrequency.factId)
+      if (f) internalConstraintContent = <FactInspector fact={f} />
+    } else if (selectedValueRange) {
+      if (selectedValueRange.otId) {
+        const o = store.objectTypes.find(o => o.id === selectedValueRange.otId)
+        if (o) internalConstraintContent = <ObjectTypeInspector ot={o} />
+      } else if (selectedValueRange.factId != null) {
+        const f = store.facts.find(f => f.id === selectedValueRange.factId)
+        if (f) internalConstraintContent = <RoleInspector fact={f} roleIndex={selectedValueRange.roleIndex} />
+      } else if (selectedValueRange.nestedFactId) {
+        const f = store.facts.find(f => f.id === selectedValueRange.nestedFactId)
+        if (f) internalConstraintContent = <FactInspector fact={f} />
+      }
+    } else if (selectedCardinalityRange) {
+      if (selectedCardinalityRange.otId) {
+        const o = store.objectTypes.find(o => o.id === selectedCardinalityRange.otId)
+        if (o) internalConstraintContent = <ObjectTypeInspector ot={o} />
+      } else if (selectedCardinalityRange.factId != null) {
+        const f = store.facts.find(f => f.id === selectedCardinalityRange.factId)
+        if (f) internalConstraintContent = <RoleInspector fact={f} roleIndex={selectedCardinalityRange.roleIndex} />
+      } else if (selectedCardinalityRange.nestedFactId) {
+        const f = store.facts.find(f => f.id === selectedCardinalityRange.nestedFactId)
+        if (f) internalConstraintContent = <FactInspector fact={f} />
+      }
+    }
+  }
+
   const counts = {
     entities: store.objectTypes.filter(o => o.kind === 'entity').length,
     values:   store.objectTypes.filter(o => o.kind === 'value').length,
@@ -1544,6 +1672,7 @@ export default function Inspector() {
       {con  && (con.constraintType === 'ring' || con.constraintType === 'exclusiveOr' || con.constraintType === 'exclusion' || con.constraintType === 'inclusiveOr' || con.constraintType === 'uniqueness' || con.constraintType === 'equality' || con.constraintType === 'subset' || con.constraintType === 'frequency' || con.constraintType === 'valueComparison')
              ? <ExternalConstraintInspector c={con} />
              : con && <ConstraintInspector c={con} />}
+      {internalConstraintContent}
 
       {store.multiSelectedIds.length > 0 && (
         <div style={{ marginBottom: 16 }}>
@@ -1572,7 +1701,7 @@ export default function Inspector() {
         </div>
       )}
 
-      {!selectedId && store.multiSelectedIds.length === 0 && (
+      {!selectedId && store.multiSelectedIds.length === 0 && !internalConstraintContent && (
         <div style={{ marginTop: 8 }}>
           <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700,
             letterSpacing: '0.1em', textTransform: 'uppercase',

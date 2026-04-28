@@ -77,7 +77,7 @@ export default function Toolbar() {
       <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 24,
         marginRight: 8, letterSpacing: '0.02em',
         WebkitAppRegion: 'drag', userSelect: 'none',
-        WebkitTextStroke: '1px #7c4dbd', WebkitTextFillColor: 'black' }}>
+        color: 'var(--accent)' }}>
         FreeFBM
       </span>
 

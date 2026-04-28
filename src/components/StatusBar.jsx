@@ -10,7 +10,10 @@ const HINTS = {
   addNestedValueFact: '⬜▭▭ Click canvas to place a Nested Value Type',
   assignRole:      '⇢ Click a role box, then an object type to assign it · Returns to Select when done',
   toggleMandatory:       '● Click a role box to toggle its mandatory constraint on/off',
-  addInternalUniqueness: '▔ Click a fact type to start adding an internal uniqueness constraint',
+  addInternalUniqueness: '▔ Click a fact type or role box to start · then click role boxes to build the uniqueness bar · Enter to commit',
+  addInternalFrequency:  '≤n Click a fact type to select it · then click role boxes to include them · Enter to set the frequency range',
+  'addConstraint:valueRange':  '{a,b} Click a role box or object type to set a value range',
+  'addConstraint:cardinality': '#≤n Click a role box or object type to set a cardinality range',
   addSubtype:        '⊂ Click source entity, then target entity to draw a subtype arrow',
   connectConstraint:    '⊗ Click an external constraint, then role boxes or subtype relationships to build sequences · Enter to commit',
   addTargetConnector:   '⊷ Click an external constraint, then an object type to set its Target Object Name',
@@ -25,7 +28,16 @@ export default function StatusBar() {
     ? '▭ Shift+click role to mark · Enter to commit uniqueness constraint · Click bar to edit it · Right-click role for options'
     : null
 
-  const hint = factHint
+  const frequencyHint = store.frequencyConstruction
+    ? store.frequencyConstruction.stage === 2
+      ? '≤n Click role boxes to include them in the frequency constraint · Enter to set the range · Esc to cancel'
+      : store.frequencyConstruction.stage === 3
+        ? '≤n Set the frequency range in the popup · Enter to commit · Esc to cancel'
+        : null
+    : null
+
+  const hint = frequencyHint
+    || factHint
     || HINTS[store.tool]
     || (store.tool.startsWith('addConstraint:')
         ? `⊗ Click canvas to place a ${store.tool.split(':')[1]} external constraint`

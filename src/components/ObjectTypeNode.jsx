@@ -24,6 +24,29 @@ export function formatValueRange(range) {
   return parts.length ? '{' + parts.join(', ') + '}' : null
 }
 
+export function formatCardinalityRange(range) {
+  if (!range || range.length === 0) return null
+  if (range.length === 1) {
+    const s = range[0]
+    if (s.type === 'lower' && (s.lower ?? '') !== '') return `#\u2265${s.lower}`
+    if (s.type === 'upper' && (s.upper ?? '') !== '') return `#\u2264${s.upper}`
+  }
+  const full = formatValueRange(range)
+  return full ? '#' + full : null
+}
+
+export function formatFrequencyRange(range) {
+  if (!range || range.length === 0) return null
+  if (range.length === 1) {
+    const s = range[0]
+    if (s.type === 'single' && (s.value ?? '') !== '') return `${s.value}`
+    if (s.type === 'lower'  && (s.lower ?? '') !== '') return `\u2265${s.lower}`
+    if (s.type === 'upper'  && (s.upper ?? '') !== '') return `\u2264${s.upper}`
+  }
+  const full = formatValueRange(range)
+  return full ? full.slice(1, -1) : null
+}
+
 let _canvas = null
 function measureText(text, fontSize) {
   if (!_canvas) _canvas = document.createElement('canvas')
@@ -49,7 +72,7 @@ export function entityBounds(ot) {
            cx: ot.x, cy: ot.y }
 }
 
-export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, onContextMenu, onDoubleClickValueRange, onValueRangeClick, isShared }) {
+export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, onContextMenu, onDoubleClickValueRange, onValueRangeClick, onCardinalityRangeClick, onValueRangeContextMenu, onCardinalityRangeContextMenu, isShared }) {
   const store = useOrmStore()
   const isSelected    = store.selectedId === ot.id || store.multiSelectedIds.includes(ot.id)
   const isSubtypeTool      = store.tool === 'addSubtype'
@@ -65,28 +88,50 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
   const inputRef             = useRef(null)
   const inputRefRef          = useRef(null)
 
-  const vrDragRef   = useRef(null)
+  const vrDragRef      = useRef(null)
+  const crDragRef      = useRef(null)
+  const vrWasDragged   = useRef(false)
+  const crWasDragged   = useRef(false)
 
   const [vrLive, setVrLive] = useState(null) // { dx, dy } | null
+  const [crLive, setCrLive] = useState(null) // { dx, dy } | null
 
   useEffect(() => {
     const onMove = (e) => {
       const d = vrDragRef.current
-      if (!d) return
-      const zoom = useOrmStore.getState().zoom
-      const dx = d.origDx + (e.clientX - d.startX) / zoom
-      const dy = d.origDy + (e.clientY - d.startY) / zoom
-      setVrLive({ dx, dy })
+      if (d) {
+        const zoom = useOrmStore.getState().zoom
+        const rawDx = e.clientX - d.startX, rawDy = e.clientY - d.startY
+        if (rawDx*rawDx + rawDy*rawDy > 9) vrWasDragged.current = true
+        setVrLive({ dx: d.origDx + rawDx / zoom, dy: d.origDy + rawDy / zoom })
+      }
+      const cd = crDragRef.current
+      if (cd) {
+        const zoom = useOrmStore.getState().zoom
+        const rawDx = e.clientX - cd.startX, rawDy = e.clientY - cd.startY
+        if (rawDx*rawDx + rawDy*rawDy > 9) crWasDragged.current = true
+        setCrLive({ dx: cd.origDx + rawDx / zoom, dy: cd.origDy + rawDy / zoom })
+      }
     }
     const onUp = (e) => {
       const d = vrDragRef.current
-      if (!d) return
-      const zoom = useOrmStore.getState().zoom
-      const dx = d.origDx + (e.clientX - d.startX) / zoom
-      const dy = d.origDy + (e.clientY - d.startY) / zoom
-      useOrmStore.getState().updateObjectType(ot.id, { valueRangeOffset: { dx, dy } })
-      vrDragRef.current = null
-      setVrLive(null)
+      if (d) {
+        const zoom = useOrmStore.getState().zoom
+        const dx = d.origDx + (e.clientX - d.startX) / zoom
+        const dy = d.origDy + (e.clientY - d.startY) / zoom
+        useOrmStore.getState().updateObjectType(ot.id, { valueRangeOffset: { dx, dy } })
+        vrDragRef.current = null
+        setVrLive(null)
+      }
+      const cd = crDragRef.current
+      if (cd) {
+        const zoom = useOrmStore.getState().zoom
+        const dx = cd.origDx + (e.clientX - cd.startX) / zoom
+        const dy = cd.origDy + (e.clientY - cd.startY) / zoom
+        useOrmStore.getState().updateObjectType(ot.id, { cardinalityRangeOffset: { dx, dy } })
+        crDragRef.current = null
+        setCrLive(null)
+      }
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup',   onUp)
@@ -187,6 +232,10 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
       else { store.setTool('select') }
       return
     }
+    if (store.tool === 'addConstraint:cardinality') {
+      onCardinalityRangeClick?.(e.clientX, e.clientY)
+      return
+    }
     if (store.tool === 'addTargetConnector') {
       const draft = store.linkDraft
       if (draft?.type === 'targetConnector' && draft?.constraintId) {
@@ -220,6 +269,8 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
   const isSubtypeCandidate = isSubtypeTool && !isDraftFrom
   const isVrTool      = store.tool === 'addConstraint:valueRange'
   const isVrCandidate = isVrTool && (ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none'))
+  const isCrTool      = store.tool === 'addConstraint:cardinality'
+  const isCrCandidate = isCrTool  // all OTs are eligible
 
   const stroke = isSelected          ? 'var(--accent)'
     : isDraftFrom                    ? 'var(--col-subtype)'
@@ -227,11 +278,12 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
     : hasDraft                       ? 'var(--col-candidate)'
     : isTargetCandidate              ? 'var(--col-candidate)'
     : isVrCandidate                  ? 'var(--col-candidate)'
+    : isCrCandidate                  ? 'var(--col-candidate)'
     : ot.kind === 'entity'           ? 'var(--col-entity)'
     :                                  'var(--col-value)'
 
-  const strokeW = (isSelected || isDraftFrom) ? 2.5 : (isSubtypeCandidate || hasDraft || isTargetCandidate || isVrCandidate) ? 2 : 1.5
-  const fill    = (hasDraft || isSubtypeCandidate || isTargetCandidate || isVrCandidate) ? 'var(--fill-candidate)'
+  const strokeW = (isSelected || isDraftFrom) ? 2.5 : (isSubtypeCandidate || hasDraft || isTargetCandidate || isVrCandidate || isCrCandidate) ? 2 : 1.5
+  const fill    = (hasDraft || isSubtypeCandidate || isTargetCandidate || isVrCandidate || isCrCandidate) ? 'var(--fill-candidate)'
     :                                  '#ffffff'
 
   // Text vertical positions
@@ -241,11 +293,12 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
   const refY  = ot.y + 11
 
   return (
+  <>
     <g
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
       onContextMenu={onContextMenu}
-      style={{ cursor: isSubtypeTool || isAssignTool || isTargetCandidate ? 'cell' : isVrCandidate ? 'pointer' : isVrTool ? 'not-allowed' : editing ? 'text' : 'grab' }}
+      style={{ cursor: isSubtypeTool || isAssignTool || isTargetCandidate ? 'cell' : isVrCandidate ? 'pointer' : isVrTool ? 'not-allowed' : isCrTool ? 'pointer' : editing ? 'text' : 'grab' }}
       filter={isSelected || isDraftFrom || hasDraft ? 'url(#selectGlow)' : isShared ? 'url(#sharedGlow)' : undefined}
     >
       <rect x={ot.x - w/2} y={ot.y - h/2} width={w} height={h} rx={6}
@@ -333,7 +386,9 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
         )
       )}
 
-      {(() => {
+    </g>
+
+    {(() => {
         const canHaveVr = ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none')
         if (!canHaveVr) return null
         const vr = formatValueRange(ot.valueRange)
@@ -369,24 +424,105 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
             <line x1={connX} y1={connY} x2={lineEndX} y2={lineEndY}
               stroke="var(--col-constraint)" strokeWidth={1.5}
               strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
-            <text x={tx} y={ty}
-              textAnchor="middle" dominantBaseline="middle"
-              fill="var(--col-constraint)" fontSize={VR_FONT_SIZE} fontFamily={OT_FONT}
-              style={{ cursor: vrLive ? 'grabbing' : 'grab', userSelect: 'none' }}
-              onMouseDown={e => {
-                e.stopPropagation()
-                vrDragRef.current = { startX: e.clientX, startY: e.clientY, origDx: off.dx, origDy: off.dy }
-                setVrLive({ dx: off.dx, dy: off.dy })
-              }}
-              onDoubleClick={e => {
-                e.stopPropagation()
-                onDoubleClickValueRange?.(e.clientX, e.clientY)
-              }}>
-              {vr}
-            </text>
+            {(() => {
+              const otVrDesc = { otId: ot.id }
+              const isVrSel = store.selectedValueRange?.otId === ot.id
+              const vrFill = isVrSel ? 'var(--accent)' : 'var(--col-constraint)'
+              return (
+                <text x={tx} y={ty}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fill={vrFill} fontSize={VR_FONT_SIZE} fontFamily={OT_FONT}
+                  style={{ cursor: vrLive ? 'grabbing' : 'grab', userSelect: 'none',
+                           filter: isVrSel ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+                  onMouseDown={e => {
+                    e.stopPropagation()
+                    vrWasDragged.current = false
+                    vrDragRef.current = { startX: e.clientX, startY: e.clientY, origDx: off.dx, origDy: off.dy }
+                    setVrLive({ dx: off.dx, dy: off.dy })
+                  }}
+                  onClick={e => {
+                    e.stopPropagation()
+                    if (vrWasDragged.current) { vrWasDragged.current = false; return }
+                    if (isVrSel) store.deselectValueRange()
+                    else store.selectValueRange(otVrDesc)
+                  }}
+                  onContextMenu={e => {
+                    e.preventDefault(); e.stopPropagation()
+                    store.selectValueRange(otVrDesc)
+                    onValueRangeContextMenu?.(e)
+                  }}>
+                  {vr}
+                </text>
+              )
+            })()}
           </g>
         )
       })()}
-    </g>
+
+      {(() => {
+        const cr = formatCardinalityRange(ot.cardinalityRange)
+        if (!cr) return null
+        const AUTO_DX = 0
+        const AUTO_DY = -(h / 2 + 14)
+        const off = crLive ?? (ot.cardinalityRangeOffset ?? { dx: AUTO_DX, dy: AUTO_DY })
+        const tx = ot.x + off.dx
+        const ty = ot.y + off.dy
+
+        const dxL = tx - ot.x, dyL = ty - ot.y
+        const hw = w / 2, hh = h / 2
+        const tBox = (Math.abs(dxL) * hh > Math.abs(dyL) * hw)
+          ? hw / Math.abs(dxL) : hh / Math.abs(dyL)
+        const connX = ot.x + dxL * tBox
+        const connY = ot.y + dyL * tBox
+
+        const VR_PAD_X = 3, VR_PAD_Y = 3, VR_FONT_SIZE = 11
+        const halfW = measureText(cr, VR_FONT_SIZE) / 2 + VR_PAD_X
+        const halfH = VR_FONT_SIZE / 2 + VR_PAD_Y
+        const dxB = connX - tx, dyB = connY - ty
+        const tLbl = (Math.abs(dxB) * halfH > Math.abs(dyB) * halfW)
+          ? halfW / Math.abs(dxB) : halfH / Math.abs(dyB)
+        const lineEndX = dxB === 0 && dyB === 0 ? tx : tx + dxB * tLbl
+        const lineEndY = dxB === 0 && dyB === 0 ? ty : ty + dyB * tLbl
+
+        return (
+          <g>
+            <line x1={connX} y1={connY} x2={lineEndX} y2={lineEndY}
+              stroke="var(--col-constraint)" strokeWidth={1.5}
+              strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
+            {(() => {
+              const otCrDesc = { otId: ot.id }
+              const isCrSel = store.selectedCardinalityRange?.otId === ot.id
+              const crFill = isCrSel ? 'var(--accent)' : 'var(--col-constraint)'
+              return (
+                <text x={tx} y={ty}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fill={crFill} fontSize={VR_FONT_SIZE} fontFamily={OT_FONT}
+                  style={{ cursor: crLive ? 'grabbing' : 'grab', userSelect: 'none',
+                           filter: isCrSel ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+                  onMouseDown={e => {
+                    e.stopPropagation()
+                    crWasDragged.current = false
+                    crDragRef.current = { startX: e.clientX, startY: e.clientY, origDx: off.dx, origDy: off.dy }
+                    setCrLive({ dx: off.dx, dy: off.dy })
+                  }}
+                  onClick={e => {
+                    e.stopPropagation()
+                    if (crWasDragged.current) { crWasDragged.current = false; return }
+                    if (isCrSel) store.deselectCardinalityRange()
+                    else store.selectCardinalityRange(otCrDesc)
+                  }}
+                  onContextMenu={e => {
+                    e.preventDefault(); e.stopPropagation()
+                    store.selectCardinalityRange(otCrDesc)
+                    onCardinalityRangeContextMenu?.(e)
+                  }}>
+                  {cr}
+                </text>
+              )
+            })()}
+          </g>
+        )
+      })()}
+  </>
   )
 }

@@ -24,9 +24,9 @@
   --ink-muted:    #9a8e7e;
 
   /* ORM2 element colours */
-  --col-entity:   #1a3a5c;   /* deep navy  — entity types */
-  --col-value:    #4a2040;   /* deep plum  — value types  */
-  --col-fact:     #1a1612;   /* near-black — fact/role boxes */
+  --col-entity:   #3d2b1f;   /* dark warm brown — entity types */
+  --col-value:    #3d2b1f;   /* dark warm brown — value types  */
+  --col-fact:     #3d2b1f;   /* dark warm brown — fact/role boxes */
   --col-constraint: #7c4dbd;  /* violet — all constraints */
   --col-unique:   var(--col-constraint);
   --col-mandatory:var(--col-constraint);
@@ -37,9 +37,9 @@
   --col-candidate: #3a9e6a;   /* mid green  — selectable candidate highlight */
   --fill-candidate: #e6f4eb;  /* light green fill for candidate elements */
 
-  --accent:       #1a3a5c;
-  --accent-light: #2a5a8c;
-  --selection:    rgba(26,58,92,0.18);
+  --accent:       #b45309;
+  --accent-light: #d97706;
+  --selection:    rgba(180,83,9,0.15);
 
   --radius-sm: 3px;
   --radius:    6px;

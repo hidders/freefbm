@@ -41,20 +41,60 @@ function useKeyboardShortcuts() {
         return
       }
 
+      if (e.key === 'Enter' && store.frequencyConstruction?.stage === 2) {
+        store.advanceFrequencyToRange()
+        return
+      }
+
+      if (e.key === 'Enter' && store.frequencyConstruction?.stage === 3) {
+        const factId = store.frequencyConstruction.factId
+        store.commitFrequencyConstruction()
+        store.select(factId, 'fact')
+        return
+      }
+
       if (isTyping) return
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (store.selectedMandatoryDot) {
+          const { factId, roleIndex } = store.selectedMandatoryDot
+          store.removeMandatoryRole(factId, roleIndex)
+          return
+        }
+
+        if (store.selectedInternalFrequency) {
+          const { factId, ifId } = store.selectedInternalFrequency
+          store.removeInternalFrequency(factId, ifId)
+          return
+        }
+
+        if (store.selectedValueRange) {
+          store.removeValueRange(store.selectedValueRange)
+          return
+        }
+
+        if (store.selectedCardinalityRange) {
+          store.removeCardinalityRange(store.selectedCardinalityRange)
+          return
+        }
+
         const { selectedId, selectedKind, selectedUniqueness, uniquenessConstruction, multiSelectedIds, activeDiagramId } = store
 
         if (multiSelectedIds.length > 0) {
           const s0 = useOrmStore.getState()
-          const idsToRemove = multiSelectedIds.filter(id =>
-            s0.objectTypes.some(o => o.id === id) || s0.facts.some(f => f.id === id)
-          )
-          if (idsToRemove.length > 0) {
-            store.removeMultiSelectionFromDiagram(activeDiagramId, idsToRemove)
+          const hasConstraints = multiSelectedIds.some(id => s0.constraints.some(c => c.id === id))
+          const hasSubtypes    = multiSelectedIds.some(id => s0.subtypes.some(st => st.id === id))
+          if (hasConstraints || hasSubtypes) {
+            store.deleteMultiSelection()
           } else {
-            store.clearSelection()
+            const idsToRemove = multiSelectedIds.filter(id =>
+              s0.objectTypes.some(o => o.id === id) || s0.facts.some(f => f.id === id)
+            )
+            if (idsToRemove.length > 0) {
+              store.removeMultiSelectionFromDiagram(activeDiagramId, idsToRemove)
+            } else {
+              store.clearSelection()
+            }
           }
           return
         }
@@ -66,6 +106,7 @@ function useKeyboardShortcuts() {
           store.clearSelection()
           return
         }
+
         if (selectedUniqueness) {
           const fact = store.facts.find(f => f.id === selectedUniqueness.factId)
           if (fact) {
@@ -75,8 +116,8 @@ function useKeyboardShortcuts() {
           return
         }
         if (!selectedId) return
-        if (selectedKind === 'constraint') return
-        if (selectedKind === 'subtype') return
+        if (selectedKind === 'constraint') { store.deleteConstraint(selectedId); return }
+        if (selectedKind === 'subtype') { store.deleteSubtype(selectedId); return }
         store.removeElementFromDiagram(selectedId, activeDiagramId)
         return
       }
@@ -118,6 +159,11 @@ function useKeyboardShortcuts() {
       if (e.key === 'f' || e.key === 'F') { store.setTool('addFact2'); return }
       if (e.key === 'u' || e.key === 'U') { store.setTool('addSubtype'); return }
       if (e.key === 'a' || e.key === 'A') { store.setTool('assignRole'); return }
+      if (e.key === 'm' || e.key === 'M') { store.setTool('toggleMandatory'); return }
+      if (e.key === 'i' || e.key === 'I') { store.setTool('addInternalUniqueness'); return }
+      if (e.key === 'q' || e.key === 'Q') { store.setTool('addInternalFrequency'); return }
+      if (e.key === 'r' || e.key === 'R') { store.setTool('addConstraint:valueRange'); return }
+      if (e.key === 'c' || e.key === 'C') { store.setTool('addConstraint:cardinality'); return }
 
       if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
         e.preventDefault(); store.zoomBy(0.1); return

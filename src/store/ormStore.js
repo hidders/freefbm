@@ -10,7 +10,7 @@ const uid = () => `n${Date.now()}_${_n++}`
 const mkEntity = (x, y) => ({
   id: uid(), kind: 'entity',
   name: 'Entity', x, y,
-  refMode: 'id',
+  refMode: 'none',
   valueRangeOffset: null,
 })
 
@@ -33,6 +33,7 @@ const mkFact = (x, y, arity = 2) => ({
   readingDisplay: 'forward',   // 'forward' | 'both' | 'reverse'
   uniqueness: [],
   preferredUniqueness: null,
+  internalFrequency: [],       // [{ id, roles: [roleIndex], range: [...rangeSpecs], x, y }]
   orientation: 'horizontal',   // 'horizontal' | 'vertical'
   readingOffset: null,         // { dx, dy } relative to fact centre, or null for auto
   readingAbove: false,         // show reading above (horizontal) or right (vertical)
@@ -299,8 +300,13 @@ export const useOrmStore = create((set, get) => ({
   selectedKind:            null,
   selectedRole:            null,   // { factId, roleIndex } | null
   selectedUniqueness:      null,   // { factId, uIndex } | null
+  selectedMandatoryDot:    null,   // { factId, roleIndex } | null
+  selectedInternalFrequency: null, // { factId, ifId } | null
+  selectedValueRange:      null,   // { otId? } | { factId, roleIndex } | { nestedFactId } | null
+  selectedCardinalityRange: null,  // same shape as selectedValueRange | null
   multiSelectedIds:        [],     // ids of additionally selected elements
   uniquenessConstruction:  null,   // { factId, roleIndices: number[] } | null
+  frequencyConstruction:   null,   // { stage:2|3, factId, x, y, roleIndices:number[], ifId?:string, range?:[] } | null
   sequenceConstruction:    null,   // { constraintId, steps: [{sequenceIndex}][], collected: [{sequenceIndex, member}][] } | null
   constraintHighlight:     null,   // { constraintId, sequenceIndex: number|null, positionIndex: number|null } | null
 
@@ -513,6 +519,7 @@ export const useOrmStore = create((set, get) => ({
     set({ ...EMPTY(), filePath: null, isDirty: false,
           selectedId: null, selectedKind: null, selectedRole: null,
           selectedUniqueness: null, multiSelectedIds: [],
+          uniquenessConstruction: null, frequencyConstruction: null,
           pan: { x: 0, y: 0 }, zoom: 1 })
   },
 
@@ -523,6 +530,11 @@ export const useOrmStore = create((set, get) => ({
       readingParts: f.readingParts || Array((f.arity || 2) + 1).fill(''),
       alternativeReadings: f.alternativeReadings || [],
       readingDisplay: f.readingDisplay || 'forward',
+      internalFrequency: (f.internalFrequency || []).map((if_, idx) => ({
+        ...if_,
+        x: if_.x ?? (f.x + 40 + idx * 20),
+        y: if_.y ?? (f.y - 30),
+      })),
     }))
     // Migrate old field names → new names
     const constraints = (d.constraints || []).map(c => {
@@ -868,6 +880,25 @@ export const useOrmStore = create((set, get) => ({
     }))
   },
 
+  updateCardinalityRangeOffset(factId, roleIndex, offset) {
+    set(s => ({
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
+        ...d,
+        positions: {
+          ...d.positions,
+          [factId]: {
+            ...(d.positions[factId] ?? {}),
+            cardinalityRangeOffsets: {
+              ...((d.positions[factId] ?? {}).cardinalityRangeOffsets ?? {}),
+              [roleIndex]: offset,
+            },
+          },
+        },
+      }),
+      isDirty: true,
+    }))
+  },
+
   // Change the arity of an existing fact type.
   // Adding roles appends blank ones at the end.
   // Removing roles trims from the end and cleans up uniqueness bars
@@ -886,6 +917,10 @@ export const useOrmStore = create((set, get) => ({
           roles = f.roles.slice(0, newArity)
         }
         const uniqueness = f.uniqueness.filter(u => u.every(i => i < newArity))
+        const internalFrequency = (f.internalFrequency || []).map(if_ => ({
+          ...if_,
+          roles: if_.roles.filter(i => i < newArity),
+        })).filter(if_ => if_.roles.length > 0)
         const oldParts = f.readingParts || Array(current + 1).fill('')
         const readingParts = newArity > current
           ? [...oldParts, ...Array(newArity - current).fill('')]
@@ -898,7 +933,7 @@ export const useOrmStore = create((set, get) => ({
               ? [...r.parts, ...Array(newArity - (r.parts.length - 1)).fill('')]
               : r.parts.slice(0, newArity + 1),
           }))
-        return { ...f, arity: newArity, roles, uniqueness, readingParts, alternativeReadings }
+        return { ...f, arity: newArity, roles, uniqueness, internalFrequency, readingParts, alternativeReadings }
       })
       const constraints = s.constraints.map(c => ({
         ...c,
@@ -979,9 +1014,12 @@ export const useOrmStore = create((set, get) => ({
         const roles = [...f.roles.slice(0, atIndex), mkRole(), ...f.roles.slice(atIndex)]
         const arity = f.arity + 1
         const uniqueness = f.uniqueness.map(u => u.map(i => i >= atIndex ? i + 1 : i))
+        const internalFrequency = (f.internalFrequency || []).map(if_ => ({
+          ...if_, roles: if_.roles.map(i => i >= atIndex ? i + 1 : i),
+        }))
         const rp = [...(f.readingParts || [])]
         rp.splice(atIndex, 0, '')
-        return { ...f, arity, roles, uniqueness, readingParts: rp, alternativeReadings: [] }
+        return { ...f, arity, roles, uniqueness, internalFrequency, readingParts: rp, alternativeReadings: [] }
       })
       const constraints = s.constraints.map(c => ({
         ...c,
@@ -1006,9 +1044,12 @@ export const useOrmStore = create((set, get) => ({
         const uniqueness = f.uniqueness
           .filter(u => !u.includes(roleIndex))
           .map(u => u.map(i => i > roleIndex ? i - 1 : i))
+        const internalFrequency = (f.internalFrequency || [])
+          .map(if_ => ({ ...if_, roles: if_.roles.filter(i => i !== roleIndex).map(i => i > roleIndex ? i - 1 : i) }))
+          .filter(if_ => if_.roles.length > 0)
         const rp = [...(f.readingParts || [])]
         rp.splice(roleIndex, 1)
-        return { ...f, arity, roles, uniqueness, readingParts: rp, alternativeReadings: [] }
+        return { ...f, arity, roles, uniqueness, internalFrequency, readingParts: rp, alternativeReadings: [] }
       })
       const constraints = s.constraints.map(c => ({
         ...c,
@@ -1423,14 +1464,76 @@ export const useOrmStore = create((set, get) => ({
   // ── selection ────────────────────────────────────────────────────────────
 
   select(id, kind) {
-    if (get().uniquenessConstruction) get().commitUniquenessConstruction()
+    if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
+    if (get().frequencyConstruction) get().abandonFrequencyConstruction()
     if (get().sequenceConstruction) get().abandonSequenceConstruction()
-    set({ selectedId: id, selectedKind: kind, selectedRole: null, selectedUniqueness: null, multiSelectedIds: [] })
+    set({ selectedId: id, selectedKind: kind, selectedRole: null, selectedUniqueness: null,
+          selectedMandatoryDot: null, selectedInternalFrequency: null,
+          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
   },
   clearSelection() {
-    if (get().uniquenessConstruction) get().commitUniquenessConstruction()
+    if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
+    if (get().frequencyConstruction) get().abandonFrequencyConstruction()
     if (get().sequenceConstruction) get().abandonSequenceConstruction()
-    set({ selectedId: null, selectedKind: null, selectedRole: null, selectedUniqueness: null, multiSelectedIds: [] })
+    set({ selectedId: null, selectedKind: null, selectedRole: null, selectedUniqueness: null,
+          selectedMandatoryDot: null, selectedInternalFrequency: null,
+          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
+  },
+
+  selectMandatoryDot(factId, roleIndex) {
+    if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
+    if (get().frequencyConstruction) get().abandonFrequencyConstruction()
+    set({ selectedMandatoryDot: { factId, roleIndex }, selectedId: null, selectedKind: null,
+          selectedRole: null, selectedUniqueness: null, selectedInternalFrequency: null,
+          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
+  },
+  deselectMandatoryDot() { set({ selectedMandatoryDot: null }) },
+
+  selectInternalFrequency(factId, ifId) {
+    if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
+    if (get().frequencyConstruction) get().abandonFrequencyConstruction()
+    set({ selectedInternalFrequency: { factId, ifId }, selectedId: null, selectedKind: null,
+          selectedRole: null, selectedUniqueness: null, selectedMandatoryDot: null,
+          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
+  },
+  deselectInternalFrequency() { set({ selectedInternalFrequency: null }) },
+
+  selectValueRange(desc) {
+    set({ selectedValueRange: desc, selectedId: null, selectedKind: null,
+          selectedRole: null, selectedUniqueness: null, selectedMandatoryDot: null,
+          selectedInternalFrequency: null, selectedCardinalityRange: null, multiSelectedIds: [] })
+  },
+  deselectValueRange() { set({ selectedValueRange: null }) },
+  removeValueRange(desc) {
+    if (desc.otId)          get().updateObjectType(desc.otId, { valueRange: [] })
+    else if (desc.factId != null) get().updateRole(desc.factId, desc.roleIndex, { valueRange: [] })
+    else if (desc.nestedFactId)   get().updateFact(desc.nestedFactId, { valueRange: null })
+    set({ selectedValueRange: null })
+  },
+
+  selectCardinalityRange(desc) {
+    set({ selectedCardinalityRange: desc, selectedId: null, selectedKind: null,
+          selectedRole: null, selectedUniqueness: null, selectedMandatoryDot: null,
+          selectedInternalFrequency: null, selectedValueRange: null, multiSelectedIds: [] })
+  },
+  deselectCardinalityRange() { set({ selectedCardinalityRange: null }) },
+  removeCardinalityRange(desc) {
+    if (desc.otId)          get().updateObjectType(desc.otId, { cardinalityRange: [] })
+    else if (desc.factId != null) get().updateRole(desc.factId, desc.roleIndex, { cardinalityRange: [] })
+    else if (desc.nestedFactId)   get().updateFact(desc.nestedFactId, { cardinalityRange: null })
+    set({ selectedCardinalityRange: null })
+  },
+
+  removeMandatoryRole(factId, roleIndex) {
+    set(s => ({
+      facts: s.facts.map(f => {
+        if (f.id !== factId) return f
+        const roles = f.roles.map((r, i) => i === roleIndex ? { ...r, mandatory: false } : r)
+        return { ...f, roles }
+      }),
+      selectedMandatoryDot: null,
+      isDirty: true,
+    }))
   },
 
   selectAll() {
@@ -1591,6 +1694,7 @@ export const useOrmStore = create((set, get) => ({
           selectedRole: null, selectedUniqueness: null })
   },
   startUniquenessConstruction(factId) {
+    if (get().frequencyConstruction) get().abandonFrequencyConstruction()
     set({ uniquenessConstruction: { factId, roleIndices: [] } })
   },
   toggleUniquenessConstructionRole(roleIndex) {
@@ -1603,6 +1707,9 @@ export const useOrmStore = create((set, get) => ({
         roleIndices: has ? uc.roleIndices.filter(i => i !== roleIndex) : [...uc.roleIndices, roleIndex],
       }}
     })
+  },
+  abandonUniquenessConstruction() {
+    set({ uniquenessConstruction: null })
   },
   commitUniquenessConstruction() {
     const uc = get().uniquenessConstruction
@@ -1641,11 +1748,143 @@ export const useOrmStore = create((set, get) => ({
     const roleIndices = [...fact.uniqueness[uIndex]]
     set({ uniquenessConstruction: { factId, roleIndices, uIndex }, selectedUniqueness: null })
   },
+
+  // ── Internal frequency construction ──────────────────────────────────────
+  startFrequencyConstruction(factId) {
+    if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
+    const fact = get().facts.find(f => f.id === factId)
+    if (!fact) return
+    set({ frequencyConstruction: { stage: 2, factId, x: fact.x + 40, y: fact.y - 30, roleIndices: [], ifId: null } })
+  },
+  moveFrequencyConstructionCircle(x, y) {
+    set(s => s.frequencyConstruction
+      ? { frequencyConstruction: { ...s.frequencyConstruction, x, y } } : {})
+  },
+  toggleFrequencyConstructionRole(roleIndex) {
+    set(s => {
+      const fc = s.frequencyConstruction
+      if (!fc || fc.stage !== 2) return {}
+      const has = fc.roleIndices.includes(roleIndex)
+      return { frequencyConstruction: {
+        ...fc,
+        roleIndices: has ? fc.roleIndices.filter(i => i !== roleIndex) : [...fc.roleIndices, roleIndex],
+      }}
+    })
+  },
+  advanceFrequencyToRange() {
+    const fc = get().frequencyConstruction
+    if (!fc || fc.stage !== 2) return
+    if (fc.ifId != null) {
+      // Editing existing: commit role changes now, keep the existing range
+      set({ frequencyConstruction: null })
+      if (fc.roleIndices.length === 0) {
+        get().removeInternalFrequency(fc.factId, fc.ifId)
+      } else {
+        const fact = get().facts.find(f => f.id === fc.factId)
+        const existing = (fact?.internalFrequency || []).find(i => i.id === fc.ifId)
+        get().updateInternalFrequency(fc.factId, fc.ifId, {
+          roles: fc.roleIndices, x: fc.x, y: fc.y,
+          range: existing?.range ?? [],
+        })
+      }
+    } else {
+      // New constraint: advance to range popup
+      set({ frequencyConstruction: { ...fc, stage: 3, range: fc.range ?? [] } })
+    }
+  },
+  updateFrequencyConstructionRange(range) {
+    set(s => s.frequencyConstruction
+      ? { frequencyConstruction: { ...s.frequencyConstruction, range } } : {})
+  },
+  abandonFrequencyConstruction() {
+    set({ frequencyConstruction: null })
+  },
+  commitFrequencyConstruction() {
+    const fc = get().frequencyConstruction
+    set({ frequencyConstruction: null, tool: 'select' })
+    if (!fc || fc.stage !== 3) return
+    if (fc.ifId != null) {
+      // Editing an existing IF constraint
+      const fact = get().facts.find(f => f.id === fc.factId)
+      if (!fact) return
+      const ifExists = (fact.internalFrequency || []).some(i => i.id === fc.ifId)
+      if (!ifExists) return
+      if (fc.roleIndices.length === 0) {
+        get().removeInternalFrequency(fc.factId, fc.ifId)
+      } else {
+        get().updateInternalFrequency(fc.factId, fc.ifId, { roles: fc.roleIndices, range: fc.range ?? [], x: fc.x, y: fc.y })
+      }
+    } else {
+      // New IF constraint
+      if (fc.roleIndices.length === 0) return
+      set(s => ({
+        facts: s.facts.map(f => f.id !== fc.factId ? f : {
+          ...f,
+          internalFrequency: [...(f.internalFrequency || []), {
+            id: uid(), roles: [...fc.roleIndices], range: fc.range ?? [], x: fc.x, y: fc.y,
+          }],
+        }),
+        isDirty: true,
+      }))
+    }
+  },
+  startFrequencyRangeEdit(factId, ifId) {
+    const fact = get().facts.find(f => f.id === factId)
+    if (!fact) return
+    const ifItem = (fact.internalFrequency || []).find(i => i.id === ifId)
+    if (!ifItem) return
+    set({ frequencyConstruction: {
+      stage: 3, factId, ifId,
+      x: ifItem.x ?? fact.x + 40,
+      y: ifItem.y ?? fact.y - 30,
+      roleIndices: [...ifItem.roles],
+      range: ifItem.range ?? [],
+    }})
+  },
+  startFrequencyEdit(factId, ifId) {
+    const fact = get().facts.find(f => f.id === factId)
+    if (!fact) return
+    const ifItem = (fact.internalFrequency || []).find(i => i.id === ifId)
+    if (!ifItem) return
+    if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
+    set({ frequencyConstruction: {
+      stage: 2, factId,
+      x: ifItem.x ?? fact.x + 40,
+      y: ifItem.y ?? fact.y - 30,
+      roleIndices: [...ifItem.roles], ifId,
+    }, selectedInternalFrequency: null })
+  },
+  updateInternalFrequency(factId, ifId, patch) {
+    set(s => ({
+      facts: s.facts.map(f => f.id !== factId ? f : {
+        ...f,
+        internalFrequency: (f.internalFrequency || []).map(i => i.id === ifId ? { ...i, ...patch } : i),
+      }),
+      isDirty: true,
+    }))
+  },
+  removeInternalFrequency(factId, ifId) {
+    set(s => ({
+      facts: s.facts.map(f => f.id !== factId ? f : {
+        ...f,
+        internalFrequency: (f.internalFrequency || []).filter(i => i.id !== ifId),
+      }),
+      selectedInternalFrequency: null,
+      isDirty: true,
+    }))
+  },
+
   selectRole(factId, roleIndex) {
-    set({ selectedId: factId, selectedKind: 'fact', selectedRole: { factId, roleIndex }, selectedUniqueness: null })
+    set({ selectedId: factId, selectedKind: 'fact', selectedRole: { factId, roleIndex }, selectedUniqueness: null,
+          selectedMandatoryDot: null, selectedInternalFrequency: null,
+          selectedValueRange: null, selectedCardinalityRange: null })
   },
   selectUniqueness(factId, uIndex) {
-    set({ selectedId: factId, selectedKind: 'fact', selectedUniqueness: { factId, uIndex }, selectedRole: null })
+    if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
+    if (get().frequencyConstruction) get().abandonFrequencyConstruction()
+    set({ selectedId: factId, selectedKind: 'fact', selectedUniqueness: { factId, uIndex }, selectedRole: null,
+          selectedMandatoryDot: null, selectedInternalFrequency: null,
+          selectedValueRange: null, selectedCardinalityRange: null })
   },
 
   // ── tool & link drafts ───────────────────────────────────────────────────

@@ -4,11 +4,11 @@ import { useOrmStore } from '../store/ormStore'
 const COL_CONSTRAINT = '#7c4dbd'
 
 const ALL_INTERNAL_CONSTRAINT_TYPES = [
-  { key: 'internalUniqueness', label: 'Internal Uniqueness', tool: 'addInternalUniqueness' },
-  { key: 'mandatoryRole',      label: 'Mandatory Role', tool: 'toggleMandatory' },
-  { key: 'internalFrequency',  label: 'Internal Frequency' },
-  { key: 'cardinality',        label: 'Cardinality' },
-  { key: 'valueRange',         label: 'Value Range' },
+  { key: 'internalUniqueness', label: 'Internal Uniqueness', tool: 'addInternalUniqueness', shortcut: 'I' },
+  { key: 'mandatoryRole',      label: 'Mandatory Role', tool: 'toggleMandatory', shortcut: 'M' },
+  { key: 'internalFrequency',  label: 'Internal Frequency', tool: 'addInternalFrequency', shortcut: 'Q' },
+  { key: 'cardinality',        label: 'Cardinality', shortcut: 'C' },
+  { key: 'valueRange',         label: 'Value Range', shortcut: 'R' },
 ]
 
 const BASIC_INTERNAL_CONSTRAINT_TYPES = ALL_INTERNAL_CONSTRAINT_TYPES.slice(0, 2)
@@ -31,7 +31,7 @@ function SelectIcon({ active }) {
   const fill   = active ? '#fff' : 'var(--ink-2)'
   const stroke = active ? 'var(--accent)' : 'var(--bg-surface)'
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <path d="M 4 2 L 4 14 L 7 11 L 9.5 16.5 L 11.5 15.5 L 9 10 L 13 10 Z"
         fill={fill} stroke={stroke} strokeWidth={0.75} strokeLinejoin="round"/>
     </svg>
@@ -40,7 +40,7 @@ function SelectIcon({ active }) {
 
 export function EntityTypeIcon({ active }) {
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <rect x={0.6} y={3} width={16.8} height={12} rx={3.6}
         fill={active ? 'rgba(255,255,255,0.15)' : '#ffffff'} stroke={active ? '#fff' : 'var(--col-entity)'} strokeWidth={1.5} />
     </svg>
@@ -49,7 +49,7 @@ export function EntityTypeIcon({ active }) {
 
 export function ValueTypeIcon({ active }) {
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <rect x={0.6} y={3} width={16.8} height={12} rx={3.6}
         fill={active ? 'rgba(255,255,255,0.15)' : '#ffffff'} stroke={active ? '#fff' : 'var(--col-value)'} strokeWidth={1.5}
         strokeDasharray="3 2" />
@@ -65,7 +65,7 @@ export function NestedFactTypeIcon({ active }) {
   const ix1 = 3, ix2 = 9, ix3 = 15, iy1 = 5.5, iy2 = 12.5
   const sw = 1.5
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <rect x={ox} y={oy} width={ow} height={oh} rx={3.6}
         fill={fill} stroke={entityStroke} strokeWidth={sw}/>
       <rect x={ix1} y={iy1} width={ix2 - ix1} height={iy2 - iy1} fill={fill} stroke="none"/>
@@ -87,7 +87,7 @@ export function NestedValueTypeIcon({ active }) {
   const ix1 = 3, ix2 = 9, ix3 = 15, iy1 = 5.5, iy2 = 12.5
   const sw = 1.5
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <rect x={ox} y={oy} width={ow} height={oh} rx={3.6}
         fill={fill} stroke={valueStroke} strokeWidth={sw} strokeDasharray="5 3"/>
       <rect x={ix1} y={iy1} width={ix2 - ix1} height={iy2 - iy1} fill={fill} stroke="none"/>
@@ -109,7 +109,7 @@ export function FactTypeIcon({ active }) {
   // is exactly one stroke width — no double-stroke overlap at the join.
   const x1 = 1, x2 = 9, x3 = 17, y1 = 4.2, y2 = 13.8, sw = 1.5
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <rect x={x1} y={y1} width={x2 - x1} height={y2 - y1} fill={fill} stroke="none" />
       <rect x={x2} y={y1} width={x3 - x2} height={y2 - y1} fill={fill} stroke="none" />
       {/* outer left */}  <line x1={x1} y1={y1} x2={x1} y2={y2} stroke={stroke} strokeWidth={sw} />
@@ -124,7 +124,7 @@ export function FactTypeIcon({ active }) {
 function RoleIcon({ active }) {
   const colour = active ? '#fff' : 'var(--col-fact)'
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <line x1={2} y1={9} x2={16} y2={9} stroke={colour} strokeWidth={1.5} strokeOpacity={active ? 1 : 0.75} />
     </svg>
   )
@@ -133,7 +133,7 @@ function RoleIcon({ active }) {
 export function SubtypeIcon({ active }) {
   const colour = active ? '#fff' : 'var(--col-subtype)'
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <line x1={2} y1={9} x2={11} y2={9} stroke={colour} strokeWidth={2} />
       <path d="M 10 6 L 16 9 L 10 12 Z" fill={colour} />
     </svg>
@@ -144,7 +144,7 @@ export function SubtypeIcon({ active }) {
 function ConstraintEdgeIcon({ active }) {
   const colour = active ? '#fff' : 'var(--col-constraint)'
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <line x1={2} y1={9} x2={16} y2={9} stroke={colour} strokeWidth={1.2}
         strokeDasharray="4 2" opacity={0.75} />
     </svg>
@@ -154,7 +154,7 @@ function ConstraintEdgeIcon({ active }) {
 function TargetConnectorIcon({ active }) {
   const colour = active ? '#fff' : 'var(--col-constraint)'
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <line x1={2} y1={9} x2={12} y2={9} stroke={colour} strokeWidth={1.5} strokeDasharray="3 2"/>
       <path d="M 11 6 L 16 9 L 11 12 Z" fill={colour}/>
     </svg>
@@ -164,7 +164,7 @@ function TargetConnectorIcon({ active }) {
 export function ExclusionConstraintIcon() {
   const cx = 9, cy = 9, r = 7.2, d = r * 0.707
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <circle cx={cx} cy={cy} r={r} fill="#ffffff" stroke={COL_CONSTRAINT} strokeWidth={1.5}/>
       <line x1={cx - d} y1={cy - d} x2={cx + d} y2={cy + d}
         stroke={COL_CONSTRAINT} strokeWidth={1.5} strokeLinecap="round"/>
@@ -177,7 +177,7 @@ export function ExclusionConstraintIcon() {
 export function ValueComparisonConstraintIcon() {
   const cx = 9, cy = 9, r = 7.2
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <circle cx={cx} cy={cy} r={r} fill="#ffffff" stroke={COL_CONSTRAINT} strokeWidth={1.5}/>
       <circle cx={cx - r} cy={cy} r={2} fill={COL_CONSTRAINT}/>
       <circle cx={cx + r} cy={cy} r={2} fill={COL_CONSTRAINT}/>
@@ -196,7 +196,7 @@ export function RingConstraintIcon() {
   const blx = cx - rt * Math.sin(Math.PI / 3), bly = cy + rt * 0.5
   const brx = cx + rt * Math.sin(Math.PI / 3), bry = cy + rt * 0.5
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <polygon points={`${tx},${ty} ${blx},${bly} ${brx},${bry}`}
         fill="none" stroke={COL_CONSTRAINT} strokeWidth={1.2} strokeLinejoin="round"/>
       <circle cx={tx}  cy={ty}  r={1.5} fill={COL_CONSTRAINT}/>
@@ -209,12 +209,10 @@ export function RingConstraintIcon() {
 export function FrequencyConstraintIcon() {
   const cx = 9, cy = 9, r = 7.2
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <circle cx={cx} cy={cy} r={r} fill="#ffffff" stroke={COL_CONSTRAINT} strokeWidth={1.5}/>
       <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
-        fontSize={8} fill={COL_CONSTRAINT} fontFamily="var(--font-mono)" fontWeight={600}>
-        ≤3
-      </text>
+        fontSize={8} fill={COL_CONSTRAINT} fontFamily="var(--font-mono)" fontWeight={600}>≤3</text>
     </svg>
   )
 }
@@ -222,7 +220,7 @@ export function FrequencyConstraintIcon() {
 export function SubsetConstraintIcon() {
   const cx = 9, cy = 9, r = 7.2
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <circle cx={cx} cy={cy} r={r} fill="#ffffff" stroke={COL_CONSTRAINT} strokeWidth={1.5}/>
       <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
         fontSize={10} fill={COL_CONSTRAINT}>
@@ -235,7 +233,7 @@ export function SubsetConstraintIcon() {
 export function EqualityConstraintIcon() {
   const cx = 9, cy = 9, r = 7.2
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <circle cx={cx} cy={cy} r={r} fill="#ffffff" stroke={COL_CONSTRAINT} strokeWidth={1.5}/>
       <line x1={cx - 3.5} y1={cy - 1.5} x2={cx + 3.5} y2={cy - 1.5}
         stroke={COL_CONSTRAINT} strokeWidth={1.5} strokeLinecap="round"/>
@@ -248,7 +246,7 @@ export function EqualityConstraintIcon() {
 export function InclusiveOrConstraintIcon() {
   const cx = 9, cy = 9, r = 7.2
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <circle cx={cx} cy={cy} r={r} fill="#ffffff" stroke={COL_CONSTRAINT} strokeWidth={1.5}/>
       <circle cx={cx} cy={cy} r={2.5} fill={COL_CONSTRAINT}/>
     </svg>
@@ -258,7 +256,7 @@ export function InclusiveOrConstraintIcon() {
 export function UniquenessConstraintIcon() {
   const cx = 9, cy = 9, r = 7.2
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <circle cx={cx} cy={cy} r={r} fill="#ffffff" stroke={COL_CONSTRAINT} strokeWidth={1.5}/>
       <line x1={cx - r} y1={cy} x2={cx + r} y2={cy}
         stroke={COL_CONSTRAINT} strokeWidth={1.5} strokeLinecap="round"/>
@@ -269,7 +267,7 @@ export function UniquenessConstraintIcon() {
 export function SubtypeConstraintIcon() {
   const cx = 9, cy = 9, r = 7.2, d = r * 0.707
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
       <circle cx={cx} cy={cy} r={r} fill="#ffffff" stroke={COL_CONSTRAINT} strokeWidth={1.5}/>
       <line x1={cx - d} y1={cy - d} x2={cx + d} y2={cy + d}
         stroke={COL_CONSTRAINT} strokeWidth={1.5} strokeLinecap="round"/>
@@ -307,69 +305,69 @@ function ToolBtn({ label, title, active, onClick }) {
   )
 }
 
-function MandatoryRoleIcon() {
+function MandatoryRoleIcon({ active }) {
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
-      <circle cx={9} cy={9} r={4.5} fill={COL_CONSTRAINT}/>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
+      <circle cx={9} cy={9} r={3} fill={active ? '#fff' : COL_CONSTRAINT}/>
     </svg>
   )
 }
 
-function InternalUniquenessIcon() {
+function InternalUniquenessIcon({ active }) {
   const x1 = 1, x2 = 9, x3 = 17, y1 = 6, y2 = 14
+  const boxFill   = active ? 'rgba(255,255,255,0.2)' : '#e8e8e8'
+  const boxStroke = active ? 'rgba(255,255,255,0.5)' : '#aaa'
+  const barStroke = active ? '#fff' : COL_CONSTRAINT
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
-      <rect x={x1} y={y1} width={x2-x1} height={y2-y1} fill="#e8e8e8" stroke="#aaa" strokeWidth={1.2}/>
-      <rect x={x2} y={y1} width={x3-x2} height={y2-y1} fill="#e8e8e8" stroke="#aaa" strokeWidth={1.2}/>
-      <line x1={x1} y1={4} x2={x3} y2={4} stroke={COL_CONSTRAINT} strokeWidth={2} strokeLinecap="round"/>
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
+      <rect x={x1} y={y1} width={x2-x1} height={y2-y1} fill={boxFill} stroke={boxStroke} strokeWidth={1.2}/>
+      <rect x={x2} y={y1} width={x3-x2} height={y2-y1} fill={boxFill} stroke={boxStroke} strokeWidth={1.2}/>
+      <line x1={x1} y1={4} x2={x3} y2={4} stroke={barStroke} strokeWidth={2} strokeLinecap="round"/>
     </svg>
   )
 }
 
-function InternalFrequencyIcon() {
-  const x1 = 1, x2 = 9, x3 = 17, y1 = 7, y2 = 15
+function InternalFrequencyIcon({ active }) {
   return (
-    <svg width={18} height={18} style={{ display: 'block', flexShrink: 0 }}>
-      <rect x={x1} y={y1} width={x2-x1} height={y2-y1} fill="#fff" stroke={COL_CONSTRAINT} strokeWidth={1.2}/>
-      <rect x={x2} y={y1} width={x3-x2} height={y2-y1} fill="#fff" stroke={COL_CONSTRAINT} strokeWidth={1.2}/>
-      <text x={9} y={5} textAnchor="middle" dominantBaseline="middle"
-        fontSize={7} fill={COL_CONSTRAINT} fontFamily="var(--font-mono)" fontWeight={600}>≤n</text>
-    </svg>
-  )
-}
-
-function CardinalityIcon() {
-  return (
-    <svg width={18} height={18} overflow="visible" style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" overflow="visible" style={{ display: 'block', flexShrink: 0 }}>
       <text x={9} y={9} textAnchor="middle" dominantBaseline="central"
-        fontSize={8} fill={COL_CONSTRAINT} fontFamily="var(--font-mono)" fontWeight={600}>#≤3</text>
+        fontSize={11} fill={active ? '#fff' : COL_CONSTRAINT} fontFamily="var(--font-mono)" fontWeight={600}>≤3</text>
     </svg>
   )
 }
 
-function ValueRangeIcon() {
+function CardinalityIcon({ active }) {
   return (
-    <svg width={18} height={18} overflow="visible" style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={22} height={22} viewBox="0 0 18 18" overflow="visible" style={{ display: 'block', flexShrink: 0 }}>
       <text x={9} y={9} textAnchor="middle" dominantBaseline="central"
-        fontSize={7} fill={COL_CONSTRAINT} fontFamily="var(--font-mono)" fontWeight={600}>{'{a..z}'}</text>
+        fontSize={11} fill={active ? '#fff' : COL_CONSTRAINT} fontFamily="var(--font-mono)" fontWeight={600}>#≤3</text>
     </svg>
   )
 }
 
-const GREYED_OUT_INTERNAL = new Set(['internalFrequency', 'cardinality'])
+function ValueRangeIcon({ active }) {
+  return (
+    <svg width={22} height={22} viewBox="0 0 18 18" overflow="visible" style={{ display: 'block', flexShrink: 0 }}>
+      <text x={9} y={9} textAnchor="middle" dominantBaseline="central"
+        fontSize={8} fill={active ? '#fff' : COL_CONSTRAINT} fontFamily="var(--font-mono)" fontWeight={600}>{'{a,b}'}</text>
+    </svg>
+  )
+}
 
-function InternalConstraintBtn({ ct, active, onClick }) {
+const GREYED_OUT_INTERNAL = new Set()
+
+function InternalConstraintBtn({ ct, active, onClick, shortcut }) {
   const iconMap = {
-    mandatoryRole:      <MandatoryRoleIcon />,
-    internalUniqueness: <InternalUniquenessIcon />,
-    internalFrequency:  <InternalFrequencyIcon />,
-    cardinality:        <CardinalityIcon />,
-    valueRange:         <ValueRangeIcon />,
+    mandatoryRole:      <MandatoryRoleIcon      active={active} />,
+    internalUniqueness: <InternalUniquenessIcon active={active} />,
+    internalFrequency:  <InternalFrequencyIcon  active={active} />,
+    cardinality:        <CardinalityIcon         active={active} />,
+    valueRange:         <ValueRangeIcon          active={active} />,
   }
   const greyed = GREYED_OUT_INTERNAL.has(ct.key)
   return (
     <button
-      title={ct.label}
+      title={ct.shortcut ? `${ct.label} (${ct.shortcut})` : ct.label}
       onClick={greyed ? undefined : onClick}
       disabled={greyed}
       style={{
@@ -810,6 +808,7 @@ export default function ToolPanel() {
           ct={ct}
           active={tool === (ct.tool ?? `addConstraint:${ct.key}`)}
           onClick={() => store.setTool(ct.tool ?? `addConstraint:${ct.key}`)}
+          shortcut={ct.shortcut}
         />
       ))}
 

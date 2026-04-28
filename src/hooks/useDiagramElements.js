@@ -35,6 +35,7 @@ export function getDiagramElements(store) {
       if (p.nestedReading   !== undefined) merged.nestedReading   = p.nestedReading
       if (p.roleNameOffsets    !== undefined) merged.roleNameOffsets    = p.roleNameOffsets
       if (p.valueRangeOffsets !== undefined) merged.valueRangeOffsets = p.valueRangeOffsets
+      if (p.cardinalityRangeOffsets !== undefined) merged.cardinalityRangeOffsets = p.cardinalityRangeOffsets
         if (p.nameOffset        !== undefined) merged.nameOffset        = p.nameOffset
     }
     return merged

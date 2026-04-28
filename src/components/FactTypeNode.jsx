@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useOrmStore } from '../store/ormStore'
-import { formatValueRange } from './ObjectTypeNode'
+import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
 
 const VR_DEFAULT_OFFSET = { dx: 0, dy: -50 }
 const VR_FONT      = "'Segoe UI', Helvetica, Arial, sans-serif"
@@ -108,17 +108,13 @@ export function buildDisplayReading(parts, n) {
   const t = i => parts[i]?.trim() || ''
 
   if (n === 1) {
-    if (!t(0) && t(1)) return t(1)
+    // Always include the dot so role position is unambiguous; only omit it
+    // when both surrounding fragments are empty (handled by early return above).
     const tokens = []
     if (t(0)) tokens.push(t(0))
     tokens.push('...')
     if (t(1)) tokens.push(t(1))
     return tokens.join(' ')
-  }
-
-  if (n === 2) {
-    // Omit dots only when solely the middle segment is non-empty
-    if (!t(0) && t(1) && !t(2)) return t(1)
   }
 
   // Interleave text parts with '...' role-position dots
@@ -127,10 +123,10 @@ export function buildDisplayReading(parts, n) {
     if (t(i)) tokens.push(t(i))
     if (i < n) tokens.push('...')
   }
-  // For binary only: trim leading/trailing dots for cleanliness when the
-  // outer parts are empty. For n > 2 every dot marks a distinct role and
-  // must be kept so the reading remains unambiguous.
-  if (n === 2) {
+  // Trim leading/trailing dots only when BOTH outer fragments are empty —
+  // if either the first or last fragment is non-empty the dots must stay so
+  // the reader can see exactly where the roles sit in the reading.
+  if (n === 2 && !t(0) && !t(n)) {
     while (tokens.length && tokens[0] === '...') tokens.shift()
     while (tokens.length && tokens[tokens.length - 1] === '...') tokens.pop()
   }
@@ -140,6 +136,91 @@ export function buildDisplayReading(parts, n) {
 export function getDisplayReading(fact) {
   return buildDisplayReading(fact.readingParts, fact.arity)
 }
+const IF_CIRCLE_R = 8    // radius of internal-frequency constraint circle (matches external constraint size)
+const IF_PAD_X    = 5    // horizontal padding inside IF stadium when range text is shown
+
+let _ifCanvas = null
+function measureIfText(text) {
+  if (!_ifCanvas) _ifCanvas = document.createElement('canvas')
+  const ctx = _ifCanvas.getContext('2d')
+  ctx.font = `${VR_FONT_SIZE}px ${VR_FONT}`
+  return ctx.measureText(text).width
+}
+
+/** Half-width of the IF shape: circle (IF_CIRCLE_R) when no label, stadium when label present. */
+function ifShapeHalfW(label) {
+  if (!label) return IF_CIRCLE_R
+  return Math.max(IF_CIRCLE_R, (measureIfText(label) + IF_PAD_X * 2) / 2)
+}
+
+/**
+ * If ri0 and ri1 are adjacent roles in the same fact, returns the point on their
+ * shared edge (top/bottom for horizontal, left/right for vertical) closest to (cx, cy).
+ * Otherwise returns null (fall back to individual connectors).
+ */
+function ifConsecutiveMidpoint(fact, ri0, ri1, cx, cy) {
+  if (Math.abs(ri0 - ri1) !== 1) return null
+  const rc0 = roleCenter(fact, ri0)
+  const rc1 = roleCenter(fact, ri1)
+  const midX = (rc0.x + rc1.x) / 2
+  const midY = (rc0.y + rc1.y) / 2
+  if (fact.orientation === 'vertical') {
+    const lx = fact.x - ROLE_H / 2, rx = fact.x + ROLE_H / 2
+    return (lx - cx) ** 2 < (rx - cx) ** 2 ? { x: lx, y: midY } : { x: rx, y: midY }
+  }
+  const ty = fact.y - ROLE_H / 2, by = fact.y + ROLE_H / 2
+  return (ty - cy) ** 2 < (by - cy) ** 2 ? { x: midX, y: ty } : { x: midX, y: by }
+}
+
+/** Border point of a rounded-rect stadium facing toward (tx, ty). */
+function stadiumEdge(cx, cy, hw, hh, tx, ty) {
+  const dx = tx - cx, dy = ty - cy
+  if (dx === 0 && dy === 0) return { x: cx, y: cy - hh }
+  const t = Math.abs(dx) * hh > Math.abs(dy) * hw ? hw / Math.abs(dx) : hh / Math.abs(dy)
+  return { x: cx + dx * t, y: cy + dy * t }
+}
+
+/**
+ * Best cardinal anchor on a role box facing (tx, ty).
+ * Mirrors roleAnchor() from RoleConnectors.jsx — duplicated to avoid circular imports.
+ */
+function computeRoleAnchor(fact, roleIndex, tx, ty) {
+  const n      = Math.max(fact.arity, 1)
+  const isFirst = roleIndex === 0
+  const isLast  = roleIndex === n - 1
+  if (fact.orientation === 'vertical') {
+    const totalH   = n * ROLE_W + (n - 1) * ROLE_GAP
+    const startY   = fact.y - totalH / 2
+    const roleTopY = startY + roleIndex * (ROLE_W + ROLE_GAP)
+    const leftX    = fact.x - ROLE_H / 2
+    const cx       = fact.x
+    const cy       = roleTopY + ROLE_W / 2
+    const cands = [
+      { x: cx,             y: roleTopY,          side: 'N' },
+      { x: cx,             y: roleTopY + ROLE_W, side: 'S' },
+      { x: leftX,          y: cy,                side: 'W' },
+      { x: leftX + ROLE_H, y: cy,                side: 'E' },
+    ].filter(c => !(c.side === 'N' && !isFirst) && !(c.side === 'S' && !isLast))
+    let best = cands[0], bd = Infinity
+    for (const p of cands) { const d = (p.x-tx)**2+(p.y-ty)**2; if (d < bd) { bd=d; best=p } }
+    return best
+  }
+  const startX = fact.x - (n * ROLE_W + (n - 1) * ROLE_GAP) / 2
+  const roleX  = startX + roleIndex * (ROLE_W + ROLE_GAP)
+  const roleY  = fact.y - ROLE_H / 2
+  const cx     = roleX + ROLE_W / 2
+  const cy     = roleY + ROLE_H / 2
+  const cands = [
+    { x: cx,             y: roleY,          side: 'N' },
+    { x: cx,             y: roleY + ROLE_H, side: 'S' },
+    { x: roleX,          y: cy,             side: 'W' },
+    { x: roleX + ROLE_W, y: cy,             side: 'E' },
+  ].filter(c => !(c.side === 'E' && !isLast) && !(c.side === 'W' && !isFirst))
+  let best = cands[0], bd = Infinity
+  for (const p of cands) { const d = (p.x-tx)**2+(p.y-ty)**2; if (d < bd) { bd=d; best=p } }
+  return best
+}
+
 const BAR_H       = 3    // stroke width of each uniqueness bar
 const BAR_MARGIN  = 4    // gap between top of role box and lowest bar
 const BAR_SPACING = 5    // vertical distance between successive bar levels
@@ -192,23 +273,28 @@ export function factBounds(fact) {
   }
 }
 
-export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleContextMenu, onBarContextMenu, onRoleValueClick, onNestedVrClick, isShared }) {
+export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleContextMenu, onBarContextMenu, onRoleValueClick, onNestedVrClick, onRoleCardinalityClick, onNestedCrClick, onIfContextMenu, onRoleValueContextMenu, onRoleCrContextMenu, onNestedVrContextMenu, onNestedCrContextMenu, isShared }) {
   const store = useOrmStore()
   const isSelected     = store.selectedId === fact.id || store.multiSelectedIds.includes(fact.id)
   const hasSelectedRole = store.selectedRole?.factId === fact.id
-  // Visual selection: suppress fact-level highlight when a role is selected
-  const isFactSelected  = isSelected && !hasSelectedRole
+  const hasSelectedUniqueness = store.selectedUniqueness?.factId === fact.id
+  // Visual selection: suppress fact-level highlight when a role or uniqueness bar is selected
+  const isFactSelected  = isSelected && !hasSelectedRole && !hasSelectedUniqueness
   const isAssignTool      = store.tool === 'assignRole'
   const isSubtypeTool     = store.tool === 'addSubtype'
   const isTargetTool      = store.tool === 'addTargetConnector' && store.linkDraft?.type === 'targetConnector'
   const isUniquenessTool  = store.tool === 'addInternalUniqueness'
+  const isFrequencyTool   = store.tool === 'addInternalFrequency'
   const isRoleValueTool   = store.tool === 'addConstraint:valueRange'
+  const isCrTool          = store.tool === 'addConstraint:cardinality'
   const isConnectorTool = isAssignTool || isSubtypeTool || store.tool === 'connectConstraint'
   const isDraftFrom       = store.linkDraft?.type === 'subtype' && store.linkDraft.fromId === fact.id
   const isAssigning    = store.linkDraft?.type === 'roleAssign'
   const roleFirstDraft = isAssigning && store.linkDraft.factId === fact.id
-  const inConstruction = store.uniquenessConstruction?.factId === fact.id
-  const ucRoles        = inConstruction ? store.uniquenessConstruction.roleIndices : []
+  const inConstruction           = store.uniquenessConstruction?.factId === fact.id
+  const ucRoles                  = inConstruction ? store.uniquenessConstruction.roleIndices : []
+  const inFrequencyConstruction  = store.frequencyConstruction?.factId === fact.id
+  const fcRoles                  = inFrequencyConstruction ? store.frequencyConstruction.roleIndices : []
 
   // Role boxes highlighted by constraint group table interaction
   const highlightedRoles = (() => {
@@ -274,12 +360,22 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         else { store.setTool('select') }
         return
       }
+      if (isCrTool) {
+        onNestedCrClick?.(e.clientX, e.clientY)
+        return
+      }
     }
 
     if (isRoleValueTool) { store.setTool('select'); return }
+    if (isCrTool) { store.setTool('select'); return }
     if (isUniquenessTool) {
       store.setTool('select')
       store.startUniquenessConstruction(fact.id)
+      return
+    }
+    if (isFrequencyTool) {
+      store.setTool('select')
+      store.startFrequencyConstruction(fact.id)
       return
     }
     if (isConnectorTool) {
@@ -290,10 +386,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       return
     }
     if (inConstruction) return  // Enter key confirms; clicking fact body does nothing
+    if (inFrequencyConstruction) return  // Enter key confirms
     if (e.shiftKey) { store.shiftSelect(fact.id); return }
     store.select(fact.id, 'fact')
     onDragStart(fact.id, 'fact', e)
-  }, [store, fact.id, onDragStart, isAssignTool, inConstruction])
+  }, [store, fact.id, onDragStart, isAssignTool, inConstruction, inFrequencyConstruction])
 
   const isRoleSelected = (ri) =>
     store.selectedRole?.factId === fact.id && store.selectedRole?.roleIndex === ri
@@ -329,6 +426,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       store.toggleUniquenessConstructionRole(roleIndex)
       return
     }
+    if (inFrequencyConstruction) {
+      store.toggleFrequencyConstructionRole(roleIndex)
+      return
+    }
     if (isSubtypeTool) {
       if (fact.objectified) {
         if (!store.linkDraft) {
@@ -357,6 +458,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       store.startUniquenessConstruction(fact.id)
       return
     }
+    if (isFrequencyTool) {
+      store.setTool('select')
+      store.startFrequencyConstruction(fact.id)
+      return
+    }
     if (store.tool === 'toggleMandatory') {
       const role = fact.roles[roleIndex]
       store.updateRole(fact.id, roleIndex, { mandatory: !role.mandatory })
@@ -366,6 +472,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     if (isRoleValueTool) {
       if (vrEligibleRoles.has(roleIndex)) onRoleValueClick?.(roleIndex, e.clientX, e.clientY)
       else store.setTool('select')
+      return
+    }
+    if (isCrTool) {
+      onRoleCardinalityClick?.(roleIndex, e.clientX, e.clientY)
       return
     }
     if (isAssignTool) {
@@ -436,19 +546,35 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     // Fact not selected → select fact and start drag
     store.select(fact.id, 'fact')
     onDragStart(fact.id, 'fact', e)
-  }, [store, fact.id, isAssignTool, inConstruction, isSelected, onDragStart])
+  }, [store, fact.id, isAssignTool, inConstruction, inFrequencyConstruction, isSelected, onDragStart])
 
   // ── Annotation drag (value-range labels + reading text) ───────────────────
   const vrDragRef       = useRef(null)
   const nestedVrDragRef = useRef(null)
+  const crDragRef       = useRef(null)
+  const nestedCrDragRef = useRef(null)
+  const vrWasDragged       = useRef(false)
+  const crWasDragged       = useRef(false)
+  const nestedVrWasDragged = useRef(false)
+  const nestedCrWasDragged = useRef(false)
+  const ifDragRef         = useRef(null)   // { ifId, startX, startY, origX, origY } | null
+  const ifWasDragged      = useRef(false)  // set true when existing IF circle drag threshold exceeded
+  const ifConstrDragRef   = useRef(null)   // { startX, startY, origX, origY } | null (construction circle)
+  const ifConstrWasDragged = useRef(false) // set true when construction circle drag threshold exceeded
   const readingDragRef  = useRef(null)
   const nameDragRef     = useRef(null)
   const [vrLive,       setVrLive]       = useState(null) // { roleIndex, dx, dy } | null
   const [nestedVrLive, setNestedVrLive] = useState(null) // { dx, dy } | null
-  const [readingLive,  setReadingLive]  = useState(null) // { dx, dy } | null
-  const [nameLive,     setNameLive]     = useState(null) // { dx, dy } | null
+  const [crLive,       setCrLive]       = useState(null) // { roleIndex, dx, dy } | null
+  const [nestedCrLive, setNestedCrLive] = useState(null) // { dx, dy } | null
+  const [ifLive,       setIfLive]       = useState(null) // { ifId, x, y } | null (existing IF circle live pos)
+  const [ifConstrLive, setIfConstrLive] = useState(null) // { x, y } | null  (construction circle live pos)
+  const [readingLive,    setReadingLive]    = useState(null)  // { dx, dy } | null
+  const [nameLive,       setNameLive]       = useState(null)  // { dx, dy } | null
   const [editingName,    setEditingName]    = useState(false)
   const [nameDraft,      setNameDraft]      = useState('')
+  const [editingReading, setEditingReading] = useState(false)
+  const [readingDraft,   setReadingDraft]   = useState([])  // string[] of length arity+1
   const nameInputRef = useRef(null)
   const [editingRefMode, setEditingRefMode] = useState(false)
   const [refModeDraft,   setRefModeDraft]   = useState('')
@@ -459,21 +585,47 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       const zoom = useOrmStore.getState().zoom
       const d = vrDragRef.current
       if (d) {
-        const dx = d.origDx + (e.clientX - d.startX) / zoom
-        const dy = d.origDy + (e.clientY - d.startY) / zoom
-        setVrLive({ roleIndex: d.roleIndex, dx, dy })
+        const rawDx = e.clientX - d.startX, rawDy = e.clientY - d.startY
+        if (rawDx*rawDx + rawDy*rawDy > 9) vrWasDragged.current = true
+        setVrLive({ roleIndex: d.roleIndex, dx: d.origDx + rawDx / zoom, dy: d.origDy + rawDy / zoom })
       }
       const nvd = nestedVrDragRef.current
       if (nvd) {
-        const dx = nvd.origDx + (e.clientX - nvd.startX) / zoom
-        const dy = nvd.origDy + (e.clientY - nvd.startY) / zoom
-        setNestedVrLive({ dx, dy })
+        const rawDx = e.clientX - nvd.startX, rawDy = e.clientY - nvd.startY
+        if (rawDx*rawDx + rawDy*rawDy > 9) nestedVrWasDragged.current = true
+        setNestedVrLive({ dx: nvd.origDx + rawDx / zoom, dy: nvd.origDy + rawDy / zoom })
+      }
+      const cd = crDragRef.current
+      if (cd) {
+        const rawDx = e.clientX - cd.startX, rawDy = e.clientY - cd.startY
+        if (rawDx*rawDx + rawDy*rawDy > 9) crWasDragged.current = true
+        setCrLive({ roleIndex: cd.roleIndex, dx: cd.origDx + rawDx / zoom, dy: cd.origDy + rawDy / zoom })
+      }
+      const ncd = nestedCrDragRef.current
+      if (ncd) {
+        const rawDx = e.clientX - ncd.startX, rawDy = e.clientY - ncd.startY
+        if (rawDx*rawDx + rawDy*rawDy > 9) nestedCrWasDragged.current = true
+        setNestedCrLive({ dx: ncd.origDx + rawDx / zoom, dy: ncd.origDy + rawDy / zoom })
       }
       const rd = readingDragRef.current
       if (rd) {
         const dx = rd.origDx + (e.clientX - rd.startX) / zoom
         const dy = rd.origDy + (e.clientY - rd.startY) / zoom
         setReadingLive({ dx, dy })
+      }
+      const ifd = ifDragRef.current
+      if (ifd) {
+        const rawDx = e.clientX - ifd.startX, rawDy = e.clientY - ifd.startY
+        if (rawDx*rawDx + rawDy*rawDy > 9) ifWasDragged.current = true
+        setIfLive({ ifId: ifd.ifId, x: ifd.origX + rawDx / zoom, y: ifd.origY + rawDy / zoom })
+      }
+      const ifcd = ifConstrDragRef.current
+      if (ifcd) {
+        const dx = e.clientX - ifcd.startX, dy = e.clientY - ifcd.startY
+        if (dx*dx + dy*dy > 9) ifConstrWasDragged.current = true
+        const x = ifcd.origX + dx / zoom
+        const y = ifcd.origY + dy / zoom
+        setIfConstrLive({ x, y })
       }
       const nd = nameDragRef.current
       if (nd) {
@@ -484,6 +636,22 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     }
     const onUp = (e) => {
       const zoom = useOrmStore.getState().zoom
+      const ifd = ifDragRef.current
+      if (ifd) {
+        const x = ifd.origX + (e.clientX - ifd.startX) / zoom
+        const y = ifd.origY + (e.clientY - ifd.startY) / zoom
+        useOrmStore.getState().updateInternalFrequency(fact.id, ifd.ifId, { x, y })
+        ifDragRef.current = null
+        setIfLive(null)
+      }
+      const ifcd = ifConstrDragRef.current
+      if (ifcd) {
+        const x = ifcd.origX + (e.clientX - ifcd.startX) / zoom
+        const y = ifcd.origY + (e.clientY - ifcd.startY) / zoom
+        useOrmStore.getState().moveFrequencyConstructionCircle(x, y)
+        ifConstrDragRef.current = null
+        setIfConstrLive(null)
+      }
       const d = vrDragRef.current
       if (d) {
         const dx = d.origDx + (e.clientX - d.startX) / zoom
@@ -499,6 +667,22 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         useOrmStore.getState().updateFact(fact.id, { valueRangeOffset: { dx, dy } })
         nestedVrDragRef.current = null
         setNestedVrLive(null)
+      }
+      const cd = crDragRef.current
+      if (cd) {
+        const dx = cd.origDx + (e.clientX - cd.startX) / zoom
+        const dy = cd.origDy + (e.clientY - cd.startY) / zoom
+        useOrmStore.getState().updateCardinalityRangeOffset(fact.id, cd.roleIndex, { dx, dy })
+        crDragRef.current = null
+        setCrLive(null)
+      }
+      const ncd = nestedCrDragRef.current
+      if (ncd) {
+        const dx = ncd.origDx + (e.clientX - ncd.startX) / zoom
+        const dy = ncd.origDy + (e.clientY - ncd.startY) / zoom
+        useOrmStore.getState().updateFact(fact.id, { cardinalityRangeOffset: { dx, dy } })
+        nestedCrDragRef.current = null
+        setNestedCrLive(null)
       }
       const rd = readingDragRef.current
       if (rd) {
@@ -545,6 +729,14 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     setTimeout(() => window.getSelection()?.removeAllRanges(), 0)
   }, [refModeDraft, fact.id, store])
 
+  const commitReadingEdit = useCallback(() => {
+    const parts = readingDraft.map(p => p.trim())
+    while (parts.length < fact.arity + 1) parts.push('')
+    parts.length = fact.arity + 1
+    store.updateFact(fact.id, { readingParts: parts })
+    setEditingReading(false)
+  }, [readingDraft, fact.arity, fact.id, store])
+
   useEffect(() => {
     if (editingRefMode && refModeInputRef.current) {
       refModeInputRef.current.focus()
@@ -552,10 +744,19 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     }
   }, [editingRefMode])
 
-  // Commit name/refMode edits when the fact is deselected
+  // Commit reading edit when user clicks outside the foreignObject
+  useEffect(() => {
+    if (!editingReading) return
+    const onDown = (e) => { if (!e.target.closest?.('foreignObject')) commitReadingEdit() }
+    window.addEventListener('mousedown', onDown, true)
+    return () => window.removeEventListener('mousedown', onDown, true)
+  }, [editingReading, commitReadingEdit])
+
+  // Commit name/refMode/reading edits when the fact is deselected
   useEffect(() => {
     if (!isSelected && editingName) commitNameEdit()
     if (!isSelected && editingRefMode) commitRefModeEdit()
+    if (!isSelected && editingReading) commitReadingEdit()
   }, [isSelected])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Commit name edit when user clicks outside the foreignObject
@@ -575,12 +776,14 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   }, [editingRefMode, commitRefModeEdit])
 
   const isNestedSubtypeCandidate = fact.objectified && !isDraftFrom && (isSubtypeTool || isTargetTool)
+  // Stage-1 frequency: tool is active but no construction started yet → fact is selectable candidate
+  const isFrequencyCandidate = isFrequencyTool && !store.frequencyConstruction
   const roleStroke    = isFactSelected               ? 'var(--accent)'
     : isUniquenessTool                               ? 'var(--col-candidate)'
-    : isNestedSubtypeCandidate                       ? 'var(--col-candidate)'
+    : isFrequencyCandidate                           ? 'var(--col-candidate)'
     : (isDraftFrom && fact.objectified)              ? 'var(--col-subtype)'
     :                                                  'var(--col-fact)'
-  const roleStrokeW   = isFactSelected ? 2 : (isUniquenessTool || isNestedSubtypeCandidate || (isDraftFrom && fact.objectified)) ? 2 : 1.5
+  const roleStrokeW   = isFactSelected ? 2 : (isUniquenessTool || isFrequencyCandidate || (isDraftFrom && fact.objectified)) ? 2 : 1.5
   const gc = store.sequenceConstruction
   const gcConstraint = gc ? store.constraints.find(c => c.id === gc.constraintId) : null
   const isVcConstruction = gcConstraint?.constraintType === 'valueComparison'
@@ -597,12 +800,14 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     fact.roles.flatMap((role, ri) => isVrEligibleRole(role) ? [ri] : [])
   ) : null
 
-  const isRoleCandidate = (isAssignTool && !isAssigning) || store.tool === 'toggleMandatory' || isUniquenessTool || (!!gc && !isVcConstruction)
+  const isRoleCandidate = (isAssignTool && !isAssigning) || store.tool === 'toggleMandatory' || isUniquenessTool
+    || isFrequencyCandidate  // stage 1: all facts' roles are candidate
+    || (!!gc && !isVcConstruction)
   // Roles eligible for a value range constraint: connected to a value type or entity with a reference mode
   const vrEligibleRoles = isRoleValueTool ? new Set(
     fact.roles.flatMap((role, ri) => isVrEligibleRole(role) ? [ri] : [])
   ) : null
-  const roleIsCandidate = (ri) => isRoleCandidate || (isRoleValueTool && vrEligibleRoles.has(ri)) || (isVcConstruction && vcEligibleRoles.has(ri))
+  const roleIsCandidate = (ri) => isRoleCandidate || (isRoleValueTool && vrEligibleRoles.has(ri)) || (isVcConstruction && vcEligibleRoles.has(ri)) || isCrTool
   const roleHighlight = isRoleCandidate ? 'var(--fill-candidate)' : '#ffffff'
 
   const isVertical = fact.orientation === 'vertical'
@@ -616,6 +821,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     uRoles.length === 1 ? 0 : ++multiLevel
   )
   const multiCount = multiLevel
+  const ifItems = fact.internalFrequency || []
 
   const INSET = 2
   const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
@@ -724,6 +930,17 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       store.setTool('select')
       return
     }
+    if (inConstruction && store.uniquenessConstruction?.uIndex === ui) {
+      store.commitUniquenessConstruction()
+      return
+    }
+    const alreadySelected = store.selectedUniqueness?.factId === fact.id && store.selectedUniqueness?.uIndex === ui
+    if (alreadySelected) store.clearSelection()
+    else store.selectUniqueness(fact.id, ui)
+  }
+
+  const barDoubleClickHandler = (ui) => (e) => {
+    e.stopPropagation()
     store.select(fact.id, 'fact')
     store.startUniquenessEdit(fact.id, ui)
   }
@@ -746,7 +963,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       }
     }
 
-    if (!text) return null
+    if (!text && !editingReading) return null
 
     const AUTO_DX = (() => {
       if (!isVertical) return 0
@@ -770,6 +987,40 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     const ty = fact.y + off.dy
     const isDraggingReading = !!readingLive
 
+    if (editingReading) {
+      const W = Math.max(120,
+        readingDraft.reduce((s, seg) => s + Math.max(12, seg.length * 7), 0)
+        + fact.arity * 18 + 8)
+      return (
+        <foreignObject x={tx - W / 2} y={ty - 12} width={W} height={24}>
+          <div style={{ display:'flex', alignItems:'center', height:'100%', background:'#fff',
+            border:'1px solid var(--accent)', borderRadius:3, padding:'0 4px', boxSizing:'border-box' }}>
+            {readingDraft.map((seg, i) => (
+              <React.Fragment key={i}>
+                <input
+                  // eslint-disable-next-line jsx-a11y/no-autofocus
+                  autoFocus={i === 0}
+                  value={seg}
+                  onChange={e => { const v = e.target.value; setReadingDraft(prev => { const next = [...prev]; next[i] = v; return next }) }}
+                  onBlur={() => { setTimeout(() => { if (!document.activeElement?.closest?.('foreignObject')) commitReadingEdit() }, 0) }}
+                  onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); commitReadingEdit() } if (e.key === 'Escape') { e.stopPropagation(); setEditingReading(false) } }}
+                  onMouseDown={e => e.stopPropagation()}
+                  style={{ width: Math.max(12, seg.length * 7), minWidth: 0, border:'none',
+                    outline:'none', background:'#fef6ec', color:'var(--ink-2)',
+                    fontSize:13, fontFamily:FONT, textAlign:'center',
+                    padding:'0', boxSizing:'border-box' }}
+                />
+                {i < fact.arity && (
+                  <span style={{ userSelect:'none', pointerEvents:'none', color:'var(--col-constraint)',
+                    fontWeight:700, fontSize:13, fontFamily:FONT, padding:'0 2px', flexShrink:0 }}>...</span>
+                )}
+              </React.Fragment>
+            ))}
+          </div>
+        </foreignObject>
+      )
+    }
+
     return (
       <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle"
         fontSize={14} fill="var(--ink-3)" fontFamily={FONT}
@@ -778,6 +1029,13 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           e.stopPropagation()
           readingDragRef.current = { startX: e.clientX, startY: e.clientY, origDx: off.dx, origDy: off.dy }
           setReadingLive({ dx: off.dx, dy: off.dy })
+        }}
+        onDoubleClick={e => {
+          e.stopPropagation()
+          if (store.sequenceConstruction || inConstruction || inFrequencyConstruction) return
+          const existing = fact.readingParts || []
+          setReadingDraft(Array.from({ length: fact.arity + 1 }, (_, i) => existing[i] ?? ''))
+          setEditingReading(true)
         }}>
         {text}
       </text>
@@ -786,6 +1044,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
 
   // ── VR annotation helpers ─────────────────────────────────────────────────
   const VR_DEFAULT = isVertical ? { dx: -50, dy: 0 } : VR_DEFAULT_OFFSET
+  const CR_DEFAULT = isVertical ? { dx: 50, dy: 0 } : { dx: 0, dy: 50 }
 
   function vrConnPoint(ri, textX, textY) {
     if (isVertical) {
@@ -808,6 +1067,126 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     return                                      { x: roleCX,      y: topY + ROLE_H }  // S
   }
 
+  // ── Nested fact VR/CR annotations (computed here so they render outside the glow group) ──
+  const nestedVrAnnotation = !fact.objectified ? null : (() => {
+    const canHaveVr = fact.objectifiedKind === 'value'
+      || (fact.objectifiedKind !== 'value' && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
+    if (!canHaveVr) return null
+    const vr = formatValueRange(fact.valueRange)
+    if (!vr) return null
+    const nb = nestedFactBounds(fact)
+    const nbCx = (nb.left + nb.right) / 2
+    const nbCy = (nb.top + nb.bottom) / 2
+    const nbHW = (nb.right - nb.left) / 2
+    const nbHH = (nb.bottom - nb.top) / 2
+    const defaultOff = { dx: 0, dy: nbHH + 14 }
+    const off = nestedVrLive ?? (fact.valueRangeOffset ?? defaultOff)
+    const tx = nbCx + off.dx
+    const ty = nbCy + off.dy
+    const dxL = tx - nbCx, dyL = ty - nbCy
+    const tBox = (dxL === 0 && dyL === 0) ? 0
+      : (Math.abs(dxL) * nbHH > Math.abs(dyL) * nbHW)
+        ? nbHW / Math.abs(dxL) : nbHH / Math.abs(dyL)
+    const connX = nbCx + dxL * tBox
+    const connY = nbCy + dyL * tBox
+    const halfW = measureVrText(vr) / 2 + VR_PAD_X
+    const halfH = VR_FONT_SIZE / 2 + VR_PAD_Y
+    const lineEnd = vrBoxEdge(tx, ty, halfW, halfH, connX, connY)
+    return (() => {
+        const nvDesc = { nestedFactId: fact.id }
+        const isNvSelected = store.selectedValueRange?.nestedFactId === fact.id
+        const nvFill = isNvSelected ? 'var(--accent)' : 'var(--col-constraint)'
+        return (
+          <g key="nested-vr" style={{ filter: isNvSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+            <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
+              stroke={nvFill} strokeWidth={1.5}
+              strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
+            <text x={tx} y={ty}
+              textAnchor="middle" dominantBaseline="middle"
+              fill={nvFill} fontSize={VR_FONT_SIZE} fontFamily={VR_FONT}
+              style={{ cursor: nestedVrLive ? 'grabbing' : 'grab', userSelect: 'none' }}
+              onMouseDown={e => {
+                e.stopPropagation()
+                nestedVrWasDragged.current = false
+                nestedVrDragRef.current = { startX: e.clientX, startY: e.clientY, origDx: off.dx, origDy: off.dy }
+                setNestedVrLive({ dx: off.dx, dy: off.dy })
+              }}
+              onClick={e => {
+                e.stopPropagation()
+                if (nestedVrWasDragged.current) { nestedVrWasDragged.current = false; return }
+                if (isNvSelected) store.deselectValueRange()
+                else store.selectValueRange(nvDesc)
+              }}
+              onContextMenu={e => {
+                e.preventDefault(); e.stopPropagation()
+                store.selectValueRange(nvDesc)
+                onNestedVrContextMenu?.(e)
+              }}>
+              {vr}
+            </text>
+          </g>
+        )
+      })()
+  })()
+
+  const nestedCrAnnotation = !fact.objectified ? null : (() => {
+    const cr = formatCardinalityRange(fact.cardinalityRange)
+    if (!cr) return null
+    const nb = nestedFactBounds(fact)
+    const nbCx = (nb.left + nb.right) / 2
+    const nbCy = (nb.top + nb.bottom) / 2
+    const nbHW = (nb.right - nb.left) / 2
+    const nbHH = (nb.bottom - nb.top) / 2
+    const defaultOff = { dx: 0, dy: -(nbHH + 14) }
+    const off = nestedCrLive ?? (fact.cardinalityRangeOffset ?? defaultOff)
+    const tx = nbCx + off.dx
+    const ty = nbCy + off.dy
+    const dxL = tx - nbCx, dyL = ty - nbCy
+    const tBox = (dxL === 0 && dyL === 0) ? 0
+      : (Math.abs(dxL) * nbHH > Math.abs(dyL) * nbHW)
+        ? nbHW / Math.abs(dxL) : nbHH / Math.abs(dyL)
+    const connX = nbCx + dxL * tBox
+    const connY = nbCy + dyL * tBox
+    const halfW = measureVrText(cr) / 2 + VR_PAD_X
+    const halfH = VR_FONT_SIZE / 2 + VR_PAD_Y
+    const lineEnd = vrBoxEdge(tx, ty, halfW, halfH, connX, connY)
+    return (() => {
+        const ncDesc = { nestedFactId: fact.id }
+        const isNcSelected = store.selectedCardinalityRange?.nestedFactId === fact.id
+        const ncFill = isNcSelected ? 'var(--accent)' : 'var(--col-constraint)'
+        return (
+          <g key="nested-cr" style={{ filter: isNcSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+            <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
+              stroke={ncFill} strokeWidth={1.5}
+              strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
+            <text x={tx} y={ty}
+              textAnchor="middle" dominantBaseline="middle"
+              fill={ncFill} fontSize={VR_FONT_SIZE} fontFamily={VR_FONT}
+              style={{ cursor: nestedCrLive ? 'grabbing' : 'grab', userSelect: 'none' }}
+              onMouseDown={e => {
+                e.stopPropagation()
+                nestedCrWasDragged.current = false
+                nestedCrDragRef.current = { startX: e.clientX, startY: e.clientY, origDx: off.dx, origDy: off.dy }
+                setNestedCrLive({ dx: off.dx, dy: off.dy })
+              }}
+              onClick={e => {
+                e.stopPropagation()
+                if (nestedCrWasDragged.current) { nestedCrWasDragged.current = false; return }
+                if (isNcSelected) store.deselectCardinalityRange()
+                else store.selectCardinalityRange(ncDesc)
+              }}
+              onContextMenu={e => {
+                e.preventDefault(); e.stopPropagation()
+                store.selectCardinalityRange(ncDesc)
+                onNestedCrContextMenu?.(e)
+              }}>
+              {cr}
+            </text>
+          </g>
+        )
+      })()
+  })()
+
   return (
   <>
     {/* Shared-across-diagrams shadow — role boxes footprint only (non-objectified) */}
@@ -825,11 +1204,13 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     <g onMouseDown={handleMouseDown} onContextMenu={onContextMenu}
        style={{ cursor: (() => {
          if ((isSubtypeTool || isTargetTool) && fact.objectified) return 'cell'
+         if (isAssignTool && isAssigning && fact.objectified) return 'cell'
          if (isRoleValueTool && fact.objectified) {
            const canHaveVr = fact.objectifiedKind === 'value'
              || (fact.objectifiedKind !== 'value' && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
            return canHaveVr ? 'pointer' : 'not-allowed'
          }
+         if (isCrTool && fact.objectified) return 'pointer'
          return 'grab'
        })() }}
        filter={isFactSelected || isDraftFrom ? 'url(#selectGlow)' : undefined}>
@@ -840,14 +1221,18 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         const canHaveVr = fact.objectifiedKind === 'value'
           || (fact.objectifiedKind !== 'value' && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
         const isNestedVrCandidate = isRoleValueTool && canHaveVr
+        const isNestedCrCandidate = isCrTool
+        const isAssignCandidate   = isAssignTool && isAssigning && store.linkDraft?.factId !== fact.id
         const nestedCol  = isDraftFrom        ? 'var(--col-subtype)'
           : isSubtypeCandidate                ? 'var(--col-candidate)'
+          : isAssignCandidate                 ? 'var(--col-candidate)'
           : isNestedVrCandidate               ? 'var(--col-candidate)'
+          : isNestedCrCandidate               ? 'var(--col-candidate)'
           : fact.objectifiedKind === 'value'  ? 'var(--col-value)'
           :                                     'var(--col-entity)'
         const nestedDash    = fact.objectifiedKind === 'value' ? '6 3' : 'none'
-        const nestedFill    = (isSubtypeCandidate || isDraftFrom || isNestedVrCandidate) ? 'var(--fill-candidate)' : '#ffffff'
-        const nestedStrokeW = (isDraftFrom || isSubtypeCandidate || isNestedVrCandidate) ? 2 : 1.5
+        const nestedFill    = (isSubtypeCandidate || isDraftFrom || isAssignCandidate || isNestedVrCandidate || isNestedCrCandidate) ? 'var(--fill-candidate)' : '#ffffff'
+        const nestedStrokeW = (isDraftFrom || isSubtypeCandidate || isAssignCandidate || isNestedVrCandidate || isNestedCrCandidate) ? 2 : 1.5
         const nestedRefText = (fact.objectifiedKind !== 'value' && store.showReferenceMode
           && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
           ? `(${fact.objectifiedRefMode})` : null
@@ -863,53 +1248,6 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         const readingExtra = fact.nestedReading
           ? NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW
           : 0
-
-        // Value range annotation shared across both orientations
-        const nestedVrAnnotation = (() => {
-          if (!canHaveVr) return null
-          const vr = formatValueRange(fact.valueRange)
-          if (!vr) return null
-          const nb = nestedFactBounds(fact)
-          const nbCx = (nb.left + nb.right) / 2
-          const nbCy = (nb.top + nb.bottom) / 2
-          const nbHW = (nb.right - nb.left) / 2
-          const nbHH = (nb.bottom - nb.top) / 2
-          const defaultOff = { dx: 0, dy: nbHH + 14 }
-          const off = nestedVrLive ?? (fact.valueRangeOffset ?? defaultOff)
-          const tx = nbCx + off.dx
-          const ty = nbCy + off.dy
-          const dxL = tx - nbCx, dyL = ty - nbCy
-          const tBox = (dxL === 0 && dyL === 0) ? 0
-            : (Math.abs(dxL) * nbHH > Math.abs(dyL) * nbHW)
-              ? nbHW / Math.abs(dxL) : nbHH / Math.abs(dyL)
-          const connX = nbCx + dxL * tBox
-          const connY = nbCy + dyL * tBox
-          const halfW = measureVrText(vr) / 2 + VR_PAD_X
-          const halfH = VR_FONT_SIZE / 2 + VR_PAD_Y
-          const lineEnd = vrBoxEdge(tx, ty, halfW, halfH, connX, connY)
-          return (
-            <g key="nested-vr">
-              <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
-                stroke="var(--col-constraint)" strokeWidth={1.5}
-                strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
-              <text x={tx} y={ty}
-                textAnchor="middle" dominantBaseline="middle"
-                fill="var(--col-constraint)" fontSize={VR_FONT_SIZE} fontFamily={VR_FONT}
-                style={{ cursor: nestedVrLive ? 'grabbing' : 'grab', userSelect: 'none' }}
-                onMouseDown={e => {
-                  e.stopPropagation()
-                  nestedVrDragRef.current = { startX: e.clientX, startY: e.clientY, origDx: off.dx, origDy: off.dy }
-                  setNestedVrLive({ dx: off.dx, dy: off.dy })
-                }}
-                onDoubleClick={e => {
-                  e.stopPropagation()
-                  onNestedVrClick?.(e.clientX, e.clientY)
-                }}>
-                {vr}
-              </text>
-            </g>
-          )
-        })()
 
         if (isVertical) {
           const padLeft   = barsBelow ? barPad : PAD
@@ -1020,15 +1358,49 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                 )
               )}
               {readingText && (
-                <text x={fact.x} y={readingY}
-                  textAnchor="middle" dominantBaseline="middle"
-                  fontSize={NESTED_READING_FONT_SIZE} fontFamily={FONT}
-                  fill={nestedCol}
-                  style={{ pointerEvents: 'none', userSelect: 'none' }}>
-                  {readingText}
-                </text>
+                editingReading
+                  ? (() => {
+                      const W = Math.max(120,
+                        readingDraft.reduce((s, seg) => s + Math.max(20, seg.length * 7 + 4), 0)
+                        + fact.arity * 24 + 12)
+                      return (
+                        <foreignObject x={fact.x - W / 2} y={readingY - 12} width={W} height={24}>
+                          <div style={{ display:'flex', alignItems:'center', height:'100%', background:'#fff',
+                            border:`1px solid ${nestedCol}`, borderRadius:3, padding:'0 4px', boxSizing:'border-box' }}>
+                            {readingDraft.map((seg, i) => (
+                              <React.Fragment key={i}>
+                                <input
+                                  autoFocus={i === 0} // eslint-disable-line jsx-a11y/no-autofocus
+                                  value={seg}
+                                  onChange={e => { const v = e.target.value; setReadingDraft(prev => { const next = [...prev]; next[i] = v; return next }) }}
+                                  onBlur={() => { setTimeout(() => { if (!document.activeElement?.closest?.('foreignObject')) commitReadingEdit() }, 0) }}
+                                  onKeyDown={e => { e.stopPropagation(); if(e.key==='Enter'){e.preventDefault();commitReadingEdit()} if(e.key==='Escape'){e.stopPropagation();setEditingReading(false)} }}
+                                  onMouseDown={e => e.stopPropagation()}
+                                  style={{ width:Math.max(12, seg.length*7), minWidth:0, border:'none', outline:'none',
+                                    background:'#fef6ec', color:nestedCol, fontSize:NESTED_READING_FONT_SIZE,
+                                    fontFamily:FONT, textAlign:'center', padding:'0', boxSizing:'border-box' }}
+                                />
+                                {i < fact.arity && (
+                                  <span style={{ userSelect:'none', pointerEvents:'none', color:'var(--col-constraint)',
+                                    fontWeight:700, fontSize:NESTED_READING_FONT_SIZE, fontFamily:FONT, padding:'0 2px', flexShrink:0 }}>...</span>
+                                )}
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        </foreignObject>
+                      )
+                    })()
+                  : (
+                    <text x={fact.x} y={readingY}
+                      textAnchor="middle" dominantBaseline="middle"
+                      fontSize={NESTED_READING_FONT_SIZE} fontFamily={FONT}
+                      fill={nestedCol}
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                      onDoubleClick={e => { e.stopPropagation(); const ex=fact.readingParts||[]; setReadingDraft(Array.from({length:fact.arity+1},(_,i)=>ex[i]??'')); setEditingReading(true) }}>
+                      {readingText}
+                    </text>
+                  )
               )}
-              {nestedVrAnnotation}
             </>
           )
         }
@@ -1144,15 +1516,49 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
               )
             )}
             {readingText && (
-              <text x={fact.x} y={readingY}
-                textAnchor="middle" dominantBaseline="middle"
-                fontSize={NESTED_READING_FONT_SIZE} fontFamily={FONT}
-                fill={nestedCol}
-                style={{ pointerEvents: 'none', userSelect: 'none' }}>
-                {readingText}
-              </text>
+              editingReading
+                ? (() => {
+                    const W = Math.max(120,
+                      readingDraft.reduce((s, seg) => s + Math.max(20, seg.length * 7 + 4), 0)
+                      + fact.arity * 24 + 12)
+                    return (
+                      <foreignObject x={fact.x - W / 2} y={readingY - 12} width={W} height={24}>
+                        <div style={{ display:'flex', alignItems:'center', height:'100%', background:'#fff',
+                          border:`1px solid ${nestedCol}`, borderRadius:3, padding:'0 4px', boxSizing:'border-box' }}>
+                          {readingDraft.map((seg, i) => (
+                            <React.Fragment key={i}>
+                              <input
+                                autoFocus={i === 0} // eslint-disable-line jsx-a11y/no-autofocus
+                                value={seg}
+                                onChange={e => { const v = e.target.value; setReadingDraft(prev => { const next = [...prev]; next[i] = v; return next }) }}
+                                onBlur={() => { setTimeout(() => { if (!document.activeElement?.closest?.('foreignObject')) commitReadingEdit() }, 0) }}
+                                onKeyDown={e => { e.stopPropagation(); if(e.key==='Enter'){e.preventDefault();commitReadingEdit()} if(e.key==='Escape'){e.stopPropagation();setEditingReading(false)} }}
+                                onMouseDown={e => e.stopPropagation()}
+                                style={{ width:Math.max(12, seg.length*7), minWidth:0, border:'none', outline:'none',
+                                  background:'#fef6ec', color:nestedCol, fontSize:NESTED_READING_FONT_SIZE,
+                                  fontFamily:FONT, textAlign:'center', padding:'0', boxSizing:'border-box' }}
+                              />
+                              {i < fact.arity && (
+                                <span style={{ userSelect:'none', pointerEvents:'none', color:'var(--col-constraint)',
+                                  fontWeight:700, fontSize:NESTED_READING_FONT_SIZE, fontFamily:FONT, padding:'0 2px', flexShrink:0 }}>...</span>
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      </foreignObject>
+                    )
+                  })()
+                : (
+                  <text x={fact.x} y={readingY}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fontSize={NESTED_READING_FONT_SIZE} fontFamily={FONT}
+                    fill={nestedCol}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onDoubleClick={e => { e.stopPropagation(); const ex=fact.readingParts||[]; setReadingDraft(Array.from({length:fact.arity+1},(_,i)=>ex[i]??'')); setEditingReading(true) }}>
+                    {readingText}
+                  </text>
+                )
             )}
-            {nestedVrAnnotation}
           </>
         )
       })()}
@@ -1161,7 +1567,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         <>
           {/* White background */}
           <rect x={leftX_v} y={startY_v} width={ROLE_H} height={totalH_v}
-            fill={isNestedSubtypeCandidate ? 'var(--fill-candidate)' : '#ffffff'} stroke="none" style={{ pointerEvents: 'none' }}/>
+            fill="#ffffff" stroke="none" style={{ pointerEvents: 'none' }}/>
 
           {/* Unary cap (north) */}
           {fact.arity === 1 && (
@@ -1179,8 +1585,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   fill={
                     roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
                     : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
+                    : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
                     : roleIsCandidate(ri) ? 'var(--fill-candidate)'
-                    : isNestedSubtypeCandidate ? 'var(--fill-candidate)'
                     : isRoleSelected(ri) ? '#dde8f5'
                     : highlightedRoles?.has(ri) ? '#fde3c8'
                     : '#ffffff'
@@ -1216,8 +1622,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             if (isEditing && displayRoles.length === 0) {
               const barX = barX_v(displayLevel)
               return (
-                <g key={ui} style={{ cursor: 'pointer' }}
-                  onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}>
+                <g key={ui} style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+                  onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
+                  onDoubleClick={barDoubleClickHandler(ui)}>
                   <line x1={barX} y1={startY_v + INSET} x2={barX} y2={startY_v + totalH_v - INSET}
                     stroke={barStroke} strokeWidth={BAR_H + 1} strokeLinecap="butt"
                     strokeDasharray="3 3" strokeOpacity={0.6}/>
@@ -1234,8 +1641,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             const barX = adjustedBarX(displayLevel, isPreferred)
             const sw = isUSelected ? BAR_H + 1 : BAR_H
             return (
-              <g key={ui} style={{ cursor: 'pointer' }}
+              <g key={ui} style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
                 onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
+                onDoubleClick={barDoubleClickHandler(ui)}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onBarContextMenu?.(ui, e) }}>
                 <line x1={barX} y1={hitY1} x2={barX} y2={hitY2} stroke="transparent" strokeWidth={10}/>
                 {isPreferred ? (
@@ -1272,7 +1680,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             const barX = adjustedBarX(previewLevel, false)
             if (ucRoles.length === 0) {
               return (
-                <g style={{ pointerEvents: 'none' }}>
+                <g style={{ cursor: 'pointer' }} onMouseDown={e => e.stopPropagation()}
+                  onClick={() => store.commitUniquenessConstruction()}>
                   <line x1={barX} y1={startY_v + INSET} x2={barX} y2={startY_v + totalH_v - INSET}
                     stroke="var(--accent)" strokeWidth={BAR_H + 1} strokeLinecap="butt"
                     strokeDasharray="3 3" strokeOpacity={0.6}/>
@@ -1281,7 +1690,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             }
             const { runs } = buildRunsV(ucRoles, previewLevel, 'preview')
             return (
-              <g style={{ pointerEvents: 'none' }}>
+              <g style={{ cursor: 'pointer' }} onMouseDown={e => e.stopPropagation()}
+                onClick={() => store.commitUniquenessConstruction()}>
                 {runs.map(({ y1, y2, solid, key }) => (
                   <line key={key} x1={barX} y1={y1} x2={barX} y2={y2}
                     stroke="var(--accent)" strokeWidth={BAR_H + 1} strokeLinecap="butt"
@@ -1291,6 +1701,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
               </g>
             )
           })()}
+
         </>
       ) : (
         <>
@@ -1316,8 +1727,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   fill={
                     roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
                     : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
+                    : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
                     : roleIsCandidate(ri) ? 'var(--fill-candidate)'
-                    : isNestedSubtypeCandidate ? 'var(--fill-candidate)'
                     : isRoleSelected(ri) ? '#dde8f5'
                     : highlightedRoles?.has(ri) ? '#fde3c8'
                     : '#ffffff'
@@ -1353,8 +1764,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             if (isEditing && displayRoles.length === 0) {
               const barY = barY_h(displayLevel)
               return (
-                <g key={ui} style={{ cursor: 'pointer' }}
-                  onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}>
+                <g key={ui} style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+                  onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
+                  onDoubleClick={barDoubleClickHandler(ui)}>
                   <line x1={startX + INSET} y1={barY} x2={startX + totalW - INSET} y2={barY}
                     stroke={barStroke} strokeWidth={BAR_H + 1} strokeLinecap="butt"
                     strokeDasharray="3 3" strokeOpacity={0.6}/>
@@ -1371,8 +1783,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             const barY = adjustedBarY(displayLevel, isPreferred)
             const sw = isUSelected ? BAR_H + 1 : BAR_H
             return (
-              <g key={ui} style={{ cursor: 'pointer' }}
+              <g key={ui} style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
                 onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
+                onDoubleClick={barDoubleClickHandler(ui)}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onBarContextMenu?.(ui, e) }}>
                 <line x1={hitX1} y1={barY} x2={hitX2} y2={barY} stroke="transparent" strokeWidth={10}/>
                 {isPreferred ? (
@@ -1409,7 +1822,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             const barY = adjustedBarY(previewLevel, false)
             if (ucRoles.length === 0) {
               return (
-                <g style={{ pointerEvents: 'none' }}>
+                <g style={{ cursor: 'pointer' }} onMouseDown={e => e.stopPropagation()}
+                  onClick={() => store.commitUniquenessConstruction()}>
                   <line x1={startX + INSET} y1={barY} x2={startX + totalW - INSET} y2={barY}
                     stroke="var(--accent)" strokeWidth={BAR_H + 1} strokeLinecap="butt"
                     strokeDasharray="3 3" strokeOpacity={0.6}/>
@@ -1418,7 +1832,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             }
             const { runs } = buildRuns(ucRoles, previewLevel, 'preview')
             return (
-              <g style={{ pointerEvents: 'none' }}>
+              <g style={{ cursor: 'pointer' }} onMouseDown={e => e.stopPropagation()}
+                onClick={() => store.commitUniquenessConstruction()}>
                 {runs.map(({ x1, x2, solid, key }) => (
                   <line key={key} x1={x1} y1={barY} x2={x2} y2={barY}
                     stroke="var(--accent)" strokeWidth={BAR_H + 1} strokeLinecap="butt"
@@ -1428,6 +1843,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
               </g>
             )
           })()}
+
         </>
       )}
 
@@ -1454,30 +1870,226 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       const halfH = VR_FONT_SIZE / 2 + VR_PAD_Y
       const lineEnd = vrBoxEdge(textX, textY, halfW, halfH, connX, connY)
 
+      const vrDesc = { factId: fact.id, roleIndex: ri }
+      const isVrSelected = store.selectedValueRange?.factId === fact.id && store.selectedValueRange?.roleIndex === ri
+      const vrFill = isVrSelected ? 'var(--accent)' : 'var(--col-constraint)'
       return (
-        <g key={`vr-${role.id}`}>
+        <g key={`vr-${role.id}`} style={{ filter: isVrSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
           <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
-            stroke="var(--col-constraint)" strokeWidth={1.5}
+            stroke={vrFill} strokeWidth={1.5}
             strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
           <text x={textX} y={textY}
             textAnchor="middle" dominantBaseline="middle"
-            fill="var(--col-constraint)" fontSize={11} fontFamily={VR_FONT}
+            fill={vrFill} fontSize={11} fontFamily={VR_FONT}
             style={{ cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none' }}
             onMouseDown={e => {
               e.stopPropagation()
+              vrWasDragged.current = false
               vrDragRef.current = { roleIndex: ri, startX: e.clientX, startY: e.clientY,
                                     origDx: off.dx, origDy: off.dy }
               setVrLive({ roleIndex: ri, dx: off.dx, dy: off.dy })
             }}
-            onDoubleClick={e => {
+            onClick={e => {
               e.stopPropagation()
-              onRoleValueClick?.(ri, e.clientX, e.clientY)
+              if (vrWasDragged.current) { vrWasDragged.current = false; return }
+              if (isVrSelected) store.deselectValueRange()
+              else store.selectValueRange(vrDesc)
+            }}
+            onContextMenu={e => {
+              e.preventDefault(); e.stopPropagation()
+              store.selectValueRange(vrDesc)
+              onRoleValueContextMenu?.(ri, e)
             }}>
             {vr}
           </text>
         </g>
       )
     })}
+
+    {/* ── Cardinality range annotations ───────────────────────────────────────
+        Rendered as siblings (outside the fact type's glow group) so they
+        keep their own visual identity regardless of fact-type selection.    */}
+    {fact.roles.map((role, ri) => {
+      const cr = formatCardinalityRange(role.cardinalityRange)
+      if (!cr) return null
+
+      const rc = roleCenter(fact, ri)
+      const off = crLive?.roleIndex === ri
+        ? { dx: crLive.dx, dy: crLive.dy }
+        : (fact.cardinalityRangeOffsets?.[ri] ?? role.cardinalityRangeOffset ?? CR_DEFAULT)
+      const textX = rc.x + off.dx
+      const textY = rc.y + off.dy
+
+      const { x: connX, y: connY } = vrConnPoint(ri, textX, textY)
+      const dragging = crLive?.roleIndex === ri
+      const halfW = measureVrText(cr) / 2 + VR_PAD_X
+      const halfH = VR_FONT_SIZE / 2 + VR_PAD_Y
+      const lineEnd = vrBoxEdge(textX, textY, halfW, halfH, connX, connY)
+
+      const crDesc = { factId: fact.id, roleIndex: ri }
+      const isCrSelected = store.selectedCardinalityRange?.factId === fact.id && store.selectedCardinalityRange?.roleIndex === ri
+      const crFill = isCrSelected ? 'var(--accent)' : 'var(--col-constraint)'
+      return (
+        <g key={`cr-${role.id}`} style={{ filter: isCrSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+          <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
+            stroke={crFill} strokeWidth={1.5}
+            strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
+          <text x={textX} y={textY}
+            textAnchor="middle" dominantBaseline="middle"
+            fill={crFill} fontSize={11} fontFamily={VR_FONT}
+            style={{ cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none' }}
+            onMouseDown={e => {
+              e.stopPropagation()
+              crWasDragged.current = false
+              crDragRef.current = { roleIndex: ri, startX: e.clientX, startY: e.clientY,
+                                    origDx: off.dx, origDy: off.dy }
+              setCrLive({ roleIndex: ri, dx: off.dx, dy: off.dy })
+            }}
+            onClick={e => {
+              e.stopPropagation()
+              if (crWasDragged.current) { crWasDragged.current = false; return }
+              if (isCrSelected) store.deselectCardinalityRange()
+              else store.selectCardinalityRange(crDesc)
+            }}
+            onContextMenu={e => {
+              e.preventDefault(); e.stopPropagation()
+              store.selectCardinalityRange(crDesc)
+              onRoleCrContextMenu?.(ri, e)
+            }}>
+            {cr}
+          </text>
+        </g>
+      )
+    })}
+
+    {nestedVrAnnotation}
+    {nestedCrAnnotation}
+
+    {/* ── Internal frequency circles ───────────────────────────────────────────
+        Dashed circles rendered as siblings (outside glow group), each with
+        connectors to its associated roles.                                   */}
+    {ifItems.map(ifItem => {
+      const isEditing = inFrequencyConstruction && store.frequencyConstruction?.ifId === ifItem.id
+      const isIfSelected = !isEditing && store.selectedInternalFrequency?.ifId === ifItem.id
+      const cx = (ifLive?.ifId === ifItem.id) ? ifLive.x : ifItem.x
+      const cy = (ifLive?.ifId === ifItem.id) ? ifLive.y : ifItem.y
+      const fr = formatFrequencyRange(ifItem.range)
+      const col = isEditing ? 'var(--accent)' : isIfSelected ? 'var(--accent)' : 'var(--col-constraint)'
+      const hw = ifShapeHalfW(fr)
+      const isDragging = ifLive?.ifId === ifItem.id
+      const handlers = {
+        onMouseDown: e => {
+          e.stopPropagation()
+          ifWasDragged.current = false
+          ifDragRef.current = { ifId: ifItem.id, startX: e.clientX, startY: e.clientY, origX: cx, origY: cy }
+          setIfLive({ ifId: ifItem.id, x: cx, y: cy })
+        },
+        onClick: e => {
+          e.stopPropagation()
+          if (ifWasDragged.current) { ifWasDragged.current = false; return }
+          if (isEditing) { store.advanceFrequencyToRange(); return }
+          if (isIfSelected) store.deselectInternalFrequency()
+          else store.selectInternalFrequency(fact.id, ifItem.id)
+        },
+        onDoubleClick: e => { e.stopPropagation(); store.startFrequencyEdit(fact.id, ifItem.id) },
+        onContextMenu: e => { e.preventDefault(); e.stopPropagation(); onIfContextMenu?.(ifItem.id, e) },
+      }
+      return (
+        <g key={`if-${ifItem.id}`} style={{ filter: isIfSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+          {(() => {
+            const roles = isEditing ? fcRoles : ifItem.roles
+            if (roles.length === 2) {
+              const mid = ifConsecutiveMidpoint(fact, roles[0], roles[1], cx, cy)
+              if (mid) {
+                const edge = stadiumEdge(cx, cy, hw, IF_CIRCLE_R, mid.x, mid.y)
+                return <line x1={edge.x} y1={edge.y} x2={mid.x} y2={mid.y}
+                  stroke={col} strokeWidth={1.2} strokeDasharray="4 2" opacity={0.75}
+                  style={{ pointerEvents: 'none' }}/>
+              }
+            }
+            return roles.map(ri => {
+              const anchor = computeRoleAnchor(fact, ri, cx, cy)
+              const edge   = stadiumEdge(cx, cy, hw, IF_CIRCLE_R, anchor.x, anchor.y)
+              return <line key={ri} x1={edge.x} y1={edge.y} x2={anchor.x} y2={anchor.y}
+                stroke={col} strokeWidth={1.2} strokeDasharray="4 2" opacity={0.75}
+                style={{ pointerEvents: 'none' }}/>
+            })
+          })()}
+          {fr ? (
+            // Range defined: show only the text label (no border)
+            <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
+              fontSize={VR_FONT_SIZE} fill={col} fontFamily={VR_FONT}
+              style={{ cursor: isDragging ? 'grabbing' : 'grab', userSelect: 'none' }}
+              {...handlers}>
+              {fr}
+            </text>
+          ) : (
+            // No range yet: dashed circle with 'F'
+            <>
+              <circle cx={cx} cy={cy} r={IF_CIRCLE_R}
+                fill="#ffffff" stroke={col} strokeWidth={1.5} strokeDasharray="3 2"
+                style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+                {...handlers}/>
+              <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
+                fontSize={9} fill={col} fontFamily="var(--font-mono)" fontWeight={600}
+                style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                F
+              </text>
+            </>
+          )}
+        </g>
+      )
+    })}
+
+    {/* ── Internal frequency construction circle (stage 2, new constraints only) */}
+    {inFrequencyConstruction && store.frequencyConstruction?.stage === 2 && !store.frequencyConstruction?.ifId && (() => {
+      const fc = store.frequencyConstruction
+      const cx = ifConstrLive?.x ?? fc.x
+      const cy = ifConstrLive?.y ?? fc.y
+      return (
+        <g>
+          {(() => {
+            const roles = fc.roleIndices
+            if (roles.length === 2) {
+              const mid = ifConsecutiveMidpoint(fact, roles[0], roles[1], cx, cy)
+              if (mid) {
+                const edge = stadiumEdge(cx, cy, IF_CIRCLE_R, IF_CIRCLE_R, mid.x, mid.y)
+                return <line x1={edge.x} y1={edge.y} x2={mid.x} y2={mid.y}
+                  stroke="var(--accent)" strokeWidth={1.2} strokeDasharray="4 2" opacity={0.75}
+                  style={{ pointerEvents: 'none' }}/>
+              }
+            }
+            return roles.map(ri => {
+              const anchor = computeRoleAnchor(fact, ri, cx, cy)
+              const edge   = stadiumEdge(cx, cy, IF_CIRCLE_R, IF_CIRCLE_R, anchor.x, anchor.y)
+              return <line key={ri} x1={edge.x} y1={edge.y} x2={anchor.x} y2={anchor.y}
+                stroke="var(--accent)" strokeWidth={1.2} strokeDasharray="4 2" opacity={0.75}
+                style={{ pointerEvents: 'none' }}/>
+            })
+          })()}
+          <circle cx={cx} cy={cy} r={IF_CIRCLE_R}
+            fill="#ffffff" stroke="var(--accent)" strokeWidth={1.5} strokeDasharray="3 2"
+            style={{ cursor: ifConstrLive ? 'grabbing' : 'grab' }}
+            onMouseDown={e => {
+              e.stopPropagation()
+              ifConstrWasDragged.current = false
+              ifConstrDragRef.current = { startX: e.clientX, startY: e.clientY, origX: cx, origY: cy }
+              setIfConstrLive({ x: cx, y: cy })
+            }}
+            onClick={e => {
+              e.stopPropagation()
+              if (ifConstrWasDragged.current) { ifConstrWasDragged.current = false; return }
+              store.advanceFrequencyToRange()
+            }}
+          />
+          <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
+            fontSize={9} fill="var(--accent)" fontFamily="var(--font-mono)" fontWeight={600}
+            style={{ pointerEvents: 'none', userSelect: 'none' }}>
+            F
+          </text>
+        </g>
+      )
+    })()}
   </>
   )
 }
