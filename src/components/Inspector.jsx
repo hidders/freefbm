@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useLayoutEffect, useEffect } from
 import { useOrmStore } from '../store/ormStore'
 import { getDisplayReading } from './FactTypeNode'
 import { RingMiniSymbol } from './ConstraintNodes'
+import { PROFILES, PROFILE_MAP, getDatatypeById } from '../data/datatypeProfiles'
 
 const RING_TYPES = [
   { key: 'irreflexive',           label: 'Irreflexive' },
@@ -330,6 +331,100 @@ export function ValueRangeEditor({ range, onChange, naturalNumbers = false, posi
   )
 }
 
+// ── Datatype field (value types, entity types with refMode, nested value types)─
+function DatatypeField({ assignment, onSet }) {
+  const store = useOrmStore()
+  const activeDiagram = store.diagrams?.find(d => d.id === store.activeDiagramId)
+  const profileId = activeDiagram?.profileId ?? null
+  const profile = profileId ? PROFILE_MAP[profileId] : null
+  const mismatch = assignment && profileId && assignment.profileId !== profileId
+  const matchingDt = assignment && !mismatch
+    ? getDatatypeById(assignment.profileId, assignment.datatypeId)
+    : null
+
+  const selectStyle = {
+    width: '100%', fontSize: 12, padding: '3px 6px',
+    border: '1px solid var(--border)', borderRadius: 3,
+    background: 'var(--bg-raised)', color: 'var(--ink-2)',
+  }
+  const paramInputStyle = {
+    width: 60, fontSize: 12, padding: '2px 5px',
+    border: '1px solid var(--border)', borderRadius: 3,
+    background: 'var(--bg-raised)', color: 'var(--ink-2)',
+  }
+
+  return (
+    <>
+      <Row>
+        <Label>Datatype</Label>
+        {!profileId ? (
+          <span style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic' }}>
+            No profile set
+          </span>
+        ) : mismatch ? (
+          <span style={{ fontSize: 11, color: '#c0392b' }}>
+            Profile mismatch
+          </span>
+        ) : (
+          <select
+            value={assignment?.datatypeId ?? ''}
+            onChange={e => {
+              const dtId = e.target.value
+              if (!dtId) { onSet(null); return }
+              onSet({ profileId, datatypeId: dtId, params: {} })
+            }}
+            style={selectStyle}>
+            <option value="">— not set —</option>
+            {profile.datatypes.map(dt => (
+              <option key={dt.id} value={dt.id}>{dt.name}</option>
+            ))}
+          </select>
+        )}
+      </Row>
+      {mismatch && (
+        <div style={{ marginBottom: 6 }}>
+          <div style={{
+            fontSize: 11, color: '#c0392b',
+            background: '#fdf0ee', border: '1px solid #e8b4ae',
+            borderRadius: 3, padding: '5px 8px', marginBottom: 4,
+          }}>
+            &ldquo;{assignment.datatypeId}&rdquo; is from profile &ldquo;{PROFILE_MAP[assignment.profileId]?.name ?? assignment.profileId}&rdquo;,
+            current profile is &ldquo;{profile?.name ?? profileId}&rdquo;.
+          </div>
+          <button
+            onClick={() => onSet(null)}
+            style={{ fontSize: 11, padding: '3px 8px', color: '#c0392b',
+              background: 'transparent', border: '1px solid #c0392b', borderRadius: 3, cursor: 'pointer' }}>
+            Clear assignment
+          </button>
+        </div>
+      )}
+      {matchingDt && matchingDt.params.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 4, marginBottom: 4 }}>
+          {matchingDt.params.map(param => (
+            <Row key={param.name}>
+              <Label>{param.name}{param.optional ? '' : ' *'}</Label>
+              <input
+                type="number"
+                min={1}
+                value={assignment.params?.[param.name] ?? ''}
+                placeholder={param.optional ? 'optional' : 'required'}
+                onChange={e => {
+                  const val = e.target.value === '' ? undefined : Number(e.target.value)
+                  const params = { ...(assignment.params ?? {}), [param.name]: val }
+                  if (val === undefined) delete params[param.name]
+                  onSet({ ...assignment, params })
+                }}
+                style={paramInputStyle}
+              />
+            </Row>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
 // ── Entity / Value inspector ──────────────────────────────────────────────────
 function ObjectTypeInspector({ ot }) {
   const store = useOrmStore()
@@ -345,6 +440,12 @@ function ObjectTypeInspector({ ot }) {
           <TInput value={ot.refMode || ''} placeholder="id / name / none"
             onChange={v => store.updateObjectType(ot.id, { refMode: v })}/>
         </Row>
+      )}
+      {(ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none')) && (
+        <DatatypeField
+          assignment={ot.datatypeAssignment}
+          onSet={a => store.setValueTypeDatatype(ot.id, a)}
+        />
       )}
 
       <Subsection title="Constraints">
@@ -842,6 +943,16 @@ function FactConstraintsSubsection({ fact, store }) {
         </Row>
       )}
 
+      {fact.objectified && fact.objectifiedKind === 'entity' && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none' && (
+        <Row>
+          <Label>Value Range</Label>
+          <ValueRangeEditor
+            range={fact.valueRange}
+            onChange={vr => store.updateFact(fact.id, { valueRange: vr })}
+          />
+        </Row>
+      )}
+
       {fact.objectified && (
         <Row>
           <Label>Cardinality Range</Label>
@@ -1050,6 +1161,12 @@ function FactInspector({ fact }) {
               <TInput value={fact.objectifiedName || ''} placeholder="Name"
                 onChange={v => store.updateFact(fact.id, { objectifiedName: v })}/>
             </Row>
+            {fact.objectifiedKind === 'value' && (
+              <DatatypeField
+                assignment={fact.datatypeAssignment}
+                onSet={a => store.updateFact(fact.id, { datatypeAssignment: a })}
+              />
+            )}
             {fact.objectifiedKind !== 'value' && (
               <Row>
                 <Label>Reference Mode</Label>
@@ -1058,13 +1175,10 @@ function FactInspector({ fact }) {
               </Row>
             )}
             {fact.objectifiedKind !== 'value' && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none' && (
-              <Row>
-                <Label>Value Range</Label>
-                <ValueRangeEditor
-                  range={fact.valueRange}
-                  onChange={vr => store.updateFact(fact.id, { valueRange: vr })}
-                />
-              </Row>
+              <DatatypeField
+                assignment={fact.datatypeAssignment}
+                onSet={a => store.updateFact(fact.id, { datatypeAssignment: a })}
+              />
             )}
           </Section>
 
@@ -1761,6 +1875,33 @@ export default function Inspector() {
 
       {!selectedId && store.multiSelectedIds.length === 0 && !internalConstraintContent && (
         <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700,
+            letterSpacing: '0.1em', textTransform: 'uppercase',
+            borderBottom: '1px solid var(--border-soft)', paddingBottom: 5, marginBottom: 12 }}>
+            Diagram
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
+              textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+              Datatype profile
+            </label>
+            <select
+              value={store.diagrams?.find(d => d.id === store.activeDiagramId)?.profileId ?? ''}
+              onChange={e => store.setDiagramProfile(e.target.value || null)}
+              style={{ width: '100%', fontSize: 12, padding: '3px 6px',
+                border: '1px solid var(--border)', borderRadius: 3,
+                background: 'var(--bg-raised)', color: 'var(--ink-2)' }}>
+              <option value="">— none —</option>
+              {PROFILES.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginTop: 4 }}>
+              Target platform for value type datatype assignments
+            </div>
+          </div>
+
           <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700,
             letterSpacing: '0.1em', textTransform: 'uppercase',
             borderBottom: '1px solid var(--border-soft)', paddingBottom: 5, marginBottom: 12 }}>

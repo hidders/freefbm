@@ -316,7 +316,7 @@ export default function RoleConnectors({ mousePos }) {
 
         if (draft.factId != null && draft.roleIndex != null) {
           // Role-first: line from role-box anchor toward mouse
-          const fact = store.facts.find(f => f.id === draft.factId)
+          const fact = visibleFacts.find(f => f.id === draft.factId)
           if (!fact) return null
           const anchor = roleAnchor(fact, draft.roleIndex, mousePos.x, mousePos.y)
           return (

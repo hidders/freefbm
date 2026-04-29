@@ -398,7 +398,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const handleRoleDoubleClick = useCallback((roleIndex, e) => {
     e.stopPropagation()
     if (store.sequenceConstruction || inConstruction) return
-    store.select(fact.id, 'fact')
+    const roleAlreadySelected =
+      store.selectedRole?.factId === fact.id && store.selectedRole?.roleIndex === roleIndex
+    if (!roleAlreadySelected) return
     store.setTool('assignRole')
     store.setLinkDraft({ type: 'roleAssign', factId: fact.id, roleIndex, autoReturn: true })
   }, [store, fact.id, inConstruction])
@@ -417,6 +419,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     if (e.button !== 0) return
     if (e.detail >= 2) return  // second click of a double-click: do nothing
     if (e.shiftKey) { store.shiftSelect(fact.id); return }
+    if (store.selectedUniqueness?.factId === fact.id && store.tool === 'select') {
+      store.select(fact.id, 'fact')
+      return
+    }
     if (store.sequenceConstruction) {
       if (isVcConstruction && !vcEligibleRoles.has(roleIndex)) return
       store.collectSequenceMember({ kind: 'role', factId: fact.id, roleIndex })
@@ -503,7 +509,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       store.selectedRole?.factId === fact.id && store.selectedRole?.roleIndex === roleIndex
 
     if (thisRoleSelected) {
-      // Role already selected → click starts connector; drag drags the fact type
+      // Role already selected → click deselects role back to fact; drag drags the fact type
       const startX = e.clientX, startY = e.clientY
       let done = false
       const cleanup = () => {
@@ -515,10 +521,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         const dx = me.clientX - startX, dy = me.clientY - startY
         if (dx * dx + dy * dy > 16) { cleanup(); onDragStart(fact.id, 'fact', { clientX: startX, clientY: startY }) }
       }
-      const onUp = () => {
-        cleanup()
-        store.select(fact.id, 'fact')  // deselect role, keep fact selected
-      }
+      const onUp = () => { cleanup(); store.select(fact.id, 'fact') }
       window.addEventListener('mousemove', onMove)
       window.addEventListener('mouseup',   onUp)
       return
@@ -797,8 +800,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const isVrEligibleRole = (role) => {
     if (!role.objectTypeId) return false
     const ot = store.objectTypes.find(o => o.id === role.objectTypeId)
-    if (!ot) return false
-    return ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none')
+    if (ot) return ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none')
+    const nestedFact = store.facts.find(f => f.id === role.objectTypeId)
+    return !!(nestedFact && nestedFact.objectified && nestedFact.objectifiedKind === 'value')
   }
 
   const vcEligibleRoles = isVcConstruction ? new Set(
@@ -1331,7 +1335,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                       setNameDraft(fact.objectifiedName || '')
                       setEditingName(true)
                     }}>
-                    {fact.objectifiedName}
+                    {`\u201c${fact.objectifiedName}\u201d`}
                   </text>
                 )
               )}
@@ -1497,7 +1501,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                     setNameDraft(fact.objectifiedName || '')
                     setEditingName(true)
                   }}>
-                  {fact.objectifiedName}
+                  {`\u201c${fact.objectifiedName}\u201d`}
                 </text>
               )
             )}

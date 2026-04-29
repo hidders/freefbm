@@ -26,5 +26,5 @@ export function hasTargetObjectType(type) {
 
 /** True for types where "Add role position" should be suppressed. */
 export function suppressRolePosition(type) {
-  return type === 'inclusiveOr' || type === 'exclusiveOr' || type === 'valueComparison'
+  return type === 'inclusiveOr' || type === 'exclusiveOr' || type === 'valueComparison' || type === 'ring'
 }

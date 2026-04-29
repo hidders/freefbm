@@ -317,7 +317,11 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
           action: () => store.startSequenceConstruction(c.id, 'extend') })
       }
       items.push('---')
-      if (c.constraintType === 'uniqueness') {
+      if (c.constraintType === 'frequency') {
+        items.push({ label: 'Edit Frequency Range…',
+          action: () => store.startExternalFrequencyEdit(c.id) })
+        items.push('---')
+      } else if (c.constraintType === 'uniqueness') {
         items.push({
           label: 'Is Preferred Identifier',
           checked: !!c.isPreferredIdentifier,

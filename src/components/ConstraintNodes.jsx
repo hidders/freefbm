@@ -1024,16 +1024,14 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
                     stroke={strokeColor}
                     strokeWidth={isSelected ? 2 : isCandidate ? 2 : 1.5}
                   />
-                  {lbl && (
-                    <text x={c.x} y={c.y}
-                      textAnchor="middle" dominantBaseline="central"
-                      fontSize={FREQ_FONT_SIZE} fill={strokeColor}
-                      fontFamily="var(--font-mono)"
-                      style={{ pointerEvents: 'none' }}
-                    >
-                      {lbl}
-                    </text>
-                  )}
+                  <text x={c.x} y={c.y}
+                    textAnchor="middle" dominantBaseline="central"
+                    fontSize={FREQ_FONT_SIZE} fill={strokeColor}
+                    fontFamily="'Segoe UI', Helvetica, Arial, sans-serif"
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    {lbl || 'F'}
+                  </text>
                 </g>
               )
             })()}

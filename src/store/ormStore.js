@@ -13,12 +13,14 @@ const mkEntity = (x, y) => ({
   name: 'Entity', x, y,
   refMode: 'none',
   valueRangeOffset: null,
+  datatypeAssignment: null,  // { profileId, datatypeId, params? } | null
 })
 
 const mkValue = (x, y) => ({
   id: uid(), kind: 'value',
   name: 'Value', x, y,
   valueRangeOffset: null,
+  datatypeAssignment: null,  // { profileId, datatypeId, params? } | null
 })
 
 const mkRole = () => ({
@@ -92,7 +94,7 @@ const mkConstraint = (type, x, y) => ({
 
 // elementIds: null  = no filter, show all elements (default / first diagram)
 // elementIds: []    = intentionally empty (new user-created diagram)
-const mkDiagram = (name = 'Main') => ({ id: uid(), name, elementIds: null, positions: {}, multiSelectedIds: [] })
+const mkDiagram = (name = 'Main') => ({ id: uid(), name, elementIds: null, positions: {}, multiSelectedIds: [], profileId: null })
 
 // ── name uniqueness ───────────────────────────────────────────────────────────
 // Strip trailing digits → find smallest N ≥ 1 such that base+N ∉ usedNames.
@@ -537,6 +539,21 @@ export const useOrmStore = create((set, get) => ({
   setShowMinimap(val)         { set({ showMinimap: val }) },
   setMinimapPos(x, y)         { set({ minimapPos: { x, y } }) },
 
+  setDiagramProfile(profileId) {
+    set(s => ({
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : { ...d, profileId }),
+      isDirty: true,
+    }))
+  },
+
+  setValueTypeDatatype(id, assignment) {
+    // assignment: { profileId, datatypeId, params? } | null
+    set(s => ({
+      objectTypes: s.objectTypes.map(o => o.id !== id ? o : { ...o, datatypeAssignment: assignment }),
+      isDirty: true,
+    }))
+  },
+
   // ── model ops ──────────────────────────────────────────────────────────
 
   newModel() {
@@ -755,7 +772,7 @@ export const useOrmStore = create((set, get) => ({
 
   addNestedFact(x, y, arity = 2, objectifiedKind = 'entity') {
     const n = nextRelationNumber(get().facts)
-    const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind, nestedReading: false }
+    const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind, nestedReading: false, datatypeAssignment: null }
     set(s => {
       const used = new Set(
         s.objectTypes.map(o => o.name).concat(s.facts.map(f => f.objectifiedName).filter(Boolean))
@@ -778,7 +795,7 @@ export const useOrmStore = create((set, get) => ({
 
   addNestedValueFact(x, y, arity = 2) {
     const n = nextRelationNumber(get().facts)
-    const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind: 'value', nestedReading: false }
+    const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind: 'value', nestedReading: false, datatypeAssignment: null }
     set(s => {
       const used = new Set(
         s.objectTypes.filter(o => o.kind === 'value').map(o => o.name)
@@ -1843,6 +1860,11 @@ export const useOrmStore = create((set, get) => ({
     const fc = get().frequencyConstruction
     set({ frequencyConstruction: null, tool: 'select' })
     if (!fc || fc.stage !== 3) return
+    if (fc.constraintId != null) {
+      // External frequency constraint
+      get().updateConstraint(fc.constraintId, { frequency: fc.range ?? [] })
+      return
+    }
     if (fc.ifId != null) {
       // Editing an existing IF constraint
       const fact = get().facts.find(f => f.id === fc.factId)
@@ -1867,6 +1889,15 @@ export const useOrmStore = create((set, get) => ({
         isDirty: true,
       }))
     }
+  },
+  startExternalFrequencyEdit(constraintId) {
+    const c = get().constraints.find(c => c.id === constraintId)
+    if (!c) return
+    set({ frequencyConstruction: {
+      stage: 3, constraintId,
+      x: c.x + 40, y: c.y - 30,
+      range: c.frequency ?? [],
+    }})
   },
   startFrequencyRangeEdit(factId, ifId) {
     const fact = get().facts.find(f => f.id === factId)
