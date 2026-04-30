@@ -360,20 +360,25 @@ export function MandatoryDots({ onContextMenu }) {
           const pos    = dotAtObject ? border : anchor
           const isSelected = sel?.factId === fact.id && sel?.roleIndex === ri
           return (
-            <circle key={`dot-${fact.id}-${ri}`}
-              cx={pos.x} cy={pos.y} r={DOT_R}
-              fill="var(--col-mandatory)"
-              style={{ cursor: 'pointer', filter: isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
-              onClick={e => {
-                e.stopPropagation()
-                if (isSelected) store.deselectMandatoryDot()
-                else store.selectMandatoryDot(fact.id, ri)
-              }}
-              onContextMenu={e => {
-                e.preventDefault(); e.stopPropagation()
-                store.selectMandatoryDot(fact.id, ri)
-                onContextMenu?.(fact.id, ri, e)
-              }}/>
+            <g key={`dot-${fact.id}-${ri}`} className="selectable-group" style={{ cursor: 'pointer', filter: isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+              <circle
+                cx={pos.x} cy={pos.y} r={DOT_R}
+                fill="var(--col-mandatory)"
+                onClick={e => {
+                  e.stopPropagation()
+                  if (isSelected) store.deselectMandatoryDot()
+                  else store.selectMandatoryDot(fact.id, ri)
+                }}
+                onContextMenu={e => {
+                  e.preventDefault(); e.stopPropagation()
+                  store.selectMandatoryDot(fact.id, ri)
+                  onContextMenu?.(fact.id, ri, e)
+                }}/>
+              <rect className="hover-ring"
+                x={pos.x - DOT_R - 3} y={pos.y - DOT_R - 3}
+                width={(DOT_R + 3) * 2} height={(DOT_R + 3) * 2}
+                rx={DOT_R + 3}/>
+            </g>
           )
         }).filter(Boolean)
       )}

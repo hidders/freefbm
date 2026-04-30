@@ -1640,14 +1640,14 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             const ry = startY_v + ri * (ROLE_W + ROLE_GAP)
             const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
             return (
-              <g key={role.id} className="role-box-group" filter={isRoleSelected(ri) ? 'url(#selectGlow)' : undefined}>
+               <g key={role.id} className="role-box-group" filter={isRoleSelected(ri) ? 'url(#selectGlow)' : undefined}>
                 <rect x={leftX_v} y={ry} width={ROLE_H} height={ROLE_W}
                   fill={
                     roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
                     : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
                     : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
                     : roleIsCandidate(ri) ? 'var(--fill-candidate)'
-                    : isRoleSelected(ri) ? '#dde8f5'
+                    : isRoleSelected(ri) ? '#ffffff'
                     : highlightedRoles?.has(ri) ? '#fde3c8'
                     : '#ffffff'
                   }
@@ -1787,7 +1787,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             const rx = startX + ri * (ROLE_W + ROLE_GAP)
             const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
             return (
-              <g key={role.id} className="role-box-group" filter={isRoleSelected(ri) ? 'url(#selectGlow)' : undefined}>
+               <g key={role.id} className="role-box-group" filter={isRoleSelected(ri) ? 'url(#selectGlow)' : undefined}>
                 <rect
                   x={rx} y={topY} width={ROLE_W} height={ROLE_H}
                   fill={
@@ -1795,7 +1795,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                     : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
                     : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
                     : roleIsCandidate(ri) ? 'var(--fill-candidate)'
-                    : isRoleSelected(ri) ? '#dde8f5'
+                    : isRoleSelected(ri) ? '#ffffff'
                     : highlightedRoles?.has(ri) ? '#fde3c8'
                     : '#ffffff'
                   }
