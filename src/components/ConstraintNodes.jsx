@@ -799,6 +799,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
 
         return (
           <g key={c.id}
+            className="selectable-group"
             onMouseDown={(e) => {
               e.stopPropagation()
               if (e.button !== 0 || e.detail >= 2) return  // skip second click of double-click
@@ -1110,6 +1111,16 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
                 </g>
               )
             })()}
+            {/* Hover ring — expanded 3–4px outward so it shows as a halo around the element */}
+            {c.constraintType === 'frequency' ? (() => {
+              const lbl_ = formatFrequencyRange(c.frequency) ?? ''
+              const sw_  = freqStadiumW(lbl_)
+              const sh_  = EXTERNAL_CONSTRAINT_R
+              return <rect className="hover-ring" x={c.x - sw_/2 - 3} y={c.y - sh_ - 3} width={sw_ + 6} height={sh_*2 + 6} rx={sh_ + 3}/>
+            })() : (
+              <circle className="hover-ring" cx={c.x} cy={c.y}
+                r={(EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) && c.constraintType !== 'ring' ? EXTERNAL_CONSTRAINT_R : CONSTRAINT_R) + 4}/>
+            )}
           </g>
         )
       })}

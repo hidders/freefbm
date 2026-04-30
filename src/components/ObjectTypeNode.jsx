@@ -295,6 +295,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
   return (
   <>
     <g
+      className="selectable-group"
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
       onContextMenu={onContextMenu}
@@ -386,6 +387,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
         )
       )}
 
+      <rect className="hover-ring" x={ot.x - w/2 - 3} y={ot.y - h/2 - 3} width={w + 6} height={h + 6} rx={8}/>
     </g>
 
     {(() => {
@@ -420,7 +422,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
         const lineEndY = dxB === 0 && dyB === 0 ? ty : ty + dyB * tLbl
 
         return (
-          <g>
+          <g className="selectable-group">
             <line x1={connX} y1={connY} x2={lineEndX} y2={lineEndY}
               stroke="var(--col-constraint)" strokeWidth={1.5}
               strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
@@ -455,6 +457,9 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
                 </text>
               )
             })()}
+            <rect className="hover-ring"
+              x={tx - halfW - 3} y={ty - halfH - 3}
+              width={halfW * 2 + 6} height={halfH * 2 + 6} rx={3}/>
           </g>
         )
       })()}
@@ -485,7 +490,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
         const lineEndY = dxB === 0 && dyB === 0 ? ty : ty + dyB * tLbl
 
         return (
-          <g>
+          <g className="selectable-group">
             <line x1={connX} y1={connY} x2={lineEndX} y2={lineEndY}
               stroke="var(--col-constraint)" strokeWidth={1.5}
               strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
@@ -520,6 +525,9 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
                 </text>
               )
             })()}
+            <rect className="hover-ring"
+              x={tx - halfW - 3} y={ty - halfH - 3}
+              width={halfW * 2 + 6} height={halfH * 2 + 6} rx={3}/>
           </g>
         )
       })()}

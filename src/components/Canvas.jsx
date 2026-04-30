@@ -495,6 +495,7 @@ export default function Canvas() {
       <svg
         ref={svgRef}
         id="orm2-canvas-svg"
+        className={store.tool === 'select' ? 'tool-select' : undefined}
         tabIndex={0}
         style={{ width: '100%', height: '100%', display: 'block',
                  background: 'var(--bg-canvas)', cursor, outline: 'none' }}

@@ -99,13 +99,21 @@ function Label({ children }) {
   return <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
     textTransform: 'uppercase', marginBottom: 3, display: 'block' }}>{children}</label>
 }
+function InspectorTitle({ children }) {
+  return (
+    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)',
+      borderBottom: '1px solid var(--border)', paddingBottom: 6, marginBottom: 12 }}>
+      {children}
+    </div>
+  )
+}
 function Section({ title, children }) {
   return (
-    <div style={{ marginBottom: 18 }}>
+    <div style={{ marginBottom: 14 }}>
       {title && (
         <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700,
-          letterSpacing: '0.1em', textTransform: 'uppercase',
-          borderBottom: '1px solid var(--border-soft)', paddingBottom: 5, marginBottom: 10 }}>
+          letterSpacing: '0.08em', textTransform: 'uppercase',
+          borderBottom: '1px solid var(--border-soft)', paddingBottom: 4, marginBottom: 8 }}>
           {title}
         </div>
       )}
@@ -114,18 +122,6 @@ function Section({ title, children }) {
   )
 }
 function Row({ children }) { return <div style={{ marginBottom: 8 }}>{children}</div> }
-function Subsection({ title, children }) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 10, color: 'var(--ink-3)', fontWeight: 700,
-        letterSpacing: '0.08em', textTransform: 'uppercase',
-        borderBottom: '1px solid var(--border-soft)', paddingBottom: 4, marginBottom: 8 }}>
-        {title}
-      </div>
-      {children}
-    </div>
-  )
-}
 
 // ── Diagrams-containing list ─────────────────────────────────────────────────
 // Shows which diagrams contain the given element, in tab order.
@@ -259,6 +255,8 @@ const VR_TYPES = [
 
 export function ValueRangeEditor({ range, onChange, naturalNumbers = false, positiveIntegers = false }) {
   const specs = range || []
+  const [dragIdx, setDragIdx] = useState(null)
+  const [overIdx, setOverIdx] = useState(null)
 
   const commit = (newSpecs) => onChange(newSpecs.length ? newSpecs : null)
 
@@ -282,6 +280,16 @@ export function ValueRangeEditor({ range, onChange, naturalNumbers = false, posi
     commit(specs.map((s, j) => j === i ? base : s))
   }
 
+  const handleDrop = (targetIdx) => {
+    if (dragIdx === null || dragIdx === targetIdx) return
+    const next = [...specs]
+    const [moved] = next.splice(dragIdx, 1)
+    next.splice(targetIdx, 0, moved)
+    commit(next)
+    setDragIdx(null)
+    setOverIdx(null)
+  }
+
   const inputStyle = { fontSize: 11, padding: '2px 4px', flex: 1, minWidth: 0 }
   const sepStyle = { fontSize: 11, color: 'var(--ink-muted)', flexShrink: 0, padding: '0 2px' }
   const numProps = positiveIntegers ? { type: 'number', min: 1, step: 1 }
@@ -290,7 +298,21 @@ export function ValueRangeEditor({ range, onChange, naturalNumbers = false, posi
   return (
     <div>
       {specs.map((spec, i) => (
-        <div key={i} style={{ display: 'flex', gap: 3, marginBottom: 4, alignItems: 'center' }}>
+        <div key={i}
+          draggable
+          onDragStart={() => setDragIdx(i)}
+          onDragOver={e => { e.preventDefault(); setOverIdx(i) }}
+          onDragLeave={() => setOverIdx(null)}
+          onDrop={() => handleDrop(i)}
+          onDragEnd={() => { setDragIdx(null); setOverIdx(null) }}
+          style={{
+            display: 'flex', gap: 3, marginBottom: 4, alignItems: 'center',
+            opacity: dragIdx === i ? 0.4 : 1,
+            outline: overIdx === i && dragIdx !== i ? '1px dashed var(--accent)' : 'none',
+            borderRadius: 3,
+          }}>
+          <span style={{ cursor: 'grab', color: 'var(--ink-muted)', fontSize: 11,
+            flexShrink: 0, paddingRight: 1, userSelect: 'none' }}>⠿</span>
           <select value={spec.type} onChange={e => changeType(i, e.target.value)}
             style={{ fontSize: 11, flexShrink: 0 }}>
             {VR_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -430,7 +452,8 @@ function DatatypeField({ assignment, onSet }) {
 function ObjectTypeInspector({ ot }) {
   const store = useOrmStore()
   return (
-    <Section title={ot.kind === 'entity' ? 'Entity Type' : 'Value Type'}>
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>{ot.kind === 'entity' ? 'Entity Type' : 'Value Type'}</InspectorTitle>
       <Row>
         <Label>Name</Label>
         <TInput value={ot.name} onChange={v => store.updateObjectType(ot.id, { name: v })}/>
@@ -449,7 +472,7 @@ function ObjectTypeInspector({ ot }) {
         />
       )}
 
-      <Subsection title="Constraints">
+      <Section title="Constraints">
         {(ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none')) && (
           <Row>
             <Label>Value Range</Label>
@@ -462,16 +485,16 @@ function ObjectTypeInspector({ ot }) {
           <RangeChip range={ot.cardinalityRange} format={formatCardinalityRange}
             onClick={() => store.selectCardinalityRange({ otId: ot.id })} />
         </Row>
-      </Subsection>
+      </Section>
 
-      <Subsection title="Usage">
+      <Section title="Usage">
         <DiagramList elementId={ot.id} kind={ot.kind} />
-      </Subsection>
+      </Section>
 
       <DangerBtn onClick={() => store.deleteObjectType(ot.id)}>
         Delete {ot.kind === 'entity' ? 'Entity' : 'Value'} Type
       </DangerBtn>
-    </Section>
+    </div>
   )
 }
 
@@ -498,7 +521,7 @@ function RangeChip({ range, onClick, format = formatValueRange }) {
 // ── Shared role constraints section (used in RoleList and RoleInspector) ─────
 function RoleConstraintsSection({ role, onChange, onNavigateValueRange, onNavigateCardinalityRange }) {
   return (
-    <Subsection title="Constraints">
+    <Section title="Constraints">
       <Label>Participation</Label>
       <Checkbox label="Mandatory" checked={role.mandatory}
         onChange={v => onChange({ mandatory: v })} />
@@ -516,7 +539,7 @@ function RoleConstraintsSection({ role, onChange, onNavigateValueRange, onNaviga
           : <ValueRangeEditor naturalNumbers range={role.cardinalityRange}
               onChange={vr => onChange({ cardinalityRange: vr })} />}
       </Row>
-    </Subsection>
+    </Section>
   )
 }
 
@@ -721,7 +744,8 @@ function RoleInspector({ fact, roleIndex }) {
   const reading = getDisplayReading(fact) || null
 
   return (
-    <Section title={`Role ${roleIndex + 1}`}>
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Role {roleIndex + 1}</InspectorTitle>
       <div style={{ marginBottom: 10 }}>
         <button
           onClick={() => store.select(fact.id, 'fact')}
@@ -757,7 +781,11 @@ function RoleInspector({ fact, roleIndex }) {
         onNavigateValueRange={() => store.selectValueRange({ factId: fact.id, roleIndex })}
         onNavigateCardinalityRange={() => store.selectCardinalityRange({ factId: fact.id, roleIndex })}
       />
-    </Section>
+      <Label>Usage</Label>
+      <DangerBtn onClick={() => { store.deleteRole(fact.id, roleIndex); store.select(fact.id, 'fact') }}>
+        Delete Role
+      </DangerBtn>
+    </div>
   )
 }
 
@@ -781,7 +809,8 @@ function UniquenessBarInspector({ fact, uIndex }) {
   }
 
   return (
-    <Section title="Internal Uniqueness">
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Internal Uniqueness</InspectorTitle>
       <div style={{ marginBottom: 10 }}>
         <button onClick={() => store.select(fact.id, 'fact')}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
@@ -820,7 +849,7 @@ function UniquenessBarInspector({ fact, uIndex }) {
           Delete
         </DangerBtn>
       </div>
-    </Section>
+    </div>
   )
 }
 
@@ -840,7 +869,8 @@ function InternalFrequencyInspector({ fact, ifItem }) {
   }
 
   return (
-    <Section title="Internal Frequency">
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Frequency Range</InspectorTitle>
       <div style={{ marginBottom: 10 }}>
         <button onClick={() => store.select(fact.id, 'fact')}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
@@ -876,11 +906,12 @@ function InternalFrequencyInspector({ fact, ifItem }) {
         />
       </Row>
       <div style={{ marginTop: 8 }}>
+        <Label>Usage</Label>
         <DangerBtn onClick={() => { store.removeInternalFrequency(fact.id, ifItem.id); store.select(fact.id, 'fact') }}>
-          Delete
+          Delete Frequency Range
         </DangerBtn>
       </div>
-    </Section>
+    </div>
   )
 }
 
@@ -899,6 +930,8 @@ function useRangeSelectionInfo(sel) {
       cardinalityRange: ot.cardinalityRange,
       onChangeValueRange:      vr => store.updateObjectType(ot.id, { valueRange: vr }),
       onChangeCardinalityRange: vr => store.updateObjectType(ot.id, { cardinalityRange: vr }),
+      onDeleteValueRange:      () => { store.removeValueRange(sel); store.select(ot.id, ot.kind) },
+      onDeleteCardinalityRange: () => { store.removeCardinalityRange(sel); store.select(ot.id, ot.kind) },
     }
   }
   if (sel.factId != null) {
@@ -915,6 +948,8 @@ function useRangeSelectionInfo(sel) {
       cardinalityRange: role.cardinalityRange,
       onChangeValueRange:      vr => store.updateRole(f.id, sel.roleIndex, { valueRange: vr }),
       onChangeCardinalityRange: vr => store.updateRole(f.id, sel.roleIndex, { cardinalityRange: vr }),
+      onDeleteValueRange:      () => { store.removeValueRange(sel); store.selectRole(f.id, sel.roleIndex) },
+      onDeleteCardinalityRange: () => { store.removeCardinalityRange(sel); store.selectRole(f.id, sel.roleIndex) },
     }
   }
   if (sel.nestedFactId) {
@@ -929,6 +964,8 @@ function useRangeSelectionInfo(sel) {
       cardinalityRange: f.cardinalityRange,
       onChangeValueRange:      vr => store.updateFact(f.id, { valueRange: vr }),
       onChangeCardinalityRange: vr => store.updateFact(f.id, { cardinalityRange: vr }),
+      onDeleteValueRange:      () => { store.removeValueRange(sel); store.select(f.id, 'fact') },
+      onDeleteCardinalityRange: () => { store.removeCardinalityRange(sel); store.select(f.id, 'fact') },
     }
   }
   return null
@@ -939,7 +976,8 @@ function ValueRangeConstraintInspector({ sel }) {
   const info = useRangeSelectionInfo(sel)
   if (!info) return null
   return (
-    <Section title="Value Range">
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Value Range</InspectorTitle>
       <div style={{ marginBottom: 10 }}>
         <button onClick={info.onBack}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
@@ -952,12 +990,15 @@ function ValueRangeConstraintInspector({ sel }) {
         <div style={{ fontSize: 12, color: 'var(--ink-2)' }}>{info.label}</div>
       </Row>
       <Row>
+        <Label>Range specifications</Label>
         <ValueRangeEditor
           range={info.valueRange}
           onChange={info.onChangeValueRange}
         />
       </Row>
-    </Section>
+      <Label>Usage</Label>
+      <DangerBtn onClick={info.onDeleteValueRange}>Delete Value Range</DangerBtn>
+    </div>
   )
 }
 
@@ -966,7 +1007,8 @@ function CardinalityRangeInspector({ sel }) {
   const info = useRangeSelectionInfo(sel)
   if (!info) return null
   return (
-    <Section title="Cardinality Range">
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Cardinality Range</InspectorTitle>
       <div style={{ marginBottom: 10 }}>
         <button onClick={info.onBack}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
@@ -979,13 +1021,16 @@ function CardinalityRangeInspector({ sel }) {
         <div style={{ fontSize: 12, color: 'var(--ink-2)' }}>{info.label}</div>
       </Row>
       <Row>
+        <Label>Range specifications</Label>
         <ValueRangeEditor
           naturalNumbers
           range={info.cardinalityRange}
           onChange={info.onChangeCardinalityRange}
         />
       </Row>
-    </Section>
+      <Label>Usage</Label>
+      <DangerBtn onClick={info.onDeleteCardinalityRange}>Delete Cardinality Range</DangerBtn>
+    </div>
   )
 }
 
@@ -1032,7 +1077,7 @@ function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart }) {
       {parts.map((seg, i) => (
         <React.Fragment key={i}>
           {/* inline-block span sized by hidden text; input overlays it absolutely */}
-          <span style={{ display: 'inline-block', position: 'relative', background: '#fef6ec', borderRadius: 2, padding: '0 4px' }}>
+          <span style={{ display: 'inline-block', position: 'relative', background: '#fef6ec', borderRadius: 2, padding: '0 4px', outline: '1px dotted var(--border)' }}>
             <span aria-hidden style={{
               visibility: 'hidden', whiteSpace: 'pre',
               fontSize: 12, fontFamily: FONT, padding: 0, margin: 0,
@@ -1080,7 +1125,7 @@ function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart }) {
 // ── Fact presentation subsection ─────────────────────────────────────────────
 function FactPresentationSubsection({ fact, store }) {
   return (
-    <Subsection title="Presentation">
+    <Section title="Presentation">
       {fact.arity === 2 && (
         <Row>
           <Label>Reading display</Label>
@@ -1142,14 +1187,14 @@ function FactPresentationSubsection({ fact, store }) {
           onChange={v => store.updateFactLayout(fact.id, { uniquenessBelow: v })}
         />
       </Row>
-    </Subsection>
+    </Section>
   )
 }
 
 // ── Fact constraints subsection ───────────────────────────────────────────────
 function FactConstraintsSubsection({ fact, store }) {
   return (
-    <Subsection title="Constraints">
+    <Section title="Constraints">
       <Label>Uniqueness</Label>
       {fact.uniqueness.length === 0 && (
         <div style={{ color: 'var(--ink-muted)', fontSize: 11, marginBottom: 8 }}>None defined</div>
@@ -1235,7 +1280,7 @@ function FactConstraintsSubsection({ fact, store }) {
           + Frequency Constraint
         </button>
       )}
-    </Subsection>
+    </Section>
   )
 }
 
@@ -1246,7 +1291,8 @@ function FactInspector({ fact }) {
 
   // Shared: arity + readings + display options
   const factTypeSection = (
-    <Section title={fact.objectified ? undefined : `Fact Type (${fact.arity}-ary)`}>
+    <div style={{ marginBottom: 18 }}>
+      {!fact.objectified && <InspectorTitle>Fact Type ({fact.arity}-ary)</InspectorTitle>}
       {/* Arity control */}
       <Row>
         <Label>Arity</Label>
@@ -1379,15 +1425,15 @@ function FactInspector({ fact }) {
       <FactPresentationSubsection fact={fact} store={store} />
       <FactConstraintsSubsection fact={fact} store={store} />
 
-      <Subsection title="Usage">
+      <Section title="Usage">
         <DiagramList elementId={fact.id} kind="fact" />
-      </Subsection>
+      </Section>
       <DangerBtn onClick={() => store.deleteFact(fact.id)}>
         {fact.objectified
           ? (fact.objectifiedKind === 'value' ? 'Delete Nested Value Type' : 'Delete Nested Entity Type')
           : 'Delete Fact Type'}
       </DangerBtn>
-    </Section>
+    </div>
   )
 
   return (
@@ -1395,7 +1441,8 @@ function FactInspector({ fact }) {
       {fact.objectified ? (
         <>
           {/* Object-type identity */}
-          <Section title={`Nested ${fact.objectifiedKind === 'value' ? 'Value' : 'Entity'} Type`}>
+          <div style={{ marginBottom: 18 }}>
+            <InspectorTitle>Nested {fact.objectifiedKind === 'value' ? 'Value' : 'Entity'} Type</InspectorTitle>
             <Row>
               <Label>{fact.objectifiedKind === 'value' ? 'Value Name' : 'Entity Name'}</Label>
               <TInput value={fact.objectifiedName || ''} placeholder="Name"
@@ -1420,7 +1467,7 @@ function FactInspector({ fact }) {
                 onSet={a => store.updateFact(fact.id, { datatypeAssignment: a })}
               />
             )}
-          </Section>
+          </div>
 
           {/* Fact-type structure */}
           {factTypeSection}
@@ -1442,7 +1489,8 @@ function SubtypeInspector({ st }) {
     return '?'
   }
   return (
-    <Section title="Subtype Relationship">
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Subtype Relationship</InspectorTitle>
       <Row>
         <div style={{ fontSize: 12, color: 'var(--ink-2)', padding: '6px 8px',
           background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', borderRadius: 4 }}>
@@ -1460,7 +1508,7 @@ function SubtypeInspector({ st }) {
       <div style={{ marginTop: 8 }}>
         <DangerBtn onClick={() => store.deleteSubtype(st.id)}>Delete</DangerBtn>
       </div>
-    </Section>
+    </div>
   )
 }
 
@@ -1589,7 +1637,8 @@ function ExternalConstraintInspector({ c }) {
     border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', color: 'var(--ink-2)' }
 
   return (
-    <Section title={EXTERNAL_CONSTRAINT_TITLES[c.constraintType] || 'Constraint'}>
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>{EXTERNAL_CONSTRAINT_TITLES[c.constraintType] || 'Constraint'}</InspectorTitle>
 
       {/* Is Preferred Identifier — only for uniqueness */}
       {c.constraintType === 'uniqueness' && (
@@ -1878,11 +1927,11 @@ function ExternalConstraintInspector({ c }) {
         </div>
       )}
 
-      <Subsection title="Usage">
+      <Section title="Usage">
         <DiagramList elementId={c.id} kind="constraint" />
-      </Subsection>
+      </Section>
       <DangerBtn onClick={() => store.deleteConstraint(c.id)}>Delete Constraint</DangerBtn>
-    </Section>
+    </div>
   )
 }
 
@@ -1892,7 +1941,8 @@ function ConstraintInspector({ c }) {
   const factMap = Object.fromEntries(store.facts.map(f => [f.id, f]))
 
   return (
-    <Section title={`${c.constraintType.charAt(0).toUpperCase() + c.constraintType.slice(1)} Constraint`}>
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>{c.constraintType.charAt(0).toUpperCase() + c.constraintType.slice(1)} Constraint</InspectorTitle>
 
       {c.constraintType === 'frequency' && (
         <>
@@ -1956,13 +2006,13 @@ function ConstraintInspector({ c }) {
         </div>
       ))}
 
-      <Subsection title="Usage">
+      <Section title="Usage">
         <DiagramList elementId={c.id} kind="constraint" />
-      </Subsection>
+      </Section>
       <div style={{ marginTop: 8 }}>
         <DangerBtn onClick={() => store.deleteConstraint(c.id)}>Delete Constraint</DangerBtn>
       </div>
-    </Section>
+    </div>
   )
 }
 

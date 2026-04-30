@@ -535,6 +535,19 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     }
   }, [store, fact.id, isAssignTool, inConstruction, inFrequencyConstruction, isSelected, onDragStart])
 
+  // Dynamic cursor on role boxes: crosshair (interior → selects role) vs pointer (border → selects fact)
+  const handleRoleMouseMove = useCallback((e) => {
+    const BORDER_PX = 3 * store.zoom
+    const bbox = e.currentTarget.getBoundingClientRect()
+    const inInterior = e.clientX > bbox.left + BORDER_PX && e.clientX < bbox.right  - BORDER_PX &&
+                       e.clientY > bbox.top  + BORDER_PX && e.clientY < bbox.bottom - BORDER_PX
+    e.currentTarget.parentElement?.classList.toggle('role-interior', inInterior)
+  }, [store.zoom])
+
+  const handleRoleMouseLeave = useCallback((e) => {
+    e.currentTarget.parentElement?.classList.remove('role-interior')
+  }, [])
+
   // ── Annotation drag (value-range labels + reading text) ───────────────────
   const vrDragRef       = useRef(null)
   const nestedVrDragRef = useRef(null)
@@ -544,6 +557,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const crWasDragged       = useRef(false)
   const nestedVrWasDragged = useRef(false)
   const nestedCrWasDragged = useRef(false)
+  const readingWasDragged  = useRef(false)
+  const nameWasDragged     = useRef(false)
   const ifDragRef         = useRef(null)   // { ifId, startX, startY, origX, origY } | null
   const ifWasDragged      = useRef(false)  // set true when existing IF circle drag threshold exceeded
   const ifConstrDragRef   = useRef(null)   // { startX, startY, origX, origY } | null (construction circle)
@@ -597,9 +612,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       }
       const rd = readingDragRef.current
       if (rd) {
-        const dx = rd.origDx + (e.clientX - rd.startX) / zoom
-        const dy = rd.origDy + (e.clientY - rd.startY) / zoom
-        setReadingLive({ dx, dy })
+        const rawDx = e.clientX - rd.startX, rawDy = e.clientY - rd.startY
+        if (rawDx*rawDx + rawDy*rawDy > 9) readingWasDragged.current = true
+        setReadingLive({ dx: rd.origDx + rawDx / zoom, dy: rd.origDy + rawDy / zoom })
       }
       const ifd = ifDragRef.current
       if (ifd) {
@@ -617,9 +632,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       }
       const nd = nameDragRef.current
       if (nd) {
-        const dx = nd.origDx + (e.clientX - nd.startX) / zoom
-        const dy = nd.origDy + (e.clientY - nd.startY) / zoom
-        setNameLive({ dx, dy })
+        const rawDx = e.clientX - nd.startX, rawDy = e.clientY - nd.startY
+        if (rawDx*rawDx + rawDy*rawDy > 9) nameWasDragged.current = true
+        setNameLive({ dx: nd.origDx + rawDx / zoom, dy: nd.origDy + rawDy / zoom })
       }
     }
     const onUp = (e) => {
@@ -998,7 +1013,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); commitReadingEdit() } if (e.key === 'Escape') { e.stopPropagation(); setEditingReading(false) } }}
                   onMouseDown={e => e.stopPropagation()}
                   style={{ width: Math.max(12, seg.length * 7), minWidth: 0, border:'none',
-                    outline:'none', background:'#fef6ec', color:'var(--ink-2)',
+                    outline:'1px dotted var(--border)', background:'#fef6ec', color:'var(--ink-2)',
                     fontSize:13, fontFamily:FONT, textAlign:'center',
                     padding:'0', boxSizing:'border-box' }}
                 />
@@ -1019,8 +1034,14 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         style={{ cursor: isDraggingReading ? 'grabbing' : 'grab', userSelect: 'none' }}
         onMouseDown={e => {
           e.stopPropagation()
+          readingWasDragged.current = false
           readingDragRef.current = { startX: e.clientX, startY: e.clientY, origDx: off.dx, origDy: off.dy }
           setReadingLive({ dx: off.dx, dy: off.dy })
+        }}
+        onClick={e => {
+          e.stopPropagation()
+          if (readingWasDragged.current) { readingWasDragged.current = false; return }
+          store.select(fact.id, 'fact')
         }}
         onDoubleClick={e => {
           e.stopPropagation()
@@ -1104,7 +1125,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         const isNvSelected = store.selectedValueRange?.nestedFactId === fact.id
         const nvFill = isNvSelected ? 'var(--accent)' : 'var(--col-constraint)'
         return (
-          <g key="nested-vr" style={{ filter: isNvSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+          <g key="nested-vr" className="selectable-group" style={{ filter: isNvSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
             <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
               stroke={nvFill} strokeWidth={1.5}
               strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
@@ -1131,6 +1152,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
               }}>
               {vr}
             </text>
+            <rect className="hover-ring"
+              x={tx - halfW - 3} y={ty - halfH - 3}
+              width={halfW * 2 + 6} height={halfH * 2 + 6} rx={3}/>
           </g>
         )
       })()
@@ -1162,7 +1186,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         const isNcSelected = store.selectedCardinalityRange?.nestedFactId === fact.id
         const ncFill = isNcSelected ? 'var(--accent)' : 'var(--col-constraint)'
         return (
-          <g key="nested-cr" style={{ filter: isNcSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+          <g key="nested-cr" className="selectable-group" style={{ filter: isNcSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
             <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
               stroke={ncFill} strokeWidth={1.5}
               strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
@@ -1189,6 +1213,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
               }}>
               {cr}
             </text>
+            <rect className="hover-ring"
+              x={tx - halfW - 3} y={ty - halfH - 3}
+              width={halfW * 2 + 6} height={halfH * 2 + 6} rx={3}/>
           </g>
         )
       })()
@@ -1208,7 +1235,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         style={{ pointerEvents: 'none' }}/>
     )}
     {/* ── Main fact-type group (role boxes + bars + reading) ───────────────── */}
-    <g onMouseDown={handleMouseDown} onContextMenu={onContextMenu}
+    <g className="selectable-group" onMouseDown={handleMouseDown} onContextMenu={onContextMenu}
        style={{ cursor: (() => {
          if ((isSubtypeTool || isTargetTool) && fact.objectified) return 'cell'
          if (isAssignTool && isAssigning && fact.objectified) return 'cell'
@@ -1222,6 +1249,12 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
        })() }}
        filter={isFactSelected || isDraftFrom ? 'url(#selectGlow)' : undefined}>
 
+      {/* Hover ring for the whole fact type */}
+      {isVertical
+        ? <rect className="hover-ring" x={leftX_v - 3} y={startY_v - 3} width={ROLE_H + 6} height={totalH_v + 6}/>
+        : <rect className="hover-ring" x={startX - 3} y={topY - 3} width={totalW + 6} height={ROLE_H + 6}/>
+      }
+
       {/* Objectified (nested) fact type — outer entity/value border + name */}
       {fact.objectified && (() => {
         const isSubtypeCandidate = (isSubtypeTool || isTargetTool) && !isDraftFrom
@@ -1230,7 +1263,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         const isNestedVrCandidate = isRoleValueTool && canHaveVr
         const isNestedCrCandidate = isCrTool
         const isAssignCandidate   = isAssignTool && isAssigning && store.linkDraft?.factId !== fact.id
-        const nestedCol  = isDraftFrom        ? 'var(--col-subtype)'
+        const nestedCol  = isFactSelected      ? 'var(--accent)'
+          : isDraftFrom                       ? 'var(--col-subtype)'
           : isSubtypeCandidate                ? 'var(--col-candidate)'
           : isAssignCandidate                 ? 'var(--col-candidate)'
           : isNestedVrCandidate               ? 'var(--col-candidate)'
@@ -1239,7 +1273,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           :                                     'var(--col-entity)'
         const nestedDash    = fact.objectifiedKind === 'value' ? '6 3' : 'none'
         const nestedFill    = (isSubtypeCandidate || isDraftFrom || isAssignCandidate || isNestedVrCandidate || isNestedCrCandidate) ? 'var(--fill-candidate)' : '#ffffff'
-        const nestedStrokeW = (isDraftFrom || isSubtypeCandidate || isAssignCandidate || isNestedVrCandidate || isNestedCrCandidate) ? 2 : 1.5
+        const nestedStrokeW = (isFactSelected || isDraftFrom || isSubtypeCandidate || isAssignCandidate || isNestedVrCandidate || isNestedCrCandidate) ? 2 : 1.5
         const nestedRefText = (fact.objectifiedKind !== 'value' && store.showReferenceMode
           && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
           ? `(${fact.objectifiedRefMode})` : null
@@ -1272,7 +1306,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           const nameTx   = fact.x + nameOff.dx
           const nameTy   = nameY  + nameOff.dy
           return (
-            <>
+            <g className="selectable-group">
               <rect
                 x={fact.x - ROLE_H / 2 - padLeft} y={boxTop}
                 width={ow} height={oh} rx={6}
@@ -1309,9 +1343,15 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                     style={{ cursor: nameLive ? 'grabbing' : 'grab', userSelect: 'none' }}
                     onMouseDown={e => {
                       e.stopPropagation()
+                      nameWasDragged.current = false
                       nameDragRef.current = { startX: e.clientX, startY: e.clientY,
                         origDx: nameOff.dx, origDy: nameOff.dy }
                       setNameLive({ dx: nameOff.dx, dy: nameOff.dy })
+                    }}
+                    onClick={e => {
+                      e.stopPropagation()
+                      if (nameWasDragged.current) { nameWasDragged.current = false; return }
+                      store.select(fact.id, 'fact')
                     }}
                     onDoubleClick={e => {
                       e.stopPropagation()
@@ -1383,7 +1423,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                                   onBlur={() => { setTimeout(() => { if (!document.activeElement?.closest?.('foreignObject')) commitReadingEdit() }, 0) }}
                                   onKeyDown={e => { e.stopPropagation(); if(e.key==='Enter'){e.preventDefault();commitReadingEdit()} if(e.key==='Escape'){e.stopPropagation();setEditingReading(false)} }}
                                   onMouseDown={e => e.stopPropagation()}
-                                  style={{ width:Math.max(12, seg.length*7), minWidth:0, border:'none', outline:'none',
+                                  style={{ width:Math.max(12, seg.length*7), minWidth:0, border:'none', outline:'1px dotted var(--border)',
                                     background:'#fef6ec', color:nestedCol, fontSize:NESTED_READING_FONT_SIZE,
                                     fontFamily:FONT, textAlign:'center', padding:'0', boxSizing:'border-box' }}
                                 />
@@ -1408,7 +1448,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                     </text>
                   )
               )}
-            </>
+              <rect className="hover-ring"
+                x={fact.x - ROLE_H / 2 - padLeft - 3} y={boxTop - 3}
+                width={ow + 6} height={oh + 6} rx={8}/>
+            </g>
           )
         }
 
@@ -1438,7 +1481,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         const nameTx   = fact.x + nameOff.dx
         const nameTy   = nameY  + nameOff.dy
         return (
-          <>
+          <g className="selectable-group">
             <rect
               x={fact.x - ow / 2} y={fact.y - ROLE_H / 2 - padTop}
               width={ow} height={oh} rx={6}
@@ -1475,9 +1518,15 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   style={{ cursor: nameLive ? 'grabbing' : 'grab', userSelect: 'none' }}
                   onMouseDown={e => {
                     e.stopPropagation()
+                    nameWasDragged.current = false
                     nameDragRef.current = { startX: e.clientX, startY: e.clientY,
                       origDx: nameOff.dx, origDy: nameOff.dy }
                     setNameLive({ dx: nameOff.dx, dy: nameOff.dy })
+                  }}
+                  onClick={e => {
+                    e.stopPropagation()
+                    if (nameWasDragged.current) { nameWasDragged.current = false; return }
+                    store.select(fact.id, 'fact')
                   }}
                   onDoubleClick={e => {
                     e.stopPropagation()
@@ -1566,7 +1615,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   </text>
                 )
             )}
-          </>
+            <rect className="hover-ring"
+              x={fact.x - ow / 2 - 3} y={fact.y - ROLE_H / 2 - padTop - 3}
+              width={ow + 6} height={oh + 6} rx={8}/>
+          </g>
         )
       })()}
 
@@ -1586,8 +1638,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           {/* Role boxes */}
           {fact.roles.map((role, ri) => {
             const ry = startY_v + ri * (ROLE_W + ROLE_GAP)
+            const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
             return (
-              <g key={role.id} filter={isRoleSelected(ri) ? 'url(#selectGlow)' : undefined}>
+              <g key={role.id} className="role-box-group" filter={isRoleSelected(ri) ? 'url(#selectGlow)' : undefined}>
                 <rect x={leftX_v} y={ry} width={ROLE_H} height={ROLE_W}
                   fill={
                     roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
@@ -1603,8 +1656,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   onMouseDown={(e)   => handleRoleMouseDown(ri, e)}
                   onDoubleClick={(e) => handleRoleDoubleClick(ri, e)}
                   onContextMenu={(e) => handleRoleContextMenu(ri, e)}
+                  onMouseMove={isSimpleSelect ? handleRoleMouseMove : undefined}
+                  onMouseLeave={isSimpleSelect ? handleRoleMouseLeave : undefined}
                   style={{ cursor: ((isSubtypeTool || isTargetTool) && fact.objectified) ? 'cell' : isAssignTool || inConstruction || (!!store.sequenceConstruction && !isVcConstruction) || isRoleSelected(ri) ? 'crosshair' : (isRoleValueTool && !vrEligibleRoles.has(ri)) ? 'not-allowed' : (isVcConstruction && !vcEligibleRoles.has(ri)) ? 'not-allowed' : isVcConstruction ? 'crosshair' : 'pointer' }}
                 />
+                <rect className="hover-ring" x={leftX_v - 3} y={ry - 3} width={ROLE_H + 6} height={ROLE_W + 6}/>
                 {isAssignTool && !role.objectTypeId && (
                   <text x={fact.x} y={ry + ROLE_W / 2}
                     textAnchor="middle" dominantBaseline="middle"
@@ -1629,12 +1685,13 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             if (isEditing && displayRoles.length === 0) {
               const barX = barX_v(displayLevel)
               return (
-                <g key={ui} style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+                <g key={ui} className="selectable-group" style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
                   onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
                   onDoubleClick={barDoubleClickHandler(ui)}>
                   <line x1={barX} y1={startY_v + INSET} x2={barX} y2={startY_v + totalH_v - INSET}
                     stroke={barStroke} strokeWidth={BAR_H + 1} strokeLinecap="butt"
                     strokeDasharray="3 3" strokeOpacity={0.6}/>
+                  <rect className="hover-ring" x={barX - 3} y={startY_v - 3} width={6} height={totalH_v + 6}/>
                 </g>
               )
             }
@@ -1648,11 +1705,12 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             const barX = adjustedBarX(displayLevel, isPreferred)
             const sw = isUSelected ? BAR_H + 1 : BAR_H
             return (
-              <g key={ui} style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+              <g key={ui} className="selectable-group" style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
                 onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
                 onDoubleClick={barDoubleClickHandler(ui)}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onBarContextMenu?.(ui, e) }}>
                 <line x1={barX} y1={hitY1} x2={barX} y2={hitY2} stroke="transparent" strokeWidth={10}/>
+                <rect className="hover-ring" x={barX - 3} y={hitY1 - 3} width={6} height={hitY2 - hitY1 + 6}/>
                 {isPreferred ? (
                   <>
                     {/* Solid runs: two lines at ±PREF_OFFSET */}
@@ -1727,8 +1785,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           {/* Role boxes */}
           {fact.roles.map((role, ri) => {
             const rx = startX + ri * (ROLE_W + ROLE_GAP)
+            const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
             return (
-              <g key={role.id} filter={isRoleSelected(ri) ? 'url(#selectGlow)' : undefined}>
+              <g key={role.id} className="role-box-group" filter={isRoleSelected(ri) ? 'url(#selectGlow)' : undefined}>
                 <rect
                   x={rx} y={topY} width={ROLE_W} height={ROLE_H}
                   fill={
@@ -1745,8 +1804,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   onMouseDown={(e)   => handleRoleMouseDown(ri, e)}
                   onDoubleClick={(e) => handleRoleDoubleClick(ri, e)}
                   onContextMenu={(e) => handleRoleContextMenu(ri, e)}
+                  onMouseMove={isSimpleSelect ? handleRoleMouseMove : undefined}
+                  onMouseLeave={isSimpleSelect ? handleRoleMouseLeave : undefined}
                   style={{ cursor: ((isSubtypeTool || isTargetTool) && fact.objectified) ? 'cell' : isAssignTool || inConstruction || (!!store.sequenceConstruction && !isVcConstruction) || isRoleSelected(ri) ? 'crosshair' : (isRoleValueTool && !vrEligibleRoles.has(ri)) ? 'not-allowed' : (isVcConstruction && !vcEligibleRoles.has(ri)) ? 'not-allowed' : isVcConstruction ? 'crosshair' : 'pointer' }}
                 />
+                <rect className="hover-ring" x={rx - 3} y={topY - 3} width={ROLE_W + 6} height={ROLE_H + 6}/>
                 {isAssignTool && !role.objectTypeId && (
                   <text x={rx + ROLE_W/2} y={fact.y}
                     textAnchor="middle" dominantBaseline="middle"
@@ -1771,12 +1833,13 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             if (isEditing && displayRoles.length === 0) {
               const barY = barY_h(displayLevel)
               return (
-                <g key={ui} style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+                <g key={ui} className="selectable-group" style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
                   onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
                   onDoubleClick={barDoubleClickHandler(ui)}>
                   <line x1={startX + INSET} y1={barY} x2={startX + totalW - INSET} y2={barY}
                     stroke={barStroke} strokeWidth={BAR_H + 1} strokeLinecap="butt"
                     strokeDasharray="3 3" strokeOpacity={0.6}/>
+                  <rect className="hover-ring" x={startX - 3} y={barY - 3} width={totalW + 6} height={6}/>
                 </g>
               )
             }
@@ -1790,11 +1853,12 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             const barY = adjustedBarY(displayLevel, isPreferred)
             const sw = isUSelected ? BAR_H + 1 : BAR_H
             return (
-              <g key={ui} style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+              <g key={ui} className="selectable-group" style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
                 onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
                 onDoubleClick={barDoubleClickHandler(ui)}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onBarContextMenu?.(ui, e) }}>
                 <line x1={hitX1} y1={barY} x2={hitX2} y2={barY} stroke="transparent" strokeWidth={10}/>
+                <rect className="hover-ring" x={hitX1 - 3} y={barY - 3} width={hitX2 - hitX1 + 6} height={6}/>
                 {isPreferred ? (
                   <>
                     {/* Solid runs: two lines at ±PREF_OFFSET */}
@@ -1881,7 +1945,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       const isVrSelected = store.selectedValueRange?.factId === fact.id && store.selectedValueRange?.roleIndex === ri
       const vrFill = isVrSelected ? 'var(--accent)' : 'var(--col-constraint)'
       return (
-        <g key={`vr-${role.id}`} style={{ filter: isVrSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+        <g key={`vr-${role.id}`} className="selectable-group" style={{ filter: isVrSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
           <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
             stroke={vrFill} strokeWidth={1.5}
             strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
@@ -1909,6 +1973,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             }}>
             {vr}
           </text>
+          <rect className="hover-ring"
+            x={textX - halfW - 3} y={textY - halfH - 3}
+            width={halfW * 2 + 6} height={halfH * 2 + 6} rx={3}/>
         </g>
       )
     })}
@@ -1937,7 +2004,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       const isCrSelected = store.selectedCardinalityRange?.factId === fact.id && store.selectedCardinalityRange?.roleIndex === ri
       const crFill = isCrSelected ? 'var(--accent)' : 'var(--col-constraint)'
       return (
-        <g key={`cr-${role.id}`} style={{ filter: isCrSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+        <g key={`cr-${role.id}`} className="selectable-group" style={{ filter: isCrSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
           <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
             stroke={crFill} strokeWidth={1.5}
             strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
@@ -1965,6 +2032,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             }}>
             {cr}
           </text>
+          <rect className="hover-ring"
+            x={textX - halfW - 3} y={textY - halfH - 3}
+            width={halfW * 2 + 6} height={halfH * 2 + 6} rx={3}/>
         </g>
       )
     })}
@@ -2002,7 +2072,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         onContextMenu: e => { e.preventDefault(); e.stopPropagation(); onIfContextMenu?.(ifItem.id, e) },
       }
       return (
-        <g key={`if-${ifItem.id}`} style={{ filter: isIfSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+        <g key={`if-${ifItem.id}`} className="selectable-group" style={{ filter: isIfSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
           {(() => {
             const roles = isEditing ? fcRoles : ifItem.roles
             if (roles.length === 2) {
@@ -2044,6 +2114,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
               </text>
             </>
           )}
+          <rect className="hover-ring" x={cx - hw - 4} y={cy - IF_CIRCLE_R - 4} width={(hw + 4) * 2} height={(IF_CIRCLE_R + 4) * 2} rx={IF_CIRCLE_R + 4}/>
         </g>
       )
     })}

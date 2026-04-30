@@ -143,6 +143,10 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
       items: [
         { label: 'Edit Frequency Range…', action: () => store.startFrequencyRangeEdit(fact.id, ifId) },
         '---',
+        { label: 'Change into Internal Uniqueness Constraint',
+          action: () => store.convertFrequencyToUniqueness(fact.id, ifId),
+        },
+        '---',
         { label: 'Delete Frequency Constraint', danger: true,
           action: () => store.removeInternalFrequency(fact.id, ifId) },
       ],
@@ -268,6 +272,10 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         { label: 'Is Preferred', checked: isPreferred,
           action: () => store.setPreferredUniqueness(fact.id, uRoles) },
         '---',
+        { label: 'Change into Internal Frequency Constraint',
+          action: () => store.convertUniquenessToFrequency(fact.id, uRoles),
+        },
+        '---',
         { label: 'Delete Uniqueness Constraint', danger: true,
           action: () => store.toggleUniqueness(fact.id, uRoles) },
       ],
@@ -284,6 +292,12 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
+        {
+          label: 'Inherits Preferred Identifier',
+          checked: st.inheritsPreferredIdentifier !== false,
+          action: () => store.updateSubtype(st.id, { inheritsPreferredIdentifier: st.inheritsPreferredIdentifier === false }),
+        },
+        '---',
         { label: 'Delete Subtype Relationship', danger: true, action: () => store.deleteSubtype(st.id) },
       ],
     })

@@ -67,6 +67,7 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
 
         return (
           <g key={st.id}
+            className="selectable-group"
             onContextMenu={(e) => onContextMenu?.(st, e)}
             onClick={(e) => {
               e.stopPropagation()
@@ -92,7 +93,10 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
             )}
             {/* Hit area */}
             <line x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-              stroke="transparent" strokeWidth={10}/>
+              stroke="transparent" strokeWidth={10} style={{ pointerEvents: 'all' }}/>
+            {/* Hover ring — wider solid stroke so it shows as a halo around the arrow */}
+            <line className="hover-ring" x1={from.x} y1={from.y} x2={lineEnd.x} y2={lineEnd.y}
+              style={{ strokeWidth: 10 }}/>
             {/* Arrow — accent marker + glow filter when selected */}
             <line x1={from.x} y1={from.y} x2={lineEnd.x} y2={lineEnd.y}
               stroke={isSelected ? 'var(--accent)' : 'var(--col-subtype)'}

@@ -2019,6 +2019,58 @@ export const useOrmStore = create((set, get) => ({
     }))
   },
 
+  convertFrequencyToUniqueness(factId, ifId) {
+    const fact = get().facts.find(f => f.id === factId)
+    if (!fact) return
+    const ifItem = (fact.internalFrequency || []).find(i => i.id === ifId)
+    if (!ifItem) return
+    const roles = [...ifItem.roles]
+    const key = JSON.stringify([...roles].sort())
+    const alreadyExists = fact.uniqueness.some(u => JSON.stringify([...u].sort()) === key)
+    set(s => ({
+      facts: s.facts.map(f => {
+        if (f.id !== factId) return f
+        const internalFrequency = (f.internalFrequency || []).filter(i => i.id !== ifId)
+        if (alreadyExists) return { ...f, internalFrequency }
+        const uniqueness = [...f.uniqueness, roles].sort((a, b) => a.length - b.length)
+        return { ...f, internalFrequency, uniqueness }
+      }),
+      isDirty: true,
+    }))
+    if (!alreadyExists) {
+      const updated = get().facts.find(f => f.id === factId)
+      const uIndex = updated.uniqueness.findIndex(u => JSON.stringify([...u].sort()) === key)
+      if (uIndex !== -1) get().selectUniqueness(factId, uIndex)
+    } else {
+      get().select(factId, 'fact')
+    }
+  },
+
+  convertUniquenessToFrequency(factId, uRoles) {
+    const fact = get().facts.find(f => f.id === factId)
+    if (!fact) return
+    const ifId = uid()
+    const key = JSON.stringify([...uRoles].sort())
+    set(s => ({
+      facts: s.facts.map(f => {
+        if (f.id !== factId) return f
+        const uniqueness = f.uniqueness.filter(u => JSON.stringify([...u].sort()) !== key)
+        const preferredUniqueness = f.preferredUniqueness &&
+          JSON.stringify([...f.preferredUniqueness].sort()) === key ? null : f.preferredUniqueness
+        return {
+          ...f,
+          uniqueness,
+          preferredUniqueness,
+          internalFrequency: [...(f.internalFrequency || []), {
+            id: ifId, roles: [...uRoles], range: [{ type: 'upper', upper: 1 }], x: f.x + 40, y: f.y - 30,
+          }],
+        }
+      }),
+      isDirty: true,
+    }))
+    get().selectInternalFrequency(factId, ifId)
+  },
+
   selectRole(factId, roleIndex) {
     set({ selectedId: factId, selectedKind: 'fact', selectedRole: { factId, roleIndex }, selectedUniqueness: null,
           selectedMandatoryDot: null, selectedInternalFrequency: null,

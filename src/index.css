@@ -90,3 +90,21 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--selection);
 }
+
+/* Hover outline for selectable SVG elements — active only in select tool mode */
+.selectable-group .hover-ring {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+/* Role box rings: only when cursor is in the interior zone (class toggled imperatively) */
+.tool-select .role-box-group.role-interior > .hover-ring {
+  stroke: rgba(64, 120, 200, 0.55);
+}
+/* All other selectable group rings: show when hovered, but not when a nested
+   selectable-group is hovered or a role is in interior mode */
+.tool-select .selectable-group:hover:not(:has(.role-box-group.role-interior:hover, .selectable-group:hover)) > .hover-ring {
+  stroke: rgba(64, 120, 200, 0.55);
+}
