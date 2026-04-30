@@ -35,9 +35,7 @@ function useKeyboardShortcuts() {
       }
 
       if (e.key === 'Enter' && store.uniquenessConstruction) {
-        const factId = store.uniquenessConstruction.factId
         store.commitUniquenessConstruction()
-        store.select(factId, 'fact')
         return
       }
 

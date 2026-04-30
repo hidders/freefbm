@@ -1781,15 +1781,26 @@ export const useOrmStore = create((set, get) => ({
       if (!oldRoles) return
       const oldKey = JSON.stringify([...oldRoles].sort((a, b) => a - b))
       const newKey = JSON.stringify([...uc.roleIndices].sort((a, b) => a - b))
-      if (oldKey === newKey) return
+      if (oldKey === newKey) return  // unchanged — selectedUniqueness still valid
       // If the new role set already exists as a different constraint, leave everything intact
       const alreadyExists = fact.uniqueness.some((u, i) =>
         i !== uc.uIndex && JSON.stringify([...u].sort((a, b) => a - b)) === newKey
       )
-      if (alreadyExists) return
+      if (alreadyExists) return  // selectedUniqueness stays pointing to the unchanged bar
       get().toggleUniqueness(uc.factId, oldRoles)           // remove old
       if (uc.roleIndices.length > 0) {
         get().toggleUniqueness(uc.factId, uc.roleIndices)   // add new
+        // Re-select the bar at its new index
+        const updatedFact = get().facts.find(f => f.id === uc.factId)
+        if (updatedFact) {
+          const newIdx = updatedFact.uniqueness.findIndex(u =>
+            JSON.stringify([...u].sort((a, b) => a - b)) === newKey)
+          if (newIdx >= 0) get().selectUniqueness(uc.factId, newIdx)
+          else get().select(uc.factId, 'fact')
+        }
+      } else {
+        // All roles removed — bar deleted, return to fact inspector
+        get().select(uc.factId, 'fact')
       }
     } else {
       // New constraint
@@ -1799,11 +1810,74 @@ export const useOrmStore = create((set, get) => ({
       if (!exists) get().toggleUniqueness(uc.factId, uc.roleIndices)
     }
   },
+  updateUniquenessRoles(factId, uIndex, newRoles) {
+    if (newRoles.length === 0) return
+    const fact = get().facts.find(f => f.id === factId)
+    if (!fact) return
+    const oldRoles = fact.uniqueness[uIndex]
+    if (!oldRoles) return
+    const oldKey = JSON.stringify([...oldRoles].sort((a, b) => a - b))
+    const newKey = JSON.stringify([...newRoles].sort((a, b) => a - b))
+    if (oldKey === newKey) return
+    // Don't allow if the new set duplicates another bar
+    const duplicate = fact.uniqueness.some((u, i) =>
+      i !== uIndex && JSON.stringify([...u].sort((a, b) => a - b)) === newKey)
+    if (duplicate) return
+    get().toggleUniqueness(factId, oldRoles)   // remove old
+    get().toggleUniqueness(factId, newRoles)   // add new
+    // Re-select at the new index
+    const updated = get().facts.find(f => f.id === factId)
+    if (updated) {
+      const newIdx = updated.uniqueness.findIndex(u =>
+        JSON.stringify([...u].sort((a, b) => a - b)) === newKey)
+      if (newIdx >= 0) get().selectUniqueness(factId, newIdx)
+    }
+  },
+  addUniquenessBar(factId) {
+    const fact = get().facts.find(f => f.id === factId)
+    if (!fact) return
+    // Default to all roles; if that already exists, try first role only
+    const allRoles = fact.roles.map((_, i) => i)
+    const allKey   = JSON.stringify([...allRoles].sort((a, b) => a - b))
+    const hasAll   = fact.uniqueness.some(u => JSON.stringify([...u].sort((a, b) => a - b)) === allKey)
+    const newRoles = hasAll ? [0] : allRoles
+    const newKey   = JSON.stringify([...newRoles].sort((a, b) => a - b))
+    const hasDup   = fact.uniqueness.some(u => JSON.stringify([...u].sort((a, b) => a - b)) === newKey)
+    if (hasDup) return
+    get().toggleUniqueness(factId, newRoles)
+    const updated = get().facts.find(f => f.id === factId)
+    if (!updated) return
+    const newIdx = updated.uniqueness.findIndex(u =>
+      JSON.stringify([...u].sort((a, b) => a - b)) === newKey)
+    if (newIdx >= 0) get().selectUniqueness(factId, newIdx)
+  },
+  addInternalFrequencyBar(factId) {
+    const fact = get().facts.find(f => f.id === factId)
+    if (!fact) return
+    const allRoles = fact.roles.map((_, i) => i)
+    const ifId = uid()
+    set(s => ({
+      facts: s.facts.map(f => f.id !== factId ? f : {
+        ...f,
+        internalFrequency: [...(f.internalFrequency || []), {
+          id: ifId, roles: allRoles, range: [], x: f.x + 40, y: f.y - 30,
+        }],
+      }),
+      isDirty: true,
+    }))
+    get().selectInternalFrequency(factId, ifId)
+  },
   startUniquenessEdit(factId, uIndex) {
     const fact = get().facts.find(f => f.id === factId)
     if (!fact) return
     const roleIndices = [...fact.uniqueness[uIndex]]
-    set({ uniquenessConstruction: { factId, roleIndices, uIndex }, selectedUniqueness: null })
+    set({
+      uniquenessConstruction: { factId, roleIndices, uIndex },
+      selectedId: factId, selectedKind: 'fact',
+      selectedUniqueness: { factId, uIndex },
+      selectedRole: null, selectedMandatoryDot: null, selectedInternalFrequency: null,
+      selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+    })
   },
 
   // ── Internal frequency construction ──────────────────────────────────────

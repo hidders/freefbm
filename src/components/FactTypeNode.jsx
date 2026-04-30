@@ -417,10 +417,6 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     if (e.button !== 0) return
     if (e.detail >= 2) return  // second click of a double-click: do nothing
     if (e.shiftKey) { store.shiftSelect(fact.id); return }
-    if (store.selectedUniqueness?.factId === fact.id && store.tool === 'select') {
-      store.select(fact.id, 'fact')
-      return
-    }
     if (store.sequenceConstruction) {
       if (isVcConstruction && !vcEligibleRoles.has(roleIndex)) return
       store.collectSequenceMember({ kind: 'role', factId: fact.id, roleIndex })
@@ -938,7 +934,6 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
 
   const barDoubleClickHandler = (ui) => (e) => {
     e.stopPropagation()
-    store.select(fact.id, 'fact')
     store.startUniquenessEdit(fact.id, ui)
   }
 

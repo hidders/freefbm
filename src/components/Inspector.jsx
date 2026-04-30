@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useLayoutEffect, useEffect } from
 import { useOrmStore } from '../store/ormStore'
 import { getDisplayReading } from './FactTypeNode'
 import { RingMiniSymbol } from './ConstraintNodes'
+import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
 import { PROFILES, PROFILE_MAP, getDatatypeById } from '../data/datatypeProfiles'
 
 const RING_TYPES = [
@@ -452,19 +453,14 @@ function ObjectTypeInspector({ ot }) {
         {(ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none')) && (
           <Row>
             <Label>Value Range</Label>
-            <ValueRangeEditor
-              range={ot.valueRange}
-              onChange={vr => store.updateObjectType(ot.id, { valueRange: vr })}
-            />
+            <RangeChip range={ot.valueRange}
+              onClick={() => store.selectValueRange({ otId: ot.id })} />
           </Row>
         )}
         <Row>
           <Label>Cardinality Range</Label>
-          <ValueRangeEditor
-            naturalNumbers
-            range={ot.cardinalityRange}
-            onChange={vr => store.updateObjectType(ot.id, { cardinalityRange: vr })}
-          />
+          <RangeChip range={ot.cardinalityRange} format={formatCardinalityRange}
+            onClick={() => store.selectCardinalityRange({ otId: ot.id })} />
         </Row>
       </Subsection>
 
@@ -480,8 +476,27 @@ function ObjectTypeInspector({ ot }) {
 }
 
 
+// ── Range chip — brief clickable summary linking to dedicated inspector ────────
+function RangeChip({ range, onClick, format = formatValueRange }) {
+  const text = format(range)
+  const summary = text
+    ? <span>{text}</span>
+    : <span style={{ fontStyle: 'italic', color: 'var(--ink-muted)' }}>none</span>
+  return (
+    <div onClick={onClick}
+      style={{ display: 'flex', alignItems: 'center', gap: 5,
+        fontSize: 12, color: 'var(--ink-2)', marginBottom: 4,
+        cursor: 'pointer', padding: '3px 8px',
+        background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
+        borderRadius: 3 }}>
+      <span style={{ flex: 1 }}>{summary}</span>
+      <span style={{ fontSize: 10, color: 'var(--accent)', flexShrink: 0 }}>→</span>
+    </div>
+  )
+}
+
 // ── Shared role constraints section (used in RoleList and RoleInspector) ─────
-function RoleConstraintsSection({ role, onChange }) {
+function RoleConstraintsSection({ role, onChange, onNavigateValueRange, onNavigateCardinalityRange }) {
   return (
     <Subsection title="Constraints">
       <Label>Participation</Label>
@@ -489,13 +504,17 @@ function RoleConstraintsSection({ role, onChange }) {
         onChange={v => onChange({ mandatory: v })} />
       <Row>
         <Label>Value Range</Label>
-        <ValueRangeEditor range={role.valueRange}
-          onChange={vr => onChange({ valueRange: vr })} />
+        {onNavigateValueRange
+          ? <RangeChip range={role.valueRange} onClick={onNavigateValueRange} />
+          : <ValueRangeEditor range={role.valueRange}
+              onChange={vr => onChange({ valueRange: vr })} />}
       </Row>
       <Row>
         <Label>Cardinality Range</Label>
-        <ValueRangeEditor naturalNumbers range={role.cardinalityRange}
-          onChange={vr => onChange({ cardinalityRange: vr })} />
+        {onNavigateCardinalityRange
+          ? <RangeChip range={role.cardinalityRange} format={formatCardinalityRange} onClick={onNavigateCardinalityRange} />
+          : <ValueRangeEditor naturalNumbers range={role.cardinalityRange}
+              onChange={vr => onChange({ cardinalityRange: vr })} />}
       </Row>
     </Subsection>
   )
@@ -735,7 +754,237 @@ function RoleInspector({ fact, roleIndex }) {
       <RoleConstraintsSection
         role={role}
         onChange={patch => store.updateRole(fact.id, roleIndex, patch)}
+        onNavigateValueRange={() => store.selectValueRange({ factId: fact.id, roleIndex })}
+        onNavigateCardinalityRange={() => store.selectCardinalityRange({ factId: fact.id, roleIndex })}
       />
+    </Section>
+  )
+}
+
+// ── Internal Uniqueness Bar inspector ────────────────────────────────────────
+function UniquenessBarInspector({ fact, uIndex }) {
+  const store = useOrmStore()
+  const u = fact.uniqueness[uIndex]
+  if (!u) return null
+
+  const otMap      = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
+  const nestedMap  = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
+  const sortedKey  = JSON.stringify([...u].sort())
+  const isPreferred = fact.preferredUniqueness != null &&
+    JSON.stringify([...fact.preferredUniqueness].sort()) === sortedKey
+  const reading = getDisplayReading(fact) || null
+
+  const toggleRole = (ri) => {
+    const next = u.includes(ri) ? u.filter(i => i !== ri) : [...u, ri]
+    if (next.length === 0) return   // must cover at least one role
+    store.updateUniquenessRoles(fact.id, uIndex, next)
+  }
+
+  return (
+    <Section title="Internal Uniqueness">
+      <div style={{ marginBottom: 10 }}>
+        <button onClick={() => store.select(fact.id, 'fact')}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            color: 'var(--accent)', fontSize: 11 }}>
+          ← {reading ?? 'Fact Type'}
+        </button>
+      </div>
+      <Row>
+        <Label>Roles covered</Label>
+        {fact.roles.map((role, ri) => {
+          const ot     = otMap[role.objectTypeId]
+          const nf     = !ot ? nestedMap[role.objectTypeId] : null
+          const player = ot ? ot.name : nf ? (nf.objectifiedName || '(unnamed)') : null
+          const checked = u.includes(ri)
+          const isLast  = checked && u.length === 1
+          return (
+            <Checkbox
+              key={ri}
+              label={`Role ${ri + 1}${player ? ` · ${player}` : ''}`}
+              checked={checked}
+              disabled={isLast}
+              onChange={() => toggleRole(ri)}
+            />
+          )
+        })}
+      </Row>
+      <Row>
+        <Checkbox
+          label="Preferred Identifier"
+          checked={isPreferred}
+          onChange={() => store.setPreferredUniqueness(fact.id, u)}
+        />
+      </Row>
+      <div style={{ marginTop: 8 }}>
+        <DangerBtn onClick={() => { store.toggleUniqueness(fact.id, u); store.select(fact.id, 'fact') }}>
+          Delete
+        </DangerBtn>
+      </div>
+    </Section>
+  )
+}
+
+// ── Internal Frequency Constraint inspector ───────────────────────────────────
+function InternalFrequencyInspector({ fact, ifItem }) {
+  const store   = useOrmStore()
+  const otMap   = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
+  const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
+  const reading = getDisplayReading(fact) || null
+
+  const toggleRole = (ri) => {
+    const next = ifItem.roles.includes(ri)
+      ? ifItem.roles.filter(i => i !== ri)
+      : [...ifItem.roles, ri]
+    if (next.length === 0) return   // must cover at least one role
+    store.updateInternalFrequency(fact.id, ifItem.id, { roles: next })
+  }
+
+  return (
+    <Section title="Internal Frequency">
+      <div style={{ marginBottom: 10 }}>
+        <button onClick={() => store.select(fact.id, 'fact')}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            color: 'var(--accent)', fontSize: 11 }}>
+          ← {reading ?? 'Fact Type'}
+        </button>
+      </div>
+      <Row>
+        <Label>Roles covered</Label>
+        {fact.roles.map((role, ri) => {
+          const ot     = otMap[role.objectTypeId]
+          const nf     = !ot ? nestedMap[role.objectTypeId] : null
+          const player = ot ? ot.name : nf ? (nf.objectifiedName || '(unnamed)') : null
+          const checked = ifItem.roles.includes(ri)
+          const isLast  = checked && ifItem.roles.length === 1
+          return (
+            <Checkbox
+              key={ri}
+              label={`Role ${ri + 1}${player ? ` · ${player}` : ''}`}
+              checked={checked}
+              disabled={isLast}
+              onChange={() => toggleRole(ri)}
+            />
+          )
+        })}
+      </Row>
+      <Row>
+        <Label>Frequency Range</Label>
+        <ValueRangeEditor
+          positiveIntegers
+          range={ifItem.range}
+          onChange={vr => store.updateInternalFrequency(fact.id, ifItem.id, { range: vr })}
+        />
+      </Row>
+      <div style={{ marginTop: 8 }}>
+        <DangerBtn onClick={() => { store.removeInternalFrequency(fact.id, ifItem.id); store.select(fact.id, 'fact') }}>
+          Delete
+        </DangerBtn>
+      </div>
+    </Section>
+  )
+}
+
+// ── Shared helper: resolve a value/cardinality range selection to display info ─
+function useRangeSelectionInfo(sel) {
+  const store = useOrmStore()
+  if (!sel) return null
+  if (sel.otId) {
+    const ot = store.objectTypes.find(o => o.id === sel.otId)
+    if (!ot) return null
+    return {
+      label: ot.name,
+      backLabel: ot.name,
+      onBack: () => store.select(ot.id, ot.kind),
+      valueRange:      ot.valueRange,
+      cardinalityRange: ot.cardinalityRange,
+      onChangeValueRange:      vr => store.updateObjectType(ot.id, { valueRange: vr }),
+      onChangeCardinalityRange: vr => store.updateObjectType(ot.id, { cardinalityRange: vr }),
+    }
+  }
+  if (sel.factId != null) {
+    const f = store.facts.find(f => f.id === sel.factId)
+    if (!f) return null
+    const role = f.roles[sel.roleIndex]
+    if (!role) return null
+    const reading = getDisplayReading(f) || 'Fact Type'
+    return {
+      label: `Role ${sel.roleIndex + 1} of ${reading}`,
+      backLabel: `Role ${sel.roleIndex + 1}`,
+      onBack: () => store.selectRole(f.id, sel.roleIndex),
+      valueRange:      role.valueRange,
+      cardinalityRange: role.cardinalityRange,
+      onChangeValueRange:      vr => store.updateRole(f.id, sel.roleIndex, { valueRange: vr }),
+      onChangeCardinalityRange: vr => store.updateRole(f.id, sel.roleIndex, { cardinalityRange: vr }),
+    }
+  }
+  if (sel.nestedFactId) {
+    const f = store.facts.find(f => f.id === sel.nestedFactId)
+    if (!f) return null
+    const name = f.objectifiedName || '(unnamed)'
+    return {
+      label: name,
+      backLabel: name,
+      onBack: () => store.select(f.id, 'fact'),
+      valueRange:      f.valueRange,
+      cardinalityRange: f.cardinalityRange,
+      onChangeValueRange:      vr => store.updateFact(f.id, { valueRange: vr }),
+      onChangeCardinalityRange: vr => store.updateFact(f.id, { cardinalityRange: vr }),
+    }
+  }
+  return null
+}
+
+// ── Value Range inspector ─────────────────────────────────────────────────────
+function ValueRangeConstraintInspector({ sel }) {
+  const info = useRangeSelectionInfo(sel)
+  if (!info) return null
+  return (
+    <Section title="Value Range">
+      <div style={{ marginBottom: 10 }}>
+        <button onClick={info.onBack}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            color: 'var(--accent)', fontSize: 11 }}>
+          ← {info.backLabel}
+        </button>
+      </div>
+      <Row>
+        <Label>On</Label>
+        <div style={{ fontSize: 12, color: 'var(--ink-2)' }}>{info.label}</div>
+      </Row>
+      <Row>
+        <ValueRangeEditor
+          range={info.valueRange}
+          onChange={info.onChangeValueRange}
+        />
+      </Row>
+    </Section>
+  )
+}
+
+// ── Cardinality Range inspector ───────────────────────────────────────────────
+function CardinalityRangeInspector({ sel }) {
+  const info = useRangeSelectionInfo(sel)
+  if (!info) return null
+  return (
+    <Section title="Cardinality Range">
+      <div style={{ marginBottom: 10 }}>
+        <button onClick={info.onBack}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            color: 'var(--accent)', fontSize: 11 }}>
+          ← {info.backLabel}
+        </button>
+      </div>
+      <Row>
+        <Label>On</Label>
+        <div style={{ fontSize: 12, color: 'var(--ink-2)' }}>{info.label}</div>
+      </Row>
+      <Row>
+        <ValueRangeEditor
+          naturalNumbers
+          range={info.cardinalityRange}
+          onChange={info.onChangeCardinalityRange}
+        />
+      </Row>
     </Section>
   )
 }
@@ -909,23 +1158,22 @@ function FactConstraintsSubsection({ fact, store }) {
         const isPreferred = fact.preferredUniqueness != null &&
           JSON.stringify([...fact.preferredUniqueness].sort()) === JSON.stringify([...u].sort())
         return (
-          <div key={ui} style={{ display: 'flex', justifyContent: 'space-between',
-            alignItems: 'center', marginBottom: 4, fontSize: 12 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
-              <input type="radio" name={`pref-${fact.id}`} checked={isPreferred}
-                onChange={() => {}}
-                onClick={() => store.setPreferredUniqueness(fact.id, u)}
-                style={{ cursor: 'pointer', accentColor: 'var(--col-mandatory)' }}/>
-              <span>Roles: {u.map(i => i + 1).join(', ')}</span>
-            </label>
-            <button onClick={() => store.toggleUniqueness(fact.id, u)}
-              style={{ background: 'none', color: '#c0392b', border: 'none',
-                cursor: 'pointer', fontSize: 12 }}>✕</button>
+          <div key={ui}
+            onClick={() => store.selectUniqueness(fact.id, ui)}
+            style={{ display: 'flex', alignItems: 'center', gap: 5,
+              fontSize: 12, color: 'var(--ink-2)', marginBottom: 4,
+              cursor: 'pointer', padding: '3px 8px',
+              background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
+              borderRadius: 3 }}>
+            <span style={{ flex: 1 }}>Roles: {[...u].sort((a, b) => a - b).map(i => i + 1).join(', ')}</span>
+            {isPreferred && <span title="Preferred Identifier"
+              style={{ color: 'var(--col-mandatory)', fontSize: 11, flexShrink: 0 }}>★</span>}
+            <span style={{ fontSize: 10, color: 'var(--accent)', flexShrink: 0 }}>→</span>
           </div>
         )
       })}
       {fact.arity > 1 && (
-        <button onClick={() => store.startUniquenessConstruction(fact.id)}
+        <button onClick={() => store.addUniquenessBar(fact.id)}
           style={{ marginTop: 2, marginBottom: 10, padding: '4px 10px', fontSize: 11,
             background: 'var(--bg-raised)', border: '1px solid var(--border)',
             borderRadius: 3, color: 'var(--ink-2)', cursor: 'pointer' }}>
@@ -936,31 +1184,24 @@ function FactConstraintsSubsection({ fact, store }) {
       {fact.objectified && fact.objectifiedKind === 'value' && (
         <Row>
           <Label>Value Range</Label>
-          <ValueRangeEditor
-            range={fact.valueRange}
-            onChange={vr => store.updateFact(fact.id, { valueRange: vr })}
-          />
+          <RangeChip range={fact.valueRange}
+            onClick={() => store.selectValueRange({ nestedFactId: fact.id })} />
         </Row>
       )}
 
       {fact.objectified && fact.objectifiedKind === 'entity' && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none' && (
         <Row>
           <Label>Value Range</Label>
-          <ValueRangeEditor
-            range={fact.valueRange}
-            onChange={vr => store.updateFact(fact.id, { valueRange: vr })}
-          />
+          <RangeChip range={fact.valueRange}
+            onClick={() => store.selectValueRange({ nestedFactId: fact.id })} />
         </Row>
       )}
 
       {fact.objectified && (
         <Row>
           <Label>Cardinality Range</Label>
-          <ValueRangeEditor
-            naturalNumbers
-            range={fact.cardinalityRange}
-            onChange={vr => store.updateFact(fact.id, { cardinalityRange: vr })}
-          />
+          <RangeChip range={fact.cardinalityRange} format={formatCardinalityRange}
+            onClick={() => store.selectCardinalityRange({ nestedFactId: fact.id })} />
         </Row>
       )}
 
@@ -968,27 +1209,26 @@ function FactConstraintsSubsection({ fact, store }) {
       {(fact.internalFrequency || []).length === 0 && (
         <div style={{ color: 'var(--ink-muted)', fontSize: 11, marginBottom: 8 }}>None defined</div>
       )}
-      {(fact.internalFrequency || []).map((ifItem) => (
-        <div key={ifItem.id} style={{ marginBottom: 8, paddingBottom: 8,
-          borderBottom: '1px solid var(--border-soft)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between',
-            alignItems: 'center', marginBottom: 4 }}>
-            <span style={{ fontSize: 12, color: 'var(--ink-2)' }}>
+      {(fact.internalFrequency || []).map((ifItem) => {
+        const rangeText = formatFrequencyRange(ifItem.range)
+        return (
+          <div key={ifItem.id}
+            onClick={() => store.selectInternalFrequency(fact.id, ifItem.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: 5,
+              fontSize: 12, color: 'var(--ink-2)', marginBottom: 4,
+              cursor: 'pointer', padding: '3px 8px',
+              background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
+              borderRadius: 3 }}>
+            <span style={{ flex: 1 }}>
               Roles: {[...ifItem.roles].sort((a, b) => a - b).map(i => i + 1).join(', ')}
+              {rangeText && <span style={{ color: 'var(--ink-muted)', marginLeft: 6 }}>Freq: {rangeText}</span>}
             </span>
-            <button onClick={() => store.removeInternalFrequency(fact.id, ifItem.id)}
-              style={{ background: 'none', color: '#c0392b', border: 'none',
-                cursor: 'pointer', fontSize: 12 }}>✕</button>
+            <span style={{ fontSize: 10, color: 'var(--accent)', flexShrink: 0 }}>→</span>
           </div>
-          <ValueRangeEditor
-            positiveIntegers
-            range={ifItem.range}
-            onChange={vr => store.updateInternalFrequency(fact.id, ifItem.id, { range: vr })}
-          />
-        </div>
-      ))}
+        )
+      })}
       {fact.arity > 1 && (
-        <button onClick={() => store.startFrequencyConstruction(fact.id)}
+        <button onClick={() => store.addInternalFrequencyBar(fact.id)}
           style={{ marginTop: 2, marginBottom: 10, padding: '4px 10px', fontSize: 11,
             background: 'var(--bg-raised)', border: '1px solid var(--border)',
             borderRadius: 3, color: 'var(--ink-2)', cursor: 'pointer' }}>
@@ -1789,29 +2029,12 @@ export default function Inspector() {
       if (f) internalConstraintContent = <RoleInspector fact={f} roleIndex={selectedMandatoryDot.roleIndex} />
     } else if (selectedInternalFrequency) {
       const f = store.facts.find(f => f.id === selectedInternalFrequency.factId)
-      if (f) internalConstraintContent = <FactInspector fact={f} />
+      const ifItem = f ? (f.internalFrequency || []).find(x => x.id === selectedInternalFrequency.ifId) : null
+      if (f && ifItem) internalConstraintContent = <InternalFrequencyInspector fact={f} ifItem={ifItem} />
     } else if (selectedValueRange) {
-      if (selectedValueRange.otId) {
-        const o = store.objectTypes.find(o => o.id === selectedValueRange.otId)
-        if (o) internalConstraintContent = <ObjectTypeInspector ot={o} />
-      } else if (selectedValueRange.factId != null) {
-        const f = store.facts.find(f => f.id === selectedValueRange.factId)
-        if (f) internalConstraintContent = <RoleInspector fact={f} roleIndex={selectedValueRange.roleIndex} />
-      } else if (selectedValueRange.nestedFactId) {
-        const f = store.facts.find(f => f.id === selectedValueRange.nestedFactId)
-        if (f) internalConstraintContent = <FactInspector fact={f} />
-      }
+      internalConstraintContent = <ValueRangeConstraintInspector sel={selectedValueRange} />
     } else if (selectedCardinalityRange) {
-      if (selectedCardinalityRange.otId) {
-        const o = store.objectTypes.find(o => o.id === selectedCardinalityRange.otId)
-        if (o) internalConstraintContent = <ObjectTypeInspector ot={o} />
-      } else if (selectedCardinalityRange.factId != null) {
-        const f = store.facts.find(f => f.id === selectedCardinalityRange.factId)
-        if (f) internalConstraintContent = <RoleInspector fact={f} roleIndex={selectedCardinalityRange.roleIndex} />
-      } else if (selectedCardinalityRange.nestedFactId) {
-        const f = store.facts.find(f => f.id === selectedCardinalityRange.nestedFactId)
-        if (f) internalConstraintContent = <FactInspector fact={f} />
-      }
+      internalConstraintContent = <CardinalityRangeInspector sel={selectedCardinalityRange} />
     }
   }
 
@@ -1839,7 +2062,9 @@ export default function Inspector() {
       {ot   && <ObjectTypeInspector ot={ot} />}
       {roleFact
         ? <RoleInspector fact={roleFact} roleIndex={selectedRole.roleIndex} />
-        : fact && <FactInspector fact={fact} />}
+        : selectedUniqueness && fact
+          ? <UniquenessBarInspector fact={fact} uIndex={selectedUniqueness.uIndex} />
+          : fact && <FactInspector fact={fact} />}
       {st   && <SubtypeInspector st={st} />}
       {con  && (con.constraintType === 'ring' || con.constraintType === 'exclusiveOr' || con.constraintType === 'exclusion' || con.constraintType === 'inclusiveOr' || con.constraintType === 'uniqueness' || con.constraintType === 'equality' || con.constraintType === 'subset' || con.constraintType === 'frequency' || con.constraintType === 'valueComparison')
              ? <ExternalConstraintInspector c={con} />
