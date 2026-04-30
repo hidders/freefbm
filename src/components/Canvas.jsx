@@ -405,13 +405,14 @@ export default function Canvas() {
       const boxInBand = (b)    => b.left >= minX && b.right <= maxX && b.top >= minY && b.bottom <= maxY
       // Use visibleOts/visibleFacts/visibleConstraints: they carry diagram-merged positions
       // so the hit-test matches what is actually rendered on screen.
+      const nestedMap = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
       const ids = [
         ...visibleOts        .filter(o  => inBand(o.x, o.y))           .map(o  => o.id),
         ...visibleFacts      .filter(f  => boxInBand(factBounds(f)))    .map(f  => f.id),
         ...visibleConstraints.filter(c  => inBand(c.x, c.y))           .map(c  => c.id),
         ...visibleSubtypes   .filter(st => {
-          const sub = visibleOts.find(o => o.id === st.subId)
-          const sup = visibleOts.find(o => o.id === st.superId)
+          const sub = visibleOts.find(o => o.id === st.subId) || nestedMap[st.subId]
+          const sup = visibleOts.find(o => o.id === st.superId) || nestedMap[st.superId]
           if (!sub || !sup) return false
           return inBand((sub.x + sup.x) / 2, (sub.y + sup.y) / 2)
         }).map(st => st.id),

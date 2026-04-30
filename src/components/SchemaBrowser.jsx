@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import {
@@ -155,6 +155,8 @@ export default function SchemaBrowser() {
   const [collapsed,   setCollapsed]   = useState(true)
   const [expandFrom,  setExpandFrom]  = useState(null)
   const [animating,   setAnimating]   = useState(false)
+  const [showOrphans, setShowOrphans] = useState(false)
+  const [resizing,    setResizing]    = useState(false)
   const [pos,  setPos]  = useState(null)
   const [size, setSize] = useState({ w: INIT_W, h: INIT_H })
   const animTimerRef = useRef(null)
@@ -189,20 +191,40 @@ export default function SchemaBrowser() {
   const handleResizeMouseDown = useCallback((e, dir) => {
     if (e.button !== 0) return
     e.preventDefault(); e.stopPropagation()
-    resizeRef.current = { dir, startX: e.clientX, startY: e.clientY, startW: size.w, startH: size.h }
+    setResizing(true)
+    resizeRef.current = { dir, startX: e.clientX, startY: e.clientY, startW: size.w, startH: size.h, startXPos: posX, startPosY: posY }
+    const panelEl = panelRef.current
     const onMove = (me) => {
-      if (!resizeRef.current) return
-      const { dir, startX, startY, startW, startH } = resizeRef.current
+      if (!resizeRef.current || !panelEl) return
+      const { dir, startX, startY, startW, startH, startXPos, startPosY } = resizeRef.current
       const dx = me.clientX - startX, dy = me.clientY - startY
-      setSize({
-        w: (dir === 'e' || dir === 'se') ? Math.max(MIN_W, Math.min(MAX_W, startW + dx)) : startW,
-        h: (dir === 's' || dir === 'se') ? Math.max(MIN_H, Math.min(MAX_H, startH + dy)) : startH,
-      })
+      let newW = startW, newH = startH, newX = startXPos, newY = startPosY
+      if (dir === 'e' || dir === 'se') newW = Math.max(MIN_W, Math.min(MAX_W, startW + dx))
+      if (dir === 'w' || dir === 'sw') {
+        newW = Math.max(MIN_W, Math.min(MAX_W, startW - dx))
+        newX = startXPos + (startW - newW)
+      }
+      if (dir === 's' || dir === 'se' || dir === 'sw') newH = Math.max(MIN_H, Math.min(MAX_H, startH + dy))
+      panelEl.style.left = `${newX}px`
+      panelEl.style.top = `${newY}px`
+      panelEl.style.width = `${newW}px`
+      panelEl.style.height = `${newH}px`
+      resizeRef.current._live = { w: newW, h: newH, x: newX, y: newY }
     }
-    const onUp = () => { resizeRef.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    const onUp = () => {
+      const live = resizeRef.current?._live
+      if (live) {
+        setSize({ w: live.w, h: live.h })
+        setPos({ x: live.x, y: live.y })
+      }
+      resizeRef.current = null
+      setResizing(false)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup',   onUp)
-  }, [size])
+  }, [size, posX, posY])
 
   const handleCollapse = useCallback(() => {
     setCollapsed(true); setAnimating(true)
@@ -250,6 +272,10 @@ export default function SchemaBrowser() {
     ...store.constraints.filter(c => isOrphaned(c.id)),
   ].length
 
+  useEffect(() => {
+    if (allOrphanCount === 0) setShowOrphans(false)
+  }, [allOrphanCount])
+
   // ── groups ────────────────────────────────────────────────────────────────
 
   const entityTypes = [
@@ -288,8 +314,10 @@ export default function SchemaBrowser() {
   const rHandle = (dir) => ({
     position: 'absolute', zIndex: 2,
     ...(dir === 'e'  ? { right: 0, top: 0, bottom: 0, width: 5, cursor: 'ew-resize' } : {}),
+    ...(dir === 'w'  ? { left: 0, top: 0, bottom: 0, width: 5, cursor: 'ew-resize' } : {}),
     ...(dir === 's'  ? { bottom: 0, left: 0, right: 0, height: 5, cursor: 'ns-resize' } : {}),
     ...(dir === 'se' ? { bottom: 0, right: 0, width: 12, height: 12, cursor: 'nwse-resize' } : {}),
+    ...(dir === 'sw' ? { bottom: 0, left: 0, width: 12, height: 12, cursor: 'nesw-resize' } : {}),
   })
 
   const PILL_W = 128
@@ -307,7 +335,7 @@ export default function SchemaBrowser() {
   const sections = [
     {
       title: 'Entity Types',
-      items: entityTypes,
+      items: showOrphans ? entityTypes.filter(el => isOrphaned(el.id)) : entityTypes,
       renderRow: (el) => (
         <ElementRow key={el.id}
           icon={el.isNested ? <NestedFactTypeIcon /> : <EntityTypeIcon />}
@@ -321,7 +349,7 @@ export default function SchemaBrowser() {
     },
     {
       title: 'Value Types',
-      items: valueTypes,
+      items: showOrphans ? valueTypes.filter(el => isOrphaned(el.id)) : valueTypes,
       renderRow: (el) => (
         <ElementRow key={el.id}
           icon={el.isNested ? <NestedValueTypeIcon /> : <ValueTypeIcon />}
@@ -335,7 +363,7 @@ export default function SchemaBrowser() {
     },
     {
       title: 'Fact Types',
-      items: factTypes,
+      items: showOrphans ? factTypes.filter(f => isOrphaned(f.id)) : factTypes,
       renderRow: (f) => (
         <ElementRow key={f.id}
           icon={<FactTypeIcon />}
@@ -349,7 +377,7 @@ export default function SchemaBrowser() {
     },
     {
       title: 'Subtype Relationships',
-      items: subtypeEdges,
+      items: showOrphans ? subtypeEdges.filter(st => isStOrphaned(st)) : subtypeEdges,
       renderRow: (st) => {
         const subName  = otAndNestedMap[st.subId]?.name  ?? '?'
         const supName  = otAndNestedMap[st.superId]?.name ?? '?'
@@ -367,7 +395,7 @@ export default function SchemaBrowser() {
     },
     {
       title: 'External Constraints',
-      items: constraintNodes,
+      items: showOrphans ? constraintNodes.filter(c => isOrphaned(c.id)) : constraintNodes,
       renderRow: (c) => (
         <ElementRow key={c.id}
           icon={CONSTRAINT_ICON_MAP[c.constraintType] ?? <UniquenessConstraintIcon />}
@@ -402,9 +430,9 @@ export default function SchemaBrowser() {
           WebkitAppRegion: 'no-drag',
           fontFamily: FONT,
           cursor: collapsed ? 'pointer' : 'default',
-          transition: animating
+          transition: resizing ? 'none' : (animating
             ? 'width 0.28s ease, height 0.28s ease, border-radius 0.28s ease, left 0.28s ease, top 0.28s ease'
-            : 'width 0.28s ease, height 0.28s ease, border-radius 0.28s ease',
+            : 'width 0.28s ease, height 0.28s ease, border-radius 0.28s ease'),
         }}
       >
         {/* Pill label */}
@@ -456,12 +484,20 @@ export default function SchemaBrowser() {
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               {allOrphanCount > 0 && (
-                <span style={{
-                  fontSize: 9, color: '#c0392b',
-                  border: '1px solid #c0392b', borderRadius: 3,
-                  padding: '0 4px', lineHeight: '14px',
-                  pointerEvents: 'none',
-                }}>
+                <span
+                  onClick={() => setShowOrphans(p => !p)}
+                  title={showOrphans ? 'Show all elements' : 'Show only orphans'}
+                  style={{
+                    fontSize: 9,
+                    color: showOrphans ? 'white' : '#c0392b',
+                    border: '1px solid #c0392b',
+                    borderRadius: 3,
+                    padding: '0 4px',
+                    lineHeight: '14px',
+                    cursor: 'pointer',
+                    background: showOrphans ? '#c0392b' : 'transparent',
+                  }}
+                >
                   {allOrphanCount} orphan{allOrphanCount !== 1 ? 's' : ''}
                 </span>
               )}
@@ -494,8 +530,10 @@ export default function SchemaBrowser() {
 
           {/* Resize handles */}
           <div style={rHandle('e')}  onMouseDown={e => handleResizeMouseDown(e, 'e')} />
+          <div style={rHandle('w')}  onMouseDown={e => handleResizeMouseDown(e, 'w')} />
           <div style={rHandle('s')}  onMouseDown={e => handleResizeMouseDown(e, 's')} />
           <div style={rHandle('se')} onMouseDown={e => handleResizeMouseDown(e, 'se')} />
+          <div style={rHandle('sw')} onMouseDown={e => handleResizeMouseDown(e, 'sw')} />
         </div>
       </div>
     </>
