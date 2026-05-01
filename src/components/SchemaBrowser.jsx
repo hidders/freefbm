@@ -92,7 +92,7 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
       onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-raised)' }}
       onMouseLeave={e => { e.currentTarget.style.background = isOrphaned ? 'rgba(192,57,43,0.04)' : '' }}
     >
-      <span style={{ flexShrink: 0, marginRight: 5, lineHeight: 0 }}>
+      <span style={{ flexShrink: 0, marginRight: 5, lineHeight: 0, transform: 'scale(0.8)' }}>
         {icon}
       </span>
       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
@@ -278,19 +278,21 @@ export default function SchemaBrowser() {
 
   // ── groups ────────────────────────────────────────────────────────────────
 
-  const entityTypes = [
-    ...store.objectTypes.filter(o => o.kind === 'entity')
-      .map(o => ({ id: o.id, label: o.name || '(unnamed)', kind: 'entity', isNested: false })),
-    ...store.facts.filter(f => f.objectified && f.objectifiedKind !== 'value')
-      .map(f => ({ id: f.id, label: f.objectifiedName || '(unnamed)', kind: 'entity', isNested: true })),
-  ].sort((a, b) => a.label.localeCompare(b.label))
+  const entityTypes = store.objectTypes.filter(o => o.kind === 'entity')
+    .map(o => ({ id: o.id, label: o.name || '(unnamed)', kind: 'entity' }))
+    .sort((a, b) => a.label.localeCompare(b.label))
 
-  const valueTypes = [
-    ...store.objectTypes.filter(o => o.kind === 'value')
-      .map(o => ({ id: o.id, label: o.name || '(unnamed)', kind: 'value', isNested: false })),
-    ...store.facts.filter(f => f.objectified && f.objectifiedKind === 'value')
-      .map(f => ({ id: f.id, label: f.objectifiedName || '(unnamed)', kind: 'value', isNested: true })),
-  ].sort((a, b) => a.label.localeCompare(b.label))
+  const nestedEntityTypes = store.facts.filter(f => f.objectified && f.objectifiedKind !== 'value')
+    .map(f => ({ id: f.id, label: f.objectifiedName || '(unnamed)', kind: 'entity' }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+
+  const valueTypes = store.objectTypes.filter(o => o.kind === 'value')
+    .map(o => ({ id: o.id, label: o.name || '(unnamed)', kind: 'value' }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+
+  const nestedValueTypes = store.facts.filter(f => f.objectified && f.objectifiedKind === 'value')
+    .map(f => ({ id: f.id, label: f.objectifiedName || '(unnamed)', kind: 'value' }))
+    .sort((a, b) => a.label.localeCompare(b.label))
 
   const factTypes = store.facts.filter(f => !f.objectified)
 
@@ -338,7 +340,21 @@ export default function SchemaBrowser() {
       items: showOrphans ? entityTypes.filter(el => isOrphaned(el.id)) : entityTypes,
       renderRow: (el) => (
         <ElementRow key={el.id}
-          icon={el.isNested ? <NestedFactTypeIcon /> : <EntityTypeIcon />}
+          icon={<EntityTypeIcon />}
+          label={el.label}
+          isOrphaned={isOrphaned(el.id)}
+          inCurrentDiagram={inDiag(el.id)}
+          onSelect={() => selectEl(el.id, el.kind)}
+          onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
+        />
+      ),
+    },
+    {
+      title: 'Nested Entity Types',
+      items: showOrphans ? nestedEntityTypes.filter(el => isOrphaned(el.id)) : nestedEntityTypes,
+      renderRow: (el) => (
+        <ElementRow key={el.id}
+          icon={<NestedFactTypeIcon />}
           label={el.label}
           isOrphaned={isOrphaned(el.id)}
           inCurrentDiagram={inDiag(el.id)}
@@ -352,7 +368,21 @@ export default function SchemaBrowser() {
       items: showOrphans ? valueTypes.filter(el => isOrphaned(el.id)) : valueTypes,
       renderRow: (el) => (
         <ElementRow key={el.id}
-          icon={el.isNested ? <NestedValueTypeIcon /> : <ValueTypeIcon />}
+          icon={<ValueTypeIcon />}
+          label={el.label}
+          isOrphaned={isOrphaned(el.id)}
+          inCurrentDiagram={inDiag(el.id)}
+          onSelect={() => selectEl(el.id, el.kind)}
+          onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
+        />
+      ),
+    },
+    {
+      title: 'Nested Value Types',
+      items: showOrphans ? nestedValueTypes.filter(el => isOrphaned(el.id)) : nestedValueTypes,
+      renderRow: (el) => (
+        <ElementRow key={el.id}
+          icon={<NestedValueTypeIcon />}
           label={el.label}
           isOrphaned={isOrphaned(el.id)}
           inCurrentDiagram={inDiag(el.id)}

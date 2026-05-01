@@ -25,6 +25,8 @@ const mkValue = (x, y) => ({
 
 const mkRole = () => ({
   id: uid(), objectTypeId: null, roleName: '', mandatory: false,
+  linkReadingParts: ['', '', ''],
+  linkReadingReverseParts: null,
 })
 
 // Returns the smallest positive integer not already used in any fact reading.
@@ -571,6 +573,11 @@ export const useOrmStore = create((set, get) => ({
       readingParts: f.readingParts || Array((f.arity || 2) + 1).fill(''),
       alternativeReadings: f.alternativeReadings || [],
       readingDisplay: f.readingDisplay || 'forward',
+      roles: (f.roles || []).map(r => ({
+        ...r,
+        linkReadingParts: r.linkReadingParts ?? (f.objectified ? ['', 'involves', ''] : ['', '', '']),
+        linkReadingReverseParts: r.linkReadingReverseParts ?? null,
+      })),
       internalFrequency: (f.internalFrequency || []).map((if_, idx) => ({
         ...if_,
         x: if_.x ?? (f.x + 40 + idx * 20),
@@ -773,6 +780,7 @@ export const useOrmStore = create((set, get) => ({
   addNestedFact(x, y, arity = 2, objectifiedKind = 'entity') {
     const n = nextRelationNumber(get().facts)
     const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind, nestedReading: false, datatypeAssignment: null }
+    base.roles = base.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] }))
     set(s => {
       const used = new Set(
         s.objectTypes.map(o => o.name).concat(s.facts.map(f => f.objectifiedName).filter(Boolean))
@@ -796,6 +804,7 @@ export const useOrmStore = create((set, get) => ({
   addNestedValueFact(x, y, arity = 2) {
     const n = nextRelationNumber(get().facts)
     const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind: 'value', nestedReading: false, datatypeAssignment: null }
+    base.roles = base.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] }))
     set(s => {
       const used = new Set(
         s.objectTypes.filter(o => o.kind === 'value').map(o => o.name)
@@ -828,6 +837,7 @@ export const useOrmStore = create((set, get) => ({
         facts: s.facts.map(f => f.id !== id ? f : {
           ...f, objectified: true, objectifiedKind: 'entity',
           objectifiedName: `Entity${n}`, nestedReading: false,
+          roles: f.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] })),
         }),
         isDirty: true,
       }
@@ -846,6 +856,7 @@ export const useOrmStore = create((set, get) => ({
         facts: s.facts.map(f => f.id !== id ? f : {
           ...f, objectified: true, objectifiedKind: 'value',
           objectifiedName: `Value${n}`, nestedReading: false,
+          roles: f.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] })),
         }),
         isDirty: true,
       }
@@ -971,7 +982,9 @@ export const useOrmStore = create((set, get) => ({
         let roles
         if (newArity > current) {
           const extra = Array.from({ length: newArity - current }, mkRole)
-          roles = [...f.roles, ...extra]
+          roles = f.objectified
+            ? [...f.roles, ...extra.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] }))]
+            : [...f.roles, ...extra]
         } else {
           roles = f.roles.slice(0, newArity)
         }
@@ -1070,7 +1083,8 @@ export const useOrmStore = create((set, get) => ({
     set(s => {
       const facts = s.facts.map(f => {
         if (f.id !== factId) return f
-        const roles = [...f.roles.slice(0, atIndex), mkRole(), ...f.roles.slice(atIndex)]
+        const newRole = f.objectified ? { ...mkRole(), linkReadingParts: ['', 'involves', ''] } : mkRole()
+        const roles = [...f.roles.slice(0, atIndex), newRole, ...f.roles.slice(atIndex)]
         const arity = f.arity + 1
         const uniqueness = f.uniqueness.map(u => u.map(i => i >= atIndex ? i + 1 : i))
         const internalFrequency = (f.internalFrequency || []).map(if_ => ({

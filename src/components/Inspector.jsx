@@ -781,11 +781,109 @@ function RoleInspector({ fact, roleIndex }) {
         onNavigateValueRange={() => store.selectValueRange({ factId: fact.id, roleIndex })}
         onNavigateCardinalityRange={() => store.selectCardinalityRange({ factId: fact.id, roleIndex })}
       />
+      {fact.objectified && (
+        <LinkReadingSection
+          nestedFact={fact}
+          roleIndex={roleIndex}
+          role={role}
+          store={store}
+        />
+      )}
       <Label>Usage</Label>
       <DangerBtn onClick={() => { store.deleteRole(fact.id, roleIndex); store.select(fact.id, 'fact') }}>
         Delete Role
       </DangerBtn>
     </div>
+  )
+}
+
+// ── Link Reading section (for roles inside nested object types) ────────────────
+function LinkReadingSection({ nestedFact, roleIndex, role, store }) {
+  const parts = role.linkReadingParts || ['', '', '']
+  const reverseParts = role.linkReadingReverseParts || ['', '', '']
+  const hasReverse = role.linkReadingReverseParts != null
+  const otMap     = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
+  const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
+  const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+
+  const nestedName = nestedFact.objectifiedName || '(unnamed)'
+  const playerOid = role.objectTypeId
+  const playerOt = otMap[playerOid]
+  const playerNf = nestedMap[playerOid]
+  const playerName = playerOt?.name ?? playerNf?.objectifiedName ?? '(unassigned)'
+  const isNestedValue = nestedFact.objectifiedKind === 'value'
+  const isPlayerValue = playerOt?.kind === 'value' || playerNf?.objectifiedKind === 'value'
+
+  const handleBlur = (field, i, val) => {
+    const trimmed = val.trim()
+    if (trimmed !== val) {
+      const arr = field === 'reverse' ? [...reverseParts] : [...parts]
+      arr[i] = trimmed
+      store.updateRole(nestedFact.id, roleIndex, { [field === 'reverse' ? 'linkReadingReverseParts' : 'linkReadingParts']: arr })
+    }
+  }
+
+  const renderReading = (label, readingParts, isReverse) => (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+        <Label>{label}</Label>
+        {isReverse && (
+          <button onClick={() => store.updateRole(nestedFact.id, roleIndex, { linkReadingReverseParts: null })}
+            style={{ background: 'none', color: '#c0392b', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
+        )}
+      </div>
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center',
+        border: '1px solid var(--border)', borderRadius: 4,
+        padding: '3px 6px', background: '#fff',
+        fontFamily: FONT, fontSize: 12, lineHeight: 1.8,
+        cursor: 'text',
+      }}>
+        <PartInput parts={readingParts} index={0} onChange={v => { const next = [...readingParts]; next[0] = v; store.updateRole(nestedFact.id, roleIndex, { [isReverse ? 'linkReadingReverseParts' : 'linkReadingParts']: next }) }} onBlur={v => handleBlur(isReverse ? 'reverse' : 'forward', 0, v)} />
+        <RoleSpan name={isReverse ? playerName : nestedName} isValue={isReverse ? isPlayerValue : isNestedValue} />
+        <PartInput parts={readingParts} index={1} onChange={v => { const next = [...readingParts]; next[1] = v; store.updateRole(nestedFact.id, roleIndex, { [isReverse ? 'linkReadingReverseParts' : 'linkReadingParts']: next }) }} onBlur={v => handleBlur(isReverse ? 'reverse' : 'forward', 1, v)} />
+        <RoleSpan name={isReverse ? nestedName : playerName} isValue={isReverse ? isNestedValue : isPlayerValue} />
+        <PartInput parts={readingParts} index={2} onChange={v => { const next = [...readingParts]; next[2] = v; store.updateRole(nestedFact.id, roleIndex, { [isReverse ? 'linkReadingReverseParts' : 'linkReadingParts']: next }) }} onBlur={v => handleBlur(isReverse ? 'reverse' : 'forward', 2, v)} />
+      </div>
+    </div>
+  )
+
+  return (
+    <Section title="Link Readings">
+      {renderReading('Reading', parts, false)}
+      {!hasReverse && (
+        <button onClick={() => store.updateRole(nestedFact.id, roleIndex, { linkReadingReverseParts: ['', '', ''] })}
+          style={{ padding: '2px 8px', fontSize: 11, background: 'var(--bg-raised)',
+            border: '1px solid var(--border)', borderRadius: 3, cursor: 'pointer' }}>
+          + Add reverse reading
+        </button>
+      )}
+      {hasReverse && renderReading('Reverse reading', reverseParts, true)}
+    </Section>
+  )
+}
+
+function PartInput({ parts, index, onChange, onBlur }) {
+  const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+  return (
+    <span style={{ display: 'inline-block', position: 'relative', background: '#fef6ec', borderRadius: 2, padding: '0 4px', outline: '1px dotted var(--border)' }}>
+      <span aria-hidden style={{ visibility: 'hidden', whiteSpace: 'pre', fontSize: 12, fontFamily: FONT, display: 'block' }}>{parts[index] || ' '}</span>
+      <input value={parts[index]}
+        onChange={e => onChange(e.target.value)}
+        onBlur={e => onBlur(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', outline: 'none', background: 'transparent', WebkitAppearance: 'none', appearance: 'none', color: 'var(--ink-2)', fontSize: 12, fontFamily: FONT, padding: '0 4px', margin: 0, boxSizing: 'border-box' }}
+      />
+    </span>
+  )
+}
+
+function RoleSpan({ name, isValue }) {
+  const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+  return (
+    <span style={{ color: isValue ? 'var(--col-value)' : 'var(--col-entity)', fontSize: 12, fontFamily: FONT, fontWeight: 700, userSelect: 'none', whiteSpace: 'nowrap', paddingLeft: '0.35em', paddingRight: '0.35em' }}>
+      {name}
+    </span>
   )
 }
 
