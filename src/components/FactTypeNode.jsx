@@ -108,8 +108,6 @@ export function buildDisplayReading(parts, n) {
   const t = i => parts[i]?.trim() || ''
 
   if (n === 1) {
-    // Always include the dot so role position is unambiguous; only omit it
-    // when both surrounding fragments are empty (handled by early return above).
     const tokens = []
     if (t(0)) tokens.push(t(0))
     tokens.push('...')
@@ -117,18 +115,45 @@ export function buildDisplayReading(parts, n) {
     return tokens.join(' ')
   }
 
-  // Interleave text parts with '...' role-position dots
   const tokens = []
   for (let i = 0; i <= n; i++) {
     if (t(i)) tokens.push(t(i))
     if (i < n) tokens.push('...')
   }
-  // Trim leading/trailing dots only when BOTH outer fragments are empty —
-  // if either the first or last fragment is non-empty the dots must stay so
-  // the reader can see exactly where the roles sit in the reading.
   if (n === 2 && !t(0) && !t(n)) {
     while (tokens.length && tokens[0] === '...') tokens.shift()
     while (tokens.length && tokens[tokens.length - 1] === '...') tokens.pop()
+  }
+  return tokens.join(' ')
+}
+
+export function buildShownReading(parts, roleOrder, fact, otMap, nestedMap) {
+  if (!parts || parts.every(p => !p?.trim())) return ''
+  const t = i => parts[i]?.trim() || ''
+  const n = fact.arity
+
+  if (n === 1) {
+    const tokens = []
+    if (t(0)) tokens.push(t(0))
+    tokens.push('...')
+    if (t(1)) tokens.push(t(1))
+    return tokens.join(' ')
+  }
+
+  const tokens = []
+  for (let i = 0; i <= n; i++) {
+    if (t(i)) tokens.push(t(i))
+    if (i < n) {
+      const oid = fact.roles[roleOrder[i]]?.objectTypeId
+      const ot = otMap?.[oid]
+      const nf = nestedMap?.[oid]
+      const name = ot?.name ?? nf?.objectifiedName ?? '?'
+      tokens.push(`[${name}]`)
+    }
+  }
+  if (n === 2 && !t(0) && !t(n)) {
+    while (tokens.length && tokens[0].startsWith('[') && tokens[0].endsWith(']')) tokens.shift()
+    while (tokens.length && tokens[tokens.length - 1].startsWith('[') && tokens[tokens.length - 1].endsWith(']')) tokens.pop()
   }
   return tokens.join(' ')
 }
@@ -519,12 +544,18 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           onDragStart(fact.id, 'fact', { clientX: startX, clientY: startY })
         }
       }
-      const onUp = () => {
+      const onUp = (ue) => {
         if (done) return; done = true
         window.removeEventListener('mousemove', onMove)
         window.removeEventListener('mouseup',   onUp)
-        if (thisRoleSelected) store.select(fact.id, 'fact')
-        else                  store.selectRole(fact.id, roleIndex)
+        // Second click of a double-click: the onUp listener was registered by the
+        // first click's mousedown. Skip — handleRoleDoubleClick already handled it.
+        if (ue.detail >= 2) return
+        if (store.selectedRole?.factId === fact.id && store.selectedRole?.roleIndex === roleIndex) {
+          store.select(fact.id, 'fact')
+        } else {
+          store.selectRole(fact.id, roleIndex)
+        }
       }
       window.addEventListener('mousemove', onMove)
       window.addEventListener('mouseup',   onUp)
@@ -547,6 +578,15 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const handleRoleMouseLeave = useCallback((e) => {
     e.currentTarget.parentElement?.classList.remove('role-interior')
   }, [])
+
+  // When the tool leaves select mode, clean up any stale role-interior classes
+  // that were left behind because mouseLeave didn't fire during the transition.
+  useEffect(() => {
+    if (store.tool !== 'select') {
+      document.querySelectorAll('.role-box-group.role-interior')
+        .forEach(el => el.classList.remove('role-interior'))
+    }
+  }, [store.tool])
 
   // ── Annotation drag (value-range labels + reading text) ───────────────────
   const vrDragRef       = useRef(null)
@@ -954,7 +994,19 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
 
   // ── Reading text builder ───────────────────────────────────────────────────
   function renderReading() {
-    const forwardReading = getDisplayReading(fact)
+    const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
+    const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
+
+    const shownOrder = fact.shownReadingOrder
+    const defaultOrder = Array.from({ length: fact.arity }, (_, i) => i)
+    const isNatural = !shownOrder || JSON.stringify(shownOrder) === JSON.stringify(defaultOrder)
+
+    const forwardParts = isNatural ? fact.readingParts
+      : (fact.alternativeReadings || []).find(r => JSON.stringify(r.roleOrder) === JSON.stringify(shownOrder))?.parts
+    const forwardReading = forwardParts
+      ? (isNatural ? buildDisplayReading(forwardParts, fact.arity) : buildShownReading(forwardParts, shownOrder, fact, otMap, nestedMap))
+      : ''
+
     const displayMode = fact.arity === 2 ? (fact.readingDisplay || 'forward') : 'forward'
     let text = forwardReading
 

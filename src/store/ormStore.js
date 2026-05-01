@@ -56,16 +56,17 @@ const mkFact = (x, y, arity = 2) => ({
   id: uid(), kind: 'fact',
   x, y, arity,
   roles: Array.from({ length: arity }, mkRole),
-  readingParts: Array(arity + 1).fill(''),
+  readingParts: null,
   alternativeReadings: [],
-  readingDisplay: 'forward',   // 'forward' | 'both' | 'reverse'
+  readingDisplay: 'forward',
+  shownReadingOrder: null,
   uniqueness: [],
   preferredUniqueness: null,
-  internalFrequency: [],       // [{ id, roles: [roleIndex], range: [...rangeSpecs], x, y }]
-  orientation: 'horizontal',   // 'horizontal' | 'vertical'
-  readingOffset: null,         // { dx, dy } relative to fact centre, or null for auto
-  readingAbove: false,         // show reading above (horizontal) or right (vertical)
-  uniquenessBelow: false,      // show uniqueness bars below (horizontal) or left (vertical)
+  internalFrequency: [],
+  orientation: 'horizontal',
+  readingOffset: null,
+  readingAbove: false,
+  uniquenessBelow: false,
 })
 
 const mkSubtype = (subId, superId) => ({
@@ -566,24 +567,33 @@ export const useOrmStore = create((set, get) => ({
           pan: { x: 0, y: 0 }, zoom: 1 })
   },
 
-  loadModel(data, filePath = null) {
+   loadModel(data, filePath = null) {
     const d = typeof data === 'string' ? JSON.parse(data) : data
-    const facts = (d.facts || []).map(f => ({
-      ...f,
-      readingParts: f.readingParts || Array((f.arity || 2) + 1).fill(''),
-      alternativeReadings: f.alternativeReadings || [],
-      readingDisplay: f.readingDisplay || 'forward',
-      roles: (f.roles || []).map(r => ({
-        ...r,
-        linkReadingParts: r.linkReadingParts ?? (f.objectified ? ['', 'involves', ''] : ['', '', '']),
-        linkReadingReverseParts: r.linkReadingReverseParts ?? null,
-      })),
-      internalFrequency: (f.internalFrequency || []).map((if_, idx) => ({
-        ...if_,
-        x: if_.x ?? (f.x + 40 + idx * 20),
-        y: if_.y ?? (f.y - 30),
-      })),
-    }))
+    const facts = (d.facts || []).map(f => {
+      // Migration: if readingParts was stored as an all-empty array from the old format,
+      // treat it as null (no reading). Only keep it if at least one fragment has content.
+      let readingParts = f.readingParts
+      if (readingParts && Array.isArray(readingParts) && readingParts.every(p => !p?.trim())) {
+        readingParts = null
+      }
+      return {
+        ...f,
+        readingParts,
+        alternativeReadings: f.alternativeReadings || [],
+        readingDisplay: f.readingDisplay || 'forward',
+        shownReadingOrder: f.shownReadingOrder ?? null,
+        roles: (f.roles || []).map(r => ({
+          ...r,
+          linkReadingParts: r.linkReadingParts ?? (f.objectified ? ['', 'involves', ''] : ['', '', '']),
+          linkReadingReverseParts: r.linkReadingReverseParts ?? null,
+        })),
+        internalFrequency: (f.internalFrequency || []).map((if_, idx) => ({
+          ...if_,
+          x: if_.x ?? (f.x + 40 + idx * 20),
+          y: if_.y ?? (f.y - 30),
+        })),
+      }
+    })
     // Migrate old field names → new names
     const constraints = (d.constraints || []).map(c => {
       let out = c
@@ -993,10 +1003,12 @@ export const useOrmStore = create((set, get) => ({
           ...if_,
           roles: if_.roles.filter(i => i < newArity),
         })).filter(if_ => if_.roles.length > 0)
-        const oldParts = f.readingParts || Array(current + 1).fill('')
-        const readingParts = newArity > current
-          ? [...oldParts, ...Array(newArity - current).fill('')]
-          : oldParts.slice(0, newArity + 1)
+        const oldParts = f.readingParts
+        const readingParts = oldParts
+          ? (newArity > current
+            ? [...oldParts, ...Array(newArity - current).fill('')]
+            : oldParts.slice(0, newArity + 1))
+          : null
         const alternativeReadings = (f.alternativeReadings || [])
           .filter(r => r.roleOrder.every(i => i < newArity) && r.roleOrder.length === newArity)
           .map(r => ({
@@ -1005,7 +1017,7 @@ export const useOrmStore = create((set, get) => ({
               ? [...r.parts, ...Array(newArity - (r.parts.length - 1)).fill('')]
               : r.parts.slice(0, newArity + 1),
           }))
-        return { ...f, arity: newArity, roles, uniqueness, internalFrequency, readingParts, alternativeReadings }
+        return { ...f, arity: newArity, roles, uniqueness, internalFrequency, readingParts, alternativeReadings, shownReadingOrder: null }
       })
       const constraints = s.constraints.map(c => ({
         ...c,
@@ -1067,7 +1079,7 @@ export const useOrmStore = create((set, get) => ({
         if (promoted) {
           readingParts = promoted.parts
           alternativeReadings = remappedAlts.filter(r => JSON.stringify(r.roleOrder) !== defaultKey)
-          if ((f.readingParts || []).some(p => p.trim())) {
+          if (f.readingParts && f.readingParts.some(p => p?.trim())) {
             const demotedOrder = Array.from({ length: n }, (_, i) => oldToNew[i])
             alternativeReadings = [...alternativeReadings, { roleOrder: demotedOrder, parts: f.readingParts }]
           }
@@ -1090,8 +1102,8 @@ export const useOrmStore = create((set, get) => ({
         const internalFrequency = (f.internalFrequency || []).map(if_ => ({
           ...if_, roles: if_.roles.map(i => i >= atIndex ? i + 1 : i),
         }))
-        const rp = [...(f.readingParts || [])]
-        rp.splice(atIndex, 0, '')
+        const rp = f.readingParts ? [...f.readingParts] : null
+        if (rp) rp.splice(atIndex, 0, '')
         return { ...f, arity, roles, uniqueness, internalFrequency, readingParts: rp, alternativeReadings: [] }
       })
       const constraints = s.constraints.map(c => ({
@@ -1120,8 +1132,8 @@ export const useOrmStore = create((set, get) => ({
         const internalFrequency = (f.internalFrequency || [])
           .map(if_ => ({ ...if_, roles: if_.roles.filter(i => i !== roleIndex).map(i => i > roleIndex ? i - 1 : i) }))
           .filter(if_ => if_.roles.length > 0)
-        const rp = [...(f.readingParts || [])]
-        rp.splice(roleIndex, 1)
+        const rp = f.readingParts ? [...f.readingParts] : null
+        if (rp) rp.splice(roleIndex, 1)
         return { ...f, arity, roles, uniqueness, internalFrequency, readingParts: rp, alternativeReadings: [] }
       })
       const constraints = s.constraints.map(c => ({
@@ -1229,6 +1241,13 @@ export const useOrmStore = create((set, get) => ({
     set(s => ({
       facts: s.facts.map(f => {
         if (f.id !== factId) return f
+        const n = f.arity
+        const defaultKey = JSON.stringify(Array.from({ length: n }, (_, i) => i))
+        // If the role order matches the natural order, store it as readingParts
+        // (the one shown on the canvas), not as an alternative.
+        if (key === defaultKey) {
+          return { ...f, readingParts: parts }
+        }
         const existing = (f.alternativeReadings || [])
         const exists = existing.some(r => JSON.stringify(r.roleOrder) === key)
         const alternativeReadings = exists
@@ -1246,6 +1265,16 @@ export const useOrmStore = create((set, get) => ({
       facts: s.facts.map(f => {
         if (f.id !== factId) return f
         return { ...f, alternativeReadings: (f.alternativeReadings || []).filter(r => JSON.stringify(r.roleOrder) !== key) }
+      }),
+      isDirty: true,
+    }))
+  },
+
+  removeDefaultReading(factId) {
+    set(s => ({
+      facts: s.facts.map(f => {
+        if (f.id !== factId) return f
+        return { ...f, readingParts: null }
       }),
       isDirty: true,
     }))
@@ -2100,7 +2129,11 @@ export const useOrmStore = create((set, get) => ({
 
   // ── tool & link drafts ───────────────────────────────────────────────────
 
-  setTool(tool)    { set({ tool, linkDraft: null }) },
+  setTool(tool)    {
+    const prev = get().tool
+    const clearRoleSelection = (prev === 'assignRole' && tool !== 'assignRole')
+    set({ tool, linkDraft: null, ...(clearRoleSelection ? { selectedId: null, selectedKind: null, selectedRole: null, selectedUniqueness: null } : {}) })
+  },
   setLinkDraft(d)  { set({ linkDraft: d }) },
   clearLinkDraft() { set({ linkDraft: null }) },
 

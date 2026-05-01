@@ -1220,6 +1220,86 @@ function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart }) {
   )
 }
 
+// ── Add reading row: dropdown for ordering + inline reading editor ────────────
+function AddReadingRow({ fact, store, available }) {
+  const [selIdx, setSelIdx] = useState(0)
+  const [draftParts, setDraftParts] = useState(() => Array(fact.arity + 1).fill(''))
+  const roleOrder = available[selIdx]
+  const arity = fact.arity
+  const otMap     = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
+  const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
+  const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+
+  // Reset draft parts when arity changes
+  useEffect(() => {
+    setDraftParts(Array(arity + 1).fill(''))
+  }, [arity])
+
+  const hasContent = draftParts.some(p => p.trim())
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && hasContent) {
+      e.preventDefault()
+      store.updateAlternativeReading(fact.id, roleOrder, [...draftParts])
+      setDraftParts(Array(arity + 1).fill(''))
+    }
+  }
+
+  const handleBlur = (i) => {
+    const trimmed = draftParts[i].trim()
+    if (trimmed !== draftParts[i]) {
+      const next = [...draftParts]
+      next[i] = trimmed
+      setDraftParts(next)
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }}>
+        <select value={selIdx} onChange={e => setSelIdx(Number(e.target.value))}
+          style={{ flex: '0 0 auto', fontSize: 11, minWidth: 60 }}>
+          {available.map((p, i) => (
+            <option key={i} value={i}>({p.map(j => j + 1).join(', ')})</option>
+          ))}
+        </select>
+      </div>
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center',
+        border: '1px solid var(--border)', borderRadius: 4,
+        padding: '3px 6px', background: '#fff',
+        fontFamily: FONT, fontSize: 12, lineHeight: 1.8,
+        cursor: 'text',
+      }}>
+        {draftParts.map((seg, i) => (
+          <React.Fragment key={i}>
+            <span style={{ display: 'inline-block', position: 'relative', background: '#fef6ec', borderRadius: 2, padding: '0 4px', outline: '1px dotted var(--border)' }}>
+              <span aria-hidden style={{ visibility: 'hidden', whiteSpace: 'pre', fontSize: 12, fontFamily: FONT, display: 'block' }}>{seg || ' '}</span>
+              <input value={seg}
+                onChange={e => { const next = [...draftParts]; next[i] = e.target.value; setDraftParts(next) }}
+                onBlur={() => handleBlur(i)}
+                onKeyDown={handleKeyDown}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', outline: 'none', background: 'transparent', WebkitAppearance: 'none', appearance: 'none', color: 'var(--ink-2)', fontSize: 12, fontFamily: FONT, padding: '0 4px', margin: 0, boxSizing: 'border-box' }}
+              />
+            </span>
+            {i < arity && (() => {
+              const oid = fact.roles[roleOrder[i]]?.objectTypeId
+              const ot  = otMap[oid]
+              const nf  = nestedMap[oid]
+              const name  = ot?.name ?? nf?.objectifiedName ?? '?'
+              const isValue = ot?.kind === 'value' || nf?.objectifiedKind === 'value'
+              const color = isValue ? 'var(--col-value)' : 'var(--col-entity)'
+              return (
+                <span style={{ color, fontSize: 12, fontFamily: FONT, fontWeight: 700, userSelect: 'none', whiteSpace: 'nowrap', paddingLeft: '0.35em', paddingRight: '0.35em' }}>{name}</span>
+              )
+            })()}
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Fact presentation subsection ─────────────────────────────────────────────
 function FactPresentationSubsection({ fact, store }) {
   return (
@@ -1248,6 +1328,35 @@ function FactPresentationSubsection({ fact, store }) {
           ))}
         </Row>
       )}
+      {fact.arity > 2 && (() => {
+        const readings = []
+        if (fact.readingParts != null) {
+          const n = fact.arity
+          readings.push({ label: `(1, 2, ..., ${n}) — natural`, roleOrder: null, has: true })
+        }
+        for (const alt of (fact.alternativeReadings || [])) {
+          if (alt.parts?.some(p => p?.trim())) {
+            readings.push({
+              label: `(${alt.roleOrder.map(i => i + 1).join(', ')})`,
+              roleOrder: alt.roleOrder,
+              has: true,
+            })
+          }
+        }
+        if (readings.length === 0) return null
+        const currentKey = fact.shownReadingOrder ? JSON.stringify(fact.shownReadingOrder) : null
+        return (
+          <Row>
+            <Label>Shown Reading</Label>
+            <select value={currentKey ?? ''} style={{ width: '100%' }}
+              onChange={e => store.updateFact(fact.id, { shownReadingOrder: e.target.value ? JSON.parse(e.target.value) : null })}>
+              {readings.map((r, i) => (
+                <option key={i} value={r.roleOrder ? JSON.stringify(r.roleOrder) : ''}>{r.label}</option>
+              ))}
+            </select>
+          </Row>
+        )
+      })()}
       <Row>
         <Label>Spatial Ordering</Label>
         {fact.objectified && (
@@ -1385,7 +1494,6 @@ function FactConstraintsSubsection({ fact, store }) {
 // ── Fact type inspector ───────────────────────────────────────────────────────
 function FactInspector({ fact }) {
   const store = useOrmStore()
-  const [selectedPerm, setSelectedPerm] = useState('')
 
   // Shared: arity + readings + display options
   const factTypeSection = (
@@ -1432,85 +1540,62 @@ function FactInspector({ fact }) {
         )}
       </Row>
 
-      {/* Primary reading */}
+      {/* Readings */}
       {(() => {
-        const defaultOrder = Array.from({ length: fact.arity }, (_, i) => i)
-        const parts = fact.readingParts || Array(fact.arity + 1).fill('')
-        return (
-          <Row>
-            <Label>Reading</Label>
-            <ReadingEditor
-              fact={fact} store={store}
-              parts={parts}
-              roleOrder={defaultOrder}
-              onUpdatePart={(i, val) => {
-                const newParts = [...parts]
-                newParts[i] = val
-                store.updateFact(fact.id, { readingParts: newParts })
-              }}
-            />
-          </Row>
-        )
-      })()}
+        const arity = fact.arity
+        if (arity < 1) return null
+        const defaultOrder = Array.from({ length: arity }, (_, i) => i)
+        const allPerms = generatePermutations(arity)
 
-      {/* Alternative readings */}
-      {(fact.alternativeReadings || []).map(alt => {
-        const orderKey = JSON.stringify(alt.roleOrder)
-        const label = '(' + alt.roleOrder.map(i => i + 1).join(', ') + ')'
-        return (
-          <Row key={orderKey}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
-              <Label>Reading {label}</Label>
-              <button onClick={() => store.removeAlternativeReading(fact.id, alt.roleOrder)}
-                style={{ background: 'none', color: '#c0392b', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
-            </div>
-            <ReadingEditor
-              fact={fact} store={store}
-              parts={alt.parts}
-              roleOrder={alt.roleOrder}
-              onUpdatePart={(i, val) => {
-                const newParts = [...alt.parts]
-                newParts[i] = val
-                store.updateAlternativeReading(fact.id, alt.roleOrder, newParts)
-              }}
-            />
-          </Row>
-        )
-      })}
-
-      {/* Add alternative reading */}
-      {fact.arity >= 2 && (() => {
-        const allPerms = generatePermutations(fact.arity)
-        const defaultKey = JSON.stringify(Array.from({ length: fact.arity }, (_, i) => i))
-        const usedKeys = new Set([
-          defaultKey,
-          ...(fact.alternativeReadings || []).map(r => JSON.stringify(r.roleOrder)),
-        ])
+        // Unified list of readings: default (if present) + alternatives
+        const readings = []
+        if (fact.readingParts != null) {
+          readings.push({ roleOrder: defaultOrder, parts: fact.readingParts, isDefault: true })
+        }
+        for (const alt of (fact.alternativeReadings || [])) {
+          readings.push({ roleOrder: alt.roleOrder, parts: alt.parts, isDefault: false })
+        }
+        const usedKeys = new Set(readings.map(r => JSON.stringify(r.roleOrder)))
         const available = allPerms.filter(p => !usedKeys.has(JSON.stringify(p)))
-        if (available.length === 0) return null
-        const effectiveSel = available.some(p => JSON.stringify(p) === selectedPerm)
-          ? selectedPerm
-          : JSON.stringify(available[0])
+
         return (
-          <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-            <select value={effectiveSel} onChange={e => setSelectedPerm(e.target.value)}
-              style={{ flex: 1, fontSize: 11 }}>
-              {available.map(p => {
-                const key = JSON.stringify(p)
-                return <option key={key} value={key}>({p.map(i => i + 1).join(', ')})</option>
-              })}
-            </select>
-            <button
-              onClick={() => {
-                const roleOrder = JSON.parse(effectiveSel)
-                store.updateAlternativeReading(fact.id, roleOrder, Array(fact.arity + 1).fill(''))
-                setSelectedPerm('')
-              }}
-              style={{ padding: '2px 8px', fontSize: 11, background: 'var(--bg-raised)',
-                border: '1px solid var(--border)', borderRadius: 3, cursor: 'pointer' }}>
-              + Add reading
-            </button>
-          </div>
+          <Section title="Readings">
+            {readings.map(r => {
+              const orderKey = JSON.stringify(r.roleOrder)
+              const label = r.roleOrder.map(i => i + 1).join(', ')
+              return (
+                <Row key={orderKey}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+                    <Label>({label})</Label>
+                    <button onClick={() => {
+                      if (r.isDefault) store.removeDefaultReading(fact.id)
+                      else store.removeAlternativeReading(fact.id, r.roleOrder)
+                    }}
+                      style={{ background: 'none', color: '#c0392b', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
+                  </div>
+                  <ReadingEditor
+                    fact={fact} store={store}
+                    parts={r.parts}
+                    roleOrder={r.roleOrder}
+                    onUpdatePart={(i, val) => {
+                      if (r.isDefault) {
+                        const newParts = [...r.parts]
+                        newParts[i] = val
+                        store.updateFact(fact.id, { readingParts: newParts })
+                      } else {
+                        const newParts = [...r.parts]
+                        newParts[i] = val
+                        store.updateAlternativeReading(fact.id, r.roleOrder, newParts)
+                      }
+                    }}
+                  />
+                </Row>
+              )
+            })}
+            {available.length > 0 && (
+              <AddReadingRow fact={fact} store={store} available={available} />
+            )}
+          </Section>
         )
       })()}
 
