@@ -2451,7 +2451,7 @@ function ConstraintInspector({ c }) {
 // ── Main inspector ────────────────────────────────────────────────────────────
 export default function Inspector() {
   const store = useOrmStore()
-  const { selectedId, selectedKind, selectedRole, selectedImplicitRole,
+  const { selectedId, selectedKind, selectedRole, selectedImplicitRole, selectedImplicitLinkRole,
           selectedUniqueness, selectedMandatoryDot, selectedInternalFrequency,
           selectedValueRange, selectedCardinalityRange } = store
 
@@ -2546,6 +2546,8 @@ export default function Inspector() {
         ? <ImplicitLinkRoleInspector parentFact={fact} roleIndex={selectedImplicitLinkRole.roleIndex} ilRoleIndex={selectedImplicitLinkRole.ilRoleIndex} />
         : selectedKind === 'implicitLink' && fact && selectedImplicitRole != null
         ? <ImplicitLinkInspector parentFact={fact} roleIndex={selectedImplicitRole} />
+        : selectedKind === 'implicitLink' && fact
+        ? <div style={{ marginBottom: 18 }}><InspectorTitle>Implicit Link</InspectorTitle><div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No implicit link data available. Try showing the link from the role context menu first.</div></div>
         : roleFact
           ? <RoleInspector fact={roleFact} roleIndex={selectedRole.roleIndex} />
           : selectedUniqueness && fact
