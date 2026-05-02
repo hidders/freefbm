@@ -590,7 +590,7 @@ export const useOrmStore = create((set, get) => ({
           linkReadingParts: r.linkReadingParts ?? (f.objectified ? ['', 'involves', ''] : ['', '', '']),
           linkReadingReverseParts: r.linkReadingReverseParts ?? null,
         })),
-        implicitLinks: (f.implicitLinks || (f.objectified
+        implicitLinks: ((f.implicitLinks && f.implicitLinks.length > 0 ? f.implicitLinks : null) || (f.objectified
           ? Array.from({ length: (f.roles || []).length }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false }))
           : [])).map(il => ({
             ...il,
