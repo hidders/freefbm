@@ -770,20 +770,11 @@ export const useOrmStore = create((set, get) => ({
           ...c,
           subtypeIds: (c.subtypeIds || []).filter(sid => !removedSubtypeIds.has(sid)),
         })),
-        diagrams: s.diagrams.map(d => ({
-          ...d,
-          elementIds: d.elementIds === null ? null : d.elementIds.filter(eid => eid !== id),
-          positions:  Object.fromEntries(Object.entries(d.positions).filter(([k]) => k !== id)),
-          // Remove implicit link visibility entries whose associated OT was deleted
-          shownImplicitLinks: (d.shownImplicitLinks || []).filter(key => {
-            const [factId] = key.split(':')
-            const f = s.facts.find(ff => ff.id === factId)
-            if (!f) return true
-            const roleIndex = Number(key.split(':')[1])
-            const role = f.roles[roleIndex]
-            return role?.objectTypeId !== id
-          }),
-        })),
+      diagrams: s.diagrams.map(d => ({
+        ...d,
+        elementIds: d.elementIds === null ? null : d.elementIds.filter(eid => eid !== id),
+        positions:  Object.fromEntries(Object.entries(d.positions).filter(([k]) => k !== id && !k.startsWith(`${id}:il:`))),
+      })),
         selectedId: s.selectedId === id ? null : s.selectedId,
         isDirty: true,
       }
@@ -1120,6 +1111,19 @@ export const useOrmStore = create((set, get) => ({
 
         return { ...f, roles, uniqueness, readingParts, alternativeReadings }
       }),
+      diagrams: s.diagrams.map(d => {
+        const positions = { ...d.positions }
+        const ilKeys = Object.keys(positions).filter(k => k.startsWith(`${factId}:il:`))
+        for (const k of ilKeys) {
+          const ri = Number(k.split(':')[2])
+          const newRi = oldToNew[ri]
+          if (newRi !== undefined && newRi !== ri) {
+            positions[`${factId}:il:${newRi}`] = positions[k]
+            delete positions[k]
+          }
+        }
+        return { ...d, positions }
+      }),
       isDirty: true,
     }))
   },
@@ -1196,7 +1200,20 @@ export const useOrmStore = create((set, get) => ({
           ? c.sequences.map(g => g.map(m => m.kind === 'role' && m.factId === factId && m.roleIndex >= atIndex ? { ...m, roleIndex: m.roleIndex + 1 } : m))
           : undefined,
       }))
-      return { facts, constraints, isDirty: true }
+      return { facts, constraints, isDirty: true,
+        diagrams: s.diagrams.map(d => {
+          const positions = { ...d.positions }
+          const ilKeys = Object.keys(positions).filter(k => k.startsWith(`${factId}:il:`)).sort((a, b) => Number(b.split(':')[2]) - Number(a.split(':')[2]))
+          for (const k of ilKeys) {
+            const ri = Number(k.split(':')[2])
+            if (ri >= atIndex) {
+              positions[`${factId}:il:${ri + 1}`] = positions[k]
+              delete positions[k]
+            }
+          }
+          return { ...d, positions }
+        }),
+      }
     })
   },
 
@@ -1238,7 +1255,25 @@ export const useOrmStore = create((set, get) => ({
             })()
           : undefined,
       }))
-      return { facts, constraints, isDirty: true }
+      return { facts, constraints, isDirty: true,
+        diagrams: s.diagrams.map(d => {
+          const positions = { ...d.positions }
+          const ilKey = `${factId}:il:${roleIndex}`
+          delete positions[ilKey]
+          for (const [k, v] of Object.entries(positions)) {
+            if (k.startsWith(`${factId}:il:`)) {
+              const parts = k.split(':')
+              const ri = Number(parts[2])
+              if (ri > roleIndex) {
+                const newKey = `${factId}:il:${ri - 1}`
+                positions[newKey] = v
+                delete positions[k]
+              }
+            }
+          }
+          return { ...d, positions }
+        }),
+      }
     })
   },
 
@@ -1388,18 +1423,31 @@ export const useOrmStore = create((set, get) => ({
   },
 
   updateImplicitLink(factId, roleIndex, patch) {
-    set(s => ({
-      facts: s.facts.map(f => {
-        if (f.id !== factId) return f
-        return {
-          ...f,
-          implicitLinks: (f.implicitLinks || []).map(il =>
-            il.roleIndex === roleIndex ? { ...il, ...patch } : il
-          ),
-        }
-      }),
-      isDirty: true,
-    }))
+    const { x: px, y: py, ...schemaPatch } = patch
+    set(s => {
+      const changes = {}
+      if (Object.keys(schemaPatch).length > 0) {
+        changes.facts = s.facts.map(f => {
+          if (f.id !== factId) return f
+          return {
+            ...f,
+            implicitLinks: (f.implicitLinks || []).map(il =>
+              il.roleIndex === roleIndex ? { ...il, ...schemaPatch } : il
+            ),
+          }
+        })
+      }
+      if (px != null || py != null) {
+        const key = `${factId}:il:${roleIndex}`
+        const diag = s.diagrams.find(d => d.id === s.activeDiagramId)
+        const positions = { ...(diag?.positions || {}) }
+        positions[key] = { ...(positions[key] || {}), x: px, y: py }
+        changes.diagrams = s.diagrams.map(d =>
+          d.id === s.activeDiagramId ? { ...d, positions } : d
+        )
+      }
+      return Object.keys(changes).length > 0 ? { ...changes, isDirty: true } : {}
+    })
   },
 
   selectImplicitLink(factId, roleIndex) {

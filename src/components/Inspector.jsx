@@ -781,52 +781,12 @@ function RoleInspector({ fact, roleIndex }) {
         onNavigateValueRange={() => store.selectValueRange({ factId: fact.id, roleIndex })}
         onNavigateCardinalityRange={() => store.selectCardinalityRange({ factId: fact.id, roleIndex })}
       />
-      {fact.objectified && (
-        <LinkFactTypeSection
-          nestedFact={fact}
-          roleIndex={roleIndex}
-          role={role}
-          store={store}
-        />
-      )}
       <Section title="Usage">
         <DangerBtn onClick={() => { store.deleteRole(fact.id, roleIndex); store.select(fact.id, 'fact') }}>
           Delete Role
         </DangerBtn>
       </Section>
     </div>
-  )
-}
-
-// ── Link Fact Type section (toggle for showing implied link fact type) ────────
-function LinkFactTypeSection({ nestedFact, roleIndex, role, store }) {
-  const otMap     = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
-  const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
-
-  const playerOid = role.objectTypeId
-  const playerOt = otMap[playerOid]
-  const playerNf = nestedMap[playerOid]
-  if (!playerOt && !playerNf) return null
-
-  const il = nestedFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
-  const ilVisible = il?.visible ?? false
-  const nestedName = nestedFact.objectifiedName || '(unnamed)'
-  const playerName = playerOt?.name ?? playerNf?.objectifiedName ?? '(unassigned)'
-
-  return (
-    <Section title="Link Fact Type">
-      <div style={{ fontSize: 12, color: 'var(--ink-2)', marginBottom: 8 }}>
-        <span style={{ fontWeight: 600 }}>{nestedName}</span> ↔ <span style={{ fontWeight: 600 }}>{playerName}</span>
-      </div>
-      <Checkbox
-        label="Show link fact type"
-        checked={ilVisible}
-        onChange={v => {
-          if (v) store.showImplicitLink(nestedFact.id, roleIndex)
-          else store.hideImplicitLink(nestedFact.id, roleIndex)
-        }}
-      />
-    </Section>
   )
 }
 
@@ -1141,19 +1101,38 @@ function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart }) {
             />
           </span>
           {i < n && (() => {
+            const subscriptNums = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉']
+            const nameOccurrences = new Map()
+            const defaultOrder = Array.from({ length: n }, (_, k) => k)
+            for (const ri of defaultOrder) {
+              const oid = fact.roles?.[ri]?.objectTypeId
+              const ot  = otMap[oid]
+              const nf  = nestedMap[oid]
+              const name = ot?.name ?? nf?.objectifiedName ?? '?'
+              const prev = nameOccurrences.get(name) ?? []
+              prev.push({ ri, idx: prev.length })
+              nameOccurrences.set(name, prev)
+            }
             const oid = fact.roles[roleOrder[i]]?.objectTypeId
             const ot  = otMap[oid]
             const nf  = nestedMap[oid]
             const name  = ot?.name ?? nf?.objectifiedName ?? '?'
             const isValue = ot?.kind === 'value' || nf?.objectifiedKind === 'value'
             const color = isValue ? 'var(--col-value)' : 'var(--col-entity)'
+            let displayName = name
+            const occ = nameOccurrences.get(name)
+            if (occ && occ.length > 1) {
+              const occIdx = occ.find(o => o.ri === roleOrder[i])?.idx ?? 0
+              const subscript = occIdx + 1 < 10 ? subscriptNums[occIdx + 1] : `(${occIdx + 1})`
+              displayName = `${name}${subscript}`
+            }
             return (
               <span style={{
                 color, fontSize: 12, fontFamily: FONT, fontWeight: 700,
                 userSelect: 'none', whiteSpace: 'nowrap',
                 paddingLeft: '0.35em', paddingRight: '0.35em',
               }}>
-                {name}
+                {displayName}
               </span>
             )
           })()}
@@ -1167,16 +1146,22 @@ function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart }) {
 function AddReadingRow({ fact, store, available }) {
   const [selIdx, setSelIdx] = useState(0)
   const [draftParts, setDraftParts] = useState(() => Array(fact.arity + 1).fill(''))
-  const roleOrder = available[selIdx]
   const arity = fact.arity
   const otMap     = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
   const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
-  // Reset draft parts when arity changes
   useEffect(() => {
     setDraftParts(Array(arity + 1).fill(''))
   }, [arity])
+
+  useEffect(() => {
+    if (selIdx >= available.length) setSelIdx(0)
+  }, [available.length])
+
+  const safeSelIdx = selIdx >= available.length ? 0 : selIdx
+  const roleOrder = available[safeSelIdx]
+  if (!roleOrder) return null
 
   const hasContent = draftParts.some(p => p.trim())
 
@@ -1226,14 +1211,33 @@ function AddReadingRow({ fact, store, available }) {
               />
             </span>
             {i < arity && (() => {
-              const oid = fact.roles[roleOrder[i]]?.objectTypeId
+              const subscriptNums = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉']
+              const nameOccurrences = new Map()
+              const defaultOrder = Array.from({ length: arity }, (_, k) => k)
+              for (const ri of defaultOrder) {
+                const oid = fact.roles?.[ri]?.objectTypeId
+                const ot  = otMap[oid]
+                const nf  = nestedMap[oid]
+                const name = ot?.name ?? nf?.objectifiedName ?? '?'
+                const prev = nameOccurrences.get(name) ?? []
+                prev.push({ ri, idx: prev.length })
+                nameOccurrences.set(name, prev)
+              }
+              const oid = fact.roles?.[roleOrder[i]]?.objectTypeId
               const ot  = otMap[oid]
               const nf  = nestedMap[oid]
               const name  = ot?.name ?? nf?.objectifiedName ?? '?'
               const isValue = ot?.kind === 'value' || nf?.objectifiedKind === 'value'
               const color = isValue ? 'var(--col-value)' : 'var(--col-entity)'
+              let displayName = name
+              const occ = nameOccurrences.get(name)
+              if (occ && occ.length > 1) {
+                const occIdx = occ.find(o => o.ri === roleOrder[i])?.idx ?? 0
+                const subscript = occIdx + 1 < 10 ? subscriptNums[occIdx + 1] : `(${occIdx + 1})`
+                displayName = `${name}${subscript}`
+              }
               return (
-                <span style={{ color, fontSize: 12, fontFamily: FONT, fontWeight: 700, userSelect: 'none', whiteSpace: 'nowrap', paddingLeft: '0.35em', paddingRight: '0.35em' }}>{name}</span>
+                <span style={{ color, fontSize: 12, fontFamily: FONT, fontWeight: 700, userSelect: 'none', whiteSpace: 'nowrap', paddingLeft: '0.35em', paddingRight: '0.35em' }}>{displayName}</span>
               )
             })()}
           </React.Fragment>
@@ -1245,30 +1249,59 @@ function AddReadingRow({ fact, store, available }) {
 
 // ── Fact presentation subsection ─────────────────────────────────────────────
 function FactPresentationSubsection({ fact, store }) {
+  const hasForwardReading = fact.arity === 2 && (
+    (fact.readingParts && fact.readingParts.some(p => p?.trim())) ||
+    (fact.alternativeReadings || []).some(r => r.roleOrder.length === 2 && r.roleOrder[0] === 0 && r.roleOrder[1] === 1 && r.parts?.some(p => p?.trim()))
+  )
+  const hasReverseReading = fact.arity === 2 && (fact.alternativeReadings || []).some(
+    r => r.roleOrder.length === 2 && r.roleOrder[0] === 1 && r.roleOrder[1] === 0 && r.parts?.some(p => p?.trim())
+  )
+
+  // Auto-set readingDisplay when only one reading is available
+  useEffect(() => {
+    if (fact.arity === 2) {
+      const current = fact.readingDisplay || 'forward'
+      if (hasForwardReading && !hasReverseReading && current !== 'forward') {
+        store.updateFact(fact.id, { readingDisplay: 'forward' })
+      } else if (!hasForwardReading && hasReverseReading && current !== 'reverse') {
+        store.updateFact(fact.id, { readingDisplay: 'reverse' })
+      }
+    }
+  }, [hasForwardReading, hasReverseReading, fact.id, fact.arity, fact.readingDisplay, store])
+
   return (
     <Section title="Presentation">
       {fact.arity === 2 && (
         <Row>
-          <Label>Reading display</Label>
+          <Label>Shown Reading</Label>
           {[
             { value: 'forward', label: 'Forward only' },
             { value: 'both',    label: 'Forward / Reverse' },
             { value: 'reverse', label: '◂  Reverse only' },
-          ].map(opt => (
-            <label key={opt.value} style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 12, color: 'var(--ink-2)', cursor: 'pointer', marginBottom: 3,
-            }}>
-              <input type="radio"
-                name={`rdisplay-${fact.id}`}
-                value={opt.value}
-                checked={(fact.readingDisplay || 'forward') === opt.value}
-                onChange={() => store.updateFact(fact.id, { readingDisplay: opt.value })}
-                style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)' }}
-              />
-              {opt.label}
-            </label>
-          ))}
+          ].map(opt => {
+            const disabled =
+              (opt.value === 'forward' && !hasForwardReading) ||
+              (opt.value === 'both' && (!hasForwardReading || !hasReverseReading)) ||
+              (opt.value === 'reverse' && !hasReverseReading)
+            const isCurrent = (fact.readingDisplay || 'forward') === opt.value
+            return (
+              <label key={opt.value} style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: 12, cursor: disabled ? 'not-allowed' : 'pointer', marginBottom: 3,
+                color: disabled ? 'var(--ink-muted)' : 'var(--ink-2)',
+              }}>
+                <input type="radio"
+                  name={`rdisplay-${fact.id}`}
+                  value={opt.value}
+                  checked={isCurrent}
+                  disabled={disabled}
+                  onChange={() => store.updateFact(fact.id, { readingDisplay: opt.value })}
+                  style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: disabled ? 'not-allowed' : 'pointer' }}
+                />
+                {opt.label}
+              </label>
+            )
+          })}
         </Row>
       )}
       {fact.arity > 2 && (() => {
@@ -1781,6 +1814,21 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
   const nestedName = parentFact.objectifiedName || '(unnamed)'
   const playerName = ot?.name ?? '?'
 
+  // Auto-set readingDisplay when only one reading is available
+  const ilHasForward = (il.readingParts && il.readingParts.some(p => p?.trim())) ||
+    (il.alternativeReadings || []).some(r => r.roleOrder.length === 2 && r.roleOrder[0] === 0 && r.roleOrder[1] === 1 && r.parts?.some(p => p?.trim()))
+  const ilHasReverse = (il.alternativeReadings || []).some(
+    r => r.roleOrder.length === 2 && r.roleOrder[0] === 1 && r.roleOrder[1] === 0 && r.parts?.some(p => p?.trim())
+  )
+  React.useEffect(() => {
+    const current = il.readingDisplay || 'forward'
+    if (ilHasForward && !ilHasReverse && current !== 'forward') {
+      store.updateImplicitLink(parentFact.id, roleIndex, { readingDisplay: 'forward' })
+    } else if (!ilHasForward && ilHasReverse && current !== 'reverse') {
+      store.updateImplicitLink(parentFact.id, roleIndex, { readingDisplay: 'reverse' })
+    }
+  }, [ilHasForward, ilHasReverse, parentFact.id, roleIndex, il.readingDisplay, store])
+
   const synthFact = {
     id: parentFact.id,
     arity: 2,
@@ -1830,14 +1878,6 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
     }
   }
 
-  const addReading = () => {
-    const p = available[0]
-    if (!p) return
-    store.updateImplicitLink(parentFact.id, roleIndex, {
-      alternativeReadings: [...(il.alternativeReadings || []), { roleOrder: p, parts: ['', '', ''] }],
-    })
-  }
-
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>Implicit Link: {nestedName} ↔ {playerName}</InspectorTitle>
@@ -1867,38 +1907,55 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
           )
         })}
         {available.length > 0 && (
-          <Row>
-            <button onClick={addReading}
-              style={{ width: '100%', padding: '2px 8px', fontSize: 11, background: 'var(--bg-raised)',
-                border: '1px solid var(--border)', borderRadius: 3, cursor: 'pointer' }}>
-              + Add reverse reading
-            </button>
-          </Row>
+          <AddReadingRow
+            fact={{ ...synthFact, arity: 2 }}
+            store={{
+              ...store,
+              updateAlternativeReading: (_id, roleOrder, parts) => {
+                store.updateImplicitLink(parentFact.id, roleIndex, {
+                  alternativeReadings: [...(il.alternativeReadings || []), { roleOrder, parts }],
+                })
+              },
+            }}
+            available={available}
+          />
         )}
       </Section>
 
       <Section title="Presentation">
         <Row>
-          <Label>Reading display</Label>
+          <Label>Shown Reading</Label>
           {[
             { value: 'forward', label: 'Forward only' },
             { value: 'both',    label: 'Forward / Reverse' },
             { value: 'reverse', label: '◂ Reverse only' },
-          ].map(opt => (
-            <label key={opt.value} style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 12, color: 'var(--ink-2)', cursor: 'pointer', marginBottom: 3,
-            }}>
-              <input type="radio"
-                name={`il-rdisplay-${parentFact.id}-${roleIndex}`}
-                value={opt.value}
-                checked={(il.readingDisplay || 'forward') === opt.value}
-                onChange={() => store.updateImplicitLink(parentFact.id, roleIndex, { readingDisplay: opt.value })}
-                style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)' }}
-              />
-              {opt.label}
-            </label>
-          ))}
+          ].map(opt => {
+            const disabled =
+              (opt.value === 'forward' && !ilHasForward) ||
+              (opt.value === 'both' && (!ilHasForward || !ilHasReverse)) ||
+              (opt.value === 'reverse' && !ilHasReverse)
+            const isCurrent = (il.readingDisplay || 'forward') === opt.value
+            return (
+              <label key={opt.value} style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: 12, cursor: disabled ? 'not-allowed' : 'pointer', marginBottom: 3,
+                color: disabled ? 'var(--ink-muted)' : 'var(--ink-2)',
+              }}>
+                <input type="radio"
+                  name={`il-rdisplay-${parentFact.id}-${roleIndex}`}
+                  value={opt.value}
+                  checked={isCurrent}
+                  disabled={disabled}
+                  onChange={() => store.updateImplicitLink(parentFact.id, roleIndex, { readingDisplay: opt.value })}
+                  style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: disabled ? 'not-allowed' : 'pointer' }}
+                />
+                {opt.label}
+              </label>
+            )
+          })}
+        </Row>
+        <Row>
+          <Label>Spatial Ordering</Label>
         </Row>
         <Row>
           <Checkbox
@@ -2609,7 +2666,7 @@ export default function Inspector() {
           <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700,
             letterSpacing: '0.1em', textTransform: 'uppercase',
             borderBottom: '1px solid var(--border-soft)', paddingBottom: 5, marginBottom: 12 }}>
-            Diagram
+            Schema Settings
           </div>
 
           <div style={{ marginBottom: 16 }}>

@@ -332,12 +332,22 @@ export default function Canvas() {
     // Handle implicit link drag
     if (kind === 'implicitLink') {
       const [factId, roleIndex] = id.split('_il_').map((v, i) => i === 0 ? v : Number(v))
-      const parentFact = store.facts.find(f => f.id === factId)
+      const parentFact = visibleFacts.find(f => f.id === factId)
       const il = parentFact?.implicitLinks?.find(l => l.roleIndex === roleIndex)
       if (!parentFact || !il) return
+      const diag = store.diagrams.find(d => d.id === store.activeDiagramId)
+      const positions = diag?.positions ?? {}
+      const ilPos = positions[`${factId}:il:${roleIndex}`]
+      const role = parentFact.roles[roleIndex]
+      const associatedOtid = role?.objectTypeId
+      const associatedOt = visibleOts.find(o => o.id === associatedOtid)
+      const defaultX = associatedOt ? Math.round((parentFact.x + associatedOt.x) / 2) : parentFact.x
+      const defaultY = associatedOt ? Math.round((parentFact.y + associatedOt.y) / 2) : parentFact.y
+      const origX = ilPos?.x ?? il.x ?? defaultX
+      const origY = ilPos?.y ?? il.y ?? defaultY
       setDragState({ type: 'element', id, kind: 'implicitLink',
                      startX: e.clientX, startY: e.clientY,
-                     origX: il.x ?? parentFact.x, origY: il.y ?? parentFact.y,
+                     origX, origY,
                      implicitFactId: factId, implicitRoleIndex: roleIndex })
       return
     }
@@ -368,7 +378,7 @@ export default function Canvas() {
     setDragState({ type: 'element', id, kind,
                    startX: e.clientX, startY: e.clientY,
                    origX: el.x, origY: el.y })
-  }, [store])
+  }, [store, visibleOts, visibleFacts, visibleConstraints])
 
   // ── mouse move ──────────────────────────────────────────────────────────
   const handleMouseMove = useCallback((e) => {
@@ -586,9 +596,9 @@ export default function Canvas() {
               onNestedCrContextMenu={(e) => handleNestedCrContextMenu(f, e)}/>
           ))}
            {visibleFacts.filter(f => f.objectified).map(f =>
-             (f.implicitLinks || []).filter(il => store.isImplicitLinkShown(f.id, il.roleIndex)).map(il => {
-               const synth = makeImplicitLinkFact(f, il, store)
-               return (
+              (f.implicitLinks || []).filter(il => store.isImplicitLinkShown(f.id, il.roleIndex)).map(il => {
+                 const synth = makeImplicitLinkFact(f, il)
+                return (
                  <FactTypeNode key={synth.id} fact={synth}
                    onDragStart={(id, kind, e) => handleDragStart(id, 'implicitLink', e)}
                    isShared={false}

@@ -140,6 +140,20 @@ export function buildShownReading(parts, roleOrder, fact, otMap, nestedMap) {
     return tokens.join(' ')
   }
 
+  // For names that appear multiple times, compute subscript disambiguation
+  const subscriptNums = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉']
+  const nameOccurrences = new Map()
+  const defaultOrder = Array.from({ length: n }, (_, i) => i)
+  for (const ri of defaultOrder) {
+    const oid = fact.roles[ri]?.objectTypeId
+    const ot = otMap?.[oid]
+    const nf = nestedMap?.[oid]
+    const name = ot?.name ?? nf?.objectifiedName ?? '?'
+    const prev = nameOccurrences.get(name) ?? []
+    prev.push({ ri, idx: prev.length })
+    nameOccurrences.set(name, prev)
+  }
+
   const tokens = []
   for (let i = 0; i <= n; i++) {
     if (t(i)) tokens.push(t(i))
@@ -148,7 +162,14 @@ export function buildShownReading(parts, roleOrder, fact, otMap, nestedMap) {
       const ot = otMap?.[oid]
       const nf = nestedMap?.[oid]
       const name = ot?.name ?? nf?.objectifiedName ?? '?'
-      tokens.push(`[${name}]`)
+      const occ = nameOccurrences.get(name)
+      let label = `[${name}]`
+      if (occ && occ.length > 1) {
+        const occIdx = occ.find(o => o.ri === roleOrder[i])?.idx ?? 0
+        const subscript = occIdx + 1 < 10 ? subscriptNums[occIdx + 1] : `(${occIdx + 1})`
+        label = `[${name}${subscript}]`
+      }
+      tokens.push(label)
     }
   }
   if (n === 2 && !t(0) && !t(n)) {
@@ -163,7 +184,7 @@ export function getDisplayReading(fact) {
 }
 
 /** Generate a synthetic fact object for rendering an implicit link fact type. */
-export function makeImplicitLinkFact(parentFact, implicitLink, store) {
+export function makeImplicitLinkFact(parentFact, implicitLink) {
   const role = parentFact.roles[implicitLink.roleIndex]
   const associatedOtid = role?.objectTypeId
   const nestedOtid = parentFact.id
@@ -174,15 +195,29 @@ export function makeImplicitLinkFact(parentFact, implicitLink, store) {
     { objectTypeId: associatedOtid, roleName: roleNames[1] || '', mandatory: false },
   ]
 
-  const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
-  const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
+  const state = useOrmStore.getState()
+  const diag = state.diagrams.find(d => d.id === state.activeDiagramId)
+  const positions = diag?.positions ?? {}
+  const ilKey = `${parentFact.id}:il:${implicitLink.roleIndex}`
+  const ilPos = positions[ilKey]
+
+  const otMap = Object.fromEntries(state.objectTypes.map(o => {
+    const p = positions[o.id]
+    return [o.id, p ? { ...o, x: p.x, y: p.y } : o]
+  }))
+  const nestedMap = Object.fromEntries(state.facts.filter(f => f.objectified).map(f => {
+    const p = positions[f.id]
+    return [f.id, p ? { ...f, x: p.x, y: p.y } : f]
+  }))
   const associatedOt = otMap[associatedOtid]
   const associatedNf = !associatedOt ? nestedMap[associatedOtid] : null
 
-  const baseX = implicitLink.x ?? parentFact.x
-  const baseY = implicitLink.y ?? parentFact.y
-  const x = implicitLink.x != null ? implicitLink.x : (associatedOt ? Math.round((parentFact.x + associatedOt.x) / 2) : baseX)
-  const y = implicitLink.y != null ? implicitLink.y : (associatedOt ? Math.round((parentFact.y + associatedOt.y) / 2) : baseY)
+  const schemaX = implicitLink.x
+  const schemaY = implicitLink.y
+  const defaultX = associatedOt ? Math.round((parentFact.x + associatedOt.x) / 2) : parentFact.x
+  const defaultY = associatedOt ? Math.round((parentFact.y + associatedOt.y) / 2) : parentFact.y
+  const x = ilPos?.x ?? schemaX ?? defaultX
+  const y = ilPos?.y ?? schemaY ?? defaultY
 
   return {
     id: `${parentFact.id}_il_${implicitLink.roleIndex}`,
@@ -201,7 +236,7 @@ export function makeImplicitLinkFact(parentFact, implicitLink, store) {
     alternativeReadings: implicitLink.alternativeReadings || [],
     readingDisplay: implicitLink.readingDisplay || 'forward',
     shownReadingOrder: roleOrder,
-    uniqueness: [[0]],
+    uniqueness: [[roleOrder[0]]],
     preferredUniqueness: null,
     internalFrequency: [],
     orientation: implicitLink.orientation || 'horizontal',
@@ -496,19 +531,29 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   }, [store, fact.id, fact._implicit, inConstruction])
 
   const handleRoleContextMenu = useCallback((roleIndex, e) => {
-    if (isRoleSelected(roleIndex) && onRoleContextMenu) {
-      e.preventDefault(); e.stopPropagation()
+    e.preventDefault(); e.stopPropagation()
+    if (onRoleContextMenu) {
       onRoleContextMenu(roleIndex, e)
     } else {
       onContextMenu(e)
     }
-  }, [onContextMenu, onRoleContextMenu, store.selectedRole])
+  }, [onContextMenu, onRoleContextMenu])
 
   const handleRoleMouseDown = useCallback((roleIndex, e) => {
     e.stopPropagation()
     if (e.button !== 0) return
     if (e.detail >= 2) return  // second click of a double-click: do nothing
     if (fact._implicit) {
+      const r = e.currentTarget.getBoundingClientRect()
+      const ex = e.clientX - r.left
+      const ey = e.clientY - r.top
+      const EDGE = 4
+      const onEdge = ex < EDGE || ex > r.width - EDGE || ey < EDGE || ey > r.height - EDGE
+      if (onEdge) {
+        store.selectImplicitLink(fact._parentFactId, fact._implicitRoleIndex)
+        onDragStart(fact.id, 'implicitLink', e)
+        return
+      }
       store.selectImplicitLinkRole(fact._parentFactId, fact._implicitRoleIndex, roleIndex)
       onDragStart(fact.id, 'implicitLink', e)
       return
@@ -927,7 +972,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const vrEligibleRoles = isRoleValueTool ? new Set(
     fact.roles.flatMap((role, ri) => isVrEligibleRole(role) ? [ri] : [])
   ) : null
-  const roleIsCandidate = (ri) => isRoleCandidate || (isRoleValueTool && vrEligibleRoles.has(ri)) || (isVcConstruction && vcEligibleRoles.has(ri)) || isCrTool
+  const roleIsCandidate = (ri) => {
+    if (fact._implicit) return false
+    return isRoleCandidate || (isRoleValueTool && vrEligibleRoles.has(ri)) || (isVcConstruction && vcEligibleRoles.has(ri)) || isCrTool
+  }
   const roleHighlight = isRoleCandidate ? 'var(--fill-candidate)' : '#ffffff'
 
   const isVertical = fact.orientation === 'vertical'
@@ -1070,28 +1118,56 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
     const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
 
+    const hasContent = (parts) => parts && parts.some(p => p?.trim())
+
+    // Gather all readings that have actual content
+    const readingsWithContent = []
+    if (hasContent(fact.readingParts)) {
+      readingsWithContent.push({ roleOrder: Array.from({ length: fact.arity }, (_, i) => i), parts: fact.readingParts, isDefault: true })
+    }
+    for (const alt of (fact.alternativeReadings || [])) {
+      if (hasContent(alt.parts)) {
+        readingsWithContent.push({ roleOrder: alt.roleOrder, parts: alt.parts, isDefault: false })
+      }
+    }
+
     const shownOrder = fact.shownReadingOrder
     const defaultOrder = Array.from({ length: fact.arity }, (_, i) => i)
     const isNatural = !shownOrder || JSON.stringify(shownOrder) === JSON.stringify(defaultOrder)
 
-    const forwardParts = isNatural ? fact.readingParts
-      : (fact.alternativeReadings || []).find(r => JSON.stringify(r.roleOrder) === JSON.stringify(shownOrder))?.parts
-    const forwardReading = forwardParts
-      ? (isNatural ? buildDisplayReading(forwardParts, fact.arity) : buildShownReading(forwardParts, shownOrder, fact, otMap, nestedMap))
-      : ''
+    let text
+    let onlyReading = null
 
-    const displayMode = fact.arity === 2 ? (fact.readingDisplay || 'forward') : 'forward'
-    let text = forwardReading
+    // If only one reading has content, show it regardless of display mode
+    if (readingsWithContent.length === 1) {
+      onlyReading = readingsWithContent[0]
+      let raw = onlyReading.isDefault
+        ? buildDisplayReading(onlyReading.parts, fact.arity)
+        : buildShownReading(onlyReading.parts, onlyReading.roleOrder, fact, otMap, nestedMap)
+      // Prepend triangle if this is the reverse reading
+      const isReverse = onlyReading.roleOrder?.length === 2 && onlyReading.roleOrder[0] === 1 && onlyReading.roleOrder[1] === 0
+      text = isReverse ? ((isVertical ? '▲ ' : '◀ ') + raw) : raw
+    } else {
+      // Normal multi-reading logic
+      const forwardParts = isNatural ? fact.readingParts
+        : (fact.alternativeReadings || []).find(r => JSON.stringify(r.roleOrder) === JSON.stringify(shownOrder))?.parts
+      const forwardReading = forwardParts
+        ? (isNatural ? buildDisplayReading(forwardParts, fact.arity) : buildShownReading(forwardParts, shownOrder, fact, otMap, nestedMap))
+        : ''
 
-    if (displayMode === 'both' || displayMode === 'reverse') {
-      const reverseAlt = (fact.alternativeReadings || []).find(
-        r => r.roleOrder.length === 2 && r.roleOrder[0] === 1 && r.roleOrder[1] === 0
-      )
-      const reverseReading = reverseAlt ? buildDisplayReading(reverseAlt.parts, 2) : ''
-      if (displayMode === 'both') {
-        text = [forwardReading, reverseReading].filter(Boolean).join(' / ')
-      } else {
-        text = reverseReading ? ((isVertical ? '▲ ' : '◀ ') + reverseReading) : ''
+      const displayMode = fact.arity === 2 ? (fact.readingDisplay || 'forward') : 'forward'
+      text = forwardReading
+
+      if (displayMode === 'both' || displayMode === 'reverse') {
+        const reverseAlt = (fact.alternativeReadings || []).find(
+          r => r.roleOrder.length === 2 && r.roleOrder[0] === 1 && r.roleOrder[1] === 0
+        )
+        const reverseReading = reverseAlt ? buildDisplayReading(reverseAlt.parts, 2) : ''
+        if (displayMode === 'both') {
+          text = [forwardReading, reverseReading].filter(Boolean).join(' / ')
+        } else {
+          text = reverseReading ? ((isVertical ? '▲ ' : '◀ ') + reverseReading) : ''
+        }
       }
     }
 
@@ -1120,11 +1196,34 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     const isDraggingReading = !!readingLive
 
     if (editingReading) {
+      const subscriptNums = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉']
+      const nameOccurrences = new Map()
+      const defaultOrder = Array.from({ length: fact.arity }, (_, k) => k)
+      for (const ri of defaultOrder) {
+        const oid = fact.roles?.[ri]?.objectTypeId
+        const ot  = otMap?.[oid]
+        const nf  = nestedMap?.[oid]
+        const name = ot?.name ?? nf?.objectifiedName ?? '?'
+        const prev = nameOccurrences.get(name) ?? []
+        prev.push({ ri, idx: prev.length })
+        nameOccurrences.set(name, prev)
+      }
+      const roleNamesW = (() => {
+        let total = 0
+        for (let i = 0; i < fact.arity; i++) {
+          const oid = fact.roles[i]?.objectTypeId
+          const ot  = otMap?.[oid]
+          const nf  = nestedMap?.[oid]
+          const name = ot?.name ?? nf?.objectifiedName ?? '?'
+          total += Math.max(20, name.length * 7.5 + 8)
+        }
+        return total
+      })()
       const W = Math.max(120,
-        readingDraft.reduce((s, seg) => s + Math.max(12, seg.length * 7), 0)
-        + fact.arity * 18 + 8)
+        readingDraft.reduce((s, seg) => s + Math.max(12, seg.length * 7.5 + 4), 0)
+        + roleNamesW)
       return (
-        <foreignObject x={tx - W / 2} y={ty - 12} width={W} height={24}>
+        <foreignObject x={tx - W / 2} y={ty - 14} width={W} height={28}>
           <div style={{ display:'flex', alignItems:'center', height:'100%', background:'#fff',
             border:'1px solid var(--accent)', borderRadius:3, padding:'0 4px', boxSizing:'border-box' }}>
             {readingDraft.map((seg, i) => (
@@ -1137,15 +1236,28 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   onBlur={() => { setTimeout(() => { if (!document.activeElement?.closest?.('foreignObject')) commitReadingEdit() }, 0) }}
                   onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); commitReadingEdit() } if (e.key === 'Escape') { e.stopPropagation(); setEditingReading(false) } }}
                   onMouseDown={e => e.stopPropagation()}
-                  style={{ width: Math.max(12, seg.length * 7), minWidth: 0, border:'none',
+                  style={{ width: Math.max(12, seg.length * 7.5 + 4), minWidth: 0, border:'none',
                     outline:'1px dotted var(--border)', background:'#fef6ec', color:'var(--ink-2)',
                     fontSize:13, fontFamily:FONT, textAlign:'center',
                     padding:'0', boxSizing:'border-box' }}
                 />
-                {i < fact.arity && (
-                  <span style={{ userSelect:'none', pointerEvents:'none', color:'var(--col-constraint)',
-                    fontWeight:700, fontSize:13, fontFamily:FONT, padding:'0 2px', flexShrink:0 }}>...</span>
-                )}
+                {i < fact.arity && (() => {
+                  const oid = fact.roles[i]?.objectTypeId
+                  const ot  = otMap?.[oid]
+                  const nf  = nestedMap?.[oid]
+                  const name = ot?.name ?? nf?.objectifiedName ?? '?'
+                  let displayName = name
+                  const occ = nameOccurrences.get(name)
+                  if (occ && occ.length > 1) {
+                    const occIdx = occ.find(o => o.ri === i)?.idx ?? 0
+                    const subscript = occIdx + 1 < 10 ? subscriptNums[occIdx + 1] : `(${occIdx + 1})`
+                    displayName = `${name}${subscript}`
+                  }
+                  return (
+                    <span style={{ userSelect:'none', pointerEvents:'none', color:'var(--col-constraint)',
+                      fontWeight:700, fontSize:13, fontFamily:FONT, padding:'0 4px', flexShrink:0 }}>{displayName}</span>
+                  )
+                })()}
               </React.Fragment>
             ))}
           </div>
@@ -1159,6 +1271,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         style={{ cursor: isDraggingReading ? 'grabbing' : 'grab', userSelect: 'none' }}
         onMouseDown={e => {
           e.stopPropagation()
+          if (fact._implicit) {
+            store.selectImplicitLink(fact._parentFactId, fact._implicitRoleIndex)
+            onDragStart(fact.id, 'implicitLink', e)
+          }
           readingWasDragged.current = false
           readingDragRef.current = { startX: e.clientX, startY: e.clientY, origDx: off.dx, origDy: off.dy }
           setReadingLive({ dx: off.dx, dy: off.dy })
@@ -1166,28 +1282,39 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         onClick={e => {
           e.stopPropagation()
           if (readingWasDragged.current) { readingWasDragged.current = false; return }
-          store.select(fact.id, 'fact')
+          if (fact._implicit) {
+            store.selectImplicitLink(fact._parentFactId, fact._implicitRoleIndex)
+          } else {
+            store.select(fact.id, 'fact')
+          }
         }}
         onDoubleClick={e => {
           e.stopPropagation()
           if (store.sequenceConstruction || inConstruction || inFrequencyConstruction) return
-          let isReverse = displayMode === 'reverse'
-          if (displayMode === 'both') {
-            const ctm = e.currentTarget.ownerSVGElement?.getScreenCTM()
-            const worldClickX = ctm ? (e.clientX - ctm.e) / ctm.a : e.clientX
-            isReverse = worldClickX > tx
-          }
-          if (isReverse) {
-            const reverseAlt = (fact.alternativeReadings || []).find(
-              r => r.roleOrder.length === 2 && r.roleOrder[0] === 1 && r.roleOrder[1] === 0
-            )
-            const existing = reverseAlt?.parts || []
-            setReadingDraft(Array.from({ length: fact.arity + 1 }, (_, i) => existing[i] ?? ''))
+          if (onlyReading) {
+            setReadingDraft(Array.from({ length: fact.arity + 1 }, (_, i) => onlyReading.parts[i] ?? ''))
+            const isReverse = onlyReading.roleOrder?.length === 2 && onlyReading.roleOrder[0] === 1 && onlyReading.roleOrder[1] === 0
+            setEditingReadingIsReverse(isReverse)
           } else {
-            const existing = fact.readingParts || []
-            setReadingDraft(Array.from({ length: fact.arity + 1 }, (_, i) => existing[i] ?? ''))
+            const displayMode = fact.arity === 2 ? (fact.readingDisplay || 'forward') : 'forward'
+            let isReverse = displayMode === 'reverse'
+            if (displayMode === 'both') {
+              const ctm = e.currentTarget.ownerSVGElement?.getScreenCTM()
+              const worldClickX = ctm ? (e.clientX - ctm.e) / ctm.a : e.clientX
+              isReverse = worldClickX > tx
+            }
+            if (isReverse) {
+              const reverseAlt = (fact.alternativeReadings || []).find(
+                r => r.roleOrder.length === 2 && r.roleOrder[0] === 1 && r.roleOrder[1] === 0
+              )
+              const existing = reverseAlt?.parts || []
+              setReadingDraft(Array.from({ length: fact.arity + 1 }, (_, i) => existing[i] ?? ''))
+            } else {
+              const existing = fact.readingParts || []
+              setReadingDraft(Array.from({ length: fact.arity + 1 }, (_, i) => existing[i] ?? ''))
+            }
+            setEditingReadingIsReverse(isReverse)
           }
-          setEditingReadingIsReverse(isReverse)
           setEditingReading(true)
         }}>
         {text}
@@ -1359,8 +1486,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         filter="url(#sharedGlow)"
         style={{ pointerEvents: 'none' }}/>
     )}
-    {/* ── Main fact-type group (role boxes + bars + reading) ───────────────── */}
-    <g className="selectable-group" onMouseDown={handleMouseDown} onContextMenu={onContextMenu}
+     {/* ── Main fact-type group (role boxes + bars + reading) ───────────────── */}
+     <g className="selectable-group" onMouseDown={handleMouseDown} onContextMenu={onContextMenu}
        style={{ cursor: (() => {
          if ((isSubtypeTool || isTargetTool) && fact.objectified) return 'cell'
          if (isAssignTool && isAssigning && fact.objectified) return 'cell'
@@ -1532,6 +1659,18 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
               {readingText && (
                 editingReading
                   ? (() => {
+                      const subscriptNums = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉']
+                      const nameOccurrences = new Map()
+                      const defaultOrder = Array.from({ length: fact.arity }, (_, k) => k)
+                      for (const ri of defaultOrder) {
+                        const oid = fact.roles?.[ri]?.objectTypeId
+                        const ot  = otMap?.[oid]
+                        const nf  = nestedMap?.[oid]
+                        const name = ot?.name ?? nf?.objectifiedName ?? '?'
+                        const prev = nameOccurrences.get(name) ?? []
+                        prev.push({ ri, idx: prev.length })
+                        nameOccurrences.set(name, prev)
+                      }
                       const W = Math.max(120,
                         readingDraft.reduce((s, seg) => s + Math.max(20, seg.length * 7 + 4), 0)
                         + fact.arity * 24 + 12)
@@ -1552,10 +1691,23 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                                     background:'#fef6ec', color:nestedCol, fontSize:NESTED_READING_FONT_SIZE,
                                     fontFamily:FONT, textAlign:'center', padding:'0', boxSizing:'border-box' }}
                                 />
-                                {i < fact.arity && (
-                                  <span style={{ userSelect:'none', pointerEvents:'none', color:'var(--col-constraint)',
-                                    fontWeight:700, fontSize:NESTED_READING_FONT_SIZE, fontFamily:FONT, padding:'0 2px', flexShrink:0 }}>...</span>
-                                )}
+                                {i < fact.arity && (() => {
+                                  const oid = fact.roles[i]?.objectTypeId
+                                  const ot  = otMap?.[oid]
+                                  const nf  = nestedMap?.[oid]
+                                  const name = ot?.name ?? nf?.objectifiedName ?? '?'
+                                  let displayName = name
+                                  const occ = nameOccurrences.get(name)
+                                  if (occ && occ.length > 1) {
+                                    const occIdx = occ.find(o => o.ri === i)?.idx ?? 0
+                                    const subscript = occIdx + 1 < 10 ? subscriptNums[occIdx + 1] : `(${occIdx + 1})`
+                                    displayName = `${name}${subscript}`
+                                  }
+                                  return (
+                                    <span style={{ userSelect:'none', pointerEvents:'none', color:'var(--col-constraint)',
+                                      fontWeight:700, fontSize:NESTED_READING_FONT_SIZE, fontFamily:FONT, padding:'0 2px', flexShrink:0 }}>{displayName}</span>
+                                  )
+                                })()}
                               </React.Fragment>
                             ))}
                           </div>
@@ -1699,53 +1851,89 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             {readingText && (
               editingReading
                 ? (() => {
-                    const W = Math.max(120,
-                      readingDraft.reduce((s, seg) => s + Math.max(20, seg.length * 7 + 4), 0)
-                      + fact.arity * 24 + 12)
-                    return (
-                      <foreignObject x={fact.x - W / 2} y={readingY - 12} width={W} height={24}>
-                        <div style={{ display:'flex', alignItems:'center', height:'100%', background:'#fff',
-                          border:`1px solid ${nestedCol}`, borderRadius:3, padding:'0 4px', boxSizing:'border-box' }}>
-                          {readingDraft.map((seg, i) => (
-                            <React.Fragment key={i}>
-                              <input
-                                autoFocus={i === 0} // eslint-disable-line jsx-a11y/no-autofocus
-                                value={seg}
-                                onChange={e => { const v = e.target.value; setReadingDraft(prev => { const next = [...prev]; next[i] = v; return next }) }}
-                                onBlur={() => { setTimeout(() => { if (!document.activeElement?.closest?.('foreignObject')) commitReadingEdit() }, 0) }}
-                                onKeyDown={e => { e.stopPropagation(); if(e.key==='Enter'){e.preventDefault();commitReadingEdit()} if(e.key==='Escape'){e.stopPropagation();setEditingReading(false)} }}
-                                onMouseDown={e => e.stopPropagation()}
-                                style={{ width:Math.max(12, seg.length*7), minWidth:0, border:'none', outline:'none',
-                                  background:'#fef6ec', color:nestedCol, fontSize:NESTED_READING_FONT_SIZE,
-                                  fontFamily:FONT, textAlign:'center', padding:'0', boxSizing:'border-box' }}
-                              />
-                              {i < fact.arity && (
-                                <span style={{ userSelect:'none', pointerEvents:'none', color:'var(--col-constraint)',
-                                  fontWeight:700, fontSize:NESTED_READING_FONT_SIZE, fontFamily:FONT, padding:'0 2px', flexShrink:0 }}>...</span>
-                              )}
-                            </React.Fragment>
-                          ))}
-                        </div>
-                      </foreignObject>
-                    )
-                  })()
-                : (
-                  <text x={fact.x} y={readingY}
-                    textAnchor="middle" dominantBaseline="middle"
-                    fontSize={NESTED_READING_FONT_SIZE} fontFamily={FONT}
-                    fill={nestedCol}
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                    onDoubleClick={e => { e.stopPropagation(); const ex=fact.readingParts||[]; setReadingDraft(Array.from({length:fact.arity+1},(_,i)=>ex[i]??'')); setEditingReading(true) }}>
-                    {readingText}
-                  </text>
-                )
-            )}
-            <rect className="hover-ring"
-              x={fact.x - ow / 2 - 3} y={fact.y - ROLE_H / 2 - padTop - 3}
-              width={ow + 6} height={oh + 6} rx={8}/>
-          </g>
-        )
-      })()}
+                    const subscriptNums = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉']
+                    const nameOccurrences = new Map()
+                    const defaultOrder = Array.from({ length: fact.arity }, (_, k) => k)
+                    for (const ri of defaultOrder) {
+                      const oid = fact.roles?.[ri]?.objectTypeId
+                      const ot  = otMap?.[oid]
+                      const nf  = nestedMap?.[oid]
+                      const name = ot?.name ?? nf?.objectifiedName ?? '?'
+                      const prev = nameOccurrences.get(name) ?? []
+                      prev.push({ ri, idx: prev.length })
+                      nameOccurrences.set(name, prev)
+                    }
+                      const roleNamesW = (() => {
+                        let total = 0
+                        for (let i = 0; i < fact.arity; i++) {
+                          const oid = fact.roles[i]?.objectTypeId
+                          const ot  = otMap?.[oid]
+                          const nf  = nestedMap?.[oid]
+                          const name = ot?.name ?? nf?.objectifiedName ?? '?'
+                          total += Math.max(16, name.length * 7.5 + 6)
+                        }
+                        return total
+                      })()
+                      const W = Math.max(100,
+                        readingDraft.reduce((s, seg) => s + Math.max(10, seg.length * 7.5 + 4), 0)
+                        + roleNamesW)
+                      return (
+                        <foreignObject x={fact.x - W / 2} y={readingY - 14} width={W} height={28}>
+                          <div style={{ display:'flex', alignItems:'center', height:'100%', background:'#fff',
+                            border:`1px solid ${nestedCol}`, borderRadius:3, padding:'0 4px', boxSizing:'border-box' }}>
+                            {readingDraft.map((seg, i) => (
+                              <React.Fragment key={i}>
+                                <input
+                                  autoFocus={i === 0} // eslint-disable-line jsx-a11y/no-autofocus
+                                  value={seg}
+                                  onChange={e => { const v = e.target.value; setReadingDraft(prev => { const next = [...prev]; next[i] = v; return next }) }}
+                                  onBlur={() => { setTimeout(() => { if (!document.activeElement?.closest?.('foreignObject')) commitReadingEdit() }, 0) }}
+                                  onKeyDown={e => { e.stopPropagation(); if(e.key==='Enter'){e.preventDefault();commitReadingEdit()} if(e.key==='Escape'){e.stopPropagation();setEditingReading(false)} }}
+                                  onMouseDown={e => e.stopPropagation()}
+                                  style={{ width:Math.max(10, seg.length * 7.5 + 4), minWidth:0, border:'none', outline:'1px dotted var(--border)',
+                                    background:'#fef6ec', color:nestedCol, fontSize:NESTED_READING_FONT_SIZE,
+                                    fontFamily:FONT, textAlign:'center', padding:'0', boxSizing:'border-box' }}
+                                />
+                                {i < fact.arity && (() => {
+                                  const oid = fact.roles[i]?.objectTypeId
+                                  const ot  = otMap?.[oid]
+                                  const nf  = nestedMap?.[oid]
+                                  const name = ot?.name ?? nf?.objectifiedName ?? '?'
+                                  let displayName = name
+                                  const occ = nameOccurrences.get(name)
+                                  if (occ && occ.length > 1) {
+                                    const occIdx = occ.find(o => o.ri === i)?.idx ?? 0
+                                    const subscript = occIdx + 1 < 10 ? subscriptNums[occIdx + 1] : `(${occIdx + 1})`
+                                    displayName = `${name}${subscript}`
+                                  }
+                                  return (
+                                    <span style={{ userSelect:'none', pointerEvents:'none', color:'var(--col-constraint)',
+                                      fontWeight:700, fontSize:NESTED_READING_FONT_SIZE, fontFamily:FONT, padding:'0 3px', flexShrink:0 }}>{displayName}</span>
+                                  )
+                                })()}
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        </foreignObject>
+                      )
+                    })()
+                  : (
+                    <text x={fact.x} y={readingY}
+                      textAnchor="middle" dominantBaseline="middle"
+                      fontSize={NESTED_READING_FONT_SIZE} fontFamily={FONT}
+                      fill={nestedCol}
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                      onDoubleClick={e => { e.stopPropagation(); const ex=fact.readingParts||[]; setReadingDraft(Array.from({length:fact.arity+1},(_,i)=>ex[i]??'')); setEditingReading(true) }}>
+                      {readingText}
+                    </text>
+                   )
+               )}
+             <rect className="hover-ring"
+               x={fact.x - ow / 2 - 3} y={fact.y - ROLE_H / 2 - padTop - 3}
+               width={ow + 6} height={oh + 6} rx={8}/>
+           </g>
+         )
+       })()}
 
       {isVertical ? (
         <>
@@ -1785,7 +1973,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                     onContextMenu={(e) => handleRoleContextMenu(ri, e)}
                     onMouseMove={isSimpleSelect ? handleRoleMouseMove : undefined}
                     onMouseLeave={isSimpleSelect ? handleRoleMouseLeave : undefined}
-                    style={{ cursor: ((isSubtypeTool || isTargetTool) && fact.objectified) ? 'cell' : isAssignTool || inConstruction || (!!store.sequenceConstruction && !isVcConstruction) || roleSelected ? 'crosshair' : (isRoleValueTool && !vrEligibleRoles.has(ri)) ? 'not-allowed' : (isVcConstruction && !vcEligibleRoles.has(ri)) ? 'not-allowed' : isVcConstruction ? 'crosshair' : 'pointer' }}
+                    style={{ cursor: fact._implicit ? 'pointer' : ((isSubtypeTool || isTargetTool) && fact.objectified) ? 'cell' : isAssignTool || inConstruction || (!!store.sequenceConstruction && !isVcConstruction) || roleSelected ? 'crosshair' : (isRoleValueTool && !vrEligibleRoles.has(ri)) ? 'not-allowed' : (isVcConstruction && !vcEligibleRoles.has(ri)) ? 'not-allowed' : isVcConstruction ? 'crosshair' : 'pointer' }}
                   />
                 <rect className="hover-ring" x={leftX_v - 3} y={ry - 3} width={ROLE_H + 6} height={ROLE_W + 6}/>
                 {isAssignTool && !role.objectTypeId && (
@@ -1935,7 +2123,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                     onContextMenu={(e) => handleRoleContextMenu(ri, e)}
                     onMouseMove={isSimpleSelect ? handleRoleMouseMove : undefined}
                     onMouseLeave={isSimpleSelect ? handleRoleMouseLeave : undefined}
-                    style={{ cursor: ((isSubtypeTool || isTargetTool) && fact.objectified) ? 'cell' : isAssignTool || inConstruction || (!!store.sequenceConstruction && !isVcConstruction) || roleSelected ? 'crosshair' : (isRoleValueTool && !vrEligibleRoles.has(ri)) ? 'not-allowed' : (isVcConstruction && !vcEligibleRoles.has(ri)) ? 'not-allowed' : isVcConstruction ? 'crosshair' : 'pointer' }}
+                    style={{ cursor: fact._implicit ? 'pointer' : ((isSubtypeTool || isTargetTool) && fact.objectified) ? 'cell' : isAssignTool || inConstruction || (!!store.sequenceConstruction && !isVcConstruction) || roleSelected ? 'crosshair' : (isRoleValueTool && !vrEligibleRoles.has(ri)) ? 'not-allowed' : (isVcConstruction && !vcEligibleRoles.has(ri)) ? 'not-allowed' : isVcConstruction ? 'crosshair' : 'pointer' }}
                   />
                 <rect className="hover-ring" x={rx - 3} y={topY - 3} width={ROLE_W + 6} height={ROLE_H + 6}/>
                 {isAssignTool && !role.objectTypeId && (

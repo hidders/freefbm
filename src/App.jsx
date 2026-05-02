@@ -54,34 +54,39 @@ function useKeyboardShortcuts() {
       if (isTyping) return
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (store.selectedMandatoryDot) {
-          const { factId, roleIndex } = store.selectedMandatoryDot
-          store.removeMandatoryRole(factId, roleIndex)
+        const s = useOrmStore.getState()
+
+        if (s.selectedMandatoryDot) {
+          const { factId, roleIndex } = s.selectedMandatoryDot
+          s.removeMandatoryRole(factId, roleIndex)
+          e.preventDefault()
           return
         }
 
-        if (store.selectedInternalFrequency) {
-          const { factId, ifId } = store.selectedInternalFrequency
-          store.removeInternalFrequency(factId, ifId)
+        if (s.selectedInternalFrequency) {
+          const { factId, ifId } = s.selectedInternalFrequency
+          s.removeInternalFrequency(factId, ifId)
+          e.preventDefault()
           return
         }
 
-        if (store.selectedValueRange) {
-          store.removeValueRange(store.selectedValueRange)
+        if (s.selectedValueRange) {
+          s.removeValueRange(s.selectedValueRange)
+          e.preventDefault()
           return
         }
 
-        if (store.selectedCardinalityRange) {
-          store.removeCardinalityRange(store.selectedCardinalityRange)
+        if (s.selectedCardinalityRange) {
+          s.removeCardinalityRange(s.selectedCardinalityRange)
+          e.preventDefault()
           return
         }
 
-        // Check implicit link selection using fresh state
-        const fresh = useOrmStore.getState()
-        if (fresh.selectedKind === 'implicitLink') {
-          const roleIndex = fresh.selectedImplicitLinkRole?.roleIndex ?? fresh.selectedImplicitRole
+        if (s.selectedKind === 'implicitLink') {
+          e.preventDefault()
+          const roleIndex = s.selectedImplicitLinkRole?.roleIndex ?? s.selectedImplicitRole
           if (roleIndex != null) {
-            fresh.toggleImplicitLink(fresh.selectedId, roleIndex)
+            s.toggleImplicitLink(s.selectedId, roleIndex)
             return
           }
         }

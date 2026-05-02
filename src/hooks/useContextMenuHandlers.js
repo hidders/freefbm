@@ -74,7 +74,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     ]
     if (fact.objectified && role.objectTypeId) {
       const isShown = store.isImplicitLinkShown(fact.id, roleIndex)
-      items.push('---', { label: isShown ? 'Hide Link Fact Type' : 'Show Link Fact Type',
+      items.push('---', { label: 'Link Fact Type is Shown',
         checked: isShown,
         action: () => store.toggleImplicitLink(fact.id, roleIndex) })
     }
