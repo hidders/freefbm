@@ -353,7 +353,8 @@ export function factBounds(fact) {
 export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleContextMenu, onBarContextMenu, onRoleValueClick, onNestedVrClick, onRoleCardinalityClick, onNestedCrClick, onIfContextMenu, onRoleValueContextMenu, onRoleCrContextMenu, onNestedVrContextMenu, onNestedCrContextMenu, isShared }) {
   const store = useOrmStore()
   const isImplicitSelected = fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact._parentFactId && store.selectedImplicitRole === fact._implicitRoleIndex
-  const isSelected     = store.selectedId === fact.id || store.multiSelectedIds.includes(fact.id) || isImplicitSelected
+  const hasSelectedImplicitLink = !fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact.id
+  const isSelected     = (store.selectedId === fact.id && !hasSelectedImplicitLink) || store.multiSelectedIds.includes(fact.id) || isImplicitSelected
   const hasSelectedRole = store.selectedRole?.factId === fact.id
   const hasSelectedUniqueness = store.selectedUniqueness?.factId === fact.id
   const isFactSelected  = isSelected && !hasSelectedRole && !hasSelectedUniqueness
