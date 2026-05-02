@@ -478,6 +478,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const isRoleSelected = (ri) =>
     store.selectedRole?.factId === fact.id && store.selectedRole?.roleIndex === ri
 
+  const isImplicitLinkRoleSelected = (ri) =>
+    fact._implicit && store.selectedImplicitLinkRole?.factId === fact._parentFactId &&
+    store.selectedImplicitLinkRole?.roleIndex === fact._implicitRoleIndex &&
+    store.selectedImplicitLinkRole?.ilRoleIndex === ri
+
   const handleRoleDoubleClick = useCallback((roleIndex, e) => {
     e.stopPropagation()
     if (fact._implicit) return
@@ -501,7 +506,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     if (e.button !== 0) return
     if (e.detail >= 2) return  // second click of a double-click: do nothing
     if (fact._implicit) {
-      store.selectImplicitLink(fact._parentFactId, fact._implicitRoleIndex)
+      store.selectImplicitLinkRole(fact._parentFactId, fact._implicitRoleIndex, roleIndex)
       onDragStart(fact.id, 'implicitLink', e)
       return
     }
@@ -1753,31 +1758,32 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           )}
 
           {/* Role boxes */}
-          {fact.roles.map((role, ri) => {
-            const ry = startY_v + ri * (ROLE_W + ROLE_GAP)
-            const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
-            return (
-                <g key={role.id} className="role-box-group" filter={isRoleSelected(ri) ? 'url(#selectGlow)' : undefined}>
-                 <rect x={leftX_v} y={ry} width={ROLE_H} height={ROLE_W}
-                   fill={
-                     roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
-                     : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
-                     : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
-                     : roleIsCandidate(ri) ? 'var(--fill-candidate)'
-                     : isRoleSelected(ri) ? '#ffffff'
-                     : highlightedRoles?.has(ri) ? '#fde3c8'
-                     : '#ffffff'
-                   }
-                   stroke={isRoleSelected(ri) ? 'var(--accent)' : roleIsCandidate(ri) ? 'var(--col-candidate)' : roleStroke}
-                   strokeWidth={isRoleSelected(ri) ? 2 : roleIsCandidate(ri) ? 2 : roleStrokeW}
-                   strokeDasharray={fact._implicit ? '4 3' : undefined}
-                   onMouseDown={(e)   => handleRoleMouseDown(ri, e)}
-                   onDoubleClick={(e) => handleRoleDoubleClick(ri, e)}
-                   onContextMenu={(e) => handleRoleContextMenu(ri, e)}
-                   onMouseMove={isSimpleSelect ? handleRoleMouseMove : undefined}
-                   onMouseLeave={isSimpleSelect ? handleRoleMouseLeave : undefined}
-                   style={{ cursor: ((isSubtypeTool || isTargetTool) && fact.objectified) ? 'cell' : isAssignTool || inConstruction || (!!store.sequenceConstruction && !isVcConstruction) || isRoleSelected(ri) ? 'crosshair' : (isRoleValueTool && !vrEligibleRoles.has(ri)) ? 'not-allowed' : (isVcConstruction && !vcEligibleRoles.has(ri)) ? 'not-allowed' : isVcConstruction ? 'crosshair' : 'pointer' }}
-                 />
+           {fact.roles.map((role, ri) => {
+             const ry = startY_v + ri * (ROLE_W + ROLE_GAP)
+             const roleSelected = isRoleSelected(ri) || isImplicitLinkRoleSelected(ri)
+             const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
+             return (
+                 <g key={role.id} className="role-box-group" filter={roleSelected ? 'url(#selectGlow)' : undefined}>
+                  <rect x={leftX_v} y={ry} width={ROLE_H} height={ROLE_W}
+                    fill={
+                      roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
+                      : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
+                      : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
+                      : roleIsCandidate(ri) ? 'var(--fill-candidate)'
+                      : roleSelected ? '#ffffff'
+                      : highlightedRoles?.has(ri) ? '#fde3c8'
+                      : '#ffffff'
+                    }
+                    stroke={roleSelected ? 'var(--accent)' : roleIsCandidate(ri) ? 'var(--col-candidate)' : roleStroke}
+                    strokeWidth={roleSelected ? 2 : roleIsCandidate(ri) ? 2 : roleStrokeW}
+                    strokeDasharray={fact._implicit ? '4 3' : undefined}
+                    onMouseDown={(e)   => handleRoleMouseDown(ri, e)}
+                    onDoubleClick={(e) => handleRoleDoubleClick(ri, e)}
+                    onContextMenu={(e) => handleRoleContextMenu(ri, e)}
+                    onMouseMove={isSimpleSelect ? handleRoleMouseMove : undefined}
+                    onMouseLeave={isSimpleSelect ? handleRoleMouseLeave : undefined}
+                    style={{ cursor: ((isSubtypeTool || isTargetTool) && fact.objectified) ? 'cell' : isAssignTool || inConstruction || (!!store.sequenceConstruction && !isVcConstruction) || roleSelected ? 'crosshair' : (isRoleValueTool && !vrEligibleRoles.has(ri)) ? 'not-allowed' : (isVcConstruction && !vcEligibleRoles.has(ri)) ? 'not-allowed' : isVcConstruction ? 'crosshair' : 'pointer' }}
+                  />
                 <rect className="hover-ring" x={leftX_v - 3} y={ry - 3} width={ROLE_H + 6} height={ROLE_W + 6}/>
                 {isAssignTool && !role.objectTypeId && (
                   <text x={fact.x} y={ry + ROLE_W / 2}
@@ -1901,32 +1907,33 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           )}
 
           {/* Role boxes */}
-          {fact.roles.map((role, ri) => {
-            const rx = startX + ri * (ROLE_W + ROLE_GAP)
-            const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
-            return (
-                <g key={role.id} className="role-box-group" filter={isRoleSelected(ri) ? 'url(#selectGlow)' : undefined}>
-                 <rect
-                   x={rx} y={topY} width={ROLE_W} height={ROLE_H}
-                   fill={
-                     roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
-                     : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
-                     : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
-                     : roleIsCandidate(ri) ? 'var(--fill-candidate)'
-                     : isRoleSelected(ri) ? '#ffffff'
-                     : highlightedRoles?.has(ri) ? '#fde3c8'
-                     : '#ffffff'
-                   }
-                   stroke={isRoleSelected(ri) ? 'var(--accent)' : roleIsCandidate(ri) ? 'var(--col-candidate)' : roleStroke}
-                   strokeWidth={isRoleSelected(ri) ? 2 : roleIsCandidate(ri) ? 2 : roleStrokeW}
-                   strokeDasharray={fact._implicit ? '4 3' : undefined}
-                   onMouseDown={(e)   => handleRoleMouseDown(ri, e)}
-                   onDoubleClick={(e) => handleRoleDoubleClick(ri, e)}
-                   onContextMenu={(e) => handleRoleContextMenu(ri, e)}
-                   onMouseMove={isSimpleSelect ? handleRoleMouseMove : undefined}
-                   onMouseLeave={isSimpleSelect ? handleRoleMouseLeave : undefined}
-                   style={{ cursor: ((isSubtypeTool || isTargetTool) && fact.objectified) ? 'cell' : isAssignTool || inConstruction || (!!store.sequenceConstruction && !isVcConstruction) || isRoleSelected(ri) ? 'crosshair' : (isRoleValueTool && !vrEligibleRoles.has(ri)) ? 'not-allowed' : (isVcConstruction && !vcEligibleRoles.has(ri)) ? 'not-allowed' : isVcConstruction ? 'crosshair' : 'pointer' }}
-                 />
+           {fact.roles.map((role, ri) => {
+             const rx = startX + ri * (ROLE_W + ROLE_GAP)
+             const roleSelected = isRoleSelected(ri) || isImplicitLinkRoleSelected(ri)
+             const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
+             return (
+                 <g key={role.id} className="role-box-group" filter={roleSelected ? 'url(#selectGlow)' : undefined}>
+                  <rect
+                    x={rx} y={topY} width={ROLE_W} height={ROLE_H}
+                    fill={
+                      roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
+                      : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
+                      : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
+                      : roleIsCandidate(ri) ? 'var(--fill-candidate)'
+                      : roleSelected ? '#ffffff'
+                      : highlightedRoles?.has(ri) ? '#fde3c8'
+                      : '#ffffff'
+                    }
+                    stroke={roleSelected ? 'var(--accent)' : roleIsCandidate(ri) ? 'var(--col-candidate)' : roleStroke}
+                    strokeWidth={roleSelected ? 2 : roleIsCandidate(ri) ? 2 : roleStrokeW}
+                    strokeDasharray={fact._implicit ? '4 3' : undefined}
+                    onMouseDown={(e)   => handleRoleMouseDown(ri, e)}
+                    onDoubleClick={(e) => handleRoleDoubleClick(ri, e)}
+                    onContextMenu={(e) => handleRoleContextMenu(ri, e)}
+                    onMouseMove={isSimpleSelect ? handleRoleMouseMove : undefined}
+                    onMouseLeave={isSimpleSelect ? handleRoleMouseLeave : undefined}
+                    style={{ cursor: ((isSubtypeTool || isTargetTool) && fact.objectified) ? 'cell' : isAssignTool || inConstruction || (!!store.sequenceConstruction && !isVcConstruction) || roleSelected ? 'crosshair' : (isRoleValueTool && !vrEligibleRoles.has(ri)) ? 'not-allowed' : (isVcConstruction && !vcEligibleRoles.has(ri)) ? 'not-allowed' : isVcConstruction ? 'crosshair' : 'pointer' }}
+                  />
                 <rect className="hover-ring" x={rx - 3} y={topY - 3} width={ROLE_W + 6} height={ROLE_H + 6}/>
                 {isAssignTool && !role.objectTypeId && (
                   <text x={rx + ROLE_W/2} y={fact.y}
