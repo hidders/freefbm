@@ -1605,12 +1605,14 @@ function FactInspector({ fact }) {
 // ── Implicit link role inspector ──────────────────────────────────────────────
 function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
   const store = useOrmStore()
-  let il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
+  const il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
 
-  if (!il && parentFact.objectified) {
-    store.updateImplicitLink(parentFact.id, roleIndex, { roleIndex, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] })
-    il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
-  }
+  React.useEffect(() => {
+    if (!il && parentFact.objectified) {
+      store.updateImplicitLink(parentFact.id, roleIndex, { roleIndex, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] })
+    }
+  }, [il, parentFact.id, parentFact.objectified, roleIndex, store])
+
   if (!il) return <div style={{ marginBottom: 18 }}><InspectorTitle>Role</InspectorTitle><div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No implicit link data available.</div></div>
   const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
@@ -1762,13 +1764,14 @@ function CompactImplicitLinkRoleList({ parentFact, roleIndex }) {
 // ── Implicit link inspector ───────────────────────────────────────────────────
 function ImplicitLinkInspector({ parentFact, roleIndex }) {
   const store = useOrmStore()
-  let il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
+  const il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
 
-  // Auto-create missing implicit link entry (e.g. from old files)
-  if (!il && parentFact.objectified) {
-    store.updateImplicitLink(parentFact.id, roleIndex, { roleIndex, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] })
-    il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
-  }
+  // Auto-create missing implicit link entry on mount (e.g. from old files)
+  React.useEffect(() => {
+    if (!il && parentFact.objectified) {
+      store.updateImplicitLink(parentFact.id, roleIndex, { roleIndex, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] })
+    }
+  }, [il, parentFact.id, parentFact.objectified, roleIndex, store])
 
   if (!il) return <div style={{ marginBottom: 18 }}><InspectorTitle>Implicit Link</InspectorTitle><div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No implicit link data available.</div></div>
   const role = parentFact.roles[roleIndex]
