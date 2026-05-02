@@ -330,6 +330,7 @@ export const useOrmStore = create((set, get) => ({
   selectedKind:            null,
   selectedRole:            null,   // { factId, roleIndex } | null
   selectedImplicitRole:    null,   // roleIndex within the fact whose implicit link is selected
+  selectedImplicitLinkRole: null,  // { factId, roleIndex, ilRoleIndex } | null
   selectedUniqueness:      null,   // { factId, uIndex } | null
   selectedMandatoryDot:    null,   // { factId, roleIndex } | null
   selectedInternalFrequency: null, // { factId, ifId } | null
@@ -563,7 +564,7 @@ export const useOrmStore = create((set, get) => ({
 
   newModel() {
     set({ ...EMPTY(), filePath: null, isDirty: false,
-          selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitRole: null,
+          selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitRole: null, selectedImplicitLinkRole: null,
           selectedUniqueness: null, multiSelectedIds: [],
           uniquenessConstruction: null, frequencyConstruction: null,
           pan: { x: 0, y: 0 }, zoom: 1 })
@@ -1353,7 +1354,11 @@ export const useOrmStore = create((set, get) => ({
   },
 
   selectImplicitLink(factId, roleIndex) {
-    set({ selectedId: factId, selectedKind: 'implicitLink', selectedImplicitRole: roleIndex, selectedRole: null, selectedUniqueness: null })
+    set({ selectedId: factId, selectedKind: 'implicitLink', selectedImplicitRole: roleIndex, selectedRole: null, selectedUniqueness: null, selectedImplicitLinkRole: null })
+  },
+
+  selectImplicitLinkRole(factId, roleIndex, ilRoleIndex) {
+    set({ selectedId: factId, selectedKind: 'implicitLink', selectedImplicitRole: roleIndex, selectedImplicitLinkRole: { factId, roleIndex, ilRoleIndex }, selectedRole: null, selectedUniqueness: null })
   },
 
   deleteFact(id) {
@@ -1645,12 +1650,12 @@ export const useOrmStore = create((set, get) => ({
     if (get().sequenceConstruction) get().abandonSequenceConstruction()
     if (kind === 'implicitLink') {
       const [factId, roleIndex] = id.split('_il_').map((v, i) => i === 0 ? v : Number(v))
-      set({ selectedId: id, selectedKind: 'implicitLink', selectedImplicitRole: roleIndex, selectedRole: null, selectedUniqueness: null,
+      set({ selectedId: id, selectedKind: 'implicitLink', selectedImplicitRole: roleIndex, selectedRole: null, selectedUniqueness: null, selectedImplicitLinkRole: null,
             selectedMandatoryDot: null, selectedInternalFrequency: null,
             selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
       return
     }
-    set({ selectedId: id, selectedKind: kind, selectedRole: null, selectedImplicitRole: null, selectedUniqueness: null,
+    set({ selectedId: id, selectedKind: kind, selectedRole: null, selectedImplicitRole: null, selectedImplicitLinkRole: null, selectedUniqueness: null,
           selectedMandatoryDot: null, selectedInternalFrequency: null,
           selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
   },
@@ -1658,7 +1663,7 @@ export const useOrmStore = create((set, get) => ({
     if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
     if (get().frequencyConstruction) get().abandonFrequencyConstruction()
     if (get().sequenceConstruction) get().abandonSequenceConstruction()
-    set({ selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitRole: null, selectedUniqueness: null,
+    set({ selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitRole: null, selectedImplicitLinkRole: null, selectedUniqueness: null,
           selectedMandatoryDot: null, selectedInternalFrequency: null,
           selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
   },

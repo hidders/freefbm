@@ -1602,6 +1602,156 @@ function FactInspector({ fact }) {
   )
 }
 
+// ── Implicit link role inspector ──────────────────────────────────────────────
+function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
+  const store = useOrmStore()
+  const il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
+  if (!il) return null
+  const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
+  const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
+
+  const roleOrder = il.roleOrder || [0, 1]
+  const srcIdx = roleOrder[ilRoleIndex]
+
+  const roleItems = [
+    { objectTypeId: parentFact.id, roleName: null },
+    { objectTypeId: parentFact.roles[roleIndex]?.objectTypeId, roleName: parentFact.roles[roleIndex]?.roleName || null },
+  ]
+  const role = roleItems[srcIdx]
+
+  const ot = otMap[role.objectTypeId]
+  const nf = !ot ? nestedMap[role.objectTypeId] : null
+  const playerName = ot ? ot.name : nf ? nf.objectifiedName : '(unnamed)'
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Role {ilRoleIndex + 1}</InspectorTitle>
+      <div style={{ marginBottom: 10 }}>
+        <button
+          onClick={() => store.selectImplicitLink(parentFact.id, roleIndex)}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            color: 'var(--accent)', fontSize: 11 }}>
+          ← Implicit Link
+        </button>
+      </div>
+      <Row>
+        <Label>Object Type</Label>
+        <div style={{ fontSize: 12, color: 'var(--ink)', padding: '4px 8px',
+          background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', borderRadius: 4 }}>
+          {playerName}
+          {nf && <span style={{ fontSize: 10, color: 'var(--ink-muted)', marginLeft: 3 }}>(nested)</span>}
+        </div>
+      </Row>
+      {srcIdx === 1 && (
+        <Row>
+          <Label>Role Name</Label>
+          <TInput value={role.roleName || ''} placeholder="optional"
+            onChange={v => store.updateRole(parentFact.id, roleIndex, { roleName: v })}/>
+        </Row>
+      )}
+    </div>
+  )
+}
+
+// ── Compact implicit link role list ──────────────────────────────────────────
+function CompactImplicitLinkRoleList({ parentFact, roleIndex }) {
+  const store = useOrmStore()
+  const [dragIndex, setDragIndex] = useState(null)
+  const [overIndex, setOverIndex] = useState(null)
+  const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
+  const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
+
+  const il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
+  const roleOrder = il?.roleOrder || [0, 1]
+
+  const roleItems = [
+    { objectTypeId: parentFact.id, roleName: null },
+    { objectTypeId: parentFact.roles[roleIndex]?.objectTypeId, roleName: parentFact.roles[roleIndex]?.roleName || null },
+  ]
+
+  const handleDragStart = useCallback((e, ri) => {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(ri))
+    setDragIndex(ri)
+  }, [])
+
+  const handleDragOver = useCallback((e, ri) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setOverIndex(ri)
+  }, [])
+
+  const handleDrop = useCallback((e, ri) => {
+    e.preventDefault()
+    if (dragIndex !== null && dragIndex !== ri) {
+      const newOrder = [...roleOrder]
+      const [moved] = newOrder.splice(dragIndex, 1)
+      newOrder.splice(ri, 0, moved)
+      store.updateImplicitLink(parentFact.id, roleIndex, { roleOrder: newOrder })
+    }
+    setDragIndex(null)
+    setOverIndex(null)
+  }, [dragIndex, parentFact.id, roleIndex, roleOrder, store])
+
+  const handleDragEnd = useCallback(() => {
+    setDragIndex(null)
+    setOverIndex(null)
+  }, [])
+
+  return (
+    <div>
+      {[0, 1].map((ri) => {
+        const srcIdx = roleOrder[ri]
+        const role = roleItems[srcIdx]
+        const ot = otMap[role.objectTypeId]
+        const nf = !ot ? nestedMap[role.objectTypeId] : null
+        const player = ot ? ot.name : nf ? nf.objectifiedName : null
+        const isDragging = dragIndex === ri
+        const isOver = overIndex === ri && dragIndex !== ri
+        return (
+          <div
+            key={ri}
+            draggable
+            onDragStart={e => handleDragStart(e, ri)}
+            onDragOver={e => handleDragOver(e, ri)}
+            onDrop={e => handleDrop(e, ri)}
+            onDragEnd={handleDragEnd}
+            onClick={() => store.selectImplicitLinkRole(parentFact.id, roleIndex, ri)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: 'var(--bg-raised)',
+              border: `1px solid ${isOver ? 'var(--accent)' : 'var(--border-soft)'}`,
+              borderRadius: 4, padding: '5px 8px', marginBottom: 5,
+              opacity: isDragging ? 0.35 : 1,
+              boxShadow: isOver ? '0 0 0 2px var(--selection)' : 'none',
+              cursor: 'grab', userSelect: 'none',
+            }}
+          >
+            <span style={{ fontSize: 13, color: 'var(--ink-muted)', lineHeight: 1, flexShrink: 0 }}>⠿</span>
+            <span style={{ fontSize: 10, color: 'var(--ink-muted)', textTransform: 'uppercase',
+              letterSpacing: '0.07em', flexShrink: 0, minWidth: 42 }}>
+              Role {ri + 1}
+            </span>
+            <span style={{ fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              color: player ? 'var(--ink)' : 'var(--ink-muted)',
+              fontStyle: player ? 'normal' : 'italic' }}>
+              {player ?? '—'}
+              {nf && <span style={{ fontSize: 10, color: 'var(--ink-muted)', marginLeft: 3 }}>(nested)</span>}
+            </span>
+            {role.roleName && (
+              <span style={{ fontSize: 10, color: 'var(--ink-muted)', flexShrink: 0,
+                fontStyle: 'italic', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {role.roleName}
+              </span>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Implicit link inspector ───────────────────────────────────────────────────
 function ImplicitLinkInspector({ parentFact, roleIndex }) {
   const store = useOrmStore()
@@ -1673,6 +1823,10 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>Implicit Link: {nestedName} ↔ {playerName}</InspectorTitle>
+
+      <Section title="Roles">
+        <CompactImplicitLinkRoleList parentFact={parentFact} roleIndex={roleIndex} />
+      </Section>
 
       <Section title="Readings">
         {readings.map(r => {
@@ -2388,7 +2542,9 @@ export default function Inspector() {
       />
 
       {ot   && <ObjectTypeInspector ot={ot} />}
-      {selectedKind === 'implicitLink' && fact && selectedImplicitRole != null
+      {selectedKind === 'implicitLink' && fact && selectedImplicitLinkRole
+        ? <ImplicitLinkRoleInspector parentFact={fact} roleIndex={selectedImplicitLinkRole.roleIndex} ilRoleIndex={selectedImplicitLinkRole.ilRoleIndex} />
+        : selectedKind === 'implicitLink' && fact && selectedImplicitRole != null
         ? <ImplicitLinkInspector parentFact={fact} roleIndex={selectedImplicitRole} />
         : roleFact
           ? <RoleInspector fact={roleFact} roleIndex={selectedRole.roleIndex} />

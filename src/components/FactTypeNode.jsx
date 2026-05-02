@@ -166,22 +166,31 @@ export function getDisplayReading(fact) {
 export function makeImplicitLinkFact(parentFact, implicitLink, store) {
   const role = parentFact.roles[implicitLink.roleIndex]
   const associatedOtid = role?.objectTypeId
-  const nestedOtid = parentFact.id // the parent fact acts as the nested entity
+  const nestedOtid = parentFact.id
+  const roleOrder = implicitLink.roleOrder || [0, 1]
+  const roles = [
+    { objectTypeId: nestedOtid, roleName: '', mandatory: true },
+    { objectTypeId: associatedOtid, roleName: role?.roleName || '', mandatory: false },
+  ]
   return {
     id: `${parentFact.id}_il_${implicitLink.roleIndex}`,
     kind: 'fact',
     x: implicitLink.x ?? parentFact.x,
     y: implicitLink.y ?? parentFact.y,
     arity: 2,
-    roles: [
-      { id: `${parentFact.id}_il_${implicitLink.roleIndex}_r0`, objectTypeId: nestedOtid, roleName: '', mandatory: true, linkReadingParts: ['', 'involves', ''], linkReadingReverseParts: null },
-      { id: `${parentFact.id}_il_${implicitLink.roleIndex}_r1`, objectTypeId: associatedOtid, roleName: '', mandatory: false, linkReadingParts: ['', 'involves', ''], linkReadingReverseParts: null },
-    ],
+    roles: roleOrder.map((srcIdx, i) => ({
+      id: `${parentFact.id}_il_${implicitLink.roleIndex}_r${i}`,
+      objectTypeId: roles[srcIdx].objectTypeId,
+      roleName: roles[srcIdx].roleName,
+      mandatory: roles[srcIdx].mandatory,
+      linkReadingParts: ['', 'involves', ''],
+      linkReadingReverseParts: null,
+    })),
     readingParts: implicitLink.readingParts || ['', 'involves', ''],
     alternativeReadings: implicitLink.alternativeReadings || [],
     readingDisplay: implicitLink.readingDisplay || 'forward',
     shownReadingOrder: null,
-    uniqueness: [[0]], // implied: simple uniqueness on the nested entity role
+    uniqueness: [[0]],
     preferredUniqueness: null,
     internalFrequency: [],
     orientation: implicitLink.orientation || 'horizontal',
