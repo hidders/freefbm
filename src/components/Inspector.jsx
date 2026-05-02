@@ -1605,8 +1605,13 @@ function FactInspector({ fact }) {
 // ── Implicit link role inspector ──────────────────────────────────────────────
 function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
   const store = useOrmStore()
-  const il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
-  if (!il) return null
+  let il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
+
+  if (!il && parentFact.objectified) {
+    store.updateImplicitLink(parentFact.id, roleIndex, { roleIndex, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] })
+    il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
+  }
+  if (!il) return <div style={{ marginBottom: 18 }}><InspectorTitle>Role</InspectorTitle><div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No implicit link data available.</div></div>
   const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
 
@@ -1614,8 +1619,8 @@ function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
   const srcIdx = roleOrder[ilRoleIndex]
 
   const roleItems = [
-    { objectTypeId: parentFact.id, roleName: null },
-    { objectTypeId: parentFact.roles[roleIndex]?.objectTypeId, roleName: parentFact.roles[roleIndex]?.roleName || null },
+    { objectTypeId: parentFact.id, roleName: (il.roleNames || [null, null])[0] },
+    { objectTypeId: parentFact.roles[roleIndex]?.objectTypeId, roleName: (il.roleNames || [null, null])[1] },
   ]
   const role = roleItems[srcIdx]
 
@@ -1642,13 +1647,15 @@ function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
           {nf && <span style={{ fontSize: 10, color: 'var(--ink-muted)', marginLeft: 3 }}>(nested)</span>}
         </div>
       </Row>
-      {srcIdx === 1 && (
-        <Row>
-          <Label>Role Name</Label>
-          <TInput value={role.roleName || ''} placeholder="optional"
-            onChange={v => store.updateRole(parentFact.id, roleIndex, { roleName: v })}/>
-        </Row>
-      )}
+      <Row>
+        <Label>Role Name</Label>
+        <TInput value={role.roleName || ''} placeholder="optional"
+          onChange={v => {
+            const roleNames = [...(il.roleNames || [null, null])]
+            roleNames[srcIdx] = v || null
+            store.updateImplicitLink(parentFact.id, roleIndex, { roleNames })
+          }}/>
+      </Row>
     </div>
   )
 }
@@ -1665,8 +1672,8 @@ function CompactImplicitLinkRoleList({ parentFact, roleIndex }) {
   const roleOrder = il?.roleOrder || [0, 1]
 
   const roleItems = [
-    { objectTypeId: parentFact.id, roleName: null },
-    { objectTypeId: parentFact.roles[roleIndex]?.objectTypeId, roleName: parentFact.roles[roleIndex]?.roleName || null },
+    { objectTypeId: parentFact.id, roleName: (il?.roleNames || [null, null])[0] },
+    { objectTypeId: parentFact.roles[roleIndex]?.objectTypeId, roleName: (il?.roleNames || [null, null])[1] },
   ]
 
   const handleDragStart = useCallback((e, ri) => {
@@ -1755,8 +1762,15 @@ function CompactImplicitLinkRoleList({ parentFact, roleIndex }) {
 // ── Implicit link inspector ───────────────────────────────────────────────────
 function ImplicitLinkInspector({ parentFact, roleIndex }) {
   const store = useOrmStore()
-  const il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
-  if (!il) return null
+  let il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
+
+  // Auto-create missing implicit link entry (e.g. from old files)
+  if (!il && parentFact.objectified) {
+    store.updateImplicitLink(parentFact.id, roleIndex, { roleIndex, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] })
+    il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
+  }
+
+  if (!il) return <div style={{ marginBottom: 18 }}><InspectorTitle>Implicit Link</InspectorTitle><div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No implicit link data available.</div></div>
   const role = parentFact.roles[roleIndex]
   const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const ot = otMap[role.objectTypeId]

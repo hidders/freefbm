@@ -35,7 +35,14 @@
       "Bash(jobs)",
       "Bash(pkill -f \"orm2-editor.*[Ee]lectron\")",
       "Bash(pkill -f \"wait-on\")",
-      "Bash(pkill -f \"concurrently\")"
+      "Bash(pkill -f \"concurrently\")",
+      "Bash(brew list:*)",
+      "Read(//usr/local/bin/**)",
+      "Bash(export PATH=\"/opt/homebrew/bin:$PATH\")",
+      "Bash(gh release create v0.0.8 --repo hidders/factum --title v0.0.8 --notes ':*)",
+      "Bash(gh release:*)",
+      "Bash(gh repo:*)",
+      "Bash(gh run:*)"
     ]
   }
 }

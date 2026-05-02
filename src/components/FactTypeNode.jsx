@@ -168,9 +168,10 @@ export function makeImplicitLinkFact(parentFact, implicitLink, store) {
   const associatedOtid = role?.objectTypeId
   const nestedOtid = parentFact.id
   const roleOrder = implicitLink.roleOrder || [0, 1]
+  const roleNames = implicitLink.roleNames || [null, null]
   const roles = [
-    { objectTypeId: nestedOtid, roleName: '', mandatory: true },
-    { objectTypeId: associatedOtid, roleName: role?.roleName || '', mandatory: false },
+    { objectTypeId: nestedOtid, roleName: roleNames[0] || '', mandatory: true },
+    { objectTypeId: associatedOtid, roleName: roleNames[1] || '', mandatory: false },
   ]
 
   const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
@@ -357,7 +358,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const isSelected     = (store.selectedId === fact.id && !hasSelectedImplicitLink) || store.multiSelectedIds.includes(fact.id) || isImplicitSelected
   const hasSelectedRole = store.selectedRole?.factId === fact.id
   const hasSelectedUniqueness = store.selectedUniqueness?.factId === fact.id
-  const isFactSelected  = isSelected && !hasSelectedRole && !hasSelectedUniqueness
+  const hasSelectedImplicitLinkRole = fact._implicit && store.selectedImplicitLinkRole?.factId === fact._parentFactId &&
+    store.selectedImplicitLinkRole?.roleIndex === fact._implicitRoleIndex
+  const isFactSelected  = isSelected && !hasSelectedRole && !hasSelectedUniqueness && !hasSelectedImplicitLinkRole
   const isAssignTool      = store.tool === 'assignRole'
   const isSubtypeTool     = store.tool === 'addSubtype'
   const isTargetTool      = store.tool === 'addTargetConnector' && store.linkDraft?.type === 'targetConnector'

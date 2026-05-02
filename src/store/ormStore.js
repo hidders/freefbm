@@ -591,11 +591,12 @@ export const useOrmStore = create((set, get) => ({
           linkReadingReverseParts: r.linkReadingReverseParts ?? null,
         })),
         implicitLinks: ((f.implicitLinks && f.implicitLinks.length > 0 ? f.implicitLinks : null) || (f.objectified
-          ? Array.from({ length: (f.roles || []).length }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false }))
+          ? Array.from({ length: (f.roles || []).length }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] }))
           : [])).map(il => ({
             ...il,
             alternativeReadings: il.alternativeReadings || [],
             readingDisplay: il.readingDisplay || 'forward',
+            roleNames: il.roleNames || [null, null],
           })),
         internalFrequency: (f.internalFrequency || []).map((if_, idx) => ({
           ...if_,
@@ -810,7 +811,7 @@ export const useOrmStore = create((set, get) => ({
     const n = nextRelationNumber(get().facts)
     const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind, nestedReading: false, datatypeAssignment: null }
     base.roles = base.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] }))
-    base.implicitLinks = Array.from({ length: arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false }))
+    base.implicitLinks = Array.from({ length: arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] }))
     set(s => {
       const used = new Set(
         s.objectTypes.map(o => o.name).concat(s.facts.map(f => f.objectifiedName).filter(Boolean))
@@ -835,7 +836,7 @@ export const useOrmStore = create((set, get) => ({
     const n = nextRelationNumber(get().facts)
     const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind: 'value', nestedReading: false, datatypeAssignment: null }
     base.roles = base.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] }))
-    base.implicitLinks = Array.from({ length: arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false }))
+    base.implicitLinks = Array.from({ length: arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] }))
     set(s => {
       const used = new Set(
         s.objectTypes.filter(o => o.kind === 'value').map(o => o.name)
