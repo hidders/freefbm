@@ -789,10 +789,11 @@ function RoleInspector({ fact, roleIndex }) {
           store={store}
         />
       )}
-      <Label>Usage</Label>
-      <DangerBtn onClick={() => { store.deleteRole(fact.id, roleIndex); store.select(fact.id, 'fact') }}>
-        Delete Role
-      </DangerBtn>
+      <Section title="Usage">
+        <DangerBtn onClick={() => { store.deleteRole(fact.id, roleIndex); store.select(fact.id, 'fact') }}>
+          Delete Role
+        </DangerBtn>
+      </Section>
     </div>
   )
 }
