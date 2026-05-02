@@ -4,7 +4,7 @@ import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { useContextMenuHandlers } from '../hooks/useContextMenuHandlers'
 import ObjectTypeNode from './ObjectTypeNode'
-import FactTypeNode, { factBounds } from './FactTypeNode'
+import FactTypeNode, { factBounds, makeImplicitLinkFact } from './FactTypeNode'
 import SubtypeArrows from './SubtypeArrows'
 import ConstraintNodes from './ConstraintNodes'
 import RoleConnectors, { MandatoryDots } from './RoleConnectors'
@@ -328,6 +328,19 @@ export default function Canvas() {
       return
     }
 
+    // Handle implicit link drag
+    if (kind === 'implicitLink') {
+      const [factId, roleIndex] = id.split('_il_').map((v, i) => i === 0 ? v : Number(v))
+      const parentFact = store.facts.find(f => f.id === factId)
+      const il = parentFact?.implicitLinks?.find(l => l.roleIndex === roleIndex)
+      if (!parentFact || !il) return
+      setDragState({ type: 'element', id, kind: 'implicitLink',
+                     startX: e.clientX, startY: e.clientY,
+                     origX: il.x ?? parentFact.x, origY: il.y ?? parentFact.y,
+                     implicitFactId: factId, implicitRoleIndex: roleIndex })
+      return
+    }
+
     const multiIds = store.multiSelectedIds
     if (multiIds.length > 0 && multiIds.includes(id)) {
       // Multi-element drag — record initial position from diagram-positioned elements
@@ -374,6 +387,7 @@ export default function Canvas() {
       if (snapEnabled) { wx = snap(wx); wy = snap(wy) }
       if (dragState.kind === 'fact')            store.moveFact(dragState.id, wx, wy)
       else if (dragState.kind === 'constraint') store.moveConstraint(dragState.id, wx, wy)
+      else if (dragState.kind === 'implicitLink') store.updateImplicitLink(dragState.implicitFactId, dragState.implicitRoleIndex, { x: snapEnabled ? snap(wx) : wx, y: snapEnabled ? snap(wy) : wy })
       else                                      store.moveObjectType(dragState.id, wx, wy)
     } else if (dragState.type === 'multiElement') {
       if (dx * dx + dy * dy < 16) return
@@ -570,6 +584,17 @@ export default function Canvas() {
               onNestedVrContextMenu={(e) => handleNestedVrContextMenu(f, e)}
               onNestedCrContextMenu={(e) => handleNestedCrContextMenu(f, e)}/>
           ))}
+          {visibleFacts.filter(f => f.objectified).map(f =>
+            (f.implicitLinks || []).filter(il => store.isImplicitLinkShown(f.id, il.roleIndex)).map(il => {
+              const synth = makeImplicitLinkFact(f, il, store)
+              return (
+                <FactTypeNode key={synth.id} fact={synth}
+                  onDragStart={(id, kind, e) => handleDragStart(id, 'implicitLink', e)}
+                  isShared={false}
+                  onContextMenu={() => {}}/>
+              )
+            })
+          )}
           <RoleConnectors mousePos={mousePos}/>
           {visibleOts.map(ot => (
             <ObjectTypeNode key={ot.id} objectType={ot}

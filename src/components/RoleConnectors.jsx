@@ -195,17 +195,66 @@ export default function RoleConnectors({ mousePos }) {
         key: `${fact.id}-${ri}`,
         factId: fact.id, roleIndex: ri,
         anchor, border, dotPos,
-        roleName: role.roleName || '',
-        mx, my, autoOx, autoOy,
-        customOffset: fact.roleNameOffsets?.[ri] ?? role.roleNameOffset ?? null,
+        mx, my,
+        autoOffset: { dx: autoOx, dy: autoOy },
+        nameOffset: role.nameOffset ?? null,
+        roleName: role.roleName,
       }
     }).filter(Boolean)
   )
 
+  // Implicit link connectors (dashed role boxes)
+  const implicitConnectors = visibleFacts.flatMap(fact => {
+    if (!fact.objectified) return []
+    return (fact.implicitLinks || []).filter(il => store.isImplicitLinkShown(fact.id, il.roleIndex)).flatMap(il => {
+      const role = fact.roles[il.roleIndex]
+      if (!role?.objectTypeId) return []
+      const ot = otMap[role.objectTypeId]
+      if (!ot) return []
+      const synthFact = {
+        id: `${fact.id}_il_${il.roleIndex}`,
+        x: il.x ?? fact.x, y: il.y ?? fact.y,
+        arity: 2, orientation: il.orientation || 'horizontal',
+        roles: [
+          { objectTypeId: fact.id, nameOffset: null },
+          { objectTypeId: ot.id, nameOffset: null },
+        ],
+      }
+      return [0, 1].map(ri => {
+        const sRole = synthFact.roles[ri]
+        const targetOt = otMap[sRole.objectTypeId]
+        const targetNf = !targetOt ? nestedMap[sRole.objectTypeId] : null
+        if (!targetOt && !targetNf) return null
+        const { x: px, y: py } = playerXY(targetOt, targetNf)
+        const anchor = roleAnchor(synthFact, ri, px, py)
+        const border = playerBorderPoint(targetOt, targetNf, anchor.x, anchor.y)
+        const isImplicitRole0 = ri === 0
+        const dotPos = isImplicitRole0 ? anchor : (dotAtObject ? border : anchor)
+        const mx = (anchor.x + border.x) / 2
+        const my = (anchor.y + border.y) / 2
+        const edgeDx = border.x - anchor.x
+        const edgeDy = border.y - anchor.y
+        const len = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy) || 1
+        return {
+          key: `${fact.id}_il_${il.roleIndex}-${ri}`,
+          factId: synthFact.id, roleIndex: ri,
+          anchor, border, dotPos,
+          mx, my,
+          autoOffset: { dx: -edgeDy / len * 9, dy: edgeDx / len * 9 },
+          nameOffset: null,
+          roleName: '',
+          isImplicit: true,
+        }
+      }).filter(Boolean)
+    })
+  })
+
+  const allConnectors = [...connectors, ...implicitConnectors]
+
   return (
     <g>
       {/* Connector lines */}
-      {connectors.map(({ key, anchor, border }) => (
+      {allConnectors.map(({ key, anchor, border }) => (
         <line key={key}
           x1={border.x} y1={border.y}
           x2={anchor.x} y2={anchor.y}
@@ -213,7 +262,7 @@ export default function RoleConnectors({ mousePos }) {
       ))}
 
       {/* Role name labels — draggable, offset stored relative to connector midpoint */}
-      {store.showRoleNames && connectors.map(({ key, factId, roleIndex, roleName,
+      {store.showRoleNames && allConnectors.map(({ key, factId, roleIndex, roleName,
                                                 mx, my, autoOx, autoOy, customOffset }) => {
         if (!roleName) return null
 
@@ -382,6 +431,51 @@ export function MandatoryDots({ onContextMenu }) {
           )
         }).filter(Boolean)
       )}
+      {/* Mandatory dots for implicit links (role 0 is always mandatory) */}
+      {visibleFacts.flatMap(fact => {
+        if (!fact.objectified) return []
+        return (fact.implicitLinks || []).filter(il => store.isImplicitLinkShown(fact.id, il.roleIndex)).map(il => {
+          const role = fact.roles[il.roleIndex]
+          if (!role?.objectTypeId) return null
+          const ot = otMap[role.objectTypeId]
+          if (!ot) return null
+          const synthFact = {
+            id: `${fact.id}_il_${il.roleIndex}`,
+            x: il.x ?? fact.x, y: il.y ?? fact.y,
+            arity: 2, orientation: il.orientation || 'horizontal',
+          }
+          // Role 0 (nested entity) is mandatory
+          const targetOt = otMap[fact.id] // parent fact as nested entity
+          const targetNf = !targetOt ? nestedMap[fact.id] : null
+          if (!targetOt && !targetNf) return null
+          const { x: px, y: py } = playerXY(targetOt, targetNf)
+          const anchor = roleAnchor(synthFact, 0, px, py)
+          const border = playerBorderPoint(targetOt, targetNf, anchor.x, anchor.y)
+          const pos = dotAtObject ? border : anchor
+          const isSelected = sel?.factId === synthFact.id && sel?.roleIndex === 0
+          return (
+            <g key={`dot-${synthFact.id}-0`} className="selectable-group" style={{ cursor: 'pointer', filter: isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+              <circle
+                cx={pos.x} cy={pos.y} r={DOT_R}
+                fill="var(--col-mandatory)"
+                onClick={e => {
+                  e.stopPropagation()
+                  if (isSelected) store.deselectMandatoryDot()
+                  else store.selectMandatoryDot(synthFact.id, 0)
+                }}
+                onContextMenu={e => {
+                  e.preventDefault(); e.stopPropagation()
+                  store.selectMandatoryDot(synthFact.id, 0)
+                  onContextMenu?.(synthFact.id, 0, e)
+                }}/>
+              <rect className="hover-ring"
+                x={pos.x - DOT_R - 3} y={pos.y - DOT_R - 3}
+                width={(DOT_R + 3) * 2} height={(DOT_R + 3) * 2}
+                rx={DOT_R + 3}/>
+            </g>
+          )
+        }).filter(Boolean)
+      })}
     </g>
   )
 }

@@ -53,31 +53,38 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     e.stopPropagation()
     const role = fact.roles[roleIndex]
     const hasUnary = fact.uniqueness.some(u => u.length === 1 && u[0] === roleIndex)
+    const items = [
+      { label: 'Is Mandatory', checked: !!role.mandatory,
+        action: () => store.updateRole(fact.id, roleIndex, { mandatory: !role.mandatory }) },
+      { label: 'Has Uniqueness Constraint', checked: hasUnary,
+        action: () => store.toggleUniqueness(fact.id, [roleIndex]) },
+      '---',
+      { label: 'Insert Role Before',
+        action: () => { store.insertRole(fact.id, roleIndex); store.selectRole(fact.id, roleIndex + 1) } },
+      { label: 'Insert Role After',
+        action: () => store.insertRole(fact.id, roleIndex + 1) },
+      ...(fact.arity > 2 ? [
+        { label: 'Move Role to Left',
+          disabled: roleIndex === 0,
+          action: () => { store.reorderRoles(fact.id, roleIndex, roleIndex - 1); store.selectRole(fact.id, roleIndex - 1) } },
+        { label: 'Move Role to Right',
+          disabled: roleIndex === fact.arity - 1,
+          action: () => { store.reorderRoles(fact.id, roleIndex, roleIndex + 1); store.selectRole(fact.id, roleIndex + 1) } },
+      ] : []),
+    ]
+    if (fact.objectified && role.objectTypeId) {
+      const isShown = store.isImplicitLinkShown(fact.id, roleIndex)
+      items.push('---', { label: isShown ? 'Hide Link Fact Type' : 'Show Link Fact Type',
+        checked: isShown,
+        action: () => store.toggleImplicitLink(fact.id, roleIndex) })
+    }
+    items.push('---',
+      { label: 'Delete role',
+        danger: true, disabled: fact.arity <= 1,
+        action: () => { store.deleteRole(fact.id, roleIndex); store.clearSelection() } })
     setContextMenu({
       x: e.clientX, y: e.clientY,
-      items: [
-        { label: 'Is Mandatory', checked: !!role.mandatory,
-          action: () => store.updateRole(fact.id, roleIndex, { mandatory: !role.mandatory }) },
-        { label: 'Has Uniqueness Constraint', checked: hasUnary,
-          action: () => store.toggleUniqueness(fact.id, [roleIndex]) },
-        '---',
-        { label: 'Insert Role Before',
-          action: () => { store.insertRole(fact.id, roleIndex); store.selectRole(fact.id, roleIndex + 1) } },
-        { label: 'Insert Role After',
-          action: () => store.insertRole(fact.id, roleIndex + 1) },
-        ...(fact.arity > 2 ? [
-          { label: 'Move Role to Left',
-            disabled: roleIndex === 0,
-            action: () => { store.reorderRoles(fact.id, roleIndex, roleIndex - 1); store.selectRole(fact.id, roleIndex - 1) } },
-          { label: 'Move Role to Right',
-            disabled: roleIndex === fact.arity - 1,
-            action: () => { store.reorderRoles(fact.id, roleIndex, roleIndex + 1); store.selectRole(fact.id, roleIndex + 1) } },
-        ] : []),
-        '---',
-        { label: 'Delete role',
-          danger: true, disabled: fact.arity <= 1,
-          action: () => { store.deleteRole(fact.id, roleIndex); store.clearSelection() } },
-      ],
+      items,
     })
   }, [store, setContextMenu])
 
