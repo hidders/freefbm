@@ -195,6 +195,7 @@ export default function Canvas() {
 
   const {
     handleMultiSelectionContextMenu,
+    handleImplicitLinkContextMenu,
     handleOtContextMenu,
     handleRoleContextMenu,
     handleFactContextMenu,
@@ -584,17 +585,17 @@ export default function Canvas() {
               onNestedVrContextMenu={(e) => handleNestedVrContextMenu(f, e)}
               onNestedCrContextMenu={(e) => handleNestedCrContextMenu(f, e)}/>
           ))}
-          {visibleFacts.filter(f => f.objectified).map(f =>
-            (f.implicitLinks || []).filter(il => store.isImplicitLinkShown(f.id, il.roleIndex)).map(il => {
-              const synth = makeImplicitLinkFact(f, il, store)
-              return (
-                <FactTypeNode key={synth.id} fact={synth}
-                  onDragStart={(id, kind, e) => handleDragStart(id, 'implicitLink', e)}
-                  isShared={false}
-                  onContextMenu={() => {}}/>
-              )
-            })
-          )}
+           {visibleFacts.filter(f => f.objectified).map(f =>
+             (f.implicitLinks || []).filter(il => store.isImplicitLinkShown(f.id, il.roleIndex)).map(il => {
+               const synth = makeImplicitLinkFact(f, il, store)
+               return (
+                 <FactTypeNode key={synth.id} fact={synth}
+                   onDragStart={(id, kind, e) => handleDragStart(id, 'implicitLink', e)}
+                   isShared={false}
+                   onContextMenu={(e) => handleImplicitLinkContextMenu(f.id, il.roleIndex, e)}/>
+               )
+             })
+           )}
           <RoleConnectors mousePos={mousePos}/>
           {visibleOts.map(ot => (
             <ObjectTypeNode key={ot.id} objectType={ot}

@@ -387,8 +387,29 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({ x: e.clientX, y: e.clientY, items })
   }, [store, setContextMenu, handleMultiSelectionContextMenu])
 
+  const handleImplicitLinkContextMenu = useCallback((factId, roleIndex, e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    store.selectImplicitLink(factId, roleIndex)
+    const il = store.facts.find(f => f.id === factId)?.implicitLinks?.find(l => l.roleIndex === roleIndex)
+    const isVertical = il?.orientation === 'vertical'
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      items: [
+        { label: isVertical ? 'Show Horizontally' : 'Show Vertically',
+          action: () => store.updateImplicitLink(factId, roleIndex, {
+            orientation: isVertical ? 'horizontal' : 'vertical'
+          }) },
+        '---',
+        { label: 'Remove from Diagram',
+          action: () => store.toggleImplicitLink(factId, roleIndex) },
+      ],
+    })
+  }, [store, setContextMenu])
+
   return {
     handleMultiSelectionContextMenu,
+    handleImplicitLinkContextMenu,
     handleOtContextMenu,
     handleRoleContextMenu,
     handleFactContextMenu,
