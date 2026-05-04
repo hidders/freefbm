@@ -1358,14 +1358,40 @@ function FactPresentationSubsection({ fact, store }) {
         />
       </Row>
       <Row>
+        <Label>Reading Position</Label>
+      </Row>
+      {(() => {
+        const isVert = fact.orientation === 'vertical'
+        const disabled = fact.objectified && !isVert && !fact.nestedReading
+        const dragged = !disabled && fact.readingOffset != null
+        const belowLabel = isVert ? 'Show Reading Left' : 'Show Reading Below'
+        const aboveLabel = isVert ? 'Show Reading Right' : 'Show Reading Above'
+        return (
+          <Row style={{ gap: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: disabled ? 'not-allowed' : 'pointer', color: disabled ? 'var(--ink-muted)' : 'var(--ink-2)' }}>
+              <input type="radio"
+                name={`reading-pos-${fact.id}`}
+                checked={!dragged && !fact.readingAbove}
+                disabled={disabled}
+                onChange={() => { store.updateFactLayout(fact.id, { readingOffset: null }); store.updateFact(fact.id, { readingAbove: false }) }}
+                style={{ accentColor: 'var(--accent)', cursor: disabled ? 'not-allowed' : 'pointer' }} />
+              {belowLabel}
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: disabled ? 'not-allowed' : 'pointer', color: disabled ? 'var(--ink-muted)' : 'var(--ink-2)' }}>
+              <input type="radio"
+                name={`reading-pos-${fact.id}`}
+                checked={!dragged && !!fact.readingAbove}
+                disabled={disabled}
+                onChange={() => { store.updateFactLayout(fact.id, { readingOffset: null }); store.updateFact(fact.id, { readingAbove: true }) }}
+                style={{ accentColor: 'var(--accent)', cursor: disabled ? 'not-allowed' : 'pointer' }} />
+              {aboveLabel}
+            </label>
+          </Row>
+        )
+      })()}
+      <Row>
         <Checkbox
-          label={fact.orientation === 'vertical' ? 'Reading right' : 'Reading above'}
-          checked={!!fact.readingAbove}
-          disabled={fact.objectified && fact.orientation !== 'vertical' && !fact.nestedReading}
-          onChange={v => store.updateFact(fact.id, { readingAbove: v, readingOffset: null })}
-        />
-        <Checkbox
-          label="Uniqueness below"
+          label={fact.orientation === 'vertical' ? 'Uniqueness left' : 'Uniqueness below'}
           checked={!!fact.uniquenessBelow}
           onChange={v => store.updateFactLayout(fact.id, { uniquenessBelow: v })}
         />
@@ -1643,7 +1669,7 @@ function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
 
   React.useEffect(() => {
     if (!il && parentFact.objectified) {
-      store.updateImplicitLink(parentFact.id, roleIndex, { roleIndex, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] })
+      store.updateImplicitLink(parentFact.id, roleIndex, { roleIndex, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, uniquenessBelow: false, roleNames: [null, null] })
     }
   }, [il, parentFact.id, parentFact.objectified, roleIndex, store])
 
@@ -1803,7 +1829,7 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
   // Auto-create missing implicit link entry on mount (e.g. from old files)
   React.useEffect(() => {
     if (!il && parentFact.objectified) {
-      store.updateImplicitLink(parentFact.id, roleIndex, { roleIndex, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] })
+      store.updateImplicitLink(parentFact.id, roleIndex, { roleIndex, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, uniquenessBelow: false, roleNames: [null, null] })
     }
   }, [il, parentFact.id, parentFact.objectified, roleIndex, store])
 
@@ -1965,10 +1991,39 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
           />
         </Row>
         <Row>
+          <Label>Reading Position</Label>
+        </Row>
+        {(() => {
+          const isVert = il.orientation === 'vertical'
+          const dragged = il.readingOffset != null
+          const belowLabel = isVert ? 'Show Reading Left' : 'Show Reading Below'
+          const aboveLabel = isVert ? 'Show Reading Right' : 'Show Reading Above'
+          return (
+            <Row style={{ gap: 12 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', color: 'var(--ink-2)' }}>
+                <input type="radio"
+                  name={`il-reading-pos-${parentFact.id}-${roleIndex}`}
+                  checked={!dragged && !il.readingAbove}
+                  onChange={() => store.updateImplicitLink(parentFact.id, roleIndex, { readingOffset: null, readingAbove: false })}
+                  style={{ accentColor: 'var(--accent)', cursor: 'pointer' }} />
+                {belowLabel}
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', color: 'var(--ink-2)' }}>
+                <input type="radio"
+                  name={`il-reading-pos-${parentFact.id}-${roleIndex}`}
+                  checked={!dragged && !!il.readingAbove}
+                  onChange={() => store.updateImplicitLink(parentFact.id, roleIndex, { readingOffset: null, readingAbove: true })}
+                  style={{ accentColor: 'var(--accent)', cursor: 'pointer' }} />
+                {aboveLabel}
+              </label>
+            </Row>
+          )
+        })()}
+        <Row>
           <Checkbox
-            label={il.orientation === 'vertical' ? 'Reading right' : 'Reading above'}
-            checked={!!il.readingAbove}
-            onChange={v => store.updateImplicitLink(parentFact.id, roleIndex, { readingAbove: v, readingOffset: null })}
+            label={il.orientation === 'vertical' ? 'Uniqueness left' : 'Uniqueness below'}
+            checked={!!il.uniquenessBelow}
+            onChange={v => store.updateImplicitLink(parentFact.id, roleIndex, { uniquenessBelow: v })}
           />
         </Row>
       </Section>

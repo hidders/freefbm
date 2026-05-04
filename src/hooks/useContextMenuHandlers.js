@@ -8,7 +8,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     e.stopPropagation()
     const canAlign = store.multiSelectedIds.length >= 2
     const idsToRemove = store.multiSelectedIds.filter(id =>
-      store.objectTypes.some(o => o.id === id) || store.facts.some(f => f.id === id)
+      store.objectTypes.some(o => o.id === id) || store.facts.some(f => f.id === id) || id.includes('_il_')
     )
     setContextMenu({
       x: e.clientX, y: e.clientY,
@@ -408,6 +408,10 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
   }, [store, setContextMenu, handleMultiSelectionContextMenu])
 
   const handleImplicitLinkContextMenu = useCallback((factId, roleIndex, e) => {
+    const synthId = `${factId}_il_${roleIndex}`
+    if (store.multiSelectedIds.length > 1 && store.multiSelectedIds.includes(synthId)) {
+      return handleMultiSelectionContextMenu(e)
+    }
     e.preventDefault()
     e.stopPropagation()
     store.selectImplicitLink(factId, roleIndex)
@@ -427,7 +431,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
           action: () => store.toggleImplicitLink(factId, roleIndex) },
       ],
     })
-  }, [store, setContextMenu])
+  }, [store, setContextMenu, handleMultiSelectionContextMenu])
 
   return {
     handleMultiSelectionContextMenu,

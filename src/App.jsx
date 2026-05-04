@@ -101,7 +101,7 @@ function useKeyboardShortcuts() {
             store.deleteMultiSelection()
           } else {
             const idsToRemove = multiSelectedIds.filter(id =>
-              s0.objectTypes.some(o => o.id === id) || s0.facts.some(f => f.id === id)
+              s0.objectTypes.some(o => o.id === id) || s0.facts.some(f => f.id === id) || id.includes('_il_')
             )
             if (idsToRemove.length > 0) {
               store.removeMultiSelectionFromDiagram(activeDiagramId, idsToRemove)

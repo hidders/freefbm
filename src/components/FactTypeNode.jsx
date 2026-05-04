@@ -214,8 +214,8 @@ export function makeImplicitLinkFact(parentFact, implicitLink) {
 
   const schemaX = implicitLink.x
   const schemaY = implicitLink.y
-  const defaultX = associatedOt ? Math.round((parentFact.x + associatedOt.x) / 2) : parentFact.x
-  const defaultY = associatedOt ? Math.round((parentFact.y + associatedOt.y) / 2) : parentFact.y
+  const defaultX = (associatedOt || associatedNf) ? Math.round((parentFact.x + (associatedOt || associatedNf).x) / 2) : parentFact.x
+  const defaultY = (associatedOt || associatedNf) ? Math.round((parentFact.y + (associatedOt || associatedNf).y) / 2) : parentFact.y
   const x = ilPos?.x ?? schemaX ?? defaultX
   const y = ilPos?.y ?? schemaY ?? defaultY
 
@@ -242,7 +242,7 @@ export function makeImplicitLinkFact(parentFact, implicitLink) {
     orientation: implicitLink.orientation || 'horizontal',
     readingOffset: implicitLink.readingOffset ?? null,
     readingAbove: implicitLink.readingAbove ?? false,
-    uniquenessBelow: false,
+    uniquenessBelow: implicitLink.uniquenessBelow ?? false,
     _implicit: true,
     _parentFactId: parentFact.id,
     _implicitRoleIndex: implicitLink.roleIndex,
@@ -503,7 +503,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     }
     if (inConstruction) return  // Enter key confirms; clicking fact body does nothing
     if (inFrequencyConstruction) return  // Enter key confirms
-    if (e.shiftKey) { store.shiftSelect(fact.id); return }
+    if (e.shiftKey) {
+      store.shiftSelect(fact.id)
+      onDragStart(fact.id, fact._implicit ? 'implicitLink' : 'fact', e)
+      return
+    }
     if (fact._implicit) {
       store.selectImplicitLink(fact._parentFactId, fact._implicitRoleIndex)
       onDragStart(fact.id, 'implicitLink', e)
@@ -532,18 +536,29 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
 
   const handleRoleContextMenu = useCallback((roleIndex, e) => {
     e.preventDefault(); e.stopPropagation()
-    if (onRoleContextMenu) {
+    const BORDER_PX = 3 * store.zoom
+    const bbox = e.currentTarget.getBoundingClientRect()
+    const inInterior = e.clientX > bbox.left + BORDER_PX && e.clientX < bbox.right  - BORDER_PX &&
+                       e.clientY > bbox.top  + BORDER_PX && e.clientY < bbox.bottom - BORDER_PX
+    if (!inInterior) {
+      onContextMenu(e)
+    } else if (onRoleContextMenu) {
       onRoleContextMenu(roleIndex, e)
     } else {
       onContextMenu(e)
     }
-  }, [onContextMenu, onRoleContextMenu])
+  }, [store.zoom, onContextMenu, onRoleContextMenu])
 
   const handleRoleMouseDown = useCallback((roleIndex, e) => {
     e.stopPropagation()
     if (e.button !== 0) return
     if (e.detail >= 2) return  // second click of a double-click: do nothing
     if (fact._implicit) {
+      if (e.shiftKey) {
+        store.shiftSelect(fact.id)
+        onDragStart(fact.id, 'implicitLink', e)
+        return
+      }
       const r = e.currentTarget.getBoundingClientRect()
       const ex = e.clientX - r.left
       const ey = e.clientY - r.top
@@ -848,7 +863,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       if (rd) {
         const dx = rd.origDx + (e.clientX - rd.startX) / zoom
         const dy = rd.origDy + (e.clientY - rd.startY) / zoom
-        useOrmStore.getState().updateFactLayout(fact.id, { readingOffset: { dx, dy } })
+        if (fact._implicit) {
+          store.updateImplicitLink(fact._parentFactId, fact._implicitRoleIndex, { readingOffset: { dx, dy } })
+        } else {
+          store.updateFactLayout(fact.id, { readingOffset: { dx, dy } })
+        }
         readingDragRef.current = null
         setReadingLive(null)
       }
@@ -867,7 +886,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup',   onUp)
     }
-  }, [fact.id])
+  }, [fact.id, store])
 
   const commitNameEdit = useCallback(() => {
     setEditingName(false)
@@ -1174,13 +1193,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
 
     const AUTO_DX = (() => {
       if (!isVertical) return 0
-      if (!fact.objectified) return fact.readingAbove ? ROLE_H / 2 + 40 : -(ROLE_H / 2 + 40)
-      // Measure the text so the reading edge (not just centre) clears the outer box
       if (!_vrCanvas) _vrCanvas = document.createElement('canvas')
       const _ctx = _vrCanvas.getContext('2d')
       _ctx.font = `14px ${VR_FONT}`
       const tw = _ctx.measureText(text).width
-      const bounds = nestedFactBounds(fact)
+      const bounds = fact.objectified ? nestedFactBounds(fact) : factBounds(fact)
       return fact.readingAbove
         ? bounds.right - fact.x + tw / 2 + 10
         : bounds.left  - fact.x - tw / 2 - 10
@@ -1270,10 +1287,6 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         style={{ cursor: isDraggingReading ? 'grabbing' : 'grab', userSelect: 'none' }}
         onMouseDown={e => {
           e.stopPropagation()
-          if (fact._implicit) {
-            store.selectImplicitLink(fact._parentFactId, fact._implicitRoleIndex)
-            onDragStart(fact.id, 'implicitLink', e)
-          }
           readingWasDragged.current = false
           readingDragRef.current = { startX: e.clientX, startY: e.clientY, origDx: off.dx, origDy: off.dy }
           setReadingLive({ dx: off.dx, dy: off.dy })

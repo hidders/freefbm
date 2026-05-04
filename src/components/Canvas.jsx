@@ -341,8 +341,9 @@ export default function Canvas() {
       const role = parentFact.roles[roleIndex]
       const associatedOtid = role?.objectTypeId
       const associatedOt = visibleOts.find(o => o.id === associatedOtid)
-      const defaultX = associatedOt ? Math.round((parentFact.x + associatedOt.x) / 2) : parentFact.x
-      const defaultY = associatedOt ? Math.round((parentFact.y + associatedOt.y) / 2) : parentFact.y
+      const associatedNf = !associatedOt ? visibleFacts.find(f => f.id === associatedOtid && f.objectified) : null
+      const defaultX = (associatedOt || associatedNf) ? Math.round((parentFact.x + (associatedOt || associatedNf).x) / 2) : parentFact.x
+      const defaultY = (associatedOt || associatedNf) ? Math.round((parentFact.y + (associatedOt || associatedNf).y) / 2) : parentFact.y
       const origX = ilPos?.x ?? il.x ?? defaultX
       const origY = ilPos?.y ?? il.y ?? defaultY
       setDragState({ type: 'element', id, kind: 'implicitLink',
@@ -362,6 +363,23 @@ export default function Canvas() {
         if (f) return { id: eid, kind: 'fact', origX: f.x, origY: f.y }
         const c = visibleConstraints.find(c => c.id === eid)
         if (c) return { id: eid, kind: 'constraint', origX: c.x, origY: c.y }
+        if (eid.includes('_il_')) {
+          const [factId, roleIndex] = eid.split('_il_').map((v, i) => i === 0 ? v : Number(v))
+          const parentFact = visibleFacts.find(f => f.id === factId)
+          const il = parentFact?.implicitLinks?.find(l => l.roleIndex === roleIndex)
+          if (parentFact && il) {
+            const diag = store.diagrams.find(d => d.id === store.activeDiagramId)
+            const positions = diag?.positions ?? {}
+            const ilPos = positions[`${factId}:il:${roleIndex}`]
+            const role = parentFact.roles[roleIndex]
+            const associatedOtid = role?.objectTypeId
+            const associatedOt = visibleOts.find(o => o.id === associatedOtid)
+            const associatedNf = !associatedOt ? visibleFacts.find(f => f.id === associatedOtid && f.objectified) : null
+            const defaultX = (associatedOt || associatedNf) ? Math.round((parentFact.x + (associatedOt || associatedNf).x) / 2) : parentFact.x
+            const defaultY = (associatedOt || associatedNf) ? Math.round((parentFact.y + (associatedOt || associatedNf).y) / 2) : parentFact.y
+            return { id: eid, kind: 'implicitLink', origX: ilPos?.x ?? il.x ?? defaultX, origY: ilPos?.y ?? il.y ?? defaultY, implicitFactId: factId, implicitRoleIndex: roleIndex }
+          }
+        }
         return null
       }
       const elements = multiIds.map(getPos).filter(Boolean)
@@ -410,6 +428,7 @@ export default function Canvas() {
         if (snapEnabled) { wx = snap(wx); wy = snap(wy) }
         if (el.kind === 'fact')            store.moveFact(el.id, wx, wy)
         else if (el.kind === 'constraint') store.moveConstraint(el.id, wx, wy)
+        else if (el.kind === 'implicitLink') store.updateImplicitLink(el.implicitFactId, el.implicitRoleIndex, { x: snapEnabled ? snap(wx) : wx, y: snapEnabled ? snap(wy) : wy })
         else                               store.moveObjectType(el.id, wx, wy)
       }
     } else if (dragState.type === 'band') {
@@ -431,6 +450,8 @@ export default function Canvas() {
       // Use visibleOts/visibleFacts/visibleConstraints: they carry diagram-merged positions
       // so the hit-test matches what is actually rendered on screen.
       const nestedMap = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
+      const diag = store.diagrams.find(d => d.id === store.activeDiagramId)
+      const diagPos = diag?.positions ?? {}
       const ids = [
         ...visibleOts        .filter(o  => inBand(o.x, o.y))           .map(o  => o.id),
         ...visibleFacts      .filter(f  => boxInBand(factBounds(f)))    .map(f  => f.id),
@@ -441,6 +462,21 @@ export default function Canvas() {
           if (!sub || !sup) return false
           return inBand((sub.x + sup.x) / 2, (sub.y + sup.y) / 2)
         }).map(st => st.id),
+        ...visibleFacts.flatMap(f =>
+          (f.implicitLinks || []).filter(il => {
+            const ilKey = `${f.id}:il:${il.roleIndex}`
+            const ilPos = diagPos[ilKey]
+            const role = f.roles[il.roleIndex]
+            const associatedOtid = role?.objectTypeId
+            const associatedOt = visibleOts.find(o => o.id === associatedOtid)
+            const associatedNf = !associatedOt ? visibleFacts.find(ff => ff.id === associatedOtid && ff.objectified) : null
+            const defaultX = (associatedOt || associatedNf) ? Math.round((f.x + (associatedOt || associatedNf).x) / 2) : f.x
+            const defaultY = (associatedOt || associatedNf) ? Math.round((f.y + (associatedOt || associatedNf).y) / 2) : f.y
+            const ilX = ilPos?.x ?? il.x ?? defaultX
+            const ilY = ilPos?.y ?? il.y ?? defaultY
+            return inBand(ilX, ilY)
+          }).map(il => `${f.id}_il_${il.roleIndex}`)
+        ),
       ]
       const finalIds = dragState.additive
         ? [...new Set([...store.multiSelectedIds, ...ids])]

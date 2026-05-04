@@ -591,7 +591,7 @@ export const useOrmStore = create((set, get) => ({
           linkReadingReverseParts: r.linkReadingReverseParts ?? null,
         })),
         implicitLinks: ((f.implicitLinks && f.implicitLinks.length > 0 ? f.implicitLinks : null) || (f.objectified
-          ? Array.from({ length: (f.roles || []).length }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] }))
+          ? Array.from({ length: (f.roles || []).length }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] }))
           : [])).map(il => ({
             ...il,
             alternativeReadings: il.alternativeReadings || [],
@@ -802,7 +802,7 @@ export const useOrmStore = create((set, get) => ({
     const n = nextRelationNumber(get().facts)
     const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind, nestedReading: false, datatypeAssignment: null }
     base.roles = base.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] }))
-    base.implicitLinks = Array.from({ length: arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] }))
+    base.implicitLinks = Array.from({ length: arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] }))
     set(s => {
       const used = new Set(
         s.objectTypes.map(o => o.name).concat(s.facts.map(f => f.objectifiedName).filter(Boolean))
@@ -827,7 +827,7 @@ export const useOrmStore = create((set, get) => ({
     const n = nextRelationNumber(get().facts)
     const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind: 'value', nestedReading: false, datatypeAssignment: null }
     base.roles = base.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] }))
-    base.implicitLinks = Array.from({ length: arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] }))
+    base.implicitLinks = Array.from({ length: arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, roleNames: [null, null] }))
     set(s => {
       const used = new Set(
         s.objectTypes.filter(o => o.kind === 'value').map(o => o.name)
@@ -1035,7 +1035,7 @@ export const useOrmStore = create((set, get) => ({
           const existingIndices = new Set(implicitLinks.map(il => il.roleIndex))
           for (let i = current; i < newArity; i++) {
             if (!existingIndices.has(i)) {
-              implicitLinks.push({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false })
+              implicitLinks.push({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false })
             }
           }
         } else {
@@ -1052,7 +1052,16 @@ export const useOrmStore = create((set, get) => ({
           ? c.sequences.map(g => g.filter(m => !(m.kind === 'role' && m.factId === factId && m.roleIndex >= newArity)))
           : undefined,
       }))
-      return { facts, constraints, isDirty: true }
+      return { facts, constraints, isDirty: true,
+        diagrams: s.diagrams.map(d => {
+          const shown = (d.shownImplicitLinks || []).filter(k => {
+            if (!k.startsWith(`${factId}:`)) return true
+            const ri = Number(k.substring(k.indexOf(':') + 1))
+            return ri < newArity
+          })
+          return shown.length === d.shownImplicitLinks?.length ? d : { ...d, shownImplicitLinks: shown }
+        }),
+      }
     })
   },
 
@@ -1097,20 +1106,25 @@ export const useOrmStore = create((set, get) => ({
         const defaultKey = JSON.stringify(Array.from({ length: n }, (_, i) => i))
         const promoted = remappedAlts.find(r => JSON.stringify(r.roleOrder) === defaultKey)
 
-        let readingParts = f.readingParts
-        let alternativeReadings = remappedAlts
+          let readingParts = f.readingParts
+          let alternativeReadings = remappedAlts
 
-        if (promoted) {
-          readingParts = promoted.parts
-          alternativeReadings = remappedAlts.filter(r => JSON.stringify(r.roleOrder) !== defaultKey)
-          if (f.readingParts && f.readingParts.some(p => p?.trim())) {
-            const demotedOrder = Array.from({ length: n }, (_, i) => oldToNew[i])
-            alternativeReadings = [...alternativeReadings, { roleOrder: demotedOrder, parts: f.readingParts }]
+          if (promoted) {
+            readingParts = promoted.parts
+            alternativeReadings = remappedAlts.filter(r => JSON.stringify(r.roleOrder) !== defaultKey)
+            if (f.readingParts && f.readingParts.some(p => p?.trim())) {
+              const demotedOrder = Array.from({ length: n }, (_, i) => oldToNew[i])
+              alternativeReadings = [...alternativeReadings, { roleOrder: demotedOrder, parts: f.readingParts }]
+            }
           }
-        }
 
-        return { ...f, roles, uniqueness, readingParts, alternativeReadings }
-      }),
+          let implicitLinks = f.implicitLinks || []
+          if (f.objectified) {
+            implicitLinks = implicitLinks.map(il => ({ ...il, roleIndex: oldToNew[il.roleIndex] ?? il.roleIndex }))
+          }
+
+          return { ...f, roles, uniqueness, readingParts, alternativeReadings, implicitLinks }
+        }),
       diagrams: s.diagrams.map(d => {
         const positions = { ...d.positions }
         const ilKeys = Object.keys(positions).filter(k => k.startsWith(`${factId}:il:`))
@@ -1122,7 +1136,16 @@ export const useOrmStore = create((set, get) => ({
             delete positions[k]
           }
         }
-        return { ...d, positions }
+        // Also remap shownImplicitLinks keys
+        const shown = (d.shownImplicitLinks || [])
+        const shownPrefix = `${factId}:`
+        const remappedShown = shown.map(key => {
+          if (!key.startsWith(shownPrefix)) return key
+          const ri = Number(key.substring(shownPrefix.length))
+          const newRi = oldToNew[ri]
+          return newRi !== undefined ? `${factId}:${newRi}` : key
+        })
+        return { ...d, positions, shownImplicitLinks: remappedShown }
       }),
       isDirty: true,
     }))
@@ -1142,18 +1165,23 @@ export const useOrmStore = create((set, get) => ({
         const defaultKey = '[0,1]'
         const promoted = remappedAlts.find(r => JSON.stringify(r.roleOrder) === defaultKey)
 
-        let readingParts = f.readingParts
-        let alternativeReadings = remappedAlts
+          let readingParts = f.readingParts
+          let alternativeReadings = remappedAlts
 
-        if (promoted) {
-          readingParts = promoted.parts
-          alternativeReadings = remappedAlts.filter(r => JSON.stringify(r.roleOrder) !== defaultKey)
-          if (f.readingParts && f.readingParts.some(p => p?.trim())) {
-            alternativeReadings = [...alternativeReadings, { roleOrder: [1, 0], parts: f.readingParts }]
+          if (promoted) {
+            readingParts = promoted.parts
+            alternativeReadings = remappedAlts.filter(r => JSON.stringify(r.roleOrder) !== defaultKey)
+            if (f.readingParts && f.readingParts.some(p => p?.trim())) {
+              alternativeReadings = [...alternativeReadings, { roleOrder: [1, 0], parts: f.readingParts }]
+            }
           }
-        }
 
-        return { ...f, roles, uniqueness, readingParts, alternativeReadings }
+          let implicitLinks = f.implicitLinks || []
+          if (f.objectified) {
+            implicitLinks = implicitLinks.map(il => ({ ...il, roleIndex: oldToNew[il.roleIndex] ?? il.roleIndex }))
+          }
+
+          return { ...f, roles, uniqueness, readingParts, alternativeReadings, implicitLinks }
       }),
       isDirty: true,
     }))
@@ -1189,7 +1217,24 @@ export const useOrmStore = create((set, get) => ({
         }))
         const rp = f.readingParts ? [...f.readingParts] : null
         if (rp) rp.splice(atIndex, 0, '')
-        return { ...f, arity, roles, uniqueness, internalFrequency, readingParts: rp, alternativeReadings: [] }
+
+        let implicitLinks = f.implicitLinks || []
+        if (f.objectified) {
+          // Remap existing implicit link roleIndices that shift due to insertion
+          implicitLinks = implicitLinks.map(il =>
+            il.roleIndex >= atIndex ? { ...il, roleIndex: il.roleIndex + 1 } : il
+          )
+          // Create implicit link entry for the new role
+          implicitLinks = [...implicitLinks, {
+            roleIndex: atIndex, x: null, y: null,
+            readingParts: ['', 'involves', ''],
+            alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }],
+            readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false,
+            roleNames: [null, null],
+          }]
+        }
+
+        return { ...f, arity, roles, uniqueness, internalFrequency, readingParts: rp, alternativeReadings: [], implicitLinks }
       })
       const constraints = s.constraints.map(c => ({
         ...c,
@@ -1211,7 +1256,15 @@ export const useOrmStore = create((set, get) => ({
               delete positions[k]
             }
           }
-          return { ...d, positions }
+          // Also remap shownImplicitLinks keys
+          const shown = (d.shownImplicitLinks || [])
+          const shownPrefix = `${factId}:`
+          const remappedShown = shown.map(key => {
+            if (!key.startsWith(shownPrefix)) return key
+            const ri = Number(key.substring(shownPrefix.length))
+            return ri >= atIndex ? `${factId}:${ri + 1}` : key
+          })
+          return { ...d, positions, shownImplicitLinks: remappedShown }
         }),
       }
     })
@@ -1232,7 +1285,13 @@ export const useOrmStore = create((set, get) => ({
           .filter(if_ => if_.roles.length > 0)
         const rp = f.readingParts ? [...f.readingParts] : null
         if (rp) rp.splice(roleIndex, 1)
-        return { ...f, arity, roles, uniqueness, internalFrequency, readingParts: rp, alternativeReadings: [] }
+        let implicitLinks = f.implicitLinks || []
+        if (f.objectified) {
+          implicitLinks = implicitLinks
+            .filter(il => il.roleIndex !== roleIndex)
+            .map(il => il.roleIndex > roleIndex ? { ...il, roleIndex: il.roleIndex - 1 } : il)
+        }
+        return { ...f, arity, roles, uniqueness, internalFrequency, readingParts: rp, alternativeReadings: [], implicitLinks }
       })
       const constraints = s.constraints.map(c => ({
         ...c,
@@ -1271,7 +1330,17 @@ export const useOrmStore = create((set, get) => ({
               }
             }
           }
-          return { ...d, positions }
+          // Also remap shownImplicitLinks keys
+          const shown = (d.shownImplicitLinks || [])
+          const shownPrefix = `${factId}:`
+          const remappedShown = shown
+            .map(key => {
+              if (!key.startsWith(shownPrefix)) return key
+              const ri = Number(key.substring(shownPrefix.length))
+              return ri > roleIndex ? `${factId}:${ri - 1}` : key
+            })
+            .filter(key => key !== `${factId}:${roleIndex}`)
+          return { ...d, positions, shownImplicitLinks: remappedShown }
         }),
       }
     })
@@ -1908,6 +1977,15 @@ export const useOrmStore = create((set, get) => ({
     const { multiSelectedIds, linkDraft, sequenceConstruction } = get()
     if (multiSelectedIds.length === 0) return
     const idSet = new Set(multiSelectedIds)
+    // Parse implicit link IDs
+    const implicitLinkIds = new Set(multiSelectedIds.filter(id => id.includes('_il_')))
+    const implicitLinksToDelete = []
+    for (const id of implicitLinkIds) {
+      const [factId, roleIndex] = id.split('_il_').map((v, i) => i === 0 ? v : Number(v))
+      implicitLinksToDelete.push({ factId, roleIndex })
+    }
+    const ilKeysToRemove = new Set(implicitLinksToDelete.map(il => `${il.factId}:${il.roleIndex}`))
+    const ilPosKeysToRemove = new Set(implicitLinksToDelete.map(il => `${il.factId}:il:${il.roleIndex}`))
     set(s => {
       const otIds   = new Set(s.objectTypes.filter(o => idSet.has(o.id)).map(o => o.id))
       const factIds = new Set(s.facts.filter(f => idSet.has(f.id) &&
@@ -1958,8 +2036,9 @@ export const useOrmStore = create((set, get) => ({
           ...d,
           elementIds: d.elementIds === null ? null : d.elementIds.filter(id => !otIds.has(id) && !factIds.has(id) && !conIds.has(id)),
           positions:  Object.fromEntries(
-            Object.entries(d.positions).filter(([k]) => !otIds.has(k) && !factIds.has(k) && !conIds.has(k))
+            Object.entries(d.positions).filter(([k]) => !otIds.has(k) && !factIds.has(k) && !conIds.has(k) && !ilPosKeysToRemove.has(k))
           ),
+          shownImplicitLinks: (d.shownImplicitLinks || []).filter(ilKey => !ilKeysToRemove.has(ilKey)),
         })),
         selectedId: null,
         selectedKind: null,
@@ -2546,6 +2625,16 @@ export const useOrmStore = create((set, get) => ({
   removeMultiSelectionFromDiagram(diagramId, idsOverride = null) {
     const multiSelectedIds = idsOverride ?? get().multiSelectedIds
     if (multiSelectedIds.length === 0) return
+    // Parse implicit link IDs
+    const implicitLinkIds = multiSelectedIds.filter(id => id.includes('_il_'))
+    const ilKeysToRemove = new Set(implicitLinkIds.map(id => {
+      const [factId, roleIndex] = id.split('_il_').map((v, i) => i === 0 ? v : Number(v))
+      return `${factId}:${roleIndex}`
+    }))
+    const ilPosKeysToRemove = new Set(implicitLinkIds.map(id => {
+      const [factId, roleIndex] = id.split('_il_').map((v, i) => i === 0 ? v : Number(v))
+      return `${factId}:il:${roleIndex}`
+    }))
     set(s => {
       // Collect all IDs to remove, including cascade for each selected element
       const allToRemove = new Set()
@@ -2560,7 +2649,8 @@ export const useOrmStore = create((set, get) => ({
         return {
           ...d,
           elementIds: base.filter(id => !allToRemove.has(id)),
-          positions:  Object.fromEntries(Object.entries(d.positions).filter(([k]) => !allToRemove.has(k))),
+          positions:  Object.fromEntries(Object.entries(d.positions).filter(([k]) => !allToRemove.has(k) && !ilPosKeysToRemove.has(k))),
+          shownImplicitLinks: (d.shownImplicitLinks || []).filter(ilKey => !ilKeysToRemove.has(ilKey)),
         }
       })
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes)

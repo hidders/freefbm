@@ -232,24 +232,26 @@ export default function RoleConnectors({ mousePos }) {
       const role = fact.roles[il.roleIndex]
       if (!role?.objectTypeId) return []
       const ot = otMap[role.objectTypeId]
-      if (!ot) return []
+      const nf = !ot ? nestedMap[role.objectTypeId] : null
+      if (!ot && !nf) return []
       const roleOrder = il.roleOrder || [0, 1]
       const roleNames = il.roleNames || [null, null]
       const ilKey = `${fact.id}:il:${il.roleIndex}`
       const ilPos = diagPos[ilKey]
       const schemaX = il.x
       const schemaY = il.y
-      const defaultX = ot ? Math.round((fact.x + ot.x) / 2) : fact.x
-      const defaultY = ot ? Math.round((fact.y + ot.y) / 2) : fact.y
+      const defaultX = (ot || nf) ? Math.round((fact.x + (ot || nf).x) / 2) : fact.x
+      const defaultY = (ot || nf) ? Math.round((fact.y + (ot || nf).y) / 2) : fact.y
       const ilX = ilPos?.x ?? schemaX ?? defaultX
       const ilY = ilPos?.y ?? schemaY ?? defaultY
+      const assocId = ot?.id ?? nf?.id
       const synthFact = {
         id: `${fact.id}_il_${il.roleIndex}`,
         x: ilX, y: ilY,
         arity: 2, orientation: il.orientation || 'horizontal',
         roles: [
-          { objectTypeId: roleOrder[0] === 0 ? fact.id : ot.id, nameOffset: null },
-          { objectTypeId: roleOrder[1] === 0 ? fact.id : ot.id, nameOffset: null },
+          { objectTypeId: roleOrder[0] === 0 ? fact.id : assocId, nameOffset: null },
+          { objectTypeId: roleOrder[1] === 0 ? fact.id : assocId, nameOffset: null },
         ],
       }
       return [0, 1].map(ri => {
@@ -482,13 +484,14 @@ export function MandatoryDots({ onContextMenu }) {
           const role = fact.roles[il.roleIndex]
           if (!role?.objectTypeId) return null
           const ot = otMap[role.objectTypeId]
-          if (!ot) return null
+          const nf = !ot ? nestedMap[role.objectTypeId] : null
+          if (!ot && !nf) return null
           const ilKey = `${fact.id}:il:${il.roleIndex}`
           const ilPos = diagPos[ilKey]
           const schemaX = il.x
           const schemaY = il.y
-          const defaultX = ot ? Math.round((fact.x + ot.x) / 2) : fact.x
-          const defaultY = ot ? Math.round((fact.y + ot.y) / 2) : fact.y
+          const defaultX = (ot || nf) ? Math.round((fact.x + (ot || nf).x) / 2) : fact.x
+          const defaultY = (ot || nf) ? Math.round((fact.y + (ot || nf).y) / 2) : fact.y
           const ilX = ilPos?.x ?? schemaX ?? defaultX
           const ilY = ilPos?.y ?? schemaY ?? defaultY
           const roleOrder = il.roleOrder || [0, 1]
