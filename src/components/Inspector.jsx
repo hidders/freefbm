@@ -3,6 +3,7 @@ import { useOrmStore } from '../store/ormStore'
 import { getDisplayReading, makeImplicitLinkFact } from './FactTypeNode'
 import { RingMiniSymbol } from './ConstraintNodes'
 import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
+import { constraintMaxSequences, suppressRolePosition } from '../utils/constraintRules.js'
 import { PROFILES, PROFILE_MAP, getDatatypeById } from '../data/datatypeProfiles'
 
 const RING_TYPES = [
@@ -2557,12 +2558,12 @@ function ExternalConstraintInspector({ c }) {
       {/* Action buttons */}
       {!gc && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-          {!(c.constraintType === 'ring' && sequences.length >= 1) && (
+          {sequences.length < constraintMaxSequences(c.constraintType) && (
             <button onClick={() => store.startSequenceConstruction(c.id, 'newSequence')} style={btnStyle}>
               + Add sequence
             </button>
           )}
-          {sequences.length > 0 && c.constraintType !== 'inclusiveOr' && c.constraintType !== 'exclusiveOr' && c.constraintType !== 'ring' && (
+          {sequences.length > 0 && !suppressRolePosition(c.constraintType) && (
             <button onClick={() => store.startSequenceConstruction(c.id, 'extend')} style={btnStyle}>
               + Add position
             </button>
