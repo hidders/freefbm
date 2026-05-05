@@ -85,14 +85,14 @@ function useKeyboardShortcuts() {
 
         if (s.selectedKind === 'implicitLink') {
           e.preventDefault()
-          const roleIndex = s.selectedImplicitLinkRole?.roleIndex ?? s.selectedImplicitRole
+          const roleIndex = s.selectedImplicitLinkRole?.roleIndex ?? s.selectedImplicitLink
           if (roleIndex != null) {
             s.toggleImplicitLink(s.selectedId, roleIndex)
             return
           }
         }
 
-        const { selectedId, selectedKind, selectedUniqueness, selectedImplicitRole, selectedImplicitLinkRole, uniquenessConstruction, multiSelectedIds, activeDiagramId } = store
+        const { selectedId, selectedKind, selectedUniqueness, selectedImplicitLink, selectedImplicitLinkRole, uniquenessConstruction, multiSelectedIds, activeDiagramId } = store
 
         if (multiSelectedIds.length > 0) {
           const s0 = useOrmStore.getState()

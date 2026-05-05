@@ -1922,6 +1922,13 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>Implicit Link: {nestedName} ↔ {playerName}</InspectorTitle>
+      <div style={{ marginBottom: 10 }}>
+        <button onClick={() => store.select(parentFact.id, 'fact')}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            color: 'var(--accent)', fontSize: 11 }}>
+          ← {parentFact.objectifiedName || 'Fact Type'}
+        </button>
+      </div>
 
       <Section title="Base role in parent fact">
         <BaseRoleChip parentFact={parentFact} roleIndex={roleIndex} />
@@ -2055,38 +2062,54 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
       </Section>
 
       <Section title="Constraints">
+        <Label>Uniqueness</Label>
         {(() => {
           const hasSolo = (parentFact.uniqueness || []).some(u => u.length === 1 && u[0] === roleIndex)
           const uBars = hasSolo ? [[0], [1]] : [[0]]
           const prefArr = il.preferredUniqueness || []
-          return uBars.map((uRoles, ui) => {
-            const key = JSON.stringify([...uRoles].sort())
-            const isPreferred = prefArr.some(pu => JSON.stringify([...pu].sort()) === key)
-            const label = uBars.length > 1 ? `Internal Uniqueness ${ui + 1}` : 'Internal Uniqueness'
-            return (
-              <button key={ui} onClick={() => store.selectImplicitLinkUniqueness(parentFact.id, roleIndex, ui)}
-                style={{ width: '100%', padding: '6px 12px', fontSize: 12, background: 'var(--bg-raised)',
-                  border: '1px solid var(--border-soft)', borderRadius: 4, cursor: 'pointer',
-                  color: 'var(--ink-2)', textAlign: 'left', marginBottom: 6 }}>
-                {label}{isPreferred ? ' (Preferred)' : ''}
-              </button>
-            )
-          })
+
+          return (
+            <>
+              {uBars.map((uRoles, ui) => {
+                const key = JSON.stringify([...uRoles].sort())
+                const isPreferred = prefArr.some(pu => JSON.stringify([...pu].sort()) === key)
+                const label = uBars.length > 1 ? `Internal Uniqueness ${ui + 1}` : 'Internal Uniqueness'
+                return (
+                  <button key={ui} onClick={() => store.selectImplicitLinkUniqueness(parentFact.id, roleIndex, ui)}
+                    style={{ width: '100%', padding: '6px 12px', fontSize: 12, background: 'var(--bg-raised)',
+                      border: '1px solid var(--border-soft)', borderRadius: 4, cursor: 'pointer',
+                      color: 'var(--ink-2)', textAlign: 'left', marginBottom: 6 }}>
+                    {label}{isPreferred ? ' (Preferred)' : ''}
+                  </button>
+                )
+              })}
+            </>
+          )
         })()}
+
         <Label style={{ marginTop: 8 }}>Frequency</Label>
         {(() => {
-          const frequency = []
-          return frequency.length === 0
-            ? <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic' }}>None</div>
-            : frequency.map(ifItem => {
-                const range = ifItem.range
-                const rangeText = range ? `${range.min === range.max ? range.min : `${range.min}..${range.max ?? '∞'}`}` : ''
+          const propagatedFreq = (parentFact.internalFrequency || [])
+            .filter(ifc => ifc.roles.length === 1 && ifc.roles[0] === roleIndex)
+
+          return (
+            <>
+              {propagatedFreq.map(ifc => {
+                const rangeText = ifc.range ? `${ifc.range.min === ifc.range.max ? ifc.range.min : `${ifc.range.min}..${ifc.range.max ?? '∞'}`}` : ''
                 return (
-                  <div key={ifItem.id} style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 2 }}>
-                    {rangeText || '(unbounded)'}
-                  </div>
+                  <button key={ifc.id} onClick={() => store.selectInternalFrequency(parentFact.id, `${parentFact.id}_il_${roleIndex}_if_${ifc.id}`)}
+                    style={{ width: '100%', padding: '6px 12px', fontSize: 12, background: 'var(--bg-raised)',
+                      border: '1px solid var(--border-soft)', borderRadius: 4, cursor: 'pointer',
+                      color: 'var(--ink-2)', textAlign: 'left', marginBottom: 6 }}>
+                    Internal Frequency{rangeText ? `: ${rangeText}` : ''}
+                  </button>
                 )
-              })
+              })}
+              {propagatedFreq.length === 0 && (
+                <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic' }}>None</div>
+              )}
+            </>
+          )
         })()}
       </Section>
 
@@ -2647,7 +2670,7 @@ function ConstraintInspector({ c }) {
 // ── Main inspector ────────────────────────────────────────────────────────────
 export default function Inspector() {
   const store = useOrmStore()
-  const { selectedId, selectedKind, selectedRole, selectedImplicitRole, selectedImplicitLinkRole,
+  const { selectedId, selectedKind, selectedRole, selectedImplicitLink, selectedImplicitLinkRole,
           selectedUniqueness, selectedMandatoryDot, selectedInternalFrequency,
           selectedValueRange, selectedCardinalityRange } = store
 
@@ -2789,8 +2812,8 @@ export default function Inspector() {
       {ot   && <ObjectTypeInspector ot={ot} />}
       {selectedKind === 'implicitLink' && fact && selectedImplicitLinkRole
         ? <ImplicitLinkRoleInspector parentFact={fact} roleIndex={selectedImplicitLinkRole.roleIndex} ilRoleIndex={selectedImplicitLinkRole.ilRoleIndex} />
-        : selectedKind === 'implicitLink' && fact && selectedImplicitRole != null
-        ? <ImplicitLinkInspector parentFact={fact} roleIndex={selectedImplicitRole} />
+        : selectedKind === 'implicitLink' && fact && selectedImplicitLink != null
+        ? <ImplicitLinkInspector parentFact={fact} roleIndex={selectedImplicitLink} />
         : selectedKind === 'implicitLink' && fact
         ? <div style={{ marginBottom: 18 }}><InspectorTitle>Implicit Link</InspectorTitle><div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No implicit link data available. Try showing the link from the role context menu first.</div></div>
         : roleFact

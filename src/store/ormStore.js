@@ -69,7 +69,16 @@ const mkFact = (x, y, arity = 2) => ({
   readingAbove: false,
   uniquenessBelow: false,
   preferredUniqueness: false,
-  implicitLinks: [], // [{ roleIndex, visible, x, y, readingParts, alternativeReadings, readingDisplay, orientation, readingOffsetAbove, readingOffsetBelow, readingAbove, preferredUniqueness }]
+  implicitLinks: [], // [{ roleIndex, x, y, readingParts, alternativeReadings, readingDisplay, orientation, readingOffsetAbove, readingOffsetBelow, readingAbove, uniquenessBelow, preferredUniqueness, roleNames }]
+})
+
+const mkImplicitLink = (roleIndex) => ({
+  roleIndex, x: null, y: null,
+  readingParts: ['', 'involves', ''],
+  alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }],
+  readingDisplay: 'forward', orientation: 'horizontal',
+  readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false,
+  uniquenessBelow: false, preferredUniqueness: false, roleNames: [null, null],
 })
 
 const mkSubtype = (subId, superId) => ({
@@ -331,7 +340,7 @@ export const useOrmStore = create((set, get) => ({
   selectedId:              null,
   selectedKind:            null,
   selectedRole:            null,   // { factId, roleIndex } | null
-  selectedImplicitRole:    null,   // roleIndex within the fact whose implicit link is selected
+  selectedImplicitLink:      null,   // roleIndex within the parent fact identifying the selected implicit link
   selectedImplicitLinkRole: null,  // { factId, roleIndex, ilRoleIndex } | null
   selectedUniqueness:      null,   // { factId, uIndex } | null
   selectedMandatoryDot:    null,   // { factId, roleIndex } | null
@@ -569,7 +578,7 @@ export const useOrmStore = create((set, get) => ({
 
   newModel() {
     set({ ...EMPTY(), filePath: null, isDirty: false,
-          selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitRole: null, selectedImplicitLinkRole: null,
+          selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitLink: null, selectedImplicitLinkRole: null,
           selectedUniqueness: null, multiSelectedIds: [],
           uniquenessConstruction: null, frequencyConstruction: null,
           pan: { x: 0, y: 0 }, zoom: 1 })
@@ -596,7 +605,7 @@ export const useOrmStore = create((set, get) => ({
           linkReadingReverseParts: r.linkReadingReverseParts ?? null,
         })),
         implicitLinks: ((f.implicitLinks && f.implicitLinks.length > 0 ? f.implicitLinks : null) || (f.objectified
-          ? Array.from({ length: (f.roles || []).length }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: [] }))
+          ? Array.from({ length: (f.roles || []).length }, (_, i) => mkImplicitLink(i))
           : [])).map(il => ({
             ...il,
             alternativeReadings: il.alternativeReadings || [],
@@ -827,7 +836,7 @@ export const useOrmStore = create((set, get) => ({
     const n = nextRelationNumber(get().facts)
     const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind, nestedReading: false, datatypeAssignment: null }
     base.roles = base.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] }))
-    base.implicitLinks = Array.from({ length: arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: [] }))
+    base.implicitLinks = Array.from({ length: arity }, (_, i) => mkImplicitLink(i))
     set(s => {
       const used = new Set(
         s.objectTypes.map(o => o.name).concat(s.facts.map(f => f.objectifiedName).filter(Boolean))
@@ -852,7 +861,7 @@ export const useOrmStore = create((set, get) => ({
     const n = nextRelationNumber(get().facts)
     const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind: 'value', nestedReading: false, datatypeAssignment: null }
     base.roles = base.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] }))
-    base.implicitLinks = Array.from({ length: arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: [] }))
+    base.implicitLinks = Array.from({ length: arity }, (_, i) => mkImplicitLink(i))
     set(s => {
       const used = new Set(
         s.objectTypes.filter(o => o.kind === 'value').map(o => o.name)
@@ -886,7 +895,7 @@ export const useOrmStore = create((set, get) => ({
           ...f, objectified: true, objectifiedKind: 'entity',
           objectifiedName: `Entity${n}`, nestedReading: false,
           roles: f.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] })),
-          implicitLinks: Array.from({ length: f.arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: [] })),
+          implicitLinks: Array.from({ length: f.arity }, (_, i) => mkImplicitLink(i)),
         }),
         isDirty: true,
       }
@@ -906,7 +915,7 @@ export const useOrmStore = create((set, get) => ({
           ...f, objectified: true, objectifiedKind: 'value',
           objectifiedName: `Value${n}`, nestedReading: false,
           roles: f.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] })),
-          implicitLinks: Array.from({ length: f.arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: [] })),
+          implicitLinks: Array.from({ length: f.arity }, (_, i) => mkImplicitLink(i)),
         }),
         isDirty: true,
       }
@@ -1062,7 +1071,7 @@ export const useOrmStore = create((set, get) => ({
           const existingIndices = new Set(implicitLinks.map(il => il.roleIndex))
           for (let i = current; i < newArity; i++) {
             if (!existingIndices.has(i)) {
-              implicitLinks.push({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, preferredUniqueness: false })
+              implicitLinks.push(mkImplicitLink(i))
             }
           }
         } else {
@@ -1243,13 +1252,7 @@ export const useOrmStore = create((set, get) => ({
             il.roleIndex >= atIndex ? { ...il, roleIndex: il.roleIndex + 1 } : il
           )
           // Create implicit link entry for the new role
-          implicitLinks = [...implicitLinks, {
-            roleIndex: atIndex, x: null, y: null,
-            readingParts: ['', 'involves', ''],
-            alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }],
-            readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false,
-            roleNames: [null, null], preferredUniqueness: false,
-          }]
+          implicitLinks = [...implicitLinks, mkImplicitLink(atIndex)]
         }
 
         return { ...f, arity, roles, uniqueness, internalFrequency, readingParts: rp, alternativeReadings: [], implicitLinks }
@@ -1569,15 +1572,15 @@ export const useOrmStore = create((set, get) => ({
   },
 
   selectImplicitLink(factId, roleIndex) {
-    set({ selectedId: factId, selectedKind: 'implicitLink', selectedImplicitRole: roleIndex, selectedRole: null, selectedUniqueness: null, selectedImplicitLinkRole: null })
+    set({ selectedId: factId, selectedKind: 'implicitLink', selectedImplicitLink: roleIndex, selectedRole: null, selectedUniqueness: null, selectedImplicitLinkRole: null })
   },
 
   selectImplicitLinkUniqueness(factId, roleIndex, uIndex = 0) {
-    set({ selectedId: null, selectedKind: null, selectedImplicitRole: null, selectedRole: null, selectedUniqueness: { factId, roleIndex, uIndex }, selectedImplicitLinkRole: null })
+    set({ selectedId: null, selectedKind: null, selectedImplicitLink: null, selectedRole: null, selectedUniqueness: { factId, roleIndex, uIndex }, selectedImplicitLinkRole: null })
   },
 
   selectImplicitLinkRole(factId, roleIndex, ilRoleIndex) {
-    set({ selectedId: factId, selectedKind: 'implicitLink', selectedImplicitRole: roleIndex, selectedImplicitLinkRole: { factId, roleIndex, ilRoleIndex }, selectedRole: null, selectedUniqueness: null })
+    set({ selectedId: factId, selectedKind: 'implicitLink', selectedImplicitLink: roleIndex, selectedImplicitLinkRole: { factId, roleIndex, ilRoleIndex }, selectedRole: null, selectedUniqueness: null })
   },
 
   updateImplicitLinkInternalFrequency(factId, roleIndex, origIfId, patch) {
@@ -1889,12 +1892,12 @@ export const useOrmStore = create((set, get) => ({
     if (get().sequenceConstruction) get().abandonSequenceConstruction()
     if (kind === 'implicitLink') {
       const [factId, roleIndex] = id.split('_il_').map((v, i) => i === 0 ? v : Number(v))
-      set({ selectedId: id, selectedKind: 'implicitLink', selectedImplicitRole: roleIndex, selectedRole: null, selectedUniqueness: null, selectedImplicitLinkRole: null,
+      set({ selectedId: id, selectedKind: 'implicitLink', selectedImplicitLink: roleIndex, selectedRole: null, selectedUniqueness: null, selectedImplicitLinkRole: null,
             selectedMandatoryDot: null, selectedInternalFrequency: null,
             selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
       return
     }
-    set({ selectedId: id, selectedKind: kind, selectedRole: null, selectedImplicitRole: null, selectedImplicitLinkRole: null, selectedUniqueness: null,
+    set({ selectedId: id, selectedKind: kind, selectedRole: null, selectedImplicitLink: null, selectedImplicitLinkRole: null, selectedUniqueness: null,
           selectedMandatoryDot: null, selectedInternalFrequency: null,
           selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
   },
@@ -1902,7 +1905,7 @@ export const useOrmStore = create((set, get) => ({
     if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
     if (get().frequencyConstruction) get().abandonFrequencyConstruction()
     if (get().sequenceConstruction) get().abandonSequenceConstruction()
-    set({ selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitRole: null, selectedImplicitLinkRole: null, selectedUniqueness: null,
+    set({ selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitLink: null, selectedImplicitLinkRole: null, selectedUniqueness: null,
           selectedMandatoryDot: null, selectedInternalFrequency: null,
           selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
   },

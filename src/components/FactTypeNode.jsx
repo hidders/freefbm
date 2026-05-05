@@ -393,7 +393,7 @@ export function factBounds(fact) {
 
 export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleContextMenu, onBarContextMenu, onRoleValueClick, onNestedVrClick, onRoleCardinalityClick, onNestedCrClick, onIfContextMenu, onRoleValueContextMenu, onRoleCrContextMenu, onNestedVrContextMenu, onNestedCrContextMenu, isShared }) {
   const store = useOrmStore()
-  const isImplicitSelected = fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact._parentFactId && store.selectedImplicitRole === fact._implicitRoleIndex
+  const isImplicitSelected = fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact._parentFactId && store.selectedImplicitLink === fact._implicitRoleIndex
   const hasSelectedImplicitLink = !fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact.id
   const isSelected     = (store.selectedId === fact.id && !hasSelectedImplicitLink) || store.multiSelectedIds.includes(fact.id) || isImplicitSelected
   const hasSelectedRole = store.selectedRole?.factId === fact.id
@@ -533,7 +533,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const isBaseRoleOfSelectedImplicitLink = (ri) =>
     !fact._implicit && (
       (store.selectedImplicitLinkRole?.factId === fact.id && store.selectedImplicitLinkRole?.roleIndex === ri) ||
-      (store.selectedKind === 'implicitLink' && store.selectedImplicitRole != null && store.selectedId === fact.id && store.selectedImplicitRole === ri)
+      (store.selectedKind === 'implicitLink' && store.selectedImplicitLink != null && store.selectedId === fact.id && store.selectedImplicitLink === ri)
     )
 
   const handleRoleDoubleClick = useCallback((roleIndex, e) => {
@@ -565,6 +565,12 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     if (e.button !== 0) return
     if (e.detail >= 2) return  // second click of a double-click: do nothing
     if (fact._implicit) {
+      if (store.sequenceConstruction) {
+        if (roleIndex !== 0) return
+        if (isVcConstruction && !vcEligibleRoles.has(roleIndex)) return
+        store.collectSequenceMember({ kind: 'role', factId: fact.id, roleIndex })
+        return
+      }
       if (e.shiftKey) {
         store.shiftSelect(fact.id)
         onDragStart(fact.id, 'implicitLink', e)
@@ -1018,6 +1024,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   ) : null
   const getRoleCursor = (ri, roleSelected) => {
     if (fact._implicit) {
+      if (store.sequenceConstruction || store.tool === 'connectConstraint')
+        return ri === 0 ? 'pointer' : 'not-allowed'
       return isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab'
     }
     if ((isSubtypeTool || isTargetTool) && fact.objectified) return 'cell'
@@ -1038,7 +1046,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     return 'grab'
   }
   const roleIsCandidate = (ri) => {
-    if (fact._implicit) return false
+    if (fact._implicit) return !!gc && !isVcConstruction && ri === 0
     return isRoleCandidate || (isRoleValueTool && vrEligibleRoles.has(ri)) || (isVcConstruction && vcEligibleRoles.has(ri)) || isCrTool
   }
   const roleHighlight = isRoleCandidate ? 'var(--fill-candidate)' : '#ffffff'

@@ -1,7 +1,7 @@
 import React, { useCallback, useRef } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
-import { roleCenter, nestedFactBounds, ROLE_H, displayRoleOrder } from './FactTypeNode'
+import { roleCenter, nestedFactBounds, ROLE_H, displayRoleOrder, makeImplicitLinkFact } from './FactTypeNode'
 import { roleAnchor } from './RoleConnectors'
 import { entityBounds, formatValueRange } from './ObjectTypeNode'
 import { EXTERNAL_CONSTRAINT_TYPES } from '../constants.js'
@@ -621,6 +621,15 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
   const store = useOrmStore()
   const { objectTypes, facts, constraints: visibleConstraints, subtypes } = useDiagramElements()
   const factMap    = Object.fromEntries(facts.map(f => [f.id, f]))
+  // Add synthetic implied link facts so constraint connectors can resolve them
+  facts.filter(f => f.objectified).forEach(f => {
+    (f.implicitLinks || []).forEach(il => {
+      if (store.isImplicitLinkShown(f.id, il.roleIndex)) {
+        const synth = makeImplicitLinkFact(f, il)
+        factMap[synth.id] = synth
+      }
+    })
+  })
   const subtypeMap = Object.fromEntries(subtypes.map(st => [st.id, st]))
   const otMap      = Object.fromEntries(objectTypes.map(o => [o.id, o]))
   const nestedMap  = Object.fromEntries(facts.filter(f => f.objectified).map(f => [f.id, f]))

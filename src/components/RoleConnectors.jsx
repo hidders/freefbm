@@ -290,7 +290,7 @@ export default function RoleConnectors({ mousePos }) {
             x={lx} y={ly}
             textAnchor="middle" dominantBaseline="middle"
             fontSize={12} fontFamily="'Segoe UI', Helvetica, Arial, sans-serif"
-            fill="#1a7fd4"
+            fill="var(--col-role-name)"
             style={{ cursor: isDragging ? 'grabbing' : 'grab', userSelect: 'none' }}
             onMouseDown={e => {
               e.stopPropagation()
