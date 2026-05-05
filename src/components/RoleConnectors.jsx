@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds } from './ObjectTypeNode'
-import { ROLE_W, ROLE_H, ROLE_GAP, nestedFactBounds } from './FactTypeNode'
+import { ROLE_W, ROLE_H, ROLE_GAP, nestedFactBounds, displayRoleOrder } from './FactTypeNode'
 
 const DOT_R = 4  // mandatory dot radius
 
@@ -19,13 +19,15 @@ const DOT_R = 4  // mandatory dot radius
  */
 export function roleAnchor(fact, roleIndex, tx, ty) {
   const n      = Math.max(fact.arity, 1)
-  const isFirst = roleIndex === 0
-  const isLast  = roleIndex === n - 1
+  const dro    = displayRoleOrder(fact)
+  const posIdx = dro.indexOf(roleIndex)
+  const isFirst = posIdx === 0
+  const isLast  = posIdx === n - 1
 
   if (fact.orientation === 'vertical') {
     const totalH = n * ROLE_W + (n - 1) * ROLE_GAP
     const startY = fact.y - totalH / 2
-    const roleTopY = startY + roleIndex * (ROLE_W + ROLE_GAP)
+    const roleTopY = startY + posIdx * (ROLE_W + ROLE_GAP)
     const leftX   = fact.x - ROLE_H / 2
     const cx      = fact.x
     const cy      = roleTopY + ROLE_W / 2
@@ -50,7 +52,7 @@ export function roleAnchor(fact, roleIndex, tx, ty) {
   }
 
   const startX = fact.x - (n * ROLE_W + (n - 1) * ROLE_GAP) / 2
-  const roleX  = startX + roleIndex * (ROLE_W + ROLE_GAP)
+  const roleX  = startX + posIdx * (ROLE_W + ROLE_GAP)
   const roleY  = fact.y - ROLE_H / 2
   const cx     = roleX + ROLE_W / 2
   const cy     = roleY + ROLE_H / 2

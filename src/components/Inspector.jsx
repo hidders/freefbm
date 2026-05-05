@@ -543,143 +543,10 @@ function RoleConstraintsSection({ role, onChange, onNavigateValueRange, onNaviga
   )
 }
 
-// ── Draggable role list ───────────────────────────────────────────────────────
-function RoleList({ fact, store }) {
-  // dragIndex: which role card is being dragged
-  // overIndex: which slot the ghost is currently hovering
-  const [dragIndex, setDragIndex] = useState(null)
-  const [overIndex, setOverIndex] = useState(null)
-  const listRef = useRef(null)
-
-  const handleDragStart = useCallback((e, ri) => {
-    // Use the HTML drag-and-drop API; set drag image to the card itself
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', String(ri))
-    setDragIndex(ri)
-  }, [])
-
-  const handleDragOver = useCallback((e, ri) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    setOverIndex(ri)
-  }, [])
-
-  const handleDrop = useCallback((e, ri) => {
-    e.preventDefault()
-    const from = dragIndex
-    if (from !== null && from !== ri) {
-      store.reorderRoles(fact.id, from, ri)
-    }
-    setDragIndex(null)
-    setOverIndex(null)
-  }, [dragIndex, fact.id, store])
-
-  const handleDragEnd = useCallback(() => {
-    setDragIndex(null)
-    setOverIndex(null)
-  }, [])
-
-  return (
-    <div ref={listRef}>
-      {fact.roles.map((role, ri) => {
-        const isDragging = dragIndex === ri
-        const isOver     = overIndex === ri && dragIndex !== ri
-        return (
-          <div
-            key={role.id}
-            draggable
-            onDragStart={e => handleDragStart(e, ri)}
-            onDragOver={e  => handleDragOver(e, ri)}
-            onDrop={e      => handleDrop(e, ri)}
-            onDragEnd={handleDragEnd}
-            style={{
-              background: 'var(--bg-raised)',
-              border: `1px solid ${isOver ? 'var(--accent)' : 'var(--border-soft)'}`,
-              borderRadius: 4,
-              padding: 8,
-              marginBottom: 8,
-              opacity: isDragging ? 0.35 : 1,
-              boxShadow: isOver ? '0 0 0 2px var(--selection)' : 'none',
-              transition: 'border-color 0.1s, box-shadow 0.1s, opacity 0.1s',
-              cursor: 'grab',
-            }}
-          >
-            {/* Header row: drag handle + role label */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-              <span
-                title="Drag to reorder"
-                style={{
-                  fontSize: 13, color: 'var(--ink-muted)', lineHeight: 1,
-                  cursor: 'grab', userSelect: 'none', flexShrink: 0,
-                }}>⠿</span>
-              <span style={{ fontSize: 10, color: 'var(--ink-muted)',
-                textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>
-                Role {ri + 1}
-              </span>
-            </div>
-
-            <Row>
-              <Label>Object Type</Label>
-              <select value={role.objectTypeId || ''} style={{ width: '100%' }}
-                onChange={e => store.assignObjectTypeToRole(fact.id, ri, e.target.value || null)}
-                onMouseDown={e => e.stopPropagation()}>
-                <option value="">— unassigned —</option>
-                {store.objectTypes.slice().sort((a, b) => a.name.localeCompare(b.name)).map(o => (
-                  <option key={o.id} value={o.id}>{o.name} ({o.kind})</option>
-                ))}
-                {store.facts.filter(f => f.objectified && f.id !== fact.id)
-                  .sort((a, b) => (a.objectifiedName || '').localeCompare(b.objectifiedName || ''))
-                  .map(f => (
-                    <option key={f.id} value={f.id}>{f.objectifiedName || '(unnamed)'} (nested)</option>
-                  ))}
-              </select>
-            </Row>
-            <Row>
-              <Label>Role Name</Label>
-              <TInput value={role.roleName} placeholder="optional"
-                onChange={v => store.updateRole(fact.id, ri, { roleName: v })}/>
-            </Row>
-            <RoleConstraintsSection
-              role={role}
-              onChange={patch => store.updateRole(fact.id, ri, patch)}
-            />
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ── Compact role list (fact inspector — drag to reorder, click to inspect) ────
+// ── Compact role list (fact inspector — click to inspect) ────
 function CompactRoleList({ fact, store }) {
-  const [dragIndex, setDragIndex] = useState(null)
-  const [overIndex, setOverIndex] = useState(null)
   const otMap     = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
-
-  const handleDragStart = useCallback((e, ri) => {
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', String(ri))
-    setDragIndex(ri)
-  }, [])
-
-  const handleDragOver = useCallback((e, ri) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    setOverIndex(ri)
-  }, [])
-
-  const handleDrop = useCallback((e, ri) => {
-    e.preventDefault()
-    if (dragIndex !== null && dragIndex !== ri) store.reorderRoles(fact.id, dragIndex, ri)
-    setDragIndex(null)
-    setOverIndex(null)
-  }, [dragIndex, fact.id, store])
-
-  const handleDragEnd = useCallback(() => {
-    setDragIndex(null)
-    setOverIndex(null)
-  }, [])
 
   return (
     <div>
@@ -687,28 +554,18 @@ function CompactRoleList({ fact, store }) {
         const ot       = otMap[role.objectTypeId]
         const nf       = !ot ? nestedMap[role.objectTypeId] : null
         const player   = ot ? ot.name : nf ? nf.objectifiedName : null
-        const isDragging = dragIndex === ri
-        const isOver     = overIndex === ri && dragIndex !== ri
         return (
           <div
             key={role.id}
-            draggable
-            onDragStart={e => handleDragStart(e, ri)}
-            onDragOver={e  => handleDragOver(e, ri)}
-            onDrop={e      => handleDrop(e, ri)}
-            onDragEnd={handleDragEnd}
             onClick={() => store.selectRole(fact.id, ri)}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
               background: 'var(--bg-raised)',
-              border: `1px solid ${isOver ? 'var(--accent)' : 'var(--border-soft)'}`,
+              border: '1px solid var(--border-soft)',
               borderRadius: 4, padding: '5px 8px', marginBottom: 5,
-              opacity: isDragging ? 0.35 : 1,
-              boxShadow: isOver ? '0 0 0 2px var(--selection)' : 'none',
-              cursor: 'grab', userSelect: 'none',
+              cursor: 'pointer', userSelect: 'none',
             }}
           >
-            <span style={{ fontSize: 13, color: 'var(--ink-muted)', lineHeight: 1, flexShrink: 0 }}>⠿</span>
             <span style={{ fontSize: 10, color: 'var(--ink-muted)', textTransform: 'uppercase',
               letterSpacing: '0.07em', flexShrink: 0, minWidth: 42 }}>
               Role {ri + 1}
@@ -1249,12 +1106,17 @@ function AddReadingRow({ fact, store, available }) {
 
 // ── Fact presentation subsection ─────────────────────────────────────────────
 function FactPresentationSubsection({ fact, store }) {
+  const dro = fact.roleOrder || [0, 1]
+  const reverseDro = [...dro].reverse()
+
   const hasForwardReading = fact.arity === 2 && (
-    (fact.readingParts && fact.readingParts.some(p => p?.trim())) ||
-    (fact.alternativeReadings || []).some(r => r.roleOrder.length === 2 && r.roleOrder[0] === 0 && r.roleOrder[1] === 1 && r.parts?.some(p => p?.trim()))
+    (JSON.stringify(dro) === '[0,1]' && fact.readingParts && fact.readingParts.some(p => p?.trim())) ||
+    (JSON.stringify(dro) !== '[0,1]' && (fact.alternativeReadings || []).some(r => JSON.stringify(r.roleOrder) === JSON.stringify(dro) && r.parts?.some(p => p?.trim()))) ||
+    (fact.alternativeReadings || []).some(r => JSON.stringify(r.roleOrder) === JSON.stringify(dro) && r.parts?.some(p => p?.trim()))
   )
-  const hasReverseReading = fact.arity === 2 && (fact.alternativeReadings || []).some(
-    r => r.roleOrder.length === 2 && r.roleOrder[0] === 1 && r.roleOrder[1] === 0 && r.parts?.some(p => p?.trim())
+  const hasReverseReading = fact.arity === 2 && (
+    (JSON.stringify(reverseDro) === '[0,1]' && fact.readingParts && fact.readingParts.some(p => p?.trim())) ||
+    (JSON.stringify(reverseDro) !== '[0,1]' && (fact.alternativeReadings || []).some(r => JSON.stringify(r.roleOrder) === JSON.stringify(reverseDro) && r.parts?.some(p => p?.trim())))
   )
 
   // Auto-set readingDisplay when only one reading is available
@@ -1262,15 +1124,32 @@ function FactPresentationSubsection({ fact, store }) {
     if (fact.arity === 2) {
       const current = fact.readingDisplay || 'forward'
       if (hasForwardReading && !hasReverseReading && current !== 'forward') {
-        store.updateFact(fact.id, { readingDisplay: 'forward' })
+        store.updateFactLayout(fact.id, { readingDisplay: 'forward' })
       } else if (!hasForwardReading && hasReverseReading && current !== 'reverse') {
-        store.updateFact(fact.id, { readingDisplay: 'reverse' })
+        store.updateFactLayout(fact.id, { readingDisplay: 'reverse' })
       }
     }
   }, [hasForwardReading, hasReverseReading, fact.id, fact.arity, fact.readingDisplay, store])
 
+  const n = fact.arity
+  const defaultOrder = Array.from({ length: n }, (_, i) => i)
+  const permutations = n <= 4 ? getPermutations(defaultOrder) : [defaultOrder]
+  const permutationLabel = (order) => `(${order.map(i => i + 1).join(', ')})`
+
   return (
     <Section title="Presentation">
+      <Row>
+        <Label>Role Box Order</Label>
+        <select value={JSON.stringify(dro)} style={{ width: '100%' }}
+          onChange={e => {
+            const newOrder = JSON.parse(e.target.value)
+            store.updateFactLayout(fact.id, { roleOrder: JSON.stringify(newOrder) === JSON.stringify(defaultOrder) ? undefined : newOrder, readingOffsetAbove: null, readingOffsetBelow: null })
+          }}>
+          {permutations.map((perm, i) => (
+            <option key={i} value={JSON.stringify(perm)}>{permutationLabel(perm)}</option>
+          ))}
+        </select>
+      </Row>
       {fact.arity === 2 && (
         <Row>
           <Label>Shown Reading</Label>
@@ -1295,7 +1174,7 @@ function FactPresentationSubsection({ fact, store }) {
                   value={opt.value}
                   checked={isCurrent}
                   disabled={disabled}
-                  onChange={() => store.updateFact(fact.id, { readingDisplay: opt.value })}
+                  onChange={() => store.updateFactLayout(fact.id, { readingDisplay: opt.value })}
                   style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: disabled ? 'not-allowed' : 'pointer' }}
                 />
                 {opt.label}
@@ -1305,10 +1184,12 @@ function FactPresentationSubsection({ fact, store }) {
         </Row>
       )}
       {fact.arity > 2 && (() => {
+        const defaultOrder = Array.from({ length: fact.arity }, (_, i) => i)
+        const ro = fact.readingOrder || defaultOrder
         const readings = []
         if (fact.readingParts != null) {
           const n = fact.arity
-          readings.push({ label: `(1, 2, ..., ${n}) — natural`, roleOrder: null, has: true })
+          readings.push({ label: `(1, 2, ..., ${n}) — natural`, roleOrder: defaultOrder, has: true })
         }
         for (const alt of (fact.alternativeReadings || [])) {
           if (alt.parts?.some(p => p?.trim())) {
@@ -1320,21 +1201,21 @@ function FactPresentationSubsection({ fact, store }) {
           }
         }
         if (readings.length === 0) return null
-        const currentKey = fact.shownReadingOrder ? JSON.stringify(fact.shownReadingOrder) : null
+        const currentKey = JSON.stringify(ro)
         return (
           <Row>
             <Label>Shown Reading</Label>
-            <select value={currentKey ?? ''} style={{ width: '100%' }}
-              onChange={e => store.updateFact(fact.id, { shownReadingOrder: e.target.value ? JSON.parse(e.target.value) : null })}>
+            <select value={currentKey} style={{ width: '100%' }}
+              onChange={e => store.updateFactLayout(fact.id, { readingOrder: e.target.value ? JSON.parse(e.target.value) : undefined })}>
               {readings.map((r, i) => (
-                <option key={i} value={r.roleOrder ? JSON.stringify(r.roleOrder) : ''}>{r.label}</option>
+                <option key={i} value={JSON.stringify(r.roleOrder)}>{r.label}</option>
               ))}
             </select>
           </Row>
         )
       })()}
       <Row>
-        <Label>Spatial Ordering</Label>
+        <Label>Orientation</Label>
         {fact.objectified && (
           <Checkbox
             label="Nested Reading"
@@ -1342,7 +1223,7 @@ function FactPresentationSubsection({ fact, store }) {
             disabled={fact.orientation === 'vertical'}
             onChange={v => {
               const patch = { nestedReading: v }
-              if (!v && fact.readingAbove) { patch.readingAbove = false; patch.readingOffset = null }
+              if (!v && fact.readingAbove) { patch.readingAbove = false; patch.readingOffsetAbove = null; patch.readingOffsetBelow = null }
               store.updateFact(fact.id, patch)
             }}
           />
@@ -1351,9 +1232,9 @@ function FactPresentationSubsection({ fact, store }) {
           label="Vertical"
           checked={fact.orientation === 'vertical'}
           onChange={v => {
-            const patch = { orientation: v ? 'vertical' : 'horizontal', readingOffset: null }
+            const patch = { orientation: v ? 'vertical' : 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null }
             if (v && fact.nestedReading) patch.nestedReading = false
-            store.updateFact(fact.id, patch)
+            store.updateFactLayout(fact.id, patch)
           }}
         />
       </Row>
@@ -1363,41 +1244,45 @@ function FactPresentationSubsection({ fact, store }) {
       {(() => {
         const isVert = fact.orientation === 'vertical'
         const disabled = fact.objectified && !isVert && !fact.nestedReading
-        const dragged = !disabled && fact.readingOffset != null
-        const belowLabel = isVert ? 'Show Reading Left' : 'Show Reading Below'
-        const aboveLabel = isVert ? 'Show Reading Right' : 'Show Reading Above'
+        const aboveLabel = isVert ? 'Right' : 'Above'
         return (
-          <Row style={{ gap: 12 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: disabled ? 'not-allowed' : 'pointer', color: disabled ? 'var(--ink-muted)' : 'var(--ink-2)' }}>
-              <input type="radio"
-                name={`reading-pos-${fact.id}`}
-                checked={!dragged && !fact.readingAbove}
-                disabled={disabled}
-                onChange={() => { store.updateFactLayout(fact.id, { readingOffset: null }); store.updateFact(fact.id, { readingAbove: false }) }}
-                style={{ accentColor: 'var(--accent)', cursor: disabled ? 'not-allowed' : 'pointer' }} />
-              {belowLabel}
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: disabled ? 'not-allowed' : 'pointer', color: disabled ? 'var(--ink-muted)' : 'var(--ink-2)' }}>
-              <input type="radio"
-                name={`reading-pos-${fact.id}`}
-                checked={!dragged && !!fact.readingAbove}
-                disabled={disabled}
-                onChange={() => { store.updateFactLayout(fact.id, { readingOffset: null }); store.updateFact(fact.id, { readingAbove: true }) }}
-                style={{ accentColor: 'var(--accent)', cursor: disabled ? 'not-allowed' : 'pointer' }} />
-              {aboveLabel}
-            </label>
+          <Row>
+            <Checkbox
+              label={aboveLabel}
+              checked={!!fact.readingAbove}
+              disabled={disabled}
+              onChange={v => {
+                const key = v ? 'readingOffsetAbove' : 'readingOffsetBelow'
+                store.updateFactLayout(fact.id, { readingAbove: v, [key]: null })
+              }}
+            />
           </Row>
         )
       })()}
-      <Row>
-        <Checkbox
-          label={fact.orientation === 'vertical' ? 'Uniqueness left' : 'Uniqueness below'}
-          checked={!!fact.uniquenessBelow}
-          onChange={v => store.updateFactLayout(fact.id, { uniquenessBelow: v })}
-        />
-      </Row>
-    </Section>
+       <Row>
+         <Label>Uniqueness Bar Position</Label>
+       </Row>
+       <Row>
+         <Checkbox
+           label={fact.orientation === 'vertical' ? 'Left' : 'Below'}
+           checked={!!fact.uniquenessBelow}
+           onChange={v => store.updateFactLayout(fact.id, { uniquenessBelow: v })}
+         />
+       </Row>
+     </Section>
   )
+}
+
+function getPermutations(arr) {
+  if (arr.length <= 1) return [arr]
+  const result = []
+  for (let i = 0; i < arr.length; i++) {
+    const rest = arr.slice(0, i).concat(arr.slice(i + 1))
+    for (const perm of getPermutations(rest)) {
+      result.push([arr[i], ...perm])
+    }
+  }
+  return result
 }
 
 // ── Fact constraints subsection ───────────────────────────────────────────────
@@ -1560,20 +1445,19 @@ function FactInspector({ fact }) {
         const usedKeys = new Set(readings.map(r => JSON.stringify(r.roleOrder)))
         const available = allPerms.filter(p => !usedKeys.has(JSON.stringify(p)))
 
-        return (
-          <Section title="Readings">
-            {readings.map(r => {
-              const orderKey = JSON.stringify(r.roleOrder)
-              const label = r.roleOrder.map(i => i + 1).join(', ')
-              return (
-                <Row key={orderKey}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
-                    <Label>({label})</Label>
-                    <button onClick={() => {
-                      if (r.isDefault) store.removeDefaultReading(fact.id)
-                      else store.removeAlternativeReading(fact.id, r.roleOrder)
-                    }}
-                      style={{ background: 'none', color: '#c0392b', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
+         return (
+           <Section title="Readings">
+             {readings.map(r => {
+               const orderKey = JSON.stringify(r.roleOrder)
+               const label = r.roleOrder.map(i => i + 1).join(', ')
+               return (
+                 <Row key={orderKey}>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+                     <Label>({label})</Label>
+                     {!r.isDefault && (
+                       <button onClick={() => store.removeAlternativeReading(fact.id, r.roleOrder)}
+                         style={{ background: 'none', color: '#c0392b', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
+                     )}
                   </div>
                   <ReadingEditor
                     fact={fact} store={store}
@@ -1665,11 +1549,16 @@ function FactInspector({ fact }) {
 // ── Implicit link role inspector ──────────────────────────────────────────────
 function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
   const store = useOrmStore()
-  const il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
+  const ilRaw = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
+
+  const activeDiagramPos = store.diagrams?.find(d => d.id === store.activeDiagramId)?.positions ?? {}
+  const ilKey = `${parentFact.id}:il:${roleIndex}`
+  const ilPos = activeDiagramPos[ilKey] ?? {}
+  const il = ilRaw ? { ...ilRaw, ...ilPos } : null
 
   React.useEffect(() => {
     if (!il && parentFact.objectified) {
-      store.updateImplicitLink(parentFact.id, roleIndex, { roleIndex, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, uniquenessBelow: false, roleNames: [null, null] })
+      store.updateImplicitLink(parentFact.id, roleIndex, { roleIndex, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, uniquenessBelow: false, roleNames: [null, null] })
     }
   }, [il, parentFact.id, parentFact.objectified, roleIndex, store])
 
@@ -1725,8 +1614,6 @@ function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
 // ── Compact implicit link role list ──────────────────────────────────────────
 function CompactImplicitLinkRoleList({ parentFact, roleIndex }) {
   const store = useOrmStore()
-  const [dragIndex, setDragIndex] = useState(null)
-  const [overIndex, setOverIndex] = useState(null)
   const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
 
@@ -1738,35 +1625,6 @@ function CompactImplicitLinkRoleList({ parentFact, roleIndex }) {
     { objectTypeId: parentFact.roles[roleIndex]?.objectTypeId, roleName: (il?.roleNames || [null, null])[1] },
   ]
 
-  const handleDragStart = useCallback((e, ri) => {
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', String(ri))
-    setDragIndex(ri)
-  }, [])
-
-  const handleDragOver = useCallback((e, ri) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    setOverIndex(ri)
-  }, [])
-
-  const handleDrop = useCallback((e, ri) => {
-    e.preventDefault()
-    if (dragIndex !== null && dragIndex !== ri) {
-      const newOrder = [...roleOrder]
-      const [moved] = newOrder.splice(dragIndex, 1)
-      newOrder.splice(ri, 0, moved)
-      store.updateImplicitLink(parentFact.id, roleIndex, { roleOrder: newOrder })
-    }
-    setDragIndex(null)
-    setOverIndex(null)
-  }, [dragIndex, parentFact.id, roleIndex, roleOrder, store])
-
-  const handleDragEnd = useCallback(() => {
-    setDragIndex(null)
-    setOverIndex(null)
-  }, [])
-
   return (
     <div>
       {[0, 1].map((ri) => {
@@ -1775,28 +1633,18 @@ function CompactImplicitLinkRoleList({ parentFact, roleIndex }) {
         const ot = otMap[role.objectTypeId]
         const nf = !ot ? nestedMap[role.objectTypeId] : null
         const player = ot ? ot.name : nf ? nf.objectifiedName : null
-        const isDragging = dragIndex === ri
-        const isOver = overIndex === ri && dragIndex !== ri
         return (
           <div
             key={ri}
-            draggable
-            onDragStart={e => handleDragStart(e, ri)}
-            onDragOver={e => handleDragOver(e, ri)}
-            onDrop={e => handleDrop(e, ri)}
-            onDragEnd={handleDragEnd}
             onClick={() => store.selectImplicitLinkRole(parentFact.id, roleIndex, ri)}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
               background: 'var(--bg-raised)',
-              border: `1px solid ${isOver ? 'var(--accent)' : 'var(--border-soft)'}`,
+              border: '1px solid var(--border-soft)',
               borderRadius: 4, padding: '5px 8px', marginBottom: 5,
-              opacity: isDragging ? 0.35 : 1,
-              boxShadow: isOver ? '0 0 0 2px var(--selection)' : 'none',
-              cursor: 'grab', userSelect: 'none',
+              cursor: 'pointer', userSelect: 'none',
             }}
           >
-            <span style={{ fontSize: 13, color: 'var(--ink-muted)', lineHeight: 1, flexShrink: 0 }}>⠿</span>
             <span style={{ fontSize: 10, color: 'var(--ink-muted)', textTransform: 'uppercase',
               letterSpacing: '0.07em', flexShrink: 0, minWidth: 42 }}>
               Role {ri + 1}
@@ -1826,14 +1674,19 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
   const store = useOrmStore()
   const il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
 
+  const activeDiagramPos = store.diagrams?.find(d => d.id === store.activeDiagramId)?.positions ?? {}
+  const ilKey = `${parentFact.id}:il:${roleIndex}`
+  const ilPos = activeDiagramPos[ilKey] ?? {}
+  const mergedIl = il ? { ...il, ...ilPos } : null
+
   // Auto-create missing implicit link entry on mount (e.g. from old files)
   React.useEffect(() => {
-    if (!il && parentFact.objectified) {
-      store.updateImplicitLink(parentFact.id, roleIndex, { roleIndex, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffset: null, readingAbove: false, uniquenessBelow: false, roleNames: [null, null] })
+    if (!mergedIl && parentFact.objectified) {
+      store.updateImplicitLink(parentFact.id, roleIndex, { roleIndex, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, uniquenessBelow: false, roleNames: [null, null] })
     }
-  }, [il, parentFact.id, parentFact.objectified, roleIndex, store])
+  }, [mergedIl, parentFact.id, parentFact.objectified, roleIndex, store])
 
-  if (!il) return <div style={{ marginBottom: 18 }}><InspectorTitle>Implicit Link</InspectorTitle><div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No implicit link data available.</div></div>
+  if (!mergedIl) return <div style={{ marginBottom: 18 }}><InspectorTitle>Implicit Link</InspectorTitle><div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No implicit link data available.</div></div>
   const role = parentFact.roles[roleIndex]
   const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const ot = otMap[role.objectTypeId]
@@ -1841,19 +1694,21 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
   const playerName = ot?.name ?? '?'
 
   // Auto-set readingDisplay when only one reading is available
-  const ilHasForward = (il.readingParts && il.readingParts.some(p => p?.trim())) ||
-    (il.alternativeReadings || []).some(r => r.roleOrder.length === 2 && r.roleOrder[0] === 0 && r.roleOrder[1] === 1 && r.parts?.some(p => p?.trim()))
-  const ilHasReverse = (il.alternativeReadings || []).some(
-    r => r.roleOrder.length === 2 && r.roleOrder[0] === 1 && r.roleOrder[1] === 0 && r.parts?.some(p => p?.trim())
-  )
+  const ilDro = mergedIl.roleOrder || [0, 1]
+  const ilReverseDro = [...ilDro].reverse()
+  const ilHasForward = (JSON.stringify(ilDro) === '[0,1]' && mergedIl.readingParts && mergedIl.readingParts.some(p => p?.trim())) ||
+    (JSON.stringify(ilDro) !== '[0,1]' && (mergedIl.alternativeReadings || []).some(r => JSON.stringify(r.roleOrder) === JSON.stringify(ilDro) && r.parts?.some(p => p?.trim()))) ||
+    (mergedIl.alternativeReadings || []).some(r => JSON.stringify(r.roleOrder) === JSON.stringify(ilDro) && r.parts?.some(p => p?.trim()))
+  const ilHasReverse = (JSON.stringify(ilReverseDro) === '[0,1]' && mergedIl.readingParts && mergedIl.readingParts.some(p => p?.trim())) ||
+    (JSON.stringify(ilReverseDro) !== '[0,1]' && (mergedIl.alternativeReadings || []).some(r => JSON.stringify(r.roleOrder) === JSON.stringify(ilReverseDro) && r.parts?.some(p => p?.trim())))
   React.useEffect(() => {
-    const current = il.readingDisplay || 'forward'
+    const current = mergedIl.readingDisplay || 'forward'
     if (ilHasForward && !ilHasReverse && current !== 'forward') {
       store.updateImplicitLink(parentFact.id, roleIndex, { readingDisplay: 'forward' })
     } else if (!ilHasForward && ilHasReverse && current !== 'reverse') {
       store.updateImplicitLink(parentFact.id, roleIndex, { readingDisplay: 'reverse' })
     }
-  }, [ilHasForward, ilHasReverse, parentFact.id, roleIndex, il.readingDisplay, store])
+  }, [ilHasForward, ilHasReverse, parentFact.id, roleIndex, mergedIl.readingDisplay, store])
 
   const synthFact = {
     id: parentFact.id,
@@ -1866,10 +1721,10 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
 
   // Unified list of readings: default (if present) + alternatives
   const readings = []
-  if (il.readingParts != null) {
-    readings.push({ roleOrder: [0, 1], parts: il.readingParts, isDefault: true })
+  if (mergedIl.readingParts != null) {
+    readings.push({ roleOrder: [0, 1], parts: mergedIl.readingParts, isDefault: true })
   }
-  for (const alt of (il.alternativeReadings || [])) {
+  for (const alt of (mergedIl.alternativeReadings || [])) {
     readings.push({ roleOrder: alt.roleOrder, parts: alt.parts, isDefault: false })
   }
   const usedKeys = new Set(readings.map(r => JSON.stringify(r.roleOrder)))
@@ -1877,16 +1732,16 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
 
   const upReadingPart = (isDefault, roleOrder, i, val) => {
     if (isDefault) {
-      const next = [...(il.readingParts || ['', '', ''])]
+      const next = [...(mergedIl.readingParts || ['', '', ''])]
       next[i] = val
       store.updateImplicitLink(parentFact.id, roleIndex, { readingParts: next })
     } else {
-      const existing = (il.alternativeReadings || []).find(r => JSON.stringify(r.roleOrder) === JSON.stringify(roleOrder))
+      const existing = (mergedIl.alternativeReadings || []).find(r => JSON.stringify(r.roleOrder) === JSON.stringify(roleOrder))
       if (existing) {
         const next = [...existing.parts]
         next[i] = val
         store.updateImplicitLink(parentFact.id, roleIndex, {
-          alternativeReadings: (il.alternativeReadings || []).map(r =>
+          alternativeReadings: (mergedIl.alternativeReadings || []).map(r =>
             JSON.stringify(r.roleOrder) === JSON.stringify(roleOrder) ? { ...r, parts: next } : r
           ),
         })
@@ -1899,7 +1754,7 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
       store.updateImplicitLink(parentFact.id, roleIndex, { readingParts: null })
     } else {
       store.updateImplicitLink(parentFact.id, roleIndex, {
-        alternativeReadings: (il.alternativeReadings || []).filter(r => JSON.stringify(r.roleOrder) !== JSON.stringify(roleOrder)),
+        alternativeReadings: (mergedIl.alternativeReadings || []).filter(r => JSON.stringify(r.roleOrder) !== JSON.stringify(roleOrder)),
       })
     }
   }
@@ -1920,8 +1775,10 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
             <Row key={orderKey}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
                 <Label>({label})</Label>
-                <button onClick={() => removeReading(r.isDefault, r.roleOrder)}
-                  style={{ background: 'none', color: '#c0392b', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
+                {!r.isDefault && (
+                  <button onClick={() => removeReading(r.isDefault, r.roleOrder)}
+                    style={{ background: 'none', color: '#c0392b', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
+                )}
               </div>
               <ReadingEditor
                 fact={synthFact} store={store}
@@ -1950,6 +1807,18 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
 
       <Section title="Presentation">
         <Row>
+          <Label>Role Box Order</Label>
+          <select value={JSON.stringify(mergedIl.roleOrder || [0, 1])} style={{ width: '100%' }}
+            onChange={e => {
+              const newOrder = JSON.parse(e.target.value)
+              const isDefault = JSON.stringify(newOrder) === '[0,1]'
+              store.updateImplicitLink(parentFact.id, roleIndex, { roleOrder: isDefault ? undefined : newOrder, readingOffsetAbove: null, readingOffsetBelow: null })
+            }}>
+            <option value="[0,1]">(1, 2)</option>
+            <option value="[1,0]">(2, 1)</option>
+          </select>
+        </Row>
+        <Row>
           <Label>Shown Reading</Label>
           {[
             { value: 'forward', label: 'Forward only' },
@@ -1960,7 +1829,7 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
               (opt.value === 'forward' && !ilHasForward) ||
               (opt.value === 'both' && (!ilHasForward || !ilHasReverse)) ||
               (opt.value === 'reverse' && !ilHasReverse)
-            const isCurrent = (il.readingDisplay || 'forward') === opt.value
+            const isCurrent = (mergedIl.readingDisplay || 'forward') === opt.value
             return (
               <label key={opt.value} style={{
                 display: 'flex', alignItems: 'center', gap: 6,
@@ -1981,48 +1850,41 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
           })}
         </Row>
         <Row>
-          <Label>Spatial Ordering</Label>
+        <Label>Orientation</Label>
         </Row>
         <Row>
           <Checkbox
             label="Vertical"
-            checked={il.orientation === 'vertical'}
-            onChange={v => store.updateImplicitLink(parentFact.id, roleIndex, { orientation: v ? 'vertical' : 'horizontal', readingOffset: null })}
+            checked={mergedIl.orientation === 'vertical'}
+            onChange={v => store.updateImplicitLink(parentFact.id, roleIndex, { orientation: v ? 'vertical' : 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null })}
           />
         </Row>
         <Row>
           <Label>Reading Position</Label>
         </Row>
         {(() => {
-          const isVert = il.orientation === 'vertical'
-          const dragged = il.readingOffset != null
-          const belowLabel = isVert ? 'Show Reading Left' : 'Show Reading Below'
-          const aboveLabel = isVert ? 'Show Reading Right' : 'Show Reading Above'
+          const isVert = mergedIl.orientation === 'vertical'
+          const aboveLabel = isVert ? 'Right' : 'Above'
           return (
-            <Row style={{ gap: 12 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', color: 'var(--ink-2)' }}>
-                <input type="radio"
-                  name={`il-reading-pos-${parentFact.id}-${roleIndex}`}
-                  checked={!dragged && !il.readingAbove}
-                  onChange={() => store.updateImplicitLink(parentFact.id, roleIndex, { readingOffset: null, readingAbove: false })}
-                  style={{ accentColor: 'var(--accent)', cursor: 'pointer' }} />
-                {belowLabel}
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', color: 'var(--ink-2)' }}>
-                <input type="radio"
-                  name={`il-reading-pos-${parentFact.id}-${roleIndex}`}
-                  checked={!dragged && !!il.readingAbove}
-                  onChange={() => store.updateImplicitLink(parentFact.id, roleIndex, { readingOffset: null, readingAbove: true })}
-                  style={{ accentColor: 'var(--accent)', cursor: 'pointer' }} />
-                {aboveLabel}
-              </label>
+            <Row>
+              <Checkbox
+                label={aboveLabel}
+                checked={!!mergedIl.readingAbove}
+                onChange={v => {
+                  const key = v ? 'readingOffsetAbove' : 'readingOffsetBelow'
+                  store.updateImplicitLink(parentFact.id, roleIndex, { readingAbove: v, [key]: null })
+                }}
+              />
             </Row>
           )
         })()}
         <Row>
+          <Label>Uniqueness Bar Position</Label>
+        </Row>
+        <Row>
           <Checkbox
-            label={il.orientation === 'vertical' ? 'Uniqueness left' : 'Uniqueness below'}
-            checked={!!il.uniquenessBelow}
+             label={mergedIl.orientation === 'vertical' ? 'Left' : 'Below'}
+            checked={!!mergedIl.uniquenessBelow}
             onChange={v => store.updateImplicitLink(parentFact.id, roleIndex, { uniquenessBelow: v })}
           />
         </Row>
@@ -2617,10 +2479,15 @@ export default function Inspector() {
     const p = activeDiagramPos[f.id]
     if (!p) return f
     const merged = { ...f }
-    if (p.readingAbove    !== undefined) merged.readingAbove    = p.readingAbove
-    if (p.readingOffset   !== undefined) merged.readingOffset   = p.readingOffset
-    if (p.uniquenessBelow !== undefined) merged.uniquenessBelow = p.uniquenessBelow
+    if (p.readingAbove        !== undefined) merged.readingAbove        = p.readingAbove
+    if (p.readingOffsetAbove  !== undefined) merged.readingOffsetAbove  = p.readingOffsetAbove
+    if (p.readingOffsetBelow  !== undefined) merged.readingOffsetBelow  = p.readingOffsetBelow
+    if (p.uniquenessBelow     !== undefined) merged.uniquenessBelow     = p.uniquenessBelow
     if (p.nestedReading   !== undefined) merged.nestedReading   = p.nestedReading
+    if (p.roleOrder       !== undefined) merged.roleOrder       = p.roleOrder
+    if (p.readingOrder    !== undefined) merged.readingOrder    = p.readingOrder
+    if (p.orientation     !== undefined) merged.orientation     = p.orientation
+    if (p.readingDisplay  !== undefined) merged.readingDisplay  = p.readingDisplay
     return merged
   }
   const fact = mergeDiagramPos(rawFact)
@@ -2637,8 +2504,18 @@ export default function Inspector() {
       const f = store.facts.find(f => f.id === selectedUniqueness.factId)
       if (f) internalConstraintContent = <FactInspector fact={f} />
     } else if (selectedMandatoryDot) {
-      const f = store.facts.find(f => f.id === selectedMandatoryDot.factId)
-      if (f) internalConstraintContent = <RoleInspector fact={f} roleIndex={selectedMandatoryDot.roleIndex} />
+      const factId = selectedMandatoryDot.factId
+      const roleIndex = selectedMandatoryDot.roleIndex
+      if (factId.includes('_il_')) {
+        const [parentFactId, ilRoleIdxStr] = factId.split('_il_')
+        const parentFact = store.facts.find(f => f.id === parentFactId)
+        if (parentFact) {
+          internalConstraintContent = <ImplicitLinkRoleInspector parentFact={parentFact} roleIndex={Number(ilRoleIdxStr)} ilRoleIndex={roleIndex} />
+        }
+      } else {
+        const f = store.facts.find(f => f.id === factId)
+        if (f) internalConstraintContent = <RoleInspector fact={f} roleIndex={roleIndex} />
+      }
     } else if (selectedInternalFrequency) {
       const f = store.facts.find(f => f.id === selectedInternalFrequency.factId)
       const ifItem = f ? (f.internalFrequency || []).find(x => x.id === selectedInternalFrequency.ifId) : null

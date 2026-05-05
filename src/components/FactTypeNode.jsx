@@ -43,6 +43,18 @@ export const ROLE_W = 30
 export const ROLE_H = 18
 export const ROLE_GAP = 1
 
+/**
+ * Returns the effective display role order for a fact.
+ * `fact.roleOrder[pi]` gives the actual role index displayed at position `pi`.
+ * Falls back to natural order `[0, 1, ...]` if not set.
+ */
+export function displayRoleOrder(fact) {
+  const n = Math.max(fact.arity, 1)
+  const ro = fact.roleOrder
+  if (!ro || ro.length !== n) return Array.from({ length: n }, (_, i) => i)
+  return ro
+}
+
 /** Returns the bounding rect of the outer entity box drawn around an objectified fact. */
 export function nestedFactBounds(fact) {
   const PAD  = 10
@@ -234,13 +246,16 @@ export function makeImplicitLinkFact(parentFact, implicitLink) {
     })),
     readingParts: implicitLink.readingParts || ['', 'involves', ''],
     alternativeReadings: implicitLink.alternativeReadings || [],
-    readingDisplay: implicitLink.readingDisplay || 'forward',
+    readingDisplay: ilPos?.readingDisplay ?? implicitLink.readingDisplay ?? 'forward',
     shownReadingOrder: roleOrder,
-    uniqueness: [[roleOrder[0]]],
+    roleOrder: ilPos?.roleOrder || roleOrder,
+    readingOrder: ilPos?.readingOrder || roleOrder,
+    uniqueness: [[0]],
     preferredUniqueness: null,
     internalFrequency: [],
-    orientation: implicitLink.orientation || 'horizontal',
-    readingOffset: implicitLink.readingOffset ?? null,
+    orientation: ilPos?.orientation ?? implicitLink.orientation ?? 'horizontal',
+    readingOffsetAbove: ilPos?.readingOffsetAbove ?? implicitLink.readingOffsetAbove ?? null,
+    readingOffsetBelow: ilPos?.readingOffsetBelow ?? implicitLink.readingOffsetBelow ?? null,
     readingAbove: implicitLink.readingAbove ?? false,
     uniquenessBelow: implicitLink.uniquenessBelow ?? false,
     _implicit: true,
@@ -272,7 +287,10 @@ function ifShapeHalfW(label) {
  * Otherwise returns null (fall back to individual connectors).
  */
 function ifConsecutiveMidpoint(fact, ri0, ri1, cx, cy) {
-  if (Math.abs(ri0 - ri1) !== 1) return null
+  const dro = displayRoleOrder(fact)
+  const pos0 = dro.indexOf(ri0)
+  const pos1 = dro.indexOf(ri1)
+  if (Math.abs(pos0 - pos1) !== 1) return null
   const rc0 = roleCenter(fact, ri0)
   const rc1 = roleCenter(fact, ri1)
   const midX = (rc0.x + rc1.x) / 2
@@ -299,12 +317,14 @@ function stadiumEdge(cx, cy, hw, hh, tx, ty) {
  */
 function computeRoleAnchor(fact, roleIndex, tx, ty) {
   const n      = Math.max(fact.arity, 1)
-  const isFirst = roleIndex === 0
-  const isLast  = roleIndex === n - 1
+  const dro    = displayRoleOrder(fact)
+  const posIdx = dro.indexOf(roleIndex)
+  const isFirst = posIdx === 0
+  const isLast  = posIdx === n - 1
   if (fact.orientation === 'vertical') {
     const totalH   = n * ROLE_W + (n - 1) * ROLE_GAP
     const startY   = fact.y - totalH / 2
-    const roleTopY = startY + roleIndex * (ROLE_W + ROLE_GAP)
+    const roleTopY = startY + posIdx * (ROLE_W + ROLE_GAP)
     const leftX    = fact.x - ROLE_H / 2
     const cx       = fact.x
     const cy       = roleTopY + ROLE_W / 2
@@ -319,7 +339,7 @@ function computeRoleAnchor(fact, roleIndex, tx, ty) {
     return best
   }
   const startX = fact.x - (n * ROLE_W + (n - 1) * ROLE_GAP) / 2
-  const roleX  = startX + roleIndex * (ROLE_W + ROLE_GAP)
+  const roleX  = startX + posIdx * (ROLE_W + ROLE_GAP)
   const roleY  = fact.y - ROLE_H / 2
   const cx     = roleX + ROLE_W / 2
   const cy     = roleY + ROLE_H / 2
@@ -342,22 +362,26 @@ const UNARY_CAP_R = 8
 
 export function roleCenter(fact, roleIndex) {
   const n = Math.max(fact.arity, 1)
+  const ro = fact.roleOrder || Array.from({ length: n }, (_, i) => i)
   if (fact.orientation === 'vertical') {
     const totalH = n * ROLE_W + (n - 1) * ROLE_GAP
     const startY = fact.y - totalH / 2
-    return { x: fact.x, y: startY + roleIndex * (ROLE_W + ROLE_GAP) + ROLE_W / 2 }
+    return { x: fact.x, y: startY + ro.indexOf(roleIndex) * (ROLE_W + ROLE_GAP) + ROLE_W / 2 }
   }
   const totalW = n * ROLE_W + (n - 1) * ROLE_GAP
   const startX = fact.x - totalW / 2
   return {
-    x: startX + roleIndex * (ROLE_W + ROLE_GAP) + ROLE_W / 2,
+    x: startX + ro.indexOf(roleIndex) * (ROLE_W + ROLE_GAP) + ROLE_W / 2,
     y: fact.y,
   }
 }
 
 export function roleLeft(fact, roleIndex) {
-  const totalW = Math.max(fact.arity, 1) * ROLE_W + (Math.max(fact.arity, 1) - 1) * ROLE_GAP
-  return fact.x - totalW / 2 + roleIndex * (ROLE_W + ROLE_GAP)
+  const n = Math.max(fact.arity, 1)
+  const dro = displayRoleOrder(fact)
+  const posIdx = dro.indexOf(roleIndex)
+  const totalW = n * ROLE_W + (n - 1) * ROLE_GAP
+  return fact.x - totalW / 2 + posIdx * (ROLE_W + ROLE_GAP)
 }
 
 export function factBounds(fact) {
@@ -864,9 +888,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         const dx = rd.origDx + (e.clientX - rd.startX) / zoom
         const dy = rd.origDy + (e.clientY - rd.startY) / zoom
         if (fact._implicit) {
-          store.updateImplicitLink(fact._parentFactId, fact._implicitRoleIndex, { readingOffset: { dx, dy } })
+          const aboveKey = fact.readingAbove ? 'readingOffsetAbove' : 'readingOffsetBelow'
+          store.updateImplicitLink(fact._parentFactId, fact._implicitRoleIndex, { [aboveKey]: { dx, dy } })
         } else {
-          store.updateFactLayout(fact.id, { readingOffset: { dx, dy } })
+          const aboveKey = fact.readingAbove ? 'readingOffsetAbove' : 'readingOffsetBelow'
+          store.updateFactLayout(fact.id, { [aboveKey]: { dx, dy } })
         }
         readingDragRef.current = null
         setReadingLive(null)
@@ -1039,24 +1065,25 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
 
   // ── Horizontal helpers ─────────────────────────────────────────────────────
   function buildRuns(uRoles, level, ui) {
-    const roleSet = new Set(uRoles)
-    const minRI   = Math.min(...uRoles)
-    const maxRI   = Math.max(...uRoles)
+    const dro = displayRoleOrder(fact)
+    const posSet = new Set(uRoles.map(ri => dro.indexOf(ri)))
+    const minPos = Math.min(...posSet)
+    const maxPos = Math.max(...posSet)
     const barY    = barY_h(level)
-    const spanX1  = startX + minRI * (ROLE_W + ROLE_GAP)
-    const spanX2  = startX + maxRI * (ROLE_W + ROLE_GAP) + ROLE_W
+    const spanX1  = startX + minPos * (ROLE_W + ROLE_GAP)
+    const spanX2  = startX + maxPos * (ROLE_W + ROLE_GAP) + ROLE_W
     const runs    = []
-    let runStart  = minRI
-    let runSolid  = roleSet.has(minRI)
-    for (let ri = minRI + 1; ri <= maxRI + 1; ri++) {
-      const solid = ri <= maxRI ? roleSet.has(ri) : null
-      if (solid !== runSolid || ri > maxRI) {
+    let runStart  = minPos
+    let runSolid  = posSet.has(minPos)
+    for (let pi = minPos + 1; pi <= maxPos + 1; pi++) {
+      const solid = pi <= maxPos ? posSet.has(pi) : null
+      if (solid !== runSolid || pi > maxPos) {
         let x1 = startX + runStart * (ROLE_W + ROLE_GAP)
-        let x2 = startX + (ri - 1) * (ROLE_W + ROLE_GAP) + ROLE_W
+        let x2 = startX + (pi - 1) * (ROLE_W + ROLE_GAP) + ROLE_W
         if (x1 === spanX1) x1 += INSET
         if (x2 === spanX2) x2 -= INSET
         runs.push({ x1, x2, solid: runSolid, key: `${ui}-${runStart}` })
-        runStart = ri
+        runStart = pi
         runSolid = solid
       }
     }
@@ -1082,24 +1109,25 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   }
 
   function buildRunsV(uRoles, level, ui) {
-    const roleSet = new Set(uRoles)
-    const minRI   = Math.min(...uRoles)
-    const maxRI   = Math.max(...uRoles)
+    const dro = displayRoleOrder(fact)
+    const posSet = new Set(uRoles.map(ri => dro.indexOf(ri)))
+    const minPos   = Math.min(...posSet)
+    const maxPos   = Math.max(...posSet)
     const barX    = barX_v(level)
-    const spanY1  = startY_v + minRI * (ROLE_W + ROLE_GAP)
-    const spanY2  = startY_v + maxRI * (ROLE_W + ROLE_GAP) + ROLE_W
+    const spanY1  = startY_v + minPos * (ROLE_W + ROLE_GAP)
+    const spanY2  = startY_v + maxPos * (ROLE_W + ROLE_GAP) + ROLE_W
     const runs    = []
-    let runStart  = minRI
-    let runSolid  = roleSet.has(minRI)
-    for (let ri = minRI + 1; ri <= maxRI + 1; ri++) {
-      const solid = ri <= maxRI ? roleSet.has(ri) : null
-      if (solid !== runSolid || ri > maxRI) {
+    let runStart  = minPos
+    let runSolid  = posSet.has(minPos)
+    for (let pi = minPos + 1; pi <= maxPos + 1; pi++) {
+      const solid = pi <= maxPos ? posSet.has(pi) : null
+      if (solid !== runSolid || pi > maxPos) {
         let y1 = startY_v + runStart * (ROLE_W + ROLE_GAP)
-        let y2 = startY_v + (ri - 1) * (ROLE_W + ROLE_GAP) + ROLE_W
+        let y2 = startY_v + (pi - 1) * (ROLE_W + ROLE_GAP) + ROLE_W
         if (y1 === spanY1) y1 += INSET
         if (y2 === spanY2) y2 -= INSET
         runs.push({ y1, y2, solid: runSolid, key: `${ui}-${runStart}` })
-        runStart = ri
+        runStart = pi
         runSolid = solid
       }
     }
@@ -1149,43 +1177,57 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       }
     }
 
-    const shownOrder = fact.shownReadingOrder
+    const dro = displayRoleOrder(fact)
     const defaultOrder = Array.from({ length: fact.arity }, (_, i) => i)
-    const isNatural = !shownOrder || JSON.stringify(shownOrder) === JSON.stringify(defaultOrder)
+    const reverseOrder = [...dro].reverse()
 
     let text
     let onlyReading = null
 
-    // If only one reading has content, show it regardless of display mode
-    if (readingsWithContent.length === 1) {
-      onlyReading = readingsWithContent[0]
-      let raw = onlyReading.isDefault
-        ? buildDisplayReading(onlyReading.parts, fact.arity)
-        : buildShownReading(onlyReading.parts, onlyReading.roleOrder, fact, otMap, nestedMap)
-      // Prepend triangle if this is the reverse reading
-      const isReverse = onlyReading.roleOrder?.length === 2 && onlyReading.roleOrder[0] === 1 && onlyReading.roleOrder[1] === 0
-      text = isReverse ? ((isVertical ? '▲ ' : '◀ ') + raw) : raw
-    } else {
-      // Normal multi-reading logic
-      const forwardParts = isNatural ? fact.readingParts
-        : (fact.alternativeReadings || []).find(r => JSON.stringify(r.roleOrder) === JSON.stringify(shownOrder))?.parts
-      const forwardReading = forwardParts
-        ? (isNatural ? buildDisplayReading(forwardParts, fact.arity) : buildShownReading(forwardParts, shownOrder, fact, otMap, nestedMap))
-        : ''
+    if (fact.arity === 2) {
+      // Binary: forward = reading matching role box order, reverse = matching reversed order
+      if (readingsWithContent.length === 1) {
+        onlyReading = readingsWithContent[0]
+        let raw = JSON.stringify(onlyReading.roleOrder) === JSON.stringify(dro)
+          ? buildDisplayReading(onlyReading.parts, fact.arity)
+          : buildShownReading(onlyReading.parts, onlyReading.roleOrder, fact, otMap, nestedMap)
+        const showTriangle = JSON.stringify(onlyReading.roleOrder) !== JSON.stringify(dro)
+        text = showTriangle ? ((isVertical ? '▲ ' : '◀ ') + raw) : raw
+      } else {
+        const forwardParts = readingsWithContent.find(r => JSON.stringify(r.roleOrder) === JSON.stringify(dro))
+        const forwardReading = forwardParts
+          ? (JSON.stringify(forwardParts.roleOrder) === JSON.stringify(defaultOrder)
+            ? buildDisplayReading(forwardParts.parts, fact.arity)
+            : buildShownReading(forwardParts.parts, forwardParts.roleOrder, fact, otMap, nestedMap))
+          : ''
 
-      const displayMode = fact.arity === 2 ? (fact.readingDisplay || 'forward') : 'forward'
-      text = forwardReading
+        const displayMode = fact.readingDisplay || 'forward'
+        text = forwardReading
 
-      if (displayMode === 'both' || displayMode === 'reverse') {
-        const reverseAlt = (fact.alternativeReadings || []).find(
-          r => r.roleOrder.length === 2 && r.roleOrder[0] === 1 && r.roleOrder[1] === 0
-        )
-        const reverseReading = reverseAlt ? buildDisplayReading(reverseAlt.parts, 2) : ''
-        if (displayMode === 'both') {
-          text = [forwardReading, reverseReading].filter(Boolean).join(' / ')
-        } else {
-          text = reverseReading ? ((isVertical ? '▲ ' : '◀ ') + reverseReading) : ''
+        if (displayMode === 'both' || displayMode === 'reverse') {
+          const reverseReadingEntry = readingsWithContent.find(r => JSON.stringify(r.roleOrder) === JSON.stringify(reverseOrder))
+          const reverseReading = reverseReadingEntry
+            ? (JSON.stringify(reverseOrder) === JSON.stringify(defaultOrder)
+              ? buildDisplayReading(reverseReadingEntry.parts, 2)
+              : buildShownReading(reverseReadingEntry.parts, reverseReadingEntry.roleOrder, fact, otMap, nestedMap))
+            : ''
+          if (displayMode === 'both') {
+            text = [forwardReading, reverseReading].filter(Boolean).join(' / ')
+          } else {
+            text = reverseReading ? ((isVertical ? '▲ ' : '◀ ') + reverseReading) : ''
+          }
         }
+      }
+    } else {
+      // N-ary: use readingOrder to pick which reading to show
+      const showOrder = fact.readingOrder || defaultOrder
+      const selectedReading = readingsWithContent.find(r => JSON.stringify(r.roleOrder) === JSON.stringify(showOrder))
+        ?? readingsWithContent[0]
+      if (selectedReading) {
+        onlyReading = selectedReading
+        text = JSON.stringify(selectedReading.roleOrder) === JSON.stringify(defaultOrder)
+          ? buildDisplayReading(selectedReading.parts, fact.arity)
+          : buildShownReading(selectedReading.parts, selectedReading.roleOrder, fact, otMap, nestedMap)
       }
     }
 
@@ -1206,7 +1248,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       : fact.readingAbove ? -(ROLE_H / 2 + 18)
       : fact.objectified  ? nestedFactBounds(fact).bottom - fact.y + (isShared ? 18 : 10)
       : ROLE_H / 2 + 18
-    const off = readingLive ?? (fact.readingOffset ?? { dx: AUTO_DX, dy: AUTO_DY })
+    const defaultOff = { dx: AUTO_DX, dy: AUTO_DY }
+    const storedOff = fact.readingAbove ? fact.readingOffsetAbove : fact.readingOffsetBelow
+    const off = readingLive ?? (storedOff ?? defaultOff)
     const tx = fact.x + off.dx
     const ty = fact.y + off.dy
     const isDraggingReading = !!readingLive
@@ -1339,8 +1383,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const CR_DEFAULT = isVertical ? { dx: 50, dy: 0 } : { dx: 0, dy: 50 }
 
   function vrConnPoint(ri, textX, textY) {
+    const dro = displayRoleOrder(fact)
+    const pi = dro.indexOf(ri)
     if (isVertical) {
-      const roleTopY = startY_v + ri * (ROLE_W + ROLE_GAP)
+      const roleTopY = startY_v + pi * (ROLE_W + ROLE_GAP)
       const roleCY   = roleTopY + ROLE_W / 2
       const dxT = textX - fact.x, dyT = textY - roleCY
       const angle = Math.atan2(dyT, dxT), abs = Math.abs(angle)
@@ -1349,8 +1395,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       if (angle < 0)                       return { x: fact.x,           y: roleTopY }         // N
       return                                      { x: fact.x,           y: roleTopY + ROLE_W } // S
     }
-    const roleCX = startX + ri * (ROLE_W + ROLE_GAP) + ROLE_W / 2
-    const rx = startX + ri * (ROLE_W + ROLE_GAP)
+    const roleCX = startX + pi * (ROLE_W + ROLE_GAP) + ROLE_W / 2
+    const rx = startX + pi * (ROLE_W + ROLE_GAP)
     const dxT = textX - roleCX, dyT = textY - fact.y
     const angle = Math.atan2(dyT, dxT), abs = Math.abs(angle)
     if (abs < Math.PI / 4)              return { x: rx + ROLE_W, y: fact.y }  // E
@@ -1960,9 +2006,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
               style={{ pointerEvents: 'none' }}/>
           )}
 
-          {/* Role boxes */}
-           {fact.roles.map((role, ri) => {
-             const ry = startY_v + ri * (ROLE_W + ROLE_GAP)
+           {/* Role boxes */}
+            {displayRoleOrder(fact).map((ri, pi) => {
+             const role = fact.roles[ri]
+             const ry = startY_v + pi * (ROLE_W + ROLE_GAP)
              const roleSelected = isRoleSelected(ri) || isImplicitLinkRoleSelected(ri)
              const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
              return (
@@ -2110,8 +2157,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           )}
 
           {/* Role boxes */}
-           {fact.roles.map((role, ri) => {
-             const rx = startX + ri * (ROLE_W + ROLE_GAP)
+            {displayRoleOrder(fact).map((ri, pi) => {
+             const role = fact.roles[ri]
+             const rx = startX + pi * (ROLE_W + ROLE_GAP)
              const roleSelected = isRoleSelected(ri) || isImplicitLinkRoleSelected(ri)
              const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
              return (

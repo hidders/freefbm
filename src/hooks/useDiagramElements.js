@@ -29,14 +29,20 @@ export function getDiagramElements(store) {
     const merged = { ...el, x: p.x, y: p.y }
     // Per-diagram layout overrides for facts
     if (el.kind === 'fact') {
-      if (p.readingAbove    !== undefined) merged.readingAbove    = p.readingAbove
-      if (p.readingOffset   !== undefined) merged.readingOffset   = p.readingOffset
-      if (p.uniquenessBelow !== undefined) merged.uniquenessBelow = p.uniquenessBelow
-      if (p.nestedReading   !== undefined) merged.nestedReading   = p.nestedReading
-      if (p.roleNameOffsets    !== undefined) merged.roleNameOffsets    = p.roleNameOffsets
-      if (p.valueRangeOffsets !== undefined) merged.valueRangeOffsets = p.valueRangeOffsets
+      if (p.readingAbove        !== undefined) merged.readingAbove        = p.readingAbove
+      if (p.readingOffsetAbove  !== undefined) merged.readingOffsetAbove  = p.readingOffsetAbove
+      if (p.readingOffsetBelow  !== undefined) merged.readingOffsetBelow  = p.readingOffsetBelow
+      if (p.uniquenessBelow     !== undefined) merged.uniquenessBelow     = p.uniquenessBelow
+      if (p.nestedReading       !== undefined) merged.nestedReading       = p.nestedReading
+      if (p.roleNameOffsets     !== undefined) merged.roleNameOffsets     = p.roleNameOffsets
+      if (p.valueRangeOffsets   !== undefined) merged.valueRangeOffsets   = p.valueRangeOffsets
       if (p.cardinalityRangeOffsets !== undefined) merged.cardinalityRangeOffsets = p.cardinalityRangeOffsets
-        if (p.nameOffset        !== undefined) merged.nameOffset        = p.nameOffset
+      if (p.nameOffset          !== undefined) merged.nameOffset          = p.nameOffset
+      // Per-diagram presentation overrides
+      if (p.roleOrder       !== undefined) merged.roleOrder       = p.roleOrder
+      if (p.readingOrder    !== undefined) merged.readingOrder    = p.readingOrder
+      if (p.orientation     !== undefined) merged.orientation     = p.orientation
+      if (p.readingDisplay  !== undefined) merged.readingDisplay  = p.readingDisplay
     }
     return merged
   }

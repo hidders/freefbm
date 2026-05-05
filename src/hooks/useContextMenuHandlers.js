@@ -54,9 +54,9 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     const role = fact.roles[roleIndex]
     const hasUnary = fact.uniqueness.some(u => u.length === 1 && u[0] === roleIndex)
     const items = [
-      { label: 'Is Mandatory', checked: !!role.mandatory,
+      { label: 'is Mandatory', checked: !!role.mandatory,
         action: () => store.updateRole(fact.id, roleIndex, { mandatory: !role.mandatory }) },
-      { label: 'Has Uniqueness Constraint', checked: hasUnary,
+      { label: 'has Uniqueness Constraint', checked: hasUnary,
         action: () => store.toggleUniqueness(fact.id, [roleIndex]) },
       '---',
       { label: 'Insert Role Before',
@@ -74,7 +74,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     ]
     if (fact.objectified && role.objectTypeId) {
       const isShown = store.isImplicitLinkShown(fact.id, roleIndex)
-      items.push('---', { label: 'Link Fact Type is Shown',
+      items.push('---', { label: 'show Link Fact Type',
         checked: isShown,
         action: () => store.toggleImplicitLink(fact.id, roleIndex) })
     }
@@ -131,7 +131,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
               { label: 'Fact Type',
                 action: () => store.updateFact(fact.id, {
                   objectified: false, objectifiedName: undefined,
-                  nestedReading: false, readingAbove: false, readingOffset: null,
+                  nestedReading: false, readingAbove: false, readingOffsetAbove: null, readingOffsetBelow: null,
                 }) },
             ] : []),
           ],

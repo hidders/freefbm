@@ -1,7 +1,7 @@
 import React, { useCallback, useRef } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
-import { roleCenter, nestedFactBounds, ROLE_H } from './FactTypeNode'
+import { roleCenter, nestedFactBounds, ROLE_H, displayRoleOrder } from './FactTypeNode'
 import { roleAnchor } from './RoleConnectors'
 import { entityBounds, formatValueRange } from './ObjectTypeNode'
 import { EXTERNAL_CONSTRAINT_TYPES } from '../constants.js'
@@ -644,9 +644,12 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
   // (top/bottom for horizontal facts, left/right for vertical) closest to (cx, cy); else null.
   function consecutiveRoleMidpoint(factId0, ri0, factId1, ri1, cx, cy) {
     if (factId0 !== factId1) return null
-    if (Math.abs(ri0 - ri1) !== 1) return null
     const fact = factMap[factId0]
     if (!fact) return null
+    const dro = displayRoleOrder(fact)
+    const pos0 = dro.indexOf(ri0)
+    const pos1 = dro.indexOf(ri1)
+    if (Math.abs(pos0 - pos1) !== 1) return null
     const rc0 = roleCenter(fact, ri0)
     const rc1 = roleCenter(fact, ri1)
     const midX = (rc0.x + rc1.x) / 2
