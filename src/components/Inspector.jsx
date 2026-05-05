@@ -2183,6 +2183,13 @@ function ExternalConstraintInspector({ c }) {
   const subtypeMap = Object.fromEntries(store.subtypes.map(st => [st.id, st]))
   const otMap      = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const factMap    = Object.fromEntries(store.facts.map(f => [f.id, f]))
+  // Add synthetic implied link facts so sequence member labels can resolve them
+  store.facts.filter(f => f.objectified).forEach(f => {
+    (f.implicitLinks || []).forEach(il => {
+      const synth = makeImplicitLinkFact(f, il)
+      factMap[synth.id] = synth
+    })
+  })
   const sequences  = c.sequences || []
   const posCount   = sequences[0]?.length ?? 0
   const [pressedHeader, setPressedHeader] = useState(null)
