@@ -596,13 +596,16 @@ export const useOrmStore = create((set, get) => ({
           linkReadingReverseParts: r.linkReadingReverseParts ?? null,
         })),
         implicitLinks: ((f.implicitLinks && f.implicitLinks.length > 0 ? f.implicitLinks : null) || (f.objectified
-          ? Array.from({ length: (f.roles || []).length }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: false }))
+          ? Array.from({ length: (f.roles || []).length }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: [] }))
           : [])).map(il => ({
             ...il,
             alternativeReadings: il.alternativeReadings || [],
             readingDisplay: il.readingDisplay || 'forward',
             roleNames: il.roleNames || [null, null],
-            preferredUniqueness: il.preferredUniqueness ?? false,
+            // Migrate: old boolean → array of role-index arrays (matching fact.preferredUniqueness format)
+            preferredUniqueness: Array.isArray(il.preferredUniqueness)
+              ? il.preferredUniqueness
+              : (il.preferredUniqueness ? [[0]] : []),
           })),
         internalFrequency: (f.internalFrequency || []).map((if_, idx) => ({
           ...if_,
@@ -824,7 +827,7 @@ export const useOrmStore = create((set, get) => ({
     const n = nextRelationNumber(get().facts)
     const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind, nestedReading: false, datatypeAssignment: null }
     base.roles = base.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] }))
-    base.implicitLinks = Array.from({ length: arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: false }))
+    base.implicitLinks = Array.from({ length: arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: [] }))
     set(s => {
       const used = new Set(
         s.objectTypes.map(o => o.name).concat(s.facts.map(f => f.objectifiedName).filter(Boolean))
@@ -849,7 +852,7 @@ export const useOrmStore = create((set, get) => ({
     const n = nextRelationNumber(get().facts)
     const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind: 'value', nestedReading: false, datatypeAssignment: null }
     base.roles = base.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] }))
-    base.implicitLinks = Array.from({ length: arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: false }))
+    base.implicitLinks = Array.from({ length: arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: [] }))
     set(s => {
       const used = new Set(
         s.objectTypes.filter(o => o.kind === 'value').map(o => o.name)
@@ -883,7 +886,7 @@ export const useOrmStore = create((set, get) => ({
           ...f, objectified: true, objectifiedKind: 'entity',
           objectifiedName: `Entity${n}`, nestedReading: false,
           roles: f.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] })),
-          implicitLinks: Array.from({ length: f.arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: false })),
+          implicitLinks: Array.from({ length: f.arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: [] })),
         }),
         isDirty: true,
       }
@@ -903,7 +906,7 @@ export const useOrmStore = create((set, get) => ({
           ...f, objectified: true, objectifiedKind: 'value',
           objectifiedName: `Value${n}`, nestedReading: false,
           roles: f.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] })),
-          implicitLinks: Array.from({ length: f.arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: false })),
+          implicitLinks: Array.from({ length: f.arity }, (_, i) => ({ roleIndex: i, x: null, y: null, readingParts: ['', 'involves', ''], alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is involved in', ''] }], readingDisplay: 'forward', orientation: 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null, readingAbove: false, roleNames: [null, null], preferredUniqueness: [] })),
         }),
         isDirty: true,
       }
@@ -1569,8 +1572,8 @@ export const useOrmStore = create((set, get) => ({
     set({ selectedId: factId, selectedKind: 'implicitLink', selectedImplicitRole: roleIndex, selectedRole: null, selectedUniqueness: null, selectedImplicitLinkRole: null })
   },
 
-  selectImplicitLinkUniqueness(factId, roleIndex) {
-    set({ selectedId: null, selectedKind: null, selectedImplicitRole: null, selectedRole: null, selectedUniqueness: { factId, roleIndex, uIndex: 0 }, selectedImplicitLinkRole: null })
+  selectImplicitLinkUniqueness(factId, roleIndex, uIndex = 0) {
+    set({ selectedId: null, selectedKind: null, selectedImplicitRole: null, selectedRole: null, selectedUniqueness: { factId, roleIndex, uIndex }, selectedImplicitLinkRole: null })
   },
 
   selectImplicitLinkRole(factId, roleIndex, ilRoleIndex) {
@@ -2232,13 +2235,12 @@ export const useOrmStore = create((set, get) => ({
   addInternalFrequencyBar(factId) {
     const fact = get().facts.find(f => f.id === factId)
     if (!fact) return
-    const allRoles = fact.roles.map((_, i) => i)
     const ifId = uid()
     set(s => ({
       facts: s.facts.map(f => f.id !== factId ? f : {
         ...f,
         internalFrequency: [...(f.internalFrequency || []), {
-          id: ifId, roles: allRoles, range: [], x: f.x + 40, y: f.y - 30,
+          id: ifId, roles: [], range: [], x: f.x + 40, y: f.y - 30,
         }],
       }),
       isDirty: true,

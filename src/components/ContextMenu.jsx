@@ -52,7 +52,7 @@ function MenuPanel({ left, top, items, zIndex, onClose, onSubmenuEnter, onSubmen
                 style={{
                   ...ITEM_STYLE,
                   color: item.disabled ? 'var(--ink-muted)'
-                       : item.danger   ? '#c0392b'
+                       : item.danger   ? 'var(--danger)'
                        :                 'var(--ink-2)',
                   cursor: item.disabled ? 'default' : 'pointer',
                 }}
@@ -63,9 +63,9 @@ function MenuPanel({ left, top, items, zIndex, onClose, onSubmenuEnter, onSubmen
                 onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
               >
                 {'checked' in item && (
-                  <span style={{ width: 14, textAlign: 'center', flexShrink: 0, fontSize: 12,
-                    color: item.checked ? '#27ae60' : '#c0392b' }}>
-                    {item.checked ? '✓' : '✗'}
+                  <span style={{ width: 18, textAlign: 'center', flexShrink: 0, fontSize: 18,
+                    color: 'var(--accent)', WebkitTextStroke: '0.7px var(--accent)' }}>
+                    {item.checked ? '☑' : '☐'}
                   </span>
                 )}
                 {item.label}
@@ -102,6 +102,7 @@ export default function ContextMenu({ x, y, items, onClose }) {
     return () => {
       window.removeEventListener('mousedown', onMouseDown)
       window.removeEventListener('keydown',   onKeyDown)
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
     }
   }, [onClose])
 
@@ -168,7 +169,7 @@ export default function ContextMenu({ x, y, items, onClose }) {
                   style={{
                     ...ITEM_STYLE,
                     color: subItem.disabled ? 'var(--ink-muted)'
-                         : subItem.danger   ? '#c0392b'
+                         : subItem.danger   ? 'var(--danger)'
                          :                   'var(--ink-2)',
                     cursor: subItem.disabled ? 'default' : 'pointer',
                   }}

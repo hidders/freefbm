@@ -71,7 +71,7 @@ function FactLabel({ fact, otMap }) {
 function OrphanBadge() {
   return (
     <span title="Not in any diagram" style={{
-      fontSize: 8, color: '#c0392b', border: '1px solid #c0392b',
+      fontSize: 8, color: 'var(--danger)', border: '1px solid var(--danger)',
       borderRadius: 3, padding: '0 3px', lineHeight: '13px',
       flexShrink: 0, marginLeft: 3,
     }}>orphan</span>
@@ -490,7 +490,7 @@ export default function SchemaBrowser() {
           <span>schema</span>
           {allOrphanCount > 0 && (
             <span style={{
-              background: '#c0392b', color: 'white',
+              background: 'var(--danger)', color: 'white',
               borderRadius: 8, fontSize: 9, padding: '0 4px', lineHeight: '14px',
               minWidth: 14, textAlign: 'center',
             }}>{allOrphanCount}</span>
@@ -529,13 +529,13 @@ export default function SchemaBrowser() {
                   title={showOrphans ? 'Show all elements' : 'Show only orphans'}
                   style={{
                     fontSize: 9,
-                    color: showOrphans ? 'white' : '#c0392b',
-                    border: '1px solid #c0392b',
+                    color: showOrphans ? 'white' : 'var(--danger)',
+                    border: '1px solid var(--danger)',
                     borderRadius: 3,
                     padding: '0 4px',
                     lineHeight: '14px',
                     cursor: 'pointer',
-                    background: showOrphans ? '#c0392b' : 'transparent',
+                    background: showOrphans ? 'var(--danger)' : 'transparent',
                   }}
                 >
                   {allOrphanCount} orphan{allOrphanCount !== 1 ? 's' : ''}

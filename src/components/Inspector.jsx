@@ -153,7 +153,7 @@ function DiagramList({ elementId, kind, subtypeEndpointIds, factId, roleIndex })
     <Row>
       <Label>Appears in</Label>
       {containing.length === 0 ? (
-        <span style={{ fontSize: 11, color: '#c0392b', fontStyle: 'italic' }}>
+        <span style={{ fontSize: 11, color: 'var(--danger)', fontStyle: 'italic' }}>
           not in any diagram (orphaned)
         </span>
       ) : (
@@ -204,8 +204,8 @@ function Checkbox({ label, checked, onChange, disabled = false }) {
 
 function DangerBtn({ onClick, children }) {
   return (
-    <button onClick={onClick} style={{ background: 'transparent', color: '#c0392b',
-      border: '1px solid #c0392b', borderRadius: 3, padding: '4px 10px', fontSize: 11 }}>
+    <button onClick={onClick} style={{ background: 'transparent', color: 'var(--danger)',
+      border: '1px solid var(--danger)', borderRadius: 3, padding: '4px 10px', fontSize: 11 }}>
       {children}
     </button>
   )
@@ -346,7 +346,7 @@ export function ValueRangeEditor({ range, onChange, naturalNumbers = false, posi
           )}
 
           <button onClick={() => removeSpec(i)}
-            style={{ background: 'none', border: 'none', color: '#c0392b',
+            style={{ background: 'none', border: 'none', color: 'var(--danger)',
               cursor: 'pointer', fontSize: 13, padding: '0 2px', flexShrink: 0 }}>
             ✕
           </button>
@@ -393,7 +393,7 @@ function DatatypeField({ assignment, onSet }) {
             No profile set
           </span>
         ) : mismatch ? (
-          <span style={{ fontSize: 11, color: '#c0392b' }}>
+          <span style={{ fontSize: 11, color: 'var(--danger)' }}>
             Profile mismatch
           </span>
         ) : (
@@ -415,7 +415,7 @@ function DatatypeField({ assignment, onSet }) {
       {mismatch && (
         <div style={{ marginBottom: 6 }}>
           <div style={{
-            fontSize: 11, color: '#c0392b',
+            fontSize: 11, color: 'var(--danger)',
             background: '#fdf0ee', border: '1px solid #e8b4ae',
             borderRadius: 3, padding: '5px 8px', marginBottom: 4,
           }}>
@@ -424,8 +424,8 @@ function DatatypeField({ assignment, onSet }) {
           </div>
           <button
             onClick={() => onSet(null)}
-            style={{ fontSize: 11, padding: '3px 8px', color: '#c0392b',
-              background: 'transparent', border: '1px solid #c0392b', borderRadius: 3, cursor: 'pointer' }}>
+            style={{ fontSize: 11, padding: '3px 8px', color: 'var(--danger)',
+              background: 'transparent', border: '1px solid var(--danger)', borderRadius: 3, cursor: 'pointer' }}>
             Clear assignment
           </button>
         </div>
@@ -722,7 +722,8 @@ function UniquenessBarInspector({ fact, uIndex }) {
 
   let isPreferred, canBePreferred, reading
   if (isImplicit) {
-    isPreferred = implicitLink?.preferredUniqueness ?? false
+    const prefArr = implicitLink?.preferredUniqueness || []
+    isPreferred = prefArr.some(pu => JSON.stringify([...pu].sort()) === sortedKey)
     canBePreferred = true
     reading = getDisplayReading(fact) || null
   } else {
@@ -742,7 +743,11 @@ function UniquenessBarInspector({ fact, uIndex }) {
 
   const togglePreferred = () => {
     if (isImplicit) {
-      store.updateImplicitLink(parentFact.id, fact._implicitRoleIndex, { preferredUniqueness: !isPreferred })
+      const prefArr = implicitLink?.preferredUniqueness || []
+      const next = isPreferred
+        ? prefArr.filter(pu => JSON.stringify([...pu].sort()) !== sortedKey)
+        : [...prefArr, [...u]]
+      store.updateImplicitLink(parentFact.id, fact._implicitRoleIndex, { preferredUniqueness: next })
     } else {
       store.setPreferredUniqueness(fact.id, u)
     }
@@ -1514,7 +1519,7 @@ function FactInspector({ fact }) {
           </span>
         </div>
         {fact.arity > fact.roles.length && (
-          <div style={{ fontSize: 10, color: '#c0392b', marginTop: 4 }}>
+          <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 4 }}>
             Roles trimmed — reassign object types as needed
           </div>
         )}
@@ -1549,7 +1554,7 @@ function FactInspector({ fact }) {
                      <Label>({label})</Label>
                      {!r.isDefault && (
                        <button onClick={() => store.removeAlternativeReading(fact.id, r.roleOrder)}
-                         style={{ background: 'none', color: '#c0392b', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
+                         style={{ background: 'none', color: 'var(--danger)', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
                      )}
                   </div>
                   <ReadingEditor
@@ -1936,7 +1941,7 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
                 <Label>({label})</Label>
                 {!r.isDefault && (
                   <button onClick={() => removeReading(r.isDefault, r.roleOrder)}
-                    style={{ background: 'none', color: '#c0392b', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
+                    style={{ background: 'none', color: 'var(--danger)', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
                 )}
               </div>
               <ReadingEditor
@@ -2050,12 +2055,24 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
       </Section>
 
       <Section title="Constraints">
-        <button onClick={() => store.selectImplicitLinkUniqueness(parentFact.id, roleIndex)}
-          style={{ width: '100%', padding: '6px 12px', fontSize: 12, background: 'var(--bg-raised)',
-            border: '1px solid var(--border-soft)', borderRadius: 4, cursor: 'pointer',
-            color: 'var(--ink-2)', textAlign: 'left', marginBottom: 6 }}>
-          Internal Uniqueness{il.preferredUniqueness ? ' (Preferred)' : ''}
-        </button>
+        {(() => {
+          const hasSolo = (parentFact.uniqueness || []).some(u => u.length === 1 && u[0] === roleIndex)
+          const uBars = hasSolo ? [[0], [1]] : [[0]]
+          const prefArr = il.preferredUniqueness || []
+          return uBars.map((uRoles, ui) => {
+            const key = JSON.stringify([...uRoles].sort())
+            const isPreferred = prefArr.some(pu => JSON.stringify([...pu].sort()) === key)
+            const label = uBars.length > 1 ? `Internal Uniqueness ${ui + 1}` : 'Internal Uniqueness'
+            return (
+              <button key={ui} onClick={() => store.selectImplicitLinkUniqueness(parentFact.id, roleIndex, ui)}
+                style={{ width: '100%', padding: '6px 12px', fontSize: 12, background: 'var(--bg-raised)',
+                  border: '1px solid var(--border-soft)', borderRadius: 4, cursor: 'pointer',
+                  color: 'var(--ink-2)', textAlign: 'left', marginBottom: 6 }}>
+                {label}{isPreferred ? ' (Preferred)' : ''}
+              </button>
+            )
+          })
+        })()}
         <Label style={{ marginTop: 8 }}>Frequency</Label>
         {(() => {
           const frequency = []
@@ -2484,7 +2501,7 @@ function ExternalConstraintInspector({ c }) {
                   title={`Remove Sequence ${gi + 1}`}
                   style={{ width: 22, padding: 0, fontSize: 11, background: 'var(--bg-raised)',
                     border: '1px solid #e0b0a8', borderRadius: 3,
-                    cursor: 'pointer', flexShrink: 0, color: '#c0392b' }}>
+                    cursor: 'pointer', flexShrink: 0, color: 'var(--danger)' }}>
                   ×
                 </button>
               </div>
@@ -2499,7 +2516,7 @@ function ExternalConstraintInspector({ c }) {
                 title={`Remove position ${pi + 1} from all sequences`}
                 style={{ flex: 1, minWidth: 0, padding: '1px 0', fontSize: 11,
                   background: 'var(--bg-raised)', border: '1px solid var(--border)',
-                  borderRadius: 3, cursor: 'pointer', color: '#c0392b' }}>
+                  borderRadius: 3, cursor: 'pointer', color: 'var(--danger)' }}>
                 ×
               </button>
             ))}
@@ -2699,7 +2716,7 @@ export default function Inspector() {
           const il = f.implicitLinks?.find(il => il.roleIndex === selectedUniqueness.roleIndex)
           if (il) {
             const synth = makeImplicitLinkFact(f, il)
-            internalConstraintContent = <UniquenessBarInspector fact={synth} uIndex={0} />
+            internalConstraintContent = <UniquenessBarInspector fact={synth} uIndex={selectedUniqueness.uIndex} />
           }
         } else {
           internalConstraintContent = <FactInspector fact={f} />
@@ -2806,8 +2823,8 @@ export default function Inspector() {
             <button
               onClick={() => store.deleteMultiSelection()}
               style={{ fontSize: 11, padding: '3px 8px',
-                background: 'transparent', color: '#c0392b',
-                border: '1px solid #c0392b', borderRadius: 3 }}>
+                background: 'transparent', color: 'var(--danger)',
+                border: '1px solid var(--danger)', borderRadius: 3 }}>
               Delete all
             </button>
           </div>

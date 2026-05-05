@@ -15,43 +15,51 @@ const SAMPLE = {
   facts: [
     {
       id: 'f1', kind: 'fact', x: 330, y: 160, arity: 2,
-      reading: 'Person is employed by Company',
-      inverseReading: 'Company employs Person',
+      readingParts: ['', 'is employed by', ''],
       roles: [
         { id: 'r1a', objectTypeId: 'ot1', roleName: '', mandatory: true },
         { id: 'r1b', objectTypeId: 'ot2', roleName: '', mandatory: false },
       ],
       uniqueness: [[0, 1]],
+      readingDisplay: 'forward', alternativeReadings: [], uniquenessBelow: false,
+      readingAbove: false, readingOffset: null, internalFrequency: [], implicitLinks: [],
+      preferredUniqueness: [], shownReadingOrder: null, orientation: 'horizontal',
     },
     {
       id: 'f2', kind: 'fact', x: 330, y: 310, arity: 2,
-      reading: 'Person has PersonName',
-      inverseReading: '',
+      readingParts: ['', 'has', ''],
       roles: [
         { id: 'r2a', objectTypeId: 'ot1', roleName: '', mandatory: true },
         { id: 'r2b', objectTypeId: 'ot4', roleName: '', mandatory: false },
       ],
       uniqueness: [[0]],
+      readingDisplay: 'forward', alternativeReadings: [], uniquenessBelow: false,
+      readingAbove: false, readingOffset: null, internalFrequency: [], implicitLinks: [],
+      preferredUniqueness: [], shownReadingOrder: null, orientation: 'horizontal',
     },
     {
       id: 'f3', kind: 'fact', x: 330, y: 80, arity: 2,
-      reading: 'Person earns Salary',
-      inverseReading: '',
+      readingParts: ['', 'earns', ''],
       roles: [
         { id: 'r3a', objectTypeId: 'ot1', roleName: '', mandatory: false },
         { id: 'r3b', objectTypeId: 'ot5', roleName: '', mandatory: false },
       ],
       uniqueness: [[0]],
+      readingDisplay: 'forward', alternativeReadings: [], uniquenessBelow: false,
+      readingAbove: false, readingOffset: null, internalFrequency: [], implicitLinks: [],
+      preferredUniqueness: [], shownReadingOrder: null, orientation: 'horizontal',
     },
     {
       id: 'f4', kind: 'fact', x: 500, y: 260, arity: 2,
-      reading: 'Company sponsors Project',
-      inverseReading: '',
+      readingParts: ['', 'sponsors', ''],
       roles: [
         { id: 'r4a', objectTypeId: 'ot2', roleName: '', mandatory: false },
         { id: 'r4b', objectTypeId: 'ot3', roleName: '', mandatory: true },
       ],
       uniqueness: [[1]],
+      readingDisplay: 'forward', alternativeReadings: [], uniquenessBelow: false,
+      readingAbove: false, readingOffset: null, internalFrequency: [], implicitLinks: [],
+      preferredUniqueness: [], shownReadingOrder: null, orientation: 'horizontal',
     },
   ],
   subtypes: [
@@ -61,9 +69,8 @@ const SAMPLE = {
     {
       id: 'c1', kind: 'constraint', constraintType: 'ring',
       x: 130, y: 410,
-      roleSequences: [[{ factId: 'f1', roleIndex: 0 }], []],
+      sequences: [[{ kind: 'role', factId: 'f1', roleIndex: 0 }], [{ kind: 'role', factId: 'f1', roleIndex: 1 }]],
       ringTypes: ['irreflexive'],
-      frequency: { min: 1, max: 1 },
     },
   ],
 }

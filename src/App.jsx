@@ -7,6 +7,7 @@ import StatusBar from './components/StatusBar'
 import WelcomeScreen from './components/WelcomeScreen'
 import DiagramTabs from './components/DiagramTabs'
 import SchemaBrowser from './components/SchemaBrowser'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { useElectronMenu } from './hooks/useElectronMenu'
 import { useUndoRedo } from './hooks/useUndoRedo'
 import { useOrmStore } from './store/ormStore'
@@ -204,23 +205,25 @@ export default function App() {
   const isEmpty = store.objectTypes.length === 0 && store.facts.length === 0
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column',
-      width: '100vw', height: '100vh', overflow: 'hidden',
-      background: 'var(--bg-canvas)' }}>
+    <ErrorBoundary>
+      <div style={{ display: 'flex', flexDirection: 'column',
+        width: '100vw', height: '100vh', overflow: 'hidden',
+        background: 'var(--bg-canvas)' }}>
 
-      <div id="app-toolbar" className="no-print"><Toolbar /></div>
+        <div id="app-toolbar" className="no-print"><Toolbar /></div>
 
-      <div id="app-diagram-tabs" className="no-print"><DiagramTabs /></div>
+        <div id="app-diagram-tabs" className="no-print"><DiagramTabs /></div>
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
-        <div id="app-toolpanel" className="no-print" style={{ display: 'contents' }}><ToolPanel /></div>
-        <Canvas />
-        {isEmpty && <WelcomeScreen />}
-        <SchemaBrowser />
-        <div id="app-inspector" className="no-print" style={{ display: 'contents' }}><Inspector /></div>
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
+          <div id="app-toolpanel" className="no-print" style={{ display: 'contents' }}><ToolPanel /></div>
+          <Canvas />
+          {isEmpty && <WelcomeScreen />}
+          <SchemaBrowser />
+          <div id="app-inspector" className="no-print" style={{ display: 'contents' }}><Inspector /></div>
+        </div>
+
+        <div id="app-statusbar" className="no-print"><StatusBar /></div>
       </div>
-
-      <div id="app-statusbar" className="no-print"><StatusBar /></div>
-    </div>
+    </ErrorBoundary>
   )
 }

@@ -92,7 +92,7 @@ export default function StatusBar() {
         {Math.round(store.zoom * 100)}%
       </span>
       {store.isDirty && (
-        <span style={{ fontSize: 11, color: '#c0392b' }}>● unsaved</span>
+        <span style={{ fontSize: 11, color: 'var(--danger)' }}>● unsaved</span>
       )}
       <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
         {store.objectTypes.length} types · {store.facts.length} facts · {store.constraints.length} constraints

@@ -37,6 +37,18 @@ function popupPos(x, y, popW) {
 // Returns { dragOffset, onDragMouseDown } — apply transform + cursor to header.
 function usePopupDrag() {
   const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const activeHandlers = useRef(null)
+
+  useEffect(() => {
+    return () => {
+      if (activeHandlers.current) {
+        document.removeEventListener('mousemove', activeHandlers.current.onMove)
+        document.removeEventListener('mouseup',   activeHandlers.current.onUp)
+        activeHandlers.current = null
+      }
+    }
+  }, [])
+
   const onDragMouseDown = useCallback((e) => {
     if (e.button !== 0) return
     e.preventDefault()
@@ -47,10 +59,13 @@ function usePopupDrag() {
     const onUp   = () => {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
+      activeHandlers.current = null
     }
+    activeHandlers.current = { onMove, onUp }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
   }, [offset.x, offset.y])
+
   return { dragOffset: offset, onDragMouseDown }
 }
 

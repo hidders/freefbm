@@ -2,10 +2,12 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
+import { roleAnchor } from '../utils/geometry'
 
 const VR_DEFAULT_OFFSET = { dx: 0, dy: -50 }
 const VR_FONT      = "'Segoe UI', Helvetica, Arial, sans-serif"
-const VR_FONT_SIZE = 11
+const VR_FONT_SIZE = 13
+const IF_FONT_SIZE = 13
 const VR_PAD_X     = 3   // horizontal margin inside text box
 const VR_PAD_Y     = 3   // vertical margin inside text box
 
@@ -292,7 +294,7 @@ let _ifCanvas = null
 function measureIfText(text) {
   if (!_ifCanvas) _ifCanvas = document.createElement('canvas')
   const ctx = _ifCanvas.getContext('2d')
-  ctx.font = `${VR_FONT_SIZE}px ${VR_FONT}`
+  ctx.font = `${IF_FONT_SIZE}px ${VR_FONT}`
   return ctx.measureText(text).width
 }
 
@@ -332,48 +334,6 @@ function stadiumEdge(cx, cy, hw, hh, tx, ty) {
   return { x: cx + dx * t, y: cy + dy * t }
 }
 
-/**
- * Best cardinal anchor on a role box facing (tx, ty).
- * Mirrors roleAnchor() from RoleConnectors.jsx — duplicated to avoid circular imports.
- */
-function computeRoleAnchor(fact, roleIndex, tx, ty) {
-  const n      = Math.max(fact.arity, 1)
-  const dro    = displayRoleOrder(fact)
-  const posIdx = dro.indexOf(roleIndex)
-  const isFirst = posIdx === 0
-  const isLast  = posIdx === n - 1
-  if (fact.orientation === 'vertical') {
-    const totalH   = n * ROLE_W + (n - 1) * ROLE_GAP
-    const startY   = fact.y - totalH / 2
-    const roleTopY = startY + posIdx * (ROLE_W + ROLE_GAP)
-    const leftX    = fact.x - ROLE_H / 2
-    const cx       = fact.x
-    const cy       = roleTopY + ROLE_W / 2
-    const cands = [
-      { x: cx,             y: roleTopY,          side: 'N' },
-      { x: cx,             y: roleTopY + ROLE_W, side: 'S' },
-      { x: leftX,          y: cy,                side: 'W' },
-      { x: leftX + ROLE_H, y: cy,                side: 'E' },
-    ].filter(c => !(c.side === 'N' && !isFirst) && !(c.side === 'S' && !isLast))
-    let best = cands[0], bd = Infinity
-    for (const p of cands) { const d = (p.x-tx)**2+(p.y-ty)**2; if (d < bd) { bd=d; best=p } }
-    return best
-  }
-  const startX = fact.x - (n * ROLE_W + (n - 1) * ROLE_GAP) / 2
-  const roleX  = startX + posIdx * (ROLE_W + ROLE_GAP)
-  const roleY  = fact.y - ROLE_H / 2
-  const cx     = roleX + ROLE_W / 2
-  const cy     = roleY + ROLE_H / 2
-  const cands = [
-    { x: cx,             y: roleY,          side: 'N' },
-    { x: cx,             y: roleY + ROLE_H, side: 'S' },
-    { x: roleX,          y: cy,             side: 'W' },
-    { x: roleX + ROLE_W, y: cy,             side: 'E' },
-  ].filter(c => !(c.side === 'E' && !isLast) && !(c.side === 'W' && !isFirst))
-  let best = cands[0], bd = Infinity
-  for (const p of cands) { const d = (p.x-tx)**2+(p.y-ty)**2; if (d < bd) { bd=d; best=p } }
-  return best
-}
 
 const BAR_H       = 3    // stroke width of each uniqueness bar
 const BAR_MARGIN  = 4    // gap between top of role box and lowest bar
@@ -1102,8 +1062,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const preferredKeys = new Set((fact.preferredUniqueness || []).map(pu => JSON.stringify([...pu].sort((a, b) => a - b))))
   if (fact._implicit) {
     const il = store.facts.find(f => f.id === fact._parentFactId)?.implicitLinks?.find(il => il.roleIndex === fact._implicitRoleIndex)
-    if (il?.preferredUniqueness) {
-      fact.uniqueness.forEach(u => preferredKeys.add(JSON.stringify([...u].sort((a, b) => a - b))))
+    if (Array.isArray(il?.preferredUniqueness)) {
+      il.preferredUniqueness.forEach(pu => preferredKeys.add(JSON.stringify([...pu].sort((a, b) => a - b))))
     }
   }
   const pIndices = fact.uniqueness
@@ -1218,7 +1178,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     if (fact._implicit) {
       const alreadySelected = store.selectedUniqueness?.factId === fact._parentFactId && store.selectedUniqueness?.roleIndex === fact._implicitRoleIndex && store.selectedUniqueness?.uIndex === ui
       if (alreadySelected) store.clearSelection()
-      else store.selectImplicitLinkUniqueness(fact._parentFactId, fact._implicitRoleIndex)
+      else store.selectImplicitLinkUniqueness(fact._parentFactId, fact._implicitRoleIndex, ui)
       return
     }
     const alreadySelected = store.selectedUniqueness?.factId === fact.id && store.selectedUniqueness?.uIndex === ui
@@ -2411,7 +2371,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
           <text x={textX} y={textY}
             textAnchor="middle" dominantBaseline="middle"
-            fill={vrFill} fontSize={11} fontFamily={VR_FONT}
+            fill={vrFill} fontSize={VR_FONT_SIZE} fontFamily={VR_FONT}
             style={{ cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none' }}
             onMouseDown={e => {
               e.stopPropagation()
@@ -2470,7 +2430,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
           <text x={textX} y={textY}
             textAnchor="middle" dominantBaseline="middle"
-            fill={crFill} fontSize={11} fontFamily={VR_FONT}
+            fill={crFill} fontSize={VR_FONT_SIZE} fontFamily={VR_FONT}
             style={{ cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none' }}
             onMouseDown={e => {
               e.stopPropagation()
@@ -2545,7 +2505,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
               }
             }
             return roles.map(ri => {
-              const anchor = computeRoleAnchor(fact, ri, cx, cy)
+              const anchor = roleAnchor(fact, ri, cx, cy)
               const edge   = stadiumEdge(cx, cy, hw, IF_CIRCLE_R, anchor.x, anchor.y)
               return <line key={ri} x1={edge.x} y1={edge.y} x2={anchor.x} y2={anchor.y}
                 stroke={col} strokeWidth={1.2} strokeDasharray="4 2" opacity={0.75}
@@ -2555,7 +2515,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           {fr ? (
             // Range defined: show only the text label (no border)
             <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
-              fontSize={VR_FONT_SIZE} fill={col} fontFamily={VR_FONT}
+              fontSize={IF_FONT_SIZE} fill={col} fontFamily={VR_FONT}
               style={{ cursor: isDragging ? 'grabbing' : 'grab', userSelect: 'none' }}
               {...handlers}>
               {fr}
@@ -2598,7 +2558,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
               }
             }
             return roles.map(ri => {
-              const anchor = computeRoleAnchor(fact, ri, cx, cy)
+              const anchor = roleAnchor(fact, ri, cx, cy)
               const edge   = stadiumEdge(cx, cy, IF_CIRCLE_R, IF_CIRCLE_R, anchor.x, anchor.y)
               return <line key={ri} x1={edge.x} y1={edge.y} x2={anchor.x} y2={anchor.y}
                 stroke="var(--accent)" strokeWidth={1.2} strokeDasharray="4 2" opacity={0.75}

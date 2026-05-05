@@ -8,9 +8,9 @@ import { EXTERNAL_CONSTRAINT_TYPES } from '../constants.js'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 
 const CONSTRAINT_R = 14        // radius of standard constraint circle
-const EXTERNAL_CONSTRAINT_R = 8 // radius of external constraint circle (2× mandatory dot)
+const EXTERNAL_CONSTRAINT_R = 10 // radius of external constraint circle
 
-const FREQ_FONT_SIZE = 9
+const FREQ_FONT_SIZE = 13
 const FREQ_PAD_X     = 6   // horizontal padding inside stadium, each side
 
 let _freqCanvas = null
@@ -953,7 +953,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
             {!EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) && c.constraintType !== 'ring' && (
               <text x={c.x} y={c.y}
                 textAnchor="middle" dominantBaseline="central"
-                fontSize={c.constraintType === 'ring' ? 14 : 11}
+                fontSize={c.constraintType === 'ring' ? 14 : 13}
                 fill={color}
                 fontFamily="var(--font-mono)"
                 fontWeight={600}
@@ -984,7 +984,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
                   {/* Symbol — Equality and Subset */}
                   {(c.constraintType === 'equality' || c.constraintType === 'subset') && (
                     <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central"
-                      fontSize={11} fill={isCandidate ? 'var(--col-candidate)' : color}
+                      fontSize={13} fill={isCandidate ? 'var(--col-candidate)' : color}
                       fontFamily="var(--font-mono)" fontWeight={600}
                       style={{ pointerEvents: 'none' }}>
                       {c.constraintType === 'equality' ? '=' : '⊆'}
@@ -993,12 +993,12 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
                   {/* Symbol + dots — Value Comparison */}
                   {c.constraintType === 'valueComparison' && (
                     <>
-                      <circle cx={c.x - EXTERNAL_CONSTRAINT_R} cy={c.y} r={2}
+                      <circle cx={c.x - EXTERNAL_CONSTRAINT_R} cy={c.y} r={3}
                         fill={isCandidate ? 'var(--col-candidate)' : color}/>
-                      <circle cx={c.x + EXTERNAL_CONSTRAINT_R} cy={c.y} r={2}
+                      <circle cx={c.x + EXTERNAL_CONSTRAINT_R} cy={c.y} r={3}
                         fill={isCandidate ? 'var(--col-candidate)' : color}/>
                       <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central"
-                        fontSize={11} fill={isCandidate ? 'var(--col-candidate)' : color}
+                        fontSize={13} fill={isCandidate ? 'var(--col-candidate)' : color}
                         fontFamily="var(--font-mono)" fontWeight={600}
                         style={{ pointerEvents: 'none' }}>
                         {c.operator ?? '='}

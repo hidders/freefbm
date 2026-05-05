@@ -168,13 +168,18 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
     setEditingRef(false)
   }, [draftRef, ot.id, store])
 
+  const commitEditRef = useRef(commitEdit)
+  const commitRefEditRef = useRef(commitRefEdit)
+  useEffect(() => { commitEditRef.current = commitEdit },   [commitEdit])
+  useEffect(() => { commitRefEditRef.current = commitRefEdit }, [commitRefEdit])
+
   // Stop editing when the node is deselected
   useEffect(() => {
     if (!isSelected) {
-      if (editing) commitEdit()
-      if (editingRef) commitRefEdit()
+      if (editing)    commitEditRef.current()
+      if (editingRef) commitRefEditRef.current()
     }
-  }, [isSelected]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isSelected, editing, editingRef])
 
   // Commit name edit when user clicks outside the foreignObject
   useEffect(() => {
@@ -427,7 +432,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
         const connY = ot.y + dyL * tBox
 
         // Border point on the label box toward the OT
-        const VR_PAD_X = 3, VR_PAD_Y = 3, VR_FONT_SIZE = 11
+        const VR_PAD_X = 3, VR_PAD_Y = 3, VR_FONT_SIZE = 13
         const halfW = measureText(vr, VR_FONT_SIZE) / 2 + VR_PAD_X
         const halfH = VR_FONT_SIZE / 2 + VR_PAD_Y
         const dxB = connX - tx, dyB = connY - ty
@@ -496,7 +501,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
         const connX = ot.x + dxL * tBox
         const connY = ot.y + dyL * tBox
 
-        const VR_PAD_X = 3, VR_PAD_Y = 3, VR_FONT_SIZE = 11
+        const VR_PAD_X = 3, VR_PAD_Y = 3, VR_FONT_SIZE = 13
         const halfW = measureText(cr, VR_FONT_SIZE) / 2 + VR_PAD_X
         const halfH = VR_FONT_SIZE / 2 + VR_PAD_Y
         const dxB = connX - tx, dyB = connY - ty

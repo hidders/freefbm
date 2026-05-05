@@ -42,6 +42,10 @@ export default function Minimap() {
     return () => obs.disconnect()
   }, [])
 
+  useEffect(() => {
+    return () => { if (animTimerRef.current) clearTimeout(animTimerRef.current) }
+  }, [])
+
   const defaultX = winW - MM_W - 250   // leave room for inspector (240px) + gap
   // Sit above the pill row (status bar 26px + gap 8px + pill HDR_H) with an 8px gap
   const pillRowTop = winH - 26 - 8 - HDR_H
