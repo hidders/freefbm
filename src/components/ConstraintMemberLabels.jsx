@@ -1,7 +1,7 @@
 import React from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
-import { roleCenter } from './FactTypeNode'
+import { roleCenter, makeImplicitLinkFact } from './FactTypeNode'
 import { entityBounds } from './ObjectTypeNode'
 
 // Constraint types for which sequence-membership labels are shown on the canvas
@@ -38,6 +38,17 @@ export default function ConstraintMemberLabels() {
   if (sequences.length === 0) return null
 
   const factMap    = Object.fromEntries(visibleFacts.map(f  => [f.id,  f]))
+  // Add synthetic implied link facts so member labels can resolve them
+  store.facts.filter(f => f.objectified).forEach(f => {
+    if (factMap[f.id]) {
+      (f.implicitLinks || []).forEach(il => {
+        if (store.isImplicitLinkShown(f.id, il.roleIndex)) {
+          const synth = makeImplicitLinkFact(f, il)
+          factMap[synth.id] = synth
+        }
+      })
+    }
+  })
   const subtypeMap = Object.fromEntries(subtypes.map(st => [st.id, st]))
   const otMap      = Object.fromEntries(objectTypes.map(o  => [o.id,  o]))
 
