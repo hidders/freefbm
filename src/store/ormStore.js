@@ -484,6 +484,21 @@ export const useOrmStore = create((set, get) => ({
     ]
     const closedIds = closeUnderPrinciple3(clipBaseIds, { facts, objectTypes })
 
+    // Collect implied links that need to be shown (from pasted constraints)
+    const impliedLinksToShow = new Set()
+    for (const c of clipboard.constraints) {
+      if (c.sequences) {
+        for (const seq of c.sequences) {
+          for (const m of seq) {
+            if (m.kind === 'role' && m.factId && m.factId.includes('_il_')) {
+              const parts = m.factId.split('_il_')
+              if (parts.length === 2) impliedLinksToShow.add(`${parts[0]}:${Number(parts[1])}`)
+            }
+          }
+        }
+      }
+    }
+
     const toAdd = [
       ...[...closedIds]
         .filter(id => !existingIds.has(id))
@@ -492,7 +507,7 @@ export const useOrmStore = create((set, get) => ({
       ...clipboard.constraints.filter(c => !existingIds.has(c.id)),
     ]
 
-    if (toAdd.length === 0) return
+    if (toAdd.length === 0 && impliedLinksToShow.size === 0) return
 
     const addIds = toAdd.map(el => el.id)
     const singleEl = toAdd.length === 1 ? toAdd[0] : null
@@ -502,13 +517,27 @@ export const useOrmStore = create((set, get) => ({
       : null
 
     set(s => {
-      const updatedDiagrams = s.diagrams.map(d => d.id !== activeDiagramId ? d : {
-        ...d,
-        elementIds: d.elementIds === null ? null : [...d.elementIds, ...addIds],
-        positions: {
+      const updatedDiagrams = s.diagrams.map(d => {
+        if (d.id !== activeDiagramId) return d
+
+        const elementIds = d.elementIds === null ? null : [...d.elementIds, ...addIds]
+        const positions = {
           ...d.positions,
           ...Object.fromEntries(toAdd.map(el => [el.id, d.positions[el.id] ?? { x: el.x, y: el.y }])),
-        },
+        }
+
+        // Add implied links to shownImplicitLinks
+        const shown = d.shownImplicitLinks || []
+        const newShown = new Set(shown)
+        for (const ilKey of impliedLinksToShow) newShown.add(ilKey)
+        const shownChanged = newShown.size !== shown.length || [...newShown].some(k => !shown.includes(k))
+
+        return {
+          ...d,
+          elementIds,
+          positions,
+          shownImplicitLinks: shownChanged ? [...newShown] : shown,
+        }
       })
       return {
         diagrams: syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts),
@@ -1888,15 +1917,114 @@ export const useOrmStore = create((set, get) => ({
 
   addConstraint(type, x, y) {
     const c = mkConstraint(type, Math.round(x), Math.round(y))
-    set(s => ({
-      constraints: [...s.constraints, c],
-      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
-        ...d,
-        elementIds: d.elementIds === null ? null : [...d.elementIds, c.id],
-        positions:  { ...d.positions, [c.id]: { x: c.x, y: c.y } },
-      }),
-      isDirty: true, selectedId: c.id, selectedKind: 'constraint',
-    }))
+    set(s => {
+      // BFS to collect all OT/fact IDs that must accompany the new constraint in the diagram,
+      // plus implied links that need to be shown.
+      const idsToAdd = new Set()
+      const impliedLinksToShow = new Set()
+      const visited  = new Set()
+      const queue    = [c.id]
+
+      // Seed visited with existing OT and fact IDs so we don't re-queue them
+      for (const o of s.objectTypes) visited.add(o.id)
+      for (const f of s.facts) visited.add(f.id)
+
+      // Temporarily add the new constraint so BFS can find it
+      const tempConstraints = [...s.constraints, c]
+
+      while (queue.length > 0) {
+        const id = queue.shift()
+        if (visited.has(id)) continue
+        visited.add(id)
+
+        const con = tempConstraints.find(x => x.id === id)
+        if (con) {
+          // Queue all referenced facts, subtypes, and target OT
+          if (con.roleSequences)
+            for (const seq of con.roleSequences)
+              for (const ref of seq)
+                if (ref.factId && !visited.has(ref.factId)) queue.push(ref.factId)
+          if (con.sequences)
+            for (const seq of con.sequences)
+              for (const m of seq) {
+                if (m.kind === 'role' && m.factId && !visited.has(m.factId)) queue.push(m.factId)
+                if (m.kind === 'subtype' && m.subtypeId) {
+                  const st = s.subtypes.find(x => x.id === m.subtypeId)
+                  if (st) {
+                    if (!visited.has(st.subId)) queue.push(st.subId)
+                    if (!visited.has(st.superId)) queue.push(st.superId)
+                  }
+                }
+              }
+          if (con.targetObjectTypeId && !visited.has(con.targetObjectTypeId))
+            queue.push(con.targetObjectTypeId)
+          continue
+        }
+
+        // Check if this is an implied link fact ID (e.g. "abc_il_0")
+        if (typeof id === 'string' && id.includes('_il_')) {
+          const parts = id.split('_il_')
+          if (parts.length === 2) {
+            const parentFactId = parts[0]
+            const roleIndex = Number(parts[1])
+            impliedLinksToShow.add(`${parentFactId}:${roleIndex}`)
+            if (!visited.has(parentFactId)) queue.push(parentFactId)
+            // Queue the associated object type
+            const parentFact = s.facts.find(f => f.id === parentFactId)
+            if (parentFact && parentFact.roles[roleIndex]?.objectTypeId) {
+              const assocId = parentFact.roles[roleIndex].objectTypeId
+              if (!visited.has(assocId)) queue.push(assocId)
+            }
+            continue
+          }
+        }
+
+        // OT or fact
+        const el = s.objectTypes.find(o => o.id === id) ?? s.facts.find(f => f.id === id)
+        if (el) {
+          idsToAdd.add(id)
+          const fact = s.facts.find(f => f.id === id)
+          if (fact)
+            for (const r of fact.roles)
+              if (r.objectTypeId && !visited.has(r.objectTypeId)) queue.push(r.objectTypeId)
+        }
+      }
+
+      // Update diagrams: add the constraint and all its dependencies
+      const updatedDiagrams = s.diagrams.map(d => {
+        if (d.id !== s.activeDiagramId) return d
+
+        let elementIds = d.elementIds === null ? null : [...d.elementIds, c.id]
+        let positions  = { ...d.positions, [c.id]: { x: c.x, y: c.y } }
+
+        for (const id of idsToAdd) {
+          if (elementIds !== null && elementIds.includes(id)) continue
+          const el = s.objectTypes.find(o => o.id === id) ?? s.facts.find(f => f.id === id)
+          if (!el) continue
+          if (elementIds !== null) elementIds = [...elementIds, id]
+          positions = { ...positions, [id]: positions[id] ?? { x: el.x, y: el.y } }
+        }
+
+        // Add implied links to shownImplicitLinks
+        const shown = d.shownImplicitLinks || []
+        const newShown = new Set(shown)
+        for (const ilKey of impliedLinksToShow) newShown.add(ilKey)
+        const shownChanged = newShown.size !== shown.length || [...newShown].some(k => !shown.includes(k))
+
+        return {
+          ...d,
+          elementIds,
+          positions,
+          shownImplicitLinks: shownChanged ? [...newShown] : shown,
+        }
+      })
+
+      return {
+        constraints: [...s.constraints, c],
+        diagrams: syncConstraints(updatedDiagrams, tempConstraints, s.subtypes, s.facts),
+        isDirty: true, selectedId: c.id, selectedKind: 'constraint',
+      }
+    })
     return c.id
   },
 
@@ -2663,12 +2791,15 @@ export const useOrmStore = create((set, get) => ({
   addElementToDiagram(elementId, diagramId) {
     set(s => {
       // BFS to collect all OT/fact IDs that must accompany elementId in the diagram.
+      // Also tracks implied links that need to be shown.
       //
-      // • OT / fact   → add it; for facts also queue all role-player OTs (principle 3)
-      // • Subtype     → queue both endpoint OTs (subtype itself is implicit in diagrams)
-      // • Constraint  → queue all referenced facts + subtype endpoints;
-      //                 the constraint itself is added automatically by syncConstraints
+      // • OT / fact           → add it; for facts also queue all role-player OTs (principle 3)
+      // • Subtype             → queue both endpoint OTs (subtype itself is implicit in diagrams)
+      // • Constraint          → queue all referenced facts (including implied link parent facts),
+      //                         subtype endpoints, target OT; constraint itself added by syncConstraints
+      // • Implied link factId → parse "factId_il_roleIndex", queue parent fact, mark implied link shown
       const idsToAdd = new Set()
+      const impliedLinksToShow = new Set() // "factId:roleIndex"
       const visited  = new Set()
       const queue    = [elementId]
 
@@ -2693,12 +2824,33 @@ export const useOrmStore = create((set, get) => ({
           if (con.sequences)
             for (const seq of con.sequences)
               for (const m of seq) {
-                if (m.kind === 'role'    && m.factId    && !visited.has(m.factId))    queue.push(m.factId)
+                if (m.kind === 'role' && m.factId) {
+                  if (!visited.has(m.factId)) queue.push(m.factId)
+                }
                 if (m.kind === 'subtype' && m.subtypeId && !visited.has(m.subtypeId)) queue.push(m.subtypeId)
               }
           if (con.targetObjectTypeId && !visited.has(con.targetObjectTypeId))
             queue.push(con.targetObjectTypeId)
-          continue  // constraint itself handled by syncConstraints below
+          continue
+        }
+
+        // Check if this is an implied link fact ID (e.g. "abc_il_0")
+        if (typeof id === 'string' && id.includes('_il_')) {
+          const parts = id.split('_il_')
+          if (parts.length === 2) {
+            const parentFactId = parts[0]
+            const roleIndex = Number(parts[1])
+            impliedLinksToShow.add(`${parentFactId}:${roleIndex}`)
+            // Queue the parent fact so it gets added to the diagram
+            if (!visited.has(parentFactId)) queue.push(parentFactId)
+            // Queue the associated object type (role 1 of the implied link = the OT from the parent fact's role)
+            const parentFact = s.facts.find(f => f.id === parentFactId)
+            if (parentFact && parentFact.roles[roleIndex]?.objectTypeId) {
+              const assocId = parentFact.roles[roleIndex].objectTypeId
+              if (!visited.has(assocId)) queue.push(assocId)
+            }
+            continue
+          }
         }
 
         // OT or fact
@@ -2729,7 +2881,18 @@ export const useOrmStore = create((set, get) => ({
           positions = { ...positions, [id]: positions[id] ?? { x: el.x, y: el.y } }
         }
 
-        return { ...d, elementIds, positions }
+        // Add implied links to shownImplicitLinks
+        const shown = d.shownImplicitLinks || []
+        const newShown = new Set(shown)
+        for (const ilKey of impliedLinksToShow) newShown.add(ilKey)
+        const shownChanged = newShown.size !== shown.length || [...newShown].some(k => !shown.includes(k))
+
+        return {
+          ...d,
+          elementIds,
+          positions,
+          shownImplicitLinks: shownChanged ? [...newShown] : shown,
+        }
       })
 
       // Select all newly added OT/fact IDs as multi-selection (including synced constraints)
