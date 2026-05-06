@@ -1794,8 +1794,8 @@ export const useOrmStore = create((set, get) => ({
     const fromMenu = get().tool === 'connectConstraint'
     set({ sequenceConstruction: null, tool: 'select',
       ...(fromMenu ? { selectedId: null, selectedKind: null } : {}) })
-    set(s => ({
-      constraints: s.constraints.map(c => {
+    set(s => {
+      const newConstraints = s.constraints.map(c => {
         if (c.id !== constraintId) return c
         let sequences = (c.sequences || []).map(g => [...g])
         for (const { sequenceIndex, member } of collected) {
@@ -1807,9 +1807,13 @@ export const useOrmStore = create((set, get) => ({
           }
         }
         return { ...c, sequences }
-      }),
-      isDirty: true,
-    }))
+      })
+      return {
+        constraints: newConstraints,
+        diagrams: syncConstraints(s.diagrams, newConstraints, s.subtypes, s.facts),
+        isDirty: true,
+      }
+    })
   },
 
   abandonSequenceConstruction() {
@@ -1836,27 +1840,35 @@ export const useOrmStore = create((set, get) => ({
   clearConstraintHighlight() { if (get().constraintHighlight !== null) set({ constraintHighlight: null }) },
 
   removeConstraintSequencePosition(constraintId, position) {
-    set(s => ({
-      constraints: s.constraints.map(c => {
+    set(s => {
+      const newConstraints = s.constraints.map(c => {
         if (c.id !== constraintId) return c
         const sequences = (c.sequences || [])
           .map(g => g.filter((_, i) => i !== position))
           .filter(g => g.length > 0)
         return { ...c, sequences }
-      }),
-      isDirty: true,
-    }))
+      })
+      return {
+        constraints: newConstraints,
+        diagrams: syncConstraints(s.diagrams, newConstraints, s.subtypes, s.facts),
+        isDirty: true,
+      }
+    })
   },
 
   removeConstraintSequence(constraintId, sequenceIndex) {
-    set(s => ({
-      constraints: s.constraints.map(c => {
+    set(s => {
+      const newConstraints = s.constraints.map(c => {
         if (c.id !== constraintId) return c
         const sequences = (c.sequences || []).filter((_, i) => i !== sequenceIndex)
         return { ...c, sequences }
-      }),
-      isDirty: true,
-    }))
+      })
+      return {
+        constraints: newConstraints,
+        diagrams: syncConstraints(s.diagrams, newConstraints, s.subtypes, s.facts),
+        isDirty: true,
+      }
+    })
   },
 
   swapConstraintSequences(constraintId) {
@@ -1889,10 +1901,14 @@ export const useOrmStore = create((set, get) => ({
   },
 
   updateConstraint(id, patch) {
-    set(s => ({
-      constraints: s.constraints.map(c => c.id === id ? { ...c, ...patch } : c),
-      isDirty: true,
-    }))
+    set(s => {
+      const newConstraints = s.constraints.map(c => c.id === id ? { ...c, ...patch } : c)
+      return {
+        constraints: newConstraints,
+        diagrams: syncConstraints(s.diagrams, newConstraints, s.subtypes, s.facts),
+        isDirty: true,
+      }
+    })
   },
 
   moveConstraint(id, x, y) {
@@ -1907,8 +1923,8 @@ export const useOrmStore = create((set, get) => ({
 
   addRoleToConstraintSequence(constraintId, sequenceIndex, factId, roleIndex) {
     if (factId.includes('_il_') && roleIndex !== 0) return
-    set(s => ({
-      constraints: s.constraints.map(c => {
+    set(s => {
+      const newConstraints = s.constraints.map(c => {
         if (c.id !== constraintId) return c
         const roleSequences = c.roleSequences.map((g, gi) =>
           gi === sequenceIndex
@@ -1917,9 +1933,13 @@ export const useOrmStore = create((set, get) => ({
             : g
         )
         return { ...c, roleSequences }
-      }),
-      isDirty: true,
-    }))
+      })
+      return {
+        constraints: newConstraints,
+        diagrams: syncConstraints(s.diagrams, newConstraints, s.subtypes, s.facts),
+        isDirty: true,
+      }
+    })
   },
 
   deleteConstraint(id) {
