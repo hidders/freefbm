@@ -42,7 +42,9 @@
       "Bash(gh release create v0.0.8 --repo hidders/factum --title v0.0.8 --notes ':*)",
       "Bash(gh release:*)",
       "Bash(gh repo:*)",
-      "Bash(gh run:*)"
+      "Bash(gh run:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.github.com)"
     ]
   }
 }

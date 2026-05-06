@@ -177,54 +177,103 @@ function computeCascadeRemove(startId, facts) {
 // ── constraint auto-sync ──────────────────────────────────────────────────────
 // Returns the set of constraint IDs that are eligible for a given elementId set.
 // A constraint is eligible when every fact/OT/subtype-endpoint it refers to is present.
-function eligibleConstraints(constraints, subtypes, elementIdSet) {
+// For implied link fact IDs (e.g. "abc_il_0"), checks that the parent fact is in the
+// diagram and the implied link is shown in shownImplicitLinks.
+function eligibleConstraints(constraints, subtypes, elementIdSet, facts, shownImplicitLinks) {
+  const factMap = facts ? Object.fromEntries(facts.map(f => [f.id, f])) : {}
   return constraints.filter(c => {
-    const factIds    = new Set()
-    const otIds      = new Set()
-    const subtypeIds = new Set()
+    const deps = [] // [{ kind: 'fact', id }, { kind: 'impliedLink', factId, roleIndex }, { kind: 'subtype', id }, { kind: 'ot', id }]
 
     if (c.sequences != null) {
       for (const seq of c.sequences) {
         for (const m of seq) {
-          if (m.kind === 'role'    && m.factId)    factIds.add(m.factId)
-          if (m.kind === 'subtype' && m.subtypeId) subtypeIds.add(m.subtypeId)
+          if (m.kind === 'role' && m.factId) {
+            if (m.factId.includes('_il_')) {
+              const parts = m.factId.split('_il_')
+              if (parts.length === 2) deps.push({ kind: 'impliedLink', factId: parts[0], roleIndex: Number(parts[1]) })
+            } else {
+              deps.push({ kind: 'fact', id: m.factId })
+            }
+          }
+          if (m.kind === 'subtype' && m.subtypeId) deps.push({ kind: 'subtype', id: m.subtypeId })
         }
       }
     } else if (c.roleSequences != null) {
       for (const seq of c.roleSequences) {
         for (const ref of seq) {
-          if (ref.factId) factIds.add(ref.factId)
+          if (ref.factId) {
+            if (ref.factId.includes('_il_')) {
+              const parts = ref.factId.split('_il_')
+              if (parts.length === 2) deps.push({ kind: 'impliedLink', factId: parts[0], roleIndex: Number(parts[1]) })
+            } else {
+              deps.push({ kind: 'fact', id: ref.factId })
+            }
+          }
         }
       }
     }
-    if (c.targetObjectTypeId) otIds.add(c.targetObjectTypeId)
+    if (c.targetObjectTypeId) deps.push({ kind: 'ot', id: c.targetObjectTypeId })
 
-    // Must refer to at least one thing
-    if (factIds.size === 0 && otIds.size === 0 && subtypeIds.size === 0) return false
+    // No connectors → not eligible for auto-add (but should persist if already in diagram)
+    if (deps.length === 0) return false
 
-    for (const id of factIds)    { if (!elementIdSet.has(id)) return false }
-    for (const id of otIds)      { if (!elementIdSet.has(id)) return false }
-    for (const id of subtypeIds) {
-      const st = subtypes.find(s => s.id === id)
-      if (!st || !elementIdSet.has(st.subId) || !elementIdSet.has(st.superId)) return false
+    // Check all dependencies
+    for (const dep of deps) {
+      if (dep.kind === 'fact') {
+        if (!elementIdSet.has(dep.id)) return false
+      } else if (dep.kind === 'impliedLink') {
+        if (!elementIdSet.has(dep.factId)) return false
+        if (!shownImplicitLinks || !shownImplicitLinks.includes(`${dep.factId}:${dep.roleIndex}`)) return false
+      } else if (dep.kind === 'subtype') {
+        const st = subtypes.find(s => s.id === dep.id)
+        if (!st || !elementIdSet.has(st.subId) || !elementIdSet.has(st.superId)) return false
+      } else if (dep.kind === 'ot') {
+        if (!elementIdSet.has(dep.id)) return false
+      }
     }
     return true
   })
 }
 
+// Returns true if a constraint has no connectors (no sequences/roleSequences and no targetObjectTypeId).
+function hasNoConnectors(c) {
+  if (c.targetObjectTypeId) return false
+  if (c.sequences != null) {
+    return (c.sequences || []).every(seq => seq.length === 0)
+  }
+  if (c.roleSequences != null) {
+    return (c.roleSequences || []).every(seq => seq.length === 0)
+  }
+  return true
+}
+
 // Recomputes which constraints belong in each diagram based on what elements are present.
-// Constraints are never manually managed — they follow their referred elements automatically.
-function syncConstraints(diagrams, constraints, subtypes) {
+// Constraints with connectors follow their referred elements automatically.
+// Constraints with no connectors persist in the diagram until explicitly removed.
+function syncConstraints(diagrams, constraints, subtypes, facts) {
   return diagrams.map(d => {
     if (d.elementIds === null) return d   // show-all diagram: no sync needed
 
-    // Strip all constraint ids, then re-add eligible ones
-    const nonConstraintIds = d.elementIds.filter(id => !constraints.find(c => c.id === id))
-    const nonConstraintSet = new Set(nonConstraintIds)
-    const eligible         = eligibleConstraints(constraints, subtypes, nonConstraintSet)
+    const shownImplicitLinks = d.shownImplicitLinks || []
+    const constraintIdSet = new Set(constraints.map(c => c.id))
+
+    // Separate existing constraints into connectorless and connectorful
+    const existingConstraintIds = d.elementIds.filter(id => constraintIdSet.has(id))
+    const connectorlessExisting = existingConstraintIds.filter(id => {
+      const c = constraints.find(cc => cc.id === id)
+      return c && hasNoConnectors(c)
+    })
+
+    // Non-constraint IDs + existing connectorless constraints should always stay
+    const nonConstraintIds = d.elementIds.filter(id => !constraintIdSet.has(id))
+    const mustKeep = new Set([...nonConstraintIds, ...connectorlessExisting])
+    const mustKeepSet = mustKeep
+
+    // Compute eligible constraints (those with connectors whose deps are all present)
+    const eligible = eligibleConstraints(constraints, subtypes, mustKeepSet, facts, shownImplicitLinks)
 
     const newElementIds = [
-      ...nonConstraintIds,
+      ...mustKeep,
       ...eligible.map(c => c.id),
     ]
 
@@ -462,7 +511,7 @@ export const useOrmStore = create((set, get) => ({
         },
       })
       return {
-        diagrams: syncConstraints(updatedDiagrams, s.constraints, s.subtypes),
+        diagrams: syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts),
         selectedId:       addIds.length === 1 ? addIds[0] : null,
         selectedKind:     addIds.length === 1 ? singleKind : null,
         multiSelectedIds: addIds.length  >  1 ? addIds : [],
@@ -1421,7 +1470,7 @@ export const useOrmStore = create((set, get) => ({
 
       return {
         facts:   newFacts,
-        diagrams: syncConstraints(updatedDiagrams, s.constraints, s.subtypes),
+        diagrams: syncConstraints(updatedDiagrams, s.constraints, s.subtypes, newFacts),
         isDirty: true,
       }
     })
@@ -1515,17 +1564,20 @@ export const useOrmStore = create((set, get) => ({
     const s = get()
     const diag = s.diagrams.find(d => d.id === s.activeDiagramId)
     const isShown = diag?.shownImplicitLinks?.includes(key) ?? false
-    set(s2 => ({
-      diagrams: s2.diagrams.map(d => {
+    set(s2 => {
+      const updatedDiagrams = s2.diagrams.map(d => {
         if (d.id !== s2.activeDiagramId) return d
         const shown = d.shownImplicitLinks || []
         return {
           ...d,
           shownImplicitLinks: isShown ? shown.filter(k => k !== key) : [...shown, key],
         }
-      }),
-      isDirty: true,
-    }))
+      })
+      return {
+        diagrams: syncConstraints(updatedDiagrams, s2.constraints, s2.subtypes, s2.facts),
+        isDirty: true,
+      }
+    })
   },
 
   isImplicitLinkShown(factId, roleIndex) {
@@ -2664,7 +2716,7 @@ export const useOrmStore = create((set, get) => ({
       const newlyAdded = [...idsToAdd].filter(id =>
         targetDiagram?.elementIds === null ? false : !existingIds.has(id)
       )
-      const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes)
+      const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
       const syncedTarget = syncedDiagrams.find(d => d.id === diagramId)
       const newConstraintIds = (syncedTarget?.elementIds ?? []).filter(id =>
         !existingIds.has(id) && s.constraints.some(c => c.id === id)
@@ -2699,7 +2751,7 @@ export const useOrmStore = create((set, get) => ({
           positions:  Object.fromEntries(Object.entries(d.positions).filter(([k]) => !toRemove.has(k))),
         }
       })
-      const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes)
+      const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
       return {
         diagrams: syncedDiagrams,
         isDirty:  true,
@@ -2744,7 +2796,7 @@ export const useOrmStore = create((set, get) => ({
           shownImplicitLinks: (d.shownImplicitLinks || []).filter(ilKey => !ilKeysToRemove.has(ilKey)),
         }
       })
-      const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes)
+      const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
       return {
         diagrams: syncedDiagrams,
         multiSelectedIds: [],
