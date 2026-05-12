@@ -409,6 +409,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const isRoleValueTool   = store.tool === 'addConstraint:valueRange'
   const isCrTool          = store.tool === 'addConstraint:cardinality'
   const isConnectorTool = isAssignTool || isSubtypeTool || store.tool === 'connectConstraint'
+  const qd = store.queryEditDraft
+  const inQueryEdit = !!qd && !fact._implicit
   const isDraftFrom       = store.linkDraft?.type === 'subtype' && store.linkDraft.fromId === fact.id
   const isAssigning    = store.linkDraft?.type === 'roleAssign'
   const roleFirstDraft = isAssigning && store.linkDraft.factId === fact.id
@@ -508,6 +510,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     }
     if (inConstruction) return  // Enter key confirms; clicking fact body does nothing
     if (inFrequencyConstruction) return  // Enter key confirms
+    if (store.sequenceConstruction) {
+      store.select(fact.id, 'fact')
+      return
+    }
     if (e.shiftKey) {
       store.shiftSelect(fact.id)
       onDragStart(fact.id, fact._implicit ? 'implicitLink' : 'fact', e)
@@ -564,6 +570,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     e.stopPropagation()
     if (e.button !== 0) return
     if (e.detail >= 2) return  // second click of a double-click: do nothing
+    if (inQueryEdit) {
+      store.toggleQueryEditRole(fact.id, roleIndex)
+      return
+    }
     if (fact._implicit) {
       if (store.sequenceConstruction) {
         if (roleIndex !== 0) return
@@ -896,9 +906,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       }
       const nd = nameDragRef.current
       if (nd) {
+        const s = useOrmStore.getState()
+        if (s.sequenceConstruction) { nameDragRef.current = null; return }
         const dx = nd.origDx + (e.clientX - nd.startX) / zoom
         const dy = nd.origDy + (e.clientY - nd.startY) / zoom
-        useOrmStore.getState().updateFactLayout(fact.id, { nameOffset: { dx, dy } })
+        s.updateFactLayout(fact.id, { nameOffset: { dx, dy } })
         nameDragRef.current = null
         setNameLive(null)
       }
@@ -1047,8 +1059,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   }
   const roleIsCandidate = (ri) => {
     if (fact._implicit) return !!gc && !isVcConstruction && ri === 0
+    if (inQueryEdit) return false  // query edit uses its own highlight, not candidate style
     return isRoleCandidate || (isRoleValueTool && vrEligibleRoles.has(ri)) || (isVcConstruction && vcEligibleRoles.has(ri)) || isCrTool
   }
+  const roleInQueryPattern = (ri) => inQueryEdit &&
+    qd.patternRoles.some(r => r.factId === fact.id && r.roleIndex === ri)
   const roleHighlight = isRoleCandidate ? 'var(--fill-candidate)' : '#ffffff'
 
   const isVertical = fact.orientation === 'vertical'
@@ -1369,7 +1384,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     return (
       <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle"
         fontSize={14} fill="var(--ink-3)" fontFamily={FONT}
-        style={{ cursor: isDraggingReading ? 'grabbing' : 'grab', userSelect: 'none' }}
+        style={{ cursor: isDraggingReading ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
         onMouseDown={e => {
           e.stopPropagation()
           readingWasDragged.current = false
@@ -1483,7 +1498,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             <text x={tx} y={ty}
               textAnchor="middle" dominantBaseline="middle"
               fill={nvFill} fontSize={VR_FONT_SIZE} fontFamily={VR_FONT}
-              style={{ cursor: nestedVrLive ? 'grabbing' : 'grab', userSelect: 'none' }}
+              style={{ cursor: nestedVrLive ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
               onMouseDown={e => {
                 e.stopPropagation()
                 nestedVrWasDragged.current = false
@@ -1544,7 +1559,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             <text x={tx} y={ty}
               textAnchor="middle" dominantBaseline="middle"
               fill={ncFill} fontSize={VR_FONT_SIZE} fontFamily={VR_FONT}
-              style={{ cursor: nestedCrLive ? 'grabbing' : 'grab', userSelect: 'none' }}
+              style={{ cursor: nestedCrLive ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
               onMouseDown={e => {
                 e.stopPropagation()
                 nestedCrWasDragged.current = false
@@ -1588,7 +1603,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       {/* ── Main fact-type group (role boxes + bars + reading) ───────────────── */}
       <g className="selectable-group" onMouseDown={handleMouseDown} onContextMenu={onContextMenu}
         style={{ cursor: (() => {
-          if (fact._implicit) return 'grab'
+          if (fact._implicit) return isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab'
           if (isElementSelecting(store.tool, store.sequenceConstruction)) {
             if (store.sequenceConstruction) return fact.objectified ? 'pointer' : 'not-allowed'
             if (isUniquenessTool || isFrequencyTool) return 'pointer'
@@ -1697,7 +1712,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                     textAnchor="middle" dominantBaseline="middle"
                     fontSize={18} fontFamily={FONT}
                     fill={nestedCol}
-                    style={{ cursor: nameLive ? 'grabbing' : 'grab', userSelect: 'none' }}
+                    style={{ cursor: nameLive ? 'grabbing' : isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'none' : 'auto' }}
                     onMouseDown={e => {
                       e.stopPropagation()
                       nameWasDragged.current = false
@@ -1708,7 +1723,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                     onClick={e => {
                       e.stopPropagation()
                       if (nameWasDragged.current) { nameWasDragged.current = false; return }
-                      store.select(fact.id, 'fact')
+                      useOrmStore.getState().select(fact.id, 'fact')
                     }}
                     onDoubleClick={e => {
                       e.stopPropagation()
@@ -1897,7 +1912,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   textAnchor="middle" dominantBaseline="middle"
                   fontSize={18} fontFamily={FONT}
                   fill={nestedCol}
-                  style={{ cursor: nameLive ? 'grabbing' : 'grab', userSelect: 'none' }}
+                  style={{ cursor: nameLive ? 'grabbing' : isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'none' : 'auto' }}
                   onMouseDown={e => {
                     e.stopPropagation()
                     nameWasDragged.current = false
@@ -1908,7 +1923,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   onClick={e => {
                     e.stopPropagation()
                     if (nameWasDragged.current) { nameWasDragged.current = false; return }
-                    store.select(fact.id, 'fact')
+                    useOrmStore.getState().select(fact.id, 'fact')
                   }}
                   onDoubleClick={e => {
                     e.stopPropagation()
@@ -2064,7 +2079,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   <g key={role.id} className="role-box-group" filter={roleSelected ? 'url(#selectGlow)' : undefined}>
                    <rect x={leftX_v} y={ry} width={ROLE_H} height={ROLE_W}
                      fill={
-                       roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
+                       roleInQueryPattern(ri) ? 'var(--fill-query-in)'
+                       : roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
                        : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
                        : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
                        : roleIsCandidate(ri) ? 'var(--fill-candidate)'
@@ -2073,15 +2089,15 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                        : highlightedRoles?.has(ri) ? '#fde3c8'
                        : '#ffffff'
                      }
-                     stroke={roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : roleIsCandidate(ri) ? 'var(--col-candidate)' : roleStroke}
-                     strokeWidth={roleSelected ? 2 : baseRoleOfIL ? 2 : roleIsCandidate(ri) ? 2 : roleStrokeW}
+                     stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : roleIsCandidate(ri) ? 'var(--col-candidate)' : inQueryEdit ? 'var(--col-query-out)' : roleStroke}
+                     strokeWidth={roleInQueryPattern(ri) ? 2 : roleSelected ? 2 : baseRoleOfIL ? 2 : roleIsCandidate(ri) ? 2 : roleStrokeW}
                     strokeDasharray={fact._implicit ? '4 3' : undefined}
                     onMouseDown={(e)   => handleRoleMouseDown(ri, e)}
                     onDoubleClick={(e) => handleRoleDoubleClick(ri, e)}
                     onContextMenu={(e) => handleRoleContextMenu(ri, e)}
                     onMouseMove={isSimpleSelect ? handleRoleMouseMove : undefined}
                     onMouseLeave={isSimpleSelect ? handleRoleMouseLeave : undefined}
-                     style={{ cursor: getRoleCursor(ri, roleSelected) }}
+                     style={{ cursor: inQueryEdit ? 'pointer' : getRoleCursor(ri, roleSelected) }}
                   />
                 <rect className="hover-ring" x={leftX_v - 3} y={ry - 3} width={ROLE_H + 6} height={ROLE_W + 6}/>
                 {isAssignTool && !role.objectTypeId && (
@@ -2217,7 +2233,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                    <rect
                      x={rx} y={topY} width={ROLE_W} height={ROLE_H}
                      fill={
-                       roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
+                       roleInQueryPattern(ri) ? 'var(--fill-query-in)'
+                       : roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
                        : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
                        : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
                        : roleIsCandidate(ri) ? 'var(--fill-candidate)'
@@ -2226,15 +2243,15 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                        : highlightedRoles?.has(ri) ? '#fde3c8'
                        : '#ffffff'
                      }
-                     stroke={roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : roleIsCandidate(ri) ? 'var(--col-candidate)' : roleStroke}
-                     strokeWidth={roleSelected ? 2 : baseRoleOfIL ? 2 : roleIsCandidate(ri) ? 2 : roleStrokeW}
+                     stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : roleIsCandidate(ri) ? 'var(--col-candidate)' : inQueryEdit ? 'var(--col-query-out)' : roleStroke}
+                     strokeWidth={roleInQueryPattern(ri) ? 2 : roleSelected ? 2 : baseRoleOfIL ? 2 : roleIsCandidate(ri) ? 2 : roleStrokeW}
                     strokeDasharray={fact._implicit ? '4 3' : undefined}
                     onMouseDown={(e)   => handleRoleMouseDown(ri, e)}
                     onDoubleClick={(e) => handleRoleDoubleClick(ri, e)}
                     onContextMenu={(e) => handleRoleContextMenu(ri, e)}
                     onMouseMove={isSimpleSelect ? handleRoleMouseMove : undefined}
                     onMouseLeave={isSimpleSelect ? handleRoleMouseLeave : undefined}
-                     style={{ cursor: getRoleCursor(ri, roleSelected) }}
+                     style={{ cursor: inQueryEdit ? 'pointer' : getRoleCursor(ri, roleSelected) }}
                   />
                 <rect className="hover-ring" x={rx - 3} y={topY - 3} width={ROLE_W + 6} height={ROLE_H + 6}/>
                 {isAssignTool && !role.objectTypeId && (
@@ -2380,7 +2397,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           <text x={textX} y={textY}
             textAnchor="middle" dominantBaseline="middle"
             fill={vrFill} fontSize={VR_FONT_SIZE} fontFamily={VR_FONT}
-            style={{ cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none' }}
+            style={{ cursor: dragging ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
             onMouseDown={e => {
               e.stopPropagation()
               vrWasDragged.current = false
@@ -2439,7 +2456,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           <text x={textX} y={textY}
             textAnchor="middle" dominantBaseline="middle"
             fill={crFill} fontSize={VR_FONT_SIZE} fontFamily={VR_FONT}
-            style={{ cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none' }}
+            style={{ cursor: dragging ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
             onMouseDown={e => {
               e.stopPropagation()
               crWasDragged.current = false
@@ -2524,7 +2541,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             // Range defined: show only the text label (no border)
             <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
               fontSize={IF_FONT_SIZE} fill={col} fontFamily={VR_FONT}
-              style={{ cursor: isDragging ? 'grabbing' : 'grab', userSelect: 'none' }}
+              style={{ cursor: isDragging ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
               {...handlers}>
               {fr}
             </text>
@@ -2533,7 +2550,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             <>
               <circle cx={cx} cy={cy} r={IF_CIRCLE_R}
                 fill="#ffffff" stroke={col} strokeWidth={1.5} strokeDasharray="3 2"
-                style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+                style={{ cursor: isDragging ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab' }}
                 {...handlers}/>
               <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
                 fontSize={9} fill={col} fontFamily="var(--font-mono)" fontWeight={600}
@@ -2575,7 +2592,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           })()}
           <circle cx={cx} cy={cy} r={IF_CIRCLE_R}
             fill="#ffffff" stroke="var(--accent)" strokeWidth={1.5} strokeDasharray="3 2"
-            style={{ cursor: ifConstrLive ? 'grabbing' : 'grab' }}
+            style={{ cursor: ifConstrLive ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab' }}
             onMouseDown={e => {
               e.stopPropagation()
               ifConstrWasDragged.current = false

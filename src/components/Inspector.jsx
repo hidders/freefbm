@@ -2586,6 +2586,102 @@ function ExternalConstraintInspector({ c }) {
         </div>
       )}
 
+      {/* ── Query section (uniqueness only for now) ── */}
+      {c.constraintType === 'uniqueness' && sequences.length > 0 && (() => {
+        const qd = store.queryEditDraft?.constraintId === c.id ? store.queryEditDraft : null
+        const queries = c.queries || []
+        const hasTarget = !!c.targetObjectTypeId
+
+        if (qd) {
+          // Editing banner
+          const validation = store.getQueryEditValidation()
+          return (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ background: 'var(--col-query-in)', color: '#fff', borderRadius: 4,
+                padding: '7px 10px', marginBottom: 8, fontSize: 11 }}>
+                <div style={{ fontWeight: 600, marginBottom: 3 }}>
+                  Editing query for S{qd.sequenceIndex + 1}
+                </div>
+                <div style={{ opacity: 0.9, marginBottom: 6 }}>
+                  Click role boxes and subtype arrows on the canvas to include them in the pattern.
+                  The output role (sequence member) is always included.
+                </div>
+                <div style={{ fontWeight: 600, marginBottom: 6,
+                  color: validation.valid ? '#a7f3d0' : '#fca5a5' }}>
+                  {validation.valid ? '✓ Pattern is valid' : `✗ ${validation.reason || 'Invalid pattern'}`}
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    disabled={!validation.valid}
+                    onClick={() => store.commitQueryEdit()}
+                    style={{ padding: '3px 10px', fontSize: 11,
+                      background: validation.valid ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(255,255,255,0.4)', borderRadius: 3,
+                      cursor: validation.valid ? 'pointer' : 'default', color: '#fff',
+                      opacity: validation.valid ? 1 : 0.5 }}>
+                    Done
+                  </button>
+                  <button onClick={() => store.cancelQueryEdit()}
+                    style={{ padding: '3px 10px', fontSize: 11, background: 'rgba(255,255,255,0.15)',
+                      border: '1px solid rgba(255,255,255,0.4)', borderRadius: 3,
+                      cursor: 'pointer', color: '#fff' }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+        return (
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
+              textTransform: 'uppercase', marginBottom: 5, display: 'block' }}>Queries</label>
+            {!hasTarget && (
+              <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic', marginBottom: 6 }}>
+                Set a target object type above to enable query editing.
+              </div>
+            )}
+            {sequences.map((seq, gi) => {
+              if (seq.length === 0) return null
+              const q = queries[gi] || null
+              const roleCount = q ? q.patternRoles.length : 0
+              const stCount   = q ? q.patternSubtypes.length : 0
+              const statusText = q
+                ? `${roleCount} role${roleCount !== 1 ? 's' : ''}${stCount > 0 ? `, ${stCount} subtype edge${stCount !== 1 ? 's' : ''}` : ''}`
+                : 'Not defined'
+              return (
+                <div key={gi} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+                  <span style={{ fontSize: 11, color: 'var(--ink-2)', minWidth: 24, flexShrink: 0 }}>S{gi + 1}</span>
+                  <span style={{ fontSize: 11, color: q ? 'var(--col-query-in)' : 'var(--ink-muted)',
+                    flex: 1, fontStyle: q ? 'normal' : 'italic' }}>
+                    {statusText}
+                  </span>
+                  <button
+                    disabled={!hasTarget || !!gc}
+                    onClick={() => store.startQueryEdit(c.id, gi)}
+                    style={{ padding: '2px 8px', fontSize: 10, background: 'var(--bg-raised)',
+                      border: '1px solid var(--border)', borderRadius: 3,
+                      cursor: hasTarget && !gc ? 'pointer' : 'default',
+                      color: 'var(--ink-2)', opacity: hasTarget && !gc ? 1 : 0.4 }}>
+                    {q ? 'Edit' : 'Define'}
+                  </button>
+                  {q && (
+                    <button onClick={() => store.clearConstraintQuery(c.id, gi)}
+                      title="Clear query"
+                      style={{ padding: '2px 6px', fontSize: 10, background: 'var(--bg-raised)',
+                        border: '1px solid #e0b0a8', borderRadius: 3,
+                        cursor: 'pointer', color: 'var(--danger)' }}>
+                      ×
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
+
       <Section title="Usage">
         <DiagramList elementId={c.id} kind="constraint" />
       </Section>

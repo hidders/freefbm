@@ -94,6 +94,7 @@ const mkConstraint = (type, x, y) => ({
   x, y,
   // subtype-like constraints use sequences; others use roleSequences
   sequences:     EXTERNAL_CONSTRAINT_TYPES.has(type) ? [] : undefined,
+  queries:       EXTERNAL_CONSTRAINT_TYPES.has(type) ? [] : undefined,
   roleSequences: EXTERNAL_CONSTRAINT_TYPES.has(type) ? undefined : [[], []],
   // inclusiveOr / exclusiveOr / uniqueness / frequency / valueComparison can optionally reference a target object type
   targetObjectTypeId: (type === 'inclusiveOr' || type === 'exclusiveOr' || type === 'uniqueness' || type === 'frequency' || type === 'valueComparison') ? null : undefined,
@@ -401,6 +402,7 @@ export const useOrmStore = create((set, get) => ({
   frequencyConstruction:   null,   // { stage:2|3, factId, x, y, roleIndices:number[], ifId?:string, range?:[] } | null
   sequenceConstruction:    null,   // { constraintId, steps: [{sequenceIndex}][], collected: [{sequenceIndex, member}][] } | null
   constraintHighlight:     null,   // { constraintId, sequenceIndex: number|null, positionIndex: number|null } | null
+  queryEditDraft:          null,   // { constraintId, sequenceIndex, patternRoles: [{factId,roleIndex}], patternSubtypes: [subtypeId] } | null
 
   tool:      'select',
   linkDraft: null,
@@ -1835,7 +1837,10 @@ export const useOrmStore = create((set, get) => ({
             sequences[sequenceIndex] = [...sequences[sequenceIndex], member]
           }
         }
-        return { ...c, sequences }
+        // Pad queries array to match sequences length (new sequences get null query)
+        const queries = [...(c.queries || [])]
+        while (queries.length < sequences.length) queries.push(null)
+        return { ...c, sequences, queries }
       })
       return {
         constraints: newConstraints,
@@ -1890,7 +1895,8 @@ export const useOrmStore = create((set, get) => ({
       const newConstraints = s.constraints.map(c => {
         if (c.id !== constraintId) return c
         const sequences = (c.sequences || []).filter((_, i) => i !== sequenceIndex)
-        return { ...c, sequences }
+        const queries   = (c.queries   || []).filter((_, i) => i !== sequenceIndex)
+        return { ...c, sequences, queries }
       })
       return {
         constraints: newConstraints,
@@ -1907,7 +1913,151 @@ export const useOrmStore = create((set, get) => ({
         const sequences = c.sequences || []
         if (sequences.length < 2) return c
         const swapped = [sequences[1], sequences[0], ...sequences.slice(2)]
-        return { ...c, sequences: swapped }
+        const queries  = c.queries  || []
+        const swappedQ = queries.length >= 2 ? [queries[1], queries[0], ...queries.slice(2)] : queries
+        return { ...c, sequences: swapped, queries: swappedQ }
+      }),
+      isDirty: true,
+    }))
+  },
+
+  // ── query editing ────────────────────────────────────────────────────────
+
+  /** Returns { valid: bool, reason: string|null } for the current queryEditDraft. */
+  getQueryEditValidation() {
+    const qd = get().queryEditDraft
+    if (!qd) return { valid: false, reason: null }
+    const c = get().constraints.find(c => c.id === qd.constraintId)
+    if (!c) return { valid: false, reason: null }
+    const { patternRoles, patternSubtypes } = qd
+    if (patternRoles.length === 0 && patternSubtypes.length === 0)
+      return { valid: false, reason: 'Pattern is empty' }
+
+    // Gather all object type IDs reachable by the pattern
+    const facts = get().facts
+    const subtypes = get().subtypes
+    const otIds = new Set()
+
+    for (const { factId, roleIndex } of patternRoles) {
+      const f = facts.find(f => f.id === factId)
+      const otId = f?.roles[roleIndex]?.objectTypeId
+      if (otId) otIds.add(otId)
+    }
+    for (const stId of patternSubtypes) {
+      const st = subtypes.find(s => s.id === stId)
+      if (st) { otIds.add(st.subId); otIds.add(st.superId) }
+    }
+
+    // For uniqueness: also include the target object type
+    const targetId = c.targetObjectTypeId
+    if (c.constraintType === 'uniqueness' && targetId) otIds.add(targetId)
+
+    if (otIds.size === 0) return { valid: false, reason: 'Pattern has no object types' }
+
+    // Union-find connectivity check
+    const parent = {}
+    const find = id => { if (parent[id] === undefined) parent[id] = id; return parent[id] === id ? id : (parent[id] = find(parent[id])) }
+    const union = (a, b) => { parent[find(a)] = find(b) }
+
+    // Connect object types that share a fact type atom in the pattern
+    const factRoleMap = {}
+    for (const { factId, roleIndex } of patternRoles) {
+      if (!factRoleMap[factId]) factRoleMap[factId] = []
+      factRoleMap[factId].push(roleIndex)
+    }
+    for (const [factId, roleIndices] of Object.entries(factRoleMap)) {
+      const f = facts.find(f => f.id === factId)
+      if (!f) continue
+      const ots = roleIndices.map(ri => f.roles[ri]?.objectTypeId).filter(Boolean)
+      for (let i = 1; i < ots.length; i++) union(ots[0], ots[i])
+    }
+    // Connect via subtype edges
+    for (const stId of patternSubtypes) {
+      const st = subtypes.find(s => s.id === stId)
+      if (st) union(st.subId, st.superId)
+    }
+
+    // Check: all pattern object types are in one component
+    const roots = new Set([...otIds].map(find))
+    if (roots.size > 1) return { valid: false, reason: 'Pattern is not connected' }
+
+    // For uniqueness: target must be in pattern and connected
+    if (c.constraintType === 'uniqueness') {
+      if (!targetId) return { valid: false, reason: 'No target object type set' }
+      if (!otIds.has(targetId)) return { valid: false, reason: 'Pattern does not reach the target object type' }
+    }
+
+    return { valid: true, reason: null }
+  },
+
+  startQueryEdit(constraintId, sequenceIndex) {
+    const c = get().constraints.find(c => c.id === constraintId)
+    if (!c) return
+    const existing = (c.queries || [])[sequenceIndex] || null
+    // Pre-seed draft with the sequence members as output roles (they are always in the pattern)
+    const outputRoles = (c.sequences[sequenceIndex] || [])
+      .filter(m => m.kind === 'role')
+      .map(m => ({ factId: m.factId, roleIndex: m.roleIndex }))
+    const patternRoles = existing
+      ? existing.patternRoles
+      : outputRoles
+    const patternSubtypes = existing ? existing.patternSubtypes : []
+    set({ queryEditDraft: { constraintId, sequenceIndex, patternRoles, patternSubtypes } })
+  },
+
+  toggleQueryEditRole(factId, roleIndex) {
+    const qd = get().queryEditDraft
+    if (!qd) return
+    const c = get().constraints.find(c => c.id === qd.constraintId)
+    if (!c) return
+    // Output roles (sequence members) cannot be removed
+    const isOutput = (c.sequences[qd.sequenceIndex] || [])
+      .some(m => m.kind === 'role' && m.factId === factId && m.roleIndex === roleIndex)
+    if (isOutput) return
+    const already = qd.patternRoles.some(r => r.factId === factId && r.roleIndex === roleIndex)
+    const patternRoles = already
+      ? qd.patternRoles.filter(r => !(r.factId === factId && r.roleIndex === roleIndex))
+      : [...qd.patternRoles, { factId, roleIndex }]
+    set({ queryEditDraft: { ...qd, patternRoles } })
+  },
+
+  toggleQueryEditSubtype(subtypeId) {
+    const qd = get().queryEditDraft
+    if (!qd) return
+    const already = qd.patternSubtypes.includes(subtypeId)
+    const patternSubtypes = already
+      ? qd.patternSubtypes.filter(id => id !== subtypeId)
+      : [...qd.patternSubtypes, subtypeId]
+    set({ queryEditDraft: { ...qd, patternSubtypes } })
+  },
+
+  commitQueryEdit() {
+    const qd = get().queryEditDraft
+    if (!qd) return
+    set(s => ({
+      queryEditDraft: null,
+      constraints: s.constraints.map(c => {
+        if (c.id !== qd.constraintId) return c
+        const queries = [...(c.queries || [])]
+        while (queries.length <= qd.sequenceIndex) queries.push(null)
+        queries[qd.sequenceIndex] = { patternRoles: qd.patternRoles, patternSubtypes: qd.patternSubtypes }
+        return { ...c, queries }
+      }),
+      isDirty: true,
+    }))
+  },
+
+  cancelQueryEdit() {
+    set({ queryEditDraft: null })
+  },
+
+  clearConstraintQuery(constraintId, sequenceIndex) {
+    set(s => ({
+      constraints: s.constraints.map(c => {
+        if (c.id !== constraintId) return c
+        const queries = [...(c.queries || [])]
+        if (sequenceIndex < queries.length) queries[sequenceIndex] = null
+        return { ...c, queries }
       }),
       isDirty: true,
     }))

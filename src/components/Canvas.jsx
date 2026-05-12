@@ -197,6 +197,25 @@ export default function Canvas() {
   const store = useOrmStore()
   const { objectTypes: visibleOts, facts: visibleFacts, constraints: visibleConstraints, subtypes: visibleSubtypes } = useDiagramElements()
   const sharedIds = store.getSharedIds?.() ?? new Set()
+
+  // ── Query edit overlay helpers ───────────────────────────────────────────
+  const qd = store.queryEditDraft
+  const queryEditFactIds  = qd ? new Set(qd.patternRoles.map(r => r.factId)) : null
+  const queryEditOtIds    = qd ? (() => {
+    const ids = new Set()
+    for (const r of qd.patternRoles) {
+      const f = store.facts.find(f => f.id === r.factId)
+      const otId = f?.roles[r.roleIndex]?.objectTypeId
+      if (otId) ids.add(otId)
+    }
+    for (const stId of qd.patternSubtypes) {
+      const st = store.subtypes.find(s => s.id === stId)
+      if (st) { ids.add(st.subId); ids.add(st.superId) }
+    }
+    const c = store.constraints.find(c => c.id === qd.constraintId)
+    if (c?.targetObjectTypeId) ids.add(c.targetObjectTypeId)
+    return ids
+  })() : null
   const svgRef = useRef(null)
   const [dragState, setDragState]     = useState(null)
   const [bandRect, setBandRect]       = useState(null)  // { x1,y1,x2,y2 } world coords | null
@@ -280,6 +299,9 @@ export default function Canvas() {
   const handleSVGMouseDown = useCallback((e) => {
     const isBackground = e.target === svgRef.current || e.target.closest('.canvas-bg')
     if (!isBackground) return
+
+    // Query edit mode: block background clicks from interfering
+    if (store.queryEditDraft) return
 
     // Selection-mode tools: no panning, cancel on background click
     if (isSelectionMode(store.tool)) {
@@ -653,7 +675,8 @@ export default function Canvas() {
         <g transform={`translate(${store.pan.x},${store.pan.y}) scale(${store.zoom})`}>
           <SubtypeArrows  mousePos={mousePos} onContextMenu={handleSubtypeContextMenu}/>
           {visibleFacts.map(f => (
-            <FactTypeNode key={f.id} fact={f} onDragStart={handleDragStart}
+            <g key={f.id} opacity={queryEditFactIds && !queryEditFactIds.has(f.id) ? 0.35 : 1}>
+            <FactTypeNode fact={f} onDragStart={handleDragStart}
               isShared={sharedIds.has(f.id)}
               onContextMenu={(e) => handleFactContextMenu(f, e)}
               onRoleContextMenu={(roleIndex, e) => handleRoleContextMenu(f, roleIndex, e)}
@@ -667,6 +690,7 @@ export default function Canvas() {
               onRoleCrContextMenu={(ri, e) => handleRoleCrContextMenu(f, ri, e)}
               onNestedVrContextMenu={(e) => handleNestedVrContextMenu(f, e)}
               onNestedCrContextMenu={(e) => handleNestedCrContextMenu(f, e)}/>
+            </g>
           ))}
            {visibleFacts.filter(f => f.objectified).map(f =>
               (f.implicitLinks || []).filter(il => store.isImplicitLinkShown(f.id, il.roleIndex)).map(il => {
@@ -681,7 +705,8 @@ export default function Canvas() {
            )}
           <RoleConnectors mousePos={mousePos}/>
           {visibleOts.map(ot => (
-            <ObjectTypeNode key={ot.id} objectType={ot}
+            <g key={ot.id} opacity={queryEditOtIds && !queryEditOtIds.has(ot.id) ? 0.35 : 1}>
+            <ObjectTypeNode objectType={ot}
               onDragStart={handleDragStart}
               mousePos={mousePos}
               isShared={sharedIds.has(ot.id)}
@@ -691,6 +716,7 @@ export default function Canvas() {
               onCardinalityRangeClick={(cx, cy) => handleOtCardinalityRangeClick(ot, cx, cy)}
               onValueRangeContextMenu={(e) => handleOtValueRangeContextMenu(ot, e)}
               onCardinalityRangeContextMenu={(e) => handleOtCardinalityRangeContextMenu(ot, e)}/>
+            </g>
           ))}
           <MandatoryDots onContextMenu={handleMandatoryDotContextMenu}/>
           <ConstraintNodes onDragStart={handleDragStart} mousePos={mousePos}

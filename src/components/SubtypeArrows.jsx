@@ -41,7 +41,9 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
         const to   = rectBorderPoint(supBounds, subBounds.cx, subBounds.cy)
         const isSelected  = store.selectedId === st.id || store.multiSelectedIds.includes(st.id)
         const gc = store.sequenceConstruction
-        const isCandidate = !!gc && !isSelected
+        const qd = store.queryEditDraft
+        const inPattern = qd ? qd.patternSubtypes.includes(st.id) : false
+        const isCandidate = (!!gc && !isSelected) || (!!qd && !inPattern)
 
         // Shorten line so the stem ends at the arrowhead base,
         // letting the tip protrude to the shape border.
@@ -72,6 +74,10 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
             onContextMenu={(e) => onContextMenu?.(st, e)}
             onClick={(e) => {
               e.stopPropagation()
+              if (qd) {
+                store.toggleQueryEditSubtype(st.id)
+                return
+              }
               if (store.sequenceConstruction) {
                 store.collectSequenceMember({ kind: 'subtype', subtypeId: st.id })
                 return
@@ -82,6 +88,7 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
               store.select(st.id, 'subtype')
             }}
             style={{ cursor: (() => {
+              if (qd) return 'pointer'
               if (store.sequenceConstruction) return 'pointer'
               if (store.tool === 'connectConstraint') return 'pointer'
               if (isSelectionMode(store.tool)) return 'not-allowed'
@@ -105,11 +112,12 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
               style={{ strokeWidth: 10 }}/>
             {/* Arrow — accent marker + glow filter when selected */}
             <line x1={from.x} y1={from.y} x2={lineEnd.x} y2={lineEnd.y}
-              stroke={isSelected ? 'var(--accent)' : 'var(--col-subtype)'}
+              stroke={isSelected ? 'var(--accent)' : inPattern ? 'var(--col-query-in)' : qd ? 'var(--col-query-out)' : 'var(--col-subtype)'}
               strokeWidth={sw}
               strokeDasharray={st.inheritsPreferredIdentifier === false ? `${sw * 3} ${sw * 2}` : undefined}
               markerEnd={isSelected ? 'url(#arrowSubtypeAccent)' : 'url(#arrowSubtype)'}
               filter={filterProps ? `url(#${filterId})` : undefined}
+              style={{ cursor: qd ? 'pointer' : undefined }}
             />
           </g>
         )

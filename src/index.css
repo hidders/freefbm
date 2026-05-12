@@ -37,6 +37,9 @@
   --col-candidate: #3a9e6a;   /* mid green  — selectable candidate highlight */
   --col-role-name: #1a7fd4;   /* blue — role name labels on connectors */
   --fill-candidate: #e6f4eb;  /* light green fill for candidate elements */
+  --col-query-in:   #0e7490;  /* teal — role/edge included in query pattern */
+  --fill-query-in:  #cffafe;  /* light teal fill for included pattern elements */
+  --col-query-out:  #94a3b8;  /* muted slate — element not in query pattern (dimmed) */
 
   --accent:       #b45309;
   --accent-light: #d97706;
