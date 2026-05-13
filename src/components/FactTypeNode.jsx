@@ -411,6 +411,20 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const isConnectorTool = isAssignTool || isSubtypeTool || store.tool === 'connectConstraint'
   const qd = store.queryEditDraft
   const inQueryEdit = !!qd && !fact._implicit
+  // Roles highlighted because the selected constraint's queries include them
+  const queryHighlightRoles = (() => {
+    if (!store.showConstraintQueries || store.selectedKind !== 'constraint' || inQueryEdit) return null
+    const c = store.constraints.find(c => c.id === store.selectedId)
+    if (!c?.queries) return null
+    const roles = new Set()
+    for (const q of c.queries) {
+      if (!q) continue
+      for (const r of q.patternRoles) {
+        if (r.factId === fact.id) roles.add(r.roleIndex)
+      }
+    }
+    return roles.size > 0 ? roles : null
+  })()
   const isDraftFrom       = store.linkDraft?.type === 'subtype' && store.linkDraft.fromId === fact.id
   const isAssigning    = store.linkDraft?.type === 'roleAssign'
   const roleFirstDraft = isAssigning && store.linkDraft.factId === fact.id
@@ -1062,8 +1076,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     if (inQueryEdit) return false  // query edit uses its own highlight, not candidate style
     return isRoleCandidate || (isRoleValueTool && vrEligibleRoles.has(ri)) || (isVcConstruction && vcEligibleRoles.has(ri)) || isCrTool
   }
-  const roleInQueryPattern = (ri) => inQueryEdit &&
-    qd.patternRoles.some(r => r.factId === fact.id && r.roleIndex === ri)
+  const roleInQueryPattern = (ri) =>
+    (inQueryEdit && qd.patternRoles.some(r => r.factId === fact.id && r.roleIndex === ri)) ||
+    !!queryHighlightRoles?.has(ri)
   const roleHighlight = isRoleCandidate ? 'var(--fill-candidate)' : '#ffffff'
 
   const isVertical = fact.orientation === 'vertical'

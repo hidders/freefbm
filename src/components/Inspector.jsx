@@ -3115,6 +3115,33 @@ export default function Inspector() {
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
               textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+              Constraint queries
+            </label>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              cursor: 'pointer', padding: '7px 9px',
+              background: 'var(--bg-raised)',
+              border: '1px solid var(--border-soft)',
+              borderRadius: 4, marginBottom: 8,
+            }}>
+              <input type="checkbox"
+                checked={!!store.showConstraintQueries}
+                onChange={e => store.setShowConstraintQueries(e.target.checked)}
+                style={{ accentColor: 'var(--accent)' }}/>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--ink-2)', fontWeight: 500 }}>
+                  Highlight queries on selection
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginTop: 1 }}>
+                  Highlight the query pattern of the selected constraint in the diagram
+                </div>
+              </div>
+            </label>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
+              textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
               Reference mode
             </label>
             <label style={{

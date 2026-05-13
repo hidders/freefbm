@@ -43,6 +43,11 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
         const gc = store.sequenceConstruction
         const qd = store.queryEditDraft
         const inPattern = qd ? qd.patternSubtypes.includes(st.id) : false
+        const selectedConstraint = !qd && store.showConstraintQueries && store.selectedKind === 'constraint'
+          ? store.constraints.find(c => c.id === store.selectedId) : null
+        const inQueryHighlight = selectedConstraint
+          ? (selectedConstraint.queries || []).some(q => q?.patternSubtypes?.includes(st.id))
+          : false
         const isCandidate = (!!gc && !isSelected) || (!!qd && !inPattern)
 
         // Shorten line so the stem ends at the arrowhead base,
@@ -112,7 +117,7 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
               style={{ strokeWidth: 10 }}/>
             {/* Arrow — accent marker + glow filter when selected */}
             <line x1={from.x} y1={from.y} x2={lineEnd.x} y2={lineEnd.y}
-              stroke={isSelected ? 'var(--accent)' : inPattern ? 'var(--col-query-in)' : qd ? 'var(--col-query-out)' : 'var(--col-subtype)'}
+              stroke={isSelected ? 'var(--accent)' : (inPattern || inQueryHighlight) ? 'var(--col-query-in)' : qd ? 'var(--col-query-out)' : 'var(--col-subtype)'}
               strokeWidth={sw}
               strokeDasharray={st.inheritsPreferredIdentifier === false ? `${sw * 3} ${sw * 2}` : undefined}
               markerEnd={isSelected ? 'url(#arrowSubtypeAccent)' : 'url(#arrowSubtype)'}

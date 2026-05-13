@@ -416,6 +416,7 @@ export const useOrmStore = create((set, get) => ({
   showRoleNames: true,
   showTargetConnectors: true,
   showSequenceMembership: true,
+  showConstraintQueries: true,
   showMinimap: true,
   // Position of the minimap panel in screen px from top-left of canvas container
   minimapPos: { x: null, y: null },  // null = default (bottom-right corner)
@@ -635,6 +636,7 @@ export const useOrmStore = create((set, get) => ({
   setShowRoleNames(val)             { set({ showRoleNames: val }) },
   setShowTargetConnectors(val)      { set({ showTargetConnectors: val }) },
   setShowSequenceMembership(val)    { set({ showSequenceMembership: val }) },
+  setShowConstraintQueries(val)     { set({ showConstraintQueries: val }) },
   setShowMinimap(val)         { set({ showMinimap: val }) },
   setMinimapPos(x, y)         { set({ minimapPos: { x, y } }) },
   setInspectorWidth(w)        { set({ inspectorWidth: w }) },
