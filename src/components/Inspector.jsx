@@ -614,6 +614,8 @@ function CompactRoleList({ fact, store }) {
         const ot       = otMap[role.objectTypeId]
         const nf       = !ot ? nestedMap[role.objectTypeId] : null
         const player   = ot ? ot.name : nf ? nf.objectifiedName : null
+        const hasImpliedLink = fact.objectified && !!role.objectTypeId
+        const isShown  = hasImpliedLink && store.isImplicitLinkShown(fact.id, ri)
         return (
           <div
             key={role.id}
@@ -645,6 +647,16 @@ function CompactRoleList({ fact, store }) {
             )}
             {role.mandatory && (
               <span title="Mandatory" style={{ color: 'var(--col-constraint)', fontSize: 11, flexShrink: 0 }}>●</span>
+            )}
+            {hasImpliedLink && (
+              <button
+                onClick={e => { e.stopPropagation(); store.toggleImplicitLink(fact.id, ri) }}
+                style={{ fontSize: 10, padding: '1px 6px', cursor: 'pointer', flexShrink: 0,
+                  background: isShown ? 'var(--accent)' : 'var(--bg-raised)',
+                  color: isShown ? '#fff' : 'var(--ink-muted)',
+                  border: '1px solid var(--border)', borderRadius: 3 }}>
+                {isShown ? 'Shown Link' : 'Show Link'}
+              </button>
             )}
           </div>
         )
@@ -1312,6 +1324,25 @@ function FactPresentationSubsection({ fact, store }) {
       })()}
       <Row>
         <Label>Orientation</Label>
+        {['horizontal', 'vertical'].map(val => (
+          <label key={val} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
+            <input type="radio"
+              name={`orient-${fact.id}`}
+              value={val}
+              checked={fact.orientation === val}
+              onChange={() => {
+                const patch = { orientation: val }
+                if (val === 'vertical' && fact.nestedReading) patch.nestedReading = false
+                store.updateFactLayout(fact.id, patch)
+              }}
+              style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: 'pointer' }}
+            />
+            {val.charAt(0).toUpperCase() + val.slice(1)}
+          </label>
+        ))}
+      </Row>
+      <Row>
+        <Label>Reading Position</Label>
         {fact.objectified && (
           <Checkbox
             label="Nested Reading"
@@ -1324,34 +1355,43 @@ function FactPresentationSubsection({ fact, store }) {
             }}
           />
         )}
-        <Checkbox
-          label="Vertical"
-          checked={fact.orientation === 'vertical'}
-          onChange={v => {
-            const patch = { orientation: v ? 'vertical' : 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null }
-            if (v && fact.nestedReading) patch.nestedReading = false
-            store.updateFactLayout(fact.id, patch)
-          }}
-        />
-      </Row>
-      <Row>
-        <Label>Reading Position</Label>
       </Row>
       {(() => {
         const isVert = fact.orientation === 'vertical'
         const disabled = fact.objectified && !isVert && !fact.nestedReading
-        const aboveLabel = isVert ? 'Right' : 'Above'
+        const storedOff = fact.readingAbove ? fact.readingOffsetAbove : fact.readingOffsetBelow
+        const posValue = storedOff !== null ? 'free' : fact.readingAbove ? 'above' : 'below'
+        const opts = [
+          { value: 'below', label: isVert ? 'Left'  : 'Below' },
+          { value: 'above', label: isVert ? 'Right' : 'Above' },
+          { value: 'free',  label: 'Free' },
+        ]
         return (
           <Row>
-            <Checkbox
-              label={aboveLabel}
-              checked={!!fact.readingAbove}
-              disabled={disabled}
-              onChange={v => {
-                const key = v ? 'readingOffsetAbove' : 'readingOffsetBelow'
-                store.updateFactLayout(fact.id, { readingAbove: v, [key]: null })
-              }}
-            />
+            {opts.map(opt => (
+              <label key={opt.value} style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: 12, marginBottom: 3,
+                cursor: (disabled || opt.value === 'free') ? 'not-allowed' : 'pointer',
+                color: disabled ? 'var(--ink-muted)' : 'var(--ink-2)',
+              }}>
+                <input type="radio"
+                  name={`rpos-${fact.id}`}
+                  value={opt.value}
+                  checked={posValue === opt.value}
+                  disabled={disabled || opt.value === 'free'}
+                  onChange={() => {
+                    store.updateFactLayout(fact.id, {
+                      readingAbove: opt.value === 'above',
+                      readingOffsetAbove: null,
+                      readingOffsetBelow: null,
+                    })
+                  }}
+                  style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: (disabled || opt.value === 'free') ? 'not-allowed' : 'pointer' }}
+                />
+                {opt.label}
+              </label>
+            ))}
           </Row>
         )
       })()}
@@ -1359,11 +1399,21 @@ function FactPresentationSubsection({ fact, store }) {
          <Label>Uniqueness Bar Position</Label>
        </Row>
        <Row>
-         <Checkbox
-           label={fact.orientation === 'vertical' ? 'Left' : 'Below'}
-           checked={!!fact.uniquenessBelow}
-           onChange={v => store.updateFactLayout(fact.id, { uniquenessBelow: v })}
-         />
+         {(fact.orientation === 'vertical'
+           ? [{ label: 'Right', val: false }, { label: 'Left', val: true }]
+           : [{ label: 'Above', val: false }, { label: 'Below', val: true }]
+         ).map(opt => (
+           <label key={opt.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
+             <input type="radio"
+               name={`upos-${fact.id}`}
+               value={String(opt.val)}
+               checked={!!fact.uniquenessBelow === opt.val}
+               onChange={() => store.updateFactLayout(fact.id, { uniquenessBelow: opt.val })}
+               style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: 'pointer' }}
+             />
+             {opt.label}
+           </label>
+         ))}
        </Row>
      </Section>
   )
@@ -2022,14 +2072,21 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
           })}
         </Row>
         <Row>
-        <Label>Orientation</Label>
+          <Label>Orientation</Label>
         </Row>
         <Row>
-          <Checkbox
-            label="Vertical"
-            checked={mergedIl.orientation === 'vertical'}
-            onChange={v => store.updateImplicitLink(parentFact.id, roleIndex, { orientation: v ? 'vertical' : 'horizontal', readingOffsetAbove: null, readingOffsetBelow: null })}
-          />
+          {['horizontal', 'vertical'].map(val => (
+            <label key={val} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
+              <input type="radio"
+                name={`il-orient-${parentFact.id}-${roleIndex}`}
+                value={val}
+                checked={mergedIl.orientation === val}
+                onChange={() => store.updateImplicitLink(parentFact.id, roleIndex, { orientation: val, readingOffsetAbove: null, readingOffsetBelow: null })}
+                style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: 'pointer' }}
+              />
+              {val.charAt(0).toUpperCase() + val.slice(1)}
+            </label>
+          ))}
         </Row>
         <Row>
           <Label>Reading Position</Label>
@@ -2054,11 +2111,21 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
           <Label>Uniqueness Bar Position</Label>
         </Row>
         <Row>
-          <Checkbox
-             label={mergedIl.orientation === 'vertical' ? 'Left' : 'Below'}
-            checked={!!mergedIl.uniquenessBelow}
-            onChange={v => store.updateImplicitLink(parentFact.id, roleIndex, { uniquenessBelow: v })}
-          />
+          {(mergedIl.orientation === 'vertical'
+            ? [{ label: 'Right', val: false }, { label: 'Left', val: true }]
+            : [{ label: 'Above', val: false }, { label: 'Below', val: true }]
+          ).map(opt => (
+            <label key={opt.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
+              <input type="radio"
+                name={`il-upos-${parentFact.id}-${roleIndex}`}
+                value={String(opt.val)}
+                checked={!!mergedIl.uniquenessBelow === opt.val}
+                onChange={() => store.updateImplicitLink(parentFact.id, roleIndex, { uniquenessBelow: opt.val })}
+                style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: 'pointer' }}
+              />
+              {opt.label}
+            </label>
+          ))}
         </Row>
       </Section>
 
@@ -2195,6 +2262,7 @@ function ExternalConstraintInspector({ c }) {
   const [pressedHeader, setPressedHeader] = useState(null)
   const [pressedSequence, setPressedSequence] = useState(null)
   const [pressedCell, setPressedCell] = useState(null)
+  const [pressedQueryIndex, setPressedQueryIndex] = useState(null)
 
   // Resolve a role-player name from either objectTypes or objectified facts
   const playerName = (playerId) => {
@@ -2270,11 +2338,15 @@ function ExternalConstraintInspector({ c }) {
     )
   }
 
-  // Clear highlight on global mouse-up — registered once; reads store via ref.
+  // Clear highlights on global mouse-up — registered once; reads store via ref.
   const storeRef = useRef(null)
   storeRef.current = store
   useEffect(() => {
-    const up = () => storeRef.current.clearConstraintHighlight()
+    const up = () => {
+      storeRef.current.clearConstraintHighlight()
+      storeRef.current.clearQueryIndexHighlight()
+      setPressedQueryIndex(null)
+    }
     window.addEventListener('mouseup', up)
     return () => window.removeEventListener('mouseup', up)
   }, [])
@@ -2339,6 +2411,11 @@ function ExternalConstraintInspector({ c }) {
             {store.objectTypes.slice().sort((a, b) => a.name.localeCompare(b.name)).map(ot => (
               <option key={ot.id} value={ot.id}>{ot.name}</option>
             ))}
+            {store.facts.filter(f => f.objectified && f.objectifiedName).slice()
+              .sort((a, b) => (a.objectifiedName || '').localeCompare(b.objectifiedName || ''))
+              .map(f => (
+                <option key={f.id} value={f.id}>{f.objectifiedName} (nested)</option>
+              ))}
           </select>
         </Row>
       )}
@@ -2650,13 +2727,33 @@ function ExternalConstraintInspector({ c }) {
               const statusText = q
                 ? `${roleCount} role${roleCount !== 1 ? 's' : ''}${stCount > 0 ? `, ${stCount} subtype edge${stCount !== 1 ? 's' : ''}` : ''}`
                 : 'Not defined'
+              const qPressed = pressedQueryIndex === gi
               return (
                 <div key={gi} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
                   <span style={{ fontSize: 11, color: 'var(--ink-2)', minWidth: 24, flexShrink: 0 }}>S{gi + 1}</span>
-                  <span style={{ fontSize: 11, color: q ? 'var(--col-query-in)' : 'var(--ink-muted)',
-                    flex: 1, fontStyle: q ? 'normal' : 'italic' }}>
+                  <button
+                    disabled={!q}
+                    onMouseDown={() => {
+                      if (!q) return
+                      setPressedQueryIndex(gi)
+                      store.setQueryIndexHighlight({ constraintId: c.id, queryIndex: gi })
+                    }}
+                    onMouseUp={() => { setPressedQueryIndex(null); store.clearQueryIndexHighlight() }}
+                    onMouseLeave={() => { setPressedQueryIndex(null); store.clearQueryIndexHighlight() }}
+                    style={{ fontSize: 11, flex: 1, textAlign: 'left',
+                      cursor: q ? 'default' : 'not-allowed',
+                      color: q ? 'var(--col-query-in)' : 'var(--ink-muted)',
+                      fontStyle: q ? 'normal' : 'italic',
+                      background: 'var(--bg-raised)',
+                      border: '1px solid var(--border-soft)',
+                      borderRadius: 3, padding: '2px 5px',
+                      boxShadow: qPressed
+                        ? 'inset 1px 1px 2px rgba(0,0,0,0.25), inset -1px -1px 1px rgba(255,255,255,0.4)'
+                        : 'inset -1px -1px 2px rgba(0,0,0,0.15), inset 1px 1px 1px rgba(255,255,255,0.7)',
+                      transform: qPressed ? 'translateY(1px)' : 'none',
+                      opacity: q ? 1 : 0.55 }}>
                     {statusText}
-                  </span>
+                  </button>
                   <button
                     disabled={!hasTarget || !!gc}
                     onClick={() => store.startQueryEdit(c.id, gi)}
@@ -3085,32 +3182,6 @@ export default function Inspector() {
             </label>
           </div>
 
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
-              textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
-              Target connectors
-            </label>
-            <label style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              cursor: 'pointer', padding: '7px 9px',
-              background: 'var(--bg-raised)',
-              border: '1px solid var(--border-soft)',
-              borderRadius: 4, marginBottom: 8,
-            }}>
-              <input type="checkbox"
-                checked={!!store.showTargetConnectors}
-                onChange={e => store.setShowTargetConnectors(e.target.checked)}
-                style={{ accentColor: 'var(--accent)' }}/>
-              <div>
-                <div style={{ fontSize: 12, color: 'var(--ink-2)', fontWeight: 500 }}>
-                  Show target connectors
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginTop: 1 }}>
-                  Arrow from constraint to its Target Object Name
-                </div>
-              </div>
-            </label>
-          </div>
 
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',

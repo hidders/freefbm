@@ -151,7 +151,7 @@ function ConstraintEdgeIcon({ active }) {
   )
 }
 
-function TargetConnectorIcon({ active }) {
+function _RemovedTargetConnectorIcon({ active }) {
   const colour = active ? '#fff' : 'var(--col-constraint)'
   return (
     <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
@@ -772,32 +772,6 @@ export default function ToolPanel() {
         Constraint
       </button>
 
-      {advanced && <button
-        title="Set Target Object Type for Constraint"
-        onClick={() => { store.clearSelection(); store.setTool('addTargetConnector') }}
-        style={{
-          width: '100%',
-          padding: '2px 10px',
-          fontSize: 12,
-          textAlign: 'left',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 7,
-          background: tool === 'addTargetConnector' ? 'var(--accent)' : 'transparent',
-          color: tool === 'addTargetConnector' ? '#fff' : 'var(--ink-2)',
-          border: `1px solid ${tool === 'addTargetConnector' ? 'var(--accent)' : 'transparent'}`,
-          borderRadius: 4,
-          fontFamily: 'var(--font-mono)',
-          cursor: 'pointer',
-          transition: 'all 0.12s',
-          whiteSpace: 'nowrap',
-        }}
-        onMouseEnter={e => { if (tool !== 'addTargetConnector') e.currentTarget.style.background = 'var(--bg-hover)' }}
-        onMouseLeave={e => { if (tool !== 'addTargetConnector') e.currentTarget.style.background = 'transparent' }}
-      >
-        <TargetConnectorIcon active={tool === 'addTargetConnector'} />
-        Target
-      </button>}
 
       <Divider />
       <GroupLabel>Internal Constraints</GroupLabel>

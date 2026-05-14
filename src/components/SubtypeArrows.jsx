@@ -43,10 +43,14 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
         const gc = store.sequenceConstruction
         const qd = store.queryEditDraft
         const inPattern = qd ? qd.patternSubtypes.includes(st.id) : false
-        const selectedConstraint = !qd && store.showConstraintQueries && store.selectedKind === 'constraint'
-          ? store.constraints.find(c => c.id === store.selectedId) : null
+        const qh = store.queryIndexHighlight
+        const selectedConstraint = !qd && (qh || (store.showConstraintQueries && store.selectedKind === 'constraint'))
+          ? store.constraints.find(c => c.id === (qh?.constraintId ?? store.selectedId)) : null
         const inQueryHighlight = selectedConstraint
-          ? (selectedConstraint.queries || []).some(q => q?.patternSubtypes?.includes(st.id))
+          ? (selectedConstraint.queries || []).some((q, qi) => {
+              if (qh && qh.constraintId === selectedConstraint.id && qh.queryIndex !== qi) return false
+              return q?.patternSubtypes?.includes(st.id)
+            })
           : false
         const isCandidate = (!!gc && !isSelected) || (!!qd && !inPattern)
 
@@ -64,7 +68,7 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
         // bounding-box degeneration problem on perfectly horizontal/vertical lines.
         const filterId = `stGlow-${st.id}`
         const fp = 15  // padding in world units around the line endpoints
-        const filterProps = (isSelected || isCandidate) ? {
+        const filterProps = (isSelected || isCandidate || inQueryHighlight) ? {
           id: filterId,
           filterUnits: 'userSpaceOnUse',
           x:      Math.min(from.x, to.x) - fp,
@@ -104,8 +108,8 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
               <defs>
                 <filter {...filterProps}>
                   <feDropShadow dx="0" dy="0" stdDeviation="3"
-                    floodColor={isSelected ? 'var(--accent)' : 'var(--col-candidate)'}
-                    floodOpacity="0.5"/>
+                    floodColor={isSelected ? 'var(--accent)' : inQueryHighlight ? 'var(--col-query-in)' : 'var(--col-candidate)'}
+                    floodOpacity="0.6"/>
                 </filter>
               </defs>
             )}
@@ -118,7 +122,7 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
             {/* Arrow — accent marker + glow filter when selected */}
             <line x1={from.x} y1={from.y} x2={lineEnd.x} y2={lineEnd.y}
               stroke={isSelected ? 'var(--accent)' : (inPattern || inQueryHighlight) ? 'var(--col-query-in)' : qd ? 'var(--col-query-out)' : 'var(--col-subtype)'}
-              strokeWidth={sw}
+              strokeWidth={inQueryHighlight ? sw + 1.5 : sw}
               strokeDasharray={st.inheritsPreferredIdentifier === false ? `${sw * 3} ${sw * 2}` : undefined}
               markerEnd={isSelected ? 'url(#arrowSubtypeAccent)' : 'url(#arrowSubtype)'}
               filter={filterProps ? `url(#${filterId})` : undefined}

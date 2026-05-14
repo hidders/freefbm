@@ -105,8 +105,8 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
           action: () => store.setFactArity(fact.id, fact.arity - 1) },
         '---',
         { label: fact.orientation === 'vertical' ? 'Show Horizontally' : 'Show Vertically',
-          action: () => store.updateFact(fact.id, {
-            orientation: fact.orientation === 'vertical' ? 'horizontal' : 'vertical'
+          action: () => store.updateFactLayout(fact.id, {
+            orientation: fact.orientation === 'vertical' ? 'horizontal' : 'vertical',
           }) },
         ...(fact.arity === 2 ? [
           { label: 'Reverse Roles',
@@ -342,17 +342,26 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     const noRolePos     = suppressRolePosition(c.constraintType)
     const sequences = c.sequences || []
     const items = []
+
+    // "Set Target Object Type" for applicable constraint types
+    if (hasTargetOt) {
+      items.push({
+        label: 'Set Target Object Type…',
+        action: () => store.startTargetPick(c.id),
+      })
+      if (c.targetObjectTypeId) {
+        items.push({
+          label: 'Clear Target Object Type',
+          action: () => store.updateConstraint(c.id, { targetObjectTypeId: null }),
+        })
+      }
+      items.push('---')
+    }
     if (c.sequences != null) {
       items.push({ label: 'Add role sequence',
         disabled: sequences.length >= maxSequences,
         action: () => store.startSequenceConstruction(c.id, 'newSequence') })
-      if (hasTargetOt) {
-        items.push({ label: 'Set target object type',
-          action: () => {
-            store.setTool('addTargetConnector')
-            store.setLinkDraft({ type: 'targetConnector', constraintId: c.id })
-          } })
-      }
+
       if (sequences.length > 0 && !noRolePos) {
         items.push({ label: 'Add role position',
           action: () => store.startSequenceConstruction(c.id, 'extend') })
@@ -416,7 +425,10 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     e.stopPropagation()
     store.selectImplicitLink(factId, roleIndex)
     const il = store.facts.find(f => f.id === factId)?.implicitLinks?.find(l => l.roleIndex === roleIndex)
-    const isVertical = il?.orientation === 'vertical'
+    const ilKey = `${factId}:il:${roleIndex}`
+    const activeDiag = store.diagrams.find(d => d.id === store.activeDiagramId)
+    const ilPos = activeDiag?.positions?.[ilKey] ?? {}
+    const isVertical = (ilPos.orientation ?? il?.orientation) === 'vertical'
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [

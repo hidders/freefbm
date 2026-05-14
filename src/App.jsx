@@ -21,6 +21,7 @@ function useKeyboardShortcuts() {
       const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
 
       if (e.key === 'Escape') {
+        if (store.pendingTargetPick) { store.cancelTargetPick(); return }
         if (store.queryEditDraft) { store.cancelQueryEdit(); return }
         store.abandonSequenceConstruction()
         store.clearLinkDraft()

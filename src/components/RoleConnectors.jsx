@@ -178,11 +178,12 @@ export default function RoleConnectors({ mousePos }) {
       const defaultY = (ot || nf) ? Math.round((fact.y + (ot || nf).y) / 2) : fact.y
       const ilX = ilPos?.x ?? schemaX ?? defaultX
       const ilY = ilPos?.y ?? schemaY ?? defaultY
+      const ilOrientation = ilPos?.orientation ?? il.orientation ?? 'horizontal'
       const assocId = ot?.id ?? nf?.id
       const synthFact = {
         id: `${fact.id}_il_${il.roleIndex}`,
         x: ilX, y: ilY,
-        arity: 2, orientation: il.orientation || 'horizontal',
+        arity: 2, orientation: ilOrientation,
         roles: [
           { objectTypeId: roleOrder[0] === 0 ? fact.id : assocId, nameOffset: null },
           { objectTypeId: roleOrder[1] === 0 ? fact.id : assocId, nameOffset: null },
@@ -291,7 +292,7 @@ export default function RoleConnectors({ mousePos }) {
             textAnchor="middle" dominantBaseline="middle"
             fontSize={12} fontFamily="'Segoe UI', Helvetica, Arial, sans-serif"
             fill="var(--col-role-name)"
-            style={{ cursor: isDragging ? 'grabbing' : 'grab', userSelect: 'none' }}
+            style={{ cursor: isDragging ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
             onMouseDown={e => {
               e.stopPropagation()
               dragRef.current = {
@@ -436,7 +437,7 @@ export function MandatoryDots({ onContextMenu }) {
               const synthFact = {
                 id: `${fact.id}_il_${il.roleIndex}`,
                 x: ilX, y: ilY,
-                arity: 2, orientation: il.orientation || 'horizontal',
+                arity: 2, orientation: ilPos?.orientation ?? il.orientation ?? 'horizontal',
               }
               const targetOt = otMap[fact.id]
               const targetNf = !targetOt ? nestedMap[fact.id] : null
@@ -488,7 +489,7 @@ export function MandatoryDots({ onContextMenu }) {
               const synthFact = {
                 id: `${fact.id}_il_${il.roleIndex}`,
                 x: ilX, y: ilY,
-                arity: 2, orientation: il.orientation || 'horizontal',
+                arity: 2, orientation: ilPos?.orientation ?? il.orientation ?? 'horizontal',
               }
               const { x: px, y: py } = playerXY(associatedOt, associatedNf)
               const anchor = roleAnchor(synthFact, mandatoryDisplayRole, px, py)

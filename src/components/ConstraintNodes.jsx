@@ -717,16 +717,12 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
   }
 
   const isConnectTool      = store.tool === 'connectConstraint'
-  const isTargetTool       = store.tool === 'addTargetConnector'
-  const targetDraftActive  = isTargetTool && store.linkDraft?.type === 'targetConnector'
-  const TARGET_TYPES       = new Set(['inclusiveOr', 'exclusiveOr', 'uniqueness', 'frequency', 'valueComparison'])
 
   return (
     <g>
       {visibleConstraints.map(c => {
         const isSelected  = store.selectedId === c.id || store.multiSelectedIds.includes(c.id)
-        const isCandidate = (isConnectTool && !isSelected)
-          || (isTargetTool && !targetDraftActive && TARGET_TYPES.has(c.constraintType) && !isSelected)
+        const isCandidate = isConnectTool && !isSelected
         const color = CONSTRAINT_COLOR[c.constraintType] || 'var(--ink-3)'
         const symbol = CONSTRAINT_SYMBOL[c.constraintType] || '?'
 
@@ -822,19 +818,13 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
                 store.startSequenceConstruction(c.id, 'newSequence')
                 return
               }
-              if (store.tool === 'addTargetConnector') {
-                const draft = store.linkDraft
-                if (draft?.type === 'targetConnector' && draft?.constraintId === c.id) {
-                  store.clearLinkDraft()
-                } else if (!targetDraftActive && TARGET_TYPES.has(c.constraintType)) {
-                  store.select(c.id, 'constraint')
-                  store.setLinkDraft({ type: 'targetConnector', constraintId: c.id })
-                }
-                return
-              }
               if (store.tool === 'assignRole' || store.tool === 'addSubtype' || store.tool === 'toggleMandatory' || store.tool === 'addInternalUniqueness' || store.tool === 'addInternalFrequency') { store.setTool('select'); return }
               if (e.shiftKey) {
                 store.shiftSelect(c.id)
+                return
+              }
+              if (store.sequenceConstruction) {
+                store.select(c.id, 'constraint')
                 return
               }
               if (isSelected && EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) && !store.sequenceConstruction) {
@@ -867,10 +857,9 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
               if (isElementSelecting(store.tool, store.sequenceConstruction)) {
                 if (store.sequenceConstruction) return 'not-allowed'
                 if (isConnectTool) return 'pointer'
-                if (isTargetTool && !targetDraftActive && TARGET_TYPES.has(c.constraintType)) return 'pointer'
                 return 'not-allowed'
               }
-              return (isConnectTool || (isTargetTool && !targetDraftActive && TARGET_TYPES.has(c.constraintType))) ? 'cell' : 'grab'
+              return isConnectTool ? 'cell' : 'grab'
             })() }}
             filter={isSelected ? 'url(#selectGlow)' : undefined}
           >
@@ -894,33 +883,6 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
               )
             })()}
 
-            {/* Target object type connector */}
-            {store.showTargetConnectors && c.targetObjectTypeId && (otMap[c.targetObjectTypeId] || nestedMap[c.targetObjectTypeId]) && (() => {
-              const ot = otMap[c.targetObjectTypeId]
-              const nf = !ot ? nestedMap[c.targetObjectTypeId] : null
-              const bp = ot
-                ? borderPoint(ot, c.x, c.y)
-                : (() => {
-                    const b = nestedFactBounds(nf)
-                    const cx2 = (b.left + b.right) / 2, cy2 = (b.top + b.bottom) / 2
-                    const dx2 = c.x - cx2, dy2 = c.y - cy2
-                    if (dx2 === 0 && dy2 === 0) return { x: cx2, y: cy2 }
-                    const hw = (b.right - b.left) / 2, hh = (b.bottom - b.top) / 2
-                    const t = Math.abs(dx2) * hh > Math.abs(dy2) * hw ? hw / Math.abs(dx2) : hh / Math.abs(dy2)
-                    return { x: cx2 + dx2 * t, y: cy2 + dy2 * t }
-                  })()
-              const dx = bp.x - c.x, dy = bp.y - c.y
-              const len = Math.sqrt(dx * dx + dy * dy) || 1
-              return (
-                <line
-                  x1={c.x + dx / len * r0} y1={c.y + dy / len * r0}
-                  x2={bp.x} y2={bp.y}
-                  stroke={color} strokeWidth={1.2}
-                  strokeDasharray="1 3" strokeLinecap="round" opacity={0.75}
-                  markerEnd="url(#arrowConstraintTarget)"
-                  style={{ pointerEvents: 'none' }}/>
-              )
-            })()}
 
             {/* Constraint circle — omitted for ring with exactly 1 property / combined symbol, and for frequency (uses stadium) */}
             {c.constraintType !== 'frequency' && !(c.constraintType === 'ring' && (() => {
@@ -1146,19 +1108,6 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
         )
       })}
 
-      {/* Target connector draft line */}
-      {store.tool === 'addTargetConnector' && store.linkDraft?.type === 'targetConnector' && (() => {
-        const c = visibleConstraints.find(x => x.id === store.linkDraft.constraintId)
-        if (!c) return null
-        return (
-          <line
-            x1={c.x} y1={c.y}
-            x2={mousePos.x} y2={mousePos.y}
-            stroke="var(--col-constraint)" strokeWidth={1.2}
-            strokeDasharray="4 2" opacity={0.6}
-            style={{ pointerEvents: 'none' }}/>
-        )
-      })()}
     </g>
   )
 }

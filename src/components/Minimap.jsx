@@ -395,15 +395,6 @@ export default function Minimap() {
               })
             }
 
-            if (store.showTargetConnectors && c.targetObjectTypeId) {
-              const ot = otMap[c.targetObjectTypeId] ?? nestedMap[c.targetObjectTypeId]
-              if (ot) lines.push(<line key={`${c.id}-target`}
-                x1={wx(c.x)} y1={wy(c.y)}
-                x2={wx(ot.x)} y2={wy(ot.y)}
-                stroke="var(--col-constraint)" strokeWidth={0.6}
-                strokeDasharray="2 1.5" strokeOpacity={0.7}/>)
-            }
-
             return lines
           })
         })()}

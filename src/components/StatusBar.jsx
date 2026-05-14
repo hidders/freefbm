@@ -15,7 +15,6 @@ const TOOL_HINTS = {
   addInternalFrequency:  'Click a fact type to select it · Click role boxes to include them · Click the constraint or press Enter to set the frequency range',
   addSubtype:         'Click the subtype object type, then the supertype object type to draw a subtype arrow',
   connectConstraint:  'Click an external constraint · Click role boxes or subtype relationships to build sequences · Click the constraint or press Enter to commit',
-  addTargetConnector: 'Click an external constraint · Click an object type to set its target object type',
   'addConstraint:uniqueness':      'Click canvas to place an External Uniqueness constraint · Double-click the constraint to add a role sequence',
   'addConstraint:inclusiveOr':     'Click canvas to place an Inclusive Or constraint · Double-click the constraint to add a role sequence',
   'addConstraint:exclusion':       'Click canvas to place an Exclusion constraint · Double-click the constraint to add a role sequence',
@@ -32,6 +31,21 @@ const TOOL_HINTS = {
 export default function StatusBar() {
   const store = useOrmStore()
   const isSel = store.tool === 'select'
+
+  // ── Tier 4 (highest): target-pick mode ───────────────────────────────────
+  if (store.pendingTargetPick) {
+    return (
+      <div style={{ height: 26, display: 'flex', alignItems: 'center',
+        padding: '0 14px', gap: 16,
+        background: 'var(--bg-surface)', borderTop: '1px solid var(--border-soft)',
+        flexShrink: 0 }}>
+        <span style={{ fontSize: 11, color: 'var(--accent)', flex: 1, fontWeight: 600 }}>
+          Click an object type or nested object type to set it as the target · Esc to cancel
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{Math.round(store.zoom * 100)}%</span>
+      </div>
+    )
+  }
 
   // ── Tier 3 (highest): construction-in-progress hints ─────────────────────
   const constructionHint = store.frequencyConstruction

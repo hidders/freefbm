@@ -65,6 +65,19 @@ export default function ConstraintMemberLabels() {
     }
   }
 
+  // When a specific query button is pressed, restrict labels to that query's pattern members
+  const qh = store.queryIndexHighlight
+  let allowedKeys = null
+  if (qh && qh.constraintId === c.id) {
+    const q = (c.queries || [])[qh.queryIndex]
+    if (q) {
+      allowedKeys = new Set([
+        ...(q.patternRoles    || []).map(r  => `role:${r.factId}:${r.roleIndex}`),
+        ...(q.patternSubtypes || []).map(id => `subtype:${id}`),
+      ])
+    }
+  }
+
   // One label per unique member
   const labels = []
   const seen   = new Set()
@@ -77,18 +90,20 @@ export default function ConstraintMemberLabels() {
         : `subtype:${m.subtypeId}`
       if (seen.has(key)) continue
       seen.add(key)
+      if (allowedKeys && !allowedKeys.has(key)) continue
 
       const positions = posMap[key]
       const text = positions.length > 1
         ? '{..}'
         : `${positions[0].gi + 1}.${positions[0].pi + 1}`
 
-      let x, y
+      let x, y, isVertical = false
       if (m.kind === 'role') {
         const fact = factMap[m.factId]
         if (!fact) continue
         const rc = roleCenter(fact, m.roleIndex)
         x = rc.x; y = rc.y
+        isVertical = fact.orientation === 'vertical'
       } else {
         const st    = subtypeMap[m.subtypeId]
         if (!st) continue
@@ -103,14 +118,14 @@ export default function ConstraintMemberLabels() {
       const w = text.length * CHAR_W + PAD_X * 2
       const h = FONT_SIZE + PAD_Y * 2
 
-      labels.push({ key, x, y, text, w, h })
+      labels.push({ key, x, y, text, w, h, isVertical })
     }
   }
 
   return (
     <g style={{ pointerEvents: 'none' }}>
-      {labels.map(({ key, x, y, text, w, h }) => (
-        <g key={key} transform={`translate(${x},${y})`}>
+      {labels.map(({ key, x, y, text, w, h, isVertical }) => (
+        <g key={key} transform={`translate(${x},${y})${isVertical ? ' rotate(90)' : ''}`}>
           <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={3}
             fill="#1a7fd4" opacity={0.9}/>
           <text textAnchor="middle" dominantBaseline="central"

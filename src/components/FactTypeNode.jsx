@@ -403,22 +403,26 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const isFactSelected  = isSelected && !hasSelectedRole && !hasSelectedUniqueness && !hasSelectedImplicitLinkRole
   const isAssignTool      = store.tool === 'assignRole'
   const isSubtypeTool     = store.tool === 'addSubtype'
-  const isTargetTool      = store.tool === 'addTargetConnector' && store.linkDraft?.type === 'targetConnector'
   const isUniquenessTool  = store.tool === 'addInternalUniqueness'
   const isFrequencyTool   = store.tool === 'addInternalFrequency'
   const isRoleValueTool   = store.tool === 'addConstraint:valueRange'
   const isCrTool          = store.tool === 'addConstraint:cardinality'
   const isConnectorTool = isAssignTool || isSubtypeTool || store.tool === 'connectConstraint'
   const qd = store.queryEditDraft
-  const inQueryEdit = !!qd && !fact._implicit
+  const inQueryEdit = !!qd
   // Roles highlighted because the selected constraint's queries include them
   const queryHighlightRoles = (() => {
-    if (!store.showConstraintQueries || store.selectedKind !== 'constraint' || inQueryEdit) return null
+    if (inQueryEdit) return null
+    const qh = store.queryIndexHighlight
+    const showAll = store.showConstraintQueries && store.selectedKind === 'constraint'
+    if (!qh && !showAll) return null
     const c = store.constraints.find(c => c.id === store.selectedId)
     if (!c?.queries) return null
     const roles = new Set()
-    for (const q of c.queries) {
+    for (let qi = 0; qi < c.queries.length; qi++) {
+      const q = c.queries[qi]
       if (!q) continue
+      if (qh && qh.constraintId === c.id && qh.queryIndex !== qi) continue
       for (const r of q.patternRoles) {
         if (r.factId === fact.id) roles.add(r.roleIndex)
       }
@@ -460,6 +464,12 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     e.stopPropagation()
     if (e.button !== 0) return
 
+    // Target pick mode: click on objectified fact to set it as target
+    if (store.pendingTargetPick && fact.objectified) {
+      store.commitTargetPick(fact.id)
+      return
+    }
+
     // Objectified (nested) facts also act as entity types for role assignment and subtype links
     if (fact.objectified) {
       if (isAssignTool) {
@@ -482,12 +492,6 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           store.clearLinkDraft()
           store.setTool('select')
         }
-        return
-      }
-      if (store.tool === 'addTargetConnector' && store.linkDraft?.constraintId) {
-        store.updateConstraint(store.linkDraft.constraintId, { targetObjectTypeId: fact.id })
-        store.clearLinkDraft()
-        store.setTool('select')
         return
       }
       if (isRoleValueTool) {
@@ -638,14 +642,6 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           store.setTool('select')
         }
       } else {
-        store.setTool('select')
-      }
-      return
-    }
-    if (store.tool === 'addTargetConnector') {
-      if (fact.objectified && store.linkDraft?.constraintId) {
-        store.updateConstraint(store.linkDraft.constraintId, { targetObjectTypeId: fact.id })
-        store.clearLinkDraft()
         store.setTool('select')
       }
       return
@@ -1054,7 +1050,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         return ri === 0 ? 'pointer' : 'not-allowed'
       return isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab'
     }
-    if ((isSubtypeTool || isTargetTool) && fact.objectified) return 'cell'
+    if (isSubtypeTool && fact.objectified) return 'cell'
     if (isElementSelecting(store.tool, store.sequenceConstruction)) {
       if (store.sequenceConstruction) return 'pointer'
       if (store.tool === 'toggleMandatory') return 'pointer'
@@ -1062,7 +1058,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       if (isRoleValueTool) return vrEligibleRoles.has(ri) ? 'pointer' : 'not-allowed'
       if (isCrTool) return 'pointer'
       if (isAssignTool) return 'pointer'
-      if (isSubtypeTool || isTargetTool) return fact.objectified ? 'pointer' : 'not-allowed'
+      if (isSubtypeTool) return fact.objectified ? 'pointer' : 'not-allowed'
       if (store.tool === 'connectConstraint') return 'pointer'
       return 'not-allowed'
     }
@@ -1619,6 +1615,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       <g className="selectable-group" onMouseDown={handleMouseDown} onContextMenu={onContextMenu}
         style={{ cursor: (() => {
           if (fact._implicit) return isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab'
+          if (store.pendingTargetPick) return fact.objectified ? 'pointer' : 'not-allowed'
           if (isElementSelecting(store.tool, store.sequenceConstruction)) {
             if (store.sequenceConstruction) return fact.objectified ? 'pointer' : 'not-allowed'
             if (isUniquenessTool || isFrequencyTool) return 'pointer'
@@ -1627,10 +1624,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             if (store.tool === 'toggleMandatory') return 'not-allowed'
             if (isSubtypeTool || isConnectorTool) return fact.objectified ? 'pointer' : 'not-allowed'
             if (isAssignTool) return fact.objectified && store.linkDraft?.factId != null ? 'pointer' : 'not-allowed'
-            if (isTargetTool) return fact.objectified && store.linkDraft?.constraintId ? 'pointer' : 'not-allowed'
             return 'not-allowed'
           }
-          if ((isSubtypeTool || isTargetTool) && fact.objectified) return 'cell'
+          if (isSubtypeTool && fact.objectified) return 'cell'
           if (isAssignTool && isAssigning && fact.objectified) return 'cell'
           return 'grab'
         })() }}
@@ -1644,7 +1640,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
 
       {/* Objectified (nested) fact type — outer entity/value border + name */}
       {fact.objectified && (() => {
-        const isSubtypeCandidate = (isSubtypeTool || isTargetTool) && !isDraftFrom
+        const isSubtypeCandidate = isSubtypeTool && !isDraftFrom
+        const isConstraintTarget = store.selectedKind === 'constraint' &&
+          store.constraints.find(c => c.id === store.selectedId)?.targetObjectTypeId === fact.id
+        const isPickingTarget    = !!store.pendingTargetPick
         const canHaveVr = fact.objectifiedKind === 'value'
           || (fact.objectifiedKind !== 'value' && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
         const isNestedVrCandidate = isRoleValueTool && canHaveVr
@@ -1656,11 +1655,14 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           : isAssignCandidate                 ? 'var(--col-candidate)'
           : isNestedVrCandidate               ? 'var(--col-candidate)'
           : isNestedCrCandidate               ? 'var(--col-candidate)'
+          : isPickingTarget                   ? 'var(--col-candidate)'
+          : isConstraintTarget                ? '#d97706'
           : fact.objectifiedKind === 'value'  ? 'var(--col-value)'
           :                                     'var(--col-entity)'
         const nestedDash    = fact.objectifiedKind === 'value' ? '6 3' : 'none'
-        const nestedFill    = (isSubtypeCandidate || isDraftFrom || isAssignCandidate || isNestedVrCandidate || isNestedCrCandidate) ? 'var(--fill-candidate)' : '#ffffff'
-        const nestedStrokeW = (isFactSelected || isDraftFrom || isSubtypeCandidate || isAssignCandidate || isNestedVrCandidate || isNestedCrCandidate) ? 2 : 1.5
+        const nestedFill    = (isSubtypeCandidate || isDraftFrom || isAssignCandidate || isNestedVrCandidate || isNestedCrCandidate || isPickingTarget) ? 'var(--fill-candidate)'
+          : isConstraintTarget ? '#fff3cd' : '#ffffff'
+        const nestedStrokeW = (isFactSelected || isDraftFrom || isSubtypeCandidate || isAssignCandidate || isNestedVrCandidate || isNestedCrCandidate || isPickingTarget || isConstraintTarget) ? 2 : 1.5
         const nestedRefText = (fact.objectifiedKind !== 'value' && store.showReferenceMode
           && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
           ? `(${fact.objectifiedRefMode})` : null

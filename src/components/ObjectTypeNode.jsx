@@ -76,11 +76,13 @@ export function entityBounds(ot) {
 export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, onContextMenu, onDoubleClickValueRange, onValueRangeClick, onCardinalityRangeClick, onValueRangeContextMenu, onCardinalityRangeContextMenu, isShared }) {
   const store = useOrmStore()
   const isSelected    = store.selectedId === ot.id || store.multiSelectedIds.includes(ot.id)
+  const isConstraintTarget = store.selectedKind === 'constraint' &&
+    store.constraints.find(c => c.id === store.selectedId)?.targetObjectTypeId === ot.id
+  const isPickingTarget    = !!store.pendingTargetPick
   const isSubtypeTool      = store.tool === 'addSubtype'
   const isAssignTool       = store.tool === 'assignRole'
   const isDraftFrom        = store.linkDraft?.type === 'subtype' && store.linkDraft.fromId === ot.id
   const hasDraft           = store.linkDraft?.type === 'roleAssign' && store.linkDraft.factId != null
-  const isTargetCandidate  = store.tool === 'addTargetConnector' && store.linkDraft?.type === 'targetConnector'
 
   const [editing, setEditing]       = useState(false)
   const [draft, setDraft]           = useState('')
@@ -219,6 +221,11 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
     e.stopPropagation()
     if (e.button !== 0) return
 
+    if (store.pendingTargetPick) {
+      store.commitTargetPick(ot.id)
+      return
+    }
+
     if (isSubtypeTool) {
       if (!store.linkDraft) {
         store.setLinkDraft({ type: 'subtype', fromId: ot.id })
@@ -242,15 +249,6 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
       onCardinalityRangeClick?.(e.clientX, e.clientY)
       return
     }
-    if (store.tool === 'addTargetConnector') {
-      const draft = store.linkDraft
-      if (draft?.type === 'targetConnector' && draft?.constraintId) {
-        store.updateConstraint(draft.constraintId, { targetObjectTypeId: ot.id })
-        store.clearLinkDraft()
-        store.setTool('select')
-      }
-      return
-    }
     if (isAssignTool) {
       const draft = store.linkDraft
       if (draft?.factId != null && draft?.roleIndex != null) {
@@ -264,6 +262,10 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
       return
     }
 
+    if (store.sequenceConstruction) {
+      store.select(ot.id, ot.kind)
+      return
+    }
     if (e.shiftKey) {
       store.shiftSelect(ot.id)
       return
@@ -282,14 +284,16 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
     : isDraftFrom                    ? 'var(--col-subtype)'
     : isSubtypeCandidate             ? 'var(--col-candidate)'
     : hasDraft                       ? 'var(--col-candidate)'
-    : isTargetCandidate              ? 'var(--col-candidate)'
     : isVrCandidate                  ? 'var(--col-candidate)'
     : isCrCandidate                  ? 'var(--col-candidate)'
+    : isPickingTarget                ? 'var(--col-candidate)'
+    : isConstraintTarget             ? '#d97706'
     : ot.kind === 'entity'           ? 'var(--col-entity)'
     :                                  'var(--col-value)'
 
-  const strokeW = (isSelected || isDraftFrom) ? 2.5 : (isSubtypeCandidate || hasDraft || isTargetCandidate || isVrCandidate || isCrCandidate) ? 2 : 1.5
-  const fill    = (hasDraft || isSubtypeCandidate || isTargetCandidate || isVrCandidate || isCrCandidate) ? 'var(--fill-candidate)'
+  const strokeW = (isSelected || isDraftFrom) ? 2.5 : (isSubtypeCandidate || hasDraft || isVrCandidate || isCrCandidate || isPickingTarget) ? 2 : isConstraintTarget ? 2 : 1.5
+  const fill    = (hasDraft || isSubtypeCandidate || isVrCandidate || isCrCandidate || isPickingTarget) ? 'var(--fill-candidate)'
+    : isConstraintTarget             ? '#fff3cd'
     :                                  '#ffffff'
 
   // Text vertical positions
@@ -307,15 +311,15 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
       onContextMenu={onContextMenu}
       style={{ cursor: (() => {
         if (editing || editingRef) return 'text'
+        if (isPickingTarget) return 'pointer'
         if (isElementSelecting(store.tool, store.sequenceConstruction)) {
           if (store.tool === 'addSubtype') return 'pointer'
           if (store.tool === 'assignRole') return store.linkDraft?.factId != null ? 'pointer' : 'not-allowed'
-          if (store.tool === 'addTargetConnector') return store.linkDraft?.constraintId ? 'pointer' : 'not-allowed'
           if (store.tool === 'addConstraint:valueRange') return isVrCandidate ? 'pointer' : 'not-allowed'
           if (isCrTool) return 'pointer'
           return 'not-allowed'
         }
-        if (isSubtypeTool || isAssignTool || isTargetCandidate) return 'cell'
+        if (isSubtypeTool || isAssignTool) return 'cell'
         if (isVrCandidate) return 'pointer'
         if (isVrTool) return 'not-allowed'
         if (isCrTool) return 'pointer'

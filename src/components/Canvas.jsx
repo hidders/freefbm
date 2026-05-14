@@ -204,9 +204,21 @@ export default function Canvas() {
   const queryEditOtIds    = qd ? (() => {
     const ids = new Set()
     for (const r of qd.patternRoles) {
-      const f = store.facts.find(f => f.id === r.factId)
-      const otId = f?.roles[r.roleIndex]?.objectTypeId
-      if (otId) ids.add(otId)
+      if (r.factId.includes('_il_')) {
+        const [pFid, riStr] = r.factId.split('_il_')
+        const pFact = store.facts.find(f => f.id === pFid)
+        const il = pFact?.implicitLinks?.find(l => l.roleIndex === Number(riStr))
+        if (il) {
+          const roleOrder = il.roleOrder || [0, 1]
+          const srcIdx = roleOrder[r.roleIndex]
+          const otId = srcIdx === 0 ? pFact.id : pFact.roles[Number(riStr)]?.objectTypeId
+          if (otId) ids.add(otId)
+        }
+      } else {
+        const f = store.facts.find(f => f.id === r.factId)
+        const otId = f?.roles[r.roleIndex]?.objectTypeId
+        if (otId) ids.add(otId)
+      }
     }
     for (const stId of qd.patternSubtypes) {
       const st = store.subtypes.find(s => s.id === stId)
@@ -300,6 +312,9 @@ export default function Canvas() {
     const isBackground = e.target === svgRef.current || e.target.closest('.canvas-bg')
     if (!isBackground) return
 
+    // Target pick mode: background click cancels it
+    if (store.pendingTargetPick) { store.cancelTargetPick(); return }
+
     // Query edit mode: block background clicks from interfering
     if (store.queryEditDraft) return
 
@@ -365,7 +380,6 @@ export default function Canvas() {
     }
     if (store.tool === 'assignRole' || store.tool === 'addSubtype' || store.tool === 'toggleMandatory' || store.tool === 'addInternalUniqueness' || store.tool === 'addInternalFrequency' || store.tool === 'addConstraint:valueRange' || store.tool === 'addConstraint:cardinality') { store.setTool('select'); return }
     if (store.tool === 'connectConstraint') { store.clearSelection(); store.setTool('select'); return }
-    if (store.tool === 'addTargetConnector') { store.clearLinkDraft(); store.setTool('select'); return }
     if (store.linkDraft) { store.clearLinkDraft(); return }
 
     // In select mode: start rubber-band (replaces left-drag pan)
@@ -696,10 +710,12 @@ export default function Canvas() {
               (f.implicitLinks || []).filter(il => store.isImplicitLinkShown(f.id, il.roleIndex)).map(il => {
                  const synth = makeImplicitLinkFact(f, il)
                 return (
-                 <FactTypeNode key={synth.id} fact={synth}
-                   onDragStart={(id, kind, e) => handleDragStart(id, 'implicitLink', e)}
-                   isShared={false}
-                   onContextMenu={(e) => handleImplicitLinkContextMenu(f.id, il.roleIndex, e)}/>
+                  <g key={synth.id} opacity={queryEditFactIds && !queryEditFactIds.has(synth.id) ? 0.35 : 1}>
+                    <FactTypeNode fact={synth}
+                      onDragStart={(id, kind, e) => handleDragStart(id, 'implicitLink', e)}
+                      isShared={false}
+                      onContextMenu={(e) => handleImplicitLinkContextMenu(f.id, il.roleIndex, e)}/>
+                  </g>
                )
              })
            )}

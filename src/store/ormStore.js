@@ -402,7 +402,9 @@ export const useOrmStore = create((set, get) => ({
   frequencyConstruction:   null,   // { stage:2|3, factId, x, y, roleIndices:number[], ifId?:string, range?:[] } | null
   sequenceConstruction:    null,   // { constraintId, steps: [{sequenceIndex}][], collected: [{sequenceIndex, member}][] } | null
   constraintHighlight:     null,   // { constraintId, sequenceIndex: number|null, positionIndex: number|null } | null
+  queryIndexHighlight:     null,   // { constraintId, queryIndex: number } | null
   queryEditDraft:          null,   // { constraintId, sequenceIndex, patternRoles: [{factId,roleIndex}], patternSubtypes: [subtypeId] } | null
+  pendingTargetPick:       null,   // { constraintId } | null  — set while the user is clicking a target OT in the diagram
 
   tool:      'select',
   linkDraft: null,
@@ -414,7 +416,6 @@ export const useOrmStore = create((set, get) => ({
   // Whether to show the reference mode label inside entity/value type nodes
   showReferenceMode: true,
   showRoleNames: true,
-  showTargetConnectors: true,
   showSequenceMembership: true,
   showConstraintQueries: true,
   showMinimap: true,
@@ -634,7 +635,6 @@ export const useOrmStore = create((set, get) => ({
   setMandatoryDotPosition(pos) { set({ mandatoryDotPosition: pos }) },
   setShowReferenceMode(val)   { set({ showReferenceMode: val }) },
   setShowRoleNames(val)             { set({ showRoleNames: val }) },
-  setShowTargetConnectors(val)      { set({ showTargetConnectors: val }) },
   setShowSequenceMembership(val)    { set({ showSequenceMembership: val }) },
   setShowConstraintQueries(val)     { set({ showConstraintQueries: val }) },
   setShowMinimap(val)         { set({ showMinimap: val }) },
@@ -1874,6 +1874,27 @@ export const useOrmStore = create((set, get) => ({
 
   setConstraintHighlight(h)  { set({ constraintHighlight: h }) },
   clearConstraintHighlight() { if (get().constraintHighlight !== null) set({ constraintHighlight: null }) },
+  setQueryIndexHighlight(h)  { set({ queryIndexHighlight: h }) },
+  clearQueryIndexHighlight() { if (get().queryIndexHighlight !== null) set({ queryIndexHighlight: null }) },
+
+  startTargetPick(constraintId) { set({ pendingTargetPick: { constraintId } }) },
+  cancelTargetPick() { set({ pendingTargetPick: null }) },
+  commitTargetPick(objectTypeId) {
+    const { pendingTargetPick, constraints } = get()
+    if (!pendingTargetPick) return
+    const { constraintId } = pendingTargetPick
+    const c = constraints.find(c => c.id === constraintId)
+    if (c) {
+      set(s => ({
+        constraints: s.constraints.map(con =>
+          con.id === constraintId ? { ...con, targetObjectTypeId: objectTypeId } : con
+        ),
+        pendingTargetPick: null,
+      }))
+    } else {
+      set({ pendingTargetPick: null })
+    }
+  },
 
   removeConstraintSequencePosition(constraintId, position) {
     set(s => {
@@ -1940,9 +1961,21 @@ export const useOrmStore = create((set, get) => ({
     const subtypes = get().subtypes
     const otIds = new Set()
 
+    // Resolve objectTypeId for a pattern role, handling implied link synthetic IDs (parentId_il_roleIndex)
+    const resolveOtId = (factId, roleIndex) => {
+      if (factId.includes('_il_')) {
+        const [pFid, riStr] = factId.split('_il_')
+        const pFact = facts.find(f => f.id === pFid)
+        const il = pFact?.implicitLinks?.find(l => l.roleIndex === Number(riStr))
+        if (!il) return null
+        const srcIdx = (il.roleOrder || [0, 1])[roleIndex]
+        return srcIdx === 0 ? pFact.id : pFact.roles[Number(riStr)]?.objectTypeId ?? null
+      }
+      return facts.find(f => f.id === factId)?.roles[roleIndex]?.objectTypeId ?? null
+    }
+
     for (const { factId, roleIndex } of patternRoles) {
-      const f = facts.find(f => f.id === factId)
-      const otId = f?.roles[roleIndex]?.objectTypeId
+      const otId = resolveOtId(factId, roleIndex)
       if (otId) otIds.add(otId)
     }
     for (const stId of patternSubtypes) {
@@ -1968,9 +2001,7 @@ export const useOrmStore = create((set, get) => ({
       factRoleMap[factId].push(roleIndex)
     }
     for (const [factId, roleIndices] of Object.entries(factRoleMap)) {
-      const f = facts.find(f => f.id === factId)
-      if (!f) continue
-      const ots = roleIndices.map(ri => f.roles[ri]?.objectTypeId).filter(Boolean)
+      const ots = roleIndices.map(ri => resolveOtId(factId, ri)).filter(Boolean)
       for (let i = 1; i < ots.length; i++) union(ots[0], ots[i])
     }
     // Connect via subtype edges

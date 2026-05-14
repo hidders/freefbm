@@ -8,7 +8,7 @@ export const SELECTION_MODE_TOOLS = new Set([
   'assignRole',
   'addSubtype',
   'connectConstraint',
-  'addTargetConnector',
+
   'toggleMandatory',
   'addInternalUniqueness',
   'addInternalFrequency',
