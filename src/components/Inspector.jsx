@@ -205,8 +205,11 @@ function Checkbox({ label, checked, onChange, disabled = false }) {
 
 function DangerBtn({ onClick, children }) {
   return (
-    <button onClick={onClick} style={{ background: 'transparent', color: 'var(--danger)',
-      border: '1px solid var(--danger)', borderRadius: 3, padding: '4px 10px', fontSize: 11 }}>
+    <button onClick={onClick}
+      style={{ background: 'transparent', color: 'var(--danger)',
+        border: '1px solid var(--danger)', borderRadius: 3, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--danger)' }}>
       {children}
     </button>
   )
@@ -426,7 +429,9 @@ function DatatypeField({ assignment, onSet }) {
           <button
             onClick={() => onSet(null)}
             style={{ fontSize: 11, padding: '3px 8px', color: 'var(--danger)',
-              background: 'transparent', border: '1px solid var(--danger)', borderRadius: 3, cursor: 'pointer' }}>
+              background: 'transparent', border: '1px solid var(--danger)', borderRadius: 3, cursor: 'pointer' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--danger)' }}>
             Clear assignment
           </button>
         </div>
@@ -1715,8 +1720,7 @@ function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
   const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
 
-  const roleOrder = il.roleOrder || [0, 1]
-  const srcIdx = roleOrder[ilRoleIndex]
+  const srcIdx = ilRoleIndex
 
   const roleItems = [
     { objectTypeId: parentFact.id, roleName: (il.roleNames || [null, null])[0] },
@@ -1826,7 +1830,6 @@ function CompactImplicitLinkRoleList({ parentFact, roleIndex }) {
   const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
 
   const il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
-  const roleOrder = il?.roleOrder || [0, 1]
 
   const roleItems = [
     { objectTypeId: parentFact.id, roleName: (il?.roleNames || [null, null])[0] },
@@ -1836,7 +1839,7 @@ function CompactImplicitLinkRoleList({ parentFact, roleIndex }) {
   return (
     <div>
       {[0, 1].map((ri) => {
-        const srcIdx = roleOrder[ri]
+        const srcIdx = ri
         const role = roleItems[srcIdx]
         const ot = otMap[role.objectTypeId]
         const nf = !ot ? nestedMap[role.objectTypeId] : null
@@ -2033,8 +2036,7 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
           <select value={JSON.stringify(mergedIl.roleOrder || [0, 1])} style={{ width: '100%' }}
             onChange={e => {
               const newOrder = JSON.parse(e.target.value)
-              const isDefault = JSON.stringify(newOrder) === '[0,1]'
-              store.updateImplicitLink(parentFact.id, roleIndex, { roleOrder: isDefault ? undefined : newOrder, readingOffsetAbove: null, readingOffsetBelow: null })
+              store.updateImplicitLink(parentFact.id, roleIndex, { roleOrder: newOrder, readingOffsetAbove: null, readingOffsetBelow: null })
             }}>
             <option value="[0,1]">(1, 2)</option>
             <option value="[1,0]">(2, 1)</option>
@@ -2525,7 +2527,7 @@ function ExternalConstraintInspector({ c }) {
                 padding: '3px 6px', marginBottom: 3, fontWeight: 600 }}>
                 ⚠ {gc.warning}
               </div>
-            : <div style={{ opacity: 0.85 }}>Click a role box or subtype relationship on the canvas · Enter to commit.</div>
+            : <div style={{ opacity: 0.85 }}>Click a role box or subtype relationship on the canvas · Enter or click constraint to commit.</div>
           }
           <button onClick={() => store.abandonSequenceConstruction()}
             style={{ marginTop: 6, padding: '2px 8px', fontSize: 10, background: 'rgba(255,255,255,0.2)',
@@ -2609,7 +2611,9 @@ function ExternalConstraintInspector({ c }) {
                   title={`Remove Sequence ${gi + 1}`}
                   style={{ width: 22, padding: 0, fontSize: 11, background: 'var(--bg-raised)',
                     border: '1px solid #e0b0a8', borderRadius: 3,
-                    cursor: 'pointer', flexShrink: 0, color: 'var(--danger)' }}>
+                    cursor: 'pointer', flexShrink: 0, color: 'var(--danger)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'var(--danger)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-raised)'; e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.borderColor = '#e0b0a8' }}>
                   ×
                 </button>
               </div>
@@ -2623,8 +2627,10 @@ function ExternalConstraintInspector({ c }) {
                 onClick={() => store.removeConstraintSequencePosition(c.id, pi)}
                 title={`Remove position ${pi + 1} from all sequences`}
                 style={{ flex: 1, minWidth: 0, padding: '1px 0', fontSize: 11,
-                  background: 'var(--bg-raised)', border: '1px solid var(--border)',
-                  borderRadius: 3, cursor: 'pointer', color: 'var(--danger)' }}>
+                  background: 'var(--bg-raised)', border: '1px solid #e0b0a8',
+                  borderRadius: 3, cursor: 'pointer', color: 'var(--danger)' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'var(--danger)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-raised)'; e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.borderColor = '#e0b0a8' }}>
                 ×
               </button>
             ))}
@@ -2663,15 +2669,18 @@ function ExternalConstraintInspector({ c }) {
         </div>
       )}
 
-      {/* ── Query section (uniqueness only for now) ── */}
-      {c.constraintType === 'uniqueness' && sequences.length > 0 && (() => {
+      {/* ── Query section ── */}
+      {(c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr' || c.constraintType === 'uniqueness' || c.constraintType === 'exclusion' || c.constraintType === 'equality' || c.constraintType === 'subset' || c.constraintType === 'ring' || c.constraintType === 'valueComparison' || c.constraintType === 'frequency') && sequences.length > 0 && (() => {
         const qd = store.queryEditDraft?.constraintId === c.id ? store.queryEditDraft : null
         const queries = c.queries || []
         const hasTarget = !!c.targetObjectTypeId
+        const needsTarget = c.constraintType === 'uniqueness' || c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr' || c.constraintType === 'frequency'
 
         if (qd) {
           // Editing banner
           const validation = store.getQueryEditValidation()
+          const copyCount = qd.copies.length
+          const linkCount = qd.links.length
           return (
             <div style={{ marginBottom: 12 }}>
               <div style={{ background: 'var(--col-query-in)', color: '#fff', borderRadius: 4,
@@ -2679,9 +2688,12 @@ function ExternalConstraintInspector({ c }) {
                 <div style={{ fontWeight: 600, marginBottom: 3 }}>
                   Editing query for S{qd.sequenceIndex + 1}
                 </div>
-                <div style={{ opacity: 0.9, marginBottom: 6 }}>
-                  Click role boxes and subtype arrows on the canvas to include them in the pattern.
-                  The output role (sequence member) is always included.
+                <div style={{ opacity: 0.9, marginBottom: 4 }}>
+                  Click a copy and an original (or two copies) to link them. Output copies are fixed.
+                </div>
+                <div style={{ opacity: 0.85, marginBottom: 6, fontSize: 10 }}>
+                  {copyCount} cop{copyCount !== 1 ? 'ies' : 'y'}, {linkCount} link{linkCount !== 1 ? 's' : ''}
+                  {qd.pendingClick ? ' — waiting for second click' : ''}
                 </div>
                 <div style={{ fontWeight: 600, marginBottom: 6,
                   color: validation.valid ? '#a7f3d0' : '#fca5a5' }}>
@@ -2714,7 +2726,7 @@ function ExternalConstraintInspector({ c }) {
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
               textTransform: 'uppercase', marginBottom: 5, display: 'block' }}>Queries</label>
-            {!hasTarget && (
+            {needsTarget && !hasTarget && (
               <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic', marginBottom: 6 }}>
                 Set a target object type above to enable query editing.
               </div>
@@ -2722,10 +2734,9 @@ function ExternalConstraintInspector({ c }) {
             {sequences.map((seq, gi) => {
               if (seq.length === 0) return null
               const q = queries[gi] || null
-              const roleCount = q ? q.patternRoles.length : 0
-              const stCount   = q ? q.patternSubtypes.length : 0
+              const copyCount = q?.copies?.length ?? 0
               const statusText = q
-                ? `${roleCount} role${roleCount !== 1 ? 's' : ''}${stCount > 0 ? `, ${stCount} subtype edge${stCount !== 1 ? 's' : ''}` : ''}`
+                ? `${copyCount} cop${copyCount !== 1 ? 'ies' : 'y'}`
                 : 'Not defined'
               const qPressed = pressedQueryIndex === gi
               return (
@@ -2755,12 +2766,12 @@ function ExternalConstraintInspector({ c }) {
                     {statusText}
                   </button>
                   <button
-                    disabled={!hasTarget || !!gc}
+                    disabled={(needsTarget && !hasTarget) || !!gc}
                     onClick={() => store.startQueryEdit(c.id, gi)}
                     style={{ padding: '2px 8px', fontSize: 10, background: 'var(--bg-raised)',
                       border: '1px solid var(--border)', borderRadius: 3,
-                      cursor: hasTarget && !gc ? 'pointer' : 'default',
-                      color: 'var(--ink-2)', opacity: hasTarget && !gc ? 1 : 0.4 }}>
+                      cursor: (!needsTarget || hasTarget) && !gc ? 'pointer' : 'default',
+                      color: 'var(--ink-2)', opacity: (!needsTarget || hasTarget) && !gc ? 1 : 0.4 }}>
                     {q ? 'Edit' : 'Define'}
                   </button>
                   {q && (
@@ -2768,7 +2779,9 @@ function ExternalConstraintInspector({ c }) {
                       title="Clear query"
                       style={{ padding: '2px 6px', fontSize: 10, background: 'var(--bg-raised)',
                         border: '1px solid #e0b0a8', borderRadius: 3,
-                        cursor: 'pointer', color: 'var(--danger)' }}>
+                        cursor: 'pointer', color: 'var(--danger)' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'var(--danger)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-raised)'; e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.borderColor = '#e0b0a8' }}>
                       ×
                     </button>
                   )}
@@ -3046,9 +3059,11 @@ export default function Inspector() {
             </button>
             <button
               onClick={() => store.deleteMultiSelection()}
-              style={{ fontSize: 11, padding: '3px 8px',
+              style={{ fontSize: 11, padding: '3px 8px', cursor: 'pointer',
                 background: 'transparent', color: 'var(--danger)',
-                border: '1px solid var(--danger)', borderRadius: 3 }}>
+                border: '1px solid var(--danger)', borderRadius: 3 }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--danger)' }}>
               Delete all
             </button>
           </div>

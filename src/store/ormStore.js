@@ -2,6 +2,9 @@ import { create } from 'zustand'
 import { EXTERNAL_CONSTRAINT_TYPES } from '../constants.js'
 import { constraintMaxSequences, isSingletonSequence, isOpenEndedConstruction } from '../utils/constraintRules.js'
 
+// ── pan animation ─────────────────────────────────────────────────────────────
+let _panAnimId = null
+
 // ── id generator ──────────────────────────────────────────────────────────────
 let _n = 1
 const uid = () => `n${Date.now()}_${_n++}`
@@ -403,7 +406,7 @@ export const useOrmStore = create((set, get) => ({
   sequenceConstruction:    null,   // { constraintId, steps: [{sequenceIndex}][], collected: [{sequenceIndex, member}][] } | null
   constraintHighlight:     null,   // { constraintId, sequenceIndex: number|null, positionIndex: number|null } | null
   queryIndexHighlight:     null,   // { constraintId, queryIndex: number } | null
-  queryEditDraft:          null,   // { constraintId, sequenceIndex, patternRoles: [{factId,roleIndex}], patternSubtypes: [subtypeId] } | null
+  queryEditDraft:          null,   // { constraintId, sequenceIndex, copies:[{id,kind,originalId,isOutput}], links:[{copyId,roleIndex,variableId}], pendingClick } | null
   pendingTargetPick:       null,   // { constraintId } | null  — set while the user is clicking a target OT in the diagram
 
   tool:      'select',
@@ -513,6 +516,36 @@ export const useOrmStore = create((set, get) => ({
 
     if (toAdd.length === 0 && impliedLinksToShow.size === 0) return
 
+    // Compute viewport centre in world coordinates using the canvas SVG element
+    const { pan, zoom } = get()
+    const svgEl = typeof document !== 'undefined' ? document.getElementById('orm2-canvas-svg') : null
+    const svgRect = svgEl?.getBoundingClientRect()
+    const viewportCenter = svgRect
+      ? { x: (-pan.x + svgRect.width  / 2) / zoom,
+          y: (-pan.y + svgRect.height / 2) / zoom }
+      : { x: 400, y: 300 }
+
+    // Shift pasted elements to a sensible position:
+    // • empty diagram  → top-left of bounding box at (100, 100) (visible after reset view)
+    // • non-empty      → centre of bounding box on current viewport centre
+    let ox = 0, oy = 0
+    const positioned = toAdd.filter(el => el.x != null && el.y != null)
+    if (activeDiagram?.elementIds !== null && positioned.length > 0) {
+      const minX = Math.min(...positioned.map(el => el.x))
+      const minY = Math.min(...positioned.map(el => el.y))
+      if (existingIds.size === 0) {
+        // Empty diagram: anchor top-left corner to (100, 100)
+        ox = 100 - minX
+        oy = 100 - minY
+      } else {
+        // Non-empty diagram: centre bounding box on viewport centre
+        const maxX = Math.max(...positioned.map(el => el.x))
+        const maxY = Math.max(...positioned.map(el => el.y))
+        ox = viewportCenter.x - (minX + maxX) / 2
+        oy = viewportCenter.y - (minY + maxY) / 2
+      }
+    }
+
     const addIds = toAdd.map(el => el.id)
     const singleEl = toAdd.length === 1 ? toAdd[0] : null
     const singleKind = singleEl
@@ -527,7 +560,7 @@ export const useOrmStore = create((set, get) => ({
         const elementIds = d.elementIds === null ? null : [...d.elementIds, ...addIds]
         const positions = {
           ...d.positions,
-          ...Object.fromEntries(toAdd.map(el => [el.id, d.positions[el.id] ?? { x: el.x, y: el.y }])),
+          ...Object.fromEntries(toAdd.map(el => [el.id, d.positions[el.id] ?? { x: el.x + ox, y: el.y + oy }])),
         }
 
         // Add implied links to shownImplicitLinks
@@ -759,6 +792,10 @@ export const useOrmStore = create((set, get) => ({
             ? { type: 'single', value: String(min) }
             : { type: 'range', lower: String(min), upper: String(max) }
         out = { ...out, frequency: spec ? [spec] : null }
+      }
+      // Discard old-format queries (patternRoles/patternSubtypes) — replaced by copy-graph format
+      if (out.queries && out.queries.some(q => q && q.patternRoles)) {
+        out = { ...out, queries: out.queries.map(q => (q && q.patternRoles) ? null : q) }
       }
       return out
     })
@@ -1619,6 +1656,29 @@ export const useOrmStore = create((set, get) => ({
     return diag?.shownImplicitLinks?.includes(`${factId}:${roleIndex}`) ?? false
   },
 
+  setAllImplicitLinksShown(factId, show) {
+    const s = get()
+    const fact = s.facts.find(f => f.id === factId)
+    if (!fact) return
+    const eligibleRoles = (fact.implicitLinks || [])
+      .filter(il => fact.roles[il.roleIndex]?.objectTypeId)
+      .map(il => `${factId}:${il.roleIndex}`)
+    if (eligibleRoles.length === 0) return
+    set(s2 => {
+      const updatedDiagrams = s2.diagrams.map(d => {
+        if (d.id !== s2.activeDiagramId) return d
+        const current = new Set(d.shownImplicitLinks || [])
+        if (show) eligibleRoles.forEach(k => current.add(k))
+        else eligibleRoles.forEach(k => current.delete(k))
+        return { ...d, shownImplicitLinks: [...current] }
+      })
+      return {
+        diagrams: syncConstraints(updatedDiagrams, s2.constraints, s2.subtypes, s2.facts),
+        isDirty: true,
+      }
+    })
+  },
+
   updateImplicitLink(factId, roleIndex, patch) {
     const positionKeys = ['x', 'y', 'roleOrder', 'readingOrder', 'orientation', 'readingDisplay', 'readingAbove', 'readingOffset', 'readingOffsetAbove', 'readingOffsetBelow']
     const schemaPatch = {}
@@ -1785,11 +1845,8 @@ export const useOrmStore = create((set, get) => ({
   },
 
   collectSequenceMember(member) {
-    // Implicit link facts: only role 0 can be used in external constraint sequences
-    if (member.kind === 'role' && member.factId.includes('_il_')) {
-      const parts = member.factId.split('_il_')
-      if (parts.length === 2 && member.roleIndex !== 0) return
-    }
+    // Roles from implied links are not allowed in external constraint sequences
+    if (member.kind === 'role' && member.factId.includes('_il_')) return
 
     const gc = get().sequenceConstruction
     if (!gc || gc.steps.length === 0) return
@@ -1850,6 +1907,256 @@ export const useOrmStore = create((set, get) => ({
         isDirty: true,
       }
     })
+    // After committing, try to auto-generate query/target for supported constraint types
+    get()._tryAutoGenerateQuery(constraintId)
+  },
+
+  _tryAutoGenerateQuery(constraintId) {
+    const { constraints, facts } = get()
+    const c = constraints.find(c => c.id === constraintId)
+    if (!c) return
+
+    if (c.constraintType === 'uniqueness') {
+      const seq = c.sequences?.[0] ?? []
+      const roleMembers = seq.filter(m => m.kind === 'role' && !m.factId?.includes('_il_'))
+      if (roleMembers.length === 0 || roleMembers.length !== seq.length) return
+
+      // All roles must be in binary fact types
+      for (const m of roleMembers) {
+        const f = facts.find(f => f.id === m.factId)
+        if (!f || f.arity !== 2) return
+      }
+
+      // There must be a single common OT connected to the OTHER role of each fact
+      let targetOtId = null
+      for (const m of roleMembers) {
+        const f = facts.find(f => f.id === m.factId)
+        const otherRi = 1 - m.roleIndex
+        const otId = f.roles[otherRi]?.objectTypeId
+        if (!otId) return
+        if (targetOtId === null) targetOtId = otId
+        else if (targetOtId !== otId) return
+      }
+      if (!targetOtId) return
+
+      // Don't overwrite if the user has already set a different target or a query
+      if (c.targetObjectTypeId && c.targetObjectTypeId !== targetOtId) return
+      if (c.queries?.[0] != null) return
+
+      // Build the query
+      const targetCopyId = uid()
+      const copies = [
+        { id: targetCopyId, kind: 'objectType', originalId: targetOtId,
+          isOutput: true, dx: 16, dy: 16 },
+      ]
+      const links = []
+      roleMembers.forEach((m, i) => {
+        const otherRi = 1 - m.roleIndex
+        const factCopyId = uid()
+        copies.push({ id: factCopyId, kind: 'fact', originalId: m.factId,
+          isOutput: false, seededRoles: [m.roleIndex],
+          dx: (i + 2) * 16, dy: (i + 2) * 16 })
+        links.push({ copyId: factCopyId, roleIndex: otherRi, variableId: targetCopyId })
+      })
+
+      set(s => ({
+        constraints: s.constraints.map(c => {
+          if (c.id !== constraintId) return c
+          const queries = [...(c.queries || [])]
+          while (queries.length < 1) queries.push(null)
+          queries[0] = { copies, links }
+          return { ...c, targetObjectTypeId: targetOtId, queries }
+        }),
+        isDirty: true,
+      }))
+    }
+
+    if (c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr') {
+      const sequences = c.sequences ?? []
+      if (sequences.length === 0) return
+      const allSubtypes = get().subtypes
+
+      // Helper: apply generated queries for matching sequences
+      const applyQueries = (targetOtId, buildQuery) => {
+        if (c.targetObjectTypeId && c.targetObjectTypeId !== targetOtId) return
+        const existingQueries = [...(c.queries ?? [])]
+        while (existingQueries.length < sequences.length) existingQueries.push(null)
+        const toGenerate = existingQueries.map((q, i) => q == null ? i : -1).filter(i => i >= 0)
+        if (toGenerate.length === 0) return
+        for (const i of toGenerate) existingQueries[i] = buildQuery(i)
+        set(s => ({
+          constraints: s.constraints.map(con =>
+            con.id !== constraintId ? con : { ...con, targetObjectTypeId: targetOtId, queries: existingQueries }
+          ),
+          isDirty: true,
+        }))
+      }
+
+      // ── Rule 1: every sequence is a single subtype edge, all with the same supertype ──
+      const stMembers = sequences.map(seq =>
+        seq.length === 1 && seq[0].kind === 'subtype'
+          ? (allSubtypes.find(s => s.id === seq[0].subtypeId) ?? null)
+          : null
+      )
+      if (stMembers.every(m => m !== null)) {
+        const superIds = new Set(stMembers.map(st => st.superId))
+        if (superIds.size === 1) {
+          const targetOtId = [...superIds][0]
+          applyQueries(targetOtId, i => {
+            const st = stMembers[i]
+            const targetCopyId = uid(), subOtCopyId = uid(), stCopyId = uid()
+            return {
+              copies: [
+                { id: targetCopyId, kind: 'objectType', originalId: targetOtId,
+                  isOutput: true, dx: 16, dy: 16 },
+                { id: subOtCopyId, kind: 'objectType', originalId: st.subId,
+                  isOutput: false, dx: 32, dy: 32 },
+                { id: stCopyId, kind: 'subtype', originalId: st.id,
+                  isOutput: true, isSeeded: true, dx: 24, dy: 24 },
+              ],
+              links: [
+                { copyId: stCopyId, roleIndex: 0, variableId: subOtCopyId },
+                { copyId: stCopyId, roleIndex: 1, variableId: targetCopyId },
+              ],
+            }
+          })
+          return
+        }
+      }
+
+      // ── Rule 2: every sequence is a single role, all connected to the same OT ──
+      const roleMembers = sequences.map(seq =>
+        seq.length === 1 && seq[0].kind === 'role' && !seq[0].factId?.includes('_il_')
+          ? seq[0] : null
+      )
+      if (roleMembers.every(m => m !== null)) {
+        const targetOtIds = new Set(roleMembers.map(m => {
+          const f = facts.find(f => f.id === m.factId)
+          return f?.roles[m.roleIndex]?.objectTypeId ?? null
+        }))
+        if (targetOtIds.size === 1) {
+          const targetOtId = [...targetOtIds][0]
+          if (targetOtId) {
+            applyQueries(targetOtId, i => {
+              const m = roleMembers[i]
+              const targetCopyId = uid(), factCopyId = uid()
+              return {
+                copies: [
+                  { id: targetCopyId, kind: 'objectType', originalId: targetOtId,
+                    isOutput: true, dx: 16, dy: 16 },
+                  { id: factCopyId, kind: 'fact', originalId: m.factId,
+                    isOutput: false, seededRoles: [m.roleIndex], dx: 32, dy: 32 },
+                ],
+                links: [
+                  { copyId: factCopyId, roleIndex: m.roleIndex, variableId: targetCopyId },
+                ],
+              }
+            })
+          }
+        }
+      }
+    }
+
+    if (c.constraintType === 'exclusion') {
+      const sequences = c.sequences ?? []
+      if (sequences.length === 0) return
+
+      const existingQueries = [...(c.queries ?? [])]
+      while (existingQueries.length < sequences.length) existingQueries.push(null)
+      let changed = false
+
+      const allSubtypes = get().subtypes
+
+      for (let i = 0; i < sequences.length; i++) {
+        if (existingQueries[i] != null) continue  // don't overwrite existing query
+
+        const seq = sequences[i]
+
+        // Rule 3: single subtype edge → subtype copy + sub OT copy (output) + super OT copy
+        if (seq.length === 1 && seq[0].kind === 'subtype') {
+          const st = allSubtypes.find(s => s.id === seq[0].subtypeId)
+          if (st) {
+            const subOtCopyId = uid(), supOtCopyId = uid(), stCopyId = uid()
+            existingQueries[i] = {
+              copies: [
+                { id: subOtCopyId, kind: 'objectType', originalId: st.subId,
+                  isOutput: true, dx: 16, dy: 16 },
+                { id: supOtCopyId, kind: 'objectType', originalId: st.superId,
+                  isOutput: false, dx: 32, dy: 32 },
+                { id: stCopyId, kind: 'subtype', originalId: st.id,
+                  isSeeded: true, dx: 24, dy: 24 },
+              ],
+              links: [
+                { copyId: stCopyId, roleIndex: 0, variableId: subOtCopyId },
+                { copyId: stCopyId, roleIndex: 1, variableId: supOtCopyId },
+              ],
+            }
+            changed = true
+            continue
+          }
+        }
+
+        const roleMembers = seq.filter(m => m.kind === 'role' && !m.factId?.includes('_il_'))
+        if (roleMembers.length === 0 || roleMembers.length !== seq.length) continue
+
+        // Rule 1: all roles in binary fact types with same "other" OT
+        let allBinary = true
+        for (const m of roleMembers) {
+          const f = facts.find(f => f.id === m.factId)
+          if (!f || f.arity !== 2) { allBinary = false; break }
+        }
+        if (allBinary) {
+          let targetOtId = null, otValid = true
+          for (const m of roleMembers) {
+            const f = facts.find(f => f.id === m.factId)
+            const otId = f.roles[1 - m.roleIndex]?.objectTypeId
+            if (!otId) { otValid = false; break }
+            if (targetOtId === null) targetOtId = otId
+            else if (targetOtId !== otId) { otValid = false; break }
+          }
+          if (otValid && targetOtId) {
+            const targetCopyId = uid()
+            const copies = [
+              { id: targetCopyId, kind: 'objectType', originalId: targetOtId,
+                isOutput: true, dx: 16, dy: 16 },
+            ]
+            const links = []
+            roleMembers.forEach((m, j) => {
+              const factCopyId = uid()
+              copies.push({ id: factCopyId, kind: 'fact', originalId: m.factId,
+                isOutput: false, seededRoles: [m.roleIndex],
+                dx: (j + 2) * 16, dy: (j + 2) * 16 })
+              links.push({ copyId: factCopyId, roleIndex: 1 - m.roleIndex, variableId: targetCopyId })
+            })
+            existingQueries[i] = { copies, links }
+            changed = true
+            continue
+          }
+        }
+
+        // Rule 2: all roles in the same fact type → single fact copy with all roles marked
+        const factIds = new Set(roleMembers.map(m => m.factId))
+        if (factIds.size === 1) {
+          const factCopyId = uid()
+          existingQueries[i] = {
+            copies: [{ id: factCopyId, kind: 'fact', originalId: [...factIds][0],
+              isOutput: false, seededRoles: roleMembers.map(m => m.roleIndex),
+              dx: 16, dy: 16 }],
+            links: [],
+          }
+          changed = true
+        }
+      }
+
+      if (changed) {
+        set(s => ({
+          constraints: s.constraints.map(con =>
+            con.id !== constraintId ? con : { ...con, queries: existingQueries }
+          ),
+          isDirty: true,
+        }))
+      }
+    }
   },
 
   abandonSequenceConstruction() {
@@ -1950,76 +2257,15 @@ export const useOrmStore = create((set, get) => ({
   getQueryEditValidation() {
     const qd = get().queryEditDraft
     if (!qd) return { valid: false, reason: null }
-    const c = get().constraints.find(c => c.id === qd.constraintId)
-    if (!c) return { valid: false, reason: null }
-    const { patternRoles, patternSubtypes } = qd
-    if (patternRoles.length === 0 && patternSubtypes.length === 0)
-      return { valid: false, reason: 'Pattern is empty' }
-
-    // Gather all object type IDs reachable by the pattern
-    const facts = get().facts
-    const subtypes = get().subtypes
-    const otIds = new Set()
-
-    // Resolve objectTypeId for a pattern role, handling implied link synthetic IDs (parentId_il_roleIndex)
-    const resolveOtId = (factId, roleIndex) => {
-      if (factId.includes('_il_')) {
-        const [pFid, riStr] = factId.split('_il_')
-        const pFact = facts.find(f => f.id === pFid)
-        const il = pFact?.implicitLinks?.find(l => l.roleIndex === Number(riStr))
-        if (!il) return null
-        const srcIdx = (il.roleOrder || [0, 1])[roleIndex]
-        return srcIdx === 0 ? pFact.id : pFact.roles[Number(riStr)]?.objectTypeId ?? null
-      }
-      return facts.find(f => f.id === factId)?.roles[roleIndex]?.objectTypeId ?? null
-    }
-
-    for (const { factId, roleIndex } of patternRoles) {
-      const otId = resolveOtId(factId, roleIndex)
-      if (otId) otIds.add(otId)
-    }
-    for (const stId of patternSubtypes) {
-      const st = subtypes.find(s => s.id === stId)
-      if (st) { otIds.add(st.subId); otIds.add(st.superId) }
-    }
-
-    // For uniqueness: also include the target object type
-    const targetId = c.targetObjectTypeId
-    if (c.constraintType === 'uniqueness' && targetId) otIds.add(targetId)
-
-    if (otIds.size === 0) return { valid: false, reason: 'Pattern has no object types' }
-
-    // Union-find connectivity check
+    const { copies, links } = qd
+    if (copies.length === 0) return { valid: false, reason: 'Pattern is empty' }
+    // Union-find on copies — edges are links between fact/subtype copies and OT copies
     const parent = {}
     const find = id => { if (parent[id] === undefined) parent[id] = id; return parent[id] === id ? id : (parent[id] = find(parent[id])) }
     const union = (a, b) => { parent[find(a)] = find(b) }
-
-    // Connect object types that share a fact type atom in the pattern
-    const factRoleMap = {}
-    for (const { factId, roleIndex } of patternRoles) {
-      if (!factRoleMap[factId]) factRoleMap[factId] = []
-      factRoleMap[factId].push(roleIndex)
-    }
-    for (const [factId, roleIndices] of Object.entries(factRoleMap)) {
-      const ots = roleIndices.map(ri => resolveOtId(factId, ri)).filter(Boolean)
-      for (let i = 1; i < ots.length; i++) union(ots[0], ots[i])
-    }
-    // Connect via subtype edges
-    for (const stId of patternSubtypes) {
-      const st = subtypes.find(s => s.id === stId)
-      if (st) union(st.subId, st.superId)
-    }
-
-    // Check: all pattern object types are in one component
-    const roots = new Set([...otIds].map(find))
+    for (const lk of links) union(lk.copyId, lk.variableId)
+    const roots = new Set(copies.map(c => find(c.id)))
     if (roots.size > 1) return { valid: false, reason: 'Pattern is not connected' }
-
-    // For uniqueness: target must be in pattern and connected
-    if (c.constraintType === 'uniqueness') {
-      if (!targetId) return { valid: false, reason: 'No target object type set' }
-      if (!otIds.has(targetId)) return { valid: false, reason: 'Pattern does not reach the target object type' }
-    }
-
     return { valid: true, reason: null }
   },
 
@@ -2027,41 +2273,247 @@ export const useOrmStore = create((set, get) => ({
     const c = get().constraints.find(c => c.id === constraintId)
     if (!c) return
     const existing = (c.queries || [])[sequenceIndex] || null
-    // Pre-seed draft with the sequence members as output roles (they are always in the pattern)
-    const outputRoles = (c.sequences[sequenceIndex] || [])
-      .filter(m => m.kind === 'role')
-      .map(m => ({ factId: m.factId, roleIndex: m.roleIndex }))
-    const patternRoles = existing
-      ? existing.patternRoles
-      : outputRoles
-    const patternSubtypes = existing ? existing.patternSubtypes : []
-    set({ queryEditDraft: { constraintId, sequenceIndex, patternRoles, patternSubtypes } })
+    // Re-edit an already-saved new-format query
+    if (existing?.copies) {
+      set({ queryEditDraft: { constraintId, sequenceIndex, copies: existing.copies, links: existing.links, pendingClick: null } })
+      return
+    }
+    // Seed fresh graph from sequence members
+    const seq = c.sequences[sequenceIndex] || []
+    const facts   = get().facts
+    const subtypes = get().subtypes
+    const copies = [], links = []
+    const offsetCount = {}  // originalId → how many copies created so far
+    const nextOffset = (originalId) => {
+      const n = offsetCount[originalId] ?? 0
+      offsetCount[originalId] = n + 1
+      return { dx: (n + 1) * 16, dy: (n + 1) * 16 }
+    }
+
+    const hasExplicitTarget = !!c.targetObjectTypeId
+
+    // Target copy — created first so it is never shared with role variables
+    if (hasExplicitTarget) {
+      const targetCopyId = uid()
+      copies.push({ id: targetCopyId, kind: 'objectType', originalId: c.targetObjectTypeId, isOutput: true, ...nextOffset(c.targetObjectTypeId) })
+    }
+
+    // Each role gets its own fresh fact copy; OT copies are added by the user later
+    for (const m of seq) {
+      if (m.kind !== 'role') continue
+      const factCopyId = uid()
+      copies.push({ id: factCopyId, kind: 'fact', originalId: m.factId, isOutput: false, seededRoles: [m.roleIndex], ...nextOffset(m.factId) })
+    }
+    for (const m of seq) {
+      if (m.kind !== 'subtype') continue
+      const st = subtypes.find(s => s.id === m.subtypeId)
+      if (!st) continue
+      const stCopyId = uid()
+      copies.push({ id: stCopyId, kind: 'subtype', originalId: m.subtypeId, isOutput: !hasExplicitTarget, isSeeded: true, ...nextOffset(m.subtypeId) })
+      const makeOtCopy = (otId) => {
+        const cid = uid()
+        copies.push({ id: cid, kind: 'objectType', originalId: otId, isOutput: false, ...nextOffset(otId) })
+        return cid
+      }
+      links.push({ copyId: stCopyId, roleIndex: 0, variableId: makeOtCopy(st.subId)   })
+      links.push({ copyId: stCopyId, roleIndex: 1, variableId: makeOtCopy(st.superId) })
+    }
+    set({ queryEditDraft: { constraintId, sequenceIndex, copies, links, pendingClick: null } })
   },
 
-  toggleQueryEditRole(factId, roleIndex) {
+  queryEditClick(target) {
+    // target: { type: 'otCopy'|'otOriginal'|'factCopyRole'|'factOriginalRole'|'subtypeCopy'|'subtypeOriginal', id, roleIndex? }
     const qd = get().queryEditDraft
     if (!qd) return
-    const c = get().constraints.find(c => c.id === qd.constraintId)
-    if (!c) return
-    // Output roles (sequence members) cannot be removed
-    const isOutput = (c.sequences[qd.sequenceIndex] || [])
-      .some(m => m.kind === 'role' && m.factId === factId && m.roleIndex === roleIndex)
-    if (isOutput) return
-    const already = qd.patternRoles.some(r => r.factId === factId && r.roleIndex === roleIndex)
-    const patternRoles = already
-      ? qd.patternRoles.filter(r => !(r.factId === factId && r.roleIndex === roleIndex))
-      : [...qd.patternRoles, { factId, roleIndex }]
-    set({ queryEditDraft: { ...qd, patternRoles } })
-  },
+    const { pendingClick } = qd
+    if (!pendingClick) {
+      set({ queryEditDraft: { ...qd, pendingClick: target } })
+      return
+    }
+    // Same target clicked again → cancel pending
+    if (pendingClick.type === target.type && pendingClick.id === target.id && pendingClick.roleIndex === target.roleIndex) {
+      set({ queryEditDraft: { ...qd, pendingClick: null } })
+      return
+    }
+    const isOtSide   = t => t.type === 'otCopy'   || t.type === 'otOriginal'
+    const isRoleSide = t => t.type === 'factCopyRole' || t.type === 'factOriginalRole' || t.type === 'subtypeCopy' || t.type === 'subtypeOriginal'
 
-  toggleQueryEditSubtype(subtypeId) {
-    const qd = get().queryEditDraft
-    if (!qd) return
-    const already = qd.patternSubtypes.includes(subtypeId)
-    const patternSubtypes = already
-      ? qd.patternSubtypes.filter(id => id !== subtypeId)
-      : [...qd.patternSubtypes, subtypeId]
-    set({ queryEditDraft: { ...qd, patternSubtypes } })
+    // Two OT-side clicks
+    if (isOtSide(pendingClick) && isOtSide(target)) {
+      // Same OT copy clicked twice → merge
+      if (pendingClick.type === 'otCopy' && target.type === 'otCopy') {
+        const copy1 = qd.copies.find(c => c.id === pendingClick.id)
+        const copy2 = qd.copies.find(c => c.id === target.id)
+        if (copy1 && copy2 && copy1.originalId === copy2.originalId) {
+          const survived = (copy1.isOutput || copy2.isOutput) ? { ...copy1, isOutput: true, isRoleVar: false } : copy1
+          const mergedCopies = qd.copies.filter(c => c.id !== copy2.id).map(c => c.id === copy1.id ? survived : c)
+          const mergedLinks  = qd.links.map(l => l.variableId === copy2.id ? { ...l, variableId: copy1.id } : l)
+          set({ queryEditDraft: { ...qd, copies: mergedCopies, links: mergedLinks, pendingClick: null } })
+          return
+        }
+      }
+
+      // Both originals (no copies involved) → nothing
+      if (pendingClick.type === 'otOriginal' && target.type === 'otOriginal') {
+        set({ queryEditDraft: { ...qd, pendingClick: null } }); return
+      }
+
+      // Resolve original IDs for both sides
+      const ot1OrigId = pendingClick.type === 'otCopy'
+        ? qd.copies.find(c => c.id === pendingClick.id)?.originalId : pendingClick.id
+      const ot2OrigId = target.type === 'otCopy'
+        ? qd.copies.find(c => c.id === target.id)?.originalId : target.id
+      if (!ot1OrigId || !ot2OrigId) { set({ queryEditDraft: { ...qd, pendingClick: null } }); return }
+
+      // Find a subtype edge connecting the two OTs (either direction)
+      const allSubtypes = get().subtypes
+      const st = allSubtypes.find(s =>
+        (s.subId === ot1OrigId && s.superId === ot2OrigId) ||
+        (s.subId === ot2OrigId && s.superId === ot1OrigId)
+      )
+      if (!st) { set({ queryEditDraft: { ...qd, pendingClick: null } }); return }
+
+      const newCopies2 = [...qd.copies]
+      const newLinks2  = [...qd.links]
+      const offsetFor  = (origId) => {
+        const n = newCopies2.filter(c => c.originalId === origId).length
+        return { dx: (n + 1) * 16, dy: (n + 1) * 16 }
+      }
+
+      // Resolve or create OT1 copy
+      let ot1CopyId
+      if (pendingClick.type === 'otCopy') { ot1CopyId = pendingClick.id }
+      else { ot1CopyId = uid(); newCopies2.push({ id: ot1CopyId, kind: 'objectType', originalId: ot1OrigId, isOutput: false, ...offsetFor(ot1OrigId) }) }
+
+      // Resolve or create OT2 copy
+      let ot2CopyId
+      if (target.type === 'otCopy') { ot2CopyId = target.id }
+      else { ot2CopyId = uid(); newCopies2.push({ id: ot2CopyId, kind: 'objectType', originalId: ot2OrigId, isOutput: false, ...offsetFor(ot2OrigId) }) }
+
+      // Create subtype copy linking them
+      const stCopyId = uid()
+      const stIsOutput = !get().constraints.find(c => c.id === qd.constraintId)?.targetObjectTypeId
+      newCopies2.push({ id: stCopyId, kind: 'subtype', originalId: st.id, isOutput: stIsOutput, isSeeded: false, ...offsetFor(st.id) })
+      newLinks2.push({ copyId: stCopyId, roleIndex: 0, variableId: st.subId   === ot1OrigId ? ot1CopyId : ot2CopyId })
+      newLinks2.push({ copyId: stCopyId, roleIndex: 1, variableId: st.superId === ot1OrigId ? ot1CopyId : ot2CopyId })
+
+      set({ queryEditDraft: { ...qd, copies: newCopies2, links: newLinks2, pendingClick: null } })
+      return
+    }
+
+    let otTarget, roleTarget
+    if (isOtSide(pendingClick) && isRoleSide(target))       { otTarget = pendingClick; roleTarget = target }
+    else if (isRoleSide(pendingClick) && isOtSide(target))  { roleTarget = pendingClick; otTarget = target }
+    else { set({ queryEditDraft: { ...qd, pendingClick: null } }); return }
+
+    const facts    = get().facts
+    const subtypes = get().subtypes
+    const newCopies = [...qd.copies]
+    const newLinks  = [...qd.links]
+
+    // Helper: initial dx/dy for a new copy based on how many of the same originalId already exist
+    const newCopyOffset = (originalId) => {
+      const n = newCopies.filter(c => c.originalId === originalId).length
+      return { dx: (n + 1) * 16, dy: (n + 1) * 16 }
+    }
+
+    // Resolve or create OT copy
+    let otCopyId, otOriginalId
+    if (otTarget.type === 'otCopy') {
+      otCopyId = otTarget.id
+      otOriginalId = newCopies.find(c => c.id === otCopyId)?.originalId
+    } else {
+      otCopyId = uid(); otOriginalId = otTarget.id
+      newCopies.push({ id: otCopyId, kind: 'objectType', originalId: otOriginalId, isOutput: false, ...newCopyOffset(otOriginalId) })
+    }
+    if (!otOriginalId) { set({ queryEditDraft: { ...qd, pendingClick: null } }); return }
+
+    // Resolve or create fact/subtype copy and determine roleIndex
+    let roleCopyId, roleIndex
+    if (roleTarget.type === 'factCopyRole') {
+      roleCopyId = roleTarget.id; roleIndex = roleTarget.roleIndex
+    } else if (roleTarget.type === 'factOriginalRole') {
+      roleCopyId = uid(); roleIndex = roleTarget.roleIndex
+      const isObjectified = facts.find(f => f.id === roleTarget.id)?.objectified
+      newCopies.push({ id: roleCopyId, kind: isObjectified ? 'objectType' : 'fact', originalId: roleTarget.id, isOutput: false, ...newCopyOffset(roleTarget.id) })
+    } else {
+      // Subtype: infer which end from OT type
+      const stOriginalId = roleTarget.type === 'subtypeCopy'
+        ? (qd.copies.find(c => c.id === roleTarget.id)?.originalId)
+        : roleTarget.id
+      const st = subtypes.find(s => s.id === stOriginalId)
+      if (!st) { set({ queryEditDraft: { ...qd, pendingClick: null } }); return }
+      if      (otOriginalId === st.subId)   roleIndex = 0
+      else if (otOriginalId === st.superId) roleIndex = 1
+      else { set({ queryEditDraft: { ...qd, pendingClick: null } }); return }
+      if (roleTarget.type === 'subtypeCopy') {
+        roleCopyId = roleTarget.id
+      } else {
+        roleCopyId = uid()
+        const stOut = !get().constraints.find(c => c.id === qd.constraintId)?.targetObjectTypeId
+        newCopies.push({ id: roleCopyId, kind: 'subtype', originalId: stOriginalId, isOutput: stOut, isSeeded: false, ...newCopyOffset(stOriginalId) })
+      }
+    }
+
+    // Type-check for fact role slots
+    if (roleTarget.type === 'factCopyRole' || roleTarget.type === 'factOriginalRole') {
+      const factOrigId = newCopies.find(c => c.id === roleCopyId)?.originalId
+      let expectedOtId
+      if (factOrigId?.includes('_il_')) {
+        const [pFid, riStr] = factOrigId.split('_il_')
+        const pFact = facts.find(f => f.id === pFid)
+        expectedOtId = roleIndex === 0 ? pFid : pFact?.roles[Number(riStr)]?.objectTypeId
+      } else {
+        expectedOtId = facts.find(f => f.id === factOrigId)?.roles[roleIndex]?.objectTypeId
+      }
+      if (expectedOtId !== otOriginalId) { set({ queryEditDraft: { ...qd, pendingClick: null } }); return }
+    }
+
+    // Reject if role slot already filled in this copy
+    if (newLinks.some(l => l.copyId === roleCopyId && l.roleIndex === roleIndex)) {
+      set({ queryEditDraft: { ...qd, pendingClick: null } }); return
+    }
+
+    newLinks.push({ copyId: roleCopyId, roleIndex, variableId: otCopyId })
+
+    // Merge identical fact copies: same originalId, all roles filled, same role→OT mapping
+    const allFacts = get().facts
+    const getArity = (factId) => {
+      if (factId.includes('_il_')) return 2
+      const f = allFacts.find(f => f.id === factId)
+      return f?.arity ?? f?.roles?.length ?? 0
+    }
+    let mCopies = newCopies, mLinks = newLinks, again = true
+    while (again) {
+      again = false
+      const factCopies = mCopies.filter(c => c.kind === 'fact')
+      const byOrig = {}
+      for (const c of factCopies) { if (!byOrig[c.originalId]) byOrig[c.originalId] = []; byOrig[c.originalId].push(c) }
+      for (const group of Object.values(byOrig)) {
+        if (group.length < 2) continue
+        const arity = getArity(group[0].originalId)
+        if (!arity) continue
+        const allRoles = Array.from({ length: arity }, (_, k) => k)
+        let found = false
+        for (let i = 0; i < group.length && !found; i++) {
+          const m1 = {}; for (const l of mLinks) if (l.copyId === group[i].id) m1[l.roleIndex] = l.variableId
+          if (!allRoles.every(r => m1[r] != null)) continue
+          for (let j = i + 1; j < group.length && !found; j++) {
+            const m2 = {}; for (const l of mLinks) if (l.copyId === group[j].id) m2[l.roleIndex] = l.variableId
+            if (!allRoles.every(r => m2[r] != null)) continue
+            if (!allRoles.every(r => m1[r] === m2[r])) continue
+            // Merge group[j] into group[i]
+            const merged = { ...group[i], seededRoles: [...new Set([...(group[i].seededRoles ?? []), ...(group[j].seededRoles ?? [])])] }
+            mCopies = mCopies.filter(c => c.id !== group[j].id).map(c => c.id === group[i].id ? merged : c)
+            mLinks  = mLinks.filter(l => l.copyId !== group[j].id)
+            found = again = true
+          }
+        }
+        if (again) break
+      }
+    }
+
+    set({ queryEditDraft: { ...qd, copies: mCopies, links: mLinks, pendingClick: null } })
   },
 
   commitQueryEdit() {
@@ -2073,7 +2525,7 @@ export const useOrmStore = create((set, get) => ({
         if (c.id !== qd.constraintId) return c
         const queries = [...(c.queries || [])]
         while (queries.length <= qd.sequenceIndex) queries.push(null)
-        queries[qd.sequenceIndex] = { patternRoles: qd.patternRoles, patternSubtypes: qd.patternSubtypes }
+        queries[qd.sequenceIndex] = { copies: qd.copies, links: qd.links }
         return { ...c, queries }
       }),
       isDirty: true,
@@ -2082,6 +2534,24 @@ export const useOrmStore = create((set, get) => ({
 
   cancelQueryEdit() {
     set({ queryEditDraft: null })
+  },
+
+  updateQueryCopyOffset(copyId, dx, dy) {
+    const qd = get().queryEditDraft
+    if (!qd) return
+    set(s => {
+      const diagrams = s.diagrams.map(d => {
+        if (d.id !== s.activeDiagramId) return d
+        const qp = d.queryPositions ?? {}
+        const forC = qp[qd.constraintId] ?? {}
+        const forS = forC[qd.sequenceIndex] ?? {}
+        return { ...d, queryPositions: { ...qp, [qd.constraintId]: { ...forC, [qd.sequenceIndex]: { ...forS, [copyId]: { dx, dy } } } } }
+      })
+      return {
+        diagrams,
+        isDirty: true,
+      }
+    })
   },
 
   clearConstraintQuery(constraintId, sequenceIndex) {
@@ -2872,6 +3342,56 @@ export const useOrmStore = create((set, get) => ({
   clearLinkDraft() { set({ linkDraft: null }) },
 
   // ── view ─────────────────────────────────────────────────────────────────
+
+  centerOnElement(id) {
+    const { objectTypes, facts, constraints, subtypes, diagrams, activeDiagramId, zoom } = get()
+    const diagram = diagrams.find(d => d.id === activeDiagramId)
+    const positions = diagram?.positions ?? {}
+    const getElemPos = el => { const p = positions[el.id]; return { x: p?.x ?? el.x, y: p?.y ?? el.y } }
+
+    let wx, wy
+    const ot = objectTypes.find(o => o.id === id)
+    if (ot) { const p = getElemPos(ot); wx = p.x; wy = p.y }
+    if (wx == null) {
+      const f = facts.find(f => f.id === id)
+      if (f) { const p = getElemPos(f); wx = p.x; wy = p.y }
+    }
+    if (wx == null) {
+      const c = constraints.find(c => c.id === id)
+      if (c) { const p = getElemPos(c); wx = p.x; wy = p.y }
+    }
+    if (wx == null) {
+      const st = subtypes.find(s => s.id === id)
+      if (st) {
+        const sub = objectTypes.find(o => o.id === st.subId) || facts.find(f => f.id === st.subId)
+        const sup = objectTypes.find(o => o.id === st.superId) || facts.find(f => f.id === st.superId)
+        if (sub && sup) {
+          const sp = getElemPos(sub), tp = getElemPos(sup)
+          wx = (sp.x + tp.x) / 2; wy = (sp.y + tp.y) / 2
+        }
+      }
+    }
+    if (wx == null) return
+    const svg = document.getElementById('orm2-canvas-svg')
+    if (!svg) return
+    const rect = svg.getBoundingClientRect()
+    const targetX = rect.width  / 2 - wx * zoom
+    const targetY = rect.height / 2 - wy * zoom
+    const { pan: startPan } = get()
+    const fromX = startPan.x, fromY = startPan.y
+    const DURATION = 750
+    const easeInOut = t => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+    const startTime = performance.now()
+    if (_panAnimId) cancelAnimationFrame(_panAnimId)
+    const step = (now) => {
+      const t = Math.min((now - startTime) / DURATION, 1)
+      const e = easeInOut(t)
+      set({ pan: { x: fromX + (targetX - fromX) * e, y: fromY + (targetY - fromY) * e } })
+      if (t < 1) _panAnimId = requestAnimationFrame(step)
+      else _panAnimId = null
+    }
+    _panAnimId = requestAnimationFrame(step)
+  },
 
   setPan(x, y)  { set({ pan: { x, y } }) },
   setZoom(z)    { set({ zoom: Math.min(3, Math.max(0.15, z)) }) },

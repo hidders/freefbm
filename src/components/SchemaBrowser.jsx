@@ -78,7 +78,7 @@ function OrphanBadge() {
   )
 }
 
-function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd }) {
+function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd, onDelete }) {
   return (
     <div
       onClick={onSelect}
@@ -92,6 +92,32 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
       onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-raised)' }}
       onMouseLeave={e => { e.currentTarget.style.background = isOrphaned ? 'rgba(192,57,43,0.04)' : '' }}
     >
+      {/* Fixed-width add button slot keeps icon/name aligned across all rows */}
+      <div style={{ width: 22, flexShrink: 0, marginRight: 5 }}>
+        {!inCurrentDiagram && (
+          <button
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onAdd() }}
+            title="Add to this diagram"
+            style={{
+              background: 'none', border: '1px solid var(--border)',
+              borderRadius: 3, cursor: 'pointer',
+              fontSize: 9, color: 'var(--ink-muted)', padding: '1px 5px',
+              width: '100%',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = '#1e3a8a'
+              e.currentTarget.style.color = 'white'
+              e.currentTarget.style.borderColor = '#1e3a8a'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'none'
+              e.currentTarget.style.color = 'var(--ink-muted)'
+              e.currentTarget.style.borderColor = 'var(--border)'
+            }}
+          >+</button>
+        )}
+      </div>
       <span style={{ flexShrink: 0, marginRight: 5, lineHeight: 0, transform: 'scale(0.8)' }}>
         {icon}
       </span>
@@ -100,29 +126,27 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
         {label}
       </span>
       {isOrphaned && <OrphanBadge />}
-      {!inCurrentDiagram && (
-        <button
-          onMouseDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); onAdd() }}
-          title="Add to this diagram"
-          style={{
-            background: 'none', border: '1px solid var(--border)',
-            borderRadius: 3, cursor: 'pointer',
-            fontSize: 9, color: 'var(--ink-muted)', padding: '1px 5px',
-            flexShrink: 0, marginLeft: 4,
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.background = 'var(--accent)'
-            e.currentTarget.style.color = 'white'
-            e.currentTarget.style.borderColor = 'var(--accent)'
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = 'none'
-            e.currentTarget.style.color = 'var(--ink-muted)'
-            e.currentTarget.style.borderColor = 'var(--border)'
-          }}
-        >+</button>
-      )}
+      <button
+        onMouseDown={e => e.stopPropagation()}
+        onClick={e => { e.stopPropagation(); onDelete() }}
+        title="Delete"
+        style={{
+          background: 'none', border: '1px solid #e0b0a8',
+          borderRadius: 3, cursor: 'pointer',
+          fontSize: 9, color: 'var(--danger)', padding: '1px 5px',
+          flexShrink: 0, marginLeft: 4,
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.background = 'var(--danger)'
+          e.currentTarget.style.color = 'white'
+          e.currentTarget.style.borderColor = 'var(--danger)'
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.background = 'none'
+          e.currentTarget.style.color = 'var(--danger)'
+          e.currentTarget.style.borderColor = '#e0b0a8'
+        }}
+      >×</button>
     </div>
   )
 }
@@ -342,7 +366,7 @@ export default function SchemaBrowser() {
   const displayLeft = expandFrom?.x ?? (collapsed ? pillLeft : posX)
   const displayTop  = expandFrom?.y ?? (collapsed ? pillTop  : posY)
 
-  const selectEl = (id, kind) => store.select(id, kind)
+  const selectEl = (id, kind) => { store.select(id, kind); store.centerOnElement(id) }
 
   const sections = [
     {
@@ -356,6 +380,7 @@ export default function SchemaBrowser() {
           inCurrentDiagram={inDiag(el.id)}
           onSelect={() => selectEl(el.id, el.kind)}
           onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
+          onDelete={() => store.deleteObjectType(el.id)}
         />
       ),
     },
@@ -370,6 +395,7 @@ export default function SchemaBrowser() {
           inCurrentDiagram={inDiag(el.id)}
           onSelect={() => selectEl(el.id, el.kind)}
           onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
+          onDelete={() => store.deleteFact(el.id)}
         />
       ),
     },
@@ -384,6 +410,7 @@ export default function SchemaBrowser() {
           inCurrentDiagram={inDiag(el.id)}
           onSelect={() => selectEl(el.id, el.kind)}
           onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
+          onDelete={() => store.deleteObjectType(el.id)}
         />
       ),
     },
@@ -398,6 +425,7 @@ export default function SchemaBrowser() {
           inCurrentDiagram={inDiag(el.id)}
           onSelect={() => selectEl(el.id, el.kind)}
           onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
+          onDelete={() => store.deleteFact(el.id)}
         />
       ),
     },
@@ -412,6 +440,7 @@ export default function SchemaBrowser() {
           inCurrentDiagram={inDiag(f.id)}
           onSelect={() => selectEl(f.id, 'fact')}
           onAdd={() => store.addElementToDiagram(f.id, diagram?.id)}
+          onDelete={() => store.deleteFact(f.id)}
         />
       ),
     },
@@ -429,6 +458,7 @@ export default function SchemaBrowser() {
             inCurrentDiagram={subtypeInDiag(st)}
             onSelect={() => selectEl(st.id, 'subtype')}
             onAdd={() => store.addElementToDiagram(st.id, diagram?.id)}
+            onDelete={() => store.deleteSubtype(st.id)}
           />
         )
       },
@@ -446,6 +476,7 @@ export default function SchemaBrowser() {
           inCurrentDiagram={inDiag(c.id)}
           onSelect={() => selectEl(c.id, 'constraint')}
           onAdd={() => store.addElementToDiagram(c.id, diagram?.id)}
+          onDelete={() => store.deleteConstraint(c.id)}
         />
       ),
     },

@@ -24,7 +24,7 @@ function playerBounds(id, otMap, nestedMap) {
   return null
 }
 
-export default function SubtypeArrows({ mousePos, onContextMenu }) {
+export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes }) {
   const store     = useOrmStore()
   const { objectTypes, facts, subtypes } = useDiagramElements()
   const otMap     = Object.fromEntries(objectTypes.map(o => [o.id, o]))
@@ -42,33 +42,28 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
         const isSelected  = store.selectedId === st.id || store.multiSelectedIds.includes(st.id)
         const gc = store.sequenceConstruction
         const qd = store.queryEditDraft
-        const inPattern = qd ? qd.patternSubtypes.includes(st.id) : false
         const qh = store.queryIndexHighlight
         const selectedConstraint = !qd && (qh || (store.showConstraintQueries && store.selectedKind === 'constraint'))
           ? store.constraints.find(c => c.id === (qh?.constraintId ?? store.selectedId)) : null
         const inQueryHighlight = selectedConstraint
           ? (selectedConstraint.queries || []).some((q, qi) => {
               if (qh && qh.constraintId === selectedConstraint.id && qh.queryIndex !== qi) return false
-              return q?.patternSubtypes?.includes(st.id)
+              if (!q?.copies) return (selectedConstraint.sequences?.[qi] || []).some(m => m.kind === 'subtype' && m.subtypeId === st.id)
+              return q.copies.some(cp => cp.kind === 'subtype' && cp.originalId === st.id)
             })
           : false
-        const isCandidate = (!!gc && !isSelected) || (!!qd && !inPattern)
 
-        // Shorten line so the stem ends at the arrowhead base,
-        // letting the tip protrude to the shape border.
-        const sw = isCandidate ? 5.5 : 4.5
-        const arrowLen = 4 * sw  // marker coord length (4.25-0.25) × strokeWidth
+        const sw = 4.5
+        const arrowLen = 4 * sw
         const edgeDx = to.x - from.x, edgeDy = to.y - from.y
         const edgeDist = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy)
         const lineEnd = edgeDist > arrowLen
           ? { x: to.x - edgeDx / edgeDist * arrowLen, y: to.y - edgeDy / edgeDist * arrowLen }
           : to
 
-        // Per-edge inline filter with userSpaceOnUse bounds avoids the
-        // bounding-box degeneration problem on perfectly horizontal/vertical lines.
         const filterId = `stGlow-${st.id}`
-        const fp = 15  // padding in world units around the line endpoints
-        const filterProps = (isSelected || isCandidate || inQueryHighlight) ? {
+        const fp = 15
+        const filterProps = isSelected ? {
           id: filterId,
           filterUnits: 'userSpaceOnUse',
           x:      Math.min(from.x, to.x) - fp,
@@ -79,14 +74,19 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
 
         return (
           <g key={st.id}
-            className="selectable-group"
-            onContextMenu={(e) => onContextMenu?.(st, e)}
+            className={qd ? undefined : 'selectable-group'}
+            opacity={dimAllSubtypes ? 0.35 : 1}
+            style={{ cursor: (() => {
+              if (qd) return 'default'
+              if (store.sequenceConstruction) return 'pointer'
+              if (store.tool === 'connectConstraint') return 'pointer'
+              if (isSelectionMode(store.tool)) return 'not-allowed'
+              return 'pointer'
+            })() }}
+            onContextMenu={(e) => { if (qd) return; onContextMenu?.(st, e) }}
             onClick={(e) => {
               e.stopPropagation()
-              if (qd) {
-                store.toggleQueryEditSubtype(st.id)
-                return
-              }
+              if (qd) return
               if (store.sequenceConstruction) {
                 store.collectSequenceMember({ kind: 'subtype', subtypeId: st.id })
                 return
@@ -95,44 +95,31 @@ export default function SubtypeArrows({ mousePos, onContextMenu }) {
               if (store.tool === 'connectConstraint') { store.clearSelection(); store.setTool('select'); return }
               if (e.shiftKey) { store.shiftSelect(st.id); return }
               store.select(st.id, 'subtype')
-            }}
-            style={{ cursor: (() => {
-              if (qd) return 'pointer'
-              if (store.sequenceConstruction) return 'pointer'
-              if (store.tool === 'connectConstraint') return 'pointer'
-              if (isSelectionMode(store.tool)) return 'not-allowed'
-              return 'pointer'
-            })() }}>
-            {/* Inline filter defined before the element that uses it */}
+            }}>
             {filterProps && (
               <defs>
                 <filter {...filterProps}>
                   <feDropShadow dx="0" dy="0" stdDeviation="3"
-                    floodColor={isSelected ? 'var(--accent)' : inQueryHighlight ? 'var(--col-query-in)' : 'var(--col-candidate)'}
+                    floodColor={isSelected ? 'var(--accent)' : 'var(--col-query-in)'}
                     floodOpacity="0.6"/>
                 </filter>
               </defs>
             )}
-            {/* Hit area */}
             <line x1={from.x} y1={from.y} x2={to.x} y2={to.y}
               stroke="transparent" strokeWidth={10} style={{ pointerEvents: 'all' }}/>
-            {/* Hover ring — wider solid stroke so it shows as a halo around the arrow */}
             <line className="hover-ring" x1={from.x} y1={from.y} x2={lineEnd.x} y2={lineEnd.y}
               style={{ strokeWidth: 10 }}/>
-            {/* Arrow — accent marker + glow filter when selected */}
             <line x1={from.x} y1={from.y} x2={lineEnd.x} y2={lineEnd.y}
-              stroke={isSelected ? 'var(--accent)' : (inPattern || inQueryHighlight) ? 'var(--col-query-in)' : qd ? 'var(--col-query-out)' : 'var(--col-subtype)'}
-              strokeWidth={inQueryHighlight ? sw + 1.5 : sw}
+              stroke={isSelected ? 'var(--accent)' : inQueryHighlight ? 'var(--col-query-in)' : 'var(--col-subtype)'}
+              strokeWidth={sw}
               strokeDasharray={st.inheritsPreferredIdentifier === false ? `${sw * 3} ${sw * 2}` : undefined}
-              markerEnd={isSelected ? 'url(#arrowSubtypeAccent)' : 'url(#arrowSubtype)'}
+              markerEnd={isSelected ? 'url(#arrowSubtypeAccent)' : inQueryHighlight ? 'url(#arrowSubtypeQueryIn)' : 'url(#arrowSubtype)'}
               filter={filterProps ? `url(#${filterId})` : undefined}
-              style={{ cursor: qd ? 'pointer' : undefined }}
             />
           </g>
         )
       })}
 
-      {/* Draft subtype arrow */}
       {store.linkDraft?.type === 'subtype' && (() => {
         const fromBounds = playerBounds(store.linkDraft.fromId, otMap, nestedMap)
         if (!fromBounds) return null

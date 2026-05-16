@@ -82,7 +82,6 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
   const isSubtypeTool      = store.tool === 'addSubtype'
   const isAssignTool       = store.tool === 'assignRole'
   const isDraftFrom        = store.linkDraft?.type === 'subtype' && store.linkDraft.fromId === ot.id
-  const hasDraft           = store.linkDraft?.type === 'roleAssign' && store.linkDraft.factId != null
 
   const [editing, setEditing]       = useState(false)
   const [draft, setDraft]           = useState('')
@@ -221,6 +220,8 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
     e.stopPropagation()
     if (e.button !== 0) return
 
+    if (store.queryEditDraft) { store.queryEditClick({ type: 'otOriginal', id: ot.id }); return }
+
     if (store.pendingTargetPick) {
       store.commitTargetPick(ot.id)
       return
@@ -231,6 +232,10 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
         store.setLinkDraft({ type: 'subtype', fromId: ot.id })
       } else if (store.linkDraft.fromId !== ot.id) {
         store.addSubtype(store.linkDraft.fromId, ot.id)
+        store.clearLinkDraft()
+        store.setTool('select')
+      } else {
+        // Clicked the source OT again → abort
         store.clearLinkDraft()
         store.setTool('select')
       }
@@ -274,27 +279,18 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
     onDragStart(ot.id, ot.kind, e)
   }, [store, ot, onDragStart, isSubtypeTool, isAssignTool, editing, editingRef])
 
-  const isSubtypeCandidate = isSubtypeTool && !isDraftFrom
   const isVrTool      = store.tool === 'addConstraint:valueRange'
   const isVrCandidate = isVrTool && (ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none'))
   const isCrTool      = store.tool === 'addConstraint:cardinality'
-  const isCrCandidate = isCrTool  // all OTs are eligible
 
   const stroke = isSelected          ? 'var(--accent)'
     : isDraftFrom                    ? 'var(--col-subtype)'
-    : isSubtypeCandidate             ? 'var(--col-candidate)'
-    : hasDraft                       ? 'var(--col-candidate)'
-    : isVrCandidate                  ? 'var(--col-candidate)'
-    : isCrCandidate                  ? 'var(--col-candidate)'
-    : isPickingTarget                ? 'var(--col-candidate)'
-    : isConstraintTarget             ? '#d97706'
+    : isConstraintTarget             ? '#1a7fd4'
     : ot.kind === 'entity'           ? 'var(--col-entity)'
     :                                  'var(--col-value)'
 
-  const strokeW = (isSelected || isDraftFrom) ? 2.5 : (isSubtypeCandidate || hasDraft || isVrCandidate || isCrCandidate || isPickingTarget) ? 2 : isConstraintTarget ? 2 : 1.5
-  const fill    = (hasDraft || isSubtypeCandidate || isVrCandidate || isCrCandidate || isPickingTarget) ? 'var(--fill-candidate)'
-    : isConstraintTarget             ? '#fff3cd'
-    :                                  '#ffffff'
+  const strokeW = (isSelected || isDraftFrom) ? 2.5 : isConstraintTarget ? 2 : 1.5
+  const fill    = isConstraintTarget ? '#1a7fd4' : '#ffffff'
 
   // Text vertical positions
   // Single line: name centred in box
@@ -311,6 +307,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
       onContextMenu={onContextMenu}
       style={{ cursor: (() => {
         if (editing || editingRef) return 'text'
+        if (store.queryEditDraft) return 'pointer'
         if (isPickingTarget) return 'pointer'
         if (isElementSelecting(store.tool, store.sequenceConstruction)) {
           if (store.tool === 'addSubtype') return 'pointer'
@@ -325,7 +322,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
         if (isCrTool) return 'pointer'
         return 'grab'
       })() }}
-      filter={isSelected || isDraftFrom || hasDraft ? 'url(#selectGlow)' : isShared ? 'url(#sharedGlow)' : undefined}
+      filter={isSelected || isDraftFrom ? 'url(#selectGlow)' : isShared ? 'url(#sharedGlow)' : undefined}
     >
       <rect x={ot.x - w/2} y={ot.y - h/2} width={w} height={h} rx={6}
         fill={fill} stroke={stroke} strokeWidth={strokeW}
@@ -361,7 +358,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
       ) : (
         <text x={ot.x} y={nameY}
           textAnchor="middle" dominantBaseline="middle"
-          fill={ot.kind === 'entity' ? 'var(--col-entity)' : 'var(--col-value)'}
+          fill={isConstraintTarget ? '#ffffff' : ot.kind === 'entity' ? 'var(--col-entity)' : 'var(--col-value)'}
           fontSize={OT_SIZE_NAME} fontFamily={OT_FONT}
           style={{ pointerEvents: 'none' }}>
           {ot.name}
@@ -400,7 +397,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
           <>
             <text x={ot.x} y={refY}
               textAnchor="middle" dominantBaseline="middle"
-              fill="var(--ink-3)" fontSize={OT_SIZE_REF} fontFamily={OT_FONT}
+              fill={isConstraintTarget ? '#ffffff' : 'var(--ink-3)'} fontSize={OT_SIZE_REF} fontFamily={OT_FONT}
               style={{ pointerEvents: 'none' }}>
               {refModeText}
             </text>

@@ -11,6 +11,7 @@ import RoleConnectors, { MandatoryDots } from './RoleConnectors'
 import Minimap from './Minimap'
 import ContextMenu from './ContextMenu'
 import ConstraintMemberLabels from './ConstraintMemberLabels'
+import QueryCopies from './QueryCopies'
 import { ValueRangeEditor } from './Inspector'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 
@@ -198,36 +199,65 @@ export default function Canvas() {
   const { objectTypes: visibleOts, facts: visibleFacts, constraints: visibleConstraints, subtypes: visibleSubtypes } = useDiagramElements()
   const sharedIds = store.getSharedIds?.() ?? new Set()
 
-  // ── Query edit overlay helpers ───────────────────────────────────────────
+  // ── Query edit state ─────────────────────────────────────────────────────
   const qd = store.queryEditDraft
-  const queryEditFactIds  = qd ? new Set(qd.patternRoles.map(r => r.factId)) : null
-  const queryEditOtIds    = qd ? (() => {
-    const ids = new Set()
-    for (const r of qd.patternRoles) {
-      if (r.factId.includes('_il_')) {
-        const [pFid, riStr] = r.factId.split('_il_')
-        const pFact = store.facts.find(f => f.id === pFid)
-        const il = pFact?.implicitLinks?.find(l => l.roleIndex === Number(riStr))
-        if (il) {
-          const roleOrder = il.roleOrder || [0, 1]
-          const srcIdx = roleOrder[r.roleIndex]
-          const otId = srcIdx === 0 ? pFact.id : pFact.roles[Number(riStr)]?.objectTypeId
-          if (otId) ids.add(otId)
-        }
-      } else {
-        const f = store.facts.find(f => f.id === r.factId)
-        const otId = f?.roles[r.roleIndex]?.objectTypeId
-        if (otId) ids.add(otId)
+
+  // ── Dim mode — non-interactive elements dimmed while a tool is active ─────
+  const dimMode = (() => {
+    if (qd) return null  // query edit handles its own dimming
+    const { tool, linkDraft, sequenceConstruction, uniquenessConstruction, frequencyConstruction, pendingTargetPick } = store
+    const objectifiedIds = new Set(visibleFacts.filter(f => f.objectified).map(f => f.id))
+    const NONE = null          // null = all elements of this type are undimmed
+    const ALL  = new Set()    // empty Set = all elements of this type are dimmed
+
+    if (pendingTargetPick) {
+      return { factIds: objectifiedIds, otIds: NONE, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true, dimInnerFact: true }
+    }
+    if (tool === 'addSubtype') {
+      return { factIds: objectifiedIds, otIds: NONE, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true, dimInnerFact: true }
+    }
+    if (tool === 'assignRole') {
+      if (linkDraft?.type === 'roleAssign' && linkDraft.factId != null) {
+        return { factIds: new Set([...objectifiedIds, linkDraft.factId]), otIds: NONE, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true, dimInnerFact: true }
       }
+      return { factIds: NONE, otIds: ALL, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true, dimObjectification: true }
     }
-    for (const stId of qd.patternSubtypes) {
-      const st = store.subtypes.find(s => s.id === stId)
-      if (st) { ids.add(st.subId); ids.add(st.superId) }
+    if (tool === 'toggleMandatory') {
+      return { factIds: NONE, otIds: ALL, subtypesDim: true, constraintsDim: true, connectorsDim: true, dimObjectification: true }
     }
-    const c = store.constraints.find(c => c.id === qd.constraintId)
-    if (c?.targetObjectTypeId) ids.add(c.targetObjectTypeId)
-    return ids
-  })() : null
+    if (uniquenessConstruction) {
+      return { factIds: new Set([uniquenessConstruction.factId]), otIds: ALL, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true }
+    }
+    if (frequencyConstruction) {
+      return { factIds: new Set([frequencyConstruction.factId]), otIds: ALL, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true }
+    }
+    if (tool === 'addInternalUniqueness') {
+      return { factIds: NONE, otIds: ALL, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true }
+    }
+    if (tool === 'addInternalFrequency') {
+      return { factIds: NONE, otIds: ALL, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true }
+    }
+    if (sequenceConstruction) {
+      return { factIds: NONE, otIds: ALL, subtypesDim: false, constraintsDim: true, connectorsDim: true }
+    }
+    if (tool === 'connectConstraint') {
+      return { factIds: ALL, otIds: ALL, subtypesDim: true, constraintsDim: false, connectorsDim: true }
+    }
+    if (tool === 'addConstraint:valueRange') {
+      const eligibleOtIds = new Set(
+        visibleOts.filter(ot => ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none')).map(ot => ot.id)
+      )
+      return { factIds: NONE, otIds: eligibleOtIds, subtypesDim: true, constraintsDim: true, connectorsDim: true, dimObjectification: true }
+    }
+    if (tool === 'addConstraint:cardinality') {
+      return { factIds: NONE, otIds: NONE, subtypesDim: true, constraintsDim: true, connectorsDim: true }
+    }
+    return null
+  })()
+
+  const isFactDimmed  = (f)  => dimMode?.factIds != null && !dimMode.factIds.has(f.id)
+  const isOtDimmed    = (ot) => dimMode?.otIds   != null && !dimMode.otIds.has(ot.id)
+
   const svgRef = useRef(null)
   const [dragState, setDragState]     = useState(null)
   const [bandRect, setBandRect]       = useState(null)  // { x1,y1,x2,y2 } world coords | null
@@ -255,6 +285,7 @@ export default function Canvas() {
     handleOtCardinalityRangeContextMenu,
     handleMandatoryDotContextMenu,
     handleUniquenessBarContextMenu,
+    handleImplicitLinkBarContextMenu,
     handleSubtypeContextMenu,
     handleConstraintContextMenu,
   } = useContextMenuHandlers(store, setContextMenu, setVrPopup)
@@ -315,8 +346,8 @@ export default function Canvas() {
     // Target pick mode: background click cancels it
     if (store.pendingTargetPick) { store.cancelTargetPick(); return }
 
-    // Query edit mode: block background clicks from interfering
-    if (store.queryEditDraft) return
+    // Query edit mode: any background click (single or double) cancels the edit
+    if (store.queryEditDraft) { if (e.button === 0) store.cancelQueryEdit(); return }
 
     // Selection-mode tools: no panning, cancel on background click
     if (isSelectionMode(store.tool)) {
@@ -394,6 +425,8 @@ export default function Canvas() {
 
   // ── element drag start (called by child nodes) ──────────────────────────
   const handleDragStart = useCallback((id, kind, e) => {
+    // Query edit mode: no dragging allowed
+    if (store.queryEditDraft) return
     // Selection-mode tools and sequence construction handle interactions in child components; prevent fallback dragging
     if (isSelectionMode(store.tool) || store.sequenceConstruction) return
 
@@ -664,6 +697,9 @@ export default function Canvas() {
           <marker id="arrowSubtypeAccent" markerWidth="4.5" markerHeight="4.5" refX="0.25" refY="2" orient="auto">
             <path d="M 0.25 0.25 L 4.25 2 L 0.25 3.75 Z" fill="var(--accent)" stroke="none"/>
           </marker>
+          <marker id="arrowSubtypeQueryIn" markerWidth="4.5" markerHeight="4.5" refX="0.25" refY="2" orient="auto">
+            <path d="M 0.25 0.25 L 4.25 2 L 0.25 3.75 Z" fill="var(--col-query-in)" stroke="none"/>
+          </marker>
           <marker id="arrowSubset" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto">
             <path d="M 1 1 L 9 4 L 1 7" fill="none" stroke="var(--col-excl)" strokeWidth="1.5"/>
           </marker>
@@ -687,10 +723,14 @@ export default function Canvas() {
         <rect className="canvas-bg" width="100%" height="100%" fill="url(#gridLg)"/>
 
         <g transform={`translate(${store.pan.x},${store.pan.y}) scale(${store.zoom})`}>
-          <SubtypeArrows  mousePos={mousePos} onContextMenu={handleSubtypeContextMenu}/>
+          <g style={(dimMode?.subtypesDim) ? { pointerEvents: 'none' } : undefined}>
+            <SubtypeArrows mousePos={mousePos} onContextMenu={handleSubtypeContextMenu} dimAllSubtypes={dimMode?.subtypesDim ?? false}/>
+          </g>
           {visibleFacts.map(f => (
-            <g key={f.id} opacity={queryEditFactIds && !queryEditFactIds.has(f.id) ? 0.35 : 1}>
+            <g key={f.id} opacity={isFactDimmed(f) ? 0.35 : 1} style={isFactDimmed(f) ? { pointerEvents: 'none' } : undefined}>
             <FactTypeNode fact={f} onDragStart={handleDragStart}
+              dimObjectification={!!(f.objectified && dimMode?.dimObjectification)}
+              dimInnerFact={!!(f.objectified && dimMode?.dimInnerFact)}
               isShared={sharedIds.has(f.id)}
               onContextMenu={(e) => handleFactContextMenu(f, e)}
               onRoleContextMenu={(roleIndex, e) => handleRoleContextMenu(f, roleIndex, e)}
@@ -710,18 +750,22 @@ export default function Canvas() {
               (f.implicitLinks || []).filter(il => store.isImplicitLinkShown(f.id, il.roleIndex)).map(il => {
                  const synth = makeImplicitLinkFact(f, il)
                 return (
-                  <g key={synth.id} opacity={queryEditFactIds && !queryEditFactIds.has(synth.id) ? 0.35 : 1}>
+                  <g key={synth.id} opacity={(dimMode?.factIds != null && !dimMode.factIds.has(f.id)) || dimMode?.impliedLinksDim ? 0.35 : 1}
+                    style={((dimMode?.factIds != null && !dimMode.factIds.has(f.id)) || dimMode?.impliedLinksDim) ? { pointerEvents: 'none' } : undefined}>
                     <FactTypeNode fact={synth}
                       onDragStart={(id, kind, e) => handleDragStart(id, 'implicitLink', e)}
                       isShared={false}
-                      onContextMenu={(e) => handleImplicitLinkContextMenu(f.id, il.roleIndex, e)}/>
+                      onContextMenu={(e) => handleImplicitLinkContextMenu(f.id, il.roleIndex, e)}
+                      onBarContextMenu={(ui, e) => handleImplicitLinkBarContextMenu(f, il, ui, e)}/>
                   </g>
                )
              })
            )}
-          <RoleConnectors mousePos={mousePos}/>
+          <g opacity={(qd || dimMode?.connectorsDim) ? 0.35 : 1} style={(dimMode?.connectorsDim) ? { pointerEvents: 'none' } : undefined}>
+            <RoleConnectors mousePos={mousePos}/>
+          </g>
           {visibleOts.map(ot => (
-            <g key={ot.id} opacity={queryEditOtIds && !queryEditOtIds.has(ot.id) ? 0.35 : 1}>
+            <g key={ot.id} opacity={isOtDimmed(ot) ? 0.35 : 1} style={isOtDimmed(ot) ? { pointerEvents: 'none' } : undefined}>
             <ObjectTypeNode objectType={ot}
               onDragStart={handleDragStart}
               mousePos={mousePos}
@@ -734,10 +778,15 @@ export default function Canvas() {
               onCardinalityRangeContextMenu={(e) => handleOtCardinalityRangeContextMenu(ot, e)}/>
             </g>
           ))}
-          <MandatoryDots onContextMenu={handleMandatoryDotContextMenu}/>
-          <ConstraintNodes onDragStart={handleDragStart} mousePos={mousePos}
-            onContextMenu={handleConstraintContextMenu}/>
+          <g opacity={(qd || dimMode?.connectorsDim) ? 0.35 : 1} style={(dimMode?.connectorsDim) ? { pointerEvents: 'none' } : undefined}>
+            <MandatoryDots onContextMenu={handleMandatoryDotContextMenu}/>
+          </g>
+          <g opacity={(qd || dimMode?.constraintsDim) ? 0.35 : 1} style={(dimMode?.constraintsDim) ? { pointerEvents: 'none' } : undefined}>
+            <ConstraintNodes onDragStart={handleDragStart} mousePos={mousePos}
+              onContextMenu={handleConstraintContextMenu}/>
+          </g>
           <ConstraintMemberLabels/>
+          {(qd || store.queryIndexHighlight) && <QueryCopies onCopyClick={target => store.queryEditClick(target)}/>}
 
           {/* Rubber-band selection rect */}
           {bandRect && (

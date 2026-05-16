@@ -168,10 +168,10 @@ export default function RoleConnectors({ mousePos }) {
       const ot = otMap[role.objectTypeId]
       const nf = !ot ? nestedMap[role.objectTypeId] : null
       if (!ot && !nf) return []
-      const roleOrder = il.roleOrder || [0, 1]
       const roleNames = il.roleNames || [null, null]
       const ilKey = `${fact.id}:il:${il.roleIndex}`
       const ilPos = diagPos[ilKey]
+      const roleOrder = ilPos?.roleOrder || il.roleOrder || [0, 1]
       const schemaX = il.x
       const schemaY = il.y
       const defaultX = (ot || nf) ? Math.round((fact.x + (ot || nf).x) / 2) : fact.x
@@ -211,7 +211,7 @@ export default function RoleConnectors({ mousePos }) {
           mx, my,
           autoOffset: { dx: -edgeDy / len * 9, dy: edgeDx / len * 9 },
           nameOffset: getRoleNameOffset(synthFact.id, ri),
-          roleName: roleNames[ri] || '',
+          roleName: roleNames[roleOrder[ri]] || '',
           isImplicit: true,
         }
       }).filter(Boolean)
@@ -396,11 +396,13 @@ export function MandatoryDots({ onContextMenu }) {
                 fill="var(--col-mandatory)"
                 onClick={e => {
                   e.stopPropagation()
+                  if (store.queryEditDraft) { store.cancelQueryEdit(); return }
                   if (isSelected) store.deselectMandatoryDot()
                   else store.selectMandatoryDot(fact.id, ri)
                 }}
                 onContextMenu={e => {
                   e.preventDefault(); e.stopPropagation()
+                  if (store.queryEditDraft) { store.cancelQueryEdit(); return }
                   store.selectMandatoryDot(fact.id, ri)
                   onContextMenu?.(fact.id, ri, e)
                 }}/>
@@ -417,7 +419,9 @@ export function MandatoryDots({ onContextMenu }) {
         if (!fact.objectified) return []
         return (fact.implicitLinks || []).filter(il => store.isImplicitLinkShown(fact.id, il.roleIndex)).map(il => {
           const role = fact.roles[il.roleIndex]
-          const roleOrder = il.roleOrder || [0, 1]
+          const ilKeyDot = `${fact.id}:il:${il.roleIndex}`
+          const ilPosDot = diagPos[ilKeyDot]
+          const roleOrder = ilPosDot?.roleOrder || il.roleOrder || [0, 1]
           const results = []
 
           // Role 0 (nested fact) — always mandatory
@@ -425,8 +429,7 @@ export function MandatoryDots({ onContextMenu }) {
             const ot = otMap[role.objectTypeId]
             const nf = !ot ? nestedMap[role.objectTypeId] : null
             if (ot || nf) {
-              const ilKey = `${fact.id}:il:${il.roleIndex}`
-              const ilPos = diagPos[ilKey]
+              const ilPos = ilPosDot
               const schemaX = il.x
               const schemaY = il.y
               const defaultX = (ot || nf) ? Math.round((fact.x + (ot || nf).x) / 2) : fact.x
@@ -454,11 +457,13 @@ export function MandatoryDots({ onContextMenu }) {
                       fill="var(--col-mandatory)"
                       onClick={e => {
                         e.stopPropagation()
+                        if (store.queryEditDraft) { store.cancelQueryEdit(); return }
                         if (isSelected) store.deselectMandatoryDot()
                         else store.selectMandatoryDot(synthFact.id, mandatoryDisplayRole)
                       }}
                       onContextMenu={e => {
                         e.preventDefault(); e.stopPropagation()
+                        if (store.queryEditDraft) { store.cancelQueryEdit(); return }
                         store.selectMandatoryDot(synthFact.id, mandatoryDisplayRole)
                         onContextMenu?.(synthFact.id, mandatoryDisplayRole, e)
                       }}/>
@@ -477,8 +482,7 @@ export function MandatoryDots({ onContextMenu }) {
             const associatedOt = otMap[role.objectTypeId]
             const associatedNf = !associatedOt ? nestedMap[role.objectTypeId] : null
             if (associatedOt || associatedNf) {
-              const ilKey = `${fact.id}:il:${il.roleIndex}`
-              const ilPos = diagPos[ilKey]
+              const ilPos = ilPosDot
               const schemaX = il.x
               const schemaY = il.y
               const defaultX = (associatedOt || associatedNf) ? Math.round((fact.x + (associatedOt || associatedNf).x) / 2) : fact.x

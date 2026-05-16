@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react'
+import React, { useCallback } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { roleCenter, nestedFactBounds, ROLE_H, displayRoleOrder, makeImplicitLinkFact } from './FactTypeNode'
@@ -633,7 +633,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
   const subtypeMap = Object.fromEntries(subtypes.map(st => [st.id, st]))
   const otMap      = Object.fromEntries(objectTypes.map(o => [o.id, o]))
   const nestedMap  = Object.fromEntries(facts.filter(f => f.objectified).map(f => [f.id, f]))
-  const mouseDownRef = useRef(null)  // tracks { id, x, y } for click-vs-drag detection
+
 
   // Returns true when every member across all groups resolves to the same object type,
   // meaning the target object type connector would be redundant.
@@ -722,7 +722,6 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
     <g>
       {visibleConstraints.map(c => {
         const isSelected  = store.selectedId === c.id || store.multiSelectedIds.includes(c.id)
-        const isCandidate = isConnectTool && !isSelected
         const color = CONSTRAINT_COLOR[c.constraintType] || 'var(--ink-3)'
         const symbol = CONSTRAINT_SYMBOL[c.constraintType] || '?'
 
@@ -812,13 +811,14 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
             onMouseDown={(e) => {
               e.stopPropagation()
               if (e.button !== 0 || e.detail >= 2) return  // skip second click of double-click
+              if (store.queryEditDraft) { store.cancelQueryEdit(); return }
               if (store.tool === 'addConstraint:valueRange' || store.tool === 'addConstraint:cardinality') { store.setTool('select'); return }
               if (isConnectTool) {
                 store.select(c.id, 'constraint')
                 store.startSequenceConstruction(c.id, 'newSequence')
                 return
               }
-              if (store.tool === 'assignRole' || store.tool === 'addSubtype' || store.tool === 'toggleMandatory' || store.tool === 'addInternalUniqueness' || store.tool === 'addInternalFrequency') { store.setTool('select'); return }
+              if (store.tool === 'assignRole' || store.tool === 'addSubtype' || store.tool === 'toggleMandatory' || store.tool === 'addInternalUniqueness' || store.tool === 'addInternalFrequency') { store.clearLinkDraft(); store.setTool('select'); return }
               if (e.shiftKey) {
                 store.shiftSelect(c.id)
                 return
@@ -827,23 +827,8 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
                 store.select(c.id, 'constraint')
                 return
               }
-              if (isSelected && EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) && !store.sequenceConstruction) {
-                // Track for deselect-on-click / drag
-                mouseDownRef.current = { id: c.id, x: e.clientX, y: e.clientY }
-                onDragStart(c.id, 'constraint', e)
-                return
-              }
-              mouseDownRef.current = null
               store.select(c.id, 'constraint')
               onDragStart(c.id, 'constraint', e)
-            }}
-            onMouseUp={(e) => {
-              const down = mouseDownRef.current
-              if (down?.id === c.id) {
-                const dist = Math.hypot(e.clientX - down.x, e.clientY - down.y)
-                if (dist < 5) store.clearSelection()   // single click on selected → deselect
-                mouseDownRef.current = null
-              }
             }}
             onDoubleClick={(e) => {
               e.stopPropagation()
@@ -854,6 +839,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
             }}
             onContextMenu={(e) => onContextMenu(c, e)}
             style={{ cursor: (() => {
+              if (store.queryEditDraft) return 'not-allowed'
               if (isElementSelecting(store.tool, store.sequenceConstruction)) {
                 if (store.sequenceConstruction) return 'not-allowed'
                 if (isConnectTool) return 'pointer'
@@ -912,9 +898,9 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
               return (
                 <circle cx={c.x} cy={c.y}
                   r={c.constraintType === 'ring' ? CONSTRAINT_R : EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) ? EXTERNAL_CONSTRAINT_R : CONSTRAINT_R}
-                  fill={isCandidate ? 'var(--fill-candidate)' : ringEmpty ? 'transparent' : '#ffffff'}
-                  stroke={isCandidate ? 'var(--col-candidate)' : color}
-                  strokeWidth={isSelected ? 2 : isCandidate ? 2 : 1.5}
+                  fill={ringEmpty ? 'transparent' : '#ffffff'}
+                  stroke={color}
+                  strokeWidth={isSelected ? 2 : 1.5}
                   strokeDasharray={c.constraintType === 'ring' ? '3 2' : 'none'}
                 />
               )
@@ -943,19 +929,19 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
                   {(c.constraintType === 'exclusiveOr' || c.constraintType === 'exclusion') && (
                     <>
                       <line x1={c.x - d} y1={c.y - d} x2={c.x + d} y2={c.y + d}
-                        stroke={isCandidate ? 'var(--col-candidate)' : color} strokeWidth={2} strokeLinecap="round"/>
+                        stroke={color} strokeWidth={2} strokeLinecap="round"/>
                       <line x1={c.x + d} y1={c.y - d} x2={c.x - d} y2={c.y + d}
-                        stroke={isCandidate ? 'var(--col-candidate)' : color} strokeWidth={2} strokeLinecap="round"/>
+                        stroke={color} strokeWidth={2} strokeLinecap="round"/>
                     </>
                   )}
                   {/* Dot — Inclusive Or and Exclusive Or */}
                   {(c.constraintType === 'exclusiveOr' || c.constraintType === 'inclusiveOr') && (
-                    <circle cx={c.x} cy={c.y} r={3.5} fill={isCandidate ? 'var(--col-candidate)' : color}/>
+                    <circle cx={c.x} cy={c.y} r={3.5} fill={color}/>
                   )}
                   {/* Symbol — Equality and Subset */}
                   {(c.constraintType === 'equality' || c.constraintType === 'subset') && (
                     <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central"
-                      fontSize={13} fill={isCandidate ? 'var(--col-candidate)' : color}
+                      fontSize={13} fill={color}
                       fontFamily="var(--font-mono)" fontWeight={600}
                       style={{ pointerEvents: 'none' }}>
                       {c.constraintType === 'equality' ? '=' : '⊆'}
@@ -965,11 +951,11 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
                   {c.constraintType === 'valueComparison' && (
                     <>
                       <circle cx={c.x - EXTERNAL_CONSTRAINT_R} cy={c.y} r={3}
-                        fill={isCandidate ? 'var(--col-candidate)' : color}/>
+                        fill={color}/>
                       <circle cx={c.x + EXTERNAL_CONSTRAINT_R} cy={c.y} r={3}
-                        fill={isCandidate ? 'var(--col-candidate)' : color}/>
+                        fill={color}/>
                       <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central"
-                        fontSize={13} fill={isCandidate ? 'var(--col-candidate)' : color}
+                        fontSize={13} fill={color}
                         fontFamily="var(--font-mono)" fontWeight={600}
                         style={{ pointerEvents: 'none' }}>
                         {c.operator ?? '='}
@@ -980,13 +966,13 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
                   {c.constraintType === 'uniqueness' && (c.isPreferredIdentifier ? (
                     <>
                       <line x1={c.x - EXTERNAL_CONSTRAINT_R} y1={c.y - 1.5} x2={c.x + EXTERNAL_CONSTRAINT_R} y2={c.y - 1.5}
-                        stroke={isCandidate ? 'var(--col-candidate)' : color} strokeWidth={1.5} strokeLinecap="round"/>
+                        stroke={color} strokeWidth={1.5} strokeLinecap="round"/>
                       <line x1={c.x - EXTERNAL_CONSTRAINT_R} y1={c.y + 1.5} x2={c.x + EXTERNAL_CONSTRAINT_R} y2={c.y + 1.5}
-                        stroke={isCandidate ? 'var(--col-candidate)' : color} strokeWidth={1.5} strokeLinecap="round"/>
+                        stroke={color} strokeWidth={1.5} strokeLinecap="round"/>
                     </>
                   ) : (
                     <line x1={c.x - EXTERNAL_CONSTRAINT_R} y1={c.y} x2={c.x + EXTERNAL_CONSTRAINT_R} y2={c.y}
-                      stroke={isCandidate ? 'var(--col-candidate)' : color} strokeWidth={2} strokeLinecap="round"/>
+                      stroke={color} strokeWidth={2} strokeLinecap="round"/>
                   ))}
                 </g>
               )
@@ -997,20 +983,19 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
               const lbl = formatFrequencyRange(c.frequency) ?? ''
               const sw  = freqStadiumW(lbl)
               const sh  = EXTERNAL_CONSTRAINT_R   // half-height
-              const strokeColor = isCandidate ? 'var(--col-candidate)' : color
               return (
                 <g>
                   <rect
                     x={c.x - sw / 2} y={c.y - sh}
                     width={sw} height={sh * 2}
                     rx={sh}
-                    fill={isCandidate ? 'var(--fill-candidate)' : '#ffffff'}
-                    stroke={strokeColor}
-                    strokeWidth={isSelected ? 2 : isCandidate ? 2 : 1.5}
+                    fill='#ffffff'
+                    stroke={color}
+                    strokeWidth={isSelected ? 2 : 1.5}
                   />
                   <text x={c.x} y={c.y}
                     textAnchor="middle" dominantBaseline="central"
-                    fontSize={FREQ_FONT_SIZE} fill={strokeColor}
+                    fontSize={FREQ_FONT_SIZE} fill={color}
                     fontFamily="'Segoe UI', Helvetica, Arial, sans-serif"
                     style={{ pointerEvents: 'none' }}
                   >

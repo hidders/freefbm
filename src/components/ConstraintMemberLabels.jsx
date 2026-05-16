@@ -5,8 +5,7 @@ import { roleCenter, makeImplicitLinkFact } from './FactTypeNode'
 import { entityBounds } from './ObjectTypeNode'
 
 // Constraint types for which sequence-membership labels are shown on the canvas
-// (subset of EXTERNAL_CONSTRAINT_TYPES — excludes ring)
-const LABELED_CONSTRAINT_TYPES = new Set(['exclusiveOr', 'exclusion', 'inclusiveOr', 'equality', 'subset', 'uniqueness'])
+const LABELED_CONSTRAINT_TYPES = new Set(['exclusiveOr', 'exclusion', 'inclusiveOr', 'equality', 'subset', 'uniqueness', 'ring', 'valueComparison', 'frequency'])
 const FONT_SIZE    = 9
 const CHAR_W       = 5.5   // approximate mono char width at FONT_SIZE
 const PAD_X        = 5
@@ -52,9 +51,14 @@ export default function ConstraintMemberLabels() {
   const subtypeMap = Object.fromEntries(subtypes.map(st => [st.id, st]))
   const otMap      = Object.fromEntries(objectTypes.map(o  => [o.id,  o]))
 
-  // Build member-key → [{gi, pi}] map
+  // When editing a query, restrict labels to the sequence being queried
+  const qd = store.queryEditDraft
+  const editingSequenceIndex = (qd && qd.constraintId === c.id) ? qd.sequenceIndex : null
+
+  // Build member-key → [{gi, pi}] map (restricted to editing sequence when active)
   const posMap = {}
   for (let gi = 0; gi < sequences.length; gi++) {
+    if (editingSequenceIndex !== null && gi !== editingSequenceIndex) continue
     for (let pi = 0; pi < sequences[gi].length; pi++) {
       const m   = sequences[gi][pi]
       const key = m.kind === 'role'
@@ -65,17 +69,14 @@ export default function ConstraintMemberLabels() {
     }
   }
 
-  // When a specific query button is pressed, restrict labels to that query's pattern members
+  // When a specific query button is pressed, restrict labels to sequence members of that query
   const qh = store.queryIndexHighlight
   let allowedKeys = null
   if (qh && qh.constraintId === c.id) {
-    const q = (c.queries || [])[qh.queryIndex]
-    if (q) {
-      allowedKeys = new Set([
-        ...(q.patternRoles    || []).map(r  => `role:${r.factId}:${r.roleIndex}`),
-        ...(q.patternSubtypes || []).map(id => `subtype:${id}`),
-      ])
-    }
+    const seq = (c.sequences || [])[qh.queryIndex] || []
+    allowedKeys = new Set(
+      seq.map(m => m.kind === 'role' ? `role:${m.factId}:${m.roleIndex}` : `subtype:${m.subtypeId}`)
+    )
   }
 
   // One label per unique member
@@ -83,6 +84,7 @@ export default function ConstraintMemberLabels() {
   const seen   = new Set()
 
   for (let gi = 0; gi < sequences.length; gi++) {
+    if (editingSequenceIndex !== null && gi !== editingSequenceIndex) continue
     for (let pi = 0; pi < sequences[gi].length; pi++) {
       const m   = sequences[gi][pi]
       const key = m.kind === 'role'

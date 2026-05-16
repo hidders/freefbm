@@ -11,7 +11,8 @@ const ALL_INTERNAL_CONSTRAINT_TYPES = [
   { key: 'internalFrequency',  label: 'Internal Frequency', tool: 'addInternalFrequency', shortcut: 'Q' },
 ]
 
-const BASIC_INTERNAL_CONSTRAINT_TYPES = ALL_INTERNAL_CONSTRAINT_TYPES.slice(0, 2)
+const BASIC_INTERNAL_CONSTRAINT_TYPES    = ALL_INTERNAL_CONSTRAINT_TYPES.slice(0, 2)
+const ADVANCED_INTERNAL_CONSTRAINT_TYPES = ALL_INTERNAL_CONSTRAINT_TYPES.slice(2)
 
 const ALL_CONSTRAINT_TYPES = [
   { key: 'uniqueness',        label: 'External Uniqueness',   short: null },
@@ -25,7 +26,27 @@ const ALL_CONSTRAINT_TYPES = [
   { key: 'frequency',         label: 'External Frequency', short: null },
 ]
 
-const BASIC_CONSTRAINT_TYPES = ALL_CONSTRAINT_TYPES.slice(0, 4)
+const BASIC_CONSTRAINT_TYPES    = ALL_CONSTRAINT_TYPES.slice(0, 4)
+const ADVANCED_CONSTRAINT_TYPES = ALL_CONSTRAINT_TYPES.slice(4)
+
+function AdvancedSection({ show, showDelay = 0, hideDelay = 0, children }) {
+  const delay = show ? showDelay : hideDelay
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateRows: show ? '1fr' : '0fr',
+      transition: `grid-template-rows 0.28s ease ${delay}ms`,
+    }}>
+      <div style={{
+        overflow: 'hidden',
+        opacity: show ? 1 : 0,
+        transition: `opacity 0.18s ease ${delay}ms`,
+      }}>
+        {children}
+      </div>
+    </div>
+  )
+}
 
 function SelectIcon({ active }) {
   const fill   = active ? '#fff' : 'var(--ink-2)'
@@ -472,9 +493,6 @@ export default function ToolPanel() {
   const tool = store.sequenceConstruction ? 'connectConstraint' : store.tool
   const [advanced, setAdvanced] = useState(false)
 
-  const INTERNAL_CONSTRAINT_TYPES = advanced ? ALL_INTERNAL_CONSTRAINT_TYPES : BASIC_INTERNAL_CONSTRAINT_TYPES
-  const CONSTRAINT_TYPES = advanced ? ALL_CONSTRAINT_TYPES : BASIC_CONSTRAINT_TYPES
-
   return (
     <div style={{
       width: 195,
@@ -637,58 +655,60 @@ export default function ToolPanel() {
         <FactTypeIcon active={tool === 'addFact2'} />
         Fact Type
       </button>
-      {advanced && <button
-        title="Add Nested Entity Type"
-        onClick={() => store.setTool('addNestedFact')}
-        style={{
-          width: '100%',
-          padding: '2px 10px',
-          fontSize: 12,
-          textAlign: 'left',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 7,
-          background: tool === 'addNestedFact' ? 'var(--accent)' : 'transparent',
-          color: tool === 'addNestedFact' ? '#fff' : 'var(--ink-2)',
-          border: `1px solid ${tool === 'addNestedFact' ? 'var(--accent)' : 'transparent'}`,
-          borderRadius: 4,
-          fontFamily: 'var(--font-mono)',
-          cursor: 'pointer',
-          transition: 'all 0.12s',
-          whiteSpace: 'nowrap',
-        }}
-        onMouseEnter={e => { if (tool !== 'addNestedFact') e.currentTarget.style.background = 'var(--bg-hover)' }}
-        onMouseLeave={e => { if (tool !== 'addNestedFact') e.currentTarget.style.background = 'transparent' }}
-      >
-        <NestedFactTypeIcon active={tool === 'addNestedFact'} />
-        Nested Entity Type
-      </button>}
-      {advanced && <button
-        title="Add Nested Value Type"
-        onClick={() => store.setTool('addNestedValueFact')}
-        style={{
-          width: '100%',
-          padding: '2px 10px',
-          fontSize: 12,
-          textAlign: 'left',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 7,
-          background: tool === 'addNestedValueFact' ? 'var(--accent)' : 'transparent',
-          color: tool === 'addNestedValueFact' ? '#fff' : 'var(--ink-2)',
-          border: `1px solid ${tool === 'addNestedValueFact' ? 'var(--accent)' : 'transparent'}`,
-          borderRadius: 4,
-          fontFamily: 'var(--font-mono)',
-          cursor: 'pointer',
-          transition: 'all 0.12s',
-          whiteSpace: 'nowrap',
-        }}
-        onMouseEnter={e => { if (tool !== 'addNestedValueFact') e.currentTarget.style.background = 'var(--bg-hover)' }}
-        onMouseLeave={e => { if (tool !== 'addNestedValueFact') e.currentTarget.style.background = 'transparent' }}
-      >
-        <NestedValueTypeIcon active={tool === 'addNestedValueFact'} />
-        Nested Value Type
-      </button>}
+      <AdvancedSection show={advanced} showDelay={200} hideDelay={0}>
+        <button
+          title="Add Nested Entity Type"
+          onClick={() => store.setTool('addNestedFact')}
+          style={{
+            width: '100%',
+            padding: '2px 10px',
+            fontSize: 12,
+            textAlign: 'left',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            background: tool === 'addNestedFact' ? 'var(--accent)' : 'transparent',
+            color: tool === 'addNestedFact' ? '#fff' : 'var(--ink-2)',
+            border: `1px solid ${tool === 'addNestedFact' ? 'var(--accent)' : 'transparent'}`,
+            borderRadius: 4,
+            fontFamily: 'var(--font-mono)',
+            cursor: 'pointer',
+            transition: 'all 0.12s',
+            whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={e => { if (tool !== 'addNestedFact') e.currentTarget.style.background = 'var(--bg-hover)' }}
+          onMouseLeave={e => { if (tool !== 'addNestedFact') e.currentTarget.style.background = 'transparent' }}
+        >
+          <NestedFactTypeIcon active={tool === 'addNestedFact'} />
+          Nested Entity Type
+        </button>
+        <button
+          title="Add Nested Value Type"
+          onClick={() => store.setTool('addNestedValueFact')}
+          style={{
+            width: '100%',
+            padding: '2px 10px',
+            fontSize: 12,
+            textAlign: 'left',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            background: tool === 'addNestedValueFact' ? 'var(--accent)' : 'transparent',
+            color: tool === 'addNestedValueFact' ? '#fff' : 'var(--ink-2)',
+            border: `1px solid ${tool === 'addNestedValueFact' ? 'var(--accent)' : 'transparent'}`,
+            borderRadius: 4,
+            fontFamily: 'var(--font-mono)',
+            cursor: 'pointer',
+            transition: 'all 0.12s',
+            whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={e => { if (tool !== 'addNestedValueFact') e.currentTarget.style.background = 'var(--bg-hover)' }}
+          onMouseLeave={e => { if (tool !== 'addNestedValueFact') e.currentTarget.style.background = 'transparent' }}
+        >
+          <NestedValueTypeIcon active={tool === 'addNestedValueFact'} />
+          Nested Value Type
+        </button>
+      </AdvancedSection>
 
       <Divider />
       <GroupLabel>Connectors</GroupLabel>
@@ -776,7 +796,7 @@ export default function ToolPanel() {
       <Divider />
       <GroupLabel>Internal Constraints</GroupLabel>
 
-      {INTERNAL_CONSTRAINT_TYPES.map(ct => (
+      {BASIC_INTERNAL_CONSTRAINT_TYPES.map(ct => (
         <InternalConstraintBtn
           key={ct.key}
           ct={ct}
@@ -785,11 +805,22 @@ export default function ToolPanel() {
           shortcut={ct.shortcut}
         />
       ))}
+      <AdvancedSection show={advanced} showDelay={100} hideDelay={100}>
+        {ADVANCED_INTERNAL_CONSTRAINT_TYPES.map(ct => (
+          <InternalConstraintBtn
+            key={ct.key}
+            ct={ct}
+            active={tool === (ct.tool ?? `addConstraint:${ct.key}`)}
+            onClick={() => store.setTool(ct.tool ?? `addConstraint:${ct.key}`)}
+            shortcut={ct.shortcut}
+          />
+        ))}
+      </AdvancedSection>
 
       <Divider />
       <GroupLabel>External Constraints</GroupLabel>
 
-      {CONSTRAINT_TYPES.map(ct => (
+      {BASIC_CONSTRAINT_TYPES.map(ct => (
         <ConstraintBtn
           key={ct.key}
           ct={ct}
@@ -797,6 +828,17 @@ export default function ToolPanel() {
           onClick={() => store.setTool(`addConstraint:${ct.key}`)}
         />
       ))}
+      <AdvancedSection show={advanced} showDelay={0} hideDelay={200}>
+        {ADVANCED_CONSTRAINT_TYPES.map(ct => (
+          <ConstraintBtn
+            key={ct.key}
+            ct={ct}
+            active={tool === `addConstraint:${ct.key}`}
+            onClick={() => store.setTool(`addConstraint:${ct.key}`)}
+          />
+        ))}
+      </AdvancedSection>
+      <Divider />
 
     </div>
   )

@@ -259,11 +259,11 @@ export function makeImplicitLinkFact(parentFact, implicitLink) {
     kind: 'fact',
     x, y,
     arity: 2,
-    roles: roleOrder.map((srcIdx, i) => ({
+    roles: roles.map((r, i) => ({
       id: `${parentFact.id}_il_${implicitLink.roleIndex}_r${i}`,
-      objectTypeId: roles[srcIdx].objectTypeId,
-      roleName: roles[srcIdx].roleName,
-      mandatory: roles[srcIdx].mandatory,
+      objectTypeId: r.objectTypeId,
+      roleName: r.roleName,
+      mandatory: r.mandatory,
       linkReadingParts: ['', 'involves', ''],
       linkReadingReverseParts: null,
     })),
@@ -391,7 +391,7 @@ export function factBounds(fact) {
   }
 }
 
-export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleContextMenu, onBarContextMenu, onRoleValueClick, onNestedVrClick, onRoleCardinalityClick, onNestedCrClick, onIfContextMenu, onRoleValueContextMenu, onRoleCrContextMenu, onNestedVrContextMenu, onNestedCrContextMenu, isShared }) {
+export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleContextMenu, onBarContextMenu, onRoleValueClick, onNestedVrClick, onRoleCardinalityClick, onNestedCrClick, onIfContextMenu, onRoleValueContextMenu, onRoleCrContextMenu, onNestedVrContextMenu, onNestedCrContextMenu, isShared, dimObjectification, dimInnerFact }) {
   const store = useOrmStore()
   const isImplicitSelected = fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact._parentFactId && store.selectedImplicitLink === fact._implicitRoleIndex
   const hasSelectedImplicitLink = !fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact.id
@@ -423,8 +423,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       const q = c.queries[qi]
       if (!q) continue
       if (qh && qh.constraintId === c.id && qh.queryIndex !== qi) continue
-      for (const r of q.patternRoles) {
-        if (r.factId === fact.id) roles.add(r.roleIndex)
+      if (!q.copies) continue  // old format — skip
+      for (const lk of q.links) {
+        const cp = q.copies.find(cp => cp.id === lk.copyId)
+        if (cp?.kind === 'fact' && cp.originalId === fact.id) roles.add(lk.roleIndex)
       }
     }
     return roles.size > 0 ? roles : null
@@ -464,6 +466,12 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     e.stopPropagation()
     if (e.button !== 0) return
 
+    // Query edit mode: objectified facts act as OT originals; plain facts are ignored
+    if (inQueryEdit) {
+      if (fact.objectified) store.queryEditClick({ type: 'otOriginal', id: fact.id })
+      return
+    }
+
     // Target pick mode: click on objectified fact to set it as target
     if (store.pendingTargetPick && fact.objectified) {
       store.commitTargetPick(fact.id)
@@ -489,6 +497,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           store.setLinkDraft({ type: 'subtype', fromId: fact.id })
         } else if (store.linkDraft.fromId !== fact.id) {
           store.addSubtype(store.linkDraft.fromId, fact.id)
+          store.clearLinkDraft()
+          store.setTool('select')
+        } else {
+          // Clicked the source again → abort
           store.clearLinkDraft()
           store.setTool('select')
         }
@@ -523,6 +535,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       const wasConnect = store.tool === 'connectConstraint'
       if (store.sequenceConstruction) store.abandonSequenceConstruction()
       if (wasConnect) store.clearSelection()
+      store.clearLinkDraft()
       store.setTool('select')
       return
     }
@@ -562,12 +575,13 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
 
   const handleRoleDoubleClick = useCallback((roleIndex, e) => {
     e.stopPropagation()
+    if (inQueryEdit) return
     if (fact._implicit) return
     if (store.sequenceConstruction || inConstruction) return
     if (store.tool !== 'select') return
     store.setTool('assignRole')
     store.setLinkDraft({ type: 'roleAssign', factId: fact.id, roleIndex, autoReturn: true })
-  }, [store, fact.id, fact._implicit, inConstruction])
+  }, [store, fact.id, fact._implicit, inConstruction, inQueryEdit])
 
   const handleRoleContextMenu = useCallback((roleIndex, e) => {
     e.preventDefault(); e.stopPropagation()
@@ -589,10 +603,18 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     if (e.button !== 0) return
     if (e.detail >= 2) return  // second click of a double-click: do nothing
     if (inQueryEdit) {
-      store.toggleQueryEditRole(fact.id, roleIndex)
+      store.queryEditClick({ type: 'factOriginalRole', id: fact.id, roleIndex })
       return
     }
     if (fact._implicit) {
+      if (isConnectorTool) {
+        const wasConnect = store.tool === 'connectConstraint'
+        if (store.sequenceConstruction) store.abandonSequenceConstruction()
+        if (wasConnect) store.clearSelection()
+        store.clearLinkDraft()
+        store.setTool('select')
+        return
+      }
       if (store.sequenceConstruction) {
         if (roleIndex !== 0) return
         if (isVcConstruction && !vcEligibleRoles.has(roleIndex)) return
@@ -674,6 +696,15 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     }
     if (isAssignTool) {
       const draft = store.linkDraft
+      // Stage 2 on an objectified fact: clicking anywhere in the role box area
+      // is equivalent to clicking the outer box — assign this as the object type.
+      if (draft?.factId != null && draft?.roleIndex != null && fact.objectified) {
+        store.assignObjectTypeToRole(draft.factId, draft.roleIndex, fact.id)
+        const autoReturn = draft?.autoReturn
+        store.clearLinkDraft()
+        if (autoReturn) store.setTool('select')
+        return
+      }
       if (draft?.factId === fact.id && draft?.roleIndex === roleIndex) {
         // Same role clicked again → abort
         const autoReturn = draft?.autoReturn
@@ -1013,12 +1044,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
 
   // Stage-1 frequency: tool is active but no construction started yet → fact is selectable candidate
   const isFrequencyCandidate = isFrequencyTool && !store.frequencyConstruction && !fact._implicit
+  const isAdjFact = false  // no adjacent-fact dimming in new query model
   const roleStroke    = isFactSelected               ? 'var(--accent)'
-    : (isUniquenessTool && !fact._implicit)          ? 'var(--col-candidate)'
-    : isFrequencyCandidate                           ? 'var(--col-candidate)'
     : (isDraftFrom && fact.objectified)              ? 'var(--col-subtype)'
     :                                                  'var(--col-fact)'
-  const roleStrokeW   = isFactSelected ? 2 : ((isUniquenessTool && !fact._implicit) || isFrequencyCandidate || (isDraftFrom && fact.objectified)) ? 2 : 1.5
+  const roleStrokeW   = isFactSelected ? 2 : (isDraftFrom && fact.objectified) ? 2 : 1.5
   const gc = store.sequenceConstruction
   const gcConstraint = gc ? store.constraints.find(c => c.id === gc.constraintId) : null
   const isVcConstruction = gcConstraint?.constraintType === 'valueComparison'
@@ -1037,7 +1067,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   ) : null
 
    const isRoleCandidate = (isAssignTool && !isAssigning) || store.tool === 'toggleMandatory' || isUniquenessTool
-    || isFrequencyCandidate  // stage 1: all facts' roles are candidate
+    || isFrequencyCandidate  // stage 1: all facts' roles are candidate (drives cursor)
     || (!!gc && !isVcConstruction)
 
   // Roles eligible for a value range constraint: connected to a value type or entity with a reference mode
@@ -1046,8 +1076,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   ) : null
   const getRoleCursor = (ri, roleSelected) => {
     if (fact._implicit) {
-      if (store.sequenceConstruction || store.tool === 'connectConstraint')
-        return ri === 0 ? 'pointer' : 'not-allowed'
+      if (store.sequenceConstruction) return 'not-allowed'
+      if (store.tool === 'connectConstraint') return ri === 0 ? 'pointer' : 'not-allowed'
       return isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab'
     }
     if (isSubtypeTool && fact.objectified) return 'cell'
@@ -1067,16 +1097,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     if (isVcConstruction) return 'crosshair'
     return 'grab'
   }
-  const roleIsCandidate = (ri) => {
-    if (fact._implicit) return !!gc && !isVcConstruction && ri === 0
-    if (inQueryEdit) return false  // query edit uses its own highlight, not candidate style
-    return isRoleCandidate || (isRoleValueTool && vrEligibleRoles.has(ri)) || (isVcConstruction && vcEligibleRoles.has(ri)) || isCrTool
-  }
-  const roleInQueryPattern = (ri) =>
-    (inQueryEdit && qd.patternRoles.some(r => r.factId === fact.id && r.roleIndex === ri)) ||
-    !!queryHighlightRoles?.has(ri)
-  const roleHighlight = isRoleCandidate ? 'var(--fill-candidate)' : '#ffffff'
-
+  const roleInQueryPattern = (ri) => !!queryHighlightRoles?.has(ri)
   const isVertical = fact.orientation === 'vertical'
 
   // ── Uniqueness bar level assignment ────────────────────────────────────────
@@ -1210,14 +1231,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       return
     }
     if (fact._implicit) {
-      const alreadySelected = store.selectedUniqueness?.factId === fact._parentFactId && store.selectedUniqueness?.roleIndex === fact._implicitRoleIndex && store.selectedUniqueness?.uIndex === ui
-      if (alreadySelected) store.clearSelection()
-      else store.selectImplicitLinkUniqueness(fact._parentFactId, fact._implicitRoleIndex, ui)
+      store.selectImplicitLinkUniqueness(fact._parentFactId, fact._implicitRoleIndex, ui)
       return
     }
-    const alreadySelected = store.selectedUniqueness?.factId === fact.id && store.selectedUniqueness?.uIndex === ui
-    if (alreadySelected) store.clearSelection()
-    else store.selectUniqueness(fact.id, ui)
+    store.selectUniqueness(fact.id, ui)
   }
 
   const barDoubleClickHandler = (ui) => (e) => {
@@ -1615,6 +1632,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       <g className="selectable-group" onMouseDown={handleMouseDown} onContextMenu={onContextMenu}
         style={{ cursor: (() => {
           if (fact._implicit) return isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab'
+          if (inQueryEdit) return 'not-allowed'
           if (store.pendingTargetPick) return fact.objectified ? 'pointer' : 'not-allowed'
           if (isElementSelecting(store.tool, store.sequenceConstruction)) {
             if (store.sequenceConstruction) return fact.objectified ? 'pointer' : 'not-allowed'
@@ -1640,29 +1658,20 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
 
       {/* Objectified (nested) fact type — outer entity/value border + name */}
       {fact.objectified && (() => {
-        const isSubtypeCandidate = isSubtypeTool && !isDraftFrom
         const isConstraintTarget = store.selectedKind === 'constraint' &&
           store.constraints.find(c => c.id === store.selectedId)?.targetObjectTypeId === fact.id
-        const isPickingTarget    = !!store.pendingTargetPick
-        const canHaveVr = fact.objectifiedKind === 'value'
-          || (fact.objectifiedKind !== 'value' && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
-        const isNestedVrCandidate = isRoleValueTool && canHaveVr
-        const isNestedCrCandidate = isCrTool
-        const isAssignCandidate   = isAssignTool && isAssigning && store.linkDraft?.factId !== fact.id
         const nestedCol  = isFactSelected      ? 'var(--accent)'
           : isDraftFrom                       ? 'var(--col-subtype)'
-          : isSubtypeCandidate                ? 'var(--col-candidate)'
-          : isAssignCandidate                 ? 'var(--col-candidate)'
-          : isNestedVrCandidate               ? 'var(--col-candidate)'
-          : isNestedCrCandidate               ? 'var(--col-candidate)'
-          : isPickingTarget                   ? 'var(--col-candidate)'
-          : isConstraintTarget                ? '#d97706'
+          : isConstraintTarget                ? '#1a7fd4'
+          : fact.objectifiedKind === 'value'  ? 'var(--col-value)'
+          :                                     'var(--col-entity)'
+        const nestedTextCol = isFactSelected ? 'var(--accent)'
+          : isDraftFrom                       ? 'var(--col-subtype)'
           : fact.objectifiedKind === 'value'  ? 'var(--col-value)'
           :                                     'var(--col-entity)'
         const nestedDash    = fact.objectifiedKind === 'value' ? '6 3' : 'none'
-        const nestedFill    = (isSubtypeCandidate || isDraftFrom || isAssignCandidate || isNestedVrCandidate || isNestedCrCandidate || isPickingTarget) ? 'var(--fill-candidate)'
-          : isConstraintTarget ? '#fff3cd' : '#ffffff'
-        const nestedStrokeW = (isFactSelected || isDraftFrom || isSubtypeCandidate || isAssignCandidate || isNestedVrCandidate || isNestedCrCandidate || isPickingTarget || isConstraintTarget) ? 2 : 1.5
+        const nestedFill    = isConstraintTarget ? '#1a7fd4' : '#ffffff'
+        const nestedStrokeW = (isFactSelected || isDraftFrom || isConstraintTarget) ? 2 : 1.5
         const nestedRefText = (fact.objectifiedKind !== 'value' && store.showReferenceMode
           && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
           ? `(${fact.objectifiedRefMode})` : null
@@ -1696,6 +1705,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           const nameTy   = nameY  + nameOff.dy
           return (
             <g className="selectable-group">
+              <g opacity={dimObjectification ? 0.35 : 1}>
               <rect
                 x={fact.x - ROLE_H / 2 - padLeft} y={boxTop}
                 width={ow} height={oh} rx={6}
@@ -1728,7 +1738,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   <text x={nameTx} y={nameTy}
                     textAnchor="middle" dominantBaseline="middle"
                     fontSize={18} fontFamily={FONT}
-                    fill={nestedCol}
+                    fill={nestedTextCol}
                     style={{ cursor: nameLive ? 'grabbing' : isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'none' : 'auto' }}
                     onMouseDown={e => {
                       e.stopPropagation()
@@ -1775,7 +1785,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                     <text x={nameTx} y={nameTy + 14}
                       textAnchor="middle" dominantBaseline="middle"
                       fontSize={11} fontFamily={FONT}
-                      fill={nestedCol}
+                      fill={nestedTextCol}
                       style={{ pointerEvents: 'none', userSelect: 'none' }}>
                       {nestedRefText}
                     </text>
@@ -1793,6 +1803,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   </>
                 )
               )}
+              </g>
+              <g opacity={dimInnerFact ? 0.35 : 1}>
               {readingText && (
                 editingReading
                   ? (() => {
@@ -1855,13 +1867,14 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                     <text x={fact.x} y={readingY}
                       textAnchor="middle" dominantBaseline="middle"
                       fontSize={NESTED_READING_FONT_SIZE} fontFamily={FONT}
-                      fill={nestedCol}
+                      fill={nestedTextCol}
                       style={{ cursor: 'pointer', userSelect: 'none' }}
                       onDoubleClick={e => { e.stopPropagation(); const ex=fact.readingParts||[]; setReadingDraft(Array.from({length:fact.arity+1},(_,i)=>ex[i]??'')); setEditingReading(true) }}>
                       {readingText}
                     </text>
                   )
               )}
+              </g>
               <rect className="hover-ring"
                 x={fact.x - ROLE_H / 2 - padLeft - 3} y={boxTop - 3}
                 width={ow + 6} height={oh + 6} rx={8}/>
@@ -1896,6 +1909,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         const nameTy   = nameY  + nameOff.dy
         return (
           <g className="selectable-group">
+            <g opacity={dimObjectification ? 0.35 : 1}>
             <rect
               x={fact.x - ow / 2} y={fact.y - ROLE_H / 2 - padTop}
               width={ow} height={oh} rx={6}
@@ -1928,7 +1942,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                 <text x={nameTx} y={nameTy}
                   textAnchor="middle" dominantBaseline="middle"
                   fontSize={18} fontFamily={FONT}
-                  fill={nestedCol}
+                  fill={nestedTextCol}
                   style={{ cursor: nameLive ? 'grabbing' : isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'none' : 'auto' }}
                   onMouseDown={e => {
                     e.stopPropagation()
@@ -1974,7 +1988,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                 <text x={nameTx} y={nameTy + 14}
                   textAnchor="middle" dominantBaseline="middle"
                   fontSize={11} fontFamily={FONT}
-                  fill={nestedCol}
+                  fill={nestedTextCol}
                   style={{ cursor: 'text', userSelect: 'none' }}
                   onDoubleClick={e => {
                     e.stopPropagation()
@@ -1985,6 +1999,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                 </text>
               )
             )}
+            </g>
+            <g opacity={dimInnerFact ? 0.35 : 1}>
             {readingText && (
               editingReading
                 ? (() => {
@@ -2058,13 +2074,14 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                     <text x={fact.x} y={readingY}
                       textAnchor="middle" dominantBaseline="middle"
                       fontSize={NESTED_READING_FONT_SIZE} fontFamily={FONT}
-                      fill={nestedCol}
+                      fill={nestedTextCol}
                       style={{ cursor: 'pointer', userSelect: 'none' }}
                       onDoubleClick={e => { e.stopPropagation(); const ex=fact.readingParts||[]; setReadingDraft(Array.from({length:fact.arity+1},(_,i)=>ex[i]??'')); setEditingReading(true) }}>
                       {readingText}
                     </text>
                    )
                )}
+            </g>
              <rect className="hover-ring"
                x={fact.x - ow / 2 - 3} y={fact.y - ROLE_H / 2 - padTop - 3}
                width={ow + 6} height={oh + 6} rx={8}/>
@@ -2072,17 +2089,18 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
          )
        })()}
 
+      <g opacity={dimInnerFact ? 0.35 : 1}>
       {isVertical ? (
         <>
           {/* White background */}
           <rect x={leftX_v} y={startY_v} width={ROLE_H} height={totalH_v}
-            fill="#ffffff" stroke="none" style={{ pointerEvents: 'none' }}/>
+            fill="#ffffff" stroke="none" opacity={isAdjFact ? 0.35 : 1} style={{ pointerEvents: 'none' }}/>
 
           {/* Unary cap (north) */}
           {fact.arity === 1 && (
             <path d={`M ${leftX_v} ${startY_v} a ${ROLE_H/2} ${UNARY_CAP_R} 0 0 0 ${ROLE_H} 0`}
               fill="#ffffff" stroke={roleStroke} strokeWidth={roleStrokeW}
-              style={{ pointerEvents: 'none' }}/>
+              opacity={isAdjFact ? 0.35 : 1} style={{ pointerEvents: 'none' }}/>
           )}
 
            {/* Role boxes */}
@@ -2100,14 +2118,13 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                        : roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
                        : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
                        : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
-                       : roleIsCandidate(ri) ? 'var(--fill-candidate)'
                        : baseRoleOfIL ? '#dde8f5'
                        : roleSelected ? '#ffffff'
                        : highlightedRoles?.has(ri) ? '#fde3c8'
                        : '#ffffff'
                      }
-                     stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : roleIsCandidate(ri) ? 'var(--col-candidate)' : inQueryEdit ? 'var(--col-query-out)' : roleStroke}
-                     strokeWidth={roleInQueryPattern(ri) ? 2 : roleSelected ? 2 : baseRoleOfIL ? 2 : roleIsCandidate(ri) ? 2 : roleStrokeW}
+                     stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : roleStroke}
+                     strokeWidth={roleInQueryPattern(ri) ? 2 : roleSelected ? 2 : baseRoleOfIL ? 2 : roleStrokeW}
                     strokeDasharray={fact._implicit ? '4 3' : undefined}
                     onMouseDown={(e)   => handleRoleMouseDown(ri, e)}
                     onDoubleClick={(e) => handleRoleDoubleClick(ri, e)}
@@ -2130,6 +2147,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           })}
 
           {/* Uniqueness bars (right side) */}
+          <g opacity={isAdjFact ? 0.35 : 1} style={isAdjFact ? { pointerEvents: 'none' } : undefined}>
           {fact.uniqueness.map((uRoles, ui) => {
             const isEditing = inConstruction && store.uniquenessConstruction?.uIndex === ui
             const displayRoles = isEditing ? ucRoles : uRoles
@@ -2154,9 +2172,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             }
 
             const { barX: rawBarX, runs } = buildRunsV(displayRoles, displayLevel, ui)
-            const minRI = Math.min(...displayRoles), maxRI = Math.max(...displayRoles)
-            const hitY1 = startY_v + minRI * (ROLE_W + ROLE_GAP)
-            const hitY2 = startY_v + maxRI * (ROLE_W + ROLE_GAP) + ROLE_W
+            const drov = displayRoleOrder(fact)
+            const vPositions = displayRoles.map(ri => drov.indexOf(ri))
+            const minPos_v = Math.min(...vPositions), maxPos_v = Math.max(...vPositions)
+            const hitY1 = startY_v + minPos_v * (ROLE_W + ROLE_GAP)
+            const hitY2 = startY_v + maxPos_v * (ROLE_W + ROLE_GAP) + ROLE_W
             const isPreferred = preferredKeys.has(JSON.stringify([...uRoles].sort((a, b) => a - b)))
             const barX = adjustedBarX(displayLevel, isPreferred)
             const sw = isUSelected ? BAR_H + 1 : BAR_H
@@ -2222,20 +2242,21 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
               </g>
             )
           })()}
+          </g>{/* end isAdjFact bars wrapper */}
 
         </>
       ) : (
         <>
           {/* White background covering all role boxes and gaps */}
           <rect x={startX} y={topY} width={totalW} height={ROLE_H} fill="#ffffff" stroke="none"
-            style={{ pointerEvents: 'none' }}/>
+            opacity={isAdjFact ? 0.35 : 1} style={{ pointerEvents: 'none' }}/>
 
           {/* Unary cap */}
           {fact.arity === 1 && (
             <path
               d={`M ${startX} ${topY + ROLE_H} a ${UNARY_CAP_R} ${ROLE_H/2} 0 0 0 0 ${-ROLE_H}`}
               fill="#ffffff" stroke={roleStroke} strokeWidth={roleStrokeW}
-              style={{ pointerEvents: 'none' }}/>
+              opacity={isAdjFact ? 0.35 : 1} style={{ pointerEvents: 'none' }}/>
           )}
 
           {/* Role boxes */}
@@ -2254,14 +2275,13 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                        : roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
                        : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
                        : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
-                       : roleIsCandidate(ri) ? 'var(--fill-candidate)'
                        : baseRoleOfIL ? '#dde8f5'
                        : roleSelected ? '#ffffff'
                        : highlightedRoles?.has(ri) ? '#fde3c8'
                        : '#ffffff'
                      }
-                     stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : roleIsCandidate(ri) ? 'var(--col-candidate)' : inQueryEdit ? 'var(--col-query-out)' : roleStroke}
-                     strokeWidth={roleInQueryPattern(ri) ? 2 : roleSelected ? 2 : baseRoleOfIL ? 2 : roleIsCandidate(ri) ? 2 : roleStrokeW}
+                     stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : roleStroke}
+                     strokeWidth={roleInQueryPattern(ri) ? 2 : roleSelected ? 2 : baseRoleOfIL ? 2 : roleStrokeW}
                     strokeDasharray={fact._implicit ? '4 3' : undefined}
                     onMouseDown={(e)   => handleRoleMouseDown(ri, e)}
                     onDoubleClick={(e) => handleRoleDoubleClick(ri, e)}
@@ -2284,6 +2304,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           })}
 
           {/* Uniqueness bars (above) */}
+          <g opacity={isAdjFact ? 0.35 : 1} style={isAdjFact ? { pointerEvents: 'none' } : undefined}>
           {fact.uniqueness.map((uRoles, ui) => {
             const isEditing = inConstruction && store.uniquenessConstruction?.uIndex === ui
             const displayRoles = isEditing ? ucRoles : uRoles
@@ -2308,9 +2329,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             }
 
             const { barY: rawBarY, runs } = buildRuns(displayRoles, displayLevel, ui)
-            const minRI = Math.min(...displayRoles), maxRI = Math.max(...displayRoles)
-            const hitX1 = startX + minRI * (ROLE_W + ROLE_GAP)
-            const hitX2 = startX + maxRI * (ROLE_W + ROLE_GAP) + ROLE_W
+            const droh = displayRoleOrder(fact)
+            const hPositions = displayRoles.map(ri => droh.indexOf(ri))
+            const minPos_h = Math.min(...hPositions), maxPos_h = Math.max(...hPositions)
+            const hitX1 = startX + minPos_h * (ROLE_W + ROLE_GAP)
+            const hitX2 = startX + maxPos_h * (ROLE_W + ROLE_GAP) + ROLE_W
             const isPreferred = preferredKeys.has(JSON.stringify([...uRoles].sort((a, b) => a - b)))
             const barY = adjustedBarY(displayLevel, isPreferred)
             const sw = isUSelected ? BAR_H + 1 : BAR_H
@@ -2376,11 +2399,15 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
               </g>
             )
           })()}
+          </g>{/* end isAdjFact bars wrapper */}
 
         </>
       )}
 
-      {!(fact.objectified && fact.nestedReading) && renderReading()}
+      <g opacity={isAdjFact ? 0.35 : 1} style={isAdjFact ? { pointerEvents: 'none' } : undefined}>
+        {!(fact.objectified && fact.nestedReading) && renderReading()}
+      </g>
+      </g>
     </g>
 
     {/* ── Value range annotations ─────────────────────────────────────────────

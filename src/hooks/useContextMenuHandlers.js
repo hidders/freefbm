@@ -137,6 +137,22 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
           ],
         },
         '---',
+        ...(fact.objectified ? (() => {
+          const eligibleIls = (fact.implicitLinks || []).filter(il => fact.roles[il.roleIndex]?.objectTypeId)
+          const shownCount  = eligibleIls.filter(il => store.isImplicitLinkShown(fact.id, il.roleIndex)).length
+          const total       = eligibleIls.length
+          return [
+            { label: 'Implied Links', submenu: [
+              { label: 'Show all',
+                disabled: shownCount === total,
+                action: () => store.setAllImplicitLinksShown(fact.id, true) },
+              { label: 'Hide all',
+                disabled: shownCount === 0,
+                action: () => store.setAllImplicitLinksShown(fact.id, false) },
+            ]},
+          ]
+        })() : []),
+        '---',
         { label: 'Remove from Diagram',
           action: () => store.removeElementFromDiagram(fact.id, store.activeDiagramId) },
         '---',
@@ -309,6 +325,31 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     })
   }, [store, setContextMenu])
 
+  const handleImplicitLinkBarContextMenu = useCallback((parentFact, il, ui, e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const hasSoloBase = (parentFact.uniqueness || []).some(u => u.length === 1 && u[0] === il.roleIndex)
+    const propagated = hasSoloBase ? [[0], [1]] : [[0]]
+    const uRoles = propagated[ui]
+    if (!uRoles) return
+    const sortedKey = JSON.stringify([...uRoles].sort())
+    const prefArr = il.preferredUniqueness || []
+    const isPreferred = prefArr.some(pu => JSON.stringify([...pu].sort()) === sortedKey)
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      items: [
+        { label: 'Is Preferred', checked: isPreferred,
+          action: () => {
+            const next = isPreferred
+              ? prefArr.filter(pu => JSON.stringify([...pu].sort()) !== sortedKey)
+              : [...prefArr, [...uRoles]]
+            store.updateImplicitLink(parentFact.id, il.roleIndex, { preferredUniqueness: next })
+          },
+        },
+      ],
+    })
+  }, [store, setContextMenu])
+
   const handleSubtypeContextMenu = useCallback((st, e) => {
     if (store.multiSelectedIds.length > 1 && store.multiSelectedIds.includes(st.id)) {
       return handleMultiSelectionContextMenu(e)
@@ -349,12 +390,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         label: 'Set Target Object Type…',
         action: () => store.startTargetPick(c.id),
       })
-      if (c.targetObjectTypeId) {
-        items.push({
-          label: 'Clear Target Object Type',
-          action: () => store.updateConstraint(c.id, { targetObjectTypeId: null }),
-        })
-      }
+
       items.push('---')
     }
     if (c.sequences != null) {
@@ -370,6 +406,8 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
       if (c.constraintType === 'frequency') {
         items.push({ label: 'Edit Frequency Range…',
           action: () => store.startExternalFrequencyEdit(c.id) })
+        items.push({ label: 'Change into External Uniqueness Constraint',
+          action: () => store.updateConstraint(c.id, { constraintType: 'uniqueness', isPreferredIdentifier: false }) })
         items.push('---')
       } else if (c.constraintType === 'uniqueness') {
         items.push({
@@ -377,6 +415,8 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
           checked: !!c.isPreferredIdentifier,
           action: () => store.updateConstraint(c.id, { isPreferredIdentifier: !c.isPreferredIdentifier }),
         })
+        items.push({ label: 'Change into External Frequency Constraint',
+          action: () => store.updateConstraint(c.id, { constraintType: 'frequency', frequency: [{ type: 'upper', upper: 1 }] }) })
         items.push('---')
       } else if (c.constraintType === 'equality' || c.constraintType === 'subset') {
         const other = c.constraintType === 'equality' ? 'subset' : 'equality'
@@ -460,6 +500,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     handleOtCardinalityRangeContextMenu,
     handleMandatoryDotContextMenu,
     handleUniquenessBarContextMenu,
+    handleImplicitLinkBarContextMenu,
     handleSubtypeContextMenu,
     handleConstraintContextMenu,
   }
