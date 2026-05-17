@@ -4,7 +4,7 @@ import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { useContextMenuHandlers } from '../hooks/useContextMenuHandlers'
 import ObjectTypeNode from './ObjectTypeNode'
-import FactTypeNode, { factBounds, makeImplicitLinkFact } from './FactTypeNode'
+import FactTypeNode, { factBounds, makeImplicitLinkFact, ROLE_W, ROLE_H, ROLE_GAP } from './FactTypeNode'
 import SubtypeArrows from './SubtypeArrows'
 import ConstraintNodes from './ConstraintNodes'
 import RoleConnectors, { MandatoryDots } from './RoleConnectors'
@@ -18,6 +18,53 @@ import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 const SNAP = 10  // grid snap in world units
 
 function snap(v) { return Math.round(v / SNAP) * SNAP }
+
+// ── Validation error badges ──────────────────────────────────────────────────
+// OT badges are rendered inside ObjectTypeNode; this handles fact type and constraint badges.
+function ValidationBadges({ store, visibleFacts, visibleConstraints, positions }) {
+  const errors = store.validationErrors
+  if (!errors || errors.length === 0) return null
+  const errorIds = new Set(errors.map(e => e.elementId))
+  const badgeColour = (id) => errors.some(e => e.elementId === id && e.severity === 'error') ? '#dc2626' : '#d97706'
+  const R = 6
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      {visibleFacts.filter(f => !f._implicit && errorIds.has(f.id)).map(f => {
+        const p = positions[f.id]
+        const fx = p?.x ?? f.x, fy = p?.y ?? f.y
+        const n = Math.max(f.arity, 1)
+        const isVert = (p?.orientation ?? f.orientation) === 'vertical'
+        let bx, by
+        if (isVert) {
+          const totalH = n * ROLE_W + (n - 1) * ROLE_GAP
+          bx = fx + ROLE_H / 2 + R - 1
+          by = fy - totalH / 2 - R + 1
+        } else {
+          const totalW = n * ROLE_W + (n - 1) * ROLE_GAP
+          bx = fx + totalW / 2 + R - 1
+          by = fy - ROLE_H / 2 - R + 1
+        }
+        return (
+          <g key={f.id}>
+            <circle cx={bx} cy={by} r={R} fill={badgeColour(f.id)}/>
+            <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
+              fontSize={7} fontWeight={700} fill="#fff">!</text>
+          </g>
+        )
+      })}
+      {visibleConstraints.filter(c => errorIds.has(c.id)).map(c => {
+        const bx = c.x + R, by = c.y - R
+        return (
+          <g key={c.id}>
+            <circle cx={bx} cy={by} r={R} fill={badgeColour(c.id)}/>
+            <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
+              fontSize={7} fontWeight={700} fill="#fff">!</text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
 
 // ── Shared popup positioning ─────────────────────────────────────────────────
 // Returns { left, top|bottom, maxHeight } that keep the popup within the viewport.
@@ -257,6 +304,36 @@ export default function Canvas() {
 
   const isFactDimmed  = (f)  => dimMode?.factIds != null && !dimMode.factIds.has(f.id)
   const isOtDimmed    = (ot) => dimMode?.otIds   != null && !dimMode.otIds.has(ot.id)
+  const queryOpacity  = (id) => {
+    if (!queryReachable) return null
+    if (!queryReachable.has(id)) return 0.2
+    if (queryOriginals?.has(id)) return 0.45
+    return 1
+  }
+
+  // During query construction: originals of existing copies, and all elements within one step of them
+  const queryOriginals = qd ? new Set(qd.copies.map(cp => cp.originalId)) : null
+  const queryReachable = (() => {
+    if (!qd) return null
+    const originals = new Set(qd.copies.map(cp => cp.originalId))
+    const reachable = new Set(originals)
+    for (const id of originals) {
+      if (store.objectTypes.some(o => o.id === id)) {
+        store.facts.forEach(f => { if (f.roles.some(r => r.objectTypeId === id)) reachable.add(f.id) })
+        store.subtypes.forEach(st => {
+          if (st.subId === id || st.superId === id) {
+            reachable.add(st.id)
+            reachable.add(st.subId === id ? st.superId : st.subId)
+          }
+        })
+      }
+      const fact = store.facts.find(f => f.id === id)
+      if (fact) fact.roles.forEach(r => { if (r.objectTypeId) reachable.add(r.objectTypeId) })
+      const st = store.subtypes.find(s => s.id === id)
+      if (st) { reachable.add(st.subId); reachable.add(st.superId) }
+    }
+    return reachable
+  })()
 
   const svgRef = useRef(null)
   const [dragState, setDragState]     = useState(null)
@@ -346,8 +423,8 @@ export default function Canvas() {
     // Target pick mode: background click cancels it
     if (store.pendingTargetPick) { store.cancelTargetPick(); return }
 
-    // Query edit mode: any background click (single or double) cancels the edit
-    if (store.queryEditDraft) { if (e.button === 0) store.cancelQueryEdit(); return }
+    // Query edit mode: background click cancels any pending connection, but not the edit itself
+    if (store.queryEditDraft) { if (e.button === 0) store.cancelQueryPendingClick(); return }
 
     // Selection-mode tools: no panning, cancel on background click
     if (isSelectionMode(store.tool)) {
@@ -700,6 +777,9 @@ export default function Canvas() {
           <marker id="arrowSubtypeQueryIn" markerWidth="4.5" markerHeight="4.5" refX="0.25" refY="2" orient="auto">
             <path d="M 0.25 0.25 L 4.25 2 L 0.25 3.75 Z" fill="var(--col-query-in)" stroke="none"/>
           </marker>
+          <marker id="arrowSubtypeCopy" markerWidth="4.5" markerHeight="4.5" refX="0.25" refY="2" orient="auto">
+            <path d="M 0.25 0.25 L 4.25 2 L 0.25 3.75 Z" fill="#15803d" stroke="none"/>
+          </marker>
           <marker id="arrowSubset" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto">
             <path d="M 1 1 L 9 4 L 1 7" fill="none" stroke="var(--col-excl)" strokeWidth="1.5"/>
           </marker>
@@ -723,11 +803,15 @@ export default function Canvas() {
         <rect className="canvas-bg" width="100%" height="100%" fill="url(#gridLg)"/>
 
         <g transform={`translate(${store.pan.x},${store.pan.y}) scale(${store.zoom})`}>
+          <g opacity={store.queryIndexHighlight && !qd ? 0.2 : 1} style={store.queryIndexHighlight && !qd ? { pointerEvents: 'none' } : undefined}>
           <g style={(dimMode?.subtypesDim) ? { pointerEvents: 'none' } : undefined}>
-            <SubtypeArrows mousePos={mousePos} onContextMenu={handleSubtypeContextMenu} dimAllSubtypes={dimMode?.subtypesDim ?? false}/>
+            <SubtypeArrows mousePos={mousePos} onContextMenu={handleSubtypeContextMenu} dimAllSubtypes={dimMode?.subtypesDim ?? false} queryReachable={queryReachable} queryOriginals={queryOriginals}/>
           </g>
-          {visibleFacts.map(f => (
-            <g key={f.id} opacity={isFactDimmed(f) ? 0.35 : 1} style={isFactDimmed(f) ? { pointerEvents: 'none' } : undefined}>
+          {visibleFacts.map(f => {
+            const factDimmed = isFactDimmed(f)
+            const factOpacity = factDimmed ? 0.35 : (queryOpacity(f.id) ?? 1)
+            return (
+            <g key={f.id} opacity={factOpacity < 1 ? factOpacity : 1} style={factOpacity <= 0.2 ? { pointerEvents: 'none' } : undefined}>
             <FactTypeNode fact={f} onDragStart={handleDragStart}
               dimObjectification={!!(f.objectified && dimMode?.dimObjectification)}
               dimInnerFact={!!(f.objectified && dimMode?.dimInnerFact)}
@@ -745,13 +829,16 @@ export default function Canvas() {
               onNestedVrContextMenu={(e) => handleNestedVrContextMenu(f, e)}
               onNestedCrContextMenu={(e) => handleNestedCrContextMenu(f, e)}/>
             </g>
-          ))}
+            )
+          })}
            {visibleFacts.filter(f => f.objectified).map(f =>
               (f.implicitLinks || []).filter(il => store.isImplicitLinkShown(f.id, il.roleIndex)).map(il => {
                  const synth = makeImplicitLinkFact(f, il)
+                 const ilDimmed = (dimMode?.factIds != null && !dimMode.factIds.has(f.id)) || dimMode?.impliedLinksDim
+                   || queryReachable != null
                 return (
-                  <g key={synth.id} opacity={(dimMode?.factIds != null && !dimMode.factIds.has(f.id)) || dimMode?.impliedLinksDim ? 0.35 : 1}
-                    style={((dimMode?.factIds != null && !dimMode.factIds.has(f.id)) || dimMode?.impliedLinksDim) ? { pointerEvents: 'none' } : undefined}>
+                  <g key={synth.id} opacity={ilDimmed ? 0.2 : 1}
+                    style={ilDimmed ? { pointerEvents: 'none' } : undefined}>
                     <FactTypeNode fact={synth}
                       onDragStart={(id, kind, e) => handleDragStart(id, 'implicitLink', e)}
                       isShared={false}
@@ -761,11 +848,14 @@ export default function Canvas() {
                )
              })
            )}
-          <g opacity={(qd || dimMode?.connectorsDim) ? 0.35 : 1} style={(dimMode?.connectorsDim) ? { pointerEvents: 'none' } : undefined}>
-            <RoleConnectors mousePos={mousePos}/>
+          <g opacity={dimMode?.connectorsDim ? 0.35 : 1} style={(dimMode?.connectorsDim) ? { pointerEvents: 'none' } : undefined}>
+            <RoleConnectors mousePos={mousePos} queryReachable={queryReachable} queryOriginals={queryOriginals}/>
           </g>
-          {visibleOts.map(ot => (
-            <g key={ot.id} opacity={isOtDimmed(ot) ? 0.35 : 1} style={isOtDimmed(ot) ? { pointerEvents: 'none' } : undefined}>
+          {visibleOts.map(ot => {
+            const otDimmed = isOtDimmed(ot)
+            const otOpacity = otDimmed ? 0.35 : (queryOpacity(ot.id) ?? 1)
+            return (
+            <g key={ot.id} opacity={otOpacity < 1 ? otOpacity : 1} style={otOpacity <= 0.2 ? { pointerEvents: 'none' } : undefined}>
             <ObjectTypeNode objectType={ot}
               onDragStart={handleDragStart}
               mousePos={mousePos}
@@ -777,16 +867,30 @@ export default function Canvas() {
               onValueRangeContextMenu={(e) => handleOtValueRangeContextMenu(ot, e)}
               onCardinalityRangeContextMenu={(e) => handleOtCardinalityRangeContextMenu(ot, e)}/>
             </g>
-          ))}
-          <g opacity={(qd || dimMode?.connectorsDim) ? 0.35 : 1} style={(dimMode?.connectorsDim) ? { pointerEvents: 'none' } : undefined}>
-            <MandatoryDots onContextMenu={handleMandatoryDotContextMenu}/>
+            )
+          })}
+          <g opacity={dimMode?.connectorsDim ? 0.35 : 1} style={(dimMode?.connectorsDim) ? { pointerEvents: 'none' } : undefined}>
+            <MandatoryDots onContextMenu={handleMandatoryDotContextMenu} queryReachable={queryReachable} queryOriginals={queryOriginals}/>
           </g>
           <g opacity={(qd || dimMode?.constraintsDim) ? 0.35 : 1} style={(dimMode?.constraintsDim) ? { pointerEvents: 'none' } : undefined}>
             <ConstraintNodes onDragStart={handleDragStart} mousePos={mousePos}
               onContextMenu={handleConstraintContextMenu}/>
           </g>
           <ConstraintMemberLabels/>
-          {(qd || store.queryIndexHighlight) && <QueryCopies onCopyClick={target => store.queryEditClick(target)}/>}
+          <ValidationBadges store={store} visibleFacts={visibleFacts} visibleConstraints={visibleConstraints} positions={store.diagrams.find(d => d.id === store.activeDiagramId)?.positions ?? {}}/>
+          </g>{/* end previewDim wrapper */}
+          {(qd || store.queryIndexHighlight) && <QueryCopies
+            mousePos={mousePos}
+            onCopyClick={target => store.queryEditClick(target)}
+            onCopyContextMenu={(e, copyId, isProtected, isAtDefault) => setContextMenu({
+              x: e.clientX, y: e.clientY,
+              items: [
+                { label: 'Reset position', disabled: isAtDefault, action: () => store.resetQueryCopyPosition(copyId) },
+                '---',
+                { label: 'Remove copy', danger: !isProtected, disabled: isProtected, action: () => store.removeQueryCopy(copyId) },
+              ],
+            })}
+          />}
 
           {/* Rubber-band selection rect */}
           {bandRect && (

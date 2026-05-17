@@ -27,6 +27,15 @@ export default function DiagramTabs() {
     }
   }, [editingId])
 
+  useEffect(() => {
+    if (!editingId) return
+    const onDown = (e) => {
+      if (!inputRef.current?.contains(e.target)) commitRename()
+    }
+    window.addEventListener('mousedown', onDown, true)
+    return () => window.removeEventListener('mousedown', onDown, true)
+  }, [editingId])
+
   const commitRename = () => {
     if (editingId && draft.trim()) store.renameDiagram(editingId, draft.trim())
     setEditingId(null)

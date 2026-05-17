@@ -24,7 +24,7 @@ function playerBounds(id, otMap, nestedMap) {
   return null
 }
 
-export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes }) {
+export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes, queryReachable, queryOriginals }) {
   const store     = useOrmStore()
   const { objectTypes, facts, subtypes } = useDiagramElements()
   const otMap     = Object.fromEntries(objectTypes.map(o => [o.id, o]))
@@ -75,7 +75,9 @@ export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes 
         return (
           <g key={st.id}
             className={qd ? undefined : 'selectable-group'}
-            opacity={dimAllSubtypes ? 0.35 : 1}
+            opacity={queryReachable != null
+              ? (!queryReachable.has(st.id) ? 0.2 : queryOriginals?.has(st.id) ? 0.45 : 1)
+              : dimAllSubtypes ? 0.35 : 1}
             style={{ cursor: (() => {
               if (qd) return 'default'
               if (store.sequenceConstruction) return 'pointer'

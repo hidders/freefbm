@@ -410,26 +410,29 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const isConnectorTool = isAssignTool || isSubtypeTool || store.tool === 'connectConstraint'
   const qd = store.queryEditDraft
   const inQueryEdit = !!qd
+  const hasError = !fact._implicit && (store.validationErrors || []).some(e => e.elementId === fact.id)
   // Roles highlighted because the selected constraint's queries include them
-  const queryHighlightRoles = (() => {
-    if (inQueryEdit) return null
+  const { queryHighlightRoles, nestedInQueryHighlight } = (() => {
+    if (inQueryEdit) return { queryHighlightRoles: null, nestedInQueryHighlight: false }
     const qh = store.queryIndexHighlight
     const showAll = store.showConstraintQueries && store.selectedKind === 'constraint'
-    if (!qh && !showAll) return null
+    if (qh || !showAll) return { queryHighlightRoles: null, nestedInQueryHighlight: false }
     const c = store.constraints.find(c => c.id === store.selectedId)
-    if (!c?.queries) return null
+    if (!c?.queries) return { queryHighlightRoles: null, nestedInQueryHighlight: false }
     const roles = new Set()
+    let nestedHighlight = false
     for (let qi = 0; qi < c.queries.length; qi++) {
       const q = c.queries[qi]
       if (!q) continue
-      if (qh && qh.constraintId === c.id && qh.queryIndex !== qi) continue
       if (!q.copies) continue  // old format — skip
       for (const lk of q.links) {
         const cp = q.copies.find(cp => cp.id === lk.copyId)
         if (cp?.kind === 'fact' && cp.originalId === fact.id) roles.add(lk.roleIndex)
       }
+      // Objectified fact used as an OT variable: check copies of any kind with this originalId
+      if (fact.objectified && q.copies.some(cp => cp.originalId === fact.id)) nestedHighlight = true
     }
-    return roles.size > 0 ? roles : null
+    return { queryHighlightRoles: roles.size > 0 ? roles : null, nestedInQueryHighlight: nestedHighlight }
   })()
   const isDraftFrom       = store.linkDraft?.type === 'subtype' && store.linkDraft.fromId === fact.id
   const isAssigning    = store.linkDraft?.type === 'roleAssign'
@@ -1658,7 +1661,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
 
       {/* Objectified (nested) fact type — outer entity/value border + name */}
       {fact.objectified && (() => {
-        const isConstraintTarget = store.selectedKind === 'constraint' &&
+        const isConstraintTarget = !store.queryEditDraft && !store.queryIndexHighlight && store.selectedKind === 'constraint' &&
           store.constraints.find(c => c.id === store.selectedId)?.targetObjectTypeId === fact.id
         const nestedCol  = isFactSelected      ? 'var(--accent)'
           : isDraftFrom                       ? 'var(--col-subtype)'
@@ -1670,7 +1673,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           : fact.objectifiedKind === 'value'  ? 'var(--col-value)'
           :                                     'var(--col-entity)'
         const nestedDash    = fact.objectifiedKind === 'value' ? '6 3' : 'none'
-        const nestedFill    = isConstraintTarget ? '#1a7fd4' : '#ffffff'
+        const nestedFill    = isConstraintTarget ? '#1a7fd4' : nestedInQueryHighlight ? 'var(--fill-query-in)' : '#ffffff'
         const nestedStrokeW = (isFactSelected || isDraftFrom || isConstraintTarget) ? 2 : 1.5
         const nestedRefText = (fact.objectifiedKind !== 'value' && store.showReferenceMode
           && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
@@ -2114,7 +2117,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   <g key={role.id} className="role-box-group" filter={roleSelected ? 'url(#selectGlow)' : undefined}>
                    <rect x={leftX_v} y={ry} width={ROLE_H} height={ROLE_W}
                      fill={
-                       roleInQueryPattern(ri) ? 'var(--fill-query-in)'
+                       roleInQueryPattern(ri) || nestedInQueryHighlight ? 'var(--fill-query-in)'
                        : roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
                        : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
                        : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
@@ -2271,7 +2274,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                    <rect
                      x={rx} y={topY} width={ROLE_W} height={ROLE_H}
                      fill={
-                       roleInQueryPattern(ri) ? 'var(--fill-query-in)'
+                       roleInQueryPattern(ri) || nestedInQueryHighlight ? 'var(--fill-query-in)'
                        : roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
                        : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
                        : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'

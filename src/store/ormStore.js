@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { EXTERNAL_CONSTRAINT_TYPES } from '../constants.js'
 import { constraintMaxSequences, isSingletonSequence, isOpenEndedConstruction } from '../utils/constraintRules.js'
+import { runValidation as runValidationRules, DEFAULT_VALIDATION_CATEGORIES } from '../utils/validation.js'
 
 // ── pan animation ─────────────────────────────────────────────────────────────
 let _panAnimId = null
@@ -381,6 +382,45 @@ const EMPTY = () => {
   }
 }
 
+// ── query helper: merge fact/nested-OT copies with identical role→OT connectivity ──
+function runFactMergePass(copies, links, allFacts) {
+  const getArity = (factId) => {
+    if (factId.includes('_il_')) return 2
+    const f = allFacts.find(f => f.id === factId)
+    return f?.arity ?? f?.roles?.length ?? 0
+  }
+  const isObjectifiedId = (id) => allFacts.some(f => f.id === id && f.objectified)
+  let mCopies = copies, mLinks = links, again = true
+  while (again) {
+    again = false
+    const factCopies = mCopies.filter(c => c.kind === 'fact' || (c.kind === 'objectType' && isObjectifiedId(c.originalId)))
+    const byOrig = {}
+    for (const c of factCopies) { if (!byOrig[c.originalId]) byOrig[c.originalId] = []; byOrig[c.originalId].push(c) }
+    for (const group of Object.values(byOrig)) {
+      if (group.length < 2) continue
+      const arity = getArity(group[0].originalId)
+      if (!arity) continue
+      const allRoles = Array.from({ length: arity }, (_, k) => k)
+      let found = false
+      for (let i = 0; i < group.length && !found; i++) {
+        const m1 = {}; for (const l of mLinks) if (l.copyId === group[i].id) m1[l.roleIndex] = l.variableId
+        if (!allRoles.every(r => m1[r] != null)) continue
+        for (let j = i + 1; j < group.length && !found; j++) {
+          const m2 = {}; for (const l of mLinks) if (l.copyId === group[j].id) m2[l.roleIndex] = l.variableId
+          if (!allRoles.every(r => m2[r] != null)) continue
+          if (!allRoles.every(r => m1[r] === m2[r])) continue
+          const merged = { ...group[i], seededRoles: [...new Set([...(group[i].seededRoles ?? []), ...(group[j].seededRoles ?? [])])] }
+          mCopies = mCopies.filter(c => c.id !== group[j].id).map(c => c.id === group[i].id ? merged : c)
+          mLinks  = mLinks.filter(l => l.copyId !== group[j].id)
+          found = again = true
+        }
+      }
+      if (again) break
+    }
+  }
+  return { copies: mCopies, links: mLinks }
+}
+
 // ── store ─────────────────────────────────────────────────────────────────────
 export const useOrmStore = create((set, get) => ({
   ...EMPTY(),
@@ -424,6 +464,10 @@ export const useOrmStore = create((set, get) => ({
   showMinimap: true,
   // Position of the minimap panel in screen px from top-left of canvas container
   minimapPos: { x: null, y: null },  // null = default (bottom-right corner)
+
+  // ── validation ────────────────────────────────────────────────────────────
+  validationErrors: [],
+  validationCategories: { ...DEFAULT_VALIDATION_CATEGORIES },
 
   inspectorWidth: 240,
 
@@ -673,6 +717,18 @@ export const useOrmStore = create((set, get) => ({
   setShowMinimap(val)         { set({ showMinimap: val }) },
   setMinimapPos(x, y)         { set({ minimapPos: { x, y } }) },
   setInspectorWidth(w)        { set({ inspectorWidth: w }) },
+
+  runValidation() {
+    const s = get()
+    const enabled = new Set(
+      Object.entries(s.validationCategories).filter(([, v]) => v).map(([k]) => k)
+    )
+    set({ validationErrors: runValidationRules(s, enabled) })
+  },
+  toggleValidationCategory(category) {
+    set(s => ({ validationCategories: { ...s.validationCategories, [category]: !s.validationCategories[category] } }))
+    get().runValidation()
+  },
 
   setDiagramProfile(profileId) {
     set(s => ({
@@ -1916,7 +1972,7 @@ export const useOrmStore = create((set, get) => ({
     const c = constraints.find(c => c.id === constraintId)
     if (!c) return
 
-    if (c.constraintType === 'uniqueness') {
+    if (['uniqueness', 'ring', 'valueComparison', 'frequency'].includes(c.constraintType)) {
       const seq = c.sequences?.[0] ?? []
       const roleMembers = seq.filter(m => m.kind === 'role' && !m.factId?.includes('_il_'))
       if (roleMembers.length === 0 || roleMembers.length !== seq.length) return
@@ -2057,7 +2113,7 @@ export const useOrmStore = create((set, get) => ({
       }
     }
 
-    if (c.constraintType === 'exclusion') {
+    if (['exclusion', 'equality', 'subset'].includes(c.constraintType)) {
       const sequences = c.sequences ?? []
       if (sequences.length === 0) return
 
@@ -2072,8 +2128,8 @@ export const useOrmStore = create((set, get) => ({
 
         const seq = sequences[i]
 
-        // Rule 3: single subtype edge → subtype copy + sub OT copy (output) + super OT copy
-        if (seq.length === 1 && seq[0].kind === 'subtype') {
+        // Rule 3 (exclusion only): single subtype edge → subtype copy + sub OT copy (output) + super OT copy
+        if (c.constraintType === 'exclusion' && seq.length === 1 && seq[0].kind === 'subtype') {
           const st = allSubtypes.find(s => s.id === seq[0].subtypeId)
           if (st) {
             const subOtCopyId = uid(), supOtCopyId = uid(), stCopyId = uid()
@@ -2340,18 +2396,6 @@ export const useOrmStore = create((set, get) => ({
 
     // Two OT-side clicks
     if (isOtSide(pendingClick) && isOtSide(target)) {
-      // Same OT copy clicked twice → merge
-      if (pendingClick.type === 'otCopy' && target.type === 'otCopy') {
-        const copy1 = qd.copies.find(c => c.id === pendingClick.id)
-        const copy2 = qd.copies.find(c => c.id === target.id)
-        if (copy1 && copy2 && copy1.originalId === copy2.originalId) {
-          const survived = (copy1.isOutput || copy2.isOutput) ? { ...copy1, isOutput: true, isRoleVar: false } : copy1
-          const mergedCopies = qd.copies.filter(c => c.id !== copy2.id).map(c => c.id === copy1.id ? survived : c)
-          const mergedLinks  = qd.links.map(l => l.variableId === copy2.id ? { ...l, variableId: copy1.id } : l)
-          set({ queryEditDraft: { ...qd, copies: mergedCopies, links: mergedLinks, pendingClick: null } })
-          return
-        }
-      }
 
       // Both originals (no copies involved) → nothing
       if (pendingClick.type === 'otOriginal' && target.type === 'otOriginal') {
@@ -2476,43 +2520,7 @@ export const useOrmStore = create((set, get) => ({
 
     newLinks.push({ copyId: roleCopyId, roleIndex, variableId: otCopyId })
 
-    // Merge identical fact copies: same originalId, all roles filled, same role→OT mapping
-    const allFacts = get().facts
-    const getArity = (factId) => {
-      if (factId.includes('_il_')) return 2
-      const f = allFacts.find(f => f.id === factId)
-      return f?.arity ?? f?.roles?.length ?? 0
-    }
-    let mCopies = newCopies, mLinks = newLinks, again = true
-    while (again) {
-      again = false
-      const factCopies = mCopies.filter(c => c.kind === 'fact')
-      const byOrig = {}
-      for (const c of factCopies) { if (!byOrig[c.originalId]) byOrig[c.originalId] = []; byOrig[c.originalId].push(c) }
-      for (const group of Object.values(byOrig)) {
-        if (group.length < 2) continue
-        const arity = getArity(group[0].originalId)
-        if (!arity) continue
-        const allRoles = Array.from({ length: arity }, (_, k) => k)
-        let found = false
-        for (let i = 0; i < group.length && !found; i++) {
-          const m1 = {}; for (const l of mLinks) if (l.copyId === group[i].id) m1[l.roleIndex] = l.variableId
-          if (!allRoles.every(r => m1[r] != null)) continue
-          for (let j = i + 1; j < group.length && !found; j++) {
-            const m2 = {}; for (const l of mLinks) if (l.copyId === group[j].id) m2[l.roleIndex] = l.variableId
-            if (!allRoles.every(r => m2[r] != null)) continue
-            if (!allRoles.every(r => m1[r] === m2[r])) continue
-            // Merge group[j] into group[i]
-            const merged = { ...group[i], seededRoles: [...new Set([...(group[i].seededRoles ?? []), ...(group[j].seededRoles ?? [])])] }
-            mCopies = mCopies.filter(c => c.id !== group[j].id).map(c => c.id === group[i].id ? merged : c)
-            mLinks  = mLinks.filter(l => l.copyId !== group[j].id)
-            found = again = true
-          }
-        }
-        if (again) break
-      }
-    }
-
+    const { copies: mCopies, links: mLinks } = runFactMergePass(newCopies, newLinks, get().facts)
     set({ queryEditDraft: { ...qd, copies: mCopies, links: mLinks, pendingClick: null } })
   },
 
@@ -2536,6 +2544,11 @@ export const useOrmStore = create((set, get) => ({
     set({ queryEditDraft: null })
   },
 
+  cancelQueryPendingClick() {
+    const qd = get().queryEditDraft
+    if (qd?.pendingClick) set({ queryEditDraft: { ...qd, pendingClick: null } })
+  },
+
   updateQueryCopyOffset(copyId, dx, dy) {
     const qd = get().queryEditDraft
     if (!qd) return
@@ -2552,6 +2565,57 @@ export const useOrmStore = create((set, get) => ({
         isDirty: true,
       }
     })
+  },
+
+  resetQueryCopyPosition(copyId) {
+    const qd = get().queryEditDraft
+    if (!qd) return
+    set(s => {
+      const diagrams = s.diagrams.map(d => {
+        if (d.id !== s.activeDiagramId) return d
+        const qp = d.queryPositions ?? {}
+        const forC = qp[qd.constraintId] ?? {}
+        const forS = { ...(forC[qd.sequenceIndex] ?? {}) }
+        delete forS[copyId]
+        return { ...d, queryPositions: { ...qp, [qd.constraintId]: { ...forC, [qd.sequenceIndex]: forS } } }
+      })
+      return { diagrams, isDirty: true }
+    })
+  },
+
+  mergeOtCopyInto(draggedId, targetId) {
+    const qd = get().queryEditDraft
+    if (!qd) return
+    const dragged = qd.copies.find(c => c.id === draggedId)
+    const target  = qd.copies.find(c => c.id === targetId)
+    if (!dragged || !target || dragged.originalId !== target.originalId) return
+    const survived = (dragged.isOutput || target.isOutput) ? { ...target, isOutput: true } : target
+    const afterMergeCopies = qd.copies.filter(c => c.id !== draggedId).map(c => c.id === targetId ? survived : c)
+    const afterMergeLinks  = qd.links.map(l => l.variableId === draggedId ? { ...l, variableId: targetId } : l)
+    const { copies, links } = runFactMergePass(afterMergeCopies, afterMergeLinks, get().facts)
+    set({ queryEditDraft: { ...qd, copies, links, pendingClick: null } })
+  },
+
+  removeQueryCopy(copyId) {
+    const qd = get().queryEditDraft
+    if (!qd) return
+    // Remove links touching this copy
+    const remainingLinks = qd.links.filter(l => l.copyId !== copyId && l.variableId !== copyId)
+    // Orphan any subtype copies whose sub or super OT copy is now missing
+    const orphaned = new Set(
+      qd.copies
+        .filter(cp => {
+          if (cp.kind !== 'subtype') return false
+          const hasSubLink = remainingLinks.some(l => l.copyId === cp.id && l.roleIndex === 0)
+          const hasSupLink = remainingLinks.some(l => l.copyId === cp.id && l.roleIndex === 1)
+          return !hasSubLink || !hasSupLink
+        })
+        .map(cp => cp.id)
+    )
+    orphaned.add(copyId)
+    const newCopies = qd.copies.filter(cp => !orphaned.has(cp.id))
+    const newLinks  = remainingLinks.filter(l => !orphaned.has(l.copyId) && !orphaned.has(l.variableId))
+    set({ queryEditDraft: { ...qd, copies: newCopies, links: newLinks, pendingClick: null } })
   },
 
   clearConstraintQuery(constraintId, sequenceIndex) {
@@ -3393,6 +3457,31 @@ export const useOrmStore = create((set, get) => ({
     _panAnimId = requestAnimationFrame(step)
   },
 
+  navigateToElement(elementId, elementKind) {
+    const { diagrams, activeDiagramId, objectTypes } = get()
+
+    // Switch to a diagram that contains the element (prefer active, then any)
+    const active = diagrams.find(d => d.id === activeDiagramId)
+    const inActive = active?.elementIds === null || active?.elementIds?.includes(elementId)
+    if (!inActive) {
+      const target = diagrams.find(d =>
+        d.id !== activeDiagramId && (d.elementIds === null || d.elementIds?.includes(elementId))
+      )
+      if (target) get().setActiveDiagram(target.id)
+    }
+
+    // Resolve kind for select()
+    const kind = elementKind === 'objectType'
+      ? (objectTypes.find(o => o.id === elementId)?.kind ?? 'entity')
+      : elementKind
+
+    // Allow the diagram switch to settle before selecting and centering
+    setTimeout(() => {
+      get().select(elementId, kind)
+      get().centerOnElement(elementId)
+    }, 0)
+  },
+
   setPan(x, y)  { set({ pan: { x, y } }) },
   setZoom(z)    { set({ zoom: Math.min(3, Math.max(0.15, z)) }) },
   zoomBy(delta) { set(s => ({ zoom: Math.min(3, Math.max(0.15, s.zoom + delta)) })) },
@@ -3430,7 +3519,7 @@ export const useOrmStore = create((set, get) => ({
 
   addDiagram(name = 'Diagram') {
     const d = { ...mkDiagram(name), elementIds: [] }   // intentionally empty
-    set(s => ({ diagrams: [...s.diagrams, d], activeDiagramId: d.id, isDirty: true }))
+    set(s => ({ diagrams: [...s.diagrams, d], activeDiagramId: d.id, pan: { x: 0, y: 0 }, zoom: 1, isDirty: true }))
     return d.id
   },
 

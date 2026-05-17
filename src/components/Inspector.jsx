@@ -5,6 +5,88 @@ import { RingMiniSymbol } from './ConstraintNodes'
 import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
 import { constraintMaxSequences, suppressRolePosition } from '../utils/constraintRules.js'
 import { PROFILES, PROFILE_MAP, getDatatypeById } from '../data/datatypeProfiles'
+import { VALIDATION_CATEGORIES } from '../utils/validation.js'
+
+// ── Validation error components ───────────────────────────────────────────────
+
+const SEV_COLOUR = { error: '#dc2626', warning: '#d97706' }
+const SEV_ICON   = { error: '✕', warning: '!' }
+
+function ValidationErrorList({ errors, store }) {
+  if (!errors || errors.length === 0) return (
+    <div style={{ fontSize: 11, color: 'var(--ink-muted)', padding: '6px 0', textAlign: 'center' }}>
+      No validation errors
+    </div>
+  )
+
+  // Group by category
+  const byCategory = {}
+  for (const e of errors) {
+    if (!byCategory[e.category]) byCategory[e.category] = []
+    byCategory[e.category].push(e)
+  }
+
+  const selectElement = (e) => store.navigateToElement(e.elementId, e.elementKind)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+      {Object.entries(byCategory).map(([cat, errs]) => (
+        <div key={cat}>
+          <div style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.06em',
+            textTransform: 'uppercase', marginBottom: 4 }}>
+            {VALIDATION_CATEGORIES[cat]?.label ?? cat}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {errs.map(e => (
+              <div key={e.id}
+                onClick={() => selectElement(e)}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 6,
+                  padding: '5px 7px', borderRadius: 4,
+                  background: 'var(--bg-raised)', border: `1px solid var(--border-soft)`,
+                  cursor: 'pointer', borderLeft: `3px solid ${SEV_COLOUR[e.severity]}`,
+                }}
+                onMouseEnter={ev => ev.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseLeave={ev => ev.currentTarget.style.background = 'var(--bg-raised)'}
+              >
+                <span style={{ color: SEV_COLOUR[e.severity], fontWeight: 700,
+                  fontSize: 10, marginTop: 1, flexShrink: 0 }}>
+                  {SEV_ICON[e.severity]}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.4 }}>
+                  {e.message}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export function ValidationErrorStrip({ elementId, store }) {
+  const errors = (store.validationErrors || []).filter(e => e.elementId === elementId)
+  if (errors.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+      {errors.map(e => (
+        <div key={e.id} style={{
+          display: 'flex', alignItems: 'flex-start', gap: 6,
+          padding: '5px 8px', borderRadius: 4,
+          background: e.severity === 'error' ? '#fef2f2' : '#fffbeb',
+          border: `1px solid ${SEV_COLOUR[e.severity]}22`,
+          borderLeft: `3px solid ${SEV_COLOUR[e.severity]}`,
+        }}>
+          <span style={{ color: SEV_COLOUR[e.severity], fontWeight: 700, fontSize: 10, marginTop: 1, flexShrink: 0 }}>
+            {SEV_ICON[e.severity]}
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.4 }}>{e.message}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 const RING_TYPES = [
   { key: 'irreflexive',           label: 'Irreflexive' },
@@ -468,6 +550,7 @@ function ObjectTypeInspector({ ot }) {
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>{ot.kind === 'entity' ? 'Entity Type' : 'Value Type'}</InspectorTitle>
+      <ValidationErrorStrip elementId={ot.id} store={store}/>
       <Row>
         <Label>Name</Label>
         <TInput value={ot.name} onChange={v => store.updateObjectType(ot.id, { name: v })}/>
@@ -1540,6 +1623,7 @@ function FactInspector({ fact }) {
   const factTypeSection = (
     <div style={{ marginBottom: 18 }}>
       {!fact.objectified && <InspectorTitle>Fact Type ({fact.arity}-ary)</InspectorTitle>}
+      <ValidationErrorStrip elementId={fact.id} store={store}/>
       {/* Arity control */}
       <Row>
         <Label>Arity</Label>
@@ -2808,6 +2892,7 @@ function ConstraintInspector({ c }) {
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>{c.constraintType.charAt(0).toUpperCase() + c.constraintType.slice(1)} Constraint</InspectorTitle>
+      <ValidationErrorStrip elementId={c.id} store={store}/>
 
       {c.constraintType === 'frequency' && (
         <>
@@ -3250,6 +3335,39 @@ export default function Inspector() {
                 </div>
               </div>
             </label>
+          </div>
+
+          {/* ── Validation ── */}
+          <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700,
+            letterSpacing: '0.1em', textTransform: 'uppercase',
+            borderBottom: '1px solid var(--border-soft)', paddingBottom: 5, marginBottom: 12, marginTop: 8 }}>
+            Validation
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
+              textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+              Active checks
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {Object.entries(VALIDATION_CATEGORIES).map(([key, cat]) => (
+                <label key={key} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 8,
+                  cursor: 'pointer', padding: '7px 9px',
+                  background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
+                  borderRadius: 4,
+                }}>
+                  <input type="checkbox"
+                    checked={!!store.validationCategories[key]}
+                    onChange={() => store.toggleValidationCategory(key)}
+                    style={{ marginTop: 2, accentColor: 'var(--accent)' }}/>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--ink-2)', fontWeight: 500 }}>{cat.label}</div>
+                    <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginTop: 1 }}>{cat.description}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
           </div>
 
           <div style={{ color: 'var(--ink-muted)', fontSize: 11, marginTop: 20,

@@ -76,8 +76,19 @@ export function entityBounds(ot) {
 export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, onContextMenu, onDoubleClickValueRange, onValueRangeClick, onCardinalityRangeClick, onValueRangeContextMenu, onCardinalityRangeContextMenu, isShared }) {
   const store = useOrmStore()
   const isSelected    = store.selectedId === ot.id || store.multiSelectedIds.includes(ot.id)
-  const isConstraintTarget = store.selectedKind === 'constraint' &&
+  const isConstraintTarget = !store.queryEditDraft && !store.queryIndexHighlight && store.selectedKind === 'constraint' &&
     store.constraints.find(c => c.id === store.selectedId)?.targetObjectTypeId === ot.id
+  const otErrors = (store.validationErrors || []).filter(e => e.elementId === ot.id)
+  const hasError = otErrors.length > 0
+  const badgeColour = otErrors.some(e => e.severity === 'error') ? '#dc2626' : '#d97706'
+
+  const inQueryHighlight = (() => {
+    if (store.queryEditDraft || store.queryIndexHighlight) return false
+    if (!store.showConstraintQueries || store.selectedKind !== 'constraint') return false
+    const c = store.constraints.find(c => c.id === store.selectedId)
+    if (!c?.queries) return false
+    return c.queries.some(q => q?.copies?.some(cp => cp.originalId === ot.id))
+  })()
   const isPickingTarget    = !!store.pendingTargetPick
   const isSubtypeTool      = store.tool === 'addSubtype'
   const isAssignTool       = store.tool === 'assignRole'
@@ -290,7 +301,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
     :                                  'var(--col-value)'
 
   const strokeW = (isSelected || isDraftFrom) ? 2.5 : isConstraintTarget ? 2 : 1.5
-  const fill    = isConstraintTarget ? '#1a7fd4' : '#ffffff'
+  const fill    = isConstraintTarget ? '#1a7fd4' : inQueryHighlight ? 'var(--fill-query-in)' : '#ffffff'
 
   // Text vertical positions
   // Single line: name centred in box
@@ -327,6 +338,13 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
       <rect x={ot.x - w/2} y={ot.y - h/2} width={w} height={h} rx={6}
         fill={fill} stroke={stroke} strokeWidth={strokeW}
         strokeDasharray={ot.kind === 'value' ? '6 3' : 'none'}/>
+      {hasError && (
+        <g style={{ pointerEvents: 'none' }}>
+          <circle cx={ot.x + w/2 - 1} cy={ot.y - h/2 + 1} r={6} fill={badgeColour}/>
+          <text x={ot.x + w/2 - 1} y={ot.y - h/2 + 1} textAnchor="middle"
+            dominantBaseline="middle" fontSize={7} fontWeight={700} fill="#fff">!</text>
+        </g>
+      )}
 
       {editing ? (
         <foreignObject x={ot.x - w/2 + 2} y={nameY - OT_SIZE_NAME * 0.75}

@@ -7,6 +7,7 @@ import StatusBar from './components/StatusBar'
 import WelcomeScreen from './components/WelcomeScreen'
 import DiagramTabs from './components/DiagramTabs'
 import SchemaBrowser from './components/SchemaBrowser'
+import ValidationPanel from './components/ValidationPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useElectronMenu } from './hooks/useElectronMenu'
 import { useUndoRedo } from './hooks/useUndoRedo'
@@ -203,12 +204,30 @@ function useKeyboardShortcuts() {
   }, [store])
 }
 
+function useValidation() {
+  useEffect(() => {
+    let timer = null
+    let prev = null
+    const schedule = (state) => {
+      const key = [state.objectTypes, state.facts, state.constraints, state.validationCategories]
+      if (key === prev) return
+      prev = key
+      clearTimeout(timer)
+      timer = setTimeout(() => useOrmStore.getState().runValidation(), 400)
+    }
+    useOrmStore.getState().runValidation()
+    const unsub = useOrmStore.subscribe(schedule)
+    return () => { unsub(); clearTimeout(timer) }
+  }, [])
+}
+
 export default function App() {
   const store = useOrmStore()
 
   useElectronMenu()
   useUndoRedo()
   useKeyboardShortcuts()
+  useValidation()
 
   const isEmpty = store.objectTypes.length === 0 && store.facts.length === 0
 
@@ -227,6 +246,7 @@ export default function App() {
           <Canvas />
           {isEmpty && <WelcomeScreen />}
           <SchemaBrowser />
+          <ValidationPanel />
           <div id="app-inspector" className="no-print" style={{ display: 'contents' }}><Inspector /></div>
         </div>
 

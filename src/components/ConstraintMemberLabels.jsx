@@ -29,6 +29,7 @@ export default function ConstraintMemberLabels() {
   const { facts: visibleFacts, objectTypes, subtypes } = useDiagramElements()
 
   if (!store.showSequenceMembership) return null
+  if (store.queryEditDraft || store.queryIndexHighlight) return null
   if (selectedKind !== 'constraint') return null
   const c = store.constraints.find(con => con.id === selectedId)
   if (!c || !LABELED_CONSTRAINT_TYPES.has(c.constraintType)) return null

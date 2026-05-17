@@ -9,9 +9,9 @@ const COPY_OFFSET = 16
 const COPY_SCALE  = 0.5
 
 // Use literal hex so colours resolve in SVG regardless of context
-const COL_COPY    = '#0e7490'  // --col-query-in
+const COL_COPY    = '#15803d'  // dark green
 const COL_PENDING = '#1d4ed8'  // --accent (blue)
-const COL_LINK    = 'rgba(14,116,144,0.45)'
+const COL_LINK    = 'rgba(21,128,61,0.45)'
 
 const FILL_ROLE_SEEDED  = 'rgba(96,165,250,0.45)'   // light blue — target copy + seeded role boxes
 
@@ -27,9 +27,9 @@ function rectBorderPoint(cx, cy, hw, hh, tx, ty) {
 
 // ── OT copy frame ─────────────────────────────────────────────────────────────
 
-function OtCopyFrame({ copy, dx, dy, isPending, isOutput, otMap, factMap, onMouseDown }) {
+function OtCopyFrame({ copy, dx, dy, isPending, isOutput, otMap, factMap, onMouseDown, onContextMenu }) {
   const color = isPending ? COL_PENDING : COL_COPY
-  const sw = isOutput ? 2.5 : 1.5
+  const sw = isOutput ? 3 : 2
   const FILL = isOutput ? FILL_ROLE_SEEDED : 'rgba(14,116,144,0.12)'
 
   const ot = otMap[copy.originalId]
@@ -38,7 +38,7 @@ function OtCopyFrame({ copy, dx, dy, isPending, isOutput, otMap, factMap, onMous
     const w = fw * COPY_SCALE, h = fh * COPY_SCALE
     const x = ot.x + dx - w / 2, y = ot.y + dy - h / 2
     return (
-      <g onMouseDown={onMouseDown} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
+      <g onMouseDown={onMouseDown} onContextMenu={onContextMenu} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
         <rect x={x} y={y} width={w} height={h} rx={4}
           fill={FILL} stroke={color} strokeWidth={sw} opacity={0.9}
           strokeDasharray={ot.kind === 'value' ? '4 2' : undefined}/>
@@ -53,7 +53,7 @@ function OtCopyFrame({ copy, dx, dy, isPending, isOutput, otMap, factMap, onMous
     const w = fw * COPY_SCALE, h = fh * COPY_SCALE
     const x = nf.x + dx - w / 2, y = nf.y + dy - h / 2
     return (
-      <g onMouseDown={onMouseDown} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
+      <g onMouseDown={onMouseDown} onContextMenu={onContextMenu} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
         <rect x={x} y={y} width={w} height={h} rx={4}
           style={{ fill: FILL, stroke: color, strokeWidth: sw, opacity: 0.9 }}/>
       </g>
@@ -64,9 +64,9 @@ function OtCopyFrame({ copy, dx, dy, isPending, isOutput, otMap, factMap, onMous
 
 // ── Nested OT copy frame (objectified fact — shows both OT outline and role boxes) ──────────
 
-function NestedOtCopyFrame({ copy, dx, dy, isPending, isOutput, factMap, onMouseDown, onRoleMouseDown }) {
+function NestedOtCopyFrame({ copy, dx, dy, isPending, isOutput, factMap, onMouseDown, onRoleMouseDown, onContextMenu }) {
   const color = isPending ? COL_PENDING : COL_COPY
-  const sw = isOutput ? 2.5 : 1.5
+  const sw = isOutput ? 3 : 2
   const FILL_OT = isOutput ? FILL_ROLE_SEEDED : 'rgba(14,116,144,0.12)'
 
   const nf = factMap[copy.originalId]
@@ -95,7 +95,7 @@ function NestedOtCopyFrame({ copy, dx, dy, isPending, isOutput, factMap, onMouse
   }
 
   return (
-    <g onMouseDown={onMouseDown} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
+    <g onMouseDown={onMouseDown} onContextMenu={onContextMenu} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
       {/* Outer OT frame — click outside role boxes fires OT event via parent <g> */}
       <rect x={outerX} y={outerY} width={outerW} height={outerH} rx={8}
         fill={FILL_OT} stroke={color} strokeWidth={sw} opacity={0.9}/>
@@ -103,7 +103,7 @@ function NestedOtCopyFrame({ copy, dx, dy, isPending, isOutput, factMap, onMouse
       {roleBoxes.map(({ ri, x, y, w, h }) => (
         <rect key={ri} x={x} y={y} width={w} height={h}
           fill={seeded.has(ri) ? FILL_ROLE_SEEDED : FILL_ROLE_DEFAULT}
-          stroke={color} strokeWidth={2}
+          stroke={color} strokeWidth={2.5}
           style={{ cursor: onRoleMouseDown ? 'grab' : 'default' }}
           onMouseDown={onRoleMouseDown
             ? (e) => { e.stopPropagation(); onRoleMouseDown(e, copy.id, ri) }
@@ -117,7 +117,7 @@ function NestedOtCopyFrame({ copy, dx, dy, isPending, isOutput, factMap, onMouse
 
 const FILL_ROLE_DEFAULT = 'rgba(14,116,144,0.15)'
 
-function FactCopyFrame({ copy, dx, dy, isPending, factMap, allFacts, onRoleMouseDown }) {
+function FactCopyFrame({ copy, dx, dy, isPending, factMap, allFacts, onRoleMouseDown, onContextMenu }) {
   const color = isPending ? COL_PENDING : COL_COPY
   const fact = factMap[copy.originalId] ?? allFacts.find(f => f.id === copy.originalId)
   if (!fact) return null
@@ -133,7 +133,7 @@ function FactCopyFrame({ copy, dx, dy, isPending, factMap, allFacts, onRoleMouse
     const startY = fact.y + dy - totalH / 2
     const leftX  = fact.x + dx - ROLE_H / 2
     return (
-      <g>
+      <g onContextMenu={onContextMenu}>
         {dro.map((ri, pi) => (
           <rect key={ri}
             x={leftX} y={startY + pi * (ROLE_W + ROLE_GAP)}
@@ -150,7 +150,7 @@ function FactCopyFrame({ copy, dx, dy, isPending, factMap, allFacts, onRoleMouse
   const startX = fact.x + dx - totalW / 2
   const topY   = fact.y + dy - ROLE_H / 2
   return (
-    <g>
+    <g onContextMenu={onContextMenu}>
       {dro.map((ri, pi) => (
         <rect key={ri}
           x={startX + pi * (ROLE_W + ROLE_GAP)} y={topY}
@@ -185,7 +185,7 @@ function SubtypeCopyFrame({ copy, subDx, subDy, supDx, supDy, isPending, isOutpu
   const to   = rectBorderPoint(supB.cx + supDx, supB.cy + supDy, supB.hw, supB.hh, subB.cx + subDx, subB.cy + subDy)
   const ddx = to.x - from.x, ddy = to.y - from.y
   const dist = Math.sqrt(ddx*ddx + ddy*ddy)
-  const sw = 4.5 * 0.75
+  const sw = 4.5 * 0.9
   const arrowLen = 4 * sw
   const lineEnd = dist > arrowLen ? { x: to.x - ddx/dist*arrowLen, y: to.y - ddy/dist*arrowLen } : to
 
@@ -196,7 +196,7 @@ function SubtypeCopyFrame({ copy, subDx, subDy, supDx, supDy, isPending, isOutpu
       <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="transparent" strokeWidth={7.5}/>
       <line x1={from.x} y1={from.y} x2={lineEnd.x} y2={lineEnd.y}
         style={{ stroke: color, strokeWidth: sw, opacity: 0.75 }}
-        markerEnd={`url(#arrowSubtype${isPending ? 'Accent' : 'QueryIn'})`}/>
+        markerEnd={`url(#arrowSubtype${isPending ? 'Accent' : 'Copy'})`}/>
     </g>
   )
 }
@@ -287,13 +287,13 @@ function LinkLine({ link, copies, factMap, subtypeMap, otMap }) {
 
   return (
     <line x1={border.x} y1={border.y} x2={anchor.x} y2={anchor.y}
-      style={{ stroke: COL_LINK, strokeWidth: 1.5, pointerEvents: 'none' }}/>
+      style={{ stroke: COL_LINK, strokeWidth: 2, pointerEvents: 'none' }}/>
   )
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function QueryCopies({ onCopyClick }) {
+export default function QueryCopies({ onCopyClick, onCopyContextMenu, mousePos }) {
   const store = useOrmStore()
   const { objectTypes, facts } = useDiagramElements()
   const qd = store.queryEditDraft
@@ -343,28 +343,61 @@ export default function QueryCopies({ onCopyClick }) {
     pendingClick && ['otCopy','factCopyRole'].includes(pendingClick.type) && pendingClick.id === copyId
 
   // ── Drag state ─────────────────────────────────────────────────────────────
+  const MERGE_THRESHOLD = 30
+
   const dragRef  = useRef(null)
-  const [liveDrag, setLiveDrag] = useState(null)  // { copyId, dx, dy } | null
+  const [liveDrag, setLiveDrag] = useState(null)  // { copyId, dx, dy, mergeTargetId } | null
 
   useEffect(() => {
     const onMove = (e) => {
       const d = dragRef.current
       if (!d) return
       const zoom = useOrmStore.getState().zoom
-      setLiveDrag({
-        copyId: d.copyId,
-        dx: d.origDx + (e.clientX - d.startX) / zoom,
-        dy: d.origDy + (e.clientY - d.startY) / zoom,
-      })
+      const newDx = d.origDx + (e.clientX - d.startX) / zoom
+      const newDy = d.origDy + (e.clientY - d.startY) / zoom
+
+      // Detect merge candidate: another OT copy of the same original within threshold
+      let mergeTargetId = null
+      const { copies: currentCopies, queryPositions } = useOrmStore.getState().queryEditDraft ?? {}
+      const draggedCopy = currentCopies?.find(c => c.id === d.copyId)
+      if (draggedCopy?.kind === 'objectType' && currentCopies) {
+        const diagram = useOrmStore.getState().diagrams.find(dd => dd.id === useOrmStore.getState().activeDiagramId)
+        const cId = useOrmStore.getState().queryEditDraft?.constraintId
+        const sIdx = useOrmStore.getState().queryEditDraft?.sequenceIndex
+        const dcp = diagram?.queryPositions?.[cId]?.[sIdx] ?? {}
+        const ot = otMap[draggedCopy.originalId]
+        const nf = factMap[draggedCopy.originalId]
+        const dragCx = ot ? ot.x + newDx : nf ? nf.x + newDx : null
+        const dragCy = ot ? ot.y + newDy : nf ? nf.y + newDy : null
+        if (dragCx !== null) {
+          for (const cp of currentCopies) {
+            if (cp.id === d.copyId || cp.kind !== 'objectType' || cp.originalId !== draggedCopy.originalId) continue
+            const cpDx = dcp[cp.id]?.dx ?? cp.dx ?? COPY_OFFSET
+            const cpDy = dcp[cp.id]?.dy ?? cp.dy ?? COPY_OFFSET
+            const tOt = otMap[cp.originalId], tNf = factMap[cp.originalId]
+            const tCx = tOt ? tOt.x + cpDx : tNf ? tNf.x + cpDx : null
+            const tCy = tOt ? tOt.y + cpDy : tNf ? tNf.y + cpDy : null
+            if (tCx === null) continue
+            if (Math.sqrt((dragCx - tCx) ** 2 + (dragCy - tCy) ** 2) <= MERGE_THRESHOLD) {
+              mergeTargetId = cp.id; break
+            }
+          }
+        }
+      }
+      d.mergeTargetId = mergeTargetId
+      setLiveDrag({ copyId: d.copyId, dx: newDx, dy: newDy, mergeTargetId })
     }
     const onUp = (e) => {
       const d = dragRef.current
       if (!d) return
+      const mergeTargetId = d.mergeTargetId
       dragRef.current = null
       const distSq = (e.clientX - d.startX) ** 2 + (e.clientY - d.startY) ** 2
       setLiveDrag(null)
       if (distSq < 25) {
         if (d.clickTarget) onCopyClick(d.clickTarget)
+      } else if (mergeTargetId) {
+        store.mergeOtCopyInto(d.copyId, mergeTargetId)
       } else {
         const zoom = useOrmStore.getState().zoom
         store.updateQueryCopyOffset(
@@ -380,9 +413,23 @@ export default function QueryCopies({ onCopyClick }) {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup',   onUp)
     }
-  }, [store, onCopyClick])
+  }, [store, onCopyClick, otMap, factMap])
+
+  const isCopyProtected = (cp) =>
+    cp.isOutput === true || (cp.seededRoles?.length > 0) || cp.isSeeded === true
+
+  const isCopyAtDefault = (cp) => {
+    const pos = diagCopyPos[cp.id]
+    if (!pos) return true
+    return pos.dx === (cp.dx ?? COPY_OFFSET) && pos.dy === (cp.dy ?? COPY_OFFSET)
+  }
+
+  const makeCopyContextMenu = (cp) => !isPreview && onCopyContextMenu
+    ? (e) => { e.preventDefault(); e.stopPropagation(); onCopyContextMenu(e, cp.id, isCopyProtected(cp), isCopyAtDefault(cp)) }
+    : undefined
 
   const startDrag = (e, copyId, origDx, origDy, clickTarget) => {
+    if (e.button !== 0) return
     e.stopPropagation()
     dragRef.current = { copyId, startX: e.clientX, startY: e.clientY, origDx, origDy, clickTarget }
   }
@@ -402,8 +449,37 @@ export default function QueryCopies({ onCopyClick }) {
     return (dx !== cp.dx || dy !== cp.dy) ? { ...cp, dx, dy } : cp
   })
 
+  // Compute the world-space anchor point of the pending copy for the draft line
+  const pendingAnchor = (() => {
+    if (!pendingClick || isPreview) return null
+    const cp = copies.find(c => c.id === pendingClick.id)
+    if (!cp) return null
+    const dx = getCopyDx(cp), dy = getCopyDy(cp)
+    if (pendingClick.type === 'otCopy') {
+      const ot = otMap[cp.originalId]
+      if (ot) return { x: ot.x + dx, y: ot.y + dy }
+      const nf = factMap[cp.originalId]
+      if (nf) return { x: nf.x + dx, y: nf.y + dy }
+    }
+    if (pendingClick.type === 'factCopyRole') {
+      const fact = factMap[cp.originalId] ?? store.facts.find(f => f.id === cp.originalId)
+      if (!fact) return null
+      const ri = pendingClick.roleIndex
+      const n = Math.max(fact.arity, 1)
+      const dro = displayRoleOrder(fact)
+      const posIdx = dro.indexOf(ri)
+      if (fact.orientation === 'vertical') {
+        const totalH = n * ROLE_W + (n - 1) * ROLE_GAP
+        return { x: fact.x + dx, y: fact.y + dy - totalH / 2 + posIdx * (ROLE_W + ROLE_GAP) + ROLE_W / 2 }
+      }
+      const totalW = n * ROLE_W + (n - 1) * ROLE_GAP
+      return { x: fact.x + dx - totalW / 2 + posIdx * (ROLE_W + ROLE_GAP) + ROLE_W / 2, y: fact.y + dy }
+    }
+    return null
+  })()
+
   return (
-    <g style={{ pointerEvents: isPreview ? 'none' : 'all' }} opacity={0.6}>
+    <g style={{ pointerEvents: isPreview ? 'none' : 'all' }}>
       {links.map((lk, i) => (
         <LinkLine key={i} link={lk} copies={liveCopies}
           factMap={factMap} subtypeMap={subtypeMap} otMap={otMap}/>
@@ -411,26 +487,41 @@ export default function QueryCopies({ onCopyClick }) {
       {copies.map(cp => {
         const dx = getCopyDx(cp), dy = getCopyDy(cp)
         const pending = isPending(cp.id)
+        const isMergeTarget = liveDrag?.mergeTargetId === cp.id
+        const glowFilter = isMergeTarget
+          ? 'drop-shadow(0 0 6px rgba(29,78,216,1)) drop-shadow(0 0 14px rgba(29,78,216,0.7))'
+          : pending
+            ? 'drop-shadow(0 0 4px rgba(29,78,216,0.9)) drop-shadow(0 0 8px rgba(29,78,216,0.5))'
+            : undefined
         // Objectified fact: combined OT+role frame regardless of copy kind
         if ((cp.kind === 'objectType' || cp.kind === 'fact') && factMap[cp.originalId]?.objectified) return (
-          <NestedOtCopyFrame key={cp.id} copy={cp} dx={dx} dy={dy}
+          <g key={cp.id} style={{ filter: glowFilter }}>
+          <NestedOtCopyFrame copy={cp} dx={dx} dy={dy}
             isPending={pending} isOutput={cp.isOutput}
             factMap={factMap}
             onMouseDown={isPreview ? undefined : (e) => startDrag(e, cp.id, dx, dy, { type: 'otCopy', id: cp.id })}
             onRoleMouseDown={isPreview ? undefined : (e, copyId, roleIndex) =>
-              startDrag(e, copyId, dx, dy, { type: 'factCopyRole', id: copyId, roleIndex })}/>
+              startDrag(e, copyId, dx, dy, { type: 'factCopyRole', id: copyId, roleIndex })}
+            onContextMenu={makeCopyContextMenu(cp)}/>
+          </g>
         )
         if (cp.kind === 'objectType') return (
-          <OtCopyFrame key={cp.id} copy={cp} dx={dx} dy={dy}
+          <g key={cp.id} style={{ filter: glowFilter }}>
+          <OtCopyFrame copy={cp} dx={dx} dy={dy}
             isPending={pending} isOutput={cp.isOutput}
             otMap={otMap} factMap={factMap}
-            onMouseDown={isPreview ? undefined : (e) => startDrag(e, cp.id, dx, dy, { type: 'otCopy', id: cp.id })}/>
+            onMouseDown={isPreview ? undefined : (e) => startDrag(e, cp.id, dx, dy, { type: 'otCopy', id: cp.id })}
+            onContextMenu={makeCopyContextMenu(cp)}/>
+          </g>
         )
         if (cp.kind === 'fact') return (
-          <FactCopyFrame key={cp.id} copy={cp} dx={dx} dy={dy}
+          <g key={cp.id} style={{ filter: glowFilter }}>
+          <FactCopyFrame copy={cp} dx={dx} dy={dy}
             isPending={pending} factMap={factMap} allFacts={store.facts}
             onRoleMouseDown={isPreview ? undefined : (e, copyId, roleIndex) =>
-              startDrag(e, copyId, dx, dy, { type: 'factCopyRole', id: copyId, roleIndex })}/>
+              startDrag(e, copyId, dx, dy, { type: 'factCopyRole', id: copyId, roleIndex })}
+            onContextMenu={makeCopyContextMenu(cp)}/>
+          </g>
         )
         if (cp.kind === 'subtype') {
           const subLink = links.find(l => l.copyId === cp.id && l.roleIndex === 0)
@@ -449,6 +540,15 @@ export default function QueryCopies({ onCopyClick }) {
         }
         return null
       })}
+
+      {pendingAnchor && mousePos && (
+        <line
+          x1={pendingAnchor.x} y1={pendingAnchor.y}
+          x2={mousePos.x} y2={mousePos.y}
+          stroke={COL_PENDING} strokeWidth={1.5}
+          strokeDasharray="6 3"
+          style={{ pointerEvents: 'none' }}/>
+      )}
     </g>
   )
 }

@@ -44,7 +44,7 @@ function playerXY(ot, nestedFact) {
 
 // ── component ─────────────────────────────────────────────────────────────────
 
-export default function RoleConnectors({ mousePos }) {
+export default function RoleConnectors({ mousePos, queryReachable, queryOriginals }) {
   const store = useOrmStore()
   const { objectTypes, facts: visibleFacts } = useDiagramElements()
   const otMap     = Object.fromEntries(objectTypes.map(o => [o.id, o]))
@@ -149,7 +149,7 @@ export default function RoleConnectors({ mousePos }) {
 
       return {
         key: `${fact.id}-${ri}`,
-        factId: fact.id, roleIndex: ri,
+        factId: fact.id, otId: role.objectTypeId, roleIndex: ri,
         anchor, border, dotPos,
         mx, my,
         autoOffset: { dx: autoOx, dy: autoOy },
@@ -223,17 +223,31 @@ export default function RoleConnectors({ mousePos }) {
   return (
     <g>
       {/* Connector lines */}
-      {allConnectors.map(({ key, anchor, border }) => (
-        <line key={key}
-          x1={border.x} y1={border.y}
-          x2={anchor.x} y2={anchor.y}
-          stroke="var(--col-fact)" strokeWidth={1.5} strokeOpacity={0.75}/>
-      ))}
+      {allConnectors.map(({ key, factId, otId, anchor, border }) => {
+        const connOpacity = queryReachable != null
+          ? (!queryReachable.has(factId) || !queryReachable.has(otId))
+            ? 0.2
+            : (queryOriginals?.has(factId) || queryOriginals?.has(otId)) ? 0.45 : 1
+          : 1
+        return (
+          <line key={key}
+            x1={border.x} y1={border.y}
+            x2={anchor.x} y2={anchor.y}
+            stroke="var(--col-fact)" strokeWidth={1.5} strokeOpacity={0.75}
+            opacity={connOpacity}/>
+        )
+      })}
 
       {/* Role name labels — draggable, offset stored relative to connector midpoint */}
-      {store.showRoleNames && allConnectors.map(({ key, factId, roleIndex, roleName,
+      {store.showRoleNames && allConnectors.map(({ key, factId, otId, roleIndex, roleName,
                                                 mx, my, autoOffset, nameOffset }) => {
         if (!roleName) return null
+        const labelOpacity = queryReachable != null
+          ? (!queryReachable.has(factId) || !queryReachable.has(otId))
+            ? 0.2
+            : (queryOriginals?.has(factId) || queryOriginals?.has(otId)) ? 0.45 : 1
+          : 1
+        const dim = labelOpacity < 1
 
         // Resolve current label position
         const isDragging = liveDrag?.factId === factId && liveDrag?.roleIndex === roleIndex
@@ -291,7 +305,7 @@ export default function RoleConnectors({ mousePos }) {
             x={lx} y={ly}
             textAnchor="middle" dominantBaseline="middle"
             fontSize={12} fontFamily="'Segoe UI', Helvetica, Arial, sans-serif"
-            fill="var(--col-role-name)"
+            fill="var(--col-role-name)" opacity={labelOpacity}
             style={{ cursor: isDragging ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
             onMouseDown={e => {
               e.stopPropagation()
@@ -367,7 +381,7 @@ export default function RoleConnectors({ mousePos }) {
 // Rendered in Canvas *after* all object type and fact nodes so dots always
 // paint on top of the shapes they are linked to.
 
-export function MandatoryDots({ onContextMenu }) {
+export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals }) {
   const store      = useOrmStore()
   const { objectTypes, facts: visibleFacts } = useDiagramElements()
   const otMap      = Object.fromEntries(objectTypes.map(o => [o.id, o]))
@@ -389,20 +403,26 @@ export function MandatoryDots({ onContextMenu }) {
           const border = playerBorderPoint(ot, nf, anchor.x, anchor.y)
           const pos    = dotAtObject ? border : anchor
           const isSelected = sel?.factId === fact.id && sel?.roleIndex === ri
+          const dotOpacity = queryReachable != null
+            ? (!queryReachable.has(fact.id) || !queryReachable.has(role.objectTypeId))
+              ? 0.2
+              : (queryOriginals?.has(fact.id) || queryOriginals?.has(role.objectTypeId)) ? 0.45 : 1
+            : 1
+          const dotDim = dotOpacity < 1
           return (
-            <g key={`dot-${fact.id}-${ri}`} className="selectable-group" style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+            <g key={`dot-${fact.id}-${ri}`} className="selectable-group" opacity={dotOpacity} style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
               <circle
                 cx={pos.x} cy={pos.y} r={DOT_R}
                 fill="var(--col-mandatory)"
                 onClick={e => {
                   e.stopPropagation()
-                  if (store.queryEditDraft) { store.cancelQueryEdit(); return }
+                  if (store.queryEditDraft) return
                   if (isSelected) store.deselectMandatoryDot()
                   else store.selectMandatoryDot(fact.id, ri)
                 }}
                 onContextMenu={e => {
                   e.preventDefault(); e.stopPropagation()
-                  if (store.queryEditDraft) { store.cancelQueryEdit(); return }
+                  if (store.queryEditDraft) return
                   store.selectMandatoryDot(fact.id, ri)
                   onContextMenu?.(fact.id, ri, e)
                 }}/>
@@ -423,6 +443,7 @@ export function MandatoryDots({ onContextMenu }) {
           const ilPosDot = diagPos[ilKeyDot]
           const roleOrder = ilPosDot?.roleOrder || il.roleOrder || [0, 1]
           const results = []
+          const dotDimIl = queryReachable != null
 
           // Role 0 (nested fact) — always mandatory
           if (role?.objectTypeId) {
@@ -451,19 +472,19 @@ export function MandatoryDots({ onContextMenu }) {
                 const pos = dotAtObject ? border : anchor
                 const isSelected = sel?.factId === synthFact.id && sel?.roleIndex === mandatoryDisplayRole
                 results.push(
-                  <g key={`dot-${synthFact.id}-${mandatoryDisplayRole}`} className="selectable-group" style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+                  <g key={`dot-${synthFact.id}-${mandatoryDisplayRole}`} className="selectable-group" opacity={dotDimIl ? 0.2 : 1} style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: !dotDimIl && isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
                     <circle
                       cx={pos.x} cy={pos.y} r={DOT_R}
                       fill="var(--col-mandatory)"
                       onClick={e => {
                         e.stopPropagation()
-                        if (store.queryEditDraft) { store.cancelQueryEdit(); return }
+                        if (store.queryEditDraft) return
                         if (isSelected) store.deselectMandatoryDot()
                         else store.selectMandatoryDot(synthFact.id, mandatoryDisplayRole)
                       }}
                       onContextMenu={e => {
                         e.preventDefault(); e.stopPropagation()
-                        if (store.queryEditDraft) { store.cancelQueryEdit(); return }
+                        if (store.queryEditDraft) return
                         store.selectMandatoryDot(synthFact.id, mandatoryDisplayRole)
                         onContextMenu?.(synthFact.id, mandatoryDisplayRole, e)
                       }}/>
@@ -501,7 +522,7 @@ export function MandatoryDots({ onContextMenu }) {
               const pos = dotAtObject ? border : anchor
               const isSelected = sel?.factId === synthFact.id && sel?.roleIndex === mandatoryDisplayRole
               results.push(
-                <g key={`dot-${synthFact.id}-r1-${mandatoryDisplayRole}`} className="selectable-group" style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+                <g key={`dot-${synthFact.id}-r1-${mandatoryDisplayRole}`} className="selectable-group" opacity={dotDimIl ? 0.2 : 1} style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
                   <circle
                     cx={pos.x} cy={pos.y} r={DOT_R}
                     fill="var(--col-mandatory)"

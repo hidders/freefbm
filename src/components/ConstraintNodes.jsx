@@ -811,7 +811,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
             onMouseDown={(e) => {
               e.stopPropagation()
               if (e.button !== 0 || e.detail >= 2) return  // skip second click of double-click
-              if (store.queryEditDraft) { store.cancelQueryEdit(); return }
+              if (store.queryEditDraft) return
               if (store.tool === 'addConstraint:valueRange' || store.tool === 'addConstraint:cardinality') { store.setTool('select'); return }
               if (isConnectTool) {
                 store.select(c.id, 'constraint')
