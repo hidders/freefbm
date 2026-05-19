@@ -58,7 +58,7 @@ function measureText(text, fontSize) {
 
 export function computeOtSize(ot, nameOverride) {
   const showRefMode = useOrmStore.getState().showReferenceMode
-  const hasRef = showRefMode && ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none'
+  const hasRef = showRefMode && ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none' && !ot.refModeExpanded
   const nameW  = measureText(nameOverride ?? ot.name ?? '', OT_SIZE_NAME)
   const refW   = hasRef ? measureText(`(${ot.refMode})`, OT_SIZE_REF) : 0
   const w = Math.max(OT_MIN_W, Math.max(nameW, refW) + OT_PAD_X * 2)
@@ -73,14 +73,11 @@ export function entityBounds(ot) {
            cx: ot.x, cy: ot.y }
 }
 
-export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, onContextMenu, onDoubleClickValueRange, onValueRangeClick, onCardinalityRangeClick, onValueRangeContextMenu, onCardinalityRangeContextMenu, isShared }) {
+export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, onContextMenu, onDoubleClickValueRange, onValueRangeClick, onCardinalityRangeClick, onValueRangeContextMenu, onCardinalityRangeContextMenu, isShared, dimInternalConstraints }) {
   const store = useOrmStore()
   const isSelected    = store.selectedId === ot.id || store.multiSelectedIds.includes(ot.id)
   const isConstraintTarget = !store.queryEditDraft && !store.queryIndexHighlight && store.selectedKind === 'constraint' &&
     store.constraints.find(c => c.id === store.selectedId)?.targetObjectTypeId === ot.id
-  const otErrors = (store.validationErrors || []).filter(e => e.elementId === ot.id)
-  const hasError = otErrors.length > 0
-  const badgeColour = otErrors.some(e => e.severity === 'error') ? '#dc2626' : '#d97706'
 
   const inQueryHighlight = (() => {
     if (store.queryEditDraft || store.queryIndexHighlight) return false
@@ -210,11 +207,12 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
   }, [editingRef, commitRefEdit])
 
   const { w, h } = computeOtSize(ot, editing ? draft : undefined)
-  const hasRef = ot.kind === 'entity' && store.showReferenceMode && ot.refMode && ot.refMode !== 'none'
+  const hasRef = ot.kind === 'entity' && store.showReferenceMode && ot.refMode && ot.refMode !== 'none' && !ot.refModeExpanded
   const refModeText = hasRef ? `(${ot.refMode})` : null
 
   const handleDoubleClick = useCallback((e) => {
     if (isSubtypeTool || isAssignTool) return
+    if (ot._refExpansion) return  // generated value type — name is not user-editable
     e.stopPropagation()
     const inRefArea = hasRef && e.target?.getAttribute?.('data-refhit') === 'true'
     if (inRefArea) {
@@ -224,7 +222,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
       setDraft(ot.name)
       setEditing(true)
     }
-  }, [ot.name, ot.refMode, isSubtypeTool, isAssignTool, hasRef])
+  }, [ot.name, ot.refMode, ot._refExpansion, isSubtypeTool, isAssignTool, hasRef])
 
   const handleMouseDown = useCallback((e) => {
     if (editing || editingRef) { e.stopPropagation(); return }
@@ -312,7 +310,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
   return (
   <>
     <g
-      className="selectable-group"
+      className={store.queryEditDraft ? 'selectable-group qe-selectable' : 'selectable-group'}
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
       onContextMenu={onContextMenu}
@@ -338,13 +336,6 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
       <rect x={ot.x - w/2} y={ot.y - h/2} width={w} height={h} rx={6}
         fill={fill} stroke={stroke} strokeWidth={strokeW}
         strokeDasharray={ot.kind === 'value' ? '6 3' : 'none'}/>
-      {hasError && (
-        <g style={{ pointerEvents: 'none' }}>
-          <circle cx={ot.x + w/2 - 1} cy={ot.y - h/2 + 1} r={6} fill={badgeColour}/>
-          <text x={ot.x + w/2 - 1} y={ot.y - h/2 + 1} textAnchor="middle"
-            dominantBaseline="middle" fontSize={7} fontWeight={700} fill="#fff">!</text>
-        </g>
-      )}
 
       {editing ? (
         <foreignObject x={ot.x - w/2 + 2} y={nameY - OT_SIZE_NAME * 0.75}
@@ -435,6 +426,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
         if (!canHaveVr) return null
         const vr = formatValueRange(ot.valueRange)
         if (!vr) return null
+        const _dimOpacity = dimInternalConstraints ? 0.15 : 1
         const AUTO_DX = 0
         const AUTO_DY = h / 2 + 14
         const off = vrLive ?? (ot.valueRangeOffset ?? { dx: AUTO_DX, dy: AUTO_DY })
@@ -462,7 +454,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
         const lineEndY = dxB === 0 && dyB === 0 ? ty : ty + dyB * tLbl
 
         return (
-          <g className="selectable-group">
+          <g opacity={_dimOpacity} className="selectable-group" style={store.queryEditDraft ? { pointerEvents: 'none' } : undefined}>
             <line x1={connX} y1={connY} x2={lineEndX} y2={lineEndY}
               stroke="var(--col-constraint)" strokeWidth={1.5}
               strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
@@ -507,6 +499,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
       {(() => {
         const cr = formatCardinalityRange(ot.cardinalityRange)
         if (!cr) return null
+        const _dimOpacity = dimInternalConstraints ? 0.15 : 1
         const AUTO_DX = 0
         const AUTO_DY = -(h / 2 + 14)
         const off = crLive ?? (ot.cardinalityRangeOffset ?? { dx: AUTO_DX, dy: AUTO_DY })
@@ -530,7 +523,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
         const lineEndY = dxB === 0 && dyB === 0 ? ty : ty + dyB * tLbl
 
         return (
-          <g className="selectable-group">
+          <g opacity={_dimOpacity} className="selectable-group" style={store.queryEditDraft ? { pointerEvents: 'none' } : undefined}>
             <line x1={connX} y1={connY} x2={lineEndX} y2={lineEndY}
               stroke="var(--col-constraint)" strokeWidth={1.5}
               strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>

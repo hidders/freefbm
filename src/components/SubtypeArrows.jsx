@@ -5,7 +5,7 @@ import { entityBounds } from './ObjectTypeNode'
 import { nestedFactBounds } from './FactTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 
-function rectBorderPoint(b, tx, ty) {
+export function rectBorderPoint(b, tx, ty) {
   const cx = b.cx, cy = b.cy
   const dx = tx - cx, dy = ty - cy
   if (dx === 0 && dy === 0) return { x: cx, y: cy }
@@ -16,7 +16,7 @@ function rectBorderPoint(b, tx, ty) {
   return { x: cx + dx * t, y: cy + dy * t }
 }
 
-function playerBounds(id, otMap, nestedMap) {
+export function playerBounds(id, otMap, nestedMap) {
   const ot = otMap[id]
   if (ot) return entityBounds(ot)
   const nf = nestedMap[id]
@@ -24,7 +24,7 @@ function playerBounds(id, otMap, nestedMap) {
   return null
 }
 
-export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes, queryReachable, queryOriginals }) {
+export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes, queryReachable, queryOriginals, noteSubjectIds }) {
   const store     = useOrmStore()
   const { objectTypes, facts, subtypes } = useDiagramElements()
   const otMap     = Object.fromEntries(objectTypes.map(o => [o.id, o]))
@@ -76,8 +76,10 @@ export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes,
           <g key={st.id}
             className={qd ? undefined : 'selectable-group'}
             opacity={queryReachable != null
-              ? (!queryReachable.has(st.id) ? 0.2 : queryOriginals?.has(st.id) ? 0.45 : 1)
-              : dimAllSubtypes ? 0.35 : 1}
+              ? (queryReachable.has(st.id) ? 1 : 0.2)
+              : noteSubjectIds != null
+                ? (noteSubjectIds.has(st.id) ? 1 : 0.12)
+                : dimAllSubtypes ? 0.35 : 1}
             style={{ cursor: (() => {
               if (qd) return 'default'
               if (store.sequenceConstruction) return 'pointer'

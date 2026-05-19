@@ -225,9 +225,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
       {/* Connector lines */}
       {allConnectors.map(({ key, factId, otId, anchor, border }) => {
         const connOpacity = queryReachable != null
-          ? (!queryReachable.has(factId) || !queryReachable.has(otId))
-            ? 0.2
-            : (queryOriginals?.has(factId) || queryOriginals?.has(otId)) ? 0.45 : 1
+          ? (queryReachable.has(factId) && queryReachable.has(otId) ? 1 : 0.2)
           : 1
         return (
           <line key={key}
@@ -243,9 +241,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
                                                 mx, my, autoOffset, nameOffset }) => {
         if (!roleName) return null
         const labelOpacity = queryReachable != null
-          ? (!queryReachable.has(factId) || !queryReachable.has(otId))
-            ? 0.2
-            : (queryOriginals?.has(factId) || queryOriginals?.has(otId)) ? 0.45 : 1
+          ? (queryReachable.has(factId) && queryReachable.has(otId) ? 1 : 0.2)
           : 1
         const dim = labelOpacity < 1
 
@@ -404,9 +400,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
           const pos    = dotAtObject ? border : anchor
           const isSelected = sel?.factId === fact.id && sel?.roleIndex === ri
           const dotOpacity = queryReachable != null
-            ? (!queryReachable.has(fact.id) || !queryReachable.has(role.objectTypeId))
-              ? 0.2
-              : (queryOriginals?.has(fact.id) || queryOriginals?.has(role.objectTypeId)) ? 0.45 : 1
+            ? (queryReachable.has(fact.id) && queryReachable.has(role.objectTypeId) ? 1 : 0.2)
             : 1
           const dotDim = dotOpacity < 1
           return (

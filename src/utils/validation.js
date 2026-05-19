@@ -3,7 +3,7 @@
 export const VALIDATION_CATEGORIES = {
   factTypeDefinition: {
     label: 'Fact Type Definition',
-    description: 'Missing role players, missing internal uniqueness constraints, duplicate predicate readings',
+    description: 'Missing role players, missing or redundant internal uniqueness constraints, duplicate predicate readings',
   },
   constraintStructure: {
     label: 'Constraint Structure',
@@ -120,6 +120,30 @@ export function runValidation({ objectTypes, facts, constraints }, enabledCatego
         if (!globalSigMap[sig]) globalSigMap[sig] = []
         globalSigMap[sig].push(f.id)
       }
+
+      // RedundantInternalUniquenessConstraintWarning
+      // A constraint on role set J is redundant if another constraint covers a proper subset of J.
+      const ucs = f.uniqueness || []
+      for (let j = 0; j < ucs.length; j++) {
+        const rolesJ = new Set(ucs[j])
+        for (let i = 0; i < ucs.length; i++) {
+          if (i === j) continue
+          const rolesI = ucs[i]
+          if (rolesI.length < rolesJ.size && rolesI.every(r => rolesJ.has(r))) {
+            const redundant = ucs[j].map(r => r + 1).sort((a, b) => a - b).join(', ')
+            const implied   = rolesI.map(r => r + 1).sort((a, b) => a - b).join(', ')
+            errors.push({
+              id: `redundant-uc-${f.id}-${j}`,
+              category: 'factTypeDefinition',
+              elementId: f.id,
+              elementKind: 'fact',
+              message: `Uniqueness on role(s) ${redundant} is redundant: implied by constraint on role(s) ${implied}`,
+              severity: 'warning',
+            })
+            break
+          }
+        }
+      }
     }
 
     // (a) Cross-fact duplicates: same signature appears in two or more fact types
@@ -141,6 +165,7 @@ export function runValidation({ objectTypes, facts, constraints }, enabledCatego
 
   // ── Constraint Structure ─────────────────────────────────────────────────────
   if (enabledCategories.has('constraintStructure')) {
+    const ARITY_SENSITIVE = new Set(['equality', 'subset', 'exclusion', 'inclusiveOr', 'exclusiveOr'])
     for (const c of constraints) {
       const sequences = c.sequences || []
       const label = CONSTRAINT_LABELS[c.constraintType] ?? c.constraintType
@@ -155,6 +180,22 @@ export function runValidation({ objectTypes, facts, constraints }, enabledCatego
           message: `${label} constraint needs at least 2 role sequences (has ${sequences.length})`,
           severity: 'warning',
         })
+      }
+
+      // RoleSequenceArityMismatchError: all sequences of an arity-sensitive constraint must be the same length
+      if (ARITY_SENSITIVE.has(c.constraintType) && sequences.length >= 2) {
+        const lengths = sequences.map(s => s.length)
+        const allSame = lengths.every(l => l === lengths[0])
+        if (!allSame) {
+          errors.push({
+            id: `arity-mismatch-${c.id}`,
+            category: 'constraintStructure',
+            elementId: c.id,
+            elementKind: 'constraint',
+            message: `${label} constraint has role sequences of unequal length (${lengths.join(', ')})`,
+            severity: 'warning',
+          })
+        }
       }
 
     }

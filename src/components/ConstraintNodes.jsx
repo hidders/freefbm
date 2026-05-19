@@ -4,11 +4,14 @@ import { useDiagramElements } from '../hooks/useDiagramElements'
 import { roleCenter, nestedFactBounds, ROLE_H, displayRoleOrder, makeImplicitLinkFact } from './FactTypeNode'
 import { roleAnchor } from './RoleConnectors'
 import { entityBounds, formatValueRange } from './ObjectTypeNode'
-import { EXTERNAL_CONSTRAINT_TYPES } from '../constants.js'
+import { EXTERNAL_CONSTRAINT_TYPES, RAKE_TOOTH, RAKE_STAGGER, RAKE_TOOTH_GAP } from '../constants.js'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 
 const CONSTRAINT_R = 14        // radius of standard constraint circle
 const EXTERNAL_CONSTRAINT_R = 10 // radius of external constraint circle
+// Mirror FactTypeNode uniqueness-bar geometry constants (BAR_MARGIN=4, BAR_SPACING=5)
+const _BAR_MARGIN  = 4
+const _BAR_SPACING = 5
 
 const FREQ_FONT_SIZE = 13
 const FREQ_PAD_X     = 6   // horizontal padding inside stadium, each side
@@ -617,7 +620,7 @@ function borderPoint(ot, tx, ty) {
   return { x: cx + dx * t, y: cy + dy * t }
 }
 
-export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }) {
+export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, noteSubjectIds }) {
   const store = useOrmStore()
   const { objectTypes, facts, constraints: visibleConstraints, subtypes } = useDiagramElements()
   const factMap    = Object.fromEntries(facts.map(f => [f.id, f]))
@@ -679,6 +682,128 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
     }
   }
 
+  // Returns a string key identifying which fact+side a rake would land on, or null if
+  // the sequence doesn't qualify for a rake. Used to group same-side rakes for staggering.
+  // roleSeq: [{factId, roleIndex}]
+  function rakeKeyFor(roleSeq, cx, cy) {
+    if (!roleSeq || roleSeq.length < 2) return null
+    const factId = roleSeq[0]?.factId
+    if (!roleSeq.every(m => m.factId === factId)) return null
+    const fact = factMap[factId]
+    if (!fact) return null
+    if (roleSeq.length === 2) {
+      const dro = displayRoleOrder(fact)
+      const p0 = dro.indexOf(roleSeq[0].roleIndex)
+      const p1 = dro.indexOf(roleSeq[1].roleIndex)
+      if (Math.abs(p0 - p1) === 1) return null
+    }
+    if (fact.orientation === 'vertical') {
+      const lx = fact.x - ROLE_H / 2, rx = fact.x + ROLE_H / 2
+      return `${factId}:${(lx - cx) ** 2 < (rx - cx) ** 2 ? 'L' : 'R'}`
+    }
+    const ty = fact.y - ROLE_H / 2, by = fact.y + ROLE_H / 2
+    return `${factId}:${(ty - cy) ** 2 < (by - cy) ** 2 ? 'T' : 'B'}`
+  }
+
+  // Returns rake geometry when all roleSeq members target the same fact and it isn't a
+  // simple adjacent pair (which is handled by consecutiveRoleMidpoint).
+  // roleSeq: [{factId, roleIndex}]  →  {spineStart, spineEnd, anchor, teeth} or null
+  // stagger: 0-based index within same-side rakes — each level pushes the spine further out.
+  // When the spine side has uniqueness bars the spine is pushed beyond the outermost bar.
+  function rakeForRoleSeq(roleSeq, cx, cy, stagger = 0) {
+    if (roleSeq.length < 2) return null
+    const factId = roleSeq[0].factId
+    if (!roleSeq.every(m => m.factId === factId)) return null
+    const fact = factMap[factId]
+    if (!fact) return null
+    // Skip the simple adjacent-pair case — consecutiveRoleMidpoint handles it
+    if (roleSeq.length === 2) {
+      const dro = displayRoleOrder(fact)
+      const pos0 = dro.indexOf(roleSeq[0].roleIndex)
+      const pos1 = dro.indexOf(roleSeq[1].roleIndex)
+      if (Math.abs(pos0 - pos1) === 1) return null
+    }
+
+    // Outermost uniqueness bar level (mirrors render logic in FactTypeNode)
+    const hasUnary_f = (fact.uniqueness || []).some(u => u.length === 1)
+    let maxBarLvl = hasUnary_f ? 0 : -1
+    ;(fact.uniqueness || []).forEach(u => { if (u.length > 1) maxBarLvl++ })
+    // maxBarLvl >= 0  ⟹  bars exist; outer edge = roleEdge ± (BAR_MARGIN + BAR_SPACING*(maxBarLvl+1))
+
+    const barsBelow  = !!fact.uniquenessBelow
+    const roleCenters = roleSeq.map(m => roleCenter(fact, m.roleIndex))
+
+    if (fact.orientation === 'vertical') {
+      // Spine is a vertical bar to the left or right of the fact.
+      // barsBelow=true → bars on LEFT;  barsBelow=false → bars on RIGHT
+      const leftEdge  = fact.x - ROLE_H / 2
+      const rightEdge = fact.x + ROLE_H / 2
+      const useLeft   = (leftEdge - cx) ** 2 < (rightEdge - cx) ** 2
+      const edgeX     = useLeft ? leftEdge : rightEdge
+      let spineX
+      if (useLeft) {
+        spineX = (maxBarLvl >= 0 && barsBelow)
+          ? leftEdge  - _BAR_MARGIN - _BAR_SPACING * (maxBarLvl + 1) - RAKE_TOOTH
+          : leftEdge  - RAKE_TOOTH
+        spineX -= stagger * RAKE_STAGGER
+      } else {
+        spineX = (maxBarLvl >= 0 && !barsBelow)
+          ? rightEdge + _BAR_MARGIN + _BAR_SPACING * (maxBarLvl + 1) + RAKE_TOOTH
+          : rightEdge + RAKE_TOOTH
+        spineX += stagger * RAKE_STAGGER
+      }
+      const minY = Math.min(...roleCenters.map(rc => rc.y))
+      const maxY = Math.max(...roleCenters.map(rc => rc.y))
+      // Tooth endpoint: stagger 0 reaches the role-box edge; higher stagger stops just
+      // short of the spine below it so teeth don't visually merge if roles overlap.
+      const toX = stagger === 0
+        ? edgeX
+        : useLeft
+          ? spineX + RAKE_STAGGER - RAKE_TOOTH_GAP   // rightward, stopping just before spine below
+          : spineX - RAKE_STAGGER + RAKE_TOOTH_GAP   // leftward, stopping just before spine below
+      return {
+        spineStart: { x: spineX, y: minY },
+        spineEnd:   { x: spineX, y: maxY },
+        anchor:     { x: spineX, y: (minY + maxY) / 2 },
+        teeth: roleCenters.map(rc => ({ from: { x: spineX, y: rc.y }, to: { x: toX, y: rc.y } })),
+      }
+    } else {
+      // Spine is a horizontal bar above or below the fact.
+      // barsBelow=false → bars ABOVE;  barsBelow=true → bars BELOW
+      const topEdge    = fact.y - ROLE_H / 2
+      const bottomEdge = fact.y + ROLE_H / 2
+      const useTop     = (topEdge - cy) ** 2 < (bottomEdge - cy) ** 2
+      const edgeY      = useTop ? topEdge : bottomEdge
+      let spineY
+      if (useTop) {
+        spineY = (maxBarLvl >= 0 && !barsBelow)
+          ? topEdge    - _BAR_MARGIN - _BAR_SPACING * (maxBarLvl + 1) - RAKE_TOOTH
+          : topEdge    - RAKE_TOOTH
+        spineY -= stagger * RAKE_STAGGER
+      } else {
+        spineY = (maxBarLvl >= 0 && barsBelow)
+          ? bottomEdge + _BAR_MARGIN + _BAR_SPACING * (maxBarLvl + 1) + RAKE_TOOTH
+          : bottomEdge + RAKE_TOOTH
+        spineY += stagger * RAKE_STAGGER
+      }
+      const minX = Math.min(...roleCenters.map(rc => rc.x))
+      const maxX = Math.max(...roleCenters.map(rc => rc.x))
+      // Tooth endpoint: stagger 0 reaches the role-box edge; higher stagger stops just
+      // short of the spine below it so teeth don't visually merge if roles overlap.
+      const toY = stagger === 0
+        ? edgeY
+        : useTop
+          ? spineY + RAKE_STAGGER - RAKE_TOOTH_GAP   // downward, stopping just before spine below
+          : spineY - RAKE_STAGGER + RAKE_TOOTH_GAP   // upward, stopping just before spine below
+      return {
+        spineStart: { x: minX, y: spineY },
+        spineEnd:   { x: maxX, y: spineY },
+        anchor:     { x: (minX + maxX) / 2, y: spineY },
+        teeth: roleCenters.map(rc => ({ from: { x: rc.x, y: spineY }, to: { x: rc.x, y: toY } })),
+      }
+    }
+  }
+
   // Geometry helper: line from constraint centre to a member (role or subtype midpoint)
   function memberArcLine(member, key, cx, cy, r0, color, selected, markerEnd) {
     const sw = selected ? 2.2 : 1.2
@@ -716,6 +841,29 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
     }
   }
 
+  // Pre-compute stagger indices so that multiple rakes on the same fact+side are
+  // drawn at slightly different heights rather than directly on top of each other.
+  const rakeGroups = new Map()  // 'factId:side' → [{cId, gi}]
+  visibleConstraints.forEach(c => {
+    const isExt = EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType)
+    ;(isExt ? (c.sequences || []) : (c.roleSequences || [])).forEach((seq, gi) => {
+      const roleSeq = isExt
+        ? (seq.every(m => m.kind === 'role') ? seq.map(m => ({ factId: m.factId, roleIndex: m.roleIndex })) : null)
+        : seq
+      const key = rakeKeyFor(roleSeq, c.x, c.y)
+      if (!key) return
+      if (!rakeGroups.has(key)) rakeGroups.set(key, [])
+      rakeGroups.get(key).push({ cId: c.id, gi })
+    })
+  })
+  const getRakeStagger = (roleSeq, cx, cy, cId, gi) => {
+    const key = rakeKeyFor(roleSeq, cx, cy)
+    if (!key) return 0
+    const group = rakeGroups.get(key) ?? []
+    const idx = group.findIndex(e => e.cId === cId && e.gi === gi)
+    return idx < 0 ? 0 : idx
+  }
+
   const isConnectTool      = store.tool === 'connectConstraint'
 
   return (
@@ -738,12 +886,70 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
 
         const arcs = EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType)
           ? (c.sequences || []).flatMap((seq, gi) => {
+              const markerEnd = c.constraintType === 'subset' && gi === 1 ? 'url(#arrowSubsetSolid)' : undefined
+              // Rake: all-role sequence targeting same fact, ≥3 members or non-adjacent pair
+              const allRole  = seq.every(m => m.kind === 'role')
+              const roleRefs = allRole ? seq.map(m => ({ factId: m.factId, roleIndex: m.roleIndex })) : null
+              const rake     = roleRefs && rakeForRoleSeq(roleRefs, c.x, c.y, getRakeStagger(roleRefs, c.x, c.y, c.id, gi))
+              if (rake) {
+                // Per-tooth highlighting: connector lit if any tooth lit;
+                // spine drawn at base style with an orange overlay from the anchor
+                // to the range of lit tooth attachment points.
+                const litTeeth = rake.teeth.map((_, ti) => isArcHighlighted(gi, ti))
+                const anyLit   = litTeeth.some(Boolean)
+                const connSw   = anyLit ? 2.2 : 1.2, connOp = anyLit ? 1 : 0.75
+                const dx = rake.anchor.x - c.x, dy = rake.anchor.y - c.y
+                const len = Math.sqrt(dx * dx + dy * dy) || 1
+
+                // Highlighted spine segment: anchor → union of lit teeth positions
+                const isHSpine = rake.spineStart.y === rake.spineEnd.y
+                const litSpine = (() => {
+                  const litPos = rake.teeth
+                    .map((t, ti) => litTeeth[ti] ? (isHSpine ? t.from.x : t.from.y) : null)
+                    .filter(p => p !== null)
+                  if (!litPos.length) return null
+                  const anchor  = isHSpine ? rake.anchor.x : rake.anchor.y
+                  const lo = Math.min(anchor, ...litPos), hi = Math.max(anchor, ...litPos)
+                  return isHSpine
+                    ? { x1: lo, y1: rake.anchor.y, x2: hi, y2: rake.anchor.y }
+                    : { x1: rake.anchor.x, y1: lo, x2: rake.anchor.x, y2: hi }
+                })()
+
+                return [
+                  <line key={`${c.id}-g${gi}-rake-conn`}
+                    x1={c.x + dx / len * r0} y1={c.y + dy / len * r0}
+                    x2={rake.anchor.x} y2={rake.anchor.y}
+                    stroke={anyLit ? HIGHLIGHT_ARC_COLOR : color}
+                    strokeWidth={connSw} strokeDasharray="4 2" opacity={connOp}
+                    markerEnd={markerEnd}/>,
+                  <line key={`${c.id}-g${gi}-rake-spine`}
+                    x1={rake.spineStart.x} y1={rake.spineStart.y}
+                    x2={rake.spineEnd.x} y2={rake.spineEnd.y}
+                    stroke={color} strokeWidth={1.2} opacity={0.75}/>,
+                  ...(litSpine ? [
+                    <line key={`${c.id}-g${gi}-rake-spine-lit`}
+                      x1={litSpine.x1} y1={litSpine.y1}
+                      x2={litSpine.x2} y2={litSpine.y2}
+                      stroke={HIGHLIGHT_ARC_COLOR} strokeWidth={2.2} opacity={1}/>
+                  ] : []),
+                  ...rake.teeth.map((t, ti) => {
+                    const litT = litTeeth[ti]
+                    return (
+                      <line key={`${c.id}-g${gi}-rake-t${ti}`}
+                        x1={t.from.x} y1={t.from.y}
+                        x2={t.to.x} y2={t.to.y}
+                        stroke={litT ? HIGHLIGHT_ARC_COLOR : color}
+                        strokeWidth={litT ? 2.2 : 1.2}
+                        opacity={litT ? 1 : 0.75}/>
+                    )
+                  }),
+                ]
+              }
               // Two consecutive roles in the same fact → single arc to the midpoint
               if (seq.length === 2 && seq[0].kind === 'role' && seq[1].kind === 'role') {
                 const mid = consecutiveRoleMidpoint(seq[0].factId, seq[0].roleIndex, seq[1].factId, seq[1].roleIndex, c.x, c.y)
                 if (mid) {
                   const lit = isArcHighlighted(gi, 0) || isArcHighlighted(gi, 1)
-                  const markerEnd = c.constraintType === 'subset' && gi === 1 ? 'url(#arrowSubsetSolid)' : undefined
                   const sw = lit ? 2.2 : 1.2, op = lit ? 1 : 0.75
                   const dx = mid.x - c.x, dy = mid.y - c.y
                   const len = Math.sqrt(dx * dx + dy * dy) || 1
@@ -757,12 +963,36 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
               }
               return seq.map((member, mi) => {
                 const lit = isArcHighlighted(gi, mi)
-                const markerEnd = c.constraintType === 'subset' && gi === 1 ? 'url(#arrowSubsetSolid)' : undefined
                 return memberArcLine(member, `${c.id}-g${gi}-m${mi}`, c.x, c.y, r0,
                   lit ? HIGHLIGHT_ARC_COLOR : color, lit, markerEnd)
               }).filter(Boolean)
             })
           : (c.roleSequences || []).flatMap((seq, gi) => {
+              const dashArray = gi === 1 ? '4 2' : 'none'
+              const markerEnd = c.constraintType === 'subset' && gi === 0 ? 'url(#arrowSubset)' : undefined
+              // Rake: all roles in same fact, ≥3 members or non-adjacent pair
+              const rake = rakeForRoleSeq(seq, c.x, c.y, getRakeStagger(seq, c.x, c.y, c.id, gi))
+              if (rake) {
+                const dx = rake.anchor.x - c.x, dy = rake.anchor.y - c.y
+                const len = Math.sqrt(dx * dx + dy * dy) || 1
+                return [
+                  <line key={`${c.id}-g${gi}-rake-conn`}
+                    x1={c.x + dx / len * r0} y1={c.y + dy / len * r0}
+                    x2={rake.anchor.x} y2={rake.anchor.y}
+                    stroke={color} strokeWidth={1.2} strokeDasharray={dashArray} opacity={0.75}
+                    markerEnd={markerEnd}/>,
+                  <line key={`${c.id}-g${gi}-rake-spine`}
+                    x1={rake.spineStart.x} y1={rake.spineStart.y}
+                    x2={rake.spineEnd.x} y2={rake.spineEnd.y}
+                    stroke={color} strokeWidth={1.2} opacity={0.75}/>,
+                  ...rake.teeth.map((t, ti) => (
+                    <line key={`${c.id}-g${gi}-rake-t${ti}`}
+                      x1={t.from.x} y1={t.from.y}
+                      x2={t.to.x} y2={t.to.y}
+                      stroke={color} strokeWidth={1.2} opacity={0.75}/>
+                  )),
+                ]
+              }
               // Two consecutive roles in the same fact → single arc to the midpoint
               if (seq.length === 2) {
                 const mid = consecutiveRoleMidpoint(seq[0].factId, seq[0].roleIndex, seq[1].factId, seq[1].roleIndex, c.x, c.y)
@@ -773,8 +1003,8 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
                     x1={c.x + dx / len * r0} y1={c.y + dy / len * r0}
                     x2={mid.x} y2={mid.y}
                     stroke={color} strokeWidth={1.2}
-                    strokeDasharray={gi === 1 ? '4 2' : 'none'} opacity={0.75}
-                    markerEnd={c.constraintType === 'subset' && gi === 0 ? 'url(#arrowSubset)' : undefined}/>]
+                    strokeDasharray={dashArray} opacity={0.75}
+                    markerEnd={markerEnd}/>]
                 }
               }
               return seq.map((ref, ri) => {
@@ -789,8 +1019,8 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
                     x1={c.x + dx / len * r0} y1={c.y + dy / len * r0}
                     x2={rc.x} y2={rc.y}
                     stroke={color} strokeWidth={1.2}
-                    strokeDasharray={gi === 1 ? '4 2' : 'none'} opacity={0.75}
-                    markerEnd={c.constraintType === 'subset' && gi === 0 ? 'url(#arrowSubset)' : undefined}/>
+                    strokeDasharray={dashArray} opacity={0.75}
+                    markerEnd={markerEnd}/>
                 )
               }).filter(Boolean)
             })
@@ -808,6 +1038,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu }
         return (
           <g key={c.id}
             className="selectable-group"
+            opacity={noteSubjectIds != null && !noteSubjectIds.has(c.id) ? 0.12 : 1}
             onMouseDown={(e) => {
               e.stopPropagation()
               if (e.button !== 0 || e.detail >= 2) return  // skip second click of double-click

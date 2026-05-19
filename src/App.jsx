@@ -24,6 +24,8 @@ function useKeyboardShortcuts() {
       if (e.key === 'Escape') {
         if (store.pendingTargetPick) { store.cancelTargetPick(); return }
         if (store.queryEditDraft) { store.cancelQueryEdit(); return }
+        if (store.noteConnectorDraft)     { store.cancelNoteConnector(); return }
+        if (store.noteRemoveSubjectDraft) { store.cancelNoteRemoveSubject(); return }
         store.abandonSequenceConstruction()
         store.clearLinkDraft()
         store.clearSelection()
@@ -139,6 +141,7 @@ function useKeyboardShortcuts() {
           return
         }
         if (!selectedId) return
+        if (selectedKind === 'note')       { store.deleteNote(selectedId); return }
         if (selectedKind === 'constraint') { store.deleteConstraint(selectedId); return }
         if (selectedKind === 'subtype') { store.deleteSubtype(selectedId); return }
         store.removeElementFromDiagram(selectedId, activeDiagramId)
@@ -177,6 +180,7 @@ function useKeyboardShortcuts() {
       if (e.ctrlKey || e.metaKey || e.altKey) return
 
       if (e.key === 's' || e.key === 'S') { store.setTool('select'); return }
+      if (e.key === 'n' || e.key === 'N') { store.setTool('addNote'); return }
       if (e.key === 'e' || e.key === 'E') { store.setTool('addEntity'); return }
       if (e.key === 'v' || e.key === 'V') { store.setTool('addValue'); return }
       if (e.key === 'f' || e.key === 'F') { store.setTool('addFact2'); return }

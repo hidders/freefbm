@@ -11,6 +11,7 @@ function snapshot(state) {
     constraints:    state.constraints,
     diagrams:       state.diagrams,
     activeDiagramId: state.activeDiagramId,
+    queryEditDraft: state.queryEditDraft,
   })
 }
 
@@ -29,7 +30,8 @@ export function useUndoRedo() {
         state.subtypes       === prev.subtypes       &&
         state.constraints    === prev.constraints    &&
         state.diagrams       === prev.diagrams       &&
-        state.activeDiagramId === prev.activeDiagramId
+        state.activeDiagramId === prev.activeDiagramId &&
+        state.queryEditDraft  === prev.queryEditDraft
       ) return
       const snap = snapshot(state)
       if (snap === lastSnap.current) return

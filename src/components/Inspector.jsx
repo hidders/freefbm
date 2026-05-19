@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useLayoutEffect, useEffect } from
 import { useOrmStore } from '../store/ormStore'
 import { getDisplayReading, makeImplicitLinkFact } from './FactTypeNode'
 import { RingMiniSymbol } from './ConstraintNodes'
+import { NoteConnectorIcon } from './ToolPanel'
 import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
 import { constraintMaxSequences, suppressRolePosition } from '../utils/constraintRules.js'
 import { PROFILES, PROFILE_MAP, getDatatypeById } from '../data/datatypeProfiles'
@@ -551,9 +552,24 @@ function ObjectTypeInspector({ ot }) {
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>{ot.kind === 'entity' ? 'Entity Type' : 'Value Type'}</InspectorTitle>
       <ValidationErrorStrip elementId={ot.id} store={store}/>
+      {ot._refExpansion && (() => {
+        const parentEntity = store.objectTypes.find(o => o.id === ot._refExpansion)
+        return parentEntity ? (
+          <div style={{ marginBottom: 10 }}>
+            <button
+              onClick={() => store.select(parentEntity.id, 'entity')}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                color: 'var(--accent)', fontSize: 11 }}>
+              ← {parentEntity.name || 'Entity'}
+            </button>
+          </div>
+        ) : null
+      })()}
       <Row>
         <Label>Name</Label>
-        <TInput value={ot.name} onChange={v => store.updateObjectType(ot.id, { name: v })}/>
+        {ot._refExpansion
+          ? <span style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>{ot.name}</span>
+          : <TInput value={ot.name} onChange={v => store.updateObjectType(ot.id, { name: v })}/>}
       </Row>
       {ot.kind === 'entity' && (
         <Row>
@@ -562,11 +578,51 @@ function ObjectTypeInspector({ ot }) {
             onChange={v => store.updateObjectType(ot.id, { refMode: v })}/>
         </Row>
       )}
+      {ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none' && (() => {
+        const impliedVt = store.objectTypes.find(o => o._refExpansion === ot.id)
+        const impliedFt = store.facts.find(f => f._refExpansion === ot.id)
+        const chip = (label, onClick) => (
+          <button
+            onClick={onClick}
+            style={{
+              fontSize: 10, padding: '1px 6px',
+              background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
+              borderRadius: 3, cursor: onClick ? 'pointer' : 'default',
+              color: onClick ? 'var(--ink-2)' : 'var(--ink-muted)',
+              fontStyle: onClick ? 'normal' : 'italic',
+            }}
+            onMouseEnter={onClick ? e => {
+              e.currentTarget.style.background = 'var(--accent)'
+              e.currentTarget.style.color = 'white'
+              e.currentTarget.style.borderColor = 'var(--accent)'
+            } : undefined}
+            onMouseLeave={onClick ? e => {
+              e.currentTarget.style.background = 'var(--bg-raised)'
+              e.currentTarget.style.color = 'var(--ink-2)'
+              e.currentTarget.style.borderColor = 'var(--border-soft)'
+            } : undefined}
+          >{label}</button>
+        )
+        return (
+          <div style={{ display: 'flex', gap: 5, padding: '0 8px 8px', flexWrap: 'wrap' }}>
+            {chip('Implied Fact Type', impliedFt ? () => store.select(impliedFt.id, 'fact') : undefined)}
+            {chip('Implied Value Type', impliedVt ? () => store.select(impliedVt.id, 'value') : undefined)}
+          </div>
+        )
+      })()}
       {(ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none')) && (
-        <DatatypeField
-          assignment={ot.datatypeAssignment}
-          onSet={a => store.setValueTypeDatatype(ot.id, a)}
-        />
+        ot._refExpansion
+          ? <Row><Label>Datatype</Label>
+              <span style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic' }}>
+                {ot.datatypeAssignment
+                  ? `${ot.datatypeAssignment.datatypeId ?? 'assigned'}`
+                  : 'inherited from entity'}
+              </span>
+            </Row>
+          : <DatatypeField
+              assignment={ot.datatypeAssignment}
+              onSet={a => store.setValueTypeDatatype(ot.id, a)}
+            />
       )}
 
       <Section title="Constraints">
@@ -1439,16 +1495,52 @@ function FactPresentationSubsection({ fact, store }) {
             onChange={v => {
               const patch = { nestedReading: v }
               if (!v && fact.readingAbove) { patch.readingAbove = false; patch.readingOffsetAbove = null; patch.readingOffsetBelow = null }
-              store.updateFact(fact.id, patch)
+              store.updateFactLayout(fact.id, patch)
             }}
           />
         )}
       </Row>
       {(() => {
         const isVert = fact.orientation === 'vertical'
-        const disabled = fact.objectified && !isVert && !fact.nestedReading
         const storedOff = fact.readingAbove ? fact.readingOffsetAbove : fact.readingOffsetBelow
-        const posValue = storedOff !== null ? 'free' : fact.readingAbove ? 'above' : 'below'
+        const posValue  = storedOff !== null ? 'free' : fact.readingAbove ? 'above' : 'below'
+
+        // Horizontal non-nested objectified fact: reading can only go Below the outer
+        // box; "Above" is not a valid option. "Free" reflects a user-dragged position.
+        if (fact.objectified && !isVert && !fact.nestedReading) {
+          const horizValue = storedOff !== null ? 'free' : 'below'
+          const horizOpts  = [
+            { value: 'below', label: 'Below' },
+            { value: 'free',  label: 'Free'  },
+          ]
+          return (
+            <Row>
+              {horizOpts.map(opt => (
+                <label key={opt.value} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  fontSize: 12, marginBottom: 3,
+                  cursor: opt.value === 'free' ? 'not-allowed' : 'pointer',
+                  color: 'var(--ink-2)',
+                }}>
+                  <input type="radio"
+                    name={`rpos-${fact.id}`}
+                    value={opt.value}
+                    checked={horizValue === opt.value}
+                    disabled={opt.value === 'free'}
+                    onChange={() => store.updateFactLayout(fact.id, {
+                      readingAbove: false,
+                      readingOffsetAbove: null,
+                      readingOffsetBelow: null,
+                    })}
+                    style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: opt.value === 'free' ? 'not-allowed' : 'pointer' }}
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </Row>
+          )
+        }
+
         const opts = [
           { value: 'below', label: isVert ? 'Left'  : 'Below' },
           { value: 'above', label: isVert ? 'Right' : 'Above' },
@@ -1460,22 +1552,20 @@ function FactPresentationSubsection({ fact, store }) {
               <label key={opt.value} style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 fontSize: 12, marginBottom: 3,
-                cursor: (disabled || opt.value === 'free') ? 'not-allowed' : 'pointer',
-                color: disabled ? 'var(--ink-muted)' : 'var(--ink-2)',
+                cursor: opt.value === 'free' ? 'not-allowed' : 'pointer',
+                color: 'var(--ink-2)',
               }}>
                 <input type="radio"
                   name={`rpos-${fact.id}`}
                   value={opt.value}
                   checked={posValue === opt.value}
-                  disabled={disabled || opt.value === 'free'}
-                  onChange={() => {
-                    store.updateFactLayout(fact.id, {
-                      readingAbove: opt.value === 'above',
-                      readingOffsetAbove: null,
-                      readingOffsetBelow: null,
-                    })
-                  }}
-                  style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: (disabled || opt.value === 'free') ? 'not-allowed' : 'pointer' }}
+                  disabled={opt.value === 'free'}
+                  onChange={() => store.updateFactLayout(fact.id, {
+                    readingAbove: opt.value === 'above',
+                    readingOffsetAbove: null,
+                    readingOffsetBelow: null,
+                  })}
+                  style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: opt.value === 'free' ? 'not-allowed' : 'pointer' }}
                 />
                 {opt.label}
               </label>
@@ -1624,6 +1714,19 @@ function FactInspector({ fact }) {
     <div style={{ marginBottom: 18 }}>
       {!fact.objectified && <InspectorTitle>Fact Type ({fact.arity}-ary)</InspectorTitle>}
       <ValidationErrorStrip elementId={fact.id} store={store}/>
+      {fact._refExpansion && (() => {
+        const parentEntity = store.objectTypes.find(o => o.id === fact._refExpansion)
+        return parentEntity ? (
+          <div style={{ marginBottom: 10 }}>
+            <button
+              onClick={() => store.select(parentEntity.id, 'entity')}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                color: 'var(--accent)', fontSize: 11 }}>
+              ← {parentEntity.name || 'Entity'}
+            </button>
+          </div>
+        ) : null
+      })()}
       {/* Arity control */}
       <Row>
         <Label>Arity</Label>
@@ -1698,21 +1801,21 @@ function FactInspector({ fact }) {
                      )}
                   </div>
                   <ReadingEditor
-                    fact={fact} store={store}
-                    parts={r.parts}
-                    roleOrder={r.roleOrder}
-                    onUpdatePart={(i, val) => {
-                      if (r.isDefault) {
-                        const newParts = [...r.parts]
-                        newParts[i] = val
-                        store.updateFact(fact.id, { readingParts: newParts })
-                      } else {
-                        const newParts = [...r.parts]
-                        newParts[i] = val
-                        store.updateAlternativeReading(fact.id, r.roleOrder, newParts)
-                      }
-                    }}
-                  />
+                      fact={fact} store={store}
+                      parts={r.parts}
+                      roleOrder={r.roleOrder}
+                      onUpdatePart={(i, val) => {
+                        if (r.isDefault) {
+                          const newParts = [...r.parts]
+                          newParts[i] = val
+                          store.updateFact(fact.id, { readingParts: newParts })
+                        } else {
+                          const newParts = [...r.parts]
+                          newParts[i] = val
+                          store.updateAlternativeReading(fact.id, r.roleOrder, newParts)
+                        }
+                      }}
+                    />
                 </Row>
               )
             })}
@@ -2284,6 +2387,115 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
 }
 
 // ── Subtype inspector ─────────────────────────────────────────────────────────
+function NoteInspector({ note }) {
+  const store = useOrmStore()
+
+  const connectorLabel = (targetId) => {
+    if (targetId?.includes('_il_')) {
+      const [factId, riStr] = targetId.split('_il_')
+      const f  = store.facts.find(f => f.id === factId)
+      const ot = store.objectTypes.find(o => o.id === f?.roles[Number(riStr)]?.objectTypeId)
+      return `${f?.objectifiedName || '(fact)'} ↔ ${ot?.name || '?'} (implied)`
+    }
+    const st = store.subtypes.find(s => s.id === targetId)
+    if (st) {
+      const sub = store.objectTypes.find(o => o.id === st.subId)?.name
+                || store.facts.find(f => f.id === st.subId)?.objectifiedName || '?'
+      const sup = store.objectTypes.find(o => o.id === st.superId)?.name
+                || store.facts.find(f => f.id === st.superId)?.objectifiedName || '?'
+      return `${sub} ⊂ ${sup}`
+    }
+    const ot = store.objectTypes.find(o => o.id === targetId)
+    if (ot) return ot.name || '(entity)'
+    const f  = store.facts.find(f => f.id === targetId)
+    if (f) return f.objectifiedName || '(fact)'
+    const c  = store.constraints.find(c => c.id === targetId)
+    if (c) return c.constraintType || '(constraint)'
+    return '(deleted)'
+  }
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Note</InspectorTitle>
+      <Row>
+        <Label>Text</Label>
+        <textarea
+          value={note.text ?? ''}
+          onChange={e => store.updateNote(note.id, { text: e.target.value })}
+          rows={6}
+          placeholder="Enter note text…"
+          style={{
+            width: '100%', resize: 'vertical', boxSizing: 'border-box',
+            fontSize: 12, fontFamily: 'inherit', lineHeight: 1.5,
+            border: '1px solid var(--border)', borderRadius: 3,
+            padding: '5px 7px', background: 'var(--bg-raised)',
+            color: 'var(--ink-2)', outline: 'none',
+          }}
+        />
+      </Row>
+      <Section title="Size">
+        <Row>
+          <Label>Width</Label>
+          <input type="number" min={80} max={800} step={10}
+            value={note.w}
+            onChange={e => { const v = Number(e.target.value); if (v >= 80) store.updateNote(note.id, { w: v }) }}
+            style={{ width: '100%', fontSize: 12, padding: '3px 6px',
+              border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg-raised)', color: 'var(--ink-2)' }}
+          />
+        </Row>
+        <Row>
+          <Label>Height</Label>
+          <input type="number" min={40} max={600} step={10}
+            value={note.h}
+            onChange={e => { const v = Number(e.target.value); if (v >= 40) store.updateNote(note.id, { h: v }) }}
+            style={{ width: '100%', fontSize: 12, padding: '3px 6px',
+              border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg-raised)', color: 'var(--ink-2)' }}
+          />
+        </Row>
+      </Section>
+
+      {(note.connectors ?? []).length > 0 && (
+        <Section title="Connections">
+          {(note.connectors ?? []).map(conn => (
+            <div key={conn.id} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              marginBottom: 4, padding: '3px 0',
+            }}>
+              <span style={{ flexShrink: 0, lineHeight: 0, transform: 'scale(0.85)', transformOrigin: 'left center' }}>
+                <NoteConnectorIcon />
+              </span>
+              <span style={{ flex: 1, fontSize: 11, color: 'var(--ink-2)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {connectorLabel(conn.targetId)}
+              </span>
+              <button
+                onClick={() => store.removeNoteConnector(note.id, conn.id)}
+                title="Remove connection"
+                style={{
+                  background: 'none', border: '1px solid #e0b0a8',
+                  borderRadius: 3, cursor: 'pointer',
+                  fontSize: 9, color: 'var(--danger)', padding: '1px 5px', flexShrink: 0,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--danger)' }}
+              >×</button>
+            </div>
+          ))}
+        </Section>
+      )}
+      {(note.connectors ?? []).length === 0 && (
+        <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontStyle: 'italic', marginBottom: 10 }}>
+          Use the note's context menu to add or remove subjects.
+        </div>
+      )}
+
+      <div style={{ marginTop: 8 }}>
+        <DangerBtn onClick={() => store.deleteNote(note.id)}>Delete</DangerBtn>
+      </div>
+    </div>
+  )
+}
+
 function SubtypeInspector({ st }) {
   const store = useOrmStore()
   const playerName = (id) => {
@@ -3001,6 +3213,8 @@ export default function Inspector() {
   }, [width])
 
   const ot  = store.objectTypes.find(o => o.id === selectedId)
+  const activeDiag = store.diagrams.find(d => d.id === store.activeDiagramId)
+  const note = selectedKind === 'note' ? (activeDiag?.notes ?? []).find(n => n.id === selectedId) : null
   const rawFact = store.facts.find(f => f.id === selectedId)
   // Merge per-diagram position overrides so the inspector sees the same values as the canvas
   const activeDiagramPos = store.diagrams?.find(d => d.id === store.activeDiagramId)?.positions ?? {}
@@ -3108,6 +3322,7 @@ export default function Inspector() {
         }}
       />
 
+      {note && <NoteInspector note={note} />}
       {ot   && <ObjectTypeInspector ot={ot} />}
       {selectedKind === 'implicitLink' && fact && selectedImplicitLinkRole
         ? <ImplicitLinkRoleInspector parentFact={fact} roleIndex={selectedImplicitLinkRole.roleIndex} ilRoleIndex={selectedImplicitLinkRole.ilRoleIndex} />

@@ -3,6 +3,7 @@ import { useOrmStore } from '../store/ormStore'
 import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { roleAnchor } from '../utils/geometry'
+import { RAKE_TOOTH, RAKE_STAGGER, RAKE_COMFORT } from '../constants.js'
 
 const VR_DEFAULT_OFFSET = { dx: 0, dy: -50 }
 const VR_FONT      = "'Segoe UI', Helvetica, Arial, sans-serif"
@@ -58,8 +59,10 @@ export function displayRoleOrder(fact) {
   return ro
 }
 
-/** Returns the bounding rect of the outer entity box drawn around an objectified fact. */
-export function nestedFactBounds(fact) {
+/** Returns the bounding rect of the outer entity box drawn around an objectified fact.
+ *  rakeMinPad: optional minimum padding on each side to contain rake heads. */
+export function nestedFactBounds(fact, rakeMinPad = {}) {
+  const { top: rT = 0, bottom: rB = 0, left: rL = 0, right: rR = 0 } = rakeMinPad
   const PAD  = 10
   const n    = Math.max(fact.arity, 1)
   const isV  = fact.orientation === 'vertical'
@@ -83,8 +86,8 @@ export function nestedFactBounds(fact) {
 
   if (isV) {
     const totalH    = n * ROLE_W + (n - 1) * ROLE_GAP
-    const padLeft   = barsBelow ? barPad : PAD
-    const padRight  = barsBelow ? PAD    : barPad
+    const padLeft   = Math.max(barsBelow ? barPad : PAD, rL)
+    const padRight  = Math.max(barsBelow ? PAD    : barPad, rR)
     const padBottom = fact.nestedReading
       ? Math.max(PAD, READING_TIGHT_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
       : PAD
@@ -103,12 +106,12 @@ export function nestedFactBounds(fact) {
   const barsAbove = hasAnyBar && !barsBelow
   const readingAbovePad = Math.ceil(NESTED_READING_LINE_H * 1.5) + NESTED_READING_PAD_BELOW
   const padTop = readingAboveActive
-    ? Math.max(barsAbove ? barPad : PAD, readingAbovePad)
-    : (barsBelow ? PAD : barPad)
+    ? Math.max(barsAbove ? barPad : PAD, readingAbovePad, rT)
+    : Math.max(barsBelow ? PAD : barPad, rT)
   const baseBottom = barsBelow ? barPad : PAD
   const padBottom = (fact.nestedReading && !readingAboveActive)
-    ? Math.max(baseBottom, readingPad)
-    : baseBottom
+    ? Math.max(baseBottom, readingPad, rB)
+    : Math.max(baseBottom, rB)
   return {
     left:   fact.x - ow / 2,
     right:  fact.x + ow / 2,
@@ -391,7 +394,7 @@ export function factBounds(fact) {
   }
 }
 
-export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleContextMenu, onBarContextMenu, onRoleValueClick, onNestedVrClick, onRoleCardinalityClick, onNestedCrClick, onIfContextMenu, onRoleValueContextMenu, onRoleCrContextMenu, onNestedVrContextMenu, onNestedCrContextMenu, isShared, dimObjectification, dimInnerFact }) {
+export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleContextMenu, onBarContextMenu, onRoleValueClick, onNestedVrClick, onRoleCardinalityClick, onNestedCrClick, onIfContextMenu, onRoleValueContextMenu, onRoleCrContextMenu, onNestedVrContextMenu, onNestedCrContextMenu, isShared, dimObjectification, dimInnerFact, visibleConstraints, dimInternalConstraints }) {
   const store = useOrmStore()
   const isImplicitSelected = fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact._parentFactId && store.selectedImplicitLink === fact._implicitRoleIndex
   const hasSelectedImplicitLink = !fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact.id
@@ -410,7 +413,19 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const isConnectorTool = isAssignTool || isSubtypeTool || store.tool === 'connectConstraint'
   const qd = store.queryEditDraft
   const inQueryEdit = !!qd
+  const isRefExpansion = !!fact._refExpansion
   const hasError = !fact._implicit && (store.validationErrors || []).some(e => e.elementId === fact.id)
+
+  // When an OT copy is the pending first click, only the role boxes whose assigned OT
+  // matches the pending original are selectable next — all others are dimmed.
+  const querySelectableRoles = (() => {
+    if (!inQueryEdit || !qd.pendingClick || qd.pendingClick.type !== 'otCopy') return null
+    const pendingOrigId = qd.copies.find(c => c.id === qd.pendingClick.id)?.originalId
+    if (!pendingOrigId) return null
+    const s = new Set()
+    fact.roles.forEach((r, ri) => { if (r.objectTypeId === pendingOrigId) s.add(ri) })
+    return s
+  })()
   // Roles highlighted because the selected constraint's queries include them
   const { queryHighlightRoles, nestedInQueryHighlight } = (() => {
     if (inQueryEdit) return { queryHighlightRoles: null, nestedInQueryHighlight: false }
@@ -580,11 +595,12 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     e.stopPropagation()
     if (inQueryEdit) return
     if (fact._implicit) return
+    if (fact._refExpansion) return
     if (store.sequenceConstruction || inConstruction) return
     if (store.tool !== 'select') return
     store.setTool('assignRole')
     store.setLinkDraft({ type: 'roleAssign', factId: fact.id, roleIndex, autoReturn: true })
-  }, [store, fact.id, fact._implicit, inConstruction, inQueryEdit])
+  }, [store, fact.id, fact._implicit, fact._refExpansion, inConstruction, inQueryEdit])
 
   const handleRoleContextMenu = useCallback((roleIndex, e) => {
     e.preventDefault(); e.stopPropagation()
@@ -723,6 +739,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         return
       }
       // No source role yet (draft came from an object type click) → set this role as source
+      // Roles of ref-expansion facts cannot be reconnected
+      if (fact._refExpansion) return
       store.setLinkDraft({ type: 'roleAssign', factId: fact.id, roleIndex, autoReturn: draft?.autoReturn ?? true })
       return
     }
@@ -1326,14 +1344,14 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       const _ctx = _vrCanvas.getContext('2d')
       _ctx.font = `14px ${VR_FONT}`
       const tw = _ctx.measureText(text).width
-      const bounds = fact.objectified ? nestedFactBounds(fact) : factBounds(fact)
+      const bounds = fact.objectified ? nestedFactBounds(fact, nestedRakePad) : factBounds(fact)
       return fact.readingAbove
         ? bounds.right - fact.x + tw / 2 + 10
         : bounds.left  - fact.x - tw / 2 - 10
     })()
     const AUTO_DY = isVertical ? 0
       : fact.readingAbove ? -(ROLE_H / 2 + 18)
-      : fact.objectified  ? nestedFactBounds(fact).bottom - fact.y + (isShared ? 18 : 10)
+      : fact.objectified  ? nestedFactBounds(fact, nestedRakePad).bottom - fact.y + (isShared ? 22 : 14)
       : ROLE_H / 2 + 18
     const defaultOff = { dx: AUTO_DX, dy: AUTO_DY }
     const storedOff = fact.readingAbove ? fact.readingOffsetAbove : fact.readingOffsetBelow
@@ -1415,7 +1433,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     return (
       <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle"
         fontSize={14} fill="var(--ink-3)" fontFamily={FONT}
-        style={{ cursor: isDraggingReading ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
+        style={{ cursor: isDraggingReading ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: inQueryEdit ? 'none' : undefined }}
         onMouseDown={e => {
           e.stopPropagation()
           readingWasDragged.current = false
@@ -1492,6 +1510,65 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     return                                      { x: roleCX,      y: topY + ROLE_H }  // S
   }
 
+  // ── Rake padding for objectified facts ────────────────────────────────────────
+  // When external-constraint connectors form rake heads next to the role boxes of an
+  // objectified fact the outer entity box must be large enough to contain them.
+  const nestedRakePad = (() => {
+    if (!fact.objectified) return { top: 0, bottom: 0, left: 0, right: 0 }
+    const hasAnyBar_r    = fact.uniqueness.length > 0
+    const barsBelow_r    = !!fact.uniquenessBelow
+    // For horizontal facts, track whether a nested reading occupies the top or bottom region
+    const readingAbove_r = fact.nestedReading && !!fact.readingAbove
+    const readingBelow_r = fact.nestedReading && !fact.readingAbove
+    const counts = { T: 0, B: 0, L: 0, R: 0 }
+    for (const c of (visibleConstraints ?? store.constraints)) {
+      const seqGroups = [
+        ...(c.sequences || []).map(seq =>
+          seq.every(m => m.kind === 'role')
+            ? seq.map(m => ({ factId: m.factId, roleIndex: m.roleIndex }))
+            : null
+        ),
+        ...(c.roleSequences || []),
+      ]
+      for (const roleSeq of seqGroups) {
+        if (!roleSeq || roleSeq.length < 2) continue
+        if (!roleSeq.every(m => m.factId === fact.id)) continue
+        if (roleSeq.length === 2) {
+          const dro = displayRoleOrder(fact)
+          const p0 = dro.indexOf(roleSeq[0].roleIndex)
+          const p1 = dro.indexOf(roleSeq[1].roleIndex)
+          if (Math.abs(p0 - p1) === 1) continue
+        }
+        if (fact.orientation === 'vertical') {
+          const lx = fact.x - ROLE_H / 2, rx = fact.x + ROLE_H / 2
+          counts[(lx - c.x) ** 2 < (rx - c.x) ** 2 ? 'L' : 'R']++
+        } else {
+          const ty = fact.y - ROLE_H / 2, by = fact.y + ROLE_H / 2
+          counts[(ty - c.y) ** 2 < (by - c.y) ** 2 ? 'T' : 'B']++
+        }
+      }
+    }
+    // Minimum padding from role-box edge needed to contain n rakes on a given side.
+    // When a nested reading occupies the same side it must clear the outermost rake
+    // spine, so extra room equal to the reading line height plus two margins is added.
+    // Otherwise, RAKE_COMFORT of breathing room is left above the outermost spine.
+    const minPad = (n, sideHasBars, hasReadingOnSide = false) => {
+      if (n === 0) return 0
+      const barExt     = sideHasBars ? BAR_MARGIN + BAR_SPACING * (multiCount + 1) : 0
+      const rakeExtent = RAKE_TOOTH + (n - 1) * RAKE_STAGGER
+      if (hasReadingOnSide) {
+        return barExt + rakeExtent + NESTED_READING_LINE_H + 2 * NESTED_READING_PAD_BELOW
+      }
+      return barExt + rakeExtent + RAKE_COMFORT
+    }
+    return {
+      top:    minPad(counts.T, !barsBelow_r && hasAnyBar_r, readingAbove_r),
+      bottom: minPad(counts.B,  barsBelow_r && hasAnyBar_r, readingBelow_r),
+      left:   minPad(counts.L,  barsBelow_r && hasAnyBar_r, false),
+      right:  minPad(counts.R, !barsBelow_r && hasAnyBar_r, false),
+    }
+  })()
+
   // ── Nested fact VR/CR annotations (computed here so they render outside the glow group) ──
   const nestedVrAnnotation = !fact.objectified ? null : (() => {
     const canHaveVr = fact.objectifiedKind === 'value'
@@ -1499,7 +1576,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     if (!canHaveVr) return null
     const vr = formatValueRange(fact.valueRange)
     if (!vr) return null
-    const nb = nestedFactBounds(fact)
+    const nb = nestedFactBounds(fact, nestedRakePad)
     const nbCx = (nb.left + nb.right) / 2
     const nbCy = (nb.top + nb.bottom) / 2
     const nbHW = (nb.right - nb.left) / 2
@@ -1522,7 +1599,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         const isNvSelected = store.selectedValueRange?.nestedFactId === fact.id
         const nvFill = isNvSelected ? 'var(--accent)' : 'var(--col-constraint)'
         return (
-          <g key="nested-vr" className="selectable-group" style={{ filter: isNvSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+          <g key="nested-vr" className="selectable-group" style={{ filter: isNvSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined, pointerEvents: inQueryEdit ? 'none' : undefined }}>
             <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
               stroke={nvFill} strokeWidth={1.5}
               strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
@@ -1560,7 +1637,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const nestedCrAnnotation = !fact.objectified ? null : (() => {
     const cr = formatCardinalityRange(fact.cardinalityRange)
     if (!cr) return null
-    const nb = nestedFactBounds(fact)
+    const nb = nestedFactBounds(fact, nestedRakePad)
     const nbCx = (nb.left + nb.right) / 2
     const nbCy = (nb.top + nb.bottom) / 2
     const nbHW = (nb.right - nb.left) / 2
@@ -1583,7 +1660,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         const isNcSelected = store.selectedCardinalityRange?.nestedFactId === fact.id
         const ncFill = isNcSelected ? 'var(--accent)' : 'var(--col-constraint)'
         return (
-          <g key="nested-cr" className="selectable-group" style={{ filter: isNcSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+          <g key="nested-cr" className="selectable-group" style={{ filter: isNcSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined, pointerEvents: inQueryEdit ? 'none' : undefined }}>
             <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
               stroke={ncFill} strokeWidth={1.5}
               strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
@@ -1632,10 +1709,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         style={{ pointerEvents: 'none' }}/>
     )}
       {/* ── Main fact-type group (role boxes + bars + reading) ───────────────── */}
-      <g className="selectable-group" onMouseDown={handleMouseDown} onContextMenu={onContextMenu}
+      <g className={inQueryEdit && fact.objectified ? 'selectable-group qe-selectable' : 'selectable-group'}
+        onMouseDown={handleMouseDown} onContextMenu={onContextMenu}
         style={{ cursor: (() => {
           if (fact._implicit) return isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab'
-          if (inQueryEdit) return 'not-allowed'
+          if (inQueryEdit) return fact.objectified ? 'pointer' : 'default'
           if (store.pendingTargetPick) return fact.objectified ? 'pointer' : 'not-allowed'
           if (isElementSelecting(store.tool, store.sequenceConstruction)) {
             if (store.sequenceConstruction) return fact.objectified ? 'pointer' : 'not-allowed'
@@ -1692,8 +1770,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           : 0
 
         if (isVertical) {
-          const padLeft   = barsBelow ? barPad : PAD
-          const padRight  = barsBelow ? PAD    : barPad
+          const padLeft   = Math.max(barsBelow ? barPad : PAD, nestedRakePad.left)
+          const padRight  = Math.max(barsBelow ? PAD    : barPad, nestedRakePad.right)
           const READING_TIGHT_GAP = 4
           const padBottom = fact.nestedReading
             ? Math.max(PAD, READING_TIGHT_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
@@ -1742,7 +1820,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                     textAnchor="middle" dominantBaseline="middle"
                     fontSize={18} fontFamily={FONT}
                     fill={nestedTextCol}
-                    style={{ cursor: nameLive ? 'grabbing' : isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'none' : 'auto' }}
+                    style={{ cursor: nameLive ? 'grabbing' : isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: inQueryEdit || isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'none' : 'auto' }}
                     onMouseDown={e => {
                       e.stopPropagation()
                       nameWasDragged.current = false
@@ -1889,24 +1967,24 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         const readingPad = READING_TIGHT_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW
         const readingAboveActive = fact.nestedReading && !!fact.readingAbove
         const barsAbove = hasAnyBar && !barsBelow
-        // padTop when reading is above: enough room for reading text + bars if present.
-        // Reading centre sits at fact.y - ROLE_H/2 - NESTED_READING_LINE_H (matching the
-        // AUTO_DY used for regular fact-type readings), so reading top is 1.5 line-heights
-        // above the role-box top.
+        // Baseline padTop for above reading (no rakes): outer box extends far enough that
+        // the reading top is NESTED_READING_PAD_BELOW from the outer box top.
         const readingAbovePad = Math.ceil(NESTED_READING_LINE_H * 1.5) + NESTED_READING_PAD_BELOW
         const padTop = readingAboveActive
-          ? Math.max(barsAbove ? barPad : PAD, readingAbovePad)
-          : (barsBelow ? PAD : barPad)
+          ? Math.max(barsAbove ? barPad : PAD, readingAbovePad, nestedRakePad.top)
+          : Math.max(barsBelow ? PAD : barPad, nestedRakePad.top)
         const baseBottom = barsBelow ? barPad : PAD
         const padBottom = (fact.nestedReading && !readingAboveActive)
-          ? Math.max(baseBottom, readingPad)
-          : baseBottom
+          ? Math.max(baseBottom, readingPad, nestedRakePad.bottom)
+          : Math.max(baseBottom, nestedRakePad.bottom)
         const ow = Math.max(totalW + PAD * 2, readingTextW + PAD * 2)
         const oh = ROLE_H + padTop + padBottom
         const nameY    = fact.y - ROLE_H / 2 - padTop - (nestedRefText ? 22 : 10)
+        // Reading is anchored to the outer box edge so it stays just inside the box
+        // even when the box expands to accommodate rakes on the same side.
         const readingY = readingAboveActive
-          ? fact.y - ROLE_H / 2 - NESTED_READING_LINE_H
-          : fact.y + ROLE_H / 2 + READING_TIGHT_GAP + NESTED_READING_LINE_H / 2
+          ? fact.y - ROLE_H / 2 - padTop + NESTED_READING_PAD_BELOW + NESTED_READING_LINE_H / 2
+          : fact.y + ROLE_H / 2 + padBottom - NESTED_READING_PAD_BELOW - NESTED_READING_LINE_H / 2
         const nameOff  = nameLive ?? (fact.nameOffset ?? { dx: 0, dy: 0 })
         const nameTx   = fact.x + nameOff.dx
         const nameTy   = nameY  + nameOff.dy
@@ -1946,7 +2024,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                   textAnchor="middle" dominantBaseline="middle"
                   fontSize={18} fontFamily={FONT}
                   fill={nestedTextCol}
-                  style={{ cursor: nameLive ? 'grabbing' : isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'none' : 'auto' }}
+                  style={{ cursor: nameLive ? 'grabbing' : isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: inQueryEdit || isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'none' : 'auto' }}
                   onMouseDown={e => {
                     e.stopPropagation()
                     nameWasDragged.current = false
@@ -2114,7 +2192,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
               const baseRoleOfIL = isBaseRoleOfSelectedImplicitLink(ri)
               const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
               return (
-                  <g key={role.id} className="role-box-group" filter={roleSelected ? 'url(#selectGlow)' : undefined}>
+                  <g key={role.id} className="role-box-group" filter={roleSelected ? 'url(#selectGlow)' : undefined}
+                     opacity={querySelectableRoles !== null && !querySelectableRoles.has(ri) ? 0.2 : 1}>
                    <rect x={leftX_v} y={ry} width={ROLE_H} height={ROLE_W}
                      fill={
                        roleInQueryPattern(ri) || nestedInQueryHighlight ? 'var(--fill-query-in)'
@@ -2150,7 +2229,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           })}
 
           {/* Uniqueness bars (right side) */}
-          <g opacity={isAdjFact ? 0.35 : 1} style={isAdjFact ? { pointerEvents: 'none' } : undefined}>
+          <g opacity={dimInternalConstraints ? 0.15 : isAdjFact ? 0.35 : 1} style={(isAdjFact || inQueryEdit) ? { pointerEvents: 'none' } : undefined}>
           {fact.uniqueness.map((uRoles, ui) => {
             const isEditing = inConstruction && store.uniquenessConstruction?.uIndex === ui
             const displayRoles = isEditing ? ucRoles : uRoles
@@ -2270,7 +2349,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
               const baseRoleOfIL = isBaseRoleOfSelectedImplicitLink(ri)
               const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
               return (
-                  <g key={role.id} className="role-box-group" filter={roleSelected ? 'url(#selectGlow)' : undefined}>
+                  <g key={role.id} className="role-box-group" filter={roleSelected ? 'url(#selectGlow)' : undefined}
+                     opacity={querySelectableRoles !== null && !querySelectableRoles.has(ri) ? 0.2 : 1}>
                    <rect
                      x={rx} y={topY} width={ROLE_W} height={ROLE_H}
                      fill={
@@ -2307,7 +2387,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           })}
 
           {/* Uniqueness bars (above) */}
-          <g opacity={isAdjFact ? 0.35 : 1} style={isAdjFact ? { pointerEvents: 'none' } : undefined}>
+          <g opacity={dimInternalConstraints ? 0.15 : isAdjFact ? 0.35 : 1} style={(isAdjFact || inQueryEdit) ? { pointerEvents: 'none' } : undefined}>
           {fact.uniqueness.map((uRoles, ui) => {
             const isEditing = inConstruction && store.uniquenessConstruction?.uIndex === ui
             const displayRoles = isEditing ? ucRoles : uRoles
@@ -2413,6 +2493,10 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       </g>
     </g>
 
+    {/* Constraint annotations (VR, CR, frequency) — siblings of the main group.
+        Wrapped together so dimInternalConstraints can reach them in one shot. */}
+    <g opacity={dimInternalConstraints ? 0.15 : 1} style={dimInternalConstraints ? { pointerEvents: 'none' } : undefined}>
+
     {/* ── Value range annotations ─────────────────────────────────────────────
         Rendered as siblings (outside the fact type's glow group) so they
         keep their own visual identity regardless of fact-type selection.    */}
@@ -2437,7 +2521,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       const isVrSelected = store.selectedValueRange?.factId === fact.id && store.selectedValueRange?.roleIndex === ri
       const vrFill = isVrSelected ? 'var(--accent)' : 'var(--col-constraint)'
       return (
-        <g key={`vr-${role.id}`} className="selectable-group" style={{ filter: isVrSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+        <g key={`vr-${role.id}`} className="selectable-group" style={{ filter: isVrSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined, pointerEvents: inQueryEdit ? 'none' : undefined }}>
           <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
             stroke={vrFill} strokeWidth={1.5}
             strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
@@ -2496,7 +2580,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       const isCrSelected = store.selectedCardinalityRange?.factId === fact.id && store.selectedCardinalityRange?.roleIndex === ri
       const crFill = isCrSelected ? 'var(--accent)' : 'var(--col-constraint)'
       return (
-        <g key={`cr-${role.id}`} className="selectable-group" style={{ filter: isCrSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+        <g key={`cr-${role.id}`} className="selectable-group" style={{ filter: isCrSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined, pointerEvents: inQueryEdit ? 'none' : undefined }}>
           <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
             stroke={crFill} strokeWidth={1.5}
             strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
@@ -2564,7 +2648,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         onContextMenu: e => { e.preventDefault(); e.stopPropagation(); onIfContextMenu?.(ifItem.id, e) },
       }
       return (
-        <g key={`if-${ifItem.id}`} className="selectable-group" style={{ filter: isIfSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+        <g key={`if-${ifItem.id}`} className="selectable-group" style={{ filter: isIfSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined, pointerEvents: inQueryEdit ? 'none' : undefined }}>
           {(() => {
             const roles = isEditing ? fcRoles : ifItem.roles
             if (roles.length === 2) {
@@ -2660,6 +2744,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         </g>
       )
     })()}
+
+    </g>{/* end dimInternalConstraints wrapper */}
   </>
   )
 }

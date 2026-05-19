@@ -33,11 +33,18 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     e.preventDefault()
     e.stopPropagation()
     store.select(ot.id, ot.kind)
+    const refExpansionItems = ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none' && !ot._refExpansion
+      ? ['---', ot.refModeExpanded
+          ? { label: 'Collapse Reference Mode', action: () => store.collapseRefMode(ot.id) }
+          : { label: 'Expand Reference Mode',   action: () => store.expandRefMode(ot.id)   }]
+      : []
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
         { label: ot.kind === 'entity' ? 'Change to Value Type' : 'Change to Entity Type',
+          disabled: !!ot._refExpansion,
           action: () => store.updateObjectType(ot.id, { kind: ot.kind === 'entity' ? 'value' : 'entity' }) },
+        ...refExpansionItems,
         '---',
         { label: 'Remove from Diagram',
           action: () => store.removeElementFromDiagram(ot.id, store.activeDiagramId) },
@@ -121,10 +128,12 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         { label: 'Change into', submenu: [
             ...(!fact.objectified || fact.objectifiedKind === 'value' ? [
               { label: 'Nested Entity Type',
+                disabled: !!fact._refExpansion,
                 action: () => store.convertToNestedEntity(fact.id) },
             ] : []),
             ...(!fact.objectified || fact.objectifiedKind !== 'value' ? [
               { label: 'Nested Value Type',
+                disabled: !!fact._refExpansion,
                 action: () => store.convertToNestedValue(fact.id) },
             ] : []),
             ...(fact.objectified ? [

@@ -27,7 +27,7 @@ const rHandle = (dir) => ({
 export default function ValidationPanel() {
   const store = useOrmStore()
 
-  const [collapsed,  setCollapsed]  = useState(false)
+  const [collapsed,  setCollapsed]  = useState(true)
   const [animating,  setAnimating]  = useState(false)
   const [resizing,   setResizing]   = useState(false)
   const [size,       setSize]       = useState({ w: INIT_W, h: INIT_H })

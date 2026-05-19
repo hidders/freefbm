@@ -488,6 +488,52 @@ function Divider() {
   return <div style={{ height: 1, background: 'var(--border-soft)', margin: '4px 0' }} />
 }
 
+export function SectionLabel({ children }) {
+  return (
+    <div style={{
+      fontSize: 9, color: 'var(--ink-muted)', letterSpacing: '0.08em',
+      textTransform: 'uppercase', padding: '4px 10px 2px',
+      fontFamily: 'var(--font-mono)',
+    }}>{children}</div>
+  )
+}
+
+export function NoteIcon({ active }) {
+  const FOLD = 4
+  const stroke = active ? '#fff' : '#b8a040'
+  const fill   = active ? 'rgba(255,255,255,0.15)' : '#fffde7'
+  const fold   = active ? 'rgba(255,255,255,0.3)'  : '#f0d060'
+  return (
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
+      <path d={`M 2 2 L ${16 - FOLD} 2 L 16 ${2 + FOLD} L 16 16 L 2 16 Z`}
+        fill={fill} stroke={stroke} strokeWidth={1.5}/>
+      <path d={`M ${16 - FOLD} 2 L ${16 - FOLD} ${2 + FOLD} L 16 ${2 + FOLD} Z`}
+        fill={fold} stroke={stroke} strokeWidth={1}/>
+      <line x1={5} y1={8}  x2={13} y2={8}  stroke={active ? '#fff' : '#999'} strokeWidth={1}/>
+      <line x1={5} y1={11} x2={13} y2={11} stroke={active ? '#fff' : '#999'} strokeWidth={1}/>
+      <line x1={5} y1={14} x2={10} y2={14} stroke={active ? '#fff' : '#999'} strokeWidth={1}/>
+    </svg>
+  )
+}
+
+export function NoteConnectorIcon({ active }) {
+  const stroke = active ? '#fff' : '#b8a040'
+  const fill   = active ? 'rgba(255,255,255,0.15)' : '#fffde7'
+  const fold   = active ? 'rgba(255,255,255,0.3)'  : '#f0d060'
+  const ink    = active ? '#fff' : '#777'
+  const FOLD = 3
+  return (
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
+      <path d={`M 1 3 L ${9 - FOLD} 3 L 9 ${3 + FOLD} L 9 12 L 1 12 Z`}
+        fill={fill} stroke={stroke} strokeWidth={1.4}/>
+      <path d={`M ${9 - FOLD} 3 L ${9 - FOLD} ${3 + FOLD} L 9 ${3 + FOLD} Z`}
+        fill={fold} stroke={stroke} strokeWidth={1}/>
+      <line x1={9} y1={7.5} x2={13} y2={7.5} stroke={ink} strokeWidth={1.2} strokeDasharray="2 1.5"/>
+      <circle cx={15.5} cy={7.5} r={2.2} fill="none" stroke={ink} strokeWidth={1.2}/>
+    </svg>
+  )
+}
+
 export default function ToolPanel() {
   const store = useOrmStore()
   const tool = store.sequenceConstruction ? 'connectConstraint' : store.tool
@@ -709,10 +755,6 @@ export default function ToolPanel() {
           Nested Value Type
         </button>
       </AdvancedSection>
-
-      <Divider />
-      <GroupLabel>Connectors</GroupLabel>
-
       <button
         title="Assign Object Type to Role (A)"
         onClick={() => { store.clearSelection(); store.setTool('assignRole') }}
@@ -737,7 +779,7 @@ export default function ToolPanel() {
         onMouseLeave={e => { if (tool !== 'assignRole') e.currentTarget.style.background = 'transparent' }}
       >
         <RoleIcon active={tool === 'assignRole'} />
-        Role
+        Role connector
       </button>
       <button
         title="Draw Subtype Link (U)"
@@ -763,35 +805,8 @@ export default function ToolPanel() {
         onMouseLeave={e => { if (tool !== 'addSubtype') e.currentTarget.style.background = 'transparent' }}
       >
         <SubtypeIcon active={tool === 'addSubtype'} />
-        Subtype
+        Subtype connector
       </button>
-      <button
-        title="Connect Constraint to Role / Object Type"
-        onClick={() => { store.clearSelection(); store.setTool('connectConstraint') }}
-        style={{
-          width: '100%',
-          padding: '2px 10px',
-          fontSize: 12,
-          textAlign: 'left',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 7,
-          background: tool === 'connectConstraint' ? 'var(--accent)' : 'transparent',
-          color: tool === 'connectConstraint' ? '#fff' : 'var(--ink-2)',
-          border: `1px solid ${tool === 'connectConstraint' ? 'var(--accent)' : 'transparent'}`,
-          borderRadius: 4,
-          fontFamily: 'var(--font-mono)',
-          cursor: 'pointer',
-          transition: 'all 0.12s',
-          whiteSpace: 'nowrap',
-        }}
-        onMouseEnter={e => { if (tool !== 'connectConstraint') e.currentTarget.style.background = 'var(--bg-hover)' }}
-        onMouseLeave={e => { if (tool !== 'connectConstraint') e.currentTarget.style.background = 'transparent' }}
-      >
-        <ConstraintEdgeIcon active={tool === 'connectConstraint'} />
-        Constraint
-      </button>
-
 
       <Divider />
       <GroupLabel>Internal Constraints</GroupLabel>
@@ -838,6 +853,57 @@ export default function ToolPanel() {
           />
         ))}
       </AdvancedSection>
+      <button
+        title="Connect Constraint to Role / Object Type"
+        onClick={() => { store.clearSelection(); store.setTool('connectConstraint') }}
+        style={{
+          width: '100%',
+          padding: '2px 10px',
+          fontSize: 12,
+          textAlign: 'left',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+          background: tool === 'connectConstraint' ? 'var(--accent)' : 'transparent',
+          color: tool === 'connectConstraint' ? '#fff' : 'var(--ink-2)',
+          border: `1px solid ${tool === 'connectConstraint' ? 'var(--accent)' : 'transparent'}`,
+          borderRadius: 4,
+          fontFamily: 'var(--font-mono)',
+          cursor: 'pointer',
+          transition: 'all 0.12s',
+          whiteSpace: 'nowrap',
+        }}
+        onMouseEnter={e => { if (tool !== 'connectConstraint') e.currentTarget.style.background = 'var(--bg-hover)' }}
+        onMouseLeave={e => { if (tool !== 'connectConstraint') e.currentTarget.style.background = 'transparent' }}
+      >
+        <ConstraintEdgeIcon active={tool === 'connectConstraint'} />
+        Constraint connector
+      </button>
+      <Divider />
+      <SectionLabel>Notes</SectionLabel>
+      {[
+        { key: 'addNote',          Icon: NoteIcon,          label: 'Note',           title: 'Add Note (N)' },
+        { key: 'addNoteConnector', Icon: NoteConnectorIcon, label: 'Note connector', title: 'Add Note Connector' },
+      ].map(({ key, Icon, label, title }) => (
+        <button key={key}
+          title={title}
+          onClick={() => store.setTool(key)}
+          style={{
+            width: '100%', padding: '2px 10px', fontSize: 12, textAlign: 'left',
+            display: 'flex', alignItems: 'center', gap: 7,
+            background: tool === key ? 'var(--accent)' : 'transparent',
+            color: tool === key ? '#fff' : 'var(--ink-2)',
+            border: `1px solid ${tool === key ? 'var(--accent)' : 'transparent'}`,
+            borderRadius: 4, fontFamily: 'var(--font-mono)',
+            cursor: 'pointer', transition: 'all 0.12s', whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={e => { if (tool !== key) e.currentTarget.style.background = 'var(--bg-hover)' }}
+          onMouseLeave={e => { if (tool !== key) e.currentTarget.style.background = 'transparent' }}
+        >
+          <Icon active={tool === key} />
+          {label}
+        </button>
+      ))}
       <Divider />
 
     </div>

@@ -5,7 +5,7 @@ import {
   EntityTypeIcon, ValueTypeIcon, NestedFactTypeIcon, NestedValueTypeIcon, FactTypeIcon, SubtypeIcon,
   UniquenessConstraintIcon, InclusiveOrConstraintIcon, ExclusionConstraintIcon, SubtypeConstraintIcon,
   EqualityConstraintIcon, SubsetConstraintIcon, RingConstraintIcon, FrequencyConstraintIcon,
-  ValueComparisonConstraintIcon,
+  ValueComparisonConstraintIcon, NoteIcon,
 } from './ToolPanel'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
@@ -45,6 +45,13 @@ function subtypeDiagramsContaining(st, diagrams) {
   )
 }
 
+function impliedVtName(entityName, refMode) {
+  const suffix = refMode.startsWith('.') ? refMode.slice(1) : null
+  return suffix !== null
+    ? (entityName || '') + suffix.charAt(0).toUpperCase() + suffix.slice(1)
+    : refMode
+}
+
 // ── sub-components ────────────────────────────────────────────────────────────
 
 function FactLabel({ fact, otMap }) {
@@ -78,6 +85,84 @@ function OrphanBadge() {
   )
 }
 
+function RefBadge() {
+  return (
+    <span title="Implied by reference mode" style={{
+      fontSize: 8, color: 'var(--ink-muted)', border: '1px solid var(--border)',
+      borderRadius: 3, padding: '0 3px', lineHeight: '13px',
+      flexShrink: 0, marginLeft: 3,
+    }}>ref</span>
+  )
+}
+
+function LinkBadge() {
+  return (
+    <span title="Implied link" style={{
+      fontSize: 8, color: 'var(--ink-muted)', border: '1px solid var(--border)',
+      borderRadius: 3, padding: '0 3px', lineHeight: '13px',
+      flexShrink: 0, marginLeft: 3,
+    }}>link</span>
+  )
+}
+
+function ImpliedLinkFactIcon() {
+  const stroke = 'var(--col-fact)'
+  const x1 = 1, x2 = 9, x3 = 17, y1 = 4.2, y2 = 13.8, sw = 1.5, da = '2.5 1.8'
+  return (
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
+      <rect x={x1} y={y1} width={x2 - x1} height={y2 - y1} fill="#ffffff" stroke="none" />
+      <rect x={x2} y={y1} width={x3 - x2} height={y2 - y1} fill="#ffffff" stroke="none" />
+      <line x1={x1} y1={y1} x2={x1} y2={y2} stroke={stroke} strokeWidth={sw} strokeDasharray={da} />
+      <line x1={x1} y1={y1} x2={x3} y2={y1} stroke={stroke} strokeWidth={sw} strokeDasharray={da} />
+      <line x1={x3} y1={y1} x2={x3} y2={y2} stroke={stroke} strokeWidth={sw} strokeDasharray={da} />
+      <line x1={x1} y1={y2} x2={x3} y2={y2} stroke={stroke} strokeWidth={sw} strokeDasharray={da} />
+      <line x1={x2} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth={sw} strokeDasharray={da} />
+    </svg>
+  )
+}
+
+function RefExpansionRow({ icon, label, onSelect }) {
+  return (
+    <div
+      onClick={onSelect}
+      style={{
+        display: 'flex', alignItems: 'center',
+        padding: '2px 8px 2px 28px',
+        borderBottom: '1px solid var(--border-soft)',
+        cursor: 'pointer',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-raised)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = '' }}
+    >
+      <span style={{ flexShrink: 0, marginRight: 5, lineHeight: 0, transform: 'scale(0.75)' }}>
+        {icon}
+      </span>
+      <span style={{
+        flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap', fontSize: 11, fontFamily: FONT,
+        fontStyle: 'italic', color: 'var(--ink-muted)',
+      }}>
+        {label}
+      </span>
+      <span title="Collapsed reference mode expansion" style={{
+        fontSize: 8, color: 'var(--ink-muted)', border: '1px solid var(--border)',
+        borderRadius: 3, padding: '0 3px', lineHeight: '13px',
+        flexShrink: 0, marginLeft: 3,
+      }}>ref</span>
+    </div>
+  )
+}
+
+function ImpliedLinkIcon() {
+  return (
+    <svg width="14" height="10" viewBox="0 0 14 10" style={{ display: 'block' }}>
+      <rect x="0.5" y="2" width="4" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="2,1"/>
+      <line x1="4.5" y1="5" x2="9.5" y2="5" stroke="currentColor" strokeWidth="1" strokeDasharray="2,1"/>
+      <rect x="9.5" y="2" width="4" height="6" rx="1" fill="none" stroke="currentColor" strokeWidth="1"/>
+    </svg>
+  )
+}
+
 function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd, onDelete }) {
   return (
     <div
@@ -94,7 +179,7 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
     >
       {/* Fixed-width add button slot keeps icon/name aligned across all rows */}
       <div style={{ width: 22, flexShrink: 0, marginRight: 5 }}>
-        {!inCurrentDiagram && (
+        {!inCurrentDiagram && onAdd && (
           <button
             onMouseDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); onAdd() }}
@@ -126,27 +211,29 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
         {label}
       </span>
       {isOrphaned && <OrphanBadge />}
-      <button
-        onMouseDown={e => e.stopPropagation()}
-        onClick={e => { e.stopPropagation(); onDelete() }}
-        title="Delete"
-        style={{
-          background: 'none', border: '1px solid #e0b0a8',
-          borderRadius: 3, cursor: 'pointer',
-          fontSize: 9, color: 'var(--danger)', padding: '1px 5px',
-          flexShrink: 0, marginLeft: 4,
-        }}
-        onMouseEnter={e => {
-          e.currentTarget.style.background = 'var(--danger)'
-          e.currentTarget.style.color = 'white'
-          e.currentTarget.style.borderColor = 'var(--danger)'
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.background = 'none'
-          e.currentTarget.style.color = 'var(--danger)'
-          e.currentTarget.style.borderColor = '#e0b0a8'
-        }}
-      >×</button>
+      {onDelete && (
+        <button
+          onMouseDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); onDelete() }}
+          title="Delete"
+          style={{
+            background: 'none', border: '1px solid #e0b0a8',
+            borderRadius: 3, cursor: 'pointer',
+            fontSize: 9, color: 'var(--danger)', padding: '1px 5px',
+            flexShrink: 0, marginLeft: 4,
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'var(--danger)'
+            e.currentTarget.style.color = 'white'
+            e.currentTarget.style.borderColor = 'var(--danger)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'none'
+            e.currentTarget.style.color = 'var(--danger)'
+            e.currentTarget.style.borderColor = '#e0b0a8'
+          }}
+        >×</button>
+      )}
     </div>
   )
 }
@@ -290,6 +377,9 @@ export default function SchemaBrowser() {
   const subtypeInDiag = (st) => diagram?.elementIds === null ||
     ((diagram?.elementIds ?? []).includes(st.subId) && (diagram?.elementIds ?? []).includes(st.superId))
 
+  const shownImplicitLinksSet = new Set(diagram?.shownImplicitLinks ?? [])
+  const ilInDiag = (il) => inDiag(il.factId) && shownImplicitLinksSet.has(`${il.factId}:${il.roleIndex}`)
+
   // "orphaned" = not in any diagram
   const isOrphaned   = (id) => !diagrams.some(d => d.elementIds === null || (d.elementIds ?? []).includes(id))
   const isStOrphaned = (st) => !diagrams.some(d =>
@@ -297,9 +387,18 @@ export default function SchemaBrowser() {
     ((d.elementIds ?? []).includes(st.subId) && (d.elementIds ?? []).includes(st.superId))
   )
 
+  const expandedRefModes = new Set(diagram?.expandedRefModes ?? [])
+
+  // Real implied VT/FT (with _refExpansion) count as orphaned only when BOTH
+  // the element itself and its parent entity are absent from every diagram.
+  const isImpliedOrphan = (el) =>
+    !el.isVirtual && el.isImplied && isOrphaned(el.id) && isOrphaned(el.impliedEntityId)
+
   const allOrphanCount = [
-    ...store.objectTypes.filter(o => isOrphaned(o.id)),
-    ...store.facts.filter(f => isOrphaned(f.id)),
+    ...store.objectTypes.filter(o => !o._refExpansion && isOrphaned(o.id)),
+    ...store.objectTypes.filter(o => o._refExpansion && isOrphaned(o.id) && isOrphaned(o._refExpansion)),
+    ...store.facts.filter(f => !f._refExpansion && isOrphaned(f.id)),
+    ...store.facts.filter(f => f._refExpansion && isOrphaned(f.id) && isOrphaned(f._refExpansion)),
     ...store.subtypes.filter(st => isStOrphaned(st)),
     ...store.constraints.filter(c => isOrphaned(c.id)),
   ].length
@@ -310,6 +409,20 @@ export default function SchemaBrowser() {
 
   // ── groups ────────────────────────────────────────────────────────────────
 
+  const impliedLinks = store.facts
+    .filter(f => f.objectified)
+    .flatMap(f => (f.implicitLinks || [])
+      .filter(il => f.roles[il.roleIndex]?.objectTypeId)
+      .map(il => ({
+        id: `${f.id}_il_${il.roleIndex}`,
+        factId: f.id,
+        roleIndex: il.roleIndex,
+        objectifiedName: f.objectifiedName || '(unnamed)',
+        roleOtId: f.roles[il.roleIndex].objectTypeId,
+        readingParts: il.readingParts,
+      }))
+    )
+
   const entityTypes = store.objectTypes.filter(o => o.kind === 'entity')
     .map(o => ({ id: o.id, label: o.name || '(unnamed)', kind: 'entity' }))
     .sort((a, b) => a.label.localeCompare(b.label))
@@ -318,15 +431,41 @@ export default function SchemaBrowser() {
     .map(f => ({ id: f.id, label: f.objectifiedName || '(unnamed)', kind: 'entity' }))
     .sort((a, b) => a.label.localeCompare(b.label))
 
-  const valueTypes = store.objectTypes.filter(o => o.kind === 'value')
-    .map(o => ({ id: o.id, label: o.name || '(unnamed)', kind: 'value' }))
-    .sort((a, b) => a.label.localeCompare(b.label))
+  // All real value types (including _refExpansion implied ones — always shown in standard list)
+  const impliedRefVtEntityIds = new Set(store.objectTypes.filter(o => o._refExpansion).map(o => o._refExpansion))
+  const realVtItems = store.objectTypes.filter(o => o.kind === 'value')
+    .map(o => ({
+      id: o.id, label: o.name || '(unnamed)', kind: 'value',
+      isImplied: !!o._refExpansion, impliedEntityId: o._refExpansion ?? null, isVirtual: false,
+    }))
+  // Virtual VT entries: entity has refMode but VT not yet created
+  const virtualVtItems = store.objectTypes
+    .filter(o => o.kind === 'entity' && o.refMode && o.refMode !== 'none' && !impliedRefVtEntityIds.has(o.id))
+    .map(o => ({
+      id: `__implied_vt_${o.id}`, label: impliedVtName(o.name, o.refMode), kind: 'value',
+      isImplied: true, impliedEntityId: o.id, isVirtual: true,
+    }))
+  const valueTypes = [...realVtItems, ...virtualVtItems].sort((a, b) => a.label.localeCompare(b.label))
 
   const nestedValueTypes = store.facts.filter(f => f.objectified && f.objectifiedKind === 'value')
     .map(f => ({ id: f.id, label: f.objectifiedName || '(unnamed)', kind: 'value' }))
     .sort((a, b) => a.label.localeCompare(b.label))
 
-  const factTypes = store.facts.filter(f => !f.objectified)
+  // All real fact types (including _refExpansion implied ones) + virtual FTs for unmatched refModes
+  const impliedRefFtEntityIds = new Set(store.facts.filter(f => f._refExpansion).map(f => f._refExpansion))
+  const virtualFtItems = store.objectTypes
+    .filter(o => o.kind === 'entity' && o.refMode && o.refMode !== 'none' && !impliedRefFtEntityIds.has(o.id))
+    .map(o => ({
+      id: `__implied_ft_${o.id}`,
+      virtualLabel: `${o.name || '?'} is identified by ${impliedVtName(o.name, o.refMode) || '?'}`,
+      isImplied: true, impliedEntityId: o.id, isVirtual: true,
+    }))
+  const factTypes = [
+    ...store.facts.filter(f => !f.objectified)
+      .map(f => ({ ...f, isImplied: !!f._refExpansion, impliedEntityId: f._refExpansion ?? null, isVirtual: false })),
+    ...virtualFtItems,
+    ...impliedLinks.map(il => ({ ...il, isImpliedLink: true })),
+  ]
 
   const subtypeEdges = [...store.subtypes].sort((a, b) => {
     const supA = otAndNestedMap[a.superId]?.name ?? ''
@@ -366,23 +505,41 @@ export default function SchemaBrowser() {
   const displayLeft = expandFrom?.x ?? (collapsed ? pillLeft : posX)
   const displayTop  = expandFrom?.y ?? (collapsed ? pillTop  : posY)
 
-  const selectEl = (id, kind) => { store.select(id, kind); store.centerOnElement(id) }
+  // Only center when the element is visible in the current diagram.
+  // Exceptions: implied links (center on parent fact if fact is in diagram)
+  // and ref-expansion rows (always center on parent entity — handled inline).
+  const selectEl = (id, kind) => {
+    store.select(id, kind)
+    if (inDiag(id)) store.centerOnElement(id)
+  }
+
+  const selectSubtype = (st) => {
+    store.select(st.id, 'subtype')
+    if (subtypeInDiag(st)) store.centerOnElement(st.id)
+  }
+
+  const selectImpliedLink = (il) => {
+    store.select(il.id, 'implicitLink')
+    if (inDiag(il.factId)) store.centerOnElement(il.factId)
+  }
 
   const sections = [
     {
       title: 'Entity Types',
       items: showOrphans ? entityTypes.filter(el => isOrphaned(el.id)) : entityTypes,
-      renderRow: (el) => (
-        <ElementRow key={el.id}
-          icon={<EntityTypeIcon />}
-          label={el.label}
-          isOrphaned={isOrphaned(el.id)}
-          inCurrentDiagram={inDiag(el.id)}
-          onSelect={() => selectEl(el.id, el.kind)}
-          onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
-          onDelete={() => store.deleteObjectType(el.id)}
-        />
-      ),
+      renderRow: (el) => {
+        return (
+          <ElementRow key={el.id}
+            icon={<EntityTypeIcon />}
+            label={el.label}
+            isOrphaned={isOrphaned(el.id)}
+            inCurrentDiagram={inDiag(el.id)}
+            onSelect={() => selectEl(el.id, el.kind)}
+            onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
+            onDelete={() => store.deleteObjectType(el.id)}
+          />
+        )
+      },
     },
     {
       title: 'Nested Entity Types',
@@ -401,16 +558,20 @@ export default function SchemaBrowser() {
     },
     {
       title: 'Value Types',
-      items: showOrphans ? valueTypes.filter(el => isOrphaned(el.id)) : valueTypes,
+      items: showOrphans ? valueTypes.filter(el => el.isImplied ? isImpliedOrphan(el) : isOrphaned(el.id)) : valueTypes,
       renderRow: (el) => (
         <ElementRow key={el.id}
           icon={<ValueTypeIcon />}
-          label={el.label}
-          isOrphaned={isOrphaned(el.id)}
-          inCurrentDiagram={inDiag(el.id)}
-          onSelect={() => selectEl(el.id, el.kind)}
-          onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
-          onDelete={() => store.deleteObjectType(el.id)}
+          label={el.isImplied ? <>{el.label}<RefBadge /></> : el.label}
+          isOrphaned={el.isImplied ? isImpliedOrphan(el) : isOrphaned(el.id)}
+          inCurrentDiagram={el.isVirtual ? false : inDiag(el.id)}
+          onSelect={el.isVirtual
+            ? () => selectEl(el.impliedEntityId, 'entity')
+            : () => selectEl(el.id, el.kind)}
+          onAdd={() => el.isImplied
+            ? store.addImpliedVtToDiagram(el.impliedEntityId, diagram?.id)
+            : store.addElementToDiagram(el.id, diagram?.id)}
+          onDelete={el.isImplied ? undefined : () => store.deleteObjectType(el.id)}
         />
       ),
     },
@@ -431,18 +592,65 @@ export default function SchemaBrowser() {
     },
     {
       title: 'Fact Types',
-      items: showOrphans ? factTypes.filter(f => isOrphaned(f.id)) : factTypes,
-      renderRow: (f) => (
-        <ElementRow key={f.id}
-          icon={<FactTypeIcon />}
-          label={<FactLabel fact={f} otMap={otAndNestedMap} />}
-          isOrphaned={isOrphaned(f.id)}
-          inCurrentDiagram={inDiag(f.id)}
-          onSelect={() => selectEl(f.id, 'fact')}
-          onAdd={() => store.addElementToDiagram(f.id, diagram?.id)}
-          onDelete={() => store.deleteFact(f.id)}
-        />
-      ),
+      items: showOrphans ? factTypes.filter(f => {
+        if (f.isImpliedLink || f.isVirtual) return false
+        return f.isImplied ? isImpliedOrphan(f) : isOrphaned(f.id)
+      }) : factTypes,
+      renderRow: (f) => {
+        if (f.isImpliedLink) {
+          // Construct a synthetic 2-role fact so FactLabel can render the reading naturally.
+          // Role 0 = the objectified fact (treated as an OT), Role 1 = the role-playing OT.
+          const syntheticFact = {
+            readingParts: f.readingParts || ['', 'involves', ''],
+            arity: 2,
+            objectifiedName: f.objectifiedName,
+            roles: [{ objectTypeId: f.factId }, { objectTypeId: f.roleOtId }],
+          }
+          const syntheticOtMap = { ...otAndNestedMap, [f.factId]: { name: f.objectifiedName } }
+          return (
+            <ElementRow key={f.id}
+              icon={<ImpliedLinkFactIcon />}
+              label={<><FactLabel fact={syntheticFact} otMap={syntheticOtMap} /><LinkBadge /></>}
+              isOrphaned={false}
+              inCurrentDiagram={ilInDiag(f)}
+              onSelect={() => selectImpliedLink(f)}
+              onAdd={() => {
+                if (!inDiag(f.factId)) store.addElementToDiagram(f.factId, diagram?.id)
+                if (!shownImplicitLinksSet.has(`${f.factId}:${f.roleIndex}`)) store.toggleImplicitLink(f.factId, f.roleIndex)
+              }}
+              onDelete={undefined}
+            />
+          )
+        }
+        if (f.isVirtual) {
+          return (
+            <ElementRow key={f.id}
+              icon={<FactTypeIcon />}
+              label={<>{f.virtualLabel}<RefBadge /></>}
+              isOrphaned={false}
+              inCurrentDiagram={false}
+              onSelect={() => selectEl(f.impliedEntityId, 'entity')}
+              onAdd={() => store.addImpliedFtToDiagram(f.impliedEntityId, diagram?.id)}
+              onDelete={undefined}
+            />
+          )
+        }
+        return (
+          <ElementRow key={f.id}
+            icon={<FactTypeIcon />}
+            label={f.isImplied
+              ? <><FactLabel fact={f} otMap={otAndNestedMap} /><RefBadge /></>
+              : <FactLabel fact={f} otMap={otAndNestedMap} />}
+            isOrphaned={f.isImplied ? isImpliedOrphan(f) : isOrphaned(f.id)}
+            inCurrentDiagram={f.isImplied ? expandedRefModes.has(f.impliedEntityId) : inDiag(f.id)}
+            onSelect={() => selectEl(f.id, 'fact')}
+            onAdd={f.isImplied
+              ? () => store.addImpliedFtToDiagram(f.impliedEntityId, diagram?.id)
+              : () => store.addElementToDiagram(f.id, diagram?.id)}
+            onDelete={f.isImplied ? undefined : () => store.deleteFact(f.id)}
+          />
+        )
+      },
     },
     {
       title: 'Subtype Relationships',
@@ -456,7 +664,7 @@ export default function SchemaBrowser() {
             label={<span style={{ fontSize: 11 }}>{subName} <span style={{ color: 'var(--ink-muted)' }}>⊂</span> {supName}</span>}
             isOrphaned={isStOrphaned(st)}
             inCurrentDiagram={subtypeInDiag(st)}
-            onSelect={() => selectEl(st.id, 'subtype')}
+            onSelect={() => selectSubtype(st)}
             onAdd={() => store.addElementToDiagram(st.id, diagram?.id)}
             onDelete={() => store.deleteSubtype(st.id)}
           />
@@ -479,6 +687,25 @@ export default function SchemaBrowser() {
           onDelete={() => store.deleteConstraint(c.id)}
         />
       ),
+    },
+    {
+      title: 'Notes',
+      items: showOrphans ? [] : (diagram?.notes ?? []),
+      renderRow: (note) => {
+        const preview = (note.text || '').split('\n')[0].slice(0, 40) || '(empty)'
+        return (
+          <ElementRow key={note.id}
+            icon={<NoteIcon />}
+            label={<span style={{ fontSize: 11, fontStyle: note.text ? 'normal' : 'italic',
+              color: note.text ? 'var(--ink-2)' : 'var(--ink-muted)' }}>{preview}</span>}
+            isOrphaned={false}
+            inCurrentDiagram={true}
+            onSelect={() => { store.select(note.id, 'note'); store.centerOnElement(note.id) }}
+            onAdd={null}
+            onDelete={() => store.deleteNote(note.id)}
+          />
+        )
+      },
     },
   ].filter(s => s.items.length > 0)
 

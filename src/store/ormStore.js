@@ -114,7 +114,8 @@ const mkConstraint = (type, x, y) => ({
 
 // elementIds: null  = no filter, show all elements (default / first diagram)
 // elementIds: []    = intentionally empty (new user-created diagram)
-const mkDiagram = (name = 'Main') => ({ id: uid(), name, elementIds: null, positions: {}, multiSelectedIds: [], profileId: null, shownImplicitLinks: [] })
+const mkDiagram = (name = 'Main') => ({ id: uid(), name, elementIds: null, positions: {}, multiSelectedIds: [], profileId: null, shownImplicitLinks: [], notes: [], expandedRefModes: [] })
+const mkNote    = (x, y)          => ({ id: uid(), x: Math.round(x), y: Math.round(y), w: 160, h: 100, text: '', connectors: [] })
 
 // ── name uniqueness ───────────────────────────────────────────────────────────
 // Strip trailing digits → find smallest N ≥ 1 such that base+N ∉ usedNames.
@@ -178,6 +179,76 @@ function computeCascadeRemove(startId, facts) {
   }
   return toRemove
 }
+
+// ── ref-expansion diagram cleanup ─────────────────────────────────────────────
+// Given a set of element IDs being removed from a specific diagram, compute:
+//   refCollapse  – entity IDs to drop from expandedRefModes
+//   extraRemove  – companion VT IDs to also remove (when their FT is removed but
+//                  the VT isn't already in toRemove and isn't independently used)
+function computeRefExpansionCleanup(toRemove, objectTypes, facts, diagElementIds) {
+  const refCollapse = new Set()
+  const extraRemove = new Set()
+  for (const id of toRemove) {
+    const vt = objectTypes.find(o => o.id === id && o._refExpansion)
+    if (vt) {
+      refCollapse.add(vt._refExpansion)
+      // The companion FT is already caught by computeCascadeRemove (VT is its role player)
+    }
+    const ft = facts.find(f => f.id === id && f._refExpansion)
+    if (ft) {
+      refCollapse.add(ft._refExpansion)
+      // Also remove the companion VT unless it is independently used in the diagram
+      const vtId = objectTypes.find(o => o._refExpansion === ft._refExpansion)?.id
+      if (vtId && !toRemove.has(vtId)) {
+        const vtUsedElsewhere = facts.some(f =>
+          !f._refExpansion && !toRemove.has(f.id) &&
+          f.roles.some(r => r.objectTypeId === vtId) &&
+          (diagElementIds === null || (diagElementIds ?? []).includes(f.id))
+        )
+        if (!vtUsedElsewhere) extraRemove.add(vtId)
+      }
+    }
+  }
+  return { refCollapse, extraRemove }
+}
+
+// ── ref-expansion helpers ─────────────────────────────────────────────────────
+
+// Build the VT and FT schema objects for a first-time ref-mode expansion.
+function mkRefExpansionPair(ot) {
+  const refSuffix = ot.refMode.startsWith('.') ? ot.refMode.slice(1) : null
+  const vtName = refSuffix !== null
+    ? ot.name + refSuffix.charAt(0).toUpperCase() + refSuffix.slice(1)
+    : ot.refMode
+  const vt = { ...mkValue(Math.round(ot.x + 160), Math.round(ot.y)), name: vtName, _refExpansion: ot.id }
+  const ft = {
+    ...mkFact(Math.round(ot.x + 80), Math.round(ot.y), 2),
+    roles: [{ ...mkRole(), objectTypeId: ot.id }, { ...mkRole(), objectTypeId: vt.id }],
+    uniqueness: [[0], [1]],
+    readingParts: ['', 'is identified by', ''],
+    alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'identifies', ''] }],
+    _refExpansion: ot.id,
+  }
+  return { vt, ft }
+}
+
+// Collect the IDs of all _refExpansion elements tied to an entity.
+function expansionIdsFor(entityId, objectTypes, facts) {
+  return new Set([
+    ...objectTypes.filter(o => o._refExpansion === entityId).map(o => o.id),
+    ...facts.filter(f => f._refExpansion === entityId).map(f => f.id),
+  ])
+}
+
+// Return updated diagrams with the entity's expansion removed from every diagram.
+function diagramsWithPurgedExpansion(entityId, expansionIds, diagrams) {
+  return diagrams.map(d => ({
+    ...d,
+    expandedRefModes: (d.expandedRefModes ?? []).filter(eid => eid !== entityId),
+    elementIds: d.elementIds === null ? null : (d.elementIds ?? []).filter(eid => !expansionIds.has(eid)),
+  }))
+}
+
 
 // ── constraint auto-sync ──────────────────────────────────────────────────────
 // Returns the set of constraint IDs that are eligible for a given elementId set.
@@ -411,7 +482,9 @@ function runFactMergePass(copies, links, allFacts) {
           if (!allRoles.every(r => m1[r] === m2[r])) continue
           const merged = { ...group[i], seededRoles: [...new Set([...(group[i].seededRoles ?? []), ...(group[j].seededRoles ?? [])])] }
           mCopies = mCopies.filter(c => c.id !== group[j].id).map(c => c.id === group[i].id ? merged : c)
-          mLinks  = mLinks.filter(l => l.copyId !== group[j].id)
+          mLinks  = mLinks
+            .filter(l => l.copyId !== group[j].id)
+            .map(l => l.variableId === group[j].id ? { ...l, variableId: group[i].id } : l)
           found = again = true
         }
       }
@@ -451,6 +524,8 @@ export const useOrmStore = create((set, get) => ({
 
   tool:      'select',
   linkDraft: null,
+  noteConnectorDraft:      null,  // { noteId } | null
+  noteRemoveSubjectDraft:  null,  // { noteId } | null
 
   // ── global display settings ────────────────────────────────────────────
   // 'role'   → mandatory dot sits at the role-box end of the connector
@@ -476,9 +551,13 @@ export const useOrmStore = create((set, get) => ({
   // ── clipboard ──────────────────────────────────────────────────────────
 
   copySelection() {
-    const { selectedId, multiSelectedIds, objectTypes, facts, constraints, subtypes } = get()
+    const { selectedId, multiSelectedIds, objectTypes, facts, constraints, subtypes, diagrams, activeDiagramId } = get()
     const ids = new Set(multiSelectedIds.length > 0 ? multiSelectedIds : selectedId ? [selectedId] : [])
     if (ids.size === 0) return
+
+    const activeDiagram = diagrams.find(d => d.id === activeDiagramId)
+    const diagramShownIL      = new Set(activeDiagram?.shownImplicitLinks ?? [])
+    const diagramExpandedRefs = new Set(activeDiagram?.expandedRefModes    ?? [])
 
     // Principle 3: expand to include role-player OTs for every fact in the selection
     const expandedIds = closeUnderPrinciple3([...ids], { facts, objectTypes })
@@ -491,7 +570,45 @@ export const useOrmStore = create((set, get) => ({
     const copiedCons  = eligibleConstraints(selectedCons, subtypes, expandedIds)
     // Principle 1: auto-include subtypes whose both endpoints are in expanded set
     const copiedSts = subtypes.filter(st => expandedIds.has(st.subId) && expandedIds.has(st.superId))
-    const newClipboard = { objectTypes: copiedOts, facts: copiedFacts, constraints: copiedCons, subtypes: copiedSts }
+
+    // Capture shown implied links: from explicit _il_ selection + shown ILs of selected objectified facts
+    const copiedILKeys = new Set()
+    for (const id of ids) {
+      if (id.includes('_il_')) {
+        const [factId, ri] = id.split('_il_')
+        const key = `${factId}:${ri}`
+        if (diagramShownIL.has(key)) copiedILKeys.add(key)
+      }
+    }
+    for (const f of copiedFacts) {
+      if (f.objectified) {
+        ;(f.implicitLinks || []).forEach((_, i) => {
+          const key = `${f.id}:${i}`
+          if (diagramShownIL.has(key)) copiedILKeys.add(key)
+        })
+      }
+    }
+
+    // Capture expanded ref mode entity IDs present in the selection
+    const copiedExpandedRefs = copiedOts
+      .filter(o => o.kind === 'entity' && diagramExpandedRefs.has(o.id))
+      .map(o => o.id)
+
+    // Capture per-diagram positions from the source diagram so paste/duplicate
+    // preserves the actual on-screen layout, not just the schema base positions.
+    const sourcePos = activeDiagram?.positions ?? {}
+    const clipPositions = {}
+    for (const el of [...copiedOts, ...copiedFacts, ...copiedCons]) {
+      const p = sourcePos[el.id]
+      clipPositions[el.id] = p ? { x: p.x, y: p.y } : { x: el.x, y: el.y }
+    }
+
+    const newClipboard = {
+      objectTypes: copiedOts, facts: copiedFacts, constraints: copiedCons, subtypes: copiedSts,
+      shownImplicitLinks: [...copiedILKeys],
+      expandedRefModes:   copiedExpandedRefs,
+      positions:          clipPositions,
+    }
     set({ clipboard: newClipboard })
   },
 
@@ -535,8 +652,8 @@ export const useOrmStore = create((set, get) => ({
     ]
     const closedIds = closeUnderPrinciple3(clipBaseIds, { facts, objectTypes })
 
-    // Collect implied links that need to be shown (from pasted constraints)
-    const impliedLinksToShow = new Set()
+    // Collect implied links that need to be shown (from pasted constraints + clipboard's own shown ILs)
+    const impliedLinksToShow = new Set(clipboard.shownImplicitLinks ?? [])
     for (const c of clipboard.constraints) {
       if (c.sequences) {
         for (const seq of c.sequences) {
@@ -550,6 +667,21 @@ export const useOrmStore = create((set, get) => ({
       }
     }
 
+    // Determine which entity IDs need to be in expandedRefModes of the target diagram.
+    // Covers both clipboard.expandedRefModes (captured at copy time) and VT/FT with _refExpansion
+    // (for backward-compat with clipboards saved before this feature).
+    const allTargetIds = new Set([...closedIds, ...existingIds])
+    const refEntityIds = new Set()
+    for (const id of (clipboard.expandedRefModes ?? [])) {
+      if (allTargetIds.has(id)) refEntityIds.add(id)
+    }
+    for (const o of clipboard.objectTypes) {
+      if (o._refExpansion && allTargetIds.has(o._refExpansion)) refEntityIds.add(o._refExpansion)
+    }
+    for (const f of clipboard.facts) {
+      if (f._refExpansion && allTargetIds.has(f._refExpansion)) refEntityIds.add(f._refExpansion)
+    }
+
     const toAdd = [
       ...[...closedIds]
         .filter(id => !existingIds.has(id))
@@ -558,7 +690,7 @@ export const useOrmStore = create((set, get) => ({
       ...clipboard.constraints.filter(c => !existingIds.has(c.id)),
     ]
 
-    if (toAdd.length === 0 && impliedLinksToShow.size === 0) return
+    if (toAdd.length === 0 && impliedLinksToShow.size === 0 && refEntityIds.size === 0) return
 
     // Compute viewport centre in world coordinates using the canvas SVG element
     const { pan, zoom } = get()
@@ -569,22 +701,29 @@ export const useOrmStore = create((set, get) => ({
           y: (-pan.y + svgRect.height / 2) / zoom }
       : { x: 400, y: 300 }
 
+    // Use the per-diagram positions captured at copy time so that elements moved
+    // within the source diagram keep their relative layout after paste.
+    const clipPos = clipboard.positions ?? {}
+    const getClipPos = (el) => clipPos[el.id] ?? { x: el.x, y: el.y }
+
     // Shift pasted elements to a sensible position:
     // • empty diagram  → top-left of bounding box at (100, 100) (visible after reset view)
     // • non-empty      → centre of bounding box on current viewport centre
     let ox = 0, oy = 0
-    const positioned = toAdd.filter(el => el.x != null && el.y != null)
+    const positioned = toAdd.filter(el => el.x != null || clipPos[el.id])
     if (activeDiagram?.elementIds !== null && positioned.length > 0) {
-      const minX = Math.min(...positioned.map(el => el.x))
-      const minY = Math.min(...positioned.map(el => el.y))
+      const allX = positioned.map(el => getClipPos(el).x)
+      const allY = positioned.map(el => getClipPos(el).y)
+      const minX = Math.min(...allX)
+      const minY = Math.min(...allY)
       if (existingIds.size === 0) {
         // Empty diagram: anchor top-left corner to (100, 100)
         ox = 100 - minX
         oy = 100 - minY
       } else {
         // Non-empty diagram: centre bounding box on viewport centre
-        const maxX = Math.max(...positioned.map(el => el.x))
-        const maxY = Math.max(...positioned.map(el => el.y))
+        const maxX = Math.max(...allX)
+        const maxY = Math.max(...allY)
         ox = viewportCenter.x - (minX + maxX) / 2
         oy = viewportCenter.y - (minY + maxY) / 2
       }
@@ -604,7 +743,10 @@ export const useOrmStore = create((set, get) => ({
         const elementIds = d.elementIds === null ? null : [...d.elementIds, ...addIds]
         const positions = {
           ...d.positions,
-          ...Object.fromEntries(toAdd.map(el => [el.id, d.positions[el.id] ?? { x: el.x + ox, y: el.y + oy }])),
+          ...Object.fromEntries(toAdd.map(el => {
+            const cp = getClipPos(el)
+            return [el.id, d.positions[el.id] ?? { x: cp.x + ox, y: cp.y + oy }]
+          })),
         }
 
         // Add implied links to shownImplicitLinks
@@ -613,11 +755,18 @@ export const useOrmStore = create((set, get) => ({
         for (const ilKey of impliedLinksToShow) newShown.add(ilKey)
         const shownChanged = newShown.size !== shown.length || [...newShown].some(k => !shown.includes(k))
 
+        // Add expanded ref mode entity IDs
+        const oldExpandedRefs = d.expandedRefModes ?? []
+        const newExpandedRefs = refEntityIds.size > 0
+          ? [...new Set([...oldExpandedRefs, ...refEntityIds])]
+          : oldExpandedRefs
+
         return {
           ...d,
           elementIds,
           positions,
           shownImplicitLinks: shownChanged ? [...newShown] : shown,
+          expandedRefModes:   newExpandedRefs,
         }
       })
       return {
@@ -647,10 +796,17 @@ export const useOrmStore = create((set, get) => ({
       ...get().facts.map(f => f.objectifiedName).filter(Boolean),
     ])
 
+    // Use per-diagram positions captured at copy time so the duplicated group
+    // maintains the same relative layout as the original, not the schema base positions.
+    const clipPos = clipboard.positions ?? {}
+    const getSrcPos = (el) => clipPos[el.id] ?? { x: el.x, y: el.y }
+
     const newOts = clipboard.objectTypes.map(o => {
       const name = makeUniqueName(o.name, usedNames)
       usedNames.add(name)
-      return { ...o, id: idMap.get(o.id), x: o.x + OFFSET, y: o.y + OFFSET, name }
+      const sp = getSrcPos(o)
+      return { ...o, id: idMap.get(o.id), x: sp.x + OFFSET, y: sp.y + OFFSET, name,
+               _refExpansion: o._refExpansion ? remap(o._refExpansion) : o._refExpansion }
     })
 
     const newFacts = clipboard.facts.map(f => {
@@ -659,10 +815,12 @@ export const useOrmStore = create((set, get) => ({
         objectifiedName = makeUniqueName(objectifiedName, usedNames)
         usedNames.add(objectifiedName)
       }
+      const sp = getSrcPos(f)
       return {
-        ...f, id: idMap.get(f.id), x: f.x + OFFSET, y: f.y + OFFSET,
+        ...f, id: idMap.get(f.id), x: sp.x + OFFSET, y: sp.y + OFFSET,
         roles: f.roles.map(r => ({ ...r, id: uid(), objectTypeId: remap(r.objectTypeId) })),
         objectifiedName,
+        _refExpansion: f._refExpansion ? remap(f._refExpansion) : f._refExpansion,
       }
     })
 
@@ -671,12 +829,15 @@ export const useOrmStore = create((set, get) => ({
     : m.kind === 'subtype' ? { ...m, subtypeId: remap(m.subtypeId) }
     : m
 
-    const newCons = clipboard.constraints.map(c => ({
-      ...c, id: idMap.get(c.id), x: c.x + OFFSET, y: c.y + OFFSET,
-      sequences:     c.sequences     ? c.sequences.map(g => g.map(remapMember)) : c.sequences,
-      roleSequences: c.roleSequences ? c.roleSequences.map(g => g.map(r => ({ ...r, factId: remap(r.factId) }))) : c.roleSequences,
-      targetObjectTypeId: c.targetObjectTypeId ? remap(c.targetObjectTypeId) : c.targetObjectTypeId,
-    }))
+    const newCons = clipboard.constraints.map(c => {
+      const sp = getSrcPos(c)
+      return {
+        ...c, id: idMap.get(c.id), x: sp.x + OFFSET, y: sp.y + OFFSET,
+        sequences:     c.sequences     ? c.sequences.map(g => g.map(remapMember)) : c.sequences,
+        roleSequences: c.roleSequences ? c.roleSequences.map(g => g.map(r => ({ ...r, factId: remap(r.factId) }))) : c.roleSequences,
+        targetObjectTypeId: c.targetObjectTypeId ? remap(c.targetObjectTypeId) : c.targetObjectTypeId,
+      }
+    })
 
     const newSts = clipboard.subtypes.map(st => ({
       ...st, id: idMap.get(st.id),
@@ -686,6 +847,20 @@ export const useOrmStore = create((set, get) => ({
     const newIds = [...newOts, ...newFacts, ...newCons, ...newSts].map(e => e.id)
     if (newIds.length === 0) return
     const singleKind = newOts[0]?.kind ?? (newFacts.length ? 'fact' : newCons.length ? 'constraint' : 'subtype')
+
+    // Remap shown implied links to new fact IDs
+    const newShownILKeys = (clipboard.shownImplicitLinks ?? []).map(key => {
+      const [factId, ri] = key.split(':')
+      return `${idMap.get(factId) ?? factId}:${ri}`
+    })
+
+    // Collect expanded ref modes for the duplicate: from clipboard.expandedRefModes (remapped)
+    // and from _refExpansion on any new VT/FT
+    const dupExpandedRefs = new Set([
+      ...(clipboard.expandedRefModes ?? []).map(id => idMap.get(id)).filter(Boolean),
+      ...newOts.filter(o => o._refExpansion).map(o => o._refExpansion),
+      ...newFacts.filter(f => f._refExpansion).map(f => f._refExpansion),
+    ])
 
     set(s => ({
       objectTypes: [...s.objectTypes, ...newOts],
@@ -701,6 +876,12 @@ export const useOrmStore = create((set, get) => ({
           ...Object.fromEntries(newFacts.map(f => [f.id, { x: f.x, y: f.y }])),
           ...Object.fromEntries(newCons.map(c  => [c.id, { x: c.x, y: c.y }])),
         },
+        shownImplicitLinks: newShownILKeys.length > 0
+          ? [...new Set([...(d.shownImplicitLinks ?? []), ...newShownILKeys])]
+          : (d.shownImplicitLinks ?? []),
+        expandedRefModes: dupExpandedRefs.size > 0
+          ? [...new Set([...(d.expandedRefModes ?? []), ...dupExpandedRefs])]
+          : (d.expandedRefModes ?? []),
       }),
       selectedId:       newIds.length === 1 ? newIds[0] : null,
       selectedKind:     newIds.length === 1 ? singleKind : null,
@@ -739,10 +920,19 @@ export const useOrmStore = create((set, get) => ({
 
   setValueTypeDatatype(id, assignment) {
     // assignment: { profileId, datatypeId, params? } | null
-    set(s => ({
-      objectTypes: s.objectTypes.map(o => o.id !== id ? o : { ...o, datatypeAssignment: assignment }),
-      isDirty: true,
-    }))
+    // When setting on an entity with an expanded reference mode, mirror to the generated VT.
+    set(s => {
+      const ot   = s.objectTypes.find(o => o.id === id)
+      const vtId = ot?.refModeExpanded
+        ? s.objectTypes.find(o => o._refExpansion === id)?.id
+        : null
+      return {
+        objectTypes: s.objectTypes.map(o =>
+          (o.id === id || o.id === vtId) ? { ...o, datatypeAssignment: assignment } : o
+        ),
+        isDirty: true,
+      }
+    })
   },
 
   // ── model ops ──────────────────────────────────────────────────────────
@@ -863,6 +1053,19 @@ export const useOrmStore = create((set, get) => ({
       // Always start with empty selection; strip any persisted selection state
       diagrams        = d.diagrams.map(diag => ({ ...diag, multiSelectedIds: [] }))
       activeDiagramId = d.activeDiagramId ?? d.diagrams[0].id
+      // Migration: old files used ot.refModeExpanded (global) + refModeHidden on VT/FT.
+      // Convert to per-diagram expandedRefModes.
+      diagrams = diagrams.map(diag => {
+        if (diag.expandedRefModes) return diag  // already in new format
+        const expandedRefs = parsedOts
+          .filter(o => o.refModeExpanded && (
+            diag.elementIds === null ||
+            parsedOts.some(vt => vt._refExpansion === o.id && (diag.elementIds ?? []).includes(vt.id)) ||
+            facts.some(ft => ft._refExpansion === o.id && (diag.elementIds ?? []).includes(ft.id))
+          ))
+          .map(o => o.id)
+        return { ...diag, expandedRefModes: expandedRefs }
+      })
     } else {
       // Migrate: put all existing elements into a single default diagram
       const positions = {}
@@ -870,7 +1073,8 @@ export const useOrmStore = create((set, get) => ({
       facts.forEach(f      => { positions[f.id]  = { x: f.x,  y: f.y  } })
       constraints.forEach(c => { positions[c.id] = { x: c.x,  y: c.y  } })
       const allIds = [...parsedOts.map(o => o.id), ...facts.map(f => f.id), ...constraints.map(c => c.id)]
-      const diag   = { id: uid(), name: 'Main', elementIds: allIds, positions, multiSelectedIds: [] }
+      const expandedRefModes = parsedOts.filter(o => o.refModeExpanded).map(o => o.id)
+      const diag   = { id: uid(), name: 'Main', elementIds: allIds, positions, multiSelectedIds: [], expandedRefModes }
       diagrams        = [diag]
       activeDiagramId = diag.id
     }
@@ -942,11 +1146,111 @@ export const useOrmStore = create((set, get) => ({
     return base.id
   },
 
-  updateObjectType(id, patch) {
+  // ── notes ────────────────────────────────────────────────────────────────
+
+  addNote(x, y) {
+    const note = mkNote(x, y)
     set(s => ({
-      objectTypes: s.objectTypes.map(o => o.id === id ? { ...o, ...patch } : o),
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d
+        : { ...d, notes: [...(d.notes ?? []), note] }),
+      isDirty: true, selectedId: note.id, selectedKind: 'note',
+    }))
+  },
+
+  updateNote(id, patch) {
+    set(s => ({
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d
+        : { ...d, notes: (d.notes ?? []).map(n => n.id === id ? { ...n, ...patch } : n) }),
       isDirty: true,
     }))
+  },
+
+  deleteNote(id) {
+    set(s => ({
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d
+        : { ...d, notes: (d.notes ?? []).filter(n => n.id !== id) }),
+      ...(s.selectedId === id ? { selectedId: null, selectedKind: null } : {}),
+      noteConnectorDraft: null,
+      noteRemoveSubjectDraft: null,
+      isDirty: true,
+    }))
+  },
+
+  startNoteConnector(noteId)      { set({ noteConnectorDraft: { noteId }, noteRemoveSubjectDraft: null }) },
+  cancelNoteConnector()           { set({ noteConnectorDraft: null }) },
+  startNoteRemoveSubject(noteId)  { set({ noteRemoveSubjectDraft: { noteId }, noteConnectorDraft: null }) },
+  cancelNoteRemoveSubject()       { set({ noteRemoveSubjectDraft: null }) },
+
+  addNoteConnector(noteId, targetId) {
+    set(s => ({
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
+        ...d,
+        notes: (d.notes ?? []).map(n => n.id !== noteId ? n : {
+          ...n,
+          connectors: [...(n.connectors ?? []), { id: uid(), targetId }],
+        }),
+      }),
+      noteConnectorDraft: null,
+      isDirty: true,
+    }))
+  },
+
+  removeNoteConnector(noteId, connId) {
+    set(s => ({
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
+        ...d,
+        notes: (d.notes ?? []).map(n => n.id !== noteId ? n : {
+          ...n,
+          connectors: (n.connectors ?? []).filter(c => c.id !== connId),
+        }),
+      }),
+      isDirty: true,
+    }))
+  },
+
+  updateObjectType(id, patch) {
+    set(s => {
+      const ot = s.objectTypes.find(o => o.id === id)
+
+      // If refMode is being cleared (set to 'none' or empty) on an entity that had implied
+      // elements, hard-delete those elements now — same as deleteObjectType's expansion cleanup.
+      if (patch.refMode !== undefined && ot?.kind === 'entity') {
+        const hadValid = ot.refMode && ot.refMode !== 'none'
+        const hasValid = patch.refMode && patch.refMode !== 'none'
+        if (hadValid && !hasValid) {
+          const expIds = expansionIdsFor(id, s.objectTypes, s.facts)
+          return {
+            objectTypes: s.objectTypes
+              .filter(o => o._refExpansion !== id)
+              .map(o => o.id === id ? { ...o, ...patch, refModeExpanded: false } : o),
+            facts: s.facts.filter(f => f._refExpansion !== id),
+            diagrams: diagramsWithPurgedExpansion(id, expIds, s.diagrams),
+            isDirty: true,
+          }
+        }
+      }
+
+      // When the entity name or refMode changes, keep the generated value type name in sync.
+      let vtId = null, vtName = null
+      if (ot?.refModeExpanded && (patch.name !== undefined || patch.refMode !== undefined)) {
+        vtId = s.objectTypes.find(o => o._refExpansion === id)?.id
+        if (vtId) {
+          const newName    = patch.name    ?? ot.name
+          const newRefMode = patch.refMode ?? ot.refMode
+          const refSuffix  = newRefMode?.startsWith('.') ? newRefMode.slice(1) : null
+          vtName = refSuffix !== null
+            ? newName + refSuffix.charAt(0).toUpperCase() + refSuffix.slice(1)
+            : newRefMode
+        }
+      }
+      return {
+        objectTypes: s.objectTypes.map(o =>
+          o.id === id    ? { ...o, ...patch }    :
+          o.id === vtId  ? { ...o, name: vtName } : o
+        ),
+        isDirty: true,
+      }
+    })
   },
 
   moveObjectType(id, x, y) {
@@ -960,6 +1264,34 @@ export const useOrmStore = create((set, get) => ({
   },
 
   deleteObjectType(id) {
+    // Truly remove any ref-mode expansion elements tied to this entity (don't just hide them).
+    // Also, if the user is deleting the generated value type itself, clean up the whole expansion.
+    const ot = get().objectTypes.find(o => o.id === id)
+    if (ot?._refExpansion) {
+      // Deleting the generated value type: hard-remove VT + FT, clear flag on parent entity.
+      const parentId = ot._refExpansion
+      const expIds = expansionIdsFor(parentId, get().objectTypes, get().facts)
+      set(s => ({
+        objectTypes: s.objectTypes
+          .filter(o => o._refExpansion !== parentId)
+          .map(o => o.id === parentId ? { ...o, refModeExpanded: false } : o),
+        facts: s.facts.filter(f => f._refExpansion !== parentId),
+        diagrams: diagramsWithPurgedExpansion(parentId, expIds, s.diagrams),
+        isDirty: true,
+      }))
+      return  // The value type was removed by the filter above — nothing more to do.
+    }
+    if (ot?.refModeExpanded || get().objectTypes.some(o => o._refExpansion === id)) {
+      // Deleting the entity: hard-remove its expansion elements first.
+      const expIds = expansionIdsFor(id, get().objectTypes, get().facts)
+      set(s => ({
+        objectTypes: s.objectTypes.filter(o => o._refExpansion !== id),
+        facts: s.facts.filter(f => f._refExpansion !== id),
+        diagrams: diagramsWithPurgedExpansion(id, expIds, s.diagrams),
+        isDirty: true,
+      }))
+    }
+
     set(s => {
       const removedSubtypeIds = new Set(
         s.subtypes.filter(st => st.subId === id || st.superId === id).map(st => st.id)
@@ -988,6 +1320,156 @@ export const useOrmStore = create((set, get) => ({
         isDirty: true,
       }
     })
+  },
+
+  expandRefMode(otId) {
+    const { objectTypes, facts, activeDiagramId, diagrams } = get()
+    const ot = objectTypes.find(o => o.id === otId)
+    if (!ot || ot.kind !== 'entity' || !ot.refMode || ot.refMode === 'none') return
+
+    // Check if already expanded in THIS diagram (not globally)
+    const activeDiag = diagrams.find(d => d.id === activeDiagramId)
+    if ((activeDiag?.expandedRefModes ?? []).includes(otId)) return
+
+    // Re-use elements from a previous expansion if they already exist globally
+    const existingVt = objectTypes.find(o => o._refExpansion === otId)
+    const existingFt = facts.find(f => f._refExpansion === otId)
+
+    if (existingVt && existingFt) {
+      set(s => ({
+        objectTypes: s.objectTypes.map(o => o.id === otId ? { ...o, refModeExpanded: true } : o),
+        diagrams: s.diagrams.map(d => {
+          if (d.id !== activeDiagramId) return d
+          const elementIds = d.elementIds === null ? null : [
+            ...d.elementIds,
+            ...(d.elementIds.includes(existingVt.id) ? [] : [existingVt.id]),
+            ...(d.elementIds.includes(existingFt.id) ? [] : [existingFt.id]),
+          ]
+          const expandedRefModes = [...(d.expandedRefModes ?? []), otId]
+          return { ...d, elementIds, expandedRefModes }
+        }),
+        isDirty: true,
+      }))
+      return
+    }
+
+    // First-time expansion: create fresh elements
+    // Dot-prefixed refMode → EntityNameSuffix  (e.g. Person + .id → PersonId)
+    const { vt, ft } = mkRefExpansionPair(ot)
+
+    set(s => ({
+      objectTypes: [
+        ...s.objectTypes.map(o => o.id === otId ? { ...o, refModeExpanded: true } : o),
+        vt,
+      ],
+      facts: [...s.facts, ft],
+      diagrams: s.diagrams.map(d => {
+        if (d.id !== activeDiagramId) return d
+        const elementIds = d.elementIds === null ? null : [...(d.elementIds ?? []), vt.id, ft.id]
+        const expandedRefModes = [...(d.expandedRefModes ?? []), otId]
+        return { ...d, elementIds, expandedRefModes }
+      }),
+      isDirty: true,
+    }))
+  },
+
+  // Adds only the implied VT to a specific diagram — no expansion, no FT added.
+  // Creates VT/FT as schema objects if they do not exist yet.
+  addImpliedVtToDiagram(entityId, diagramId) {
+    const { objectTypes, facts } = get()
+    const ot = objectTypes.find(o => o.id === entityId)
+    if (!ot || ot.kind !== 'entity' || !ot.refMode || ot.refMode === 'none') return
+
+    const existingVt = objectTypes.find(o => o._refExpansion === entityId)
+    if (existingVt) {
+      set(s => ({
+        diagrams: s.diagrams.map(d => {
+          if (d.id !== diagramId || d.elementIds === null || d.elementIds.includes(existingVt.id)) return d
+          return { ...d, elementIds: [...d.elementIds, existingVt.id] }
+        }),
+        isDirty: true,
+      }))
+      return
+    }
+
+    // Create VT + FT schema objects; only VT enters the diagram.
+    const { vt, ft } = mkRefExpansionPair(ot)
+    set(s => ({
+      objectTypes: [...s.objectTypes.map(o => o.id === entityId ? { ...o, refModeExpanded: true } : o), vt],
+      facts: [...s.facts, ft],
+      diagrams: s.diagrams.map(d => {
+        if (d.id !== diagramId || d.elementIds === null) return d
+        return { ...d, elementIds: [...d.elementIds, vt.id] }
+      }),
+      isDirty: true,
+    }))
+  },
+
+  // Adds the implied FT together with its entity and VT to a specific diagram.
+  // Creates VT/FT as schema objects if they do not exist yet.
+  addImpliedFtToDiagram(entityId, diagramId) {
+    const { objectTypes, facts, diagrams } = get()
+    const ot = objectTypes.find(o => o.id === entityId)
+    if (!ot || ot.kind !== 'entity' || !ot.refMode || ot.refMode === 'none') return
+
+    const diag = diagrams.find(d => d.id === diagramId)
+    if ((diag?.expandedRefModes ?? []).includes(entityId)) return
+
+    const existingVt = objectTypes.find(o => o._refExpansion === entityId)
+    const existingFt = facts.find(f => f._refExpansion === entityId)
+
+    if (existingVt && existingFt) {
+      set(s => ({
+        objectTypes: s.objectTypes.map(o => o.id === entityId ? { ...o, refModeExpanded: true } : o),
+        diagrams: s.diagrams.map(d => {
+          if (d.id !== diagramId) return d
+          const toAdd = [entityId, existingVt.id, existingFt.id]
+          const elementIds = d.elementIds === null ? null :
+            [...d.elementIds, ...toAdd.filter(id => !d.elementIds.includes(id))]
+          return { ...d, elementIds, expandedRefModes: [...(d.expandedRefModes ?? []), entityId] }
+        }),
+        isDirty: true,
+      }))
+      return
+    }
+
+    // Create VT + FT schema objects.
+    const { vt, ft } = mkRefExpansionPair(ot)
+    set(s => ({
+      objectTypes: [...s.objectTypes.map(o => o.id === entityId ? { ...o, refModeExpanded: true } : o), vt],
+      facts: [...s.facts, ft],
+      diagrams: s.diagrams.map(d => {
+        if (d.id !== diagramId) return d
+        const toAdd = [entityId, vt.id, ft.id]
+        const elementIds = d.elementIds === null ? null :
+          [...d.elementIds, ...toAdd.filter(id => !d.elementIds.includes(id))]
+        return { ...d, elementIds, expandedRefModes: [...(d.expandedRefModes ?? []), entityId] }
+      }),
+      isDirty: true,
+    }))
+  },
+
+  collapseRefMode(otId) {
+    const { activeDiagramId, facts } = get()
+    const vtId = get().objectTypes.find(o => o._refExpansion === otId)?.id
+    const ftId = facts.find(f => f._refExpansion === otId)?.id
+    set(s => ({
+      diagrams: s.diagrams.map(d => {
+        if (d.id !== activeDiagramId) return d
+        // Keep the VT in elementIds if it plays a role in another (non-expansion) fact
+        // that is visible in this diagram — it has independent uses beyond the ref mode.
+        const vtUsedIndependently = vtId && facts.some(f =>
+          !f._refExpansion &&
+          f.roles.some(r => r.objectTypeId === vtId) &&
+          (d.elementIds === null || (d.elementIds ?? []).includes(f.id))
+        )
+        const elementIds = d.elementIds === null ? null :
+          (d.elementIds ?? []).filter(id => id !== ftId && (id !== vtId || vtUsedIndependently))
+        const expandedRefModes = (d.expandedRefModes ?? []).filter(id => id !== otId)
+        return { ...d, elementIds, expandedRefModes }
+      }),
+      isDirty: true,
+    }))
   },
 
   // ── fact types ──────────────────────────────────────────────────────────
@@ -2383,6 +2865,8 @@ export const useOrmStore = create((set, get) => ({
     if (!qd) return
     const { pendingClick } = qd
     if (!pendingClick) {
+      // First click must be on a copy, not an original
+      if (target.type !== 'otCopy' && target.type !== 'factCopyRole' && target.type !== 'subtypeCopy') return
       set({ queryEditDraft: { ...qd, pendingClick: target } })
       return
     }
@@ -2396,11 +2880,6 @@ export const useOrmStore = create((set, get) => ({
 
     // Two OT-side clicks
     if (isOtSide(pendingClick) && isOtSide(target)) {
-
-      // Both originals (no copies involved) → nothing
-      if (pendingClick.type === 'otOriginal' && target.type === 'otOriginal') {
-        set({ queryEditDraft: { ...qd, pendingClick: null } }); return
-      }
 
       // Resolve original IDs for both sides
       const ot1OrigId = pendingClick.type === 'otCopy'
@@ -2513,15 +2992,13 @@ export const useOrmStore = create((set, get) => ({
       if (expectedOtId !== otOriginalId) { set({ queryEditDraft: { ...qd, pendingClick: null } }); return }
     }
 
-    // Reject if role slot already filled in this copy
-    if (newLinks.some(l => l.copyId === roleCopyId && l.roleIndex === roleIndex)) {
-      set({ queryEditDraft: { ...qd, pendingClick: null } }); return
-    }
+    // If the role slot is already filled, drop the old connection before adding the new one
+    const existingIdx = newLinks.findIndex(l => l.copyId === roleCopyId && l.roleIndex === roleIndex)
+    if (existingIdx !== -1) newLinks.splice(existingIdx, 1)
 
     newLinks.push({ copyId: roleCopyId, roleIndex, variableId: otCopyId })
 
-    const { copies: mCopies, links: mLinks } = runFactMergePass(newCopies, newLinks, get().facts)
-    set({ queryEditDraft: { ...qd, copies: mCopies, links: mLinks, pendingClick: null } })
+    set({ queryEditDraft: { ...qd, copies: newCopies, links: newLinks, pendingClick: null } })
   },
 
   commitQueryEdit() {
@@ -2594,6 +3071,149 @@ export const useOrmStore = create((set, get) => ({
     const afterMergeLinks  = qd.links.map(l => l.variableId === draggedId ? { ...l, variableId: targetId } : l)
     const { copies, links } = runFactMergePass(afterMergeCopies, afterMergeLinks, get().facts)
     set({ queryEditDraft: { ...qd, copies, links, pendingClick: null } })
+  },
+
+  splitOtCopy(copyId) {
+    const qd = get().queryEditDraft
+    if (!qd) return
+    const cp = qd.copies.find(c => c.id === copyId)
+    if (!cp || cp.kind !== 'objectType') return
+
+    const allFacts = get().facts
+    const isObjectifiedId = (id) => allFacts.some(f => f.id === id && f.objectified)
+    const isFactSide = (c) => c.kind === 'fact' || (c.kind === 'objectType' && isObjectifiedId(c.originalId))
+
+    // Only links where the role side is a fact/nested-OT copy
+    const roleLinks = qd.links.filter(l =>
+      l.variableId === copyId &&
+      qd.copies.some(c => c.id === l.copyId && isFactSide(c))
+    )
+    if (roleLinks.length < 2) return
+
+    const n = roleLinks.length
+    const baseDx = cp.dx ?? 16, baseDy = cp.dy ?? 16
+    let newCopies = [...qd.copies]
+    let newLinks  = [...qd.links]
+
+    // Create one replacement OT copy per role link, spread in a circle
+    roleLinks.forEach((lk, i) => {
+      const newId = uid()
+      const angle  = (2 * Math.PI * i) / n
+      const radius = 30
+      newCopies.push({
+        id: newId, kind: cp.kind, originalId: cp.originalId,
+        isOutput: cp.isOutput && i === 0,
+        dx: baseDx + Math.round(Math.cos(angle) * radius),
+        dy: baseDy + Math.round(Math.sin(angle) * radius),
+      })
+      const idx = newLinks.indexOf(lk)
+      newLinks[idx] = { ...lk, variableId: newId }
+    })
+
+    // Remove the original copy and any remaining links to it (e.g. subtype links)
+    newCopies = newCopies.filter(c => c.id !== copyId)
+    newLinks  = newLinks.filter(l => l.variableId !== copyId && l.copyId !== copyId)
+
+    // Drop orphaned subtype copies (missing either endpoint)
+    const orphaned = new Set(
+      newCopies.filter(c => {
+        if (c.kind !== 'subtype') return false
+        return !newLinks.some(l => l.copyId === c.id && l.roleIndex === 0) ||
+               !newLinks.some(l => l.copyId === c.id && l.roleIndex === 1)
+      }).map(c => c.id)
+    )
+    newCopies = newCopies.filter(c => !orphaned.has(c.id))
+    newLinks  = newLinks.filter(l => !orphaned.has(l.copyId) && !orphaned.has(l.variableId))
+
+    set({ queryEditDraft: { ...qd, copies: newCopies, links: newLinks, pendingClick: null } })
+  },
+
+  splitFactCopy(copyId) {
+    const qd = get().queryEditDraft
+    if (!qd) return
+    const cp = qd.copies.find(c => c.id === copyId)
+    if (!cp) return
+
+    const allFacts = get().facts
+    const isObjectifiedId = (id) => allFacts.some(f => f.id === id && f.objectified)
+
+    // Applies to plain fact copies and objectified-fact OT copies
+    if (cp.kind !== 'fact' && !(cp.kind === 'objectType' && isObjectifiedId(cp.originalId))) return
+
+    const fact = allFacts.find(f => f.id === cp.originalId)
+    const arity = fact?.arity ?? fact?.roles?.length ?? 0
+    if (arity < 2) return
+
+    const seeded  = new Set(cp.seededRoles ?? [])
+    const baseDx  = cp.dx ?? 16, baseDy = cp.dy ?? 16
+
+    // Snapshot existing role connections before we filter links
+    const roleConnections = {}
+    for (let ri = 0; ri < arity; ri++) {
+      const lk = qd.links.find(l => l.copyId === copyId && l.roleIndex === ri)
+      if (lk) roleConnections[ri] = lk.variableId
+    }
+
+    // Remove all links associated with the original copy (role links and back-links)
+    let newLinks  = qd.links.filter(l => l.copyId !== copyId && l.variableId !== copyId)
+    let newCopies = qd.copies.filter(c => c.id !== copyId)
+
+    // Create one replacement copy per role, spread in a circle
+    for (let ri = 0; ri < arity; ri++) {
+      const newId  = uid()
+      const angle  = (2 * Math.PI * ri) / arity
+      const radius = 30
+      newCopies.push({
+        id: newId, kind: cp.kind, originalId: cp.originalId,
+        isOutput: false,
+        seededRoles: seeded.has(ri) ? [ri] : [],
+        dx: baseDx + Math.round(Math.cos(angle) * radius),
+        dy: baseDy + Math.round(Math.sin(angle) * radius),
+      })
+      if (roleConnections[ri] !== undefined) {
+        newLinks.push({ copyId: newId, roleIndex: ri, variableId: roleConnections[ri] })
+      }
+    }
+
+    set({ queryEditDraft: { ...qd, copies: newCopies, links: newLinks, pendingClick: null } })
+  },
+
+  splitOutputRoles(copyId) {
+    const qd = get().queryEditDraft
+    if (!qd) return
+    const cp = qd.copies.find(c => c.id === copyId)
+    if (!cp) return
+
+    const allFacts = get().facts
+    const isObjectifiedId = (id) => allFacts.some(f => f.id === id && f.objectified)
+    if (cp.kind !== 'fact' && !(cp.kind === 'objectType' && isObjectifiedId(cp.originalId))) return
+
+    const seededRoles = cp.seededRoles ?? []
+    if (seededRoles.length <= 1) return
+
+    const [firstRole, ...otherRoles] = seededRoles
+    const baseDx = cp.dx ?? 16, baseDy = cp.dy ?? 16
+
+    // Original copy keeps only the first output role; all its links are preserved
+    let newCopies = qd.copies.map(c =>
+      c.id === copyId ? { ...c, seededRoles: [firstRole] } : c
+    )
+    const newLinks = [...qd.links]
+
+    // One fresh, unconnected copy per remaining output role
+    otherRoles.forEach((ri, i) => {
+      const angle  = (2 * Math.PI * (i + 1)) / (otherRoles.length + 1)
+      const radius = 36
+      newCopies.push({
+        id: uid(), kind: cp.kind, originalId: cp.originalId,
+        isOutput: false,
+        seededRoles: [ri],
+        dx: baseDx + Math.round(Math.cos(angle) * radius),
+        dy: baseDy + Math.round(Math.sin(angle) * radius),
+      })
+    })
+
+    set({ queryEditDraft: { ...qd, copies: newCopies, links: newLinks, pendingClick: null } })
   },
 
   removeQueryCopy(copyId) {
@@ -2890,11 +3510,19 @@ export const useOrmStore = create((set, get) => ({
 
     const visible = (id) => elementIds === null || elementIds.includes(id)
 
+    const shownILKeys = new Set(activeDiagram?.shownImplicitLinks ?? [])
+    const impliedLinkIds = facts
+      .filter(f => f.objectified && visible(f.id))
+      .flatMap(f => (f.implicitLinks || []).map((_, i) => `${f.id}:${i}`))
+      .filter(key => shownILKeys.has(key))
+      .map(key => { const [fid, ri] = key.split(':'); return `${fid}_il_${ri}` })
+
     const ids = [
       ...objectTypes.filter(o  => visible(o.id)).map(o  => o.id),
       ...facts       .filter(f  => visible(f.id)).map(f  => f.id),
       ...constraints .filter(c  => visible(c.id)).map(c  => c.id),
       ...subtypes    .filter(st => visible(st.id)).map(st => st.id),
+      ...impliedLinkIds,
     ]
     set({ multiSelectedIds: ids, selectedId: null, selectedKind: null,
           selectedRole: null, selectedUniqueness: null })
@@ -3435,6 +4063,10 @@ export const useOrmStore = create((set, get) => ({
         }
       }
     }
+    if (wx == null) {
+      const note = (diagram?.notes ?? []).find(n => n.id === id)
+      if (note) { wx = note.x; wy = note.y }
+    }
     if (wx == null) return
     const svg = document.getElementById('orm2-canvas-svg')
     if (!svg) return
@@ -3567,6 +4199,7 @@ export const useOrmStore = create((set, get) => ({
       selectedKind:     null,
       selectedRole:     null,
       selectedUniqueness: null,
+      queryEditDraft:  null,
     })
   },
 
@@ -3714,6 +4347,11 @@ export const useOrmStore = create((set, get) => ({
       // and recursively any further OTs/facts linked through objectified facts.
       const toRemove = computeCascadeRemove(elementId, s.facts)
 
+      const diagElementIds = s.diagrams.find(d => d.id === diagramId)?.elementIds ?? null
+      const { refCollapse, extraRemove } =
+        computeRefExpansionCleanup(toRemove, s.objectTypes, s.facts, diagElementIds)
+      const allToRemove = extraRemove.size > 0 ? new Set([...toRemove, ...extraRemove]) : toRemove
+
       const updatedDiagrams = s.diagrams.map(d => {
         if (d.id !== diagramId) return d
         // null means "show all" — convert to explicit list minus removed elements
@@ -3722,15 +4360,16 @@ export const useOrmStore = create((set, get) => ({
           : d.elementIds
         return {
           ...d,
-          elementIds: base.filter(id => !toRemove.has(id)),
-          positions:  Object.fromEntries(Object.entries(d.positions).filter(([k]) => !toRemove.has(k))),
+          elementIds: base.filter(id => !allToRemove.has(id)),
+          // Positions are kept so elements re-added later resume their previous location.
+          positions: d.positions,
+          expandedRefModes: refCollapse.size > 0
+            ? (d.expandedRefModes ?? []).filter(id => !refCollapse.has(id))
+            : (d.expandedRefModes ?? []),
         }
       })
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
-      return {
-        diagrams: syncedDiagrams,
-        isDirty:  true,
-      }
+      return { diagrams: syncedDiagrams, isDirty: true }
     })
   },
 
@@ -3749,10 +4388,16 @@ export const useOrmStore = create((set, get) => ({
     }))
     set(s => {
       // Collect all IDs to remove, including cascade for each selected element
-      const allToRemove = new Set()
+      const cascaded = new Set()
       for (const id of multiSelectedIds) {
-        computeCascadeRemove(id, s.facts).forEach(cid => allToRemove.add(cid))
+        computeCascadeRemove(id, s.facts).forEach(cid => cascaded.add(cid))
       }
+
+      const diagElementIds = s.diagrams.find(d => d.id === diagramId)?.elementIds ?? null
+      const { refCollapse, extraRemove } =
+        computeRefExpansionCleanup(cascaded, s.objectTypes, s.facts, diagElementIds)
+      const allToRemove = extraRemove.size > 0 ? new Set([...cascaded, ...extraRemove]) : cascaded
+
       const updatedDiagrams = s.diagrams.map(d => {
         if (d.id !== diagramId) return d
         const base = d.elementIds === null
@@ -3761,14 +4406,19 @@ export const useOrmStore = create((set, get) => ({
         return {
           ...d,
           elementIds: base.filter(id => !allToRemove.has(id)),
+          // Element positions are kept so re-added elements resume their previous location.
+          // Only implied-link-specific position keys are cleaned up (they have no schema identity).
           positions:  Object.fromEntries(Object.entries(d.positions).filter(([k]) => {
-            if (allToRemove.has(k) || ilPosKeysToRemove.has(k)) return false
+            if (ilPosKeysToRemove.has(k)) return false
             for (const ilKey of ilKeysToRemove) {
               if (k.startsWith(`${ilKey}:if:`)) return false
             }
             return true
           })),
           shownImplicitLinks: (d.shownImplicitLinks || []).filter(ilKey => !ilKeysToRemove.has(ilKey)),
+          expandedRefModes: refCollapse.size > 0
+            ? (d.expandedRefModes ?? []).filter(id => !refCollapse.has(id))
+            : (d.expandedRefModes ?? []),
         }
       })
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)

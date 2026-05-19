@@ -3,15 +3,17 @@ import { createPortal } from 'react-dom'
 import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { useContextMenuHandlers } from '../hooks/useContextMenuHandlers'
-import ObjectTypeNode from './ObjectTypeNode'
-import FactTypeNode, { factBounds, makeImplicitLinkFact, ROLE_W, ROLE_H, ROLE_GAP } from './FactTypeNode'
-import SubtypeArrows from './SubtypeArrows'
+import ObjectTypeNode, { computeOtSize, entityBounds } from './ObjectTypeNode'
+import FactTypeNode, { factBounds, nestedFactBounds, makeImplicitLinkFact, ROLE_W, ROLE_H, ROLE_GAP } from './FactTypeNode'
+import SubtypeArrows, { rectBorderPoint, playerBounds } from './SubtypeArrows'
+import { EXTERNAL_CONSTRAINT_TYPES } from '../constants'
 import ConstraintNodes from './ConstraintNodes'
 import RoleConnectors, { MandatoryDots } from './RoleConnectors'
 import Minimap from './Minimap'
 import ContextMenu from './ContextMenu'
 import ConstraintMemberLabels from './ConstraintMemberLabels'
 import QueryCopies from './QueryCopies'
+import NoteNode from './NoteNode'
 import { ValueRangeEditor } from './Inspector'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 
@@ -19,50 +21,136 @@ const SNAP = 10  // grid snap in world units
 
 function snap(v) { return Math.round(v / SNAP) * SNAP }
 
+// Point on the boundary of a note rectangle (centered at note.x, note.y) toward (tx, ty)
+function noteEdgePoint(note, tx, ty) {
+  const dx = tx - note.x
+  const dy = ty - note.y
+  if (dx === 0 && dy === 0) return { x: note.x, y: note.y }
+  const hw = note.w / 2, hh = note.h / 2
+  const tX = dx !== 0 ? hw / Math.abs(dx) : Infinity
+  const tY = dy !== 0 ? hh / Math.abs(dy) : Infinity
+  const t = Math.min(tX, tY)
+  return { x: note.x + dx * t, y: note.y + dy * t }
+}
+
 // ── Validation error badges ──────────────────────────────────────────────────
 // OT badges are rendered inside ObjectTypeNode; this handles fact type and constraint badges.
-function ValidationBadges({ store, visibleFacts, visibleConstraints, positions }) {
+const BADGE_SEV_COLOUR = { error: '#dc2626', warning: '#d97706' }
+const BADGE_SEV_ICON   = { error: '✕', warning: '!' }
+const BADGE_POPUP_FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+
+function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints, positions }) {
   const errors = store.validationErrors
+  const [popup, setPopup] = useState(null)  // { clientX, clientY, elementErrors }
+
+  useEffect(() => {
+    const onUp = () => setPopup(null)
+    window.addEventListener('mouseup', onUp)
+    return () => window.removeEventListener('mouseup', onUp)
+  }, [])
+
   if (!errors || errors.length === 0) return null
+
   const errorIds = new Set(errors.map(e => e.elementId))
   const badgeColour = (id) => errors.some(e => e.elementId === id && e.severity === 'error') ? '#dc2626' : '#d97706'
   const R = 6
+
+  const handleMouseDown = (e, elementId) => {
+    if (e.button !== 0) return
+    e.stopPropagation()
+    setPopup({ clientX: e.clientX, clientY: e.clientY, elementErrors: errors.filter(err => err.elementId === elementId) })
+  }
+
+  const POP_W = 260
+  const pos = popup ? popupPos(popup.clientX, popup.clientY, POP_W) : null
+
   return (
-    <g style={{ pointerEvents: 'none' }}>
-      {visibleFacts.filter(f => !f._implicit && errorIds.has(f.id)).map(f => {
-        const p = positions[f.id]
-        const fx = p?.x ?? f.x, fy = p?.y ?? f.y
-        const n = Math.max(f.arity, 1)
-        const isVert = (p?.orientation ?? f.orientation) === 'vertical'
-        let bx, by
-        if (isVert) {
-          const totalH = n * ROLE_W + (n - 1) * ROLE_GAP
-          bx = fx + ROLE_H / 2 + R - 1
-          by = fy - totalH / 2 - R + 1
-        } else {
-          const totalW = n * ROLE_W + (n - 1) * ROLE_GAP
-          bx = fx + totalW / 2 + R - 1
-          by = fy - ROLE_H / 2 - R + 1
-        }
-        return (
-          <g key={f.id}>
-            <circle cx={bx} cy={by} r={R} fill={badgeColour(f.id)}/>
-            <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
-              fontSize={7} fontWeight={700} fill="#fff">!</text>
-          </g>
-        )
-      })}
-      {visibleConstraints.filter(c => errorIds.has(c.id)).map(c => {
-        const bx = c.x + R, by = c.y - R
-        return (
-          <g key={c.id}>
-            <circle cx={bx} cy={by} r={R} fill={badgeColour(c.id)}/>
-            <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
-              fontSize={7} fontWeight={700} fill="#fff">!</text>
-          </g>
-        )
-      })}
-    </g>
+    <>
+      <g>
+        {visibleOts.filter(ot => errorIds.has(ot.id)).map(ot => {
+          const { w, h } = computeOtSize(ot)
+          const bx = ot.x + w / 2 - 1, by = ot.y - h / 2 + 1
+          return (
+            <g key={ot.id} style={{ cursor: 'help', pointerEvents: 'all' }}
+               onMouseDown={e => handleMouseDown(e, ot.id)}>
+              <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
+              <circle cx={bx} cy={by} r={R} fill={badgeColour(ot.id)}/>
+              <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
+                fontSize={7} fontWeight={700} fill="#fff" style={{ pointerEvents: 'none' }}>!</text>
+            </g>
+          )
+        })}
+        {visibleFacts.filter(f => !f._implicit && errorIds.has(f.id)).map(f => {
+          const p = positions[f.id]
+          const fx = p?.x ?? f.x, fy = p?.y ?? f.y
+          const n = Math.max(f.arity, 1)
+          const isVert = (p?.orientation ?? f.orientation) === 'vertical'
+          let bx, by
+          if (isVert) {
+            const totalH = n * ROLE_W + (n - 1) * ROLE_GAP
+            bx = fx + ROLE_H / 2 + R - 1
+            by = fy - totalH / 2 - R + 1
+          } else {
+            const totalW = n * ROLE_W + (n - 1) * ROLE_GAP
+            bx = fx + totalW / 2 + R - 1
+            by = fy - ROLE_H / 2 - R + 1
+          }
+          return (
+            <g key={f.id} style={{ cursor: 'help', pointerEvents: 'all' }}
+               onMouseDown={e => handleMouseDown(e, f.id)}>
+              <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
+              <circle cx={bx} cy={by} r={R} fill={badgeColour(f.id)}/>
+              <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
+                fontSize={7} fontWeight={700} fill="#fff" style={{ pointerEvents: 'none' }}>!</text>
+            </g>
+          )
+        })}
+        {visibleConstraints.filter(c => errorIds.has(c.id)).map(c => {
+          const bx = c.x + R, by = c.y - R
+          return (
+            <g key={c.id} style={{ cursor: 'help', pointerEvents: 'all' }}
+               onMouseDown={e => handleMouseDown(e, c.id)}>
+              <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
+              <circle cx={bx} cy={by} r={R} fill={badgeColour(c.id)}/>
+              <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
+                fontSize={7} fontWeight={700} fill="#fff" style={{ pointerEvents: 'none' }}>!</text>
+            </g>
+          )
+        })}
+      </g>
+      {popup && createPortal(
+        <div style={{
+          position: 'fixed', ...pos, width: POP_W, maxHeight: pos.maxHeight,
+          overflowY: 'auto',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 6,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.22)',
+          padding: 8,
+          zIndex: 10200,
+          fontFamily: BADGE_POPUP_FONT,
+          pointerEvents: 'none',
+          userSelect: 'none',
+          display: 'flex', flexDirection: 'column', gap: 4,
+        }}>
+          {popup.elementErrors.map(err => (
+            <div key={err.id} style={{
+              display: 'flex', alignItems: 'flex-start', gap: 6,
+              padding: '5px 7px', borderRadius: 4,
+              background: 'var(--bg-raised)',
+              border: '1px solid var(--border-soft)',
+              borderLeft: `3px solid ${BADGE_SEV_COLOUR[err.severity]}`,
+            }}>
+              <span style={{ color: BADGE_SEV_COLOUR[err.severity], fontWeight: 700, fontSize: 9, marginTop: 2, flexShrink: 0 }}>
+                {BADGE_SEV_ICON[err.severity]}
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.4 }}>{err.message}</span>
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
+    </>
   )
 }
 
@@ -245,6 +333,25 @@ export default function Canvas() {
   const store = useOrmStore()
   const { objectTypes: visibleOts, facts: visibleFacts, constraints: visibleConstraints, subtypes: visibleSubtypes } = useDiagramElements()
   const sharedIds = store.getSharedIds?.() ?? new Set()
+  const activeDiagram = store.diagrams.find(d => d.id === store.activeDiagramId)
+  const visibleNotes = activeDiagram?.notes ?? []
+
+  // ── Note inline editing ──────────────────────────────────────────────────
+  const [noteEditing, setNoteEditing] = useState(null)  // { noteId, text } | null
+
+  const commitNoteEdit = useCallback(() => {
+    if (!noteEditing) return
+    store.updateNote(noteEditing.noteId, { text: noteEditing.text })
+    setNoteEditing(null)
+  }, [noteEditing, store])
+
+  // ── Note "remove subject" dim state ─────────────────────────────────────
+  const rsNote = store.noteRemoveSubjectDraft
+    ? visibleNotes.find(n => n.id === store.noteRemoveSubjectDraft.noteId) : null
+  const rsIds  = rsNote ? new Set((rsNote.connectors ?? []).map(c => c.targetId)) : null
+
+  // "Pick a note" mode — initiated by the Note Connector tool button
+  const isNotePickMode = store.tool === 'addNoteConnector'
 
   // ── Query edit state ─────────────────────────────────────────────────────
   const qd = store.queryEditDraft
@@ -306,32 +413,57 @@ export default function Canvas() {
   const isOtDimmed    = (ot) => dimMode?.otIds   != null && !dimMode.otIds.has(ot.id)
   const queryOpacity  = (id) => {
     if (!queryReachable) return null
-    if (!queryReachable.has(id)) return 0.2
-    if (queryOriginals?.has(id)) return 0.45
-    return 1
+    return queryReachable.has(id) ? 1 : 0.2
   }
 
-  // During query construction: originals of existing copies, and all elements within one step of them
+  // During query construction: set of original IDs that are NOT selectable next (used by SubtypeArrows/RoleConnectors)
   const queryOriginals = qd ? new Set(qd.copies.map(cp => cp.originalId)) : null
   const queryReachable = (() => {
     if (!qd) return null
-    const originals = new Set(qd.copies.map(cp => cp.originalId))
-    const reachable = new Set(originals)
-    for (const id of originals) {
-      if (store.objectTypes.some(o => o.id === id)) {
-        store.facts.forEach(f => { if (f.roles.some(r => r.objectTypeId === id)) reachable.add(f.id) })
-        store.subtypes.forEach(st => {
-          if (st.subId === id || st.superId === id) {
-            reachable.add(st.id)
-            reachable.add(st.subId === id ? st.superId : st.subId)
-          }
-        })
+    if (!qd.pendingClick) return new Set()  // no first click yet — all originals dimmed
+
+    // After first click on a copy: only originals directly reachable from its underlying original
+    const pending = qd.pendingClick
+    const reachable = new Set()  // intentionally empty — no 0.45 tier
+
+    if (pending.type === 'otCopy') {
+      const pendingOrigId = qd.copies.find(c => c.id === pending.id)?.originalId
+      if (pendingOrigId) {
+        if (store.objectTypes.some(o => o.id === pendingOrigId)) {
+          store.facts.forEach(f => {
+            if (!f._implicit && f.roles.some(r => r.objectTypeId === pendingOrigId))
+              reachable.add(f.id)
+          })
+          store.subtypes.forEach(st => {
+            if (st.subId === pendingOrigId || st.superId === pendingOrigId)
+              reachable.add(st.subId === pendingOrigId ? st.superId : st.subId)
+          })
+        } else {
+          // Objectified fact used as outer-frame OT click: treat as a regular OT.
+          // Find facts that use this objectified fact as a role player, and OTs via subtype edges.
+          store.facts.forEach(f => {
+            if (!f._implicit && f.roles.some(r => r.objectTypeId === pendingOrigId))
+              reachable.add(f.id)
+          })
+          store.subtypes.forEach(st => {
+            if (st.subId === pendingOrigId || st.superId === pendingOrigId)
+              reachable.add(st.subId === pendingOrigId ? st.superId : st.subId)
+          })
+        }
       }
-      const fact = store.facts.find(f => f.id === id)
-      if (fact) fact.roles.forEach(r => { if (r.objectTypeId) reachable.add(r.objectTypeId) })
-      const st = store.subtypes.find(s => s.id === id)
+    } else if (pending.type === 'factCopyRole') {
+      const factOrigId = qd.copies.find(c => c.id === pending.id)?.originalId
+      const fact = factOrigId ? store.facts.find(f => f.id === factOrigId) : null
+      if (fact) {
+        const otId = fact.roles[pending.roleIndex]?.objectTypeId
+        if (otId) reachable.add(otId)
+      }
+    } else if (pending.type === 'subtypeCopy') {
+      const stOrigId = qd.copies.find(c => c.id === pending.id)?.originalId
+      const st = stOrigId ? store.subtypes.find(s => s.id === stOrigId) : null
       if (st) { reachable.add(st.subId); reachable.add(st.superId) }
     }
+
     return reachable
   })()
 
@@ -346,6 +478,67 @@ export default function Canvas() {
   const [vrPopup, setVrPopup] = useState(null)         // { factId?, roleIndex?, otId?, x, y } | null
 
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
+
+  // ── Note hit-testing (for connectors and remove-subject) ────────────────
+  const hitTestElement = useCallback((wx, wy) => {
+    for (const c of visibleConstraints) {
+      if (Math.hypot(wx - c.x, wy - c.y) < 14) return c.id
+    }
+    for (const ot of visibleOts) {
+      const { w: ow, h: oh } = computeOtSize(ot)
+      if (Math.abs(wx - ot.x) < ow / 2 && Math.abs(wy - ot.y) < oh / 2) return ot.id
+    }
+    for (const f of visibleFacts) {
+      const b = factBounds(f)
+      if (wx >= b.left && wx <= b.right && wy >= b.top && wy <= b.bottom) return f.id
+    }
+    const diag = store.diagrams.find(d => d.id === store.activeDiagramId)
+    for (const f of visibleFacts.filter(vf => vf.objectified)) {
+      for (const il of (f.implicitLinks || []).filter(il => store.isImplicitLinkShown(f.id, il.roleIndex))) {
+        const role   = f.roles[il.roleIndex]
+        const assoc  = visibleOts.find(o => o.id === role?.objectTypeId)
+                    || visibleFacts.find(vf => vf.id === role?.objectTypeId && vf.objectified)
+        if (assoc) {
+          const ilPos = diag?.positions[`${f.id}:il:${il.roleIndex}`]
+          const ilX   = ilPos?.x ?? Math.round((f.x + assoc.x) / 2)
+          const ilY   = ilPos?.y ?? Math.round((f.y + assoc.y) / 2)
+          if (Math.hypot(wx - ilX, wy - ilY) < 18) return `${f.id}_il_${il.roleIndex}`
+        }
+      }
+    }
+    for (const st of visibleSubtypes) {
+      const otMap     = Object.fromEntries(visibleOts.map(o => [o.id, o]))
+      const nestedMap = Object.fromEntries(visibleFacts.filter(vf => vf.objectified).map(vf => [vf.id, vf]))
+      const subB = playerBounds(st.subId,   otMap, nestedMap)
+      const supB = playerBounds(st.superId,  otMap, nestedMap)
+      if (subB && supB) {
+        const from = rectBorderPoint(subB, supB.cx, supB.cy)
+        const to   = rectBorderPoint(supB, subB.cx, subB.cy)
+        const dx = to.x - from.x, dy = to.y - from.y
+        const lenSq = dx * dx + dy * dy
+        const t = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((wx - from.x) * dx + (wy - from.y) * dy) / lenSq))
+        const dist = Math.hypot(wx - (from.x + t * dx), wy - (from.y + t * dy))
+        if (dist < 8) return st.id
+      }
+    }
+    return null
+  }, [visibleOts, visibleFacts, visibleConstraints, visibleSubtypes, store])
+
+  // ── Note context menu ────────────────────────────────────────────────────
+  const handleNoteContextMenu = useCallback((note, e) => {
+    store.select(note.id, 'note')
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      items: [
+        { label: 'Add subject',    action: () => store.startNoteConnector(note.id) },
+        { label: 'Remove subject', disabled: !(note.connectors?.length),
+          action: () => store.startNoteRemoveSubject(note.id) },
+        '---',
+        { label: 'Remove from diagram', action: () => store.deleteNote(note.id) },
+        { label: 'Delete', danger: true, action: () => store.deleteNote(note.id) },
+      ],
+    })
+  }, [store])
 
   const {
     handleMultiSelectionContextMenu,
@@ -459,6 +652,8 @@ export default function Canvas() {
     let { x, y } = screenToWorld(e.clientX, e.clientY)
     if (snapEnabled) { x = snap(x); y = snap(y) }
 
+    if (store.tool === 'addNote')          { store.addNote(x, y);   store.setTool('select'); return }
+    if (store.tool === 'addNoteConnector') { store.setTool('select'); return }
     if (store.tool === 'addEntity')     { store.addEntity(x, y); store.setTool('select'); return }
     if (store.tool === 'addValue')      { store.addValue(x, y);  store.setTool('select'); return }
     if (store.tool === 'addFact2')      { store.addFact(x, y, 2); store.setTool('select'); return }
@@ -573,6 +768,17 @@ export default function Canvas() {
       return
     }
 
+    if (kind === 'note') {
+      const diag = store.diagrams.find(d => d.id === store.activeDiagramId)
+      const noteEl = (diag?.notes ?? []).find(n => n.id === id)
+      if (!noteEl) return
+      store.select(id, 'note')
+      setDragState({ type: 'element', id, kind: 'note',
+                     startX: e.clientX, startY: e.clientY,
+                     origX: noteEl.x, origY: noteEl.y })
+      return
+    }
+
     const el = kind === 'fact'
       ? visibleFacts.find(f => f.id === id)
       : kind === 'constraint'
@@ -603,7 +809,12 @@ export default function Canvas() {
       if (dragState.kind === 'fact')            store.moveFact(dragState.id, wx, wy)
       else if (dragState.kind === 'constraint') store.moveConstraint(dragState.id, wx, wy)
       else if (dragState.kind === 'implicitLink') store.updateImplicitLink(dragState.implicitFactId, dragState.implicitRoleIndex, { x: snapEnabled ? snap(wx) : wx, y: snapEnabled ? snap(wy) : wy })
+      else if (dragState.kind === 'note')       store.updateNote(dragState.id, { x: snapEnabled ? snap(wx) : wx, y: snapEnabled ? snap(wy) : wy })
       else                                      store.moveObjectType(dragState.id, wx, wy)
+    } else if (dragState.type === 'noteResize') {
+      const newW = Math.max(80, dragState.origW + dx / store.zoom)
+      const newH = Math.max(40, dragState.origH + dy / store.zoom)
+      store.updateNote(dragState.noteId, { w: Math.round(newW), h: Math.round(newH) })
     } else if (dragState.type === 'multiElement') {
       if (dx * dx + dy * dy < 16) return
       const wdx = dx / store.zoom
@@ -735,12 +946,80 @@ export default function Canvas() {
     : store.tool.startsWith('add') ? 'crosshair'
     : 'default'
 
+  // ── Shared hover-outline helper for note connector modes ─────────────────
+  // Shapes, stroke-width and stroke-dasharray match the CSS .hover-ring elements
+  // used in select mode. All measurements are in world units (= CSS user units
+  // inside the SVG transform group), so they scale with zoom identically to the
+  // CSS-driven rings.
+  const noteHoverOutline = (hoverId) => {
+    if (!hoverId) return null
+    const color = 'rgba(64,120,200,0.55)'
+    const noEvents = { pointerEvents: 'none' }
+
+    // Object type — rect+3px pad, rx=8, strokeWidth=2, dash=4 3  (matches ObjectTypeNode hover-ring)
+    const ot = visibleOts.find(o => o.id === hoverId)
+    if (ot) {
+      const b = entityBounds(ot)
+      return <rect fill="none" stroke={color} strokeWidth={2} strokeDasharray="4 3" style={noEvents}
+        x={b.left - 3} y={b.top - 3} width={b.right - b.left + 6} height={b.bottom - b.top + 6} rx={8}/>
+    }
+
+    // Fact / nested OT — tight rect around role boxes only (matches FactTypeNode line 1733)
+    const f = visibleFacts.find(vf => vf.id === hoverId)
+    if (f) {
+      const n     = f.arity
+      const isVert = f.orientation === 'vertical'
+      const span  = n * ROLE_W + (n - 1) * ROLE_GAP   // same formula for both axes
+      if (isVert) {
+        const lx = f.x - ROLE_H / 2, ty = f.y - span / 2
+        return <rect fill="none" stroke={color} strokeWidth={2} strokeDasharray="4 3" style={noEvents}
+          x={lx - 3} y={ty - 3} width={ROLE_H + 6} height={span + 6} rx={2}/>
+      } else {
+        const lx = f.x - span / 2, ty = f.y - ROLE_H / 2
+        return <rect fill="none" stroke={color} strokeWidth={2} strokeDasharray="4 3" style={noEvents}
+          x={lx - 3} y={ty - 3} width={span + 6} height={ROLE_H + 6} rx={2}/>
+      }
+    }
+
+    // External constraint — circle matching ConstraintNodes hover-ring radius (+4px)
+    const c = visibleConstraints.find(vc => vc.id === hoverId)
+    if (c) {
+      const r = (EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) && c.constraintType !== 'ring' ? 10 : 14) + 4
+      return <circle fill="none" stroke={color} strokeWidth={2} strokeDasharray="4 3" style={noEvents}
+        cx={c.x} cy={c.y} r={r}/>
+    }
+
+    // Subtype — thick dashed line along the arrow (matches SubtypeArrows hover-ring line,
+    // which uses inline strokeWidth=10 world-units and CSS stroke-dasharray=4 3)
+    const st = visibleSubtypes.find(s => s.id === hoverId)
+    if (st) {
+      const otMap     = Object.fromEntries(visibleOts.map(o => [o.id, o]))
+      const nestedMap = Object.fromEntries(visibleFacts.filter(vf => vf.objectified).map(vf => [vf.id, vf]))
+      const subB = playerBounds(st.subId,   otMap, nestedMap)
+      const supB = playerBounds(st.superId,  otMap, nestedMap)
+      if (subB && supB) {
+        const from    = rectBorderPoint(subB, supB.cx, supB.cy)
+        const to      = rectBorderPoint(supB, subB.cx, subB.cy)
+        const arrowLen = 4 * 4.5
+        const edgeDx  = to.x - from.x, edgeDy = to.y - from.y
+        const edgeDist = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy)
+        const lineEnd  = edgeDist > arrowLen
+          ? { x: to.x - edgeDx / edgeDist * arrowLen, y: to.y - edgeDy / edgeDist * arrowLen }
+          : to
+        return <line fill="none" stroke={color} strokeWidth={10} strokeDasharray="4 3" style={noEvents}
+          x1={from.x} y1={from.y} x2={lineEnd.x} y2={lineEnd.y}/>
+      }
+    }
+
+    return null
+  }
+
   return (
     <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
       <svg
         ref={svgRef}
         id="orm2-canvas-svg"
-        className={store.tool === 'select' ? 'tool-select' : undefined}
+        className={qd ? 'query-edit' : store.tool === 'select' ? 'tool-select' : undefined}
         tabIndex={0}
         style={{ width: '100%', height: '100%', display: 'block',
                  background: 'var(--bg-canvas)', cursor, outline: 'none' }}
@@ -803,19 +1082,82 @@ export default function Canvas() {
         <rect className="canvas-bg" width="100%" height="100%" fill="url(#gridLg)"/>
 
         <g transform={`translate(${store.pan.x},${store.pan.y}) scale(${store.zoom})`}>
+          {/* Note connectors — rendered below notes so notes sit on top */}
+          {visibleNotes.flatMap(note => (note.connectors ?? []).map(conn => {
+            let tx, ty
+            const tid = conn.targetId
+            if (tid.includes('_il_')) {
+              const [fid, riStr] = tid.split('_il_')
+              const pf  = visibleFacts.find(f => f.id === fid)
+              const il  = pf?.implicitLinks?.find(l => l.roleIndex === Number(riStr))
+              const assoc = pf ? (visibleOts.find(o => o.id === pf.roles[Number(riStr)]?.objectTypeId)
+                              || visibleFacts.find(f => f.id === pf.roles[Number(riStr)]?.objectTypeId)) : null
+              if (pf && assoc) {
+                const ilPos = activeDiagram?.positions[`${fid}:il:${Number(riStr)}`]
+                tx = ilPos?.x ?? Math.round((pf.x + assoc.x) / 2)
+                ty = ilPos?.y ?? Math.round((pf.y + assoc.y) / 2)
+              }
+            } else {
+              const tgt = visibleOts.find(o => o.id === tid)
+                || visibleFacts.find(f => f.id === tid)
+                || visibleConstraints.find(c => c.id === tid)
+              if (tgt) { tx = tgt.x; ty = tgt.y }
+              else {
+                const st  = visibleSubtypes.find(s => s.id === tid)
+                if (st) {
+                  const sub = visibleOts.find(o => o.id === st.subId)  || visibleFacts.find(f => f.id === st.subId)
+                  const sup = visibleOts.find(o => o.id === st.superId) || visibleFacts.find(f => f.id === st.superId)
+                  if (sub && sup) { tx = (sub.x + sup.x) / 2; ty = (sub.y + sup.y) / 2 }
+                }
+              }
+            }
+            if (tx == null) return null
+            const ep = noteEdgePoint(note, tx, ty)
+            return (
+              <line key={conn.id}
+                x1={ep.x} y1={ep.y} x2={tx} y2={ty}
+                stroke="#b8a040" strokeWidth={1 / store.zoom}
+                strokeDasharray={`${5 / store.zoom} ${3 / store.zoom}`}
+                style={{ pointerEvents: 'none' }}
+              />
+            )
+          }))}
+
+          {/* Notes render beneath diagram elements */}
+          {visibleNotes.map(note => (
+            <g key={note.id} opacity={rsIds && !rsIds.has(note.id) ? 0.15 : 1}>
+              <NoteNode
+                note={note}
+                selected={store.selectedId === note.id && store.selectedKind === 'note'}
+                onDragStart={handleDragStart}
+                onResizeStart={(noteId, e) => {
+                  setDragState({ type: 'noteResize', noteId,
+                                 startX: e.clientX, startY: e.clientY,
+                                 origW: note.w, origH: note.h })
+                }}
+                onDoubleClick={noteId => {
+                  const n = visibleNotes.find(vn => vn.id === noteId)
+                  if (n) setNoteEditing({ noteId, text: n.text })
+                }}
+                onContextMenu={handleNoteContextMenu}
+              />
+            </g>
+          ))}
           <g opacity={store.queryIndexHighlight && !qd ? 0.2 : 1} style={store.queryIndexHighlight && !qd ? { pointerEvents: 'none' } : undefined}>
           <g style={(dimMode?.subtypesDim) ? { pointerEvents: 'none' } : undefined}>
-            <SubtypeArrows mousePos={mousePos} onContextMenu={handleSubtypeContextMenu} dimAllSubtypes={dimMode?.subtypesDim ?? false} queryReachable={queryReachable} queryOriginals={queryOriginals}/>
+            <SubtypeArrows mousePos={mousePos} onContextMenu={handleSubtypeContextMenu} dimAllSubtypes={dimMode?.subtypesDim ?? false} queryReachable={queryReachable} queryOriginals={queryOriginals} noteSubjectIds={isNotePickMode ? new Set() : rsIds}/>
           </g>
           {visibleFacts.map(f => {
-            const factDimmed = isFactDimmed(f)
-            const factOpacity = factDimmed ? 0.35 : (queryOpacity(f.id) ?? 1)
+            const factDimmed = isFactDimmed(f) || (rsIds != null && !rsIds.has(f.id)) || isNotePickMode
+            const factOpacity = factDimmed ? (rsIds != null ? 0.12 : 0.35) : (queryOpacity(f.id) ?? 1)
             return (
             <g key={f.id} opacity={factOpacity < 1 ? factOpacity : 1} style={factOpacity <= 0.2 ? { pointerEvents: 'none' } : undefined}>
             <FactTypeNode fact={f} onDragStart={handleDragStart}
               dimObjectification={!!(f.objectified && dimMode?.dimObjectification)}
               dimInnerFact={!!(f.objectified && dimMode?.dimInnerFact)}
+              dimInternalConstraints={!!store.noteConnectorDraft || (rsIds != null && rsIds.has(f.id))}
               isShared={sharedIds.has(f.id)}
+              visibleConstraints={f.objectified ? visibleConstraints : undefined}
               onContextMenu={(e) => handleFactContextMenu(f, e)}
               onRoleContextMenu={(roleIndex, e) => handleRoleContextMenu(f, roleIndex, e)}
               onBarContextMenu={(ui, e) => handleUniquenessBarContextMenu(f, ui, e)}
@@ -848,18 +1190,19 @@ export default function Canvas() {
                )
              })
            )}
-          <g opacity={dimMode?.connectorsDim ? 0.35 : 1} style={(dimMode?.connectorsDim) ? { pointerEvents: 'none' } : undefined}>
+          <g opacity={(rsIds != null || !!store.noteConnectorDraft || isNotePickMode) ? 0.12 : dimMode?.connectorsDim ? 0.35 : 1} style={(dimMode?.connectorsDim || !!qd) ? { pointerEvents: 'none' } : undefined}>
             <RoleConnectors mousePos={mousePos} queryReachable={queryReachable} queryOriginals={queryOriginals}/>
           </g>
           {visibleOts.map(ot => {
-            const otDimmed = isOtDimmed(ot)
-            const otOpacity = otDimmed ? 0.35 : (queryOpacity(ot.id) ?? 1)
+            const otDimmed = isOtDimmed(ot) || (rsIds != null && !rsIds.has(ot.id)) || isNotePickMode
+            const otOpacity = otDimmed ? (rsIds != null ? 0.12 : 0.35) : (queryOpacity(ot.id) ?? 1)
             return (
             <g key={ot.id} opacity={otOpacity < 1 ? otOpacity : 1} style={otOpacity <= 0.2 ? { pointerEvents: 'none' } : undefined}>
             <ObjectTypeNode objectType={ot}
               onDragStart={handleDragStart}
               mousePos={mousePos}
               isShared={sharedIds.has(ot.id)}
+              dimInternalConstraints={!!store.noteConnectorDraft || (rsIds != null && rsIds.has(ot.id))}
               onContextMenu={(e) => handleOtContextMenu(ot, e)}
               onDoubleClickValueRange={(cx, cy) => handleOtValueRangeClick(ot, cx, cy)}
               onValueRangeClick={(cx, cy) => handleOtValueRangeClick(ot, cx, cy)}
@@ -869,28 +1212,125 @@ export default function Canvas() {
             </g>
             )
           })}
-          <g opacity={dimMode?.connectorsDim ? 0.35 : 1} style={(dimMode?.connectorsDim) ? { pointerEvents: 'none' } : undefined}>
+          <g opacity={(rsIds != null || !!store.noteConnectorDraft || isNotePickMode) ? 0.12 : dimMode?.connectorsDim ? 0.35 : 1} style={(dimMode?.connectorsDim || !!qd) ? { pointerEvents: 'none' } : undefined}>
             <MandatoryDots onContextMenu={handleMandatoryDotContextMenu} queryReachable={queryReachable} queryOriginals={queryOriginals}/>
           </g>
-          <g opacity={(qd || dimMode?.constraintsDim) ? 0.35 : 1} style={(dimMode?.constraintsDim) ? { pointerEvents: 'none' } : undefined}>
+          <g opacity={(qd || dimMode?.constraintsDim) ? 0.35 : 1} style={(dimMode?.constraintsDim || !!qd) ? { pointerEvents: 'none' } : undefined}>
             <ConstraintNodes onDragStart={handleDragStart} mousePos={mousePos}
-              onContextMenu={handleConstraintContextMenu}/>
+              onContextMenu={handleConstraintContextMenu}
+              noteSubjectIds={isNotePickMode ? new Set() : rsIds}/>
           </g>
           <ConstraintMemberLabels/>
-          <ValidationBadges store={store} visibleFacts={visibleFacts} visibleConstraints={visibleConstraints} positions={store.diagrams.find(d => d.id === store.activeDiagramId)?.positions ?? {}}/>
+          <ValidationBadges store={store} visibleOts={visibleOts} visibleFacts={visibleFacts} visibleConstraints={visibleConstraints} positions={store.diagrams.find(d => d.id === store.activeDiagramId)?.positions ?? {}}/>
           </g>{/* end previewDim wrapper */}
           {(qd || store.queryIndexHighlight) && <QueryCopies
             mousePos={mousePos}
             onCopyClick={target => store.queryEditClick(target)}
-            onCopyContextMenu={(e, copyId, isProtected, isAtDefault) => setContextMenu({
-              x: e.clientX, y: e.clientY,
-              items: [
-                { label: 'Reset position', disabled: isAtDefault, action: () => store.resetQueryCopyPosition(copyId) },
-                '---',
-                { label: 'Remove copy', danger: !isProtected, disabled: isProtected, action: () => store.removeQueryCopy(copyId) },
-              ],
-            })}
+            onCopyContextMenu={(e, copyId, isProtected, isAtDefault) => {
+              setContextMenu({
+                x: e.clientX, y: e.clientY,
+                items: [
+                  { label: 'Reset position', disabled: isAtDefault, action: () => store.resetQueryCopyPosition(copyId) },
+                  '---',
+                  { label: 'Remove copy', danger: !isProtected, disabled: isProtected, action: () => store.removeQueryCopy(copyId) },
+                ],
+              })
+            }}
           />}
+
+          {/* Note connector draft — rubber-band line, hover outline + transparent click overlay */}
+          {store.noteConnectorDraft && (() => {
+            const srcNote = visibleNotes.find(n => n.id === store.noteConnectorDraft.noteId)
+            if (!srcNote) return null
+            const ep = mousePos ? noteEdgePoint(srcNote, mousePos.x, mousePos.y) : null
+            const hoverId = hitTestElement(mousePos.x, mousePos.y)
+            return (
+              <>
+                {ep && mousePos && (
+                  <line x1={ep.x} y1={ep.y} x2={mousePos.x} y2={mousePos.y}
+                    stroke="#b8a040" strokeWidth={1 / store.zoom}
+                    strokeDasharray={`${5 / store.zoom} ${3 / store.zoom}`}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )}
+                {noteHoverOutline(hoverId)}
+                <rect x={-50000} y={-50000} width={100000} height={100000}
+                  fill="rgba(0,0,0,0)"
+                  style={{ cursor: hoverId ? 'pointer' : 'crosshair', pointerEvents: 'all' }}
+                  onMouseDown={e => {
+                    if (e.button !== 0) return
+                    e.stopPropagation()
+                    const { x: wx, y: wy } = screenToWorld(e.clientX, e.clientY)
+                    const targetId = hitTestElement(wx, wy)
+                    if (targetId) store.addNoteConnector(store.noteConnectorDraft.noteId, targetId)
+                    else store.cancelNoteConnector()
+                  }}
+                />
+              </>
+            )
+          })()}
+
+          {/* Note remove-subject mode — hover outline + click handler */}
+          {store.noteRemoveSubjectDraft && rsNote && (() => {
+            const hoverId = (() => {
+              const id = hitTestElement(mousePos.x, mousePos.y)
+              return (id && rsIds?.has(id)) ? id : null
+            })()
+            return (
+              <>
+                {noteHoverOutline(hoverId)}
+                <rect x={-50000} y={-50000} width={100000} height={100000}
+                  fill="rgba(0,0,0,0)"
+                  style={{ cursor: hoverId ? 'pointer' : 'default', pointerEvents: 'all' }}
+                  onMouseDown={e => {
+                    if (e.button !== 0) return
+                    e.stopPropagation()
+                    const { x: wx, y: wy } = screenToWorld(e.clientX, e.clientY)
+                    const targetId = hitTestElement(wx, wy)
+                    if (targetId && rsIds?.has(targetId)) {
+                      const conn = rsNote.connectors.find(c => c.targetId === targetId)
+                      if (conn) store.removeNoteConnector(rsNote.id, conn.id)
+                    }
+                    store.cancelNoteRemoveSubject()
+                  }}
+                />
+              </>
+            )
+          })()}
+
+          {/* Note-pick mode — dim everything except notes; hover outline + click to pick */}
+          {isNotePickMode && (() => {
+            const hovered = visibleNotes.find(n =>
+              mousePos.x >= n.x - n.w / 2 && mousePos.x <= n.x + n.w / 2 &&
+              mousePos.y >= n.y - n.h / 2 && mousePos.y <= n.y + n.h / 2
+            ) ?? null
+            return (
+              <>
+                {hovered && (
+                  <rect fill="none" stroke="rgba(64,120,200,0.55)" strokeWidth={2}
+                    strokeDasharray="4 3" style={{ pointerEvents: 'none' }}
+                    x={hovered.x - hovered.w / 2 - 3} y={hovered.y - hovered.h / 2 - 3}
+                    width={hovered.w + 6} height={hovered.h + 6} rx={4}
+                  />
+                )}
+                <rect x={-50000} y={-50000} width={100000} height={100000}
+                  fill="rgba(0,0,0,0)"
+                  style={{ cursor: hovered ? 'pointer' : 'default', pointerEvents: 'all' }}
+                  onMouseDown={e => {
+                    if (e.button !== 0) return
+                    e.stopPropagation()
+                    const { x: wx, y: wy } = screenToWorld(e.clientX, e.clientY)
+                    const picked = visibleNotes.find(n =>
+                      wx >= n.x - n.w / 2 && wx <= n.x + n.w / 2 &&
+                      wy >= n.y - n.h / 2 && wy <= n.y + n.h / 2
+                    )
+                    if (picked) store.startNoteConnector(picked.id)
+                    store.setTool('select')
+                  }}
+                />
+              </>
+            )
+          })()}
 
           {/* Rubber-band selection rect */}
           {bandRect && (
@@ -923,6 +1363,52 @@ export default function Canvas() {
           />
         )}
       </svg>
+
+      {/* Note inline editing textarea — absolutely positioned over the note */}
+      {noteEditing && (() => {
+        const note = visibleNotes.find(n => n.id === noteEditing.noteId)
+        if (!note) return null
+        const FOLD = 16
+        const left   = (note.x - note.w / 2) * store.zoom + store.pan.x
+        const top    = (note.y - note.h / 2) * store.zoom + store.pan.y
+        const width  = (note.w - FOLD) * store.zoom
+        const height = note.h * store.zoom
+        return (
+          <>
+            {/* Click-outside backdrop — commits the edit when user clicks off the note */}
+            <div
+              style={{ position: 'absolute', inset: 0, zIndex: 49 }}
+              onMouseDown={commitNoteEdit}
+            />
+            <textarea
+            autoFocus
+            value={noteEditing.text}
+            onChange={e => setNoteEditing(prev => ({ ...prev, text: e.target.value }))}
+            onKeyDown={e => {
+              if (e.key === 'Escape') { setNoteEditing(null); return }
+              e.stopPropagation()
+            }}
+            style={{
+              position: 'absolute',
+              left: Math.round(left), top: Math.round(top),
+              width: Math.round(width), height: Math.round(height),
+              fontSize: Math.round(11 * store.zoom),
+              fontFamily: "'Segoe UI', Helvetica, Arial, sans-serif",
+              lineHeight: 1.4,
+              background: '#fffde7',
+              border: 'none',
+              outline: '2px solid var(--accent)',
+              resize: 'none',
+              padding: `${Math.round(7 * store.zoom)}px ${Math.round(7 * store.zoom)}px`,
+              color: '#333',
+              zIndex: 50,
+              boxSizing: 'border-box',
+              borderRadius: 0,
+            }}
+          />
+          </>
+        )
+      })()}
 
       {/* Minimap overlay */}
       <Minimap/>
