@@ -9,9 +9,6 @@ import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 
 const CONSTRAINT_R = 14        // radius of standard constraint circle
 const EXTERNAL_CONSTRAINT_R = 10 // radius of external constraint circle
-// Mirror FactTypeNode uniqueness-bar geometry constants (BAR_MARGIN=4, BAR_SPACING=5)
-const _BAR_MARGIN  = 4
-const _BAR_SPACING = 5
 
 const FREQ_FONT_SIZE = 13
 const FREQ_PAD_X     = 6   // horizontal padding inside stadium, each side
@@ -709,7 +706,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
   // simple adjacent pair (which is handled by consecutiveRoleMidpoint).
   // roleSeq: [{factId, roleIndex}]  →  {spineStart, spineEnd, anchor, teeth} or null
   // stagger: 0-based index within same-side rakes — each level pushes the spine further out.
-  // When the spine side has uniqueness bars the spine is pushed beyond the outermost bar.
+  // When the spine side has uniqueness bars the rakes sit between the role boxes and the bars.
   function rakeForRoleSeq(roleSeq, cx, cy, stagger = 0) {
     if (roleSeq.length < 2) return null
     const factId = roleSeq[0].factId
@@ -724,12 +721,6 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
       if (Math.abs(pos0 - pos1) === 1) return null
     }
 
-    // Outermost uniqueness bar level (mirrors render logic in FactTypeNode)
-    const hasUnary_f = (fact.uniqueness || []).some(u => u.length === 1)
-    let maxBarLvl = hasUnary_f ? 0 : -1
-    ;(fact.uniqueness || []).forEach(u => { if (u.length > 1) maxBarLvl++ })
-    // maxBarLvl >= 0  ⟹  bars exist; outer edge = roleEdge ± (BAR_MARGIN + BAR_SPACING*(maxBarLvl+1))
-
     const barsBelow  = !!fact.uniquenessBelow
     const roleCenters = roleSeq.map(m => roleCenter(fact, m.roleIndex))
 
@@ -742,25 +733,21 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
       const edgeX     = useLeft ? leftEdge : rightEdge
       let spineX
       if (useLeft) {
-        spineX = (maxBarLvl >= 0 && barsBelow)
-          ? leftEdge  - _BAR_MARGIN - _BAR_SPACING * (maxBarLvl + 1) - RAKE_TOOTH
-          : leftEdge  - RAKE_TOOTH
+        spineX  = leftEdge  - RAKE_TOOTH
         spineX -= stagger * RAKE_STAGGER
       } else {
-        spineX = (maxBarLvl >= 0 && !barsBelow)
-          ? rightEdge + _BAR_MARGIN + _BAR_SPACING * (maxBarLvl + 1) + RAKE_TOOTH
-          : rightEdge + RAKE_TOOTH
+        spineX  = rightEdge + RAKE_TOOTH
         spineX += stagger * RAKE_STAGGER
       }
       const minY = Math.min(...roleCenters.map(rc => rc.y))
       const maxY = Math.max(...roleCenters.map(rc => rc.y))
       // Tooth endpoint: stagger 0 reaches the role-box edge; higher stagger stops just
-      // short of the spine below it so teeth don't visually merge if roles overlap.
+      // short of the adjacent inner spine so teeth don't visually merge when roles overlap.
       const toX = stagger === 0
         ? edgeX
         : useLeft
-          ? spineX + RAKE_STAGGER - RAKE_TOOTH_GAP   // rightward, stopping just before spine below
-          : spineX - RAKE_STAGGER + RAKE_TOOTH_GAP   // leftward, stopping just before spine below
+          ? spineX + RAKE_STAGGER - RAKE_TOOTH_GAP   // rightward, stopping just before inner spine
+          : spineX - RAKE_STAGGER + RAKE_TOOTH_GAP   // leftward, stopping just before inner spine
       return {
         spineStart: { x: spineX, y: minY },
         spineEnd:   { x: spineX, y: maxY },
@@ -776,25 +763,21 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
       const edgeY      = useTop ? topEdge : bottomEdge
       let spineY
       if (useTop) {
-        spineY = (maxBarLvl >= 0 && !barsBelow)
-          ? topEdge    - _BAR_MARGIN - _BAR_SPACING * (maxBarLvl + 1) - RAKE_TOOTH
-          : topEdge    - RAKE_TOOTH
+        spineY  = topEdge    - RAKE_TOOTH
         spineY -= stagger * RAKE_STAGGER
       } else {
-        spineY = (maxBarLvl >= 0 && barsBelow)
-          ? bottomEdge + _BAR_MARGIN + _BAR_SPACING * (maxBarLvl + 1) + RAKE_TOOTH
-          : bottomEdge + RAKE_TOOTH
+        spineY  = bottomEdge + RAKE_TOOTH
         spineY += stagger * RAKE_STAGGER
       }
       const minX = Math.min(...roleCenters.map(rc => rc.x))
       const maxX = Math.max(...roleCenters.map(rc => rc.x))
       // Tooth endpoint: stagger 0 reaches the role-box edge; higher stagger stops just
-      // short of the spine below it so teeth don't visually merge if roles overlap.
+      // short of the adjacent inner spine so teeth don't visually merge when roles overlap.
       const toY = stagger === 0
         ? edgeY
         : useTop
-          ? spineY + RAKE_STAGGER - RAKE_TOOTH_GAP   // downward, stopping just before spine below
-          : spineY - RAKE_STAGGER + RAKE_TOOTH_GAP   // upward, stopping just before spine below
+          ? spineY + RAKE_STAGGER - RAKE_TOOTH_GAP   // downward, stopping just before inner spine
+          : spineY - RAKE_STAGGER + RAKE_TOOTH_GAP   // upward, stopping just before inner spine
       return {
         spineStart: { x: minX, y: spineY },
         spineEnd:   { x: maxX, y: spineY },

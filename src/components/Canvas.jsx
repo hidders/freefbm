@@ -1157,7 +1157,7 @@ export default function Canvas() {
               dimInnerFact={!!(f.objectified && dimMode?.dimInnerFact)}
               dimInternalConstraints={!!store.noteConnectorDraft || (rsIds != null && rsIds.has(f.id))}
               isShared={sharedIds.has(f.id)}
-              visibleConstraints={f.objectified ? visibleConstraints : undefined}
+              visibleConstraints={visibleConstraints}
               onContextMenu={(e) => handleFactContextMenu(f, e)}
               onRoleContextMenu={(roleIndex, e) => handleRoleContextMenu(f, roleIndex, e)}
               onBarContextMenu={(ui, e) => handleUniquenessBarContextMenu(f, ui, e)}
@@ -1184,6 +1184,7 @@ export default function Canvas() {
                     <FactTypeNode fact={synth}
                       onDragStart={(id, kind, e) => handleDragStart(id, 'implicitLink', e)}
                       isShared={false}
+                      visibleConstraints={visibleConstraints}
                       onContextMenu={(e) => handleImplicitLinkContextMenu(f.id, il.roleIndex, e)}
                       onBarContextMenu={(ui, e) => handleImplicitLinkBarContextMenu(f, il, ui, e)}/>
                   </g>

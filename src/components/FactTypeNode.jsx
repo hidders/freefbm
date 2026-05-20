@@ -3,7 +3,7 @@ import { useOrmStore } from '../store/ormStore'
 import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { roleAnchor } from '../utils/geometry'
-import { RAKE_TOOTH, RAKE_STAGGER, RAKE_COMFORT } from '../constants.js'
+import { RAKE_TOOTH, RAKE_STAGGER, RAKE_COMFORT, RAKE_BAR_ZONE } from '../constants.js'
 
 const VR_DEFAULT_OFFSET = { dx: 0, dy: -50 }
 const VR_FONT      = "'Segoe UI', Helvetica, Arial, sans-serif"
@@ -62,7 +62,7 @@ export function displayRoleOrder(fact) {
 /** Returns the bounding rect of the outer entity box drawn around an objectified fact.
  *  rakeMinPad: optional minimum padding on each side to contain rake heads. */
 export function nestedFactBounds(fact, rakeMinPad = {}) {
-  const { top: rT = 0, bottom: rB = 0, left: rL = 0, right: rR = 0 } = rakeMinPad
+  const { top: rT = 0, bottom: rB = 0, left: rL = 0, right: rR = 0, rakeZoneOnBarSide = 0 } = rakeMinPad
   const PAD  = 10
   const n    = Math.max(fact.arity, 1)
   const isV  = fact.orientation === 'vertical'
@@ -75,7 +75,7 @@ export function nestedFactBounds(fact, rakeMinPad = {}) {
   const multiCount = multiLevel
   const hasAnyBar  = (fact.uniqueness?.length ?? 0) > 0
   const barSpace   = hasAnyBar
-    ? BAR_MARGIN + BAR_SPACING * (multiCount + 1) + BAR_H / 2 + 5
+    ? BAR_MARGIN + rakeZoneOnBarSide + BAR_SPACING * (multiCount + 1) + BAR_H / 2 + 5
     : 0
   const barPad = Math.max(PAD, Math.ceil(barSpace))
 
@@ -344,6 +344,40 @@ const BAR_SPACING = 5    // vertical distance between successive bar levels
 const PREF_OFFSET = 2.5  // shift for preferred uniqueness bar (keeps inner line at original pos)
 const UNARY_CAP_R = 8
 
+// Returns {T, B, L, R} counts of external-constraint rake heads per side of a fact.
+// Used to decide whether to push uniqueness bars outward to make room for rakes.
+function rakeCountsForFact(fact, constraints) {
+  const counts = { T: 0, B: 0, L: 0, R: 0 }
+  for (const c of constraints) {
+    const seqGroups = [
+      ...(c.sequences || []).map(seq =>
+        seq.every(m => m.kind === 'role')
+          ? seq.map(m => ({ factId: m.factId, roleIndex: m.roleIndex }))
+          : null
+      ),
+      ...(c.roleSequences || []),
+    ]
+    for (const roleSeq of seqGroups) {
+      if (!roleSeq || roleSeq.length < 2) continue
+      if (!roleSeq.every(m => m.factId === fact.id)) continue
+      if (roleSeq.length === 2) {
+        const dro = displayRoleOrder(fact)
+        const p0 = dro.indexOf(roleSeq[0].roleIndex)
+        const p1 = dro.indexOf(roleSeq[1].roleIndex)
+        if (Math.abs(p0 - p1) === 1) continue
+      }
+      if (fact.orientation === 'vertical') {
+        const lx = fact.x - ROLE_H / 2, rx = fact.x + ROLE_H / 2
+        counts[(lx - c.x) ** 2 < (rx - c.x) ** 2 ? 'L' : 'R']++
+      } else {
+        const ty = fact.y - ROLE_H / 2, by = fact.y + ROLE_H / 2
+        counts[(ty - c.y) ** 2 < (by - c.y) ** 2 ? 'T' : 'B']++
+      }
+    }
+  }
+  return counts
+}
+
 export function roleCenter(fact, roleIndex) {
   const n = Math.max(fact.arity, 1)
   const ro = fact.roleOrder || Array.from({ length: n }, (_, i) => i)
@@ -376,7 +410,7 @@ export function factBounds(fact) {
   const barsBelow = !!fact.uniquenessBelow
   if (fact.orientation === 'vertical') {
     const totalH = n * ROLE_W + (n - 1) * ROLE_GAP
-    const barsWidth = BAR_MARGIN + BAR_SPACING * (levelsUsed + 1)
+    const barsWidth = BAR_MARGIN + RAKE_BAR_ZONE + BAR_SPACING * (levelsUsed + 1)
     return {
       left:   fact.x - ROLE_H / 2 - (barsBelow ? barsWidth : 1),
       right:  fact.x + ROLE_H / 2 + (barsBelow ? 1 : barsWidth),
@@ -385,7 +419,7 @@ export function factBounds(fact) {
     }
   }
   const totalW = n * ROLE_W + (n - 1) * ROLE_GAP
-  const barsHeight = BAR_MARGIN + BAR_SPACING * (levelsUsed + 1)
+  const barsHeight = BAR_MARGIN + RAKE_BAR_ZONE + BAR_SPACING * (levelsUsed + 1)
   return {
     left:   fact.x - totalW / 2 - 1,
     right:  fact.x + totalW / 2 + 1,
@@ -1135,6 +1169,13 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const INSET = 2
   const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
   const barsBelow = !!fact.uniquenessBelow
+  // Compute which sides have external-constraint rakes so bars can be shifted only when needed.
+  // The zone grows with rake count so the innermost bar always clears the outermost rake.
+  const rakeCounts  = rakeCountsForFact(fact, visibleConstraints ?? store.constraints)
+  const rakeCount_h = barsBelow ? rakeCounts.B : rakeCounts.T
+  const rakeCount_v = barsBelow ? rakeCounts.L : rakeCounts.R
+  const rakeZone_h  = rakeCount_h > 0 ? RAKE_TOOTH + (rakeCount_h - 1) * RAKE_STAGGER + RAKE_COMFORT : 0
+  const rakeZone_v  = rakeCount_v > 0 ? RAKE_TOOTH + (rakeCount_v - 1) * RAKE_STAGGER + RAKE_COMFORT : 0
   const preferredKeys = new Set((fact.preferredUniqueness || []).map(pu => JSON.stringify([...pu].sort((a, b) => a - b))))
   if (fact._implicit) {
     const il = store.facts.find(f => f.id === fact._parentFactId)?.implicitLinks?.find(il => il.roleIndex === fact._implicitRoleIndex)
@@ -1151,8 +1192,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
 
   // Bar coordinate helpers
   const barY_h = (level) => barsBelow
-    ? topY + ROLE_H + BAR_MARGIN + BAR_SPACING * (level + 1) - BAR_H / 2
-    : topY - BAR_MARGIN - BAR_SPACING * (level + 1) + BAR_H / 2
+    ? topY + ROLE_H + BAR_MARGIN + rakeZone_h + BAR_SPACING * (level + 1) - BAR_H / 2
+    : topY - BAR_MARGIN - rakeZone_h - BAR_SPACING * (level + 1) + BAR_H / 2
 
   // Adjust barY to keep the preferred bar's inner line at the original position,
   // and shift bars further from role boxes (above the preferred) by the same amount.
@@ -1199,8 +1240,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const leftX_v   = fact.x - ROLE_H / 2
 
   const barX_v = (level) => barsBelow
-    ? leftX_v - BAR_MARGIN - BAR_SPACING * (level + 1) + BAR_H / 2
-    : leftX_v + ROLE_H + BAR_MARGIN + BAR_SPACING * (level + 1) - BAR_H / 2
+    ? leftX_v - BAR_MARGIN - rakeZone_v - BAR_SPACING * (level + 1) + BAR_H / 2
+    : leftX_v + ROLE_H + BAR_MARGIN + rakeZone_v + BAR_SPACING * (level + 1) - BAR_H / 2
 
   // Adjust barX similarly: inner line of preferred stays put; bars further away shift outward.
   const adjustedBarX = (level, isThisPreferred) => {
@@ -1338,21 +1379,50 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
 
     if (!text && !editingReading) return null
 
+    // Distance from role-box edge to outermost element (bar or rake) on each side.
+    // Used to position the reading so it clears the full stack on its side.
+    const hasAnyBar_rd = fact.uniqueness.length > 0
+    const topStackH_rd = (hasAnyBar_rd && !barsBelow)
+      ? BAR_MARGIN + rakeZone_h + BAR_SPACING * (multiCount + 1)
+      : rakeCounts.T > 0 ? RAKE_TOOTH + (rakeCounts.T - 1) * RAKE_STAGGER : 0
+    const botStackH_rd = (hasAnyBar_rd && barsBelow)
+      ? BAR_MARGIN + rakeZone_h + BAR_SPACING * (multiCount + 1)
+      : rakeCounts.B > 0 ? RAKE_TOOTH + (rakeCounts.B - 1) * RAKE_STAGGER : 0
+
     const AUTO_DX = (() => {
       if (!isVertical) return 0
       if (!_vrCanvas) _vrCanvas = document.createElement('canvas')
       const _ctx = _vrCanvas.getContext('2d')
       _ctx.font = `14px ${VR_FONT}`
       const tw = _ctx.measureText(text).width
-      const bounds = fact.objectified ? nestedFactBounds(fact, nestedRakePad) : factBounds(fact)
-      return fact.readingAbove
-        ? bounds.right - fact.x + tw / 2 + 10
-        : bounds.left  - fact.x - tw / 2 - 10
+      if (fact.objectified) {
+        const bounds = nestedFactBounds(fact, nestedRakePad)
+        return fact.readingAbove
+          ? bounds.right - fact.x + tw / 2 + 10
+          : bounds.left  - fact.x - tw / 2 - 10
+      }
+      if (fact.readingAbove) {
+        // Reading to the right — stack is on the right side
+        const rightStackW = (hasAnyBar_rd && !barsBelow)
+          ? BAR_MARGIN + rakeZone_v + BAR_SPACING * (multiCount + 1)
+          : rakeCounts.R > 0 ? RAKE_TOOTH + (rakeCounts.R - 1) * RAKE_STAGGER : 0
+        return ROLE_H / 2 + rightStackW + tw / 2 + 10
+      } else {
+        // Reading to the left — stack is on the left side
+        const leftStackW = (hasAnyBar_rd && barsBelow)
+          ? BAR_MARGIN + rakeZone_v + BAR_SPACING * (multiCount + 1)
+          : rakeCounts.L > 0 ? RAKE_TOOTH + (rakeCounts.L - 1) * RAKE_STAGGER : 0
+        return -(ROLE_H / 2 + leftStackW + tw / 2 + 10)
+      }
     })()
     const AUTO_DY = isVertical ? 0
-      : fact.readingAbove ? -(ROLE_H / 2 + 18)
-      : fact.objectified  ? nestedFactBounds(fact, nestedRakePad).bottom - fact.y + (isShared ? 22 : 14)
-      : ROLE_H / 2 + 18
+      : fact.readingAbove
+        ? fact.objectified
+          ? nestedFactBounds(fact, nestedRakePad).top  - fact.y - 18
+          : -(ROLE_H / 2 + topStackH_rd + 18)
+        : fact.objectified
+          ? nestedFactBounds(fact, nestedRakePad).bottom - fact.y + (isShared ? 22 : 14)
+          : ROLE_H / 2 + botStackH_rd + 18
     const defaultOff = { dx: AUTO_DX, dy: AUTO_DY }
     const storedOff = fact.readingAbove ? fact.readingOffsetAbove : fact.readingOffsetBelow
     const off = readingLive ?? (storedOff ?? defaultOff)
@@ -1514,58 +1584,38 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   // When external-constraint connectors form rake heads next to the role boxes of an
   // objectified fact the outer entity box must be large enough to contain them.
   const nestedRakePad = (() => {
-    if (!fact.objectified) return { top: 0, bottom: 0, left: 0, right: 0 }
+    if (!fact.objectified) return { top: 0, bottom: 0, left: 0, right: 0, rakeZoneOnBarSide: 0 }
     const hasAnyBar_r    = fact.uniqueness.length > 0
     const barsBelow_r    = !!fact.uniquenessBelow
     // For horizontal facts, track whether a nested reading occupies the top or bottom region
     const readingAbove_r = fact.nestedReading && !!fact.readingAbove
     const readingBelow_r = fact.nestedReading && !fact.readingAbove
-    const counts = { T: 0, B: 0, L: 0, R: 0 }
-    for (const c of (visibleConstraints ?? store.constraints)) {
-      const seqGroups = [
-        ...(c.sequences || []).map(seq =>
-          seq.every(m => m.kind === 'role')
-            ? seq.map(m => ({ factId: m.factId, roleIndex: m.roleIndex }))
-            : null
-        ),
-        ...(c.roleSequences || []),
-      ]
-      for (const roleSeq of seqGroups) {
-        if (!roleSeq || roleSeq.length < 2) continue
-        if (!roleSeq.every(m => m.factId === fact.id)) continue
-        if (roleSeq.length === 2) {
-          const dro = displayRoleOrder(fact)
-          const p0 = dro.indexOf(roleSeq[0].roleIndex)
-          const p1 = dro.indexOf(roleSeq[1].roleIndex)
-          if (Math.abs(p0 - p1) === 1) continue
-        }
-        if (fact.orientation === 'vertical') {
-          const lx = fact.x - ROLE_H / 2, rx = fact.x + ROLE_H / 2
-          counts[(lx - c.x) ** 2 < (rx - c.x) ** 2 ? 'L' : 'R']++
-        } else {
-          const ty = fact.y - ROLE_H / 2, by = fact.y + ROLE_H / 2
-          counts[(ty - c.y) ** 2 < (by - c.y) ** 2 ? 'T' : 'B']++
-        }
-      }
-    }
+    // Reuse the already-computed rake counts (avoids iterating constraints twice)
+    const counts = rakeCounts
     // Minimum padding from role-box edge needed to contain n rakes on a given side.
-    // When a nested reading occupies the same side it must clear the outermost rake
-    // spine, so extra room equal to the reading line height plus two margins is added.
-    // Otherwise, RAKE_COMFORT of breathing room is left above the outermost spine.
+    // Rakes sit between the role boxes and any bars; barPad (which includes RAKE_BAR_ZONE
+    // when rakes are present) already ensures bars clear the rakes — this value covers
+    // only the rake zone itself.
     const minPad = (n, sideHasBars, hasReadingOnSide = false) => {
       if (n === 0) return 0
-      const barExt     = sideHasBars ? BAR_MARGIN + BAR_SPACING * (multiCount + 1) : 0
       const rakeExtent = RAKE_TOOTH + (n - 1) * RAKE_STAGGER
       if (hasReadingOnSide) {
-        return barExt + rakeExtent + NESTED_READING_LINE_H + 2 * NESTED_READING_PAD_BELOW
+        return rakeExtent + NESTED_READING_LINE_H + 2 * NESTED_READING_PAD_BELOW
       }
-      return barExt + rakeExtent + RAKE_COMFORT
+      return rakeExtent + RAKE_COMFORT
     }
+    const rakeCountOnBarSide = isVertical
+      ? (barsBelow_r ? counts.L : counts.R)
+      : (barsBelow_r ? counts.B : counts.T)
+    const rakeZoneOnBarSide = rakeCountOnBarSide > 0
+      ? RAKE_TOOTH + (rakeCountOnBarSide - 1) * RAKE_STAGGER + RAKE_COMFORT
+      : 0
     return {
       top:    minPad(counts.T, !barsBelow_r && hasAnyBar_r, readingAbove_r),
       bottom: minPad(counts.B,  barsBelow_r && hasAnyBar_r, readingBelow_r),
       left:   minPad(counts.L,  barsBelow_r && hasAnyBar_r, false),
       right:  minPad(counts.R, !barsBelow_r && hasAnyBar_r, false),
+      rakeZoneOnBarSide,
     }
   })()
 
@@ -1758,8 +1808,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           ? `(${fact.objectifiedRefMode})` : null
         const PAD = 10
         const hasAnyBar = fact.uniqueness.length > 0
+        const rakeZone  = isVertical ? rakeZone_v : rakeZone_h
         const barSpace  = hasAnyBar
-          ? BAR_MARGIN + BAR_SPACING * (multiCount + 1) + BAR_H / 2 + 5
+          ? BAR_MARGIN + rakeZone + BAR_SPACING * (multiCount + 1) + BAR_H / 2 + 5
           : 0
         const barPad = Math.max(PAD, Math.ceil(barSpace))
 
