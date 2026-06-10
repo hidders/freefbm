@@ -154,7 +154,8 @@ export default function DiagramTabs() {
             onMouseDown={(e) => handleTabMouseDown(e, i)}
             style={{
               display: 'flex', alignItems: 'center', gap: 4,
-              padding: '0 10px',
+              paddingLeft: 10,
+              paddingRight: diagrams.length > 1 ? 28 : 10,
               height: isActive ? 28 : 25,
               marginBottom: isActive ? -1 : 0,
               border: '1px solid var(--border)',
@@ -211,15 +212,27 @@ export default function DiagramTabs() {
                 title="Remove diagram"
                 onClick={e => handleDelete(e, d.id)}
                 style={{
-                  marginLeft: 2, fontSize: 10, lineHeight: 1,
-                  color: 'var(--ink-muted)',
-                  opacity: isActive ? 0.6 : 0.35,
-                  cursor: 'pointer',
-                  padding: '1px 2px',
-                  borderRadius: 2,
+                  position: 'absolute', right: 6,
+                  top: '50%', transform: 'translateY(-50%)',
+                  width: 15, height: 15,
+                  borderRadius: '50%',
+                  border: '1.5px solid #e0b0a8',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--danger)',
+                  fontSize: 9, fontWeight: 700, lineHeight: 1,
+                  cursor: 'pointer', userSelect: 'none', flexShrink: 0,
+                  boxSizing: 'border-box',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.color = 'var(--ink-1)'; e.currentTarget.style.opacity = '1' }}
-                onMouseLeave={e => { e.currentTarget.style.color = 'var(--ink-muted)'; e.currentTarget.style.opacity = isActive ? '0.6' : '0.35' }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'var(--danger)'
+                  e.currentTarget.style.borderColor = 'var(--danger)'
+                  e.currentTarget.style.color = '#fff'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.borderColor = '#e0b0a8'
+                  e.currentTarget.style.color = 'var(--danger)'
+                }}
               >
                 ✕
               </span>

@@ -728,32 +728,6 @@ export default function ToolPanel() {
           <NestedFactTypeIcon active={tool === 'addNestedFact'} />
           Nested Entity Type
         </button>
-        <button
-          title="Add Nested Value Type"
-          onClick={() => store.setTool('addNestedValueFact')}
-          style={{
-            width: '100%',
-            padding: '2px 10px',
-            fontSize: 12,
-            textAlign: 'left',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 7,
-            background: tool === 'addNestedValueFact' ? 'var(--accent)' : 'transparent',
-            color: tool === 'addNestedValueFact' ? '#fff' : 'var(--ink-2)',
-            border: `1px solid ${tool === 'addNestedValueFact' ? 'var(--accent)' : 'transparent'}`,
-            borderRadius: 4,
-            fontFamily: 'var(--font-mono)',
-            cursor: 'pointer',
-            transition: 'all 0.12s',
-            whiteSpace: 'nowrap',
-          }}
-          onMouseEnter={e => { if (tool !== 'addNestedValueFact') e.currentTarget.style.background = 'var(--bg-hover)' }}
-          onMouseLeave={e => { if (tool !== 'addNestedValueFact') e.currentTarget.style.background = 'transparent' }}
-        >
-          <NestedValueTypeIcon active={tool === 'addNestedValueFact'} />
-          Nested Value Type
-        </button>
       </AdvancedSection>
       <button
         title="Assign Object Type to Role (A)"

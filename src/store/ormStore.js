@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { EXTERNAL_CONSTRAINT_TYPES } from '../constants.js'
 import { constraintMaxSequences, isSingletonSequence, isOpenEndedConstruction } from '../utils/constraintRules.js'
 import { runValidation as runValidationRules, DEFAULT_VALIDATION_CATEGORIES } from '../utils/validation.js'
+import { computePopulationIssues } from '../utils/populationValidation.js'
+import { findRefMode, refModeLabel, vtNameFromLabel, isRefModeFact, isIdentifyingFact, findCompositePI, findInheritedPI, getEntityEffectivePopulation, getVtEffectivePopulation, getEntityIdentifierShape, getRoleCellShape, propagateValueToPlayer, isCompleteValue, findRolePlayer } from '../utils/refMode.js'
 
 // ── pan animation ─────────────────────────────────────────────────────────────
 let _panAnimId = null
@@ -15,7 +17,7 @@ const uid = () => `n${Date.now()}_${_n++}`
 const mkEntity = (x, y) => ({
   id: uid(), kind: 'entity',
   name: 'Entity', x, y,
-  refMode: 'none',
+  isPersonal: false,  // describes persons → enables personal pronouns in verbalisation
   valueRangeOffset: null,
   datatypeAssignment: null,  // { profileId, datatypeId, params? } | null
 })
@@ -90,6 +92,17 @@ const mkSubtype = (subId, superId) => ({
   subId, superId,
   inheritsPreferredIdentifier: true,
 })
+
+// Returns 'entity' | 'value' | null for any subtype endpoint id.
+// Entity types are disjoint from value types, so subtype edges must connect
+// same-kind endpoints (entity↔entity or value↔value).
+export function subtypeKindOf(id, objectTypes, facts) {
+  const ot = objectTypes.find(o => o.id === id)
+  if (ot) return ot.kind === 'value' ? 'value' : 'entity'
+  const f = facts.find(ff => ff.id === id)
+  if (f?.objectified) return f.objectifiedKind === 'value' ? 'value' : 'entity'
+  return null
+}
 
 
 const mkConstraint = (type, x, y) => ({
@@ -180,75 +193,159 @@ function computeCascadeRemove(startId, facts) {
   return toRemove
 }
 
-// ── ref-expansion diagram cleanup ─────────────────────────────────────────────
-// Given a set of element IDs being removed from a specific diagram, compute:
-//   refCollapse  – entity IDs to drop from expandedRefModes
-//   extraRemove  – companion VT IDs to also remove (when their FT is removed but
-//                  the VT isn't already in toRemove and isn't independently used)
-function computeRefExpansionCleanup(toRemove, objectTypes, facts, diagElementIds) {
-  const refCollapse = new Set()
-  const extraRemove = new Set()
-  for (const id of toRemove) {
-    const vt = objectTypes.find(o => o.id === id && o._refExpansion)
-    if (vt) {
-      refCollapse.add(vt._refExpansion)
-      // The companion FT is already caught by computeCascadeRemove (VT is its role player)
-    }
-    const ft = facts.find(f => f.id === id && f._refExpansion)
-    if (ft) {
-      refCollapse.add(ft._refExpansion)
-      // Also remove the companion VT unless it is independently used in the diagram
-      const vtId = objectTypes.find(o => o._refExpansion === ft._refExpansion)?.id
-      if (vtId && !toRemove.has(vtId)) {
-        const vtUsedElsewhere = facts.some(f =>
-          !f._refExpansion && !toRemove.has(f.id) &&
-          f.roles.some(r => r.objectTypeId === vtId) &&
-          (diagElementIds === null || (diagElementIds ?? []).includes(f.id))
-        )
-        if (!vtUsedElsewhere) extraRemove.add(vtId)
-      }
-    }
+// ── preferred-identifier helpers ──────────────────────────────────────────────
+
+// Given a fact and one of its preferred-uniqueness role-sets, return the id of
+// the (nested) object type identified by it: the player at the single role NOT
+// covered by the PI. Returns null when the role-set isn't a valid PI shape.
+function identifiedIdForInternalPI(fact, pu) {
+  if (!fact || !Array.isArray(pu)) return null
+  if (pu.length !== (fact.arity - 1)) return null
+  const covered = new Set(pu)
+  for (let ri = 0; ri < fact.arity; ri++) {
+    if (!covered.has(ri)) return fact.roles?.[ri]?.objectTypeId ?? null
   }
-  return { refCollapse, extraRemove }
+  return null
 }
 
-// ── ref-expansion helpers ─────────────────────────────────────────────────────
+// Demote every OTHER preferred identifier that targets the same identified id.
+// exceptFactId / exceptConstraintId are the source of the new PI (not demoted).
+// Returns updated { facts, constraints }.
+function demoteOtherPIsFor(identifiedId, facts, constraints, exceptFactId, exceptConstraintId) {
+  if (!identifiedId) return { facts, constraints }
+  const newFacts = facts.map(f => {
+    if (f.id === exceptFactId) return f
+    const prefs = f.preferredUniqueness || []
+    if (prefs.length === 0) return f
+    const filtered = prefs.filter(pu => identifiedIdForInternalPI(f, pu) !== identifiedId)
+    if (filtered.length === prefs.length) return f
+    return { ...f, preferredUniqueness: filtered }
+  })
+  const newConstraints = constraints.map(c => {
+    if (c.id === exceptConstraintId) return c
+    if (c.constraintType !== 'uniqueness') return c
+    if (!c.isPreferredIdentifier) return c
+    if (c.targetObjectTypeId !== identifiedId) return c
+    return { ...c, isPreferredIdentifier: false }
+  })
+  return { facts: newFacts, constraints: newConstraints }
+}
 
-// Build the VT and FT schema objects for a first-time ref-mode expansion.
-function mkRefExpansionPair(ot) {
-  const refSuffix = ot.refMode.startsWith('.') ? ot.refMode.slice(1) : null
-  const vtName = refSuffix !== null
-    ? ot.name + refSuffix.charAt(0).toUpperCase() + refSuffix.slice(1)
-    : ot.refMode
-  const vt = { ...mkValue(Math.round(ot.x + 160), Math.round(ot.y)), name: vtName, _refExpansion: ot.id }
+// ── ref-mode helpers ──────────────────────────────────────────────────────────
+
+// Build the VT + binary FT pair for a freshly-introduced ref mode.
+// The VT-side role carries a preferred-identifier unary UC; the entity-side
+// role carries an ordinary unary UC.  Default readings: "has" / "refers to".
+function mkRefModePair(entity, vtName) {
+  const vt = { ...mkValue(Math.round(entity.x + 160), Math.round(entity.y)), name: vtName }
   const ft = {
-    ...mkFact(Math.round(ot.x + 80), Math.round(ot.y), 2),
-    roles: [{ ...mkRole(), objectTypeId: ot.id }, { ...mkRole(), objectTypeId: vt.id }],
-    uniqueness: [[0], [1]],
-    readingParts: ['', 'is identified by', ''],
-    alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'identifies', ''] }],
-    _refExpansion: ot.id,
+    ...mkFact(Math.round(entity.x + 80), Math.round(entity.y), 2),
+    roles: [{ ...mkRole(), objectTypeId: entity.id }, { ...mkRole(), objectTypeId: vt.id }],
+    uniqueness: [[1]],
+    preferredUniqueness: [[1]],
+    readingParts: ['', 'has', ''],
+    alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'refers to', ''] }],
   }
   return { vt, ft }
 }
 
-// Collect the IDs of all _refExpansion elements tied to an entity.
-function expansionIdsFor(entityId, objectTypes, facts) {
-  return new Set([
-    ...objectTypes.filter(o => o._refExpansion === entityId).map(o => o.id),
-    ...facts.filter(f => f._refExpansion === entityId).map(f => f.id),
-  ])
+
+// Find an existing binary fact that connects `entityId` to `vtId` with a reading
+// of ['', 'has', ''] in the entity→vt direction (either as the main reading or
+// as an alternative reading). Returns { fact, vtRoleIndex } or null.
+function findMatchingRefModeFact(entityId, vtId, facts) {
+  const TARGET = ['', 'has', '']
+  for (const f of facts) {
+    if (f.arity !== 2 || f.roles?.length !== 2) continue
+    if (!f.roles.some(r => r.objectTypeId === entityId)) continue
+    if (!f.roles.some(r => r.objectTypeId === vtId)) continue
+    const defaultOrder = [0, 1]
+    const readings = f.readingParts
+      ? [{ parts: f.readingParts, roleOrder: defaultOrder }]
+      : []
+    for (const alt of (f.alternativeReadings || [])) {
+      if (alt.parts) readings.push({ parts: alt.parts, roleOrder: alt.roleOrder ?? defaultOrder })
+    }
+    for (const { parts, roleOrder } of readings) {
+      if (!Array.isArray(parts) || parts.length !== 3) continue
+      if (parts[0] !== TARGET[0] || parts[1] !== TARGET[1] || parts[2] !== TARGET[2]) continue
+      if (roleOrder.length < 2) continue
+      const r0 = f.roles[roleOrder[0]]
+      const r1 = f.roles[roleOrder[1]]
+      if (r0?.objectTypeId === entityId && r1?.objectTypeId === vtId) {
+        return { fact: f, vtRoleIndex: roleOrder[1] }
+      }
+    }
+  }
+  return null
 }
 
-// Return updated diagrams with the entity's expansion removed from every diagram.
-function diagramsWithPurgedExpansion(entityId, expansionIds, diagrams) {
-  return diagrams.map(d => ({
-    ...d,
-    expandedRefModes: (d.expandedRefModes ?? []).filter(eid => eid !== entityId),
-    elementIds: d.elementIds === null ? null : (d.elementIds ?? []).filter(eid => !expansionIds.has(eid)),
-  }))
+// ── query-generation helpers ──────────────────────────────────────────────────
+
+// Returns the unique minimal common ancestor of all `otIds` in the subtype DAG
+// (reflexive transitive closure), or null if none exists or it is not unique.
+// "Minimal" means no proper descendant of it is also a common ancestor.
+function findUniqueLCA(otIds, subtypes) {
+  if (otIds.length === 0) return null
+  const ancestorsOf = (id) => {
+    const visited = new Set(), q = [id]
+    while (q.length) {
+      const curr = q.shift()
+      if (visited.has(curr)) continue
+      visited.add(curr)
+      for (const st of subtypes) { if (st.subId === curr) q.push(st.superId) }
+    }
+    return visited
+  }
+  let common = ancestorsOf(otIds[0])
+  for (let i = 1; i < otIds.length; i++) {
+    const a = ancestorsOf(otIds[i])
+    common = new Set([...common].filter(id => a.has(id)))
+  }
+  if (common.size === 0) return null
+  // Keep only minimal elements: those with no proper descendant also in common.
+  const commonArr = [...common]
+  const minimal = commonArr.filter(id => {
+    const desc = new Set(), q = [id]
+    while (q.length) {
+      const curr = q.shift()
+      for (const st of subtypes) {
+        if (st.superId === curr && !desc.has(st.subId)) { desc.add(st.subId); q.push(st.subId) }
+      }
+    }
+    return !commonArr.some(other => other !== id && desc.has(other))
+  })
+  return minimal.length === 1 ? minimal[0] : null
 }
 
+// Returns a BFS path of subtype steps from `fromId` (supertype) down to `toId` (subtype),
+// each step as { subtypeId, fromId, toId }. Returns [] when fromId === toId, null if no path.
+function findPathDown(fromId, toId, subtypes) {
+  if (fromId === toId) return []
+  const parent = new Map() // childOtId → { subtypeId, parentOtId }
+  const q = [fromId], visited = new Set([fromId])
+  while (q.length) {
+    const curr = q.shift()
+    for (const st of subtypes) {
+      if (st.superId === curr && !visited.has(st.subId)) {
+        parent.set(st.subId, { subtypeId: st.id, parentOtId: curr })
+        if (st.subId === toId) {
+          const path = []
+          let node = toId
+          while (node !== fromId) {
+            const { subtypeId, parentOtId } = parent.get(node)
+            path.unshift({ subtypeId, fromId: parentOtId, toId: node })
+            node = parentOtId
+          }
+          return path
+        }
+        visited.add(st.subId)
+        q.push(st.subId)
+      }
+    }
+  }
+  return null
+}
 
 // ── constraint auto-sync ──────────────────────────────────────────────────────
 // Returns the set of constraint IDs that are eligible for a given elementId set.
@@ -450,6 +547,24 @@ const EMPTY = () => {
     constraints:     [],
     diagrams:        [d],
     activeDiagramId: d.id,
+    // Schema-wide sample population: otId → array of instance values (strings).
+    // Value type:  instance = the literal value.
+    // Entity type: instance = the ref-mode value identifying the entity.
+    populations:     {},
+    // Fact-type populations: factId → array of tuples (each tuple is a string[]
+    // of length = fact arity; each cell references a role-player instance).
+    factPopulations: {},
+    // Subtype-edge populations: edgeId → array of supertype-side mapping cells.
+    // For non-inheriting subtype edges, each row holds the supertype-encoded
+    // instance values that correspond to the subtype instance at the same
+    // position in populations[subtypeId]. For inheriting edges, this is unused
+    // (the mapping is derived as identity).
+    subtypeMappings: {},
+    // Nested-entity PI mappings: factId → array of PI values aligned by row with
+    // factPopulations[factId]. Each entry is the explicit PI value for that row:
+    // a string for single-column PIs (ref-mode), or an array for composite PIs.
+    // Only populated when the nested entity type has an explicit PI.
+    nestedEntityMappings: {},
   }
 }
 
@@ -543,8 +658,13 @@ export const useOrmStore = create((set, get) => ({
   // ── validation ────────────────────────────────────────────────────────────
   validationErrors: [],
   validationCategories: { ...DEFAULT_VALIDATION_CATEGORIES },
+  // Population-validation issues (warnings — distinct from schema errors above).
+  populationIssues: [],
 
   inspectorWidth: 240,
+  bottomPanelHeight:    220,
+  bottomPanelTab:       'population',
+  bottomPanelCollapsed: true,
 
   clipboard: null,  // { objectTypes[], facts[], constraints[], subtypes[] } | null
 
@@ -667,19 +787,12 @@ export const useOrmStore = create((set, get) => ({
       }
     }
 
-    // Determine which entity IDs need to be in expandedRefModes of the target diagram.
-    // Covers both clipboard.expandedRefModes (captured at copy time) and VT/FT with _refExpansion
-    // (for backward-compat with clipboards saved before this feature).
+    // Determine which entity IDs need to be in expandedRefModes of the target diagram
+    // (from clipboard.expandedRefModes captured at copy time).
     const allTargetIds = new Set([...closedIds, ...existingIds])
     const refEntityIds = new Set()
     for (const id of (clipboard.expandedRefModes ?? [])) {
       if (allTargetIds.has(id)) refEntityIds.add(id)
-    }
-    for (const o of clipboard.objectTypes) {
-      if (o._refExpansion && allTargetIds.has(o._refExpansion)) refEntityIds.add(o._refExpansion)
-    }
-    for (const f of clipboard.facts) {
-      if (f._refExpansion && allTargetIds.has(f._refExpansion)) refEntityIds.add(f._refExpansion)
     }
 
     const toAdd = [
@@ -805,8 +918,7 @@ export const useOrmStore = create((set, get) => ({
       const name = makeUniqueName(o.name, usedNames)
       usedNames.add(name)
       const sp = getSrcPos(o)
-      return { ...o, id: idMap.get(o.id), x: sp.x + OFFSET, y: sp.y + OFFSET, name,
-               _refExpansion: o._refExpansion ? remap(o._refExpansion) : o._refExpansion }
+      return { ...o, id: idMap.get(o.id), x: sp.x + OFFSET, y: sp.y + OFFSET, name }
     })
 
     const newFacts = clipboard.facts.map(f => {
@@ -820,7 +932,6 @@ export const useOrmStore = create((set, get) => ({
         ...f, id: idMap.get(f.id), x: sp.x + OFFSET, y: sp.y + OFFSET,
         roles: f.roles.map(r => ({ ...r, id: uid(), objectTypeId: remap(r.objectTypeId) })),
         objectifiedName,
-        _refExpansion: f._refExpansion ? remap(f._refExpansion) : f._refExpansion,
       }
     })
 
@@ -854,13 +965,10 @@ export const useOrmStore = create((set, get) => ({
       return `${idMap.get(factId) ?? factId}:${ri}`
     })
 
-    // Collect expanded ref modes for the duplicate: from clipboard.expandedRefModes (remapped)
-    // and from _refExpansion on any new VT/FT
-    const dupExpandedRefs = new Set([
-      ...(clipboard.expandedRefModes ?? []).map(id => idMap.get(id)).filter(Boolean),
-      ...newOts.filter(o => o._refExpansion).map(o => o._refExpansion),
-      ...newFacts.filter(f => f._refExpansion).map(f => f._refExpansion),
-    ])
+    // Collect expanded ref modes for the duplicate: from clipboard.expandedRefModes (remapped).
+    const dupExpandedRefs = new Set(
+      (clipboard.expandedRefModes ?? []).map(id => idMap.get(id)).filter(Boolean)
+    )
 
     set(s => ({
       objectTypes: [...s.objectTypes, ...newOts],
@@ -898,13 +1006,19 @@ export const useOrmStore = create((set, get) => ({
   setShowMinimap(val)         { set({ showMinimap: val }) },
   setMinimapPos(x, y)         { set({ minimapPos: { x, y } }) },
   setInspectorWidth(w)        { set({ inspectorWidth: w }) },
+  setBottomPanelHeight(h)     { set({ bottomPanelHeight: h }) },
+  setBottomPanelTab(t)        { set({ bottomPanelTab: t }) },
+  setBottomPanelCollapsed(v)  { set({ bottomPanelCollapsed: v }) },
 
   runValidation() {
     const s = get()
     const enabled = new Set(
       Object.entries(s.validationCategories).filter(([, v]) => v).map(([k]) => k)
     )
-    set({ validationErrors: runValidationRules(s, enabled) })
+    set({
+      validationErrors: runValidationRules(s, enabled),
+      populationIssues: computePopulationIssues(s),
+    })
   },
   toggleValidationCategory(category) {
     set(s => ({ validationCategories: { ...s.validationCategories, [category]: !s.validationCategories[category] } }))
@@ -920,19 +1034,13 @@ export const useOrmStore = create((set, get) => ({
 
   setValueTypeDatatype(id, assignment) {
     // assignment: { profileId, datatypeId, params? } | null
-    // When setting on an entity with an expanded reference mode, mirror to the generated VT.
-    set(s => {
-      const ot   = s.objectTypes.find(o => o.id === id)
-      const vtId = ot?.refModeExpanded
-        ? s.objectTypes.find(o => o._refExpansion === id)?.id
-        : null
-      return {
-        objectTypes: s.objectTypes.map(o =>
-          (o.id === id || o.id === vtId) ? { ...o, datatypeAssignment: assignment } : o
-        ),
-        isDirty: true,
-      }
-    })
+    // Always applies to the target element directly. Ref-mode entities now hold
+    // their datatype on the associated value type — the inspector edits that VT
+    // directly instead of mirroring through the entity.
+    set(s => ({
+      objectTypes: s.objectTypes.map(o => o.id === id ? { ...o, datatypeAssignment: assignment } : o),
+      isDirty: true,
+    }))
   },
 
   // ── model ops ──────────────────────────────────────────────────────────
@@ -954,8 +1062,14 @@ export const useOrmStore = create((set, get) => ({
       if (readingParts && Array.isArray(readingParts) && readingParts.every(p => !p?.trim())) {
         readingParts = null
       }
+      // Migration: nested value types have been removed; coerce any
+      // objectifiedKind: 'value' to 'entity' so legacy files still load.
+      const objectifiedKind = f.objectified
+        ? (f.objectifiedKind === 'value' ? 'entity' : (f.objectifiedKind || 'entity'))
+        : f.objectifiedKind
       return {
         ...f,
+        objectifiedKind,
         readingParts,
         alternativeReadings: f.alternativeReadings || [],
         readingDisplay: f.readingDisplay || 'forward',
@@ -1051,21 +1165,12 @@ export const useOrmStore = create((set, get) => ({
     let diagrams, activeDiagramId
     if (d.diagrams && d.diagrams.length > 0) {
       // Always start with empty selection; strip any persisted selection state
-      diagrams        = d.diagrams.map(diag => ({ ...diag, multiSelectedIds: [] }))
+      diagrams        = d.diagrams.map(diag => ({
+        ...diag,
+        multiSelectedIds: [],
+        expandedRefModes: diag.expandedRefModes ?? [],
+      }))
       activeDiagramId = d.activeDiagramId ?? d.diagrams[0].id
-      // Migration: old files used ot.refModeExpanded (global) + refModeHidden on VT/FT.
-      // Convert to per-diagram expandedRefModes.
-      diagrams = diagrams.map(diag => {
-        if (diag.expandedRefModes) return diag  // already in new format
-        const expandedRefs = parsedOts
-          .filter(o => o.refModeExpanded && (
-            diag.elementIds === null ||
-            parsedOts.some(vt => vt._refExpansion === o.id && (diag.elementIds ?? []).includes(vt.id)) ||
-            facts.some(ft => ft._refExpansion === o.id && (diag.elementIds ?? []).includes(ft.id))
-          ))
-          .map(o => o.id)
-        return { ...diag, expandedRefModes: expandedRefs }
-      })
     } else {
       // Migrate: put all existing elements into a single default diagram
       const positions = {}
@@ -1073,12 +1178,84 @@ export const useOrmStore = create((set, get) => ({
       facts.forEach(f      => { positions[f.id]  = { x: f.x,  y: f.y  } })
       constraints.forEach(c => { positions[c.id] = { x: c.x,  y: c.y  } })
       const allIds = [...parsedOts.map(o => o.id), ...facts.map(f => f.id), ...constraints.map(c => c.id)]
-      const expandedRefModes = parsedOts.filter(o => o.refModeExpanded).map(o => o.id)
-      const diag   = { id: uid(), name: 'Main', elementIds: allIds, positions, multiSelectedIds: [], expandedRefModes }
+      const diag   = { id: uid(), name: 'Main', elementIds: allIds, positions, multiSelectedIds: [], expandedRefModes: [] }
       diagrams        = [diag]
       activeDiagramId = diag.id
     }
 
+    // Populations: keep only entries whose target element still exists.
+    // Value types and ref-mode entities store flat strings; composite-PI
+    // entities store arrays (possibly nested). Both must survive the round trip.
+    const otIdSet = new Set(parsedOts.map(o => o.id))
+    const rawPops = (d.populations && typeof d.populations === 'object') ? d.populations : {}
+    const populations = {}
+    const isStorable = v => typeof v === 'string' || (Array.isArray(v) && v.every(isStorable))
+    for (const [otId, instances] of Object.entries(rawPops)) {
+      if (!otIdSet.has(otId) || !Array.isArray(instances)) continue
+      const clean = instances.filter(isStorable)
+      if (clean.length) populations[otId] = clean
+    }
+
+    // Fact populations: keep entries whose fact still exists; resize tuples to current arity.
+    // Identifying facts (ref-mode binary or composite-PI) are skipped — their
+    // tuples are derived from the entity's population.
+    const factById = new Map(facts.map(f => [f.id, f]))
+    const rawFactPops = (d.factPopulations && typeof d.factPopulations === 'object') ? d.factPopulations : {}
+    const factPopulations = {}
+    for (const [fid, tuples] of Object.entries(rawFactPops)) {
+      const fact = factById.get(fid)
+      if (!fact || !Array.isArray(tuples)) continue
+      if (isIdentifyingFact(fact, facts, parsedOts, constraints)) continue
+      const arity = fact.arity ?? fact.roles?.length ?? 0
+      if (arity < 1) continue
+      const normalizeCell = (v) => {
+        if (typeof v === 'string') return v
+        if (Array.isArray(v)) return v.map(normalizeCell)
+        return ''
+      }
+      const cleanTuples = tuples
+        .filter(t => Array.isArray(t))
+        .map(t => {
+          const cells = t.map(normalizeCell)
+          if (cells.length === arity) return cells
+          if (cells.length < arity)  return [...cells, ...Array(arity - cells.length).fill('')]
+          return cells.slice(0, arity)
+        })
+      if (cleanTuples.length) factPopulations[fid] = cleanTuples
+    }
+
+    // Subtype mappings: edgeId → array of supertype-side cell tuples. Kept only
+    // for edges that still exist and don't inherit the PI.
+    const stById = new Map(parsedSts.map(st => [st.id, st]))
+    const rawStMaps = (d.subtypeMappings && typeof d.subtypeMappings === 'object') ? d.subtypeMappings : {}
+    const subtypeMappings = {}
+    for (const [edgeId, rows] of Object.entries(rawStMaps)) {
+      const edge = stById.get(edgeId)
+      if (!edge || !Array.isArray(rows)) continue
+      if (edge.inheritsPreferredIdentifier !== false) continue
+      const clean = rows
+        .filter(r => Array.isArray(r))
+        .map(r => r.map(v => typeof v === 'string' ? v : ''))
+      if (clean.length) subtypeMappings[edgeId] = clean
+    }
+
+    // Nested-entity PI mappings: factId → array of PI values aligned with factPopulations.
+    const rawNem = (d.nestedEntityMappings && typeof d.nestedEntityMappings === 'object') ? d.nestedEntityMappings : {}
+    const nestedEntityMappings = {}
+    for (const [fid, rows] of Object.entries(rawNem)) {
+      const fact = factById.get(fid)
+      if (!fact || !fact.objectified) continue
+      if (!Array.isArray(rows)) continue
+      const normalizePI = (v) => {
+        if (typeof v === 'string') return v
+        if (Array.isArray(v)) return v.map(c => (typeof c === 'string' ? c : ''))
+        return ''
+      }
+      const clean = rows.map(normalizePI)
+      if (clean.length) nestedEntityMappings[fid] = clean
+    }
+
+    const activeDiag = diagrams.find(d => d.id === activeDiagramId)
     set({
       objectTypes: parsedOts,
       facts,
@@ -1086,15 +1263,50 @@ export const useOrmStore = create((set, get) => ({
       constraints,
       diagrams,
       activeDiagramId,
+      pan:  activeDiag?.pan  ?? { x: 0, y: 0 },
+      zoom: activeDiag?.zoom ?? 1,
+      populations,
+      factPopulations,
+      subtypeMappings,
+      nestedEntityMappings,
       filePath, isDirty: false, selectedId: null, selectedKind: null,
     })
   },
 
   serialize() {
-    const { objectTypes, facts, subtypes, constraints, diagrams, activeDiagramId } = get()
-    // Strip in-memory-only selection state before persisting
-    const cleanDiagrams = diagrams.map(({ multiSelectedIds: _, ...d }) => d)
-    return JSON.stringify({ objectTypes, facts, subtypes, constraints, diagrams: cleanDiagrams, activeDiagramId }, null, 2)
+    const { objectTypes, facts, subtypes, constraints, diagrams, activeDiagramId, populations, factPopulations, subtypeMappings, nestedEntityMappings, pan, zoom } = get()
+    // Strip in-memory-only selection state; flush current pan/zoom into active diagram
+    const cleanDiagrams = diagrams.map(({ multiSelectedIds: _, ...d }) =>
+      d.id === activeDiagramId ? { ...d, pan, zoom } : d
+    )
+    // Drop any stored identifying-fact populations — they are derived at runtime.
+    const cleanFactPops = {}
+    for (const [fid, tuples] of Object.entries(factPopulations ?? {})) {
+      const f = facts.find(ff => ff.id === fid)
+      if (!f || isIdentifyingFact(f, facts, objectTypes, constraints)) continue
+      cleanFactPops[fid] = tuples
+    }
+    // Drop subtypeMappings for inheriting edges (they're derived).
+    const cleanStMaps = {}
+    for (const [edgeId, rows] of Object.entries(subtypeMappings ?? {})) {
+      const edge = subtypes.find(st => st.id === edgeId)
+      if (!edge) continue
+      if (edge.inheritsPreferredIdentifier !== false) continue
+      cleanStMaps[edgeId] = rows
+    }
+    // Only keep nestedEntityMappings for facts that still exist.
+    const cleanNem = {}
+    for (const [fid, rows] of Object.entries(nestedEntityMappings ?? {})) {
+      if (facts.find(f => f.id === fid && f.objectified)) cleanNem[fid] = rows
+    }
+    return JSON.stringify({
+      objectTypes, facts, subtypes, constraints,
+      diagrams: cleanDiagrams, activeDiagramId,
+      populations:         populations    ?? {},
+      factPopulations:     cleanFactPops,
+      subtypeMappings:     cleanStMaps,
+      nestedEntityMappings: cleanNem,
+    }, null, 2)
   },
 
   setFilePath(p) { set({ filePath: p }) },
@@ -1127,8 +1339,7 @@ export const useOrmStore = create((set, get) => ({
     const base = mkValue(Math.round(x), Math.round(y))
     set(s => {
       const used = new Set(
-        s.objectTypes.filter(o => o.kind === 'value').map(o => o.name)
-          .concat(s.facts.filter(f => f.objectifiedKind === 'value').map(f => f.objectifiedName).filter(Boolean))
+        s.objectTypes.map(o => o.name).concat(s.facts.map(f => f.objectifiedName).filter(Boolean))
       )
       let n = 1
       while (used.has(`Value${n}`)) n++
@@ -1212,44 +1423,802 @@ export const useOrmStore = create((set, get) => ({
     set(s => {
       const ot = s.objectTypes.find(o => o.id === id)
 
-      // If refMode is being cleared (set to 'none' or empty) on an entity that had implied
-      // elements, hard-delete those elements now — same as deleteObjectType's expansion cleanup.
-      if (patch.refMode !== undefined && ot?.kind === 'entity') {
-        const hadValid = ot.refMode && ot.refMode !== 'none'
-        const hasValid = patch.refMode && patch.refMode !== 'none'
-        if (hadValid && !hasValid) {
-          const expIds = expansionIdsFor(id, s.objectTypes, s.facts)
-          return {
-            objectTypes: s.objectTypes
-              .filter(o => o._refExpansion !== id)
-              .map(o => o.id === id ? { ...o, ...patch, refModeExpanded: false } : o),
-            facts: s.facts.filter(f => f._refExpansion !== id),
-            diagrams: diagramsWithPurgedExpansion(id, expIds, s.diagrams),
-            isDirty: true,
+      // When an entity is renamed and its old name was a prefix of the ref-mode
+      // value type's name, rename the VT to keep the relationship visible.
+      // Other consumers of the same VT re-derive their displayed label naturally.
+      let vtRename = null
+      if (ot?.kind === 'entity' && patch.name !== undefined && patch.name !== ot.name) {
+        const rm = findRefMode(ot, s.facts, s.objectTypes)
+        if (rm) {
+          const vt = s.objectTypes.find(o => o.id === rm.vtId)
+          if (vt && vt.name.length > ot.name.length && vt.name.startsWith(ot.name)) {
+            const suffix = vt.name.slice(ot.name.length)
+            vtRename = { vtId: vt.id, newName: patch.name + suffix }
           }
         }
       }
 
-      // When the entity name or refMode changes, keep the generated value type name in sync.
-      let vtId = null, vtName = null
-      if (ot?.refModeExpanded && (patch.name !== undefined || patch.refMode !== undefined)) {
-        vtId = s.objectTypes.find(o => o._refExpansion === id)?.id
-        if (vtId) {
-          const newName    = patch.name    ?? ot.name
-          const newRefMode = patch.refMode ?? ot.refMode
-          const refSuffix  = newRefMode?.startsWith('.') ? newRefMode.slice(1) : null
-          vtName = refSuffix !== null
-            ? newName + refSuffix.charAt(0).toUpperCase() + refSuffix.slice(1)
-            : newRefMode
-        }
-      }
       return {
         objectTypes: s.objectTypes.map(o =>
-          o.id === id    ? { ...o, ...patch }    :
-          o.id === vtId  ? { ...o, name: vtName } : o
+          o.id === id              ? { ...o, ...patch } :
+          o.id === vtRename?.vtId  ? { ...o, name: vtRename.newName } : o
         ),
         isDirty: true,
       }
+    })
+  },
+
+  // Single entry point for editing the ref-mode label from the entity inspector.
+  // - empty label, ref mode exists   → demote PI (fact + VT survive as ordinary
+  //                                      elements; auto-expand them in this diagram).
+  // - non-empty, no ref mode         → create VT + binary FT with PI (shorthand display).
+  // - non-empty, ref mode exists     → rename the linked VT; reuses an existing VT
+  //                                      by that name if one already exists.
+  setEntityRefModeLabel(entityId, label) {
+    const trimmed = (label ?? '').trim()
+    const s = get()
+    const entity = s.objectTypes.find(o => o.id === entityId)
+    if (!entity || entity.kind !== 'entity') return
+    const current = findRefMode(entity, s.facts, s.objectTypes)
+
+    if (trimmed === '') {
+      if (!current) return
+      set(state => ({
+        facts: state.facts.map(f => f.id !== current.factId ? f : ({
+          ...f,
+          preferredUniqueness: (f.preferredUniqueness || [])
+            .filter(pu => !(pu.length === 1 && pu[0] === current.vtRoleIndex)),
+        })),
+        // Keep the now-orphan fact/VT visible by expanding them in the active diagram.
+        diagrams: state.diagrams.map(d => d.id !== state.activeDiagramId ? d : ({
+          ...d,
+          expandedRefModes: (d.expandedRefModes ?? []).includes(entityId)
+            ? d.expandedRefModes
+            : [...(d.expandedRefModes ?? []), entityId],
+          elementIds: d.elementIds === null ? null : (
+            [current.vtId, current.factId].reduce(
+              (ids, eid) => ids.includes(eid) ? ids : [...ids, eid],
+              d.elementIds,
+            )
+          ),
+        })),
+        isDirty: true,
+      }))
+      return
+    }
+
+    const targetVtName = vtNameFromLabel(entity.name, trimmed)
+    if (current) {
+      const existingMatch = s.objectTypes.find(o => o.id !== current.vtId && o.kind === 'value' && o.name === targetVtName)
+      if (existingMatch) {
+        // Rewire fact to the existing VT and drop the now-orphan one if unused elsewhere.
+        set(state => {
+          const oldVtUsedElsewhere = state.facts.some(f =>
+            f.id !== current.factId && f.roles.some(r => r.objectTypeId === current.vtId)
+          )
+          const newFacts = state.facts.map(f => {
+            if (f.id !== current.factId) return f
+            const roles = f.roles.map((r, i) => i === current.vtRoleIndex ? { ...r, objectTypeId: existingMatch.id } : r)
+            return { ...f, roles }
+          })
+          let nextOts = state.objectTypes
+          let nextDiagrams = state.diagrams
+          if (!oldVtUsedElsewhere) {
+            nextOts = nextOts.filter(o => o.id !== current.vtId)
+            nextDiagrams = nextDiagrams.map(d => ({
+              ...d,
+              elementIds: d.elementIds === null ? null : d.elementIds.filter(eid => eid !== current.vtId),
+              positions: Object.fromEntries(Object.entries(d.positions).filter(([k]) => k !== current.vtId)),
+            }))
+          }
+          return { objectTypes: nextOts, facts: newFacts, diagrams: nextDiagrams, isDirty: true }
+        })
+      } else {
+        set(state => ({
+          objectTypes: state.objectTypes.map(o => o.id === current.vtId ? { ...o, name: targetVtName } : o),
+          isDirty: true,
+        }))
+      }
+      return
+    }
+
+    // No ref mode yet: create or attach to an existing VT, then create (or reuse) the fact.
+    const existing = s.objectTypes.find(o => o.kind === 'value' && o.name === targetVtName)
+    // If the target VT already exists, look for a fact with the same reading rather than creating a duplicate.
+    const matchFact = existing ? findMatchingRefModeFact(entity.id, existing.id, s.facts) : null
+    set(state => {
+      if (matchFact) {
+        // Reuse the existing fact: ensure preferredUniqueness is set on the VT role.
+        const factsWithPi = state.facts.map(f => {
+          if (f.id !== matchFact.fact.id) return f
+          const alreadySet = (f.preferredUniqueness || []).some(
+            pu => pu.length === 1 && pu[0] === matchFact.vtRoleIndex
+          )
+          if (alreadySet) return f
+          return { ...f, preferredUniqueness: [...(f.preferredUniqueness || []), [matchFact.vtRoleIndex]] }
+        })
+        const { facts: cFacts, constraints: cCons } =
+          demoteOtherPIsFor(entity.id, factsWithPi, state.constraints, matchFact.fact.id, null)
+        return {
+          facts: cFacts,
+          constraints: cCons,
+          diagrams: state.diagrams.map(d => d.id !== state.activeDiagramId ? d : ({
+            ...d,
+            elementIds: d.elementIds === null ? null : [
+              ...d.elementIds,
+              ...[matchFact.fact.id, existing.id].filter(id => !d.elementIds.includes(id)),
+            ],
+          })),
+          isDirty: true,
+        }
+      }
+      let nextOts = state.objectTypes
+      let vt
+      if (existing) {
+        vt = existing
+      } else {
+        const { vt: newVt } = mkRefModePair(entity, targetVtName)
+        vt = newVt
+        nextOts = [...nextOts, newVt]
+      }
+      // Build the fact (always new — even when reusing an existing VT, the relationship is per-entity)
+      const ft = {
+        ...mkFact(Math.round(entity.x + 80), Math.round(entity.y), 2),
+        roles: [{ ...mkRole(), objectTypeId: entity.id }, { ...mkRole(), objectTypeId: vt.id }],
+        uniqueness: [[1]],
+        preferredUniqueness: [[1]],
+        readingParts: ['', 'has', ''],
+        alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'refers to', ''] }],
+      }
+      const newIds = existing ? [ft.id] : [vt.id, ft.id]
+      const factsAfterAdd = [...state.facts, ft]
+      // The new fact's PI identifies `entity` — demote any pre-existing PIs for it.
+      const { facts: cFacts, constraints: cCons } =
+        demoteOtherPIsFor(entity.id, factsAfterAdd, state.constraints, ft.id, null)
+      return {
+        objectTypes: nextOts,
+        facts: cFacts,
+        constraints: cCons,
+        diagrams: state.diagrams.map(d => d.id !== state.activeDiagramId ? d : ({
+          ...d,
+          elementIds: d.elementIds === null ? null : [...d.elementIds, ...newIds.filter(nid => !d.elementIds.includes(nid))],
+          positions: {
+            ...d.positions,
+            ...(existing ? {} : { [vt.id]: { x: vt.x, y: vt.y } }),
+            [ft.id]: { x: ft.x, y: ft.y },
+          },
+        })),
+        isDirty: true,
+      }
+    })
+  },
+
+  setNestedRefModeLabel(factId, label) {
+    const trimmed = (label ?? '').trim()
+    const s = get()
+    const fact = s.facts.find(f => f.id === factId)
+    if (!fact || !fact.objectified || fact.objectifiedKind === 'value') return
+
+    // Store the display annotation on the fact.
+    const setDisplay = (v) => {
+      set(state => ({
+        facts: state.facts.map(f => f.id === factId ? { ...f, objectifiedRefMode: v || null } : f),
+        isDirty: true,
+      }))
+    }
+
+    if (trimmed === '') {
+      const current = findRefMode(fact, s.facts, s.objectTypes)
+      set(trimmed ? 'nothing' : null) // no-op placeholder
+      setDisplay(null)
+      if (!current) return
+      // Remove PI from the existing ref-mode fact, keep FT+VT visible.
+      set(state => ({
+        facts: state.facts.map(f => f.id !== current.factId ? f : ({
+          ...f,
+          preferredUniqueness: (f.preferredUniqueness || []).filter(pu => !(pu.length === 1 && pu[0] === current.vtRoleIndex)),
+        })),
+        diagrams: state.diagrams.map(d => d.id !== state.activeDiagramId ? d : ({
+          ...d,
+          expandedRefModes: (d.expandedRefModes ?? []).includes(factId)
+            ? d.expandedRefModes
+            : [...(d.expandedRefModes ?? []), factId],
+          elementIds: d.elementIds === null ? null : (
+            [current.vtId, current.factId].reduce((ids, eid) => ids.includes(eid) ? ids : [...ids, eid], d.elementIds)
+          ),
+        })),
+        isDirty: true,
+      }))
+      return
+    }
+
+    setDisplay(trimmed)
+    const entityName = fact.objectifiedName || 'Entity'
+    const targetVtName = vtNameFromLabel(entityName, trimmed)
+    const current = findRefMode(fact, s.facts, s.objectTypes)
+
+    if (current) {
+      // Rename existing VT to match new label.
+      set(state => ({
+        objectTypes: state.objectTypes.map(o => o.id === current.vtId ? { ...o, name: targetVtName } : o),
+        isDirty: true,
+      }))
+      return
+    }
+
+    // No ref mode yet: create VT + binary fact + set PI (or reuse an existing matching fact).
+    const existing = s.objectTypes.find(o => o.kind === 'value' && o.name === targetVtName)
+    const wrapEntity = { id: factId, name: entityName, x: fact.x, y: fact.y }
+    const matchFact = existing ? findMatchingRefModeFact(factId, existing.id, s.facts) : null
+    set(state => {
+      if (matchFact) {
+        const factsWithPi = state.facts.map(f => {
+          if (f.id !== matchFact.fact.id) return f
+          const alreadySet = (f.preferredUniqueness || []).some(
+            pu => pu.length === 1 && pu[0] === matchFact.vtRoleIndex
+          )
+          if (alreadySet) return f
+          return { ...f, preferredUniqueness: [...(f.preferredUniqueness || []), [matchFact.vtRoleIndex]] }
+        })
+        return {
+          facts: factsWithPi,
+          diagrams: state.diagrams.map(d => d.id !== state.activeDiagramId ? d : ({
+            ...d,
+            elementIds: d.elementIds === null ? null : [
+              ...d.elementIds,
+              ...[matchFact.fact.id, existing.id].filter(id => !d.elementIds.includes(id)),
+            ],
+          })),
+          isDirty: true,
+        }
+      }
+      let nextOts = state.objectTypes
+      let vt
+      if (existing) {
+        vt = existing
+      } else {
+        const pair = mkRefModePair(wrapEntity, targetVtName)
+        vt = pair.vt
+        nextOts = [...nextOts, pair.vt]
+      }
+      const ft = {
+        ...mkFact(Math.round(wrapEntity.x + 80), Math.round(wrapEntity.y), 2),
+        roles: [{ ...mkRole(), objectTypeId: wrapEntity.id }, { ...mkRole(), objectTypeId: vt.id }],
+        uniqueness: [[1]],
+        preferredUniqueness: [[1]],
+        readingParts: ['', 'has', ''],
+        alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'refers to', ''] }],
+      }
+      const newIds = existing ? [ft.id] : [vt.id, ft.id]
+      return {
+        objectTypes: nextOts,
+        facts: [...state.facts, ft],
+        diagrams: state.diagrams.map(d => d.id !== state.activeDiagramId ? d : ({
+          ...d,
+          elementIds: d.elementIds === null ? null : [...d.elementIds, ...newIds.filter(nid => !d.elementIds.includes(nid))],
+          positions: {
+            ...d.positions,
+            ...(existing ? {} : { [vt.id]: { x: vt.x, y: vt.y } }),
+            [ft.id]: { x: ft.x, y: ft.y },
+          },
+        })),
+        isDirty: true,
+      }
+    })
+  },
+
+  // ── populations (sample data per object type) ──────────────────────────
+  addPopulationInstance(otId, value = '') {
+    set(s => {
+      const current = s.populations?.[otId] ?? []
+      return {
+        populations: { ...s.populations, [otId]: [...current, value] },
+        isDirty: true,
+      }
+    })
+  },
+
+  updatePopulationInstance(otId, index, value) {
+    set(s => {
+      const current = s.populations?.[otId] ?? []
+      if (index < 0 || index >= current.length) return {}
+      const next = current.slice()
+      next[index] = value
+      return {
+        populations: { ...s.populations, [otId]: next },
+        isDirty: true,
+      }
+    })
+  },
+
+  removePopulationInstance(otId, index) {
+    set(s => {
+      const current = s.populations?.[otId] ?? []
+      if (index < 0 || index >= current.length) return {}
+      const removedValue = current[index]
+      const next = current.slice()
+      next.splice(index, 1)
+      const populations = { ...s.populations }
+      if (next.length === 0) delete populations[otId]
+      else populations[otId] = next
+
+      // Cascade: if the entity/nested-entity has a ref-mode and the VT is not
+      // independent, remove the VT instance unless still used elsewhere.
+      if (isCompleteValue(removedValue)) {
+        const ot = s.objectTypes.find(o => o.id === otId) ?? s.facts.find(f => f.id === otId)
+        if (ot) {
+          const rm = findRefMode(ot, s.facts, s.objectTypes)
+          if (rm) {
+            const vt = s.objectTypes.find(o => o.id === rm.vtId)
+            if (vt && !vt.isIndependent) {
+              const stillInEntity = next.includes(removedValue)
+              const stillInFacts = !stillInEntity && s.facts.some(f =>
+                f.id !== rm.factId &&
+                f.roles?.some((r, ri) => r?.objectTypeId === rm.vtId &&
+                  (s.factPopulations?.[f.id] ?? []).some(tuple =>
+                    Array.isArray(tuple) && tuple[ri] === removedValue
+                  )
+                )
+              )
+              if (!stillInEntity && !stillInFacts) {
+                const vtPop = populations[rm.vtId] ?? []
+                const vtIdx = vtPop.indexOf(removedValue)
+                if (vtIdx !== -1) {
+                  const nextVt = vtPop.slice()
+                  nextVt.splice(vtIdx, 1)
+                  if (nextVt.length === 0) delete populations[rm.vtId]
+                  else populations[rm.vtId] = nextVt
+                }
+              }
+            }
+          }
+        }
+      }
+
+      return { populations, isDirty: true }
+    })
+  },
+
+  // ── composite-PI entity populations ────────────────────────────────────
+  // For entities with a composite preferred identifier, instances are tuples
+  // (one cell per identifying role, in the order returned by
+  // findCompositePI(...).identifyingRoleIndices). Stored as string[][] under
+  // populations[entityId].
+
+  addEntityTuple(entityId, width) {
+    set(s => {
+      if (!Number.isInteger(width) || width < 1) return {}
+      const current = s.populations?.[entityId] ?? []
+      const tuple = Array(width).fill('')
+      return {
+        populations: { ...s.populations, [entityId]: [...current, tuple] },
+        isDirty: true,
+      }
+    })
+  },
+
+  updateEntityTupleCell(entityId, tupleIndex, cellIndex, value) {
+    set(s => {
+      const current = s.populations?.[entityId] ?? []
+      if (tupleIndex < 0 || tupleIndex >= current.length) return {}
+      const oldTuple = current[tupleIndex]
+      if (!Array.isArray(oldTuple) || cellIndex < 0 || cellIndex >= oldTuple.length) return {}
+      const next = current.slice()
+      const newTuple = oldTuple.slice()
+      newTuple[cellIndex] = value
+      next[tupleIndex] = newTuple
+      return {
+        populations: { ...s.populations, [entityId]: next },
+        isDirty: true,
+      }
+    })
+  },
+
+  removeEntityTuple(entityId, tupleIndex) {
+    set(s => {
+      const current = s.populations?.[entityId] ?? []
+      if (tupleIndex < 0 || tupleIndex >= current.length) return {}
+      const next = current.slice()
+      next.splice(tupleIndex, 1)
+      const populations = { ...s.populations }
+      if (next.length === 0) delete populations[entityId]
+      else populations[entityId] = next
+      return { populations, isDirty: true }
+    })
+  },
+
+  // Commit a composite-PI tuple cell on blur: cascade the cell value to the
+  // corresponding identifying-role player's population (and further via
+  // propagateValueToPlayer). The cell value may be a string or a (possibly
+  // nested) tuple; partial values are skipped.
+  commitEntityTupleCell(entityId, tupleIndex, cellIndex) {
+    set(s => {
+      const entity = s.objectTypes.find(o => o.id === entityId)
+      if (!entity || entity.kind !== 'entity') return {}
+      // Composite-PI may be owned by this entity or inherited from a supertype
+      // (regular or nested-entity). For inherited PIs the synthetic cp from
+      // findInheritedPI still maps cellIndex → role player of the identifying
+      // fact, so per-cell cascade works identically.
+      let cp = findCompositePI(entity, s.facts, s.objectTypes, s.constraints)
+      if (!cp) {
+        const inh = findInheritedPI(entity, s.facts, s.objectTypes, s.subtypes, s.constraints)
+        if (inh?.kind === 'compositePI') cp = inh.cp
+      }
+      if (!cp) return {}
+      if (cellIndex < 0 || cellIndex >= cp.identifyingRoleIndices.length) return {}
+      const tuple = s.populations?.[entityId]?.[tupleIndex]
+      if (!Array.isArray(tuple)) return {}
+      const raw = tuple[cellIndex]
+      const value = typeof raw === 'string' ? raw.trim() : raw
+      if (!isCompleteValue(value)) return {}
+      const factIdForCell = cp.factIds ? cp.factIds[cellIndex] : cp.factId
+      const fact = s.facts.find(f => f.id === factIdForCell)
+      const roleIndex = cp.identifyingRoleIndices[cellIndex]
+      const playerOtId = fact?.roles?.[roleIndex]?.objectTypeId
+      if (!playerOtId) return {}
+      const populations = { ...s.populations }
+      const factPopulations = { ...s.factPopulations }
+      const ctx = { facts: s.facts, objectTypes: s.objectTypes, subtypes: s.subtypes, constraints: s.constraints }
+      let changed = propagateValueToPlayer(populations, factPopulations, playerOtId, value, ctx)
+      // If the whole tuple is now complete, also cascade it from the entity
+      // itself so inheriting supertypes (including nested-entity supertypes
+      // whose factPopulations should mirror this entity's tuples) get the row
+      // automatically — no manual "Propagate to supertype" click needed.
+      if (isCompleteValue(tuple)) {
+        if (propagateValueToPlayer(populations, factPopulations, entityId, tuple, ctx)) changed = true
+      }
+      return changed ? { populations, factPopulations, isDirty: true } : {}
+    })
+  },
+
+  // Propagate a list of values into `targetOtId`'s population, cascading
+  // further via the standard rules (inheriting supertypes, ref-mode VTs,
+  // composite-PI identifying-role players). Used by the "Propagate" buttons.
+  propagateValues(targetOtId, values) {
+    set(s => {
+      if (!Array.isArray(values) || values.length === 0) return {}
+      const populations = { ...s.populations }
+      const factPopulations = { ...s.factPopulations }
+      const ctx = { facts: s.facts, objectTypes: s.objectTypes, subtypes: s.subtypes, constraints: s.constraints }
+      let changed = false
+      for (const v of values) {
+        if (propagateValueToPlayer(populations, factPopulations, targetOtId, v, ctx, true)) changed = true
+      }
+      return changed ? { populations, factPopulations, isDirty: true } : {}
+    })
+  },
+
+  // Commit an entity-population instance on blur: cascade the value to
+  // inheriting supertypes and (for ref-mode entities) to the ref-mode VT.
+  // For composite-PI entity tuples, each cell is committed via
+  // commitEntityTupleCell instead — this action handles single-string
+  // populations (ref-mode entities, inheriting subtypes thereof).
+  commitPopulationInstance(otId, instanceIndex) {
+    set(s => {
+      const ot = s.objectTypes.find(o => o.id === otId)
+      if (!ot || ot.kind !== 'entity') return {}
+      const value = s.populations?.[otId]?.[instanceIndex]
+      if (typeof value !== 'string') return {}
+      const trimmed = value.trim()
+      if (trimmed === '') return {}
+      const populations = { ...s.populations }
+      const factPopulations = { ...s.factPopulations }
+      const ctx = { facts: s.facts, objectTypes: s.objectTypes, subtypes: s.subtypes, constraints: s.constraints }
+      // propagateValueToPlayer would re-add it to otId itself; that's already
+      // there. We want propagation TO supertypes and ref-mode VT, so call the
+      // helper which is idempotent for the current entity.
+      const changed = propagateValueToPlayer(populations, factPopulations, otId, trimmed, ctx)
+      return changed ? { populations, factPopulations, isDirty: true } : {}
+    })
+  },
+
+  // ── subtype-edge mapping populations ───────────────────────────────────
+  // For non-inheriting subtype edges: rows hold the supertype-side identifying
+  // cells corresponding to each subtype instance (by position in
+  // populations[subtypeId]). The subtype-side cells are derived from the
+  // subtype's population and aren't stored here.
+
+  updateSubtypeMappingCell(edgeId, rowIndex, cellIndex, value) {
+    set(s => {
+      if (rowIndex < 0 || cellIndex < 0) return {}
+      const current = s.subtypeMappings?.[edgeId] ?? []
+      const next = current.slice()
+      while (next.length <= rowIndex) next.push([])
+      const row = Array.isArray(next[rowIndex]) ? next[rowIndex].slice() : []
+      while (row.length <= cellIndex) row.push('')
+      row[cellIndex] = value
+      next[rowIndex] = row
+      return {
+        subtypeMappings: { ...s.subtypeMappings, [edgeId]: next },
+        isDirty: true,
+      }
+    })
+  },
+
+  // Commit a non-inheriting subtype-mapping cell on blur. When the whole
+  // mapping row is complete (at every depth), the implied supertype instance
+  // (single value or tuple, possibly nested) is propagated to the supertype's
+  // population, cascading further. Partial rows do nothing.
+  commitSubtypeMappingCell(edgeId, rowIndex, cellIndex) { // eslint-disable-line no-unused-vars
+    set(s => {
+      const edge = s.subtypes.find(st => st.id === edgeId)
+      if (!edge || edge.inheritsPreferredIdentifier !== false) return {}
+      const sup = s.objectTypes.find(o => o.id === edge.superId)
+      if (!sup) return {}
+      const shape = getEntityIdentifierShape(sup, s.facts, s.objectTypes, s.subtypes, s.constraints)
+      if (!shape) return {}
+      const row = s.subtypeMappings?.[edgeId]?.[rowIndex]
+      if (!Array.isArray(row)) return {}
+      const width = shape.columns.length
+      const cells = Array.from({ length: width }, (_, ci) => row[ci])
+      const supValue = width === 1 ? cells[0] : cells
+      if (!isCompleteValue(supValue)) return {}
+      const populations = { ...s.populations }
+      const factPopulations = { ...s.factPopulations }
+      const ctx = { facts: s.facts, objectTypes: s.objectTypes, subtypes: s.subtypes, constraints: s.constraints }
+      const changed = propagateValueToPlayer(populations, factPopulations, sup.id, supValue, ctx)
+      return changed ? { populations, factPopulations, isDirty: true } : {}
+    })
+  },
+
+  // ── fact-type populations ──────────────────────────────────────────────
+  addFactTuple(factId) {
+    set(s => {
+      const fact = s.facts.find(f => f.id === factId)
+      if (!fact) return {}
+      const arity = fact.arity ?? fact.roles?.length ?? 0
+      if (arity < 1) return {}
+      const current = s.factPopulations?.[factId] ?? []
+      // Each cell is initialised based on its role's player shape: a single
+      // empty string for plain roles, or a fresh sub-tuple for composite-PI
+      // entity roles.
+      const tuple = (fact.roles ?? []).slice(0, arity).map(role => {
+        const shape = getRoleCellShape(role, s.facts, s.objectTypes, s.subtypes, s.constraints)
+        return shape.kind === 'tuple' ? Array(shape.width).fill('') : ''
+      })
+      return {
+        factPopulations: { ...s.factPopulations, [factId]: [...current, tuple] },
+        isDirty: true,
+      }
+    })
+  },
+
+  updateFactTupleCell(factId, tupleIndex, roleIndex, value) {
+    set(s => {
+      const current = s.factPopulations?.[factId] ?? []
+      if (tupleIndex < 0 || tupleIndex >= current.length) return {}
+      const oldTuple = current[tupleIndex]
+      if (roleIndex < 0 || roleIndex >= oldTuple.length) return {}
+      const next = current.slice()
+      const newTuple = oldTuple.slice()
+      newTuple[roleIndex] = value
+      next[tupleIndex] = newTuple
+      return {
+        factPopulations: { ...s.factPopulations, [factId]: next },
+        isDirty: true,
+      }
+    })
+  },
+
+  removeFactTuple(factId, tupleIndex) {
+    set(s => {
+      const current = s.factPopulations?.[factId] ?? []
+      if (tupleIndex < 0 || tupleIndex >= current.length) return {}
+      const next = current.slice()
+      next.splice(tupleIndex, 1)
+      const factPopulations = { ...s.factPopulations }
+      if (next.length === 0) delete factPopulations[factId]
+      else factPopulations[factId] = next
+      return { factPopulations, isDirty: true }
+    })
+  },
+
+  commitFactTupleCell(factId, tupleIndex, roleIndex) {
+    set(s => {
+      const fact = s.facts.find(f => f.id === factId)
+      if (!fact) return {}
+      const tuple = s.factPopulations?.[factId]?.[tupleIndex]
+      if (!Array.isArray(tuple)) return {}
+      const cell = tuple[roleIndex]
+      if (typeof cell !== 'string') return {}
+      const trimmed = cell.trim()
+      if (trimmed === '') return {}
+      const role = fact.roles?.[roleIndex]
+      if (!role?.objectTypeId) return {}
+      // If the role connects to an objectified fact with a reference mode,
+      // propagate the identifier to the ref-mode VT instead of the fact.
+      let targetId = role.objectTypeId
+      const targetPlayer = findRolePlayer(targetId, s.objectTypes, s.facts)
+      if (targetPlayer?.objectified) {
+        const rm = findRefMode(targetPlayer, s.facts, s.objectTypes)
+        if (rm) targetId = rm.vtId
+      }
+      const populations = { ...s.populations }
+      const factPopulations = { ...s.factPopulations }
+      const ctx = { facts: s.facts, objectTypes: s.objectTypes, subtypes: s.subtypes, constraints: s.constraints }
+      const changed = propagateValueToPlayer(populations, factPopulations, targetId, trimmed, ctx)
+      return changed ? { populations, factPopulations, isDirty: true } : {}
+    })
+  },
+
+  // ── nested-entity combined-table populations ────────────────────────────
+  // For objectified facts with an explicit PI. Rows are aligned by index:
+  //   nestedEntityMappings[factId][i] = PI value for row i
+  //   factPopulations[factId][i]      = fact tuple for row i
+  // Both arrays grow and shrink together via addNestedEntityRow / removeNestedEntityRow.
+
+  addNestedEntityRow(factId) {
+    set(s => {
+      const fact = s.facts.find(f => f.id === factId)
+      if (!fact || !fact.objectified) return {}
+      const arity = fact.arity ?? fact.roles?.length ?? 0
+      // Fact side: one empty cell per role.
+      const currentFact = s.factPopulations?.[factId] ?? []
+      const factTuple = (fact.roles ?? []).slice(0, arity).map(role => {
+        const shape = getRoleCellShape(role, s.facts, s.objectTypes, s.subtypes, s.constraints)
+        return shape.kind === 'tuple' ? Array(shape.width).fill('') : ''
+      })
+      // PI side: derive width from the entity identifier shape.
+      const piShape = getEntityIdentifierShape(fact, s.facts, s.objectTypes, s.subtypes, s.constraints)
+      const piWidth = piShape?.columns?.length ?? 0
+      const currentPop = s.nestedEntityMappings?.[factId] ?? []
+      const piValue = piWidth <= 1 ? '' : Array(piWidth).fill('')
+      return {
+        factPopulations:      { ...s.factPopulations,      [factId]: [...currentFact, factTuple] },
+        nestedEntityMappings: { ...s.nestedEntityMappings, [factId]: [...currentPop,  piValue]   },
+        isDirty: true,
+      }
+    })
+  },
+
+  // Add PI values to a nested entity type's population without requiring the
+  // caller to know about the parallel factPopulations structure.  For each
+  // piValue in piValues that is not already present, one row is appended to
+  // both nestedEntityMappings (the PI value) and factPopulations (an empty
+  // fact tuple).  This is the "propagate to nested entity" action used when a
+  // connecting fact tuple references an N instance that does not yet exist.
+  propagateToNestedEntity(factId, piValues) {
+    set(s => {
+      const fact = s.facts.find(f => f.id === factId)
+      if (!fact || !fact.objectified) return {}
+      const arity = fact.arity ?? fact.roles?.length ?? 0
+      const currentFact = s.factPopulations?.[factId] ?? []
+      const currentPop  = s.nestedEntityMappings?.[factId] ?? []
+      const existingKeys = new Set(currentPop.map(v => JSON.stringify(v)))
+      const nextFact = [...currentFact]
+      const nextPop  = [...currentPop]
+      let changed = false
+      for (const piValue of (piValues ?? [])) {
+        const key = JSON.stringify(piValue)
+        if (existingKeys.has(key)) continue
+        existingKeys.add(key)
+        const factTuple = (fact.roles ?? []).slice(0, arity).map(role => {
+          const shape = getRoleCellShape(role, s.facts, s.objectTypes, s.subtypes, s.constraints)
+          return shape.kind === 'tuple' ? Array(shape.width).fill('') : ''
+        })
+        nextFact.push(factTuple)
+        nextPop.push(piValue)
+        changed = true
+      }
+      if (!changed) return {}
+      const factPopulations      = { ...s.factPopulations,      [factId]: nextFact }
+      const nestedEntityMappings = { ...s.nestedEntityMappings, [factId]: nextPop  }
+      return { factPopulations, nestedEntityMappings, isDirty: true }
+    })
+  },
+
+  removeNestedEntityRow(factId, rowIndex) {
+    set(s => {
+      const currentFact = s.factPopulations?.[factId] ?? []
+      const currentPop  = s.nestedEntityMappings?.[factId] ?? []
+      const maxLen = Math.max(currentFact.length, currentPop.length)
+      if (rowIndex < 0 || rowIndex >= maxLen) return {}
+      const removedValue = currentPop[rowIndex]
+      const nextFact = currentFact.slice(); nextFact.splice(rowIndex, 1)
+      const nextPop  = currentPop.slice();  nextPop.splice(rowIndex,  1)
+      const factPopulations      = { ...s.factPopulations }
+      const nestedEntityMappings = { ...s.nestedEntityMappings }
+      if (nextFact.length === 0) delete factPopulations[factId]
+      else factPopulations[factId] = nextFact
+      if (nextPop.length === 0) delete nestedEntityMappings[factId]
+      else nestedEntityMappings[factId] = nextPop
+
+      // Cascade: if the nested entity has a ref-mode and the VT is not
+      // independent, remove the VT instance unless still used elsewhere.
+      // factPopulations is already updated (row removed), so checking it for
+      // factId gives the post-deletion state.
+      let populations = s.populations
+      if (isCompleteValue(removedValue)) {
+        const fact = s.facts.find(f => f.id === factId)
+        if (fact) {
+          const rm = findRefMode(fact, s.facts, s.objectTypes)
+          if (rm) {
+            const vt = s.objectTypes.find(o => o.id === rm.vtId)
+            if (vt && !vt.isIndependent) {
+              const stillInNested = nextPop.includes(removedValue)
+              const stillInFacts = !stillInNested && s.facts.some(f =>
+                f.id !== factId &&
+                f.roles?.some((r, ri) => r?.objectTypeId === rm.vtId &&
+                  (s.factPopulations?.[f.id] ?? []).some(tuple =>
+                    Array.isArray(tuple) && tuple[ri] === removedValue
+                  )
+                )
+              )
+              if (!stillInNested && !stillInFacts) {
+                populations = { ...populations }
+                const vtPop = populations[rm.vtId] ?? []
+                const vtIdx = vtPop.indexOf(removedValue)
+                if (vtIdx !== -1) {
+                  const nextVt = vtPop.slice()
+                  nextVt.splice(vtIdx, 1)
+                  if (nextVt.length === 0) delete populations[rm.vtId]
+                  else populations[rm.vtId] = nextVt
+                }
+              }
+            }
+          }
+        }
+      }
+
+      return { factPopulations, nestedEntityMappings, populations, isDirty: true }
+    })
+  },
+
+  updateNestedEntityPICell(factId, rowIndex, cellIndex, value) {
+    set(s => {
+      const current = s.nestedEntityMappings?.[factId] ?? []
+      if (rowIndex < 0 || rowIndex >= current.length) return {}
+      const oldVal = current[rowIndex]
+      let newVal
+      if (Array.isArray(oldVal)) {
+        const arr = oldVal.slice()
+        while (arr.length <= cellIndex) arr.push('')
+        arr[cellIndex] = value
+        newVal = arr
+      } else {
+        newVal = value  // single-column PI (ref-mode): string
+      }
+      const next = current.slice(); next[rowIndex] = newVal
+      return { nestedEntityMappings: { ...s.nestedEntityMappings, [factId]: next }, isDirty: true }
+    })
+  },
+
+  // On blur of any PI cell: propagate the complete PI value to the PI-defining roles.
+  commitNestedEntityPICell(factId, rowIndex) {
+    set(s => {
+      const fact = s.facts.find(f => f.id === factId)
+      if (!fact || !fact.objectified) return {}
+      const piValue = s.nestedEntityMappings?.[factId]?.[rowIndex]
+      if (!isCompleteValue(piValue)) return {}
+      const populations      = { ...s.populations }
+      const factPopulations  = { ...s.factPopulations }
+      const ctx = { facts: s.facts, objectTypes: s.objectTypes, subtypes: s.subtypes, constraints: s.constraints }
+      let changed = false
+      const rm = findRefMode(fact, s.facts, s.objectTypes)
+      if (rm) {
+        if (typeof piValue === 'string') {
+          if (propagateValueToPlayer(populations, factPopulations, rm.vtId, piValue, ctx)) changed = true
+        }
+      } else {
+        let cp = findCompositePI(fact, s.facts, s.objectTypes, s.constraints)
+        if (!cp) {
+          const inh = findInheritedPI(fact, s.facts, s.objectTypes, s.subtypes, s.constraints)
+          if (inh?.kind === 'compositePI') cp = inh.cp
+        }
+        if (cp && Array.isArray(piValue)) {
+          const piFact = s.facts.find(f => f.id === cp.factId)
+          if (piFact) {
+            cp.identifyingRoleIndices.forEach((roleIndex, ci) => {
+              const playerOtId = piFact.roles?.[roleIndex]?.objectTypeId
+              const cellValue  = piValue[ci]
+              if (playerOtId && isCompleteValue(cellValue)) {
+                if (propagateValueToPlayer(populations, factPopulations, playerOtId, cellValue, ctx)) changed = true
+              }
+            })
+          }
+        }
+      }
+      return changed ? { populations, factPopulations, isDirty: true } : {}
     })
   },
 
@@ -1264,38 +2233,12 @@ export const useOrmStore = create((set, get) => ({
   },
 
   deleteObjectType(id) {
-    // Truly remove any ref-mode expansion elements tied to this entity (don't just hide them).
-    // Also, if the user is deleting the generated value type itself, clean up the whole expansion.
-    const ot = get().objectTypes.find(o => o.id === id)
-    if (ot?._refExpansion) {
-      // Deleting the generated value type: hard-remove VT + FT, clear flag on parent entity.
-      const parentId = ot._refExpansion
-      const expIds = expansionIdsFor(parentId, get().objectTypes, get().facts)
-      set(s => ({
-        objectTypes: s.objectTypes
-          .filter(o => o._refExpansion !== parentId)
-          .map(o => o.id === parentId ? { ...o, refModeExpanded: false } : o),
-        facts: s.facts.filter(f => f._refExpansion !== parentId),
-        diagrams: diagramsWithPurgedExpansion(parentId, expIds, s.diagrams),
-        isDirty: true,
-      }))
-      return  // The value type was removed by the filter above — nothing more to do.
-    }
-    if (ot?.refModeExpanded || get().objectTypes.some(o => o._refExpansion === id)) {
-      // Deleting the entity: hard-remove its expansion elements first.
-      const expIds = expansionIdsFor(id, get().objectTypes, get().facts)
-      set(s => ({
-        objectTypes: s.objectTypes.filter(o => o._refExpansion !== id),
-        facts: s.facts.filter(f => f._refExpansion !== id),
-        diagrams: diagramsWithPurgedExpansion(id, expIds, s.diagrams),
-        isDirty: true,
-      }))
-    }
-
     set(s => {
       const removedSubtypeIds = new Set(
         s.subtypes.filter(st => st.subId === id || st.superId === id).map(st => st.id)
       )
+      const populations = { ...s.populations }
+      delete populations[id]
       return {
         objectTypes: s.objectTypes.filter(o => o.id !== id),
         facts: s.facts.map(f => ({
@@ -1303,6 +2246,7 @@ export const useOrmStore = create((set, get) => ({
           roles: f.roles.map(r => r.objectTypeId === id ? { ...r, objectTypeId: null } : r),
         })),
         subtypes: s.subtypes.filter(st => st.subId !== id && st.superId !== id),
+        populations,
         constraints: s.constraints.map(c => ({
           ...c,
           subtypeIds: (c.subtypeIds || []).filter(sid => !removedSubtypeIds.has(sid)),
@@ -1322,151 +2266,41 @@ export const useOrmStore = create((set, get) => ({
     })
   },
 
-  expandRefMode(otId) {
-    const { objectTypes, facts, activeDiagramId, diagrams } = get()
+  // Per-diagram display toggle: show the ref mode's VT + FT as ordinary diagram
+  // elements (instead of as shorthand inside the entity rect). The VT and FT
+  // already exist as schema elements; this just adds them to elementIds and
+  // marks the entity expanded in the target diagram.
+  expandRefMode(otId, diagramId = null) {
+    const { objectTypes, facts, activeDiagramId } = get()
     const ot = objectTypes.find(o => o.id === otId)
-    if (!ot || ot.kind !== 'entity' || !ot.refMode || ot.refMode === 'none') return
-
-    // Check if already expanded in THIS diagram (not globally)
-    const activeDiag = diagrams.find(d => d.id === activeDiagramId)
-    if ((activeDiag?.expandedRefModes ?? []).includes(otId)) return
-
-    // Re-use elements from a previous expansion if they already exist globally
-    const existingVt = objectTypes.find(o => o._refExpansion === otId)
-    const existingFt = facts.find(f => f._refExpansion === otId)
-
-    if (existingVt && existingFt) {
-      set(s => ({
-        objectTypes: s.objectTypes.map(o => o.id === otId ? { ...o, refModeExpanded: true } : o),
-        diagrams: s.diagrams.map(d => {
-          if (d.id !== activeDiagramId) return d
-          const elementIds = d.elementIds === null ? null : [
-            ...d.elementIds,
-            ...(d.elementIds.includes(existingVt.id) ? [] : [existingVt.id]),
-            ...(d.elementIds.includes(existingFt.id) ? [] : [existingFt.id]),
-          ]
-          const expandedRefModes = [...(d.expandedRefModes ?? []), otId]
-          return { ...d, elementIds, expandedRefModes }
-        }),
-        isDirty: true,
-      }))
-      return
-    }
-
-    // First-time expansion: create fresh elements
-    // Dot-prefixed refMode → EntityNameSuffix  (e.g. Person + .id → PersonId)
-    const { vt, ft } = mkRefExpansionPair(ot)
-
+    const nested = !ot ? facts.find(f => f.id === otId && f.objectified && f.objectifiedKind !== 'value') : null
+    const owner = ot ?? nested
+    if (!owner) return
+    if (ot && ot.kind !== 'entity') return
+    const rm = findRefMode(owner, facts, objectTypes)
+    if (!rm) return
+    const targetDiagramId = diagramId ?? activeDiagramId
     set(s => ({
-      objectTypes: [
-        ...s.objectTypes.map(o => o.id === otId ? { ...o, refModeExpanded: true } : o),
-        vt,
-      ],
-      facts: [...s.facts, ft],
       diagrams: s.diagrams.map(d => {
-        if (d.id !== activeDiagramId) return d
-        const elementIds = d.elementIds === null ? null : [...(d.elementIds ?? []), vt.id, ft.id]
-        const expandedRefModes = [...(d.expandedRefModes ?? []), otId]
-        return { ...d, elementIds, expandedRefModes }
+        if (d.id !== targetDiagramId) return d
+        if ((d.expandedRefModes ?? []).includes(otId)) return d
+        const elementIds = d.elementIds === null ? null : [
+          ...d.elementIds,
+          ...([rm.vtId, rm.factId].filter(eid => !d.elementIds.includes(eid))),
+        ]
+        return { ...d, elementIds, expandedRefModes: [...(d.expandedRefModes ?? []), otId] }
       }),
       isDirty: true,
     }))
   },
 
-  // Adds only the implied VT to a specific diagram — no expansion, no FT added.
-  // Creates VT/FT as schema objects if they do not exist yet.
-  addImpliedVtToDiagram(entityId, diagramId) {
-    const { objectTypes, facts } = get()
-    const ot = objectTypes.find(o => o.id === entityId)
-    if (!ot || ot.kind !== 'entity' || !ot.refMode || ot.refMode === 'none') return
-
-    const existingVt = objectTypes.find(o => o._refExpansion === entityId)
-    if (existingVt) {
-      set(s => ({
-        diagrams: s.diagrams.map(d => {
-          if (d.id !== diagramId || d.elementIds === null || d.elementIds.includes(existingVt.id)) return d
-          return { ...d, elementIds: [...d.elementIds, existingVt.id] }
-        }),
-        isDirty: true,
-      }))
-      return
-    }
-
-    // Create VT + FT schema objects; only VT enters the diagram.
-    const { vt, ft } = mkRefExpansionPair(ot)
-    set(s => ({
-      objectTypes: [...s.objectTypes.map(o => o.id === entityId ? { ...o, refModeExpanded: true } : o), vt],
-      facts: [...s.facts, ft],
-      diagrams: s.diagrams.map(d => {
-        if (d.id !== diagramId || d.elementIds === null) return d
-        return { ...d, elementIds: [...d.elementIds, vt.id] }
-      }),
-      isDirty: true,
-    }))
-  },
-
-  // Adds the implied FT together with its entity and VT to a specific diagram.
-  // Creates VT/FT as schema objects if they do not exist yet.
-  addImpliedFtToDiagram(entityId, diagramId) {
-    const { objectTypes, facts, diagrams } = get()
-    const ot = objectTypes.find(o => o.id === entityId)
-    if (!ot || ot.kind !== 'entity' || !ot.refMode || ot.refMode === 'none') return
-
-    const diag = diagrams.find(d => d.id === diagramId)
-    if ((diag?.expandedRefModes ?? []).includes(entityId)) return
-
-    const existingVt = objectTypes.find(o => o._refExpansion === entityId)
-    const existingFt = facts.find(f => f._refExpansion === entityId)
-
-    if (existingVt && existingFt) {
-      set(s => ({
-        objectTypes: s.objectTypes.map(o => o.id === entityId ? { ...o, refModeExpanded: true } : o),
-        diagrams: s.diagrams.map(d => {
-          if (d.id !== diagramId) return d
-          const toAdd = [entityId, existingVt.id, existingFt.id]
-          const elementIds = d.elementIds === null ? null :
-            [...d.elementIds, ...toAdd.filter(id => !d.elementIds.includes(id))]
-          return { ...d, elementIds, expandedRefModes: [...(d.expandedRefModes ?? []), entityId] }
-        }),
-        isDirty: true,
-      }))
-      return
-    }
-
-    // Create VT + FT schema objects.
-    const { vt, ft } = mkRefExpansionPair(ot)
-    set(s => ({
-      objectTypes: [...s.objectTypes.map(o => o.id === entityId ? { ...o, refModeExpanded: true } : o), vt],
-      facts: [...s.facts, ft],
-      diagrams: s.diagrams.map(d => {
-        if (d.id !== diagramId) return d
-        const toAdd = [entityId, vt.id, ft.id]
-        const elementIds = d.elementIds === null ? null :
-          [...d.elementIds, ...toAdd.filter(id => !d.elementIds.includes(id))]
-        return { ...d, elementIds, expandedRefModes: [...(d.expandedRefModes ?? []), entityId] }
-      }),
-      isDirty: true,
-    }))
-  },
-
-  collapseRefMode(otId) {
-    const { activeDiagramId, facts } = get()
-    const vtId = get().objectTypes.find(o => o._refExpansion === otId)?.id
-    const ftId = facts.find(f => f._refExpansion === otId)?.id
+  collapseRefMode(otId, diagramId = null) {
+    const { activeDiagramId } = get()
+    const targetDiagramId = diagramId ?? activeDiagramId
     set(s => ({
       diagrams: s.diagrams.map(d => {
-        if (d.id !== activeDiagramId) return d
-        // Keep the VT in elementIds if it plays a role in another (non-expansion) fact
-        // that is visible in this diagram — it has independent uses beyond the ref mode.
-        const vtUsedIndependently = vtId && facts.some(f =>
-          !f._refExpansion &&
-          f.roles.some(r => r.objectTypeId === vtId) &&
-          (d.elementIds === null || (d.elementIds ?? []).includes(f.id))
-        )
-        const elementIds = d.elementIds === null ? null :
-          (d.elementIds ?? []).filter(id => id !== ftId && (id !== vtId || vtUsedIndependently))
-        const expandedRefModes = (d.expandedRefModes ?? []).filter(id => id !== otId)
-        return { ...d, elementIds, expandedRefModes }
+        if (d.id !== targetDiagramId) return d
+        return { ...d, expandedRefModes: (d.expandedRefModes ?? []).filter(id => id !== otId) }
       }),
       isDirty: true,
     }))
@@ -1514,32 +2348,6 @@ export const useOrmStore = create((set, get) => ({
     return base.id
   },
 
-  addNestedValueFact(x, y, arity = 2) {
-    const n = nextRelationNumber(get().facts)
-    const base = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n), objectified: true, objectifiedKind: 'value', nestedReading: false, datatypeAssignment: null }
-    base.roles = base.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] }))
-    base.implicitLinks = Array.from({ length: arity }, (_, i) => mkImplicitLink(i))
-    set(s => {
-      const used = new Set(
-        s.objectTypes.filter(o => o.kind === 'value').map(o => o.name)
-          .concat(s.facts.filter(f => f.objectifiedKind === 'value').map(f => f.objectifiedName).filter(Boolean))
-      )
-      let n = 1
-      while (used.has(`Value${n}`)) n++
-      const f = { ...base, objectifiedName: `Value${n}` }
-      return {
-        facts: [...s.facts, f],
-        diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
-          ...d,
-          elementIds: d.elementIds === null ? null : [...d.elementIds, f.id],
-          positions:  { ...d.positions, [f.id]: { x: f.x, y: f.y } },
-        }),
-        isDirty: true, selectedId: f.id, selectedKind: 'fact',
-      }
-    })
-    return base.id
-  },
-
   convertToNestedEntity(id) {
     set(s => {
       const used = new Set(
@@ -1551,26 +2359,6 @@ export const useOrmStore = create((set, get) => ({
         facts: s.facts.map(f => f.id !== id ? f : {
           ...f, objectified: true, objectifiedKind: 'entity',
           objectifiedName: `Entity${n}`, nestedReading: false,
-          roles: f.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] })),
-          implicitLinks: Array.from({ length: f.arity }, (_, i) => mkImplicitLink(i)),
-        }),
-        isDirty: true,
-      }
-    })
-  },
-
-  convertToNestedValue(id) {
-    set(s => {
-      const used = new Set(
-        s.objectTypes.filter(o => o.kind === 'value').map(o => o.name)
-          .concat(s.facts.filter(f => f.objectifiedKind === 'value').map(f => f.objectifiedName).filter(Boolean))
-      )
-      let n = 1
-      while (used.has(`Value${n}`)) n++
-      return {
-        facts: s.facts.map(f => f.id !== id ? f : {
-          ...f, objectified: true, objectifiedKind: 'value',
-          objectifiedName: `Value${n}`, nestedReading: false,
           roles: f.roles.map(r => ({ ...r, linkReadingParts: ['', 'involves', ''] })),
           implicitLinks: Array.from({ length: f.arity }, (_, i) => mkImplicitLink(i)),
         }),
@@ -1745,7 +2533,18 @@ export const useOrmStore = create((set, get) => ({
           ? c.sequences.map(g => g.filter(m => !(m.kind === 'role' && m.factId === factId && m.roleIndex >= newArity)))
           : undefined,
       }))
-      return { facts, constraints, isDirty: true,
+      // Resize each tuple in the fact's population to match the new arity
+      const existingTuples = s.factPopulations?.[factId]
+      let factPopulations = s.factPopulations
+      if (existingTuples?.length) {
+        const resized = existingTuples.map(t => {
+          if (t.length === newArity) return t
+          if (newArity > t.length) return [...t, ...Array(newArity - t.length).fill('')]
+          return t.slice(0, newArity)
+        })
+        factPopulations = { ...s.factPopulations, [factId]: resized }
+      }
+      return { facts, constraints, factPopulations, isDirty: true,
         diagrams: s.diagrams.map(d => {
           const shown = (d.shownImplicitLinks || []).filter(k => {
             if (!k.startsWith(`${factId}:`)) return true
@@ -1762,7 +2561,20 @@ export const useOrmStore = create((set, get) => ({
   // Uniqueness constraint sets have their indices remapped to match.
   reorderRoles(factId, fromIndex, toIndex) {
     if (fromIndex === toIndex) return
-    set(s => ({
+    set(s => {
+      // Precompute oldToNew for use in both .facts.map and population remap below
+      const target = s.facts.find(f => f.id === factId)
+      const oldToNewOuter = {}
+      if (target) {
+        target.roles.forEach((_, oldI) => {
+          let newI = oldI
+          if (oldI === fromIndex) newI = toIndex
+          else if (fromIndex < toIndex) { if (oldI > fromIndex && oldI <= toIndex) newI = oldI - 1 }
+          else                          { if (oldI >= toIndex && oldI < fromIndex) newI = oldI + 1 }
+          oldToNewOuter[oldI] = newI
+        })
+      }
+      return {
       facts: s.facts.map(f => {
         if (f.id !== factId) return f
         const roles = [...f.roles]
@@ -1846,8 +2658,23 @@ export const useOrmStore = create((set, get) => ({
         })
         return { ...d, positions, shownImplicitLinks: remappedShown }
       }),
+      // Permute tuple cells in the fact's population to match the new role order
+      factPopulations: (() => {
+        const tuples = s.factPopulations?.[factId]
+        if (!tuples?.length || !target) return s.factPopulations
+        const remapped = tuples.map(t => {
+          const next = t.slice()
+          target.roles.forEach((_, oldI) => {
+            const newI = oldToNewOuter[oldI]
+            if (newI !== undefined) next[newI] = t[oldI] ?? ''
+          })
+          return next
+        })
+        return { ...s.factPopulations, [factId]: remapped }
+      })(),
       isDirty: true,
-    }))
+      }
+    })
   },
 
   reverseRoles(factId) {
@@ -2104,21 +2931,65 @@ export const useOrmStore = create((set, get) => ({
 
   setPreferredUniqueness(factId, roleIndices) {
     const key = JSON.stringify([...roleIndices].sort())
-    set(s => ({
-      facts: s.facts.map(f => {
+    set(s => {
+      const fact = s.facts.find(f => f.id === factId)
+      if (!fact) return {}
+      const isValid = roleIndices.length === fact.arity - 1
+      const wasOn = (fact.preferredUniqueness || []).some(pu => JSON.stringify([...pu].sort()) === key)
+      const isPromote = isValid && !wasOn
+
+      const newFacts = s.facts.map(f => {
         if (f.id !== factId) return f
         if (roleIndices.length !== f.arity - 1) {
           return { ...f, preferredUniqueness: (f.preferredUniqueness || []).filter(pu => JSON.stringify([...pu].sort()) !== key) }
         }
         const current = f.preferredUniqueness || []
-        const exists = current.some(pu => JSON.stringify([...pu].sort()) === key)
-        const preferredUniqueness = exists
+        const preferredUniqueness = wasOn
           ? current.filter(pu => JSON.stringify([...pu].sort()) !== key)
           : [...current, [...roleIndices]]
         return { ...f, preferredUniqueness }
-      }),
-      isDirty: true,
-    }))
+      })
+
+      if (!isPromote) return { facts: newFacts, isDirty: true }
+
+      const identifiedId = identifiedIdForInternalPI(fact, roleIndices)
+      const { facts: cFacts, constraints: cCons } =
+        demoteOtherPIsFor(identifiedId, newFacts, s.constraints, factId, null)
+
+      // When this promotion produces a ref-mode pattern (binary fact, entity on
+      // the uncovered role, VT on the covered role), keep it visible in the
+      // active diagram instead of auto-collapsing into the entity's shorthand.
+      let nextDiagrams = s.diagrams
+      const identifiedOt = s.objectTypes.find(o => o.id === identifiedId)
+      const isRefModePattern =
+        fact.arity === 2 &&
+        identifiedOt?.kind === 'entity' &&
+        (() => {
+          const coveredRoleIndex = roleIndices[0]
+          const coveredOtId = fact.roles?.[coveredRoleIndex]?.objectTypeId
+          const coveredOt = s.objectTypes.find(o => o.id === coveredOtId)
+          return coveredOt?.kind === 'value'
+        })()
+      if (isRefModePattern) {
+        nextDiagrams = s.diagrams.map(d => {
+          if (d.id !== s.activeDiagramId) return d
+          if ((d.expandedRefModes ?? []).includes(identifiedId)) return d
+          return { ...d, expandedRefModes: [...(d.expandedRefModes ?? []), identifiedId] }
+        })
+      }
+
+      return { facts: cFacts, constraints: cCons, diagrams: nextDiagrams, isDirty: true }
+    })
+  },
+
+  // Toggle preferred-identifier status by uniqueness array index (used by
+  // ImplicitLinkRoleInspector which knows the index, not the role-index array).
+  togglePreferredUniqueness(factId, uniquenessIndex) {
+    const fact = get().facts.find(f => f.id === factId)
+    if (!fact) return
+    const roleIndices = (fact.uniqueness || [])[uniquenessIndex]
+    if (!Array.isArray(roleIndices)) return
+    get().setPreferredUniqueness(factId, roleIndices)
   },
 
   updateAlternativeReading(factId, roleOrder, parts) {
@@ -2282,7 +3153,14 @@ export const useOrmStore = create((set, get) => ({
   deleteFact(id) {
     const { linkDraft } = get()
     if (linkDraft?.type === 'roleAssign' && linkDraft?.factId === id) return
-    set(s => ({
+    set(s => {
+      const factPopulations      = { ...s.factPopulations }
+      const nestedEntityMappings = { ...s.nestedEntityMappings }
+      delete factPopulations[id]
+      delete nestedEntityMappings[id]
+      return {
+      factPopulations,
+      nestedEntityMappings,
       facts: s.facts.filter(f => f.id !== id).map(f => ({
         ...f,
         // Clear role-player refs to this fact (in case it was an objectified nested type)
@@ -2303,14 +3181,20 @@ export const useOrmStore = create((set, get) => ({
       })),
       selectedId: s.selectedId === id ? null : s.selectedId,
       isDirty: true,
-    }))
+      }
+    })
   },
 
   // ── subtypes ────────────────────────────────────────────────────────────
 
   addSubtype(subId, superId) {
-    const exists = get().subtypes.some(s => s.subId === subId && s.superId === superId)
+    const s0 = get()
+    const exists = s0.subtypes.some(s => s.subId === subId && s.superId === superId)
     if (exists || subId === superId) return
+    // Entity/value kinds are disjoint — reject mixed-kind subtype edges
+    const subKind   = subtypeKindOf(subId,   s0.objectTypes, s0.facts)
+    const superKind = subtypeKindOf(superId, s0.objectTypes, s0.facts)
+    if (subKind && superKind && subKind !== superKind) return
     const st = mkSubtype(subId, superId)
     set(s => ({ subtypes: [...s.subtypes, st], isDirty: true,
                 selectedId: st.id, selectedKind: 'subtype' }))
@@ -2370,7 +3254,7 @@ export const useOrmStore = create((set, get) => ({
     if (mode === 'newSequence') {
       if (sequences.length >= maxSequences) return
       const newSequenceIdx = sequences.length
-      const size = c.constraintType === 'ring' ? 2
+      const size = (c.constraintType === 'ring' || c.constraintType === 'valueComparison') ? 2
         : isSingleton ? 1 : (sequences.length > 0 ? sequences[0].length : 1)
       steps = Array.from({ length: size }, () => ({ sequenceIndex: newSequenceIdx }))
     } else {
@@ -2450,7 +3334,7 @@ export const useOrmStore = create((set, get) => ({
   },
 
   _tryAutoGenerateQuery(constraintId) {
-    const { constraints, facts } = get()
+    const { constraints, facts, subtypes } = get()
     const c = constraints.find(c => c.id === constraintId)
     if (!c) return
 
@@ -2459,54 +3343,98 @@ export const useOrmStore = create((set, get) => ({
       const roleMembers = seq.filter(m => m.kind === 'role' && !m.factId?.includes('_il_'))
       if (roleMembers.length === 0 || roleMembers.length !== seq.length) return
 
-      // All roles must be in binary fact types
+      // Don't overwrite an existing query
+      if (c.queries?.[0] != null) return
+
+      const hasTargetOt = c.constraintType === 'uniqueness' || c.constraintType === 'frequency'
+      const commitQuery = (copies, links, lcaId) => {
+        set(s => ({
+          constraints: s.constraints.map(con => {
+            if (con.id !== constraintId) return con
+            const queries = [...(con.queries || [])]
+            while (queries.length < 1) queries.push(null)
+            queries[0] = { copies, links }
+            return { ...con, ...(hasTargetOt && lcaId ? { targetObjectTypeId: lcaId } : {}), queries }
+          }),
+          isDirty: true,
+        }))
+      }
+
+      // ── Case 1 (ring only): both roles in the same fact type ─────────────────
+      // No binary-fact requirement — any arity is allowed here.
+      if (c.constraintType === 'ring' && roleMembers.length === 2
+          && roleMembers[0].factId === roleMembers[1].factId) {
+        const factCopyId = uid()
+        commitQuery(
+          [{ id: factCopyId, kind: 'fact', originalId: roleMembers[0].factId,
+             isOutput: false,
+             seededRoles: roleMembers.map((m, i) => ({ roleIndex: m.roleIndex, seqPosition: i })),
+             dx: 16, dy: 16 }],
+          [],
+          null,
+        )
+        return
+      }
+
+      // ── Case 2: all roles from distinct binary fact types, unique LCA of other-role OTs ─
+      // All roles must be in binary fact types.
       for (const m of roleMembers) {
         const f = facts.find(f => f.id === m.factId)
         if (!f || f.arity !== 2) return
       }
+      // Each factId must be distinct.
+      const factIds = roleMembers.map(m => m.factId)
+      if (new Set(factIds).size !== factIds.length) return
 
-      // There must be a single common OT connected to the OTHER role of each fact
-      let targetOtId = null
+      // Collect the OT at the OTHER role of each fact.
+      const otherOtIds = []
       for (const m of roleMembers) {
         const f = facts.find(f => f.id === m.factId)
-        const otherRi = 1 - m.roleIndex
-        const otId = f.roles[otherRi]?.objectTypeId
+        const otId = f.roles[1 - m.roleIndex]?.objectTypeId
         if (!otId) return
-        if (targetOtId === null) targetOtId = otId
-        else if (targetOtId !== otId) return
+        otherOtIds.push(otId)
       }
-      if (!targetOtId) return
 
-      // Don't overwrite if the user has already set a different target or a query
-      if (c.targetObjectTypeId && c.targetObjectTypeId !== targetOtId) return
-      if (c.queries?.[0] != null) return
+      const lcaId = findUniqueLCA(otherOtIds, subtypes)
+      if (!lcaId) return
+      if (hasTargetOt && c.targetObjectTypeId && c.targetObjectTypeId !== lcaId) return
 
-      // Build the query
-      const targetCopyId = uid()
+      // Build tree: root OT copy for LCA; per branch a path of subtype edge copies
+      // from the LCA down to the other-role OT, then the fact copy.
+      const rootCopyId = uid()
       const copies = [
-        { id: targetCopyId, kind: 'objectType', originalId: targetOtId,
-          isOutput: true, dx: 16, dy: 16 },
+        { id: rootCopyId, kind: 'objectType', originalId: lcaId,
+          isOutput: hasTargetOt, dx: 16, dy: 16 },
       ]
       const links = []
-      roleMembers.forEach((m, i) => {
-        const otherRi = 1 - m.roleIndex
+
+      for (let i = 0; i < roleMembers.length; i++) {
+        const m = roleMembers[i]
+        const P = otherOtIds[i]
+        const path = findPathDown(lcaId, P, subtypes)
+        if (path === null) return  // LCA not actually an ancestor — schema inconsistency
+
+        let prevOtCopyId = rootCopyId
+        for (const step of path) {
+          const childOtCopyId = uid()
+          const stCopyId = uid()
+          copies.push({ id: childOtCopyId, kind: 'objectType', originalId: step.toId,
+            isOutput: false, dx: (i + 2) * 16, dy: (i + 2) * 16 })
+          copies.push({ id: stCopyId, kind: 'subtype', originalId: step.subtypeId,
+            isOutput: false, dx: (i + 2) * 16, dy: (i + 2) * 16 })
+          links.push({ copyId: stCopyId, roleIndex: 1, variableId: prevOtCopyId })  // supertype end
+          links.push({ copyId: stCopyId, roleIndex: 0, variableId: childOtCopyId }) // subtype end
+          prevOtCopyId = childOtCopyId
+        }
+
         const factCopyId = uid()
         copies.push({ id: factCopyId, kind: 'fact', originalId: m.factId,
-          isOutput: false, seededRoles: [m.roleIndex],
-          dx: (i + 2) * 16, dy: (i + 2) * 16 })
-        links.push({ copyId: factCopyId, roleIndex: otherRi, variableId: targetCopyId })
-      })
+          isOutput: false, seededRoles: [{ roleIndex: m.roleIndex, seqPosition: i }],
+          dx: (i + 3) * 16, dy: (i + 3) * 16 })
+        links.push({ copyId: factCopyId, roleIndex: 1 - m.roleIndex, variableId: prevOtCopyId })
+      }
 
-      set(s => ({
-        constraints: s.constraints.map(c => {
-          if (c.id !== constraintId) return c
-          const queries = [...(c.queries || [])]
-          while (queries.length < 1) queries.push(null)
-          queries[0] = { copies, links }
-          return { ...c, targetObjectTypeId: targetOtId, queries }
-        }),
-        isDirty: true,
-      }))
+      commitQuery(copies, links, lcaId)
     }
 
     if (c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr') {
@@ -2514,83 +3442,65 @@ export const useOrmStore = create((set, get) => ({
       if (sequences.length === 0) return
       const allSubtypes = get().subtypes
 
-      // Helper: apply generated queries for matching sequences
+      // Helper: regenerate queries for ALL sequences using the given LCA as target OT.
+      // Always regenerates all sequences so every query uses the same LCA.
       const applyQueries = (targetOtId, buildQuery) => {
-        if (c.targetObjectTypeId && c.targetObjectTypeId !== targetOtId) return
-        const existingQueries = [...(c.queries ?? [])]
-        while (existingQueries.length < sequences.length) existingQueries.push(null)
-        const toGenerate = existingQueries.map((q, i) => q == null ? i : -1).filter(i => i >= 0)
-        if (toGenerate.length === 0) return
-        for (const i of toGenerate) existingQueries[i] = buildQuery(i)
+        const newQueries = sequences.map((_, i) => buildQuery(i))
         set(s => ({
           constraints: s.constraints.map(con =>
-            con.id !== constraintId ? con : { ...con, targetObjectTypeId: targetOtId, queries: existingQueries }
+            con.id !== constraintId ? con : { ...con, targetObjectTypeId: targetOtId, queries: newQueries }
           ),
           isDirty: true,
         }))
       }
 
-      // ── Rule 1: every sequence is a single subtype edge, all with the same supertype ──
-      const stMembers = sequences.map(seq =>
-        seq.length === 1 && seq[0].kind === 'subtype'
-          ? (allSubtypes.find(s => s.id === seq[0].subtypeId) ?? null)
-          : null
-      )
-      if (stMembers.every(m => m !== null)) {
-        const superIds = new Set(stMembers.map(st => st.superId))
-        if (superIds.size === 1) {
-          const targetOtId = [...superIds][0]
-          applyQueries(targetOtId, i => {
-            const st = stMembers[i]
-            const targetCopyId = uid(), subOtCopyId = uid(), stCopyId = uid()
-            return {
-              copies: [
-                { id: targetCopyId, kind: 'objectType', originalId: targetOtId,
-                  isOutput: true, dx: 16, dy: 16 },
-                { id: subOtCopyId, kind: 'objectType', originalId: st.subId,
-                  isOutput: false, dx: 32, dy: 32 },
-                { id: stCopyId, kind: 'subtype', originalId: st.id,
-                  isOutput: true, isSeeded: true, dx: 24, dy: 24 },
-              ],
-              links: [
-                { copyId: stCopyId, roleIndex: 0, variableId: subOtCopyId },
-                { copyId: stCopyId, roleIndex: 1, variableId: targetCopyId },
-              ],
-            }
-          })
-          return
+      // ── Rule: every sequence is a single subtype edge or single role; anchor OTs share a unique LCA ──
+      // Anchor OT for a subtype edge = superId; for a role = the OT of that role.
+      const members = sequences.map(seq => {
+        if (seq.length !== 1) return null
+        const m = seq[0]
+        if (m.kind === 'subtype') {
+          const st = allSubtypes.find(s => s.id === m.subtypeId)
+          return st ? { kind: 'subtype', st, anchorOtId: st.superId } : null
         }
-      }
-
-      // ── Rule 2: every sequence is a single role, all connected to the same OT ──
-      const roleMembers = sequences.map(seq =>
-        seq.length === 1 && seq[0].kind === 'role' && !seq[0].factId?.includes('_il_')
-          ? seq[0] : null
-      )
-      if (roleMembers.every(m => m !== null)) {
-        const targetOtIds = new Set(roleMembers.map(m => {
+        if (m.kind === 'role' && !m.factId?.includes('_il_')) {
           const f = facts.find(f => f.id === m.factId)
-          return f?.roles[m.roleIndex]?.objectTypeId ?? null
-        }))
-        if (targetOtIds.size === 1) {
-          const targetOtId = [...targetOtIds][0]
-          if (targetOtId) {
-            applyQueries(targetOtId, i => {
-              const m = roleMembers[i]
-              const targetCopyId = uid(), factCopyId = uid()
+          const otId = f?.roles[m.roleIndex]?.objectTypeId ?? null
+          return otId ? { kind: 'role', m, anchorOtId: otId } : null
+        }
+        return null
+      })
+      if (members.every(mem => mem !== null)) {
+        const lcaId = findUniqueLCA(members.map(mem => mem.anchorOtId), allSubtypes)
+        if (lcaId) {
+          // LCA becomes the target OT; queries no longer contain a copy for it.
+          applyQueries(lcaId, i => {
+            const mem = members[i]
+            if (mem.kind === 'subtype') {
+              const subOtCopyId = uid(), stCopyId = uid()
               return {
                 copies: [
-                  { id: targetCopyId, kind: 'objectType', originalId: targetOtId,
-                    isOutput: true, dx: 16, dy: 16 },
-                  { id: factCopyId, kind: 'fact', originalId: m.factId,
-                    isOutput: false, seededRoles: [m.roleIndex], dx: 32, dy: 32 },
+                  { id: subOtCopyId, kind: 'objectType', originalId: mem.st.subId,
+                    isOutput: false, dx: 16, dy: 16 },
+                  { id: stCopyId, kind: 'subtype', originalId: mem.st.id,
+                    isOutput: true, isSeeded: true, dx: 24, dy: 24 },
                 ],
                 links: [
-                  { copyId: factCopyId, roleIndex: m.roleIndex, variableId: targetCopyId },
+                  { copyId: stCopyId, roleIndex: 0, variableId: subOtCopyId },
                 ],
               }
-            })
-          }
+            } else {
+              const factCopyId = uid()
+              return {
+                copies: [
+                  { id: factCopyId, kind: 'fact', originalId: mem.m.factId,
+                    isOutput: false, seededRoles: [{ roleIndex: mem.m.roleIndex, seqPosition: 0 }],
+                    dx: 16, dy: 16 },
+                ],
+                links: [],
+              }
+            }
+          })
         }
       }
     }
@@ -2610,7 +3520,9 @@ export const useOrmStore = create((set, get) => ({
 
         const seq = sequences[i]
 
-        // Rule 3 (exclusion only): single subtype edge → subtype copy + sub OT copy (output) + super OT copy
+        // Rule 3 (exclusion only): single subtype edge → subtype copy + sub OT copy + super OT copy.
+        // Neither OT copy is isOutput — the result is the sub-type's population, identified by
+        // the subtype copy being isSeeded.
         if (c.constraintType === 'exclusion' && seq.length === 1 && seq[0].kind === 'subtype') {
           const st = allSubtypes.find(s => s.id === seq[0].subtypeId)
           if (st) {
@@ -2618,7 +3530,7 @@ export const useOrmStore = create((set, get) => ({
             existingQueries[i] = {
               copies: [
                 { id: subOtCopyId, kind: 'objectType', originalId: st.subId,
-                  isOutput: true, dx: 16, dy: 16 },
+                  isOutput: false, dx: 16, dy: 16 },
                 { id: supOtCopyId, kind: 'objectType', originalId: st.superId,
                   isOutput: false, dx: 32, dy: 32 },
                 { id: stCopyId, kind: 'subtype', originalId: st.id,
@@ -2634,41 +3546,61 @@ export const useOrmStore = create((set, get) => ({
           }
         }
 
-        const roleMembers = seq.filter(m => m.kind === 'role' && !m.factId?.includes('_il_'))
+        // Track each member's position within the original seq for seqPosition annotation
+        const roleMembers = seq.reduce((acc, m, seqPos) => {
+          if (m.kind === 'role' && !m.factId?.includes('_il_')) acc.push({ ...m, seqPos })
+          return acc
+        }, [])
         if (roleMembers.length === 0 || roleMembers.length !== seq.length) continue
 
-        // Rule 1: all roles in binary fact types with same "other" OT
+        // Rule 1: all roles in binary fact types; other-role OTs share a unique LCA
         let allBinary = true
         for (const m of roleMembers) {
           const f = facts.find(f => f.id === m.factId)
           if (!f || f.arity !== 2) { allBinary = false; break }
         }
         if (allBinary) {
-          let targetOtId = null, otValid = true
+          const otherOtIds = []
+          let otValid = true
           for (const m of roleMembers) {
             const f = facts.find(f => f.id === m.factId)
             const otId = f.roles[1 - m.roleIndex]?.objectTypeId
             if (!otId) { otValid = false; break }
-            if (targetOtId === null) targetOtId = otId
-            else if (targetOtId !== otId) { otValid = false; break }
+            otherOtIds.push(otId)
           }
-          if (otValid && targetOtId) {
-            const targetCopyId = uid()
-            const copies = [
-              { id: targetCopyId, kind: 'objectType', originalId: targetOtId,
-                isOutput: true, dx: 16, dy: 16 },
-            ]
-            const links = []
-            roleMembers.forEach((m, j) => {
-              const factCopyId = uid()
-              copies.push({ id: factCopyId, kind: 'fact', originalId: m.factId,
-                isOutput: false, seededRoles: [m.roleIndex],
-                dx: (j + 2) * 16, dy: (j + 2) * 16 })
-              links.push({ copyId: factCopyId, roleIndex: 1 - m.roleIndex, variableId: targetCopyId })
-            })
-            existingQueries[i] = { copies, links }
-            changed = true
-            continue
+          if (otValid) {
+            const lcaId = findUniqueLCA(otherOtIds, allSubtypes)
+            if (lcaId) {
+              const paths = otherOtIds.map(otId => findPathDown(lcaId, otId, allSubtypes))
+              if (paths.every(p => p !== null)) {
+                const rootCopyId = uid()
+                // exclusion / equality / subset never designate a target OT — root copy is a plain join variable.
+                const copies = [{ id: rootCopyId, kind: 'objectType', originalId: lcaId,
+                  isOutput: false, dx: 16, dy: 16 }]
+                const links = []
+                roleMembers.forEach((m, j) => {
+                  let prevOtCopyId = rootCopyId
+                  for (const step of paths[j]) {
+                    const childOtCopyId = uid(), pathStCopyId = uid()
+                    copies.push({ id: childOtCopyId, kind: 'objectType', originalId: step.toId,
+                      isOutput: false, dx: (j + 2) * 16, dy: (j + 2) * 16 })
+                    copies.push({ id: pathStCopyId, kind: 'subtype', originalId: step.subtypeId,
+                      isOutput: false, dx: (j + 2) * 16, dy: (j + 2) * 16 })
+                    links.push({ copyId: pathStCopyId, roleIndex: 1, variableId: prevOtCopyId })
+                    links.push({ copyId: pathStCopyId, roleIndex: 0, variableId: childOtCopyId })
+                    prevOtCopyId = childOtCopyId
+                  }
+                  const factCopyId = uid()
+                  copies.push({ id: factCopyId, kind: 'fact', originalId: m.factId,
+                    isOutput: false, seededRoles: [{ roleIndex: m.roleIndex, seqPosition: m.seqPos }],
+                    dx: (j + 3) * 16, dy: (j + 3) * 16 })
+                  links.push({ copyId: factCopyId, roleIndex: 1 - m.roleIndex, variableId: prevOtCopyId })
+                })
+                existingQueries[i] = { copies, links }
+                changed = true
+                continue
+              }
+            }
           }
         }
 
@@ -2678,7 +3610,7 @@ export const useOrmStore = create((set, get) => ({
           const factCopyId = uid()
           existingQueries[i] = {
             copies: [{ id: factCopyId, kind: 'fact', originalId: [...factIds][0],
-              isOutput: false, seededRoles: roleMembers.map(m => m.roleIndex),
+              isOutput: false, seededRoles: roleMembers.map(m => ({ roleIndex: m.roleIndex, seqPosition: m.seqPos })),
               dx: 16, dy: 16 }],
             links: [],
           }
@@ -2829,19 +3761,22 @@ export const useOrmStore = create((set, get) => ({
     }
 
     const hasExplicitTarget = !!c.targetObjectTypeId
+    // ring / valueComparison / exclusion / equality / subset have no output OT concept;
+    // targetObjectTypeId may be set as a side-effect of auto-generation but should not be marked output
+    const hasOutputOt = ['uniqueness', 'frequency', 'inclusiveOr', 'exclusiveOr'].includes(c.constraintType)
 
     // Target copy — created first so it is never shared with role variables
     if (hasExplicitTarget) {
       const targetCopyId = uid()
-      copies.push({ id: targetCopyId, kind: 'objectType', originalId: c.targetObjectTypeId, isOutput: true, ...nextOffset(c.targetObjectTypeId) })
+      copies.push({ id: targetCopyId, kind: 'objectType', originalId: c.targetObjectTypeId, isOutput: hasOutputOt, ...nextOffset(c.targetObjectTypeId) })
     }
 
     // Each role gets its own fresh fact copy; OT copies are added by the user later
-    for (const m of seq) {
-      if (m.kind !== 'role') continue
+    seq.forEach((m, seqPos) => {
+      if (m.kind !== 'role') return
       const factCopyId = uid()
-      copies.push({ id: factCopyId, kind: 'fact', originalId: m.factId, isOutput: false, seededRoles: [m.roleIndex], ...nextOffset(m.factId) })
-    }
+      copies.push({ id: factCopyId, kind: 'fact', originalId: m.factId, isOutput: false, seededRoles: [{ roleIndex: m.roleIndex, seqPosition: seqPos }], ...nextOffset(m.factId) })
+    })
     for (const m of seq) {
       if (m.kind !== 'subtype') continue
       const st = subtypes.find(s => s.id === m.subtypeId)
@@ -3144,7 +4079,8 @@ export const useOrmStore = create((set, get) => ({
     const arity = fact?.arity ?? fact?.roles?.length ?? 0
     if (arity < 2) return
 
-    const seeded  = new Set(cp.seededRoles ?? [])
+    const seededMap = new Map((cp.seededRoles ?? []).map(s =>
+      typeof s === 'number' ? [s, { roleIndex: s, seqPosition: null }] : [s.roleIndex, s]))
     const baseDx  = cp.dx ?? 16, baseDy = cp.dy ?? 16
 
     // Snapshot existing role connections before we filter links
@@ -3166,7 +4102,7 @@ export const useOrmStore = create((set, get) => ({
       newCopies.push({
         id: newId, kind: cp.kind, originalId: cp.originalId,
         isOutput: false,
-        seededRoles: seeded.has(ri) ? [ri] : [],
+        seededRoles: seededMap.has(ri) ? [seededMap.get(ri)] : [],
         dx: baseDx + Math.round(Math.cos(angle) * radius),
         dy: baseDy + Math.round(Math.sin(angle) * radius),
       })
@@ -3367,7 +4303,26 @@ export const useOrmStore = create((set, get) => ({
 
   updateConstraint(id, patch) {
     set(s => {
+      const before = s.constraints.find(c => c.id === id)
       const newConstraints = s.constraints.map(c => c.id === id ? { ...c, ...patch } : c)
+      // If this update promotes an external uniqueness constraint to preferred
+      // identifier, demote every other PI (internal or external) for the same target.
+      const promotesPI =
+        before?.constraintType === 'uniqueness' &&
+        'isPreferredIdentifier' in patch &&
+        !!patch.isPreferredIdentifier &&
+        !before.isPreferredIdentifier
+      if (promotesPI) {
+        const targetId = ('targetObjectTypeId' in patch ? patch.targetObjectTypeId : before.targetObjectTypeId)
+        const { facts: cFacts, constraints: cCons } =
+          demoteOtherPIsFor(targetId, s.facts, newConstraints, null, id)
+        return {
+          facts: cFacts,
+          constraints: cCons,
+          diagrams: syncConstraints(s.diagrams, cCons, s.subtypes, cFacts),
+          isDirty: true,
+        }
+      }
       return {
         constraints: newConstraints,
         diagrams: syncConstraints(s.diagrams, newConstraints, s.subtypes, s.facts),
@@ -3456,6 +4411,27 @@ export const useOrmStore = create((set, get) => ({
   },
   deselectMandatoryDot() { set({ selectedMandatoryDot: null }) },
 
+  // Implied internal constraints derived from a preferred identifier:
+  //   - implied unary uniqueness on the role NOT covered by the preferred UC
+  //   - implied mandatory on the same role
+  // These are read-only — selecting opens an inspector but no edit/delete is permitted.
+  selectImpliedUniqueness(factId, roleIndex) {
+    if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
+    if (get().frequencyConstruction) get().abandonFrequencyConstruction()
+    set({ selectedUniqueness: { factId, impliedRoleIndex: roleIndex, implied: true },
+          selectedId: null, selectedKind: null, selectedRole: null,
+          selectedMandatoryDot: null, selectedInternalFrequency: null,
+          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
+  },
+  selectImpliedMandatoryDot(factId, roleIndex) {
+    if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
+    if (get().frequencyConstruction) get().abandonFrequencyConstruction()
+    set({ selectedMandatoryDot: { factId, roleIndex, implied: true },
+          selectedId: null, selectedKind: null, selectedRole: null,
+          selectedUniqueness: null, selectedInternalFrequency: null,
+          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
+  },
+
   selectInternalFrequency(factId, ifId) {
     if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
     if (get().frequencyConstruction) get().abandonFrequencyConstruction()
@@ -3533,7 +4509,26 @@ export const useOrmStore = create((set, get) => ({
       const base = s.multiSelectedIds.length > 0
         ? s.multiSelectedIds
         : (s.selectedId ? [s.selectedId] : [])
-      const next = base.includes(id) ? base.filter(i => i !== id) : [...base, id]
+      const isRemoving = base.includes(id)
+      let next = isRemoving ? base.filter(i => i !== id) : [...base, id]
+      // When adding/removing an entity with a collapsed ref-mode, also add/remove
+      // the implied fact type and value type.
+      const ot = s.objectTypes.find(o => o.id === id)
+             ?? s.facts.find(f => f.id === id && f.objectified)
+      if (ot) {
+        const rm = findRefMode(ot, s.facts, s.objectTypes)
+        if (rm) {
+          const expanded = (s.diagrams.find(d => d.id === s.activeDiagramId)?.expandedRefModes ?? []).includes(id)
+          if (!expanded) {
+            if (isRemoving) {
+              next = next.filter(i => i !== rm.factId && i !== rm.vtId)
+            } else {
+              if (!next.includes(rm.factId)) next = [...next, rm.factId]
+              if (!next.includes(rm.vtId))   next = [...next, rm.vtId]
+            }
+          }
+        }
+      }
       return { multiSelectedIds: next, selectedId: null, selectedKind: null,
                selectedRole: null, selectedUniqueness: null }
     })
@@ -3544,8 +4539,22 @@ export const useOrmStore = create((set, get) => ({
       set({ multiSelectedIds: [], selectedId: null, selectedKind: null,
             selectedRole: null, selectedUniqueness: null })
     } else {
-      set({ multiSelectedIds: ids, selectedId: null, selectedKind: null,
-            selectedRole: null, selectedUniqueness: null })
+      set(s => {
+        const expanded = new Set(s.diagrams.find(d => d.id === s.activeDiagramId)?.expandedRefModes ?? [])
+        const result = [...ids]
+        const idSet = new Set(ids)
+        for (const id of ids) {
+          const ot = s.objectTypes.find(o => o.id === id)
+                 ?? s.facts.find(f => f.id === id && f.objectified)
+          if (!ot || expanded.has(id)) continue
+          const rm = findRefMode(ot, s.facts, s.objectTypes)
+          if (!rm) continue
+          if (!idSet.has(rm.factId)) { idSet.add(rm.factId); result.push(rm.factId) }
+          if (!idSet.has(rm.vtId))   { idSet.add(rm.vtId);   result.push(rm.vtId) }
+        }
+        return { multiSelectedIds: result, selectedId: null, selectedKind: null,
+                 selectedRole: null, selectedUniqueness: null }
+      })
     }
   },
 
@@ -3560,6 +4569,21 @@ export const useOrmStore = create((set, get) => ({
     const diagram = diagrams.find(d => d.id === activeDiagramId)
     const pos     = diagram?.positions ?? {}
 
+    // Collect ref-mode fact/VT IDs whose parent entity has a collapsed ref-mode
+    // in this diagram — these are rendered as part of the entity node and must
+    // not participate in alignment as independent elements.
+    const expandedRefModes = new Set(diagram?.expandedRefModes ?? [])
+    const impliedCollapsed = new Set()
+    for (const id of multiSelectedIds) {
+      const ot = objectTypes.find(o => o.id === id)
+             ?? facts.find(f => f.id === id && f.objectified)
+      if (!ot) continue
+      const rm = findRefMode(ot, facts, objectTypes)
+      if (!rm || expandedRefModes.has(id)) continue
+      impliedCollapsed.add(rm.factId)
+      impliedCollapsed.add(rm.vtId)
+    }
+
     const getAxis = (id) => {
       if (pos[id]) return pos[id][axis]
       const ot = objectTypes.find(o => o.id === id); if (ot) return ot[axis]
@@ -3569,9 +4593,11 @@ export const useOrmStore = create((set, get) => ({
     }
 
     const ids = [...idSet].filter(id =>
-      objectTypes.some(o => o.id === id) ||
-      facts.some(f => f.id === id) ||
-      constraints.some(c => c.id === id)
+      !impliedCollapsed.has(id) && (
+        objectTypes.some(o => o.id === id) ||
+        facts.some(f => f.id === id) ||
+        constraints.some(c => c.id === id)
+      )
     )
     if (ids.length < 2) return
     const target = Math.round(ids.reduce((s, id) => s + getAxis(id), 0) / ids.length)
@@ -4151,7 +5177,20 @@ export const useOrmStore = create((set, get) => ({
 
   addDiagram(name = 'Diagram') {
     const d = { ...mkDiagram(name), elementIds: [] }   // intentionally empty
-    set(s => ({ diagrams: [...s.diagrams, d], activeDiagramId: d.id, pan: { x: 0, y: 0 }, zoom: 1, isDirty: true }))
+    set(s => {
+      // Freeze any show-all diagrams (elementIds: null) to an explicit snapshot
+      // of the current element IDs so elements created in the new diagram don't
+      // automatically appear in existing diagrams.
+      const allIds = [
+        ...s.objectTypes.map(o => o.id),
+        ...s.facts.map(f => f.id),
+        ...s.constraints.map(c => c.id),
+      ]
+      const diagrams = s.diagrams.map(diag =>
+        diag.elementIds === null ? { ...diag, elementIds: allIds } : diag
+      )
+      return { diagrams: [...diagrams, d], activeDiagramId: d.id, pan: { x: 0, y: 0 }, zoom: 1, isDirty: true }
+    })
     return d.id
   },
 
@@ -4178,13 +5217,13 @@ export const useOrmStore = create((set, get) => ({
   },
 
   setActiveDiagram(id) {
-    const { activeDiagramId, multiSelectedIds, diagrams } = get()
+    const { activeDiagramId, multiSelectedIds, diagrams, pan, zoom } = get()
     if (id === activeDiagramId) return
 
-    // Save the current multi-selection into the outgoing diagram, then restore
-    // the incoming diagram's own selection (filtering out any stale IDs).
+    // Save the current multi-selection and pan/zoom into the outgoing diagram,
+    // then restore the incoming diagram's own selection and viewport.
     const savedDiagrams = diagrams.map(d =>
-      d.id === activeDiagramId ? { ...d, multiSelectedIds } : d
+      d.id === activeDiagramId ? { ...d, multiSelectedIds, pan, zoom } : d
     )
     const incoming = savedDiagrams.find(d => d.id === id)
     const restoredSelection = (incoming?.multiSelectedIds ?? []).filter(selId =>
@@ -4194,6 +5233,8 @@ export const useOrmStore = create((set, get) => ({
     set({
       diagrams:        savedDiagrams,
       activeDiagramId: id,
+      pan:             incoming?.pan  ?? { x: 0, y: 0 },
+      zoom:            incoming?.zoom ?? 1,
       multiSelectedIds: restoredSelection,
       selectedId:       null,
       selectedKind:     null,
@@ -4347,11 +5388,6 @@ export const useOrmStore = create((set, get) => ({
       // and recursively any further OTs/facts linked through objectified facts.
       const toRemove = computeCascadeRemove(elementId, s.facts)
 
-      const diagElementIds = s.diagrams.find(d => d.id === diagramId)?.elementIds ?? null
-      const { refCollapse, extraRemove } =
-        computeRefExpansionCleanup(toRemove, s.objectTypes, s.facts, diagElementIds)
-      const allToRemove = extraRemove.size > 0 ? new Set([...toRemove, ...extraRemove]) : toRemove
-
       const updatedDiagrams = s.diagrams.map(d => {
         if (d.id !== diagramId) return d
         // null means "show all" — convert to explicit list minus removed elements
@@ -4360,12 +5396,10 @@ export const useOrmStore = create((set, get) => ({
           : d.elementIds
         return {
           ...d,
-          elementIds: base.filter(id => !allToRemove.has(id)),
+          elementIds: base.filter(id => !toRemove.has(id)),
           // Positions are kept so elements re-added later resume their previous location.
           positions: d.positions,
-          expandedRefModes: refCollapse.size > 0
-            ? (d.expandedRefModes ?? []).filter(id => !refCollapse.has(id))
-            : (d.expandedRefModes ?? []),
+          expandedRefModes: (d.expandedRefModes ?? []).filter(id => !toRemove.has(id)),
         }
       })
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
@@ -4393,11 +5427,6 @@ export const useOrmStore = create((set, get) => ({
         computeCascadeRemove(id, s.facts).forEach(cid => cascaded.add(cid))
       }
 
-      const diagElementIds = s.diagrams.find(d => d.id === diagramId)?.elementIds ?? null
-      const { refCollapse, extraRemove } =
-        computeRefExpansionCleanup(cascaded, s.objectTypes, s.facts, diagElementIds)
-      const allToRemove = extraRemove.size > 0 ? new Set([...cascaded, ...extraRemove]) : cascaded
-
       const updatedDiagrams = s.diagrams.map(d => {
         if (d.id !== diagramId) return d
         const base = d.elementIds === null
@@ -4405,7 +5434,7 @@ export const useOrmStore = create((set, get) => ({
           : d.elementIds
         return {
           ...d,
-          elementIds: base.filter(id => !allToRemove.has(id)),
+          elementIds: base.filter(id => !cascaded.has(id)),
           // Element positions are kept so re-added elements resume their previous location.
           // Only implied-link-specific position keys are cleaned up (they have no schema identity).
           positions:  Object.fromEntries(Object.entries(d.positions).filter(([k]) => {
@@ -4416,9 +5445,7 @@ export const useOrmStore = create((set, get) => ({
             return true
           })),
           shownImplicitLinks: (d.shownImplicitLinks || []).filter(ilKey => !ilKeysToRemove.has(ilKey)),
-          expandedRefModes: refCollapse.size > 0
-            ? (d.expandedRefModes ?? []).filter(id => !refCollapse.has(id))
-            : (d.expandedRefModes ?? []),
+          expandedRefModes: (d.expandedRefModes ?? []).filter(id => !cascaded.has(id)),
         }
       })
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)

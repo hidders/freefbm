@@ -3,12 +3,11 @@ import { useOrmStore } from '../store/ormStore'
 
 // ── Tier 1: Tool hints — workflow guidance while a tool is active ─────────────
 const TOOL_HINTS = {
-  select:             'Click to select · Drag to move · Shift+click to multi-select · Scroll to zoom · Drag canvas to pan',
+  select:             'Click to select · Drag to move · Drag canvas to rubber-band select · Shift+click to multi-select · Scroll to zoom · Space+drag or middle-click to pan',
   addEntity:          'Click canvas to place an Entity Type',
   addValue:           'Click canvas to place a Value Type',
   addFact2:           'Click canvas to place a Binary Fact Type',
   addNestedFact:      'Click canvas to place a Nested Entity Type',
-  addNestedValueFact: 'Click canvas to place a Nested Value Type',
   assignRole:         'Click a role box to set the source role · Then click an object type to complete the assignment',
   toggleMandatory:    'Click a role box to toggle its mandatory constraint on/off',
   addInternalUniqueness: 'Click a fact type or role box to start · Click role boxes to build the uniqueness bar · Click the bar or press Enter to commit',

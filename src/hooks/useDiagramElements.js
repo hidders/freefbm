@@ -1,4 +1,5 @@
 import { useOrmStore } from '../store/ormStore'
+import { findRefMode } from '../utils/refMode'
 
 /**
  * Returns schema elements filtered to the active diagram,
@@ -25,6 +26,45 @@ export function getDiagramElements(store) {
 
   const expandedRefModes = new Set(diagram?.expandedRefModes ?? [])
 
+  // Identify VT/FT IDs that should be hidden because they are the ref-mode pair
+  // for an entity that is *not* expanded in this diagram. The entity displays
+  // the ref mode as shorthand inside its own rect instead.
+  //
+  // Two-pass:
+  //  1. Collect the ref-mode facts that will be hidden (one per collapsed entity).
+  //     These are always hidden — they only carry the entity/VT 1:1 relationship.
+  //  2. For each such pair, hide the VT only if no OTHER visible fact uses it as
+  //     a role player. Otherwise leave the VT visible in the diagram.
+  const hiddenByShorthand = new Set()
+  const collapsedRefModes = []
+  for (const ot of objectTypes) {
+    if (ot.kind !== 'entity') continue
+    if (expandedRefModes.has(ot.id)) continue
+    const rm = findRefMode(ot, facts, objectTypes)
+    if (!rm) continue
+    if (hasFilter && !elementIds.has(ot.id)) continue
+    collapsedRefModes.push(rm)
+    hiddenByShorthand.add(rm.factId)
+  }
+  for (const nf of facts) {
+    if (!nf.objectified || nf.objectifiedKind === 'value') continue
+    if (expandedRefModes.has(nf.id)) continue
+    const rm = findRefMode(nf, facts, objectTypes)
+    if (!rm) continue
+    if (hasFilter && !elementIds.has(nf.id)) continue
+    collapsedRefModes.push(rm)
+    hiddenByShorthand.add(rm.factId)
+  }
+  for (const rm of collapsedRefModes) {
+    const vtUsedByOtherVisibleFact = facts.some(f => {
+      if (f.id === rm.factId) return false
+      if (hiddenByShorthand.has(f.id)) return false   // hidden via another collapse
+      if (hasFilter && !elementIds.has(f.id)) return false
+      return f.roles?.some(r => r.objectTypeId === rm.vtId)
+    })
+    if (!vtUsedByOtherVisibleFact) hiddenByShorthand.add(rm.vtId)
+  }
+
   const withPos = (el) => {
     const p = positions[el.id]
     const merged = p ? { ...el, x: p.x, y: p.y } : { ...el }
@@ -45,32 +85,26 @@ export function getDiagramElements(store) {
       if (p?.orientation     !== undefined) merged.orientation     = p.orientation
       if (p?.readingDisplay  !== undefined) merged.readingDisplay  = p.readingDisplay
     }
-    // For entities: refModeExpanded reflects per-diagram state (expanded in THIS diagram)
-    if (el.kind === 'entity' && el.refModeExpanded) {
-      merged.refModeExpanded = expandedRefModes.has(el.id)
-    }
     return merged
   }
 
-  // For ref-expansion FTs: only shown when the entity is in expandedRefModes.
-  // For ref-expansion VTs: shown whenever they are in elementIds (filtered diagram),
-  // whether via full expansion, independent addition, or independent use.
-  // In a show-all diagram they are shown when expanded OR independently used.
+  // VT/FT IDs that must be visible because their entity's ref mode is expanded
+  // in this diagram. Overrides the elementIds filter so they always show when
+  // the user has chosen the expanded form.
+  const expandedByRefMode = new Set()
+  for (const entityId of expandedRefModes) {
+    const entity = objectTypes.find(o => o.id === entityId)
+      ?? facts.find(f => f.id === entityId && f.objectified && f.objectifiedKind !== 'value')
+    if (!entity) continue
+    const rm = findRefMode(entity, facts, objectTypes)
+    if (!rm) continue
+    expandedByRefMode.add(rm.vtId)
+    expandedByRefMode.add(rm.factId)
+  }
+
   const inDiagram = (el) => {
-    if (el._refExpansion) {
-      if (el.kind === 'fact') {
-        return expandedRefModes.has(el._refExpansion) && (!hasFilter || elementIds.has(el.id))
-      }
-      // VT path
-      if (hasFilter && !elementIds.has(el.id)) return false
-      if (expandedRefModes.has(el._refExpansion)) return true
-      if (hasFilter) return true  // in elementIds of a filtered diagram → show
-      // Show-all diagram, not expanded: show only if independently used
-      return facts.some(f =>
-        !f._refExpansion &&
-        f.roles.some(r => r.objectTypeId === el.id)
-      )
-    }
+    if (hiddenByShorthand.has(el.id)) return false
+    if (expandedByRefMode.has(el.id)) return true
     return !hasFilter || elementIds.has(el.id)
   }
 

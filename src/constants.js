@@ -1,3 +1,8 @@
+// Height of the bottom-panel tab strip when the panel is collapsed.
+// Shared by BottomPanel (renders the strip) and the floating overlays
+// (SchemaBrowser, ValidationPanel, Minimap) which need to sit just above it.
+export const BOTTOM_PANEL_TAB_STRIP_H = 30
+
 // Constraint types that use the sequences data structure (rather than roleSequences)
 // and render using the external constraint mechanism.
 export const EXTERNAL_CONSTRAINT_TYPES = new Set([

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { VALIDATION_CATEGORIES } from '../utils/validation.js'
+import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 
 const FONT   = "'Segoe UI', Helvetica, Arial, sans-serif"
 const HDR_H  = 24
@@ -49,12 +50,13 @@ export default function ValidationPanel() {
 
   // ── layout (fixed positioning, same as SchemaBrowser) ────────────────────
   const inspectorWidth = store.inspectorWidth
+  const bottomPanelH   = store.bottomPanelCollapsed ? BOTTOM_PANEL_TAB_STRIP_H : store.bottomPanelHeight
   const PILL_W         = 140
   const SCHEMA_PILL_W  = 128
   const MINIMAP_PILL_W = 114
 
   const pillLeft = winW - inspectorWidth - MINIMAP_PILL_W - 12 - SCHEMA_PILL_W - 8 - PILL_W
-  const pillTop  = winH - 26 - 8 - HDR_H
+  const pillTop  = winH - 26 - bottomPanelH - 8 - HDR_H
 
   const posX = pos?.x ?? Math.max(8, pillLeft - size.w + PILL_W)
   const posY = pos?.y ?? Math.max(8, pillTop  - size.h - 8)
@@ -121,8 +123,10 @@ export default function ValidationPanel() {
   }, [])
 
   const handleExpand = useCallback(() => {
-    const pLeft = window.innerWidth - store.inspectorWidth - 114 - 12 - 128 - 8 - 140
-    const pTop  = window.innerHeight - 26 - 8 - HDR_H
+    const s = useOrmStore.getState()
+    const bph = s.bottomPanelCollapsed ? BOTTOM_PANEL_TAB_STRIP_H : s.bottomPanelHeight
+    const pLeft = window.innerWidth - s.inspectorWidth - 114 - 12 - 128 - 8 - 140
+    const pTop  = window.innerHeight - 26 - bph - 8 - HDR_H
     setExpandFrom({ x: pLeft, y: pTop }); setCollapsed(false); setAnimating(true)
     if (animTimerRef.current) clearTimeout(animTimerRef.current)
     animTimerRef.current = setTimeout(() => setAnimating(false), 350)
@@ -130,7 +134,17 @@ export default function ValidationPanel() {
   }, [store.inspectorWidth])
 
   // ── data ──────────────────────────────────────────────────────────────────
-  const errors = store.validationErrors || []
+  const diagrams = store.diagrams || []
+  const isElementOrphaned = (e) => {
+    if (e.elementKind === 'subtype') {
+      const st = (store.subtypes || []).find(s => s.id === e.elementId)
+      if (!st) return false
+      return !diagrams.some(d => d.elementIds === null ||
+        ((d.elementIds ?? []).includes(st.subId) && (d.elementIds ?? []).includes(st.superId)))
+    }
+    return !diagrams.some(d => d.elementIds === null || (d.elementIds ?? []).includes(e.elementId))
+  }
+  const errors = (store.validationErrors || []).filter(e => !isElementOrphaned(e))
   const errorCount = errors.length
   const byCategory = {}
   for (const e of errors) {

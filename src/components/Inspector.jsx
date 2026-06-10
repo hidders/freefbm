@@ -1,11 +1,13 @@
 import React, { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react'
 import { useOrmStore } from '../store/ormStore'
+import { findRefMode, refModeLabel, findCompositePI, canBeExternalUniquenessPI } from '../utils/refMode'
 import { getDisplayReading, makeImplicitLinkFact } from './FactTypeNode'
 import { RingMiniSymbol } from './ConstraintNodes'
 import { NoteConnectorIcon } from './ToolPanel'
 import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
 import { constraintMaxSequences, suppressRolePosition } from '../utils/constraintRules.js'
 import { PROFILES, PROFILE_MAP, getDatatypeById } from '../data/datatypeProfiles'
+import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
 import { VALIDATION_CATEGORIES } from '../utils/validation.js'
 
 // ── Validation error components ───────────────────────────────────────────────
@@ -207,6 +209,41 @@ function Section({ title, children }) {
 }
 function Row({ children }) { return <div style={{ marginBottom: 8 }}>{children}</div> }
 
+function RefModeExpandCollapseButtons({ factId, store }) {
+  const activeDiagram = store.diagrams?.find(d => d.id === store.activeDiagramId)
+  const isExpandedHere = (activeDiagram?.expandedRefModes ?? []).includes(factId)
+  const refMode = findRefMode({ id: factId }, store.facts, store.objectTypes)
+  if (!refMode) return null
+  const refVt = store.objectTypes.find(o => o.id === refMode.vtId)
+  return (
+    <div style={{ display: 'flex', gap: 5, padding: '0 8px 8px', flexWrap: 'wrap' }}>
+      <button
+        onClick={() => store.select(refMode.factId, 'fact')}
+        style={{ fontSize: 10, padding: '1px 6px',
+          background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
+          borderRadius: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
+        Fact Type
+      </button>
+      {refVt && (
+        <button
+          onClick={() => store.select(refVt.id, 'value')}
+          style={{ fontSize: 10, padding: '1px 6px',
+            background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
+            borderRadius: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
+          Value Type
+        </button>
+      )}
+      <button
+        onClick={() => isExpandedHere ? store.collapseRefMode(factId) : store.expandRefMode(factId)}
+        style={{ fontSize: 10, padding: '1px 6px',
+          background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
+          borderRadius: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
+        {isExpandedHere ? 'Collapse in this diagram' : 'Expand in this diagram'}
+      </button>
+    </div>
+  )
+}
+
 // ── Diagrams-containing list ─────────────────────────────────────────────────
 // Shows which diagrams contain the given element, in tab order.
 // subtypeEndpointIds: [subId, superId] — for subtypes both endpoints must be in the diagram.
@@ -269,12 +306,13 @@ function DiagramList({ elementId, kind, subtypeEndpointIds, factId, roleIndex })
 
 function TInput({ value, onChange, placeholder }) {
   return <input value={value ?? ''} onChange={e => onChange(e.target.value)}
+    onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
     placeholder={placeholder} style={{ width: '100%' }} />
 }
 
-function Checkbox({ label, checked, onChange, disabled = false }) {
+function Checkbox({ label, checked, onChange, disabled = false, title }) {
   return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 7,
+    <label title={title} style={{ display: 'flex', alignItems: 'center', gap: 7,
       cursor: disabled ? 'not-allowed' : 'pointer',
       color: disabled ? 'var(--ink-muted)' : 'var(--ink-2)',
       fontSize: 12, marginBottom: 4, opacity: disabled ? 0.5 : 1 }}>
@@ -348,10 +386,54 @@ const VR_TYPES = [
   { value: 'range',  label: 'Range' },
 ]
 
-export function ValueRangeEditor({ range, onChange, naturalNumbers = false, positiveIntegers = false }) {
+// Local-state-backed range input — commits to the store only on blur to avoid
+// focus-stealing re-renders on every keystroke.
+function RangeField({ value, onChange, placeholder, typeKind, numProps, inputStyle }) {
+  const [localValue, setLocalValue] = useState(value)
+  useEffect(() => { setLocalValue(value) }, [value])
+  if (typeKind === 'boolean') {
+    return (
+      <select value={value ?? ''} onChange={e => onChange(e.target.value)}
+        style={{ ...inputStyle }}>
+        <option value=""></option>
+        <option value="true">true</option>
+        <option value="false">false</option>
+      </select>
+    )
+  }
+  return (
+    <input {...numProps} value={localValue ?? ''} placeholder={placeholder}
+      onChange={e => setLocalValue(e.target.value)}
+      onBlur={() => { if (localValue !== value) onChange(localValue) }}
+      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+      style={inputStyle}/>
+  )
+}
+
+export function ValueRangeEditor({ range, onChange, naturalNumbers = false, positiveIntegers = false, typeKind = null }) {
   const specs = range || []
-  const [dragIdx, setDragIdx] = useState(null)
-  const [overIdx, setOverIdx] = useState(null)
+  // Pointer-event based drag (HTML5 drag-and-drop on macOS Chrome has an
+  // unsuppressable drag-image spring-back animation). `drag` is null when
+  // not dragging, otherwise { startIdx, startY, dy, overIdx }.
+  const [drag, setDrag] = useState(null)
+  const dragRef = useRef(null)
+  dragRef.current = drag
+  const specsRef = useRef(specs)
+  specsRef.current = specs
+  const [snapping, setSnapping] = useState(false)  // true for one frame after a drop
+  const rowRefs = useRef([])
+  const rowHeightsRef = useRef([])  // captured at drag start (includes margin)
+
+  // After a drop, suppress transitions for one frame so transforms reset to 0
+  // instantly. A useLayoutEffect with a forced reflow makes sure the browser
+  // commits the snap state before transitions are re-enabled — otherwise the
+  // two adjacent renders collapse into one paint and the browser animates
+  // from the pre-drop transforms.
+  useLayoutEffect(() => {
+    if (!snapping) return
+    if (rowRefs.current[0]) void rowRefs.current[0].offsetHeight
+    setSnapping(false)
+  }, [snapping])
 
   const commit = (newSpecs) => onChange(newSpecs.length ? newSpecs : null)
 
@@ -375,61 +457,134 @@ export function ValueRangeEditor({ range, onChange, naturalNumbers = false, posi
     commit(specs.map((s, j) => j === i ? base : s))
   }
 
-  const handleDrop = (targetIdx) => {
-    if (dragIdx === null || dragIdx === targetIdx) return
-    const next = [...specs]
-    const [moved] = next.splice(dragIdx, 1)
-    next.splice(targetIdx, 0, moved)
-    commit(next)
-    setDragIdx(null)
-    setOverIdx(null)
+  const captureRowHeights = () => {
+    rowHeightsRef.current = rowRefs.current.map(el => {
+      if (!el) return 0
+      const r = el.getBoundingClientRect()
+      // Include the bottom margin (4px) so neighbour rows slide by full slot height
+      return r.height + 4
+    })
+  }
+
+  // Dragged row follows the cursor (translateY = drag.dy). Other rows between
+  // the source and the current hover position shift by one slot height to
+  // open up a gap at the drop target.
+  const computeTranslate = (i) => {
+    if (!drag) return 0
+    if (i === drag.startIdx) return drag.dy
+    const h = rowHeightsRef.current[drag.startIdx] || 0
+    if (drag.startIdx < drag.overIdx && i > drag.startIdx && i <= drag.overIdx) return -h
+    if (drag.startIdx > drag.overIdx && i < drag.startIdx && i >= drag.overIdx) return h
+    return 0
+  }
+
+  // Pointer-capture based drag: setPointerCapture on the handle redirects all
+  // subsequent pointer events to that element, so we get pointermove/up
+  // synchronously even when the cursor moves off the handle. No window
+  // listeners, no useEffect timing window.
+  const onHandlePointerDown = (e, i) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch {}
+    captureRowHeights()
+    setDrag({ startIdx: i, startY: e.clientY, dy: 0, overIdx: i })
+  }
+
+  const onHandlePointerMove = (e) => {
+    const d = dragRef.current
+    if (!d) return
+    const dy = e.clientY - d.startY
+    const h = rowHeightsRef.current[d.startIdx] || 28
+    const n = specsRef.current.length
+    let overIdx = d.startIdx + Math.round(dy / h)
+    if (overIdx < 0) overIdx = 0
+    if (overIdx > n - 1) overIdx = n - 1
+    if (dy === d.dy && overIdx === d.overIdx) return
+    setDrag({ ...d, dy, overIdx })
+  }
+
+  const onHandlePointerUp = (e) => {
+    const d = dragRef.current
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {}
+    if (!d) { setDrag(null); return }
+    if (d.overIdx !== d.startIdx) {
+      const next = [...specsRef.current]
+      const [moved] = next.splice(d.startIdx, 1)
+      next.splice(d.overIdx, 0, moved)
+      setSnapping(true)
+      commit(next)
+    }
+    setDrag(null)
   }
 
   const inputStyle = { fontSize: 11, padding: '2px 4px', flex: 1, minWidth: 0 }
   const sepStyle = { fontSize: 11, color: 'var(--ink-muted)', flexShrink: 0, padding: '0 2px' }
-  const numProps = positiveIntegers ? { type: 'number', min: 1, step: 1 }
-    : naturalNumbers ? { type: 'number', min: 0, step: 1 } : {}
+  // Pick a native input control based on the declared datatype (when known).
+  // The naturalNumbers/positiveIntegers props remain for cardinality and
+  // frequency, which are always integer with a fixed minimum.
+  const numProps =
+      positiveIntegers          ? { type: 'number', min: 1, step: 1 }
+    : naturalNumbers            ? { type: 'number', min: 0, step: 1 }
+    : typeKind === 'integer'    ? { type: 'number', step: 1 }
+    : typeKind === 'decimal'    ? { type: 'number', step: 'any' }
+    : typeKind === 'date'       ? { type: 'date' }
+    : typeKind === 'datetime'   ? { type: 'datetime-local' }
+    : {}
 
   return (
     <div>
-      {specs.map((spec, i) => (
+      {specs.map((spec, i) => {
+        const isDragRow = drag?.startIdx === i
+        // Transition policy:
+        //   - During the snap frame: no transitions anywhere (instant reset).
+        //   - The dragged row never transitions transform (must track cursor 1:1).
+        //   - Other rows transition transform smoothly so they slide into place.
+        const transition = snapping
+          ? 'none'
+          : isDragRow
+            ? 'opacity 120ms ease'
+            : 'transform 180ms ease, opacity 120ms ease'
+        return (
         <div key={i}
-          draggable
-          onDragStart={() => setDragIdx(i)}
-          onDragOver={e => { e.preventDefault(); setOverIdx(i) }}
-          onDragLeave={() => setOverIdx(null)}
-          onDrop={() => handleDrop(i)}
-          onDragEnd={() => { setDragIdx(null); setOverIdx(null) }}
+          ref={el => { rowRefs.current[i] = el }}
           style={{
             display: 'flex', gap: 3, marginBottom: 4, alignItems: 'center',
-            opacity: dragIdx === i ? 0.4 : 1,
-            outline: overIdx === i && dragIdx !== i ? '1px dashed var(--accent)' : 'none',
+            opacity: isDragRow ? 0.85 : 1,
+            transform: `translateY(${computeTranslate(i)}px)`,
+            transition,
             borderRadius: 3,
+            position: 'relative',
+            zIndex: isDragRow ? 2 : 1,
+            boxShadow: isDragRow ? '0 4px 10px rgba(0,0,0,0.18)' : 'none',
+            background: isDragRow ? 'var(--bg-surface)' : 'transparent',
+            willChange: drag ? 'transform' : 'auto',
           }}>
-          <span style={{ cursor: 'grab', color: 'var(--ink-muted)', fontSize: 11,
-            flexShrink: 0, paddingRight: 1, userSelect: 'none' }}>⠿</span>
+          <span
+            onPointerDown={e => onHandlePointerDown(e, i)}
+            onPointerMove={onHandlePointerMove}
+            onPointerUp={onHandlePointerUp}
+            onPointerCancel={onHandlePointerUp}
+            style={{ cursor: drag ? 'grabbing' : 'grab', color: 'var(--ink-muted)', fontSize: 11,
+              flexShrink: 0, paddingRight: 1, userSelect: 'none', touchAction: 'none' }}>⠿</span>
           <select value={spec.type} onChange={e => changeType(i, e.target.value)}
             style={{ fontSize: 11, flexShrink: 0 }}>
             {VR_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
 
           {spec.type === 'single' && (
-            <input {...numProps} value={spec.value ?? ''} placeholder="value"
-              onChange={e => updateSpec(i, { value: e.target.value })}
-              style={inputStyle}/>
+            <RangeField value={spec.value} placeholder="value" typeKind={typeKind} numProps={numProps} inputStyle={inputStyle}
+              onChange={v => updateSpec(i, { value: v })}/>
           )}
           {(spec.type === 'lower' || spec.type === 'range') && (
-            <input {...numProps} value={spec.lower ?? ''} placeholder="lower"
-              onChange={e => updateSpec(i, { lower: e.target.value })}
-              style={inputStyle}/>
+            <RangeField value={spec.lower} placeholder="lower" typeKind={typeKind} numProps={numProps} inputStyle={inputStyle}
+              onChange={v => updateSpec(i, { lower: v })}/>
           )}
           {(spec.type === 'lower' || spec.type === 'upper' || spec.type === 'range') && (
             <span style={sepStyle}>..</span>
           )}
           {(spec.type === 'upper' || spec.type === 'range') && (
-            <input {...numProps} value={spec.upper ?? ''} placeholder="upper"
-              onChange={e => updateSpec(i, { upper: e.target.value })}
-              style={inputStyle}/>
+            <RangeField value={spec.upper} placeholder="upper" typeKind={typeKind} numProps={numProps} inputStyle={inputStyle}
+              onChange={v => updateSpec(i, { upper: v })}/>
           )}
 
           <button onClick={() => removeSpec(i)}
@@ -438,7 +593,8 @@ export function ValueRangeEditor({ range, onChange, naturalNumbers = false, posi
             ✕
           </button>
         </div>
-      ))}
+        )
+      })}
       <button onClick={addSpec}
         style={{ fontSize: 11, padding: '2px 8px', background: 'var(--bg-raised)',
           border: '1px solid var(--border)', borderRadius: 3,
@@ -535,6 +691,7 @@ function DatatypeField({ assignment, onSet }) {
                   if (val === undefined) delete params[param.name]
                   onSet({ ...assignment, params })
                 }}
+                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
                 style={paramInputStyle}
               />
             </Row>
@@ -548,85 +705,93 @@ function DatatypeField({ assignment, onSet }) {
 // ── Entity / Value inspector ──────────────────────────────────────────────────
 function ObjectTypeInspector({ ot }) {
   const store = useOrmStore()
+
+  // Derived ref-mode info for entities.
+  const refMode    = ot.kind === 'entity' ? findRefMode(ot, store.facts, store.objectTypes) : null
+  const refVt      = refMode ? store.objectTypes.find(o => o.id === refMode.vtId) : null
+  const refLabel   = refVt ? refModeLabel(ot.name, refVt.name) : ''
+
+  // Composite preferred identifier (non-ref-mode-binary PI scheme).
+  const compositePi    = ot.kind === 'entity' && !refMode
+    ? findCompositePI(ot, store.facts, store.objectTypes, store.constraints)
+    : null
+  const compositePiFact = compositePi ? store.facts.find(f => f.id === compositePi.factId) : null
+
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>{ot.kind === 'entity' ? 'Entity Type' : 'Value Type'}</InspectorTitle>
       <ValidationErrorStrip elementId={ot.id} store={store}/>
-      {ot._refExpansion && (() => {
-        const parentEntity = store.objectTypes.find(o => o.id === ot._refExpansion)
-        return parentEntity ? (
-          <div style={{ marginBottom: 10 }}>
-            <button
-              onClick={() => store.select(parentEntity.id, 'entity')}
-              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                color: 'var(--accent)', fontSize: 11 }}>
-              ← {parentEntity.name || 'Entity'}
-            </button>
-          </div>
-        ) : null
-      })()}
       <Row>
         <Label>Name</Label>
-        {ot._refExpansion
-          ? <span style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>{ot.name}</span>
-          : <TInput value={ot.name} onChange={v => store.updateObjectType(ot.id, { name: v })}/>}
+        <TInput value={ot.name} onChange={v => store.updateObjectType(ot.id, { name: v })}/>
       </Row>
       {ot.kind === 'entity' && (
-        <Row>
-          <Label>Reference Mode</Label>
-          <TInput value={ot.refMode || ''} placeholder="id / name / none"
-            onChange={v => store.updateObjectType(ot.id, { refMode: v })}/>
-        </Row>
-      )}
-      {ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none' && (() => {
-        const impliedVt = store.objectTypes.find(o => o._refExpansion === ot.id)
-        const impliedFt = store.facts.find(f => f._refExpansion === ot.id)
-        const chip = (label, onClick) => (
-          <button
-            onClick={onClick}
-            style={{
-              fontSize: 10, padding: '1px 6px',
-              background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
-              borderRadius: 3, cursor: onClick ? 'pointer' : 'default',
-              color: onClick ? 'var(--ink-2)' : 'var(--ink-muted)',
-              fontStyle: onClick ? 'normal' : 'italic',
-            }}
-            onMouseEnter={onClick ? e => {
-              e.currentTarget.style.background = 'var(--accent)'
-              e.currentTarget.style.color = 'white'
-              e.currentTarget.style.borderColor = 'var(--accent)'
-            } : undefined}
-            onMouseLeave={onClick ? e => {
-              e.currentTarget.style.background = 'var(--bg-raised)'
-              e.currentTarget.style.color = 'var(--ink-2)'
-              e.currentTarget.style.borderColor = 'var(--border-soft)'
-            } : undefined}
-          >{label}</button>
-        )
-        return (
-          <div style={{ display: 'flex', gap: 5, padding: '0 8px 8px', flexWrap: 'wrap' }}>
-            {chip('Implied Fact Type', impliedFt ? () => store.select(impliedFt.id, 'fact') : undefined)}
-            {chip('Implied Value Type', impliedVt ? () => store.select(impliedVt.id, 'value') : undefined)}
-          </div>
-        )
-      })()}
-      {(ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none')) && (
-        ot._refExpansion
-          ? <Row><Label>Datatype</Label>
+        compositePiFact ? (
+          <>
+            <Row>
+              <Label>Reference Mode</Label>
               <span style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic' }}>
-                {ot.datatypeAssignment
-                  ? `${ot.datatypeAssignment.datatypeId ?? 'assigned'}`
-                  : 'inherited from entity'}
+                composite preferred identifier
               </span>
             </Row>
-          : <DatatypeField
-              assignment={ot.datatypeAssignment}
-              onSet={a => store.setValueTypeDatatype(ot.id, a)}
-            />
+            <div style={{ display: 'flex', gap: 5, padding: '0 8px 8px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => store.select(compositePiFact.id, 'fact')}
+                style={{ fontSize: 10, padding: '1px 6px',
+                  background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
+                  borderRadius: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
+                Identifying Fact
+              </button>
+            </div>
+          </>
+        ) : (
+          <Row>
+            <Label>Reference Mode</Label>
+            <TInput value={refLabel} placeholder=".code / name / —"
+              onChange={v => store.setEntityRefModeLabel(ot.id, v)}/>
+          </Row>
+        )
+      )}
+      <RefModeExpandCollapseButtons factId={ot.id} store={store}/>
+      {ot.kind === 'entity' && refVt && (
+        <Row>
+          <Label>Datatype</Label>
+          <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
+            {(() => {
+              const a = refVt.datatypeAssignment
+              const dt = a ? getDatatypeById(a.profileId, a.datatypeId) : null
+              return dt ? dt.name : 'not set'
+            })()}
+            {' '}·{' '}
+            <button
+              onClick={() => store.select(refVt.id, 'value')}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                color: 'var(--accent)', fontSize: 11 }}>
+              edit on {refVt.name}
+            </button>
+          </span>
+        </Row>
+      )}
+      {ot.kind === 'value' && (
+        <DatatypeField
+          assignment={ot.datatypeAssignment}
+          onSet={a => store.setValueTypeDatatype(ot.id, a)}
+        />
       )}
 
+      <Section title="Properties">
+        {ot.kind === 'entity' && (
+          <Checkbox label="Is personal"
+            checked={!!ot.isPersonal}
+            onChange={v => store.updateObjectType(ot.id, { isPersonal: v })}/>
+        )}
+        <Checkbox label="Is independent"
+          checked={!!ot.isIndependent}
+          onChange={v => store.updateObjectType(ot.id, { isIndependent: v })}/>
+      </Section>
+
       <Section title="Constraints">
-        {(ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none')) && (
+        {ot.kind === 'value' && (
           <Row>
             <Label>Value Range</Label>
             <RangeChip range={ot.valueRange}
@@ -650,6 +815,7 @@ function ObjectTypeInspector({ ot }) {
     </div>
   )
 }
+
 
 
 // ── Range chip — brief clickable summary linking to dedicated inspector ────────
@@ -877,18 +1043,32 @@ function UniquenessBarInspector({ fact, uIndex }) {
   const nestedMap  = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
   const sortedKey  = JSON.stringify([...u].sort())
 
-  let isPreferred, canBePreferred, reading
+  let isPreferred, canBePreferred, reading, identifiesVt = false
   if (isImplicit) {
     const prefArr = implicitLink?.preferredUniqueness || []
     isPreferred = prefArr.some(pu => JSON.stringify([...pu].sort()) === sortedKey)
     canBePreferred = true
     reading = getDisplayReading(fact) || null
+    // Implicit link uniqueness on uRoles=[0] identifies the link's role player
+    // (the parent fact's role at _implicitRoleIndex). Disallow PI if VT.
+    if (u.length === 1 && u[0] === 0 && parentFact) {
+      const playerOtId = parentFact.roles?.[fact._implicitRoleIndex]?.objectTypeId
+      const playerOt   = playerOtId ? otMap[playerOtId] : null
+      if (playerOt?.kind === 'value') identifiesVt = true
+    }
   } else {
     isPreferred = (fact.preferredUniqueness || []).some(pu =>
       JSON.stringify([...pu].sort()) === sortedKey
     )
     canBePreferred = u.length === fact.arity - 1
     reading = getDisplayReading(fact) || null
+    if (canBePreferred) {
+      const covered = new Set(u)
+      const uncoveredRi = fact.roles.findIndex((_, ri) => !covered.has(ri))
+      const uncoveredOtId = uncoveredRi >= 0 ? fact.roles[uncoveredRi]?.objectTypeId : null
+      const uncoveredOt = uncoveredOtId ? otMap[uncoveredOtId] : null
+      if (uncoveredOt?.kind === 'value') identifiesVt = true
+    }
   }
 
   const toggleRole = (ri) => {
@@ -940,10 +1120,12 @@ function UniquenessBarInspector({ fact, uIndex }) {
         })}
       </Row>
       <Row>
+        <Label>Identification</Label>
         <Checkbox
           label="Preferred Identifier"
           checked={isPreferred}
-          disabled={!canBePreferred}
+          disabled={!canBePreferred || identifiesVt}
+          title={identifiesVt ? 'A value type cannot have a preferred identifier' : undefined}
           onChange={() => togglePreferred()}
         />
       </Row>
@@ -954,6 +1136,84 @@ function UniquenessBarInspector({ fact, uIndex }) {
           </DangerBtn>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Implied Internal Uniqueness inspector (read-only) ───────────────────────
+function ImpliedUniquenessBarInspector({ fact, roleIndex }) {
+  const store = useOrmStore()
+  const role = fact.roles[roleIndex]
+  if (!role) return null
+  const otMap     = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
+  const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
+  const ot        = otMap[role.objectTypeId]
+  const nf        = !ot ? nestedMap[role.objectTypeId] : null
+  const player    = ot ? ot.name : nf ? (nf.objectifiedName || '(unnamed)') : null
+  const reading   = getDisplayReading(fact) || null
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Implied Uniqueness</InspectorTitle>
+      <div style={{ marginBottom: 10 }}>
+        <button onClick={() => store.select(fact.id, 'fact')}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            color: 'var(--accent)', fontSize: 11 }}>
+          ← {reading ?? 'Fact Type'}
+        </button>
+      </div>
+      <Row>
+        <Label>Role</Label>
+        <div style={{ fontSize: 12 }}>
+          Role {roleIndex + 1}{player ? ` · ${player}` : ''}
+        </div>
+      </Row>
+      <Section title="Origin">
+        <div style={{ fontSize: 11, color: 'var(--ink-muted)', lineHeight: 1.45 }}>
+          This unary uniqueness constraint is implied by the preferred identifier
+          covering the other role{fact.arity > 2 ? 's' : ''} of this fact type.
+          It cannot be edited or deleted directly.
+        </div>
+      </Section>
+    </div>
+  )
+}
+
+// ── Implied Mandatory Role inspector (read-only) ────────────────────────────
+function ImpliedMandatoryDotInspector({ fact, roleIndex }) {
+  const store = useOrmStore()
+  const role = fact.roles[roleIndex]
+  if (!role) return null
+  const otMap     = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
+  const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
+  const ot        = otMap[role.objectTypeId]
+  const nf        = !ot ? nestedMap[role.objectTypeId] : null
+  const player    = ot ? ot.name : nf ? (nf.objectifiedName || '(unnamed)') : null
+  const reading   = getDisplayReading(fact) || null
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Implied Mandatory Role</InspectorTitle>
+      <div style={{ marginBottom: 10 }}>
+        <button onClick={() => store.select(fact.id, 'fact')}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            color: 'var(--accent)', fontSize: 11 }}>
+          ← {reading ?? 'Fact Type'}
+        </button>
+      </div>
+      <Row>
+        <Label>Role</Label>
+        <div style={{ fontSize: 12 }}>
+          Role {roleIndex + 1}{player ? ` · ${player}` : ''}
+        </div>
+      </Row>
+      <Section title="Origin">
+        <div style={{ fontSize: 11, color: 'var(--ink-muted)', lineHeight: 1.45 }}>
+          This mandatory role constraint is implied by the preferred identifier
+          covering the other role{fact.arity > 2 ? 's' : ''} of this fact type.
+          It cannot be edited or deleted directly.
+        </div>
+      </Section>
     </div>
   )
 }
@@ -1025,6 +1285,10 @@ function InternalFrequencyInspector({ fact, ifItem }) {
   )
 }
 
+function typeKindFromAssignment(a) {
+  return datatypeAssignmentToKind(a)
+}
+
 // ── Shared helper: resolve a value/cardinality range selection to display info ─
 function useRangeSelectionInfo(sel) {
   const store = useOrmStore()
@@ -1038,6 +1302,7 @@ function useRangeSelectionInfo(sel) {
       onBack: () => store.select(ot.id, ot.kind),
       valueRange:      ot.valueRange,
       cardinalityRange: ot.cardinalityRange,
+      valueTypeKind:   typeKindFromAssignment(ot.datatypeAssignment),
       onChangeValueRange:      vr => store.updateObjectType(ot.id, { valueRange: vr }),
       onChangeCardinalityRange: vr => store.updateObjectType(ot.id, { cardinalityRange: vr }),
       onDeleteValueRange:      () => { store.removeValueRange(sel); store.select(ot.id, ot.kind) },
@@ -1050,12 +1315,14 @@ function useRangeSelectionInfo(sel) {
     const role = f.roles[sel.roleIndex]
     if (!role) return null
     const reading = getDisplayReading(f) || 'Fact Type'
+    const player = store.objectTypes.find(o => o.id === role.objectTypeId)
     return {
       label: `Role ${sel.roleIndex + 1} of ${reading}`,
       backLabel: `Role ${sel.roleIndex + 1}`,
       onBack: () => store.selectRole(f.id, sel.roleIndex),
       valueRange:      role.valueRange,
       cardinalityRange: role.cardinalityRange,
+      valueTypeKind:   typeKindFromAssignment(player?.datatypeAssignment),
       onChangeValueRange:      vr => store.updateRole(f.id, sel.roleIndex, { valueRange: vr }),
       onChangeCardinalityRange: vr => store.updateRole(f.id, sel.roleIndex, { cardinalityRange: vr }),
       onDeleteValueRange:      () => { store.removeValueRange(sel); store.selectRole(f.id, sel.roleIndex) },
@@ -1072,6 +1339,7 @@ function useRangeSelectionInfo(sel) {
       onBack: () => store.select(f.id, 'fact'),
       valueRange:      f.valueRange,
       cardinalityRange: f.cardinalityRange,
+      valueTypeKind:   typeKindFromAssignment(f.datatypeAssignment),
       onChangeValueRange:      vr => store.updateFact(f.id, { valueRange: vr }),
       onChangeCardinalityRange: vr => store.updateFact(f.id, { cardinalityRange: vr }),
       onDeleteValueRange:      () => { store.removeValueRange(sel); store.select(f.id, 'fact') },
@@ -1104,6 +1372,7 @@ function ValueRangeConstraintInspector({ sel }) {
         <ValueRangeEditor
           range={info.valueRange}
           onChange={info.onChangeValueRange}
+          typeKind={info.valueTypeKind}
         />
       </Row>
       <Label>Usage</Label>
@@ -1226,7 +1495,7 @@ function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart }) {
             const ot  = otMap[oid]
             const nf  = nestedMap[oid]
             const name  = ot?.name ?? nf?.objectifiedName ?? '?'
-            const isValue = ot?.kind === 'value' || nf?.objectifiedKind === 'value'
+            const isValue = ot?.kind === 'value'
             const color = isValue ? 'var(--col-value)' : 'var(--col-entity)'
             let displayName = name
             const occ = nameOccurrences.get(name)
@@ -1336,7 +1605,7 @@ function AddReadingRow({ fact, store, available }) {
               const ot  = otMap[oid]
               const nf  = nestedMap[oid]
               const name  = ot?.name ?? nf?.objectifiedName ?? '?'
-              const isValue = ot?.kind === 'value' || nf?.objectifiedKind === 'value'
+              const isValue = ot?.kind === 'value'
               const color = isValue ? 'var(--col-value)' : 'var(--col-entity)'
               let displayName = name
               const occ = nameOccurrences.get(name)
@@ -1505,13 +1774,14 @@ function FactPresentationSubsection({ fact, store }) {
         const storedOff = fact.readingAbove ? fact.readingOffsetAbove : fact.readingOffsetBelow
         const posValue  = storedOff !== null ? 'free' : fact.readingAbove ? 'above' : 'below'
 
-        // Horizontal non-nested objectified fact: reading can only go Below the outer
-        // box; "Above" is not a valid option. "Free" reflects a user-dragged position.
+        // Horizontal non-nested objectified fact: "Above" requires Nested Reading to be
+        // enabled, so show it greyed out. "Free" reflects a user-dragged position.
         if (fact.objectified && !isVert && !fact.nestedReading) {
           const horizValue = storedOff !== null ? 'free' : 'below'
           const horizOpts  = [
-            { value: 'below', label: 'Below' },
-            { value: 'free',  label: 'Free'  },
+            { value: 'above', label: 'Above', disabled: true },
+            { value: 'below', label: 'Below', disabled: false },
+            { value: 'free',  label: 'Free',  disabled: true },
           ]
           return (
             <Row>
@@ -1519,20 +1789,20 @@ function FactPresentationSubsection({ fact, store }) {
                 <label key={opt.value} style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   fontSize: 12, marginBottom: 3,
-                  cursor: opt.value === 'free' ? 'not-allowed' : 'pointer',
-                  color: 'var(--ink-2)',
+                  cursor: opt.disabled ? 'not-allowed' : 'pointer',
+                  color: opt.disabled ? 'var(--ink-muted)' : 'var(--ink-2)',
                 }}>
                   <input type="radio"
                     name={`rpos-${fact.id}`}
                     value={opt.value}
                     checked={horizValue === opt.value}
-                    disabled={opt.value === 'free'}
+                    disabled={opt.disabled}
                     onChange={() => store.updateFactLayout(fact.id, {
                       readingAbove: false,
                       readingOffsetAbove: null,
                       readingOffsetBelow: null,
                     })}
-                    style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: opt.value === 'free' ? 'not-allowed' : 'pointer' }}
+                    style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: opt.disabled ? 'not-allowed' : 'pointer' }}
                   />
                   {opt.label}
                 </label>
@@ -1542,8 +1812,8 @@ function FactPresentationSubsection({ fact, store }) {
         }
 
         const opts = [
-          { value: 'below', label: isVert ? 'Left'  : 'Below' },
           { value: 'above', label: isVert ? 'Right' : 'Above' },
+          { value: 'below', label: isVert ? 'Left'  : 'Below' },
           { value: 'free',  label: 'Free' },
         ]
         return (
@@ -1647,15 +1917,7 @@ function FactConstraintsSubsection({ fact, store }) {
         </button>
       )}
 
-      {fact.objectified && fact.objectifiedKind === 'value' && (
-        <Row>
-          <Label>Value Range</Label>
-          <RangeChip range={fact.valueRange}
-            onClick={() => store.selectValueRange({ nestedFactId: fact.id })} />
-        </Row>
-      )}
-
-      {fact.objectified && fact.objectifiedKind === 'entity' && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none' && (
+      {fact.objectified && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none' && (
         <Row>
           <Label>Value Range</Label>
           <RangeChip range={fact.valueRange}
@@ -1713,22 +1975,9 @@ function FactInspector({ fact }) {
   const factTypeSection = (
     <div style={{ marginBottom: 18 }}>
       {!fact.objectified && <InspectorTitle>Fact Type ({fact.arity}-ary)</InspectorTitle>}
-      <ValidationErrorStrip elementId={fact.id} store={store}/>
-      {fact._refExpansion && (() => {
-        const parentEntity = store.objectTypes.find(o => o.id === fact._refExpansion)
-        return parentEntity ? (
-          <div style={{ marginBottom: 10 }}>
-            <button
-              onClick={() => store.select(parentEntity.id, 'entity')}
-              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                color: 'var(--accent)', fontSize: 11 }}>
-              ← {parentEntity.name || 'Entity'}
-            </button>
-          </div>
-        ) : null
-      })()}
-      {/* Arity control */}
-      <Row>
+      {!fact.objectified && <ValidationErrorStrip elementId={fact.id} store={store}/>}
+      {/* Arity control — hidden for nested entity types (rendered above Properties instead) */}
+      {!fact.objectified && <Row>
         <Label>Arity</Label>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button
@@ -1766,7 +2015,7 @@ function FactInspector({ fact }) {
             Roles trimmed — reassign object types as needed
           </div>
         )}
-      </Row>
+      </Row>}
 
       {/* Readings */}
       {(() => {
@@ -1831,6 +2080,17 @@ function FactInspector({ fact }) {
         <CompactRoleList fact={fact} store={store} />
       </Section>
 
+      {fact.objectified && (
+        <Section title="Properties">
+          <Checkbox label="Is personal"
+            checked={!!fact.isPersonal}
+            onChange={v => store.updateFact(fact.id, { isPersonal: v })}/>
+          <Checkbox label="Is independent"
+            checked={!!fact.isIndependent}
+            onChange={v => store.updateFact(fact.id, { isIndependent: v })}/>
+        </Section>
+      )}
+
       <FactPresentationSubsection fact={fact} store={store} />
       <FactConstraintsSubsection fact={fact} store={store} />
 
@@ -1838,9 +2098,7 @@ function FactInspector({ fact }) {
         <DiagramList elementId={fact.id} kind="fact" />
       </Section>
       <DangerBtn onClick={() => store.deleteFact(fact.id)}>
-        {fact.objectified
-          ? (fact.objectifiedKind === 'value' ? 'Delete Nested Value Type' : 'Delete Nested Entity Type')
-          : 'Delete Fact Type'}
+        {fact.objectified ? 'Delete Nested Entity Type' : 'Delete Fact Type'}
       </DangerBtn>
     </div>
   )
@@ -1851,31 +2109,64 @@ function FactInspector({ fact }) {
         <>
           {/* Object-type identity */}
           <div style={{ marginBottom: 18 }}>
-            <InspectorTitle>Nested {fact.objectifiedKind === 'value' ? 'Value' : 'Entity'} Type</InspectorTitle>
+            <InspectorTitle>Nested Entity Type</InspectorTitle>
+            <ValidationErrorStrip elementId={fact.id} store={store}/>
             <Row>
-              <Label>{fact.objectifiedKind === 'value' ? 'Value Name' : 'Entity Name'}</Label>
+              <Label>Entity Name</Label>
               <TInput value={fact.objectifiedName || ''} placeholder="Name"
                 onChange={v => store.updateFact(fact.id, { objectifiedName: v })}/>
             </Row>
-            {fact.objectifiedKind === 'value' && (
+            <Row>
+              <Label>Reference Mode</Label>
+              <TInput value={fact.objectifiedRefMode || ''} placeholder="id / name / none"
+                onChange={v => store.setNestedRefModeLabel(fact.id, v)}/>
+            </Row>
+            {fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none' && (
               <DatatypeField
                 assignment={fact.datatypeAssignment}
                 onSet={a => store.updateFact(fact.id, { datatypeAssignment: a })}
               />
             )}
-            {fact.objectifiedKind !== 'value' && (
-              <Row>
-                <Label>Reference Mode</Label>
-                <TInput value={fact.objectifiedRefMode || ''} placeholder="id / name / none"
-                  onChange={v => store.updateFact(fact.id, { objectifiedRefMode: v })}/>
-              </Row>
-            )}
-            {fact.objectifiedKind !== 'value' && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none' && (
-              <DatatypeField
-                assignment={fact.datatypeAssignment}
-                onSet={a => store.updateFact(fact.id, { datatypeAssignment: a })}
-              />
-            )}
+            <RefModeExpandCollapseButtons factId={fact.id} store={store}/>
+            <Row>
+              <Label>Arity</Label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  onClick={() => store.setFactArity(fact.id, fact.arity - 1)}
+                  disabled={fact.arity <= 1}
+                  title="Remove last role"
+                  style={{
+                    width: 28, height: 28, fontSize: 16, lineHeight: 1,
+                    background: 'var(--bg-raised)', border: '1px solid var(--border)',
+                    borderRadius: 4, cursor: fact.arity <= 1 ? 'not-allowed' : 'pointer',
+                    color: fact.arity <= 1 ? 'var(--ink-muted)' : 'var(--ink-2)',
+                    fontFamily: 'var(--font-mono)',
+                  }}>−</button>
+                <span style={{
+                  minWidth: 32, textAlign: 'center', fontSize: 15, fontWeight: 600,
+                  color: 'var(--ink)', fontFamily: 'var(--font-mono)',
+                }}>{fact.arity}</span>
+                <button
+                  onClick={() => store.setFactArity(fact.id, fact.arity + 1)}
+                  title="Add a role"
+                  style={{
+                    width: 28, height: 28, fontSize: 16, lineHeight: 1,
+                    background: 'var(--bg-raised)', border: '1px solid var(--border)',
+                    borderRadius: 4, cursor: 'pointer',
+                    color: 'var(--ink-2)', fontFamily: 'var(--font-mono)',
+                  }}>+</button>
+                <span style={{ fontSize: 10, color: 'var(--ink-muted)', marginLeft: 4 }}>
+                  {fact.arity === 1 ? 'unary' : fact.arity === 2 ? 'binary'
+                    : fact.arity === 3 ? 'ternary' : fact.arity === 4 ? 'quaternary'
+                    : `${fact.arity}-ary`}
+                </span>
+              </div>
+              {fact.arity > fact.roles.length && (
+                <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 4 }}>
+                  Roles trimmed — reassign object types as needed
+                </div>
+              )}
+            </Row>
           </div>
 
           {/* Fact-type structure */}
@@ -1970,17 +2261,32 @@ function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
               const isPreferred = (parentFact.preferredUniqueness || []).some(pu =>
                 JSON.stringify([...pu].sort((a, b) => a - b)) === key
               )
+              const canBePreferred = uRoles.length === parentFact.arity - 1
+              let identifiesVt = false
+              if (canBePreferred) {
+                const covered = new Set(uRoles)
+                const uncoveredRi = parentFact.roles.findIndex((_, ri) => !covered.has(ri))
+                const uncoveredOtId = uncoveredRi >= 0 ? parentFact.roles[uncoveredRi]?.objectTypeId : null
+                const uncoveredOt = uncoveredOtId ? store.objectTypes.find(o => o.id === uncoveredOtId) : null
+                if (uncoveredOt?.kind === 'value') identifiesVt = true
+              }
+              const piDisabled = !canBePreferred || identifiesVt
               const formatRoles = (roles) => roles.map(r => `role ${r + 1}`).join(', ')
               return (
                 <div key={ui} style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
                   <span style={{ fontSize: 11, color: 'var(--ink-2)', flex: 1 }}>
                     {formatRoles(uRoles)}
                   </span>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--ink-muted)', cursor: 'pointer' }}>
+                  <label title={identifiesVt ? 'A value type cannot have a preferred identifier' : undefined}
+                    style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10,
+                      color: piDisabled ? 'var(--ink-muted)' : 'var(--ink-muted)',
+                      cursor: piDisabled ? 'not-allowed' : 'pointer',
+                      opacity: piDisabled ? 0.5 : 1 }}>
                     <input type="checkbox"
                       checked={isPreferred}
-                      onChange={() => store.togglePreferredUniqueness(parentFact.id, ui)}
-                      style={{ accentColor: 'var(--accent)' }}
+                      disabled={piDisabled}
+                      onChange={() => !piDisabled && store.togglePreferredUniqueness(parentFact.id, ui)}
+                      style={{ accentColor: 'var(--accent)', cursor: piDisabled ? 'not-allowed' : 'pointer' }}
                     />
                     Preferred
                   </label>
@@ -2281,18 +2587,40 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
           <Label>Reading Position</Label>
         </Row>
         {(() => {
-          const isVert = mergedIl.orientation === 'vertical'
-          const aboveLabel = isVert ? 'Right' : 'Above'
+          const isVert    = mergedIl.orientation === 'vertical'
+          const storedOff = mergedIl.readingAbove ? mergedIl.readingOffsetAbove : mergedIl.readingOffsetBelow
+          const posValue  = storedOff !== null && storedOff !== undefined ? 'free'
+            : mergedIl.readingAbove ? 'above' : 'below'
+          const opts = [
+            { value: 'above', label: isVert ? 'Right' : 'Above' },
+            { value: 'below', label: isVert ? 'Left'  : 'Below' },
+            { value: 'free',  label: 'Free' },
+          ]
           return (
             <Row>
-              <Checkbox
-                label={aboveLabel}
-                checked={!!mergedIl.readingAbove}
-                onChange={v => {
-                  const key = v ? 'readingOffsetAbove' : 'readingOffsetBelow'
-                  store.updateImplicitLink(parentFact.id, roleIndex, { readingAbove: v, [key]: null })
-                }}
-              />
+              {opts.map(opt => (
+                <label key={opt.value} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  fontSize: 12, marginBottom: 3,
+                  cursor: opt.value === 'free' ? 'not-allowed' : 'pointer',
+                  color: 'var(--ink-2)',
+                }}>
+                  <input type="radio"
+                    name={`il-rpos-${parentFact.id}-${roleIndex}`}
+                    value={opt.value}
+                    checked={posValue === opt.value}
+                    disabled={opt.value === 'free'}
+                    onChange={() => store.updateImplicitLink(parentFact.id, roleIndex, {
+                      readingAbove: opt.value === 'above',
+                      readingOffsetAbove: null,
+                      readingOffsetBelow: null,
+                    })}
+                    style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)',
+                      cursor: opt.value === 'free' ? 'not-allowed' : 'pointer' }}
+                  />
+                  {opt.label}
+                </label>
+              ))}
             </Row>
           )
         })()}
@@ -2439,6 +2767,7 @@ function NoteInspector({ note }) {
           <input type="number" min={80} max={800} step={10}
             value={note.w}
             onChange={e => { const v = Number(e.target.value); if (v >= 80) store.updateNote(note.id, { w: v }) }}
+            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
             style={{ width: '100%', fontSize: 12, padding: '3px 6px',
               border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg-raised)', color: 'var(--ink-2)' }}
           />
@@ -2448,6 +2777,7 @@ function NoteInspector({ note }) {
           <input type="number" min={40} max={600} step={10}
             value={note.h}
             onChange={e => { const v = Number(e.target.value); if (v >= 40) store.updateNote(note.id, { h: v }) }}
+            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
             style={{ width: '100%', fontSize: 12, padding: '3px 6px',
               border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg-raised)', color: 'var(--ink-2)' }}
           />
@@ -2508,6 +2838,7 @@ function SubtypeInspector({ st }) {
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>Subtype Relationship</InspectorTitle>
+      <ValidationErrorStrip elementId={st.id} store={store}/>
       <Row>
         <div style={{ fontSize: 12, color: 'var(--ink-2)', padding: '6px 8px',
           background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', borderRadius: 4 }}>
@@ -2668,18 +2999,31 @@ function ExternalConstraintInspector({ c }) {
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>{EXTERNAL_CONSTRAINT_TITLES[c.constraintType] || 'Constraint'}</InspectorTitle>
+      <ValidationErrorStrip elementId={c.id} store={store}/>
 
       {/* Is Preferred Identifier — only for uniqueness */}
-      {c.constraintType === 'uniqueness' && (
-        <Row>
-          <Label>Identification</Label>
-          <Checkbox
-            label="Is Preferred Identifier"
-            checked={!!c.isPreferredIdentifier}
-            onChange={v => store.updateConstraint(c.id, { isPreferredIdentifier: v })}
-          />
-        </Row>
-      )}
+      {c.constraintType === 'uniqueness' && (() => {
+        const targetOt = c.targetObjectTypeId
+          ? store.objectTypes.find(o => o.id === c.targetObjectTypeId) : null
+        const identifiesVt = targetOt?.kind === 'value'
+        const piCheck = canBeExternalUniquenessPI(c, store.facts)
+        const piDisabled = identifiesVt || !piCheck.ok
+        const piTitle = identifiesVt
+          ? 'A value type cannot have a preferred identifier'
+          : !piCheck.ok ? piCheck.reason : undefined
+        return (
+          <Row>
+            <Label>Identification</Label>
+            <Checkbox
+              label="Is Preferred Identifier"
+              checked={!!c.isPreferredIdentifier}
+              disabled={piDisabled}
+              title={piTitle}
+              onChange={v => store.updateConstraint(c.id, { isPreferredIdentifier: v })}
+            />
+          </Row>
+        )
+      })()}
 
       {/* Frequency range — only for frequency */}
       {c.constraintType === 'frequency' && (
@@ -2693,8 +3037,8 @@ function ExternalConstraintInspector({ c }) {
         </Row>
       )}
 
-      {/* Target Object Type — only for inclusiveOr / exclusiveOr / uniqueness / frequency / valueComparison */}
-      {(c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr' || c.constraintType === 'uniqueness' || c.constraintType === 'frequency' || c.constraintType === 'valueComparison') && (
+      {/* Target Object Type — only for inclusiveOr / exclusiveOr / uniqueness / frequency */}
+      {(c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr' || c.constraintType === 'uniqueness' || c.constraintType === 'frequency') && (
         <Row>
           <Label>Target Object Type</Label>
           <select
@@ -2741,7 +3085,7 @@ function ExternalConstraintInspector({ c }) {
         const { active, implied, isEmpty } = computeRingImplied(explicit)
         const wouldEmpty = key =>
           !active.has(key) && computeRingImplied([...explicit, key]).isEmpty
-        const SYM_W = 28, SYM_H = 20
+        const SYM_W = 21, SYM_H = 15
         return (
           <Row>
             <Label>Ring Properties</Label>
@@ -2786,7 +3130,7 @@ function ExternalConstraintInspector({ c }) {
                     }}
                     style={{ width: 'auto', padding: 0, border: 'none', flexShrink: 0 }}/>
                   <svg width={SYM_W} height={SYM_H} style={{ flexShrink: 0, overflow: 'visible' }}>
-                    <RingMiniSymbol type={key} cx={SYM_W / 2} cy={SYM_H / 2} color={color}/>
+                    <RingMiniSymbol type={key} cx={SYM_W / 2} cy={SYM_H / 2} color={color} scale={0.75}/>
                   </svg>
                   {label}
                   {isImplied && (
@@ -3112,14 +3456,16 @@ function ConstraintInspector({ c }) {
             <Label>Min frequency</Label>
             <input type="number" min={0} value={c.frequency.min} style={{ width: '100%' }}
               onChange={e => store.updateConstraint(c.id,
-                { frequency: { ...c.frequency, min: +e.target.value } })}/>
+                { frequency: { ...c.frequency, min: +e.target.value } })}
+              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}/>
           </Row>
           <Row>
             <Label>Max frequency (blank = unbounded)</Label>
             <input type="number" min={1} value={c.frequency.max ?? ''} style={{ width: '100%' }}
               placeholder="∞"
               onChange={e => store.updateConstraint(c.id,
-                { frequency: { ...c.frequency, max: e.target.value === '' ? null : +e.target.value } })}/>
+                { frequency: { ...c.frequency, max: e.target.value === '' ? null : +e.target.value } })}
+              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}/>
           </Row>
         </>
       )}
@@ -3247,7 +3593,9 @@ export default function Inspector() {
     if (selectedUniqueness) {
       const f = store.facts.find(f => f.id === selectedUniqueness.factId)
       if (f) {
-        if (selectedUniqueness.roleIndex !== undefined) {
+        if (selectedUniqueness.implied === true) {
+          internalConstraintContent = <ImpliedUniquenessBarInspector fact={f} roleIndex={selectedUniqueness.impliedRoleIndex} />
+        } else if (selectedUniqueness.roleIndex !== undefined) {
           // Implicit link uniqueness
           const il = f.implicitLinks?.find(il => il.roleIndex === selectedUniqueness.roleIndex)
           if (il) {
@@ -3261,7 +3609,10 @@ export default function Inspector() {
     } else if (selectedMandatoryDot) {
       const factId = selectedMandatoryDot.factId
       const roleIndex = selectedMandatoryDot.roleIndex
-      if (factId.includes('_il_')) {
+      if (selectedMandatoryDot.implied === true) {
+        const f = store.facts.find(f => f.id === factId)
+        if (f) internalConstraintContent = <ImpliedMandatoryDotInspector fact={f} roleIndex={roleIndex} />
+      } else if (factId.includes('_il_')) {
         const [parentFactId, ilRoleIdxStr] = factId.split('_il_')
         const parentFact = store.facts.find(f => f.id === parentFactId)
         if (parentFact) {

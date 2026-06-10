@@ -2,8 +2,8 @@
 
 /** Maximum number of role sequences allowed for a constraint type. */
 export function constraintMaxSequences(type) {
-  if (type === 'equality' || type === 'subset' || type === 'valueComparison') return 2
-  if (type === 'ring' || type === 'frequency' || type === 'uniqueness') return 1
+  if (type === 'equality' || type === 'subset') return 2
+  if (type === 'ring' || type === 'valueComparison' || type === 'frequency' || type === 'uniqueness') return 1
   return Infinity
 }
 
@@ -20,7 +20,7 @@ export function isOpenEndedConstruction(type) {
 /** True for types that have a "Set target object type" action. */
 export function hasTargetObjectType(type) {
   return type === 'inclusiveOr' || type === 'exclusiveOr' ||
-    type === 'uniqueness' || type === 'frequency' || type === 'valueComparison'
+    type === 'uniqueness' || type === 'frequency'
 }
 
 /** True for types where "Add role position" should be suppressed. */

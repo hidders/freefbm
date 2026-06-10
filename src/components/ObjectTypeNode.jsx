@@ -1,6 +1,21 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, subtypeKindOf } from '../store/ormStore'
+import { findRefMode, refModeLabel } from '../utils/refMode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
+
+// Returns the ref-mode label (e.g. ".code") to display inside the entity rect,
+// or null when the entity has no ref mode or is expanded in the active diagram.
+function getEntityRefLabel(ot) {
+  if (ot.kind !== 'entity') return null
+  const s = useOrmStore.getState()
+  const diagram = s.diagrams?.find(d => d.id === s.activeDiagramId) ?? s.diagrams?.[0]
+  if ((diagram?.expandedRefModes ?? []).includes(ot.id)) return null
+  const rm = findRefMode(ot, s.facts, s.objectTypes)
+  if (!rm) return null
+  const vt = s.objectTypes.find(o => o.id === rm.vtId)
+  if (!vt) return null
+  return refModeLabel(ot.name, vt.name)
+}
 
 const OT_FONT       = "'Segoe UI', Helvetica, Arial, sans-serif"
 const OT_SIZE_NAME  = 18
@@ -10,12 +25,20 @@ const OT_MIN_W      = 60
 const OT_H_SINGLE   = 32   // box height with name only
 const OT_H_DOUBLE   = 48   // box height with name + reference mode
 
+function fmtDate(v) {
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    const [y, m, d] = v.split('-')
+    return `${d}-${m}-${y}`
+  }
+  return v
+}
+
 function formatRangeSpec(spec) {
   if (!spec) return ''
-  if (spec.type === 'single') return String(spec.value ?? '')
-  if (spec.type === 'lower')  return `${spec.lower ?? ''}..`
-  if (spec.type === 'upper')  return `..${spec.upper ?? ''}`
-  if (spec.type === 'range')  return `${spec.lower ?? ''}..${spec.upper ?? ''}`
+  if (spec.type === 'single') return fmtDate(String(spec.value ?? ''))
+  if (spec.type === 'lower')  return `${fmtDate(spec.lower ?? '')}..`
+  if (spec.type === 'upper')  return `..${fmtDate(spec.upper ?? '')}`
+  if (spec.type === 'range')  return `${fmtDate(spec.lower ?? '')}..${fmtDate(spec.upper ?? '')}`
   return ''
 }
 
@@ -58,9 +81,11 @@ function measureText(text, fontSize) {
 
 export function computeOtSize(ot, nameOverride) {
   const showRefMode = useOrmStore.getState().showReferenceMode
-  const hasRef = showRefMode && ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none' && !ot.refModeExpanded
-  const nameW  = measureText(nameOverride ?? ot.name ?? '', OT_SIZE_NAME)
-  const refW   = hasRef ? measureText(`(${ot.refMode})`, OT_SIZE_REF) : 0
+  const refLabel = showRefMode ? getEntityRefLabel(ot) : null
+  const hasRef = !!refLabel
+  const displayName = (ot.name ?? '') + (ot.isIndependent ? ' !' : '')
+  const nameW  = measureText(nameOverride ?? displayName, OT_SIZE_NAME)
+  const refW   = hasRef ? measureText(`(${refLabel})`, OT_SIZE_REF) : 0
   const w = Math.max(OT_MIN_W, Math.max(nameW, refW) + OT_PAD_X * 2)
   const h = hasRef ? OT_H_DOUBLE : OT_H_SINGLE
   return { w, h }
@@ -172,8 +197,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
   }, [draft, ot.id, store])
 
   const commitRefEdit = useCallback(() => {
-    const trimmed = draftRef.trim()
-    if (trimmed) store.updateObjectType(ot.id, { refMode: trimmed })
+    store.setEntityRefModeLabel(ot.id, draftRef)
     setEditingRef(false)
   }, [draftRef, ot.id, store])
 
@@ -207,22 +231,22 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
   }, [editingRef, commitRefEdit])
 
   const { w, h } = computeOtSize(ot, editing ? draft : undefined)
-  const hasRef = ot.kind === 'entity' && store.showReferenceMode && ot.refMode && ot.refMode !== 'none' && !ot.refModeExpanded
-  const refModeText = hasRef ? `(${ot.refMode})` : null
+  const refLabel = store.showReferenceMode ? getEntityRefLabel(ot) : null
+  const hasRef = !!refLabel
+  const refModeText = hasRef ? `(${refLabel})` : null
 
   const handleDoubleClick = useCallback((e) => {
     if (isSubtypeTool || isAssignTool) return
-    if (ot._refExpansion) return  // generated value type — name is not user-editable
     e.stopPropagation()
     const inRefArea = hasRef && e.target?.getAttribute?.('data-refhit') === 'true'
     if (inRefArea) {
-      setDraftRef(ot.refMode ?? '')
+      setDraftRef(refLabel ?? '')
       setEditingRef(true)
     } else {
       setDraft(ot.name)
       setEditing(true)
     }
-  }, [ot.name, ot.refMode, ot._refExpansion, isSubtypeTool, isAssignTool, hasRef])
+  }, [ot.name, isSubtypeTool, isAssignTool, hasRef, refLabel])
 
   const handleMouseDown = useCallback((e) => {
     if (editing || editingRef) { e.stopPropagation(); return }
@@ -240,6 +264,9 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
       if (!store.linkDraft) {
         store.setLinkDraft({ type: 'subtype', fromId: ot.id })
       } else if (store.linkDraft.fromId !== ot.id) {
+        // Reject mixed-kind subtype edges (entity↔value)
+        const draftKind = subtypeKindOf(store.linkDraft.fromId, store.objectTypes, store.facts)
+        if (draftKind && draftKind !== ot.kind) return
         store.addSubtype(store.linkDraft.fromId, ot.id)
         store.clearLinkDraft()
         store.setTool('select')
@@ -254,8 +281,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
     if (store.tool === 'connectConstraint') { store.clearSelection(); store.setTool('select'); return }
     if (store.tool === 'toggleMandatory' || store.tool === 'addInternalUniqueness' || store.tool === 'addInternalFrequency') { store.setTool('select'); return }
     if (store.tool === 'addConstraint:valueRange') {
-      const eligible = ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none')
-      if (eligible) { onValueRangeClick?.(e.clientX, e.clientY) }
+      if (ot.kind === 'value') { onValueRangeClick?.(e.clientX, e.clientY) }
       else { store.setTool('select') }
       return
     }
@@ -289,7 +315,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
   }, [store, ot, onDragStart, isSubtypeTool, isAssignTool, editing, editingRef])
 
   const isVrTool      = store.tool === 'addConstraint:valueRange'
-  const isVrCandidate = isVrTool && (ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none'))
+  const isVrCandidate = isVrTool && ot.kind === 'value'
   const isCrTool      = store.tool === 'addConstraint:cardinality'
 
   const stroke = isSelected          ? 'var(--accent)'
@@ -319,7 +345,14 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
         if (store.queryEditDraft) return 'pointer'
         if (isPickingTarget) return 'pointer'
         if (isElementSelecting(store.tool, store.sequenceConstruction)) {
-          if (store.tool === 'addSubtype') return 'pointer'
+          if (store.tool === 'addSubtype') {
+            const fromId = store.linkDraft?.type === 'subtype' ? store.linkDraft.fromId : null
+            if (fromId && fromId !== ot.id) {
+              const draftKind = subtypeKindOf(fromId, store.objectTypes, store.facts)
+              if (draftKind && draftKind !== ot.kind) return 'not-allowed'
+            }
+            return 'pointer'
+          }
           if (store.tool === 'assignRole') return store.linkDraft?.factId != null ? 'pointer' : 'not-allowed'
           if (store.tool === 'addConstraint:valueRange') return isVrCandidate ? 'pointer' : 'not-allowed'
           if (isCrTool) return 'pointer'
@@ -370,7 +403,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
           fill={isConstraintTarget ? '#ffffff' : ot.kind === 'entity' ? 'var(--col-entity)' : 'var(--col-value)'}
           fontSize={OT_SIZE_NAME} fontFamily={OT_FONT}
           style={{ pointerEvents: 'none' }}>
-          {ot.name}
+          {ot.name}{ot.isIndependent ? ' !' : ''}
         </text>
       )}
 
@@ -422,8 +455,7 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
     </g>
 
     {(() => {
-        const canHaveVr = ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none')
-        if (!canHaveVr) return null
+        if (ot.kind !== 'value') return null
         const vr = formatValueRange(ot.valueRange)
         if (!vr) return null
         const _dimOpacity = dimInternalConstraints ? 0.15 : 1

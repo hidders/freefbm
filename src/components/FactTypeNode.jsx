@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, subtypeKindOf } from '../store/ormStore'
 import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { roleAnchor } from '../utils/geometry'
 import { RAKE_TOOTH, RAKE_STAGGER, RAKE_COMFORT, RAKE_BAR_ZONE } from '../constants.js'
+import { findCompositePI } from '../utils/refMode'
 
 const VR_DEFAULT_OFFSET = { dx: 0, dy: -50 }
 const VR_FONT      = "'Segoe UI', Helvetica, Arial, sans-serif"
@@ -22,7 +23,7 @@ function measureVrText(text) {
 
 const NESTED_READING_FONT_SIZE = 13
 const NESTED_READING_LINE_H    = 18   // font + line margin
-const NESTED_READING_GAP       = 8    // gap between role boxes (or bars) and reading
+const NESTED_READING_GAP       = 4    // gap between role boxes (or bars) and reading
 const NESTED_READING_PAD_BELOW = 4    // gap between reading and bottom of outer box
 
 let _readingCanvas = null
@@ -62,7 +63,8 @@ export function displayRoleOrder(fact) {
 /** Returns the bounding rect of the outer entity box drawn around an objectified fact.
  *  rakeMinPad: optional minimum padding on each side to contain rake heads. */
 export function nestedFactBounds(fact, rakeMinPad = {}) {
-  const { top: rT = 0, bottom: rB = 0, left: rL = 0, right: rR = 0, rakeZoneOnBarSide = 0 } = rakeMinPad
+  const { top: rT = 0, bottom: rB = 0, left: rL = 0, right: rR = 0,
+    rakeZoneOnBarSide = 0, rakeZoneT = 0, rakeZoneB = 0 } = rakeMinPad
   const PAD  = 10
   const n    = Math.max(fact.arity, 1)
   const isV  = fact.orientation === 'vertical'
@@ -74,22 +76,23 @@ export function nestedFactBounds(fact, rakeMinPad = {}) {
   for (const u of (fact.uniqueness || [])) if (u.length > 1) multiLevel++
   const multiCount = multiLevel
   const hasAnyBar  = (fact.uniqueness?.length ?? 0) > 0
+  const effBarMargin = rakeZoneOnBarSide > 0 ? 0 : BAR_MARGIN
   const barSpace   = hasAnyBar
-    ? BAR_MARGIN + rakeZoneOnBarSide + BAR_SPACING * (multiCount + 1) + BAR_H / 2 + 5
+    ? effBarMargin + rakeZoneOnBarSide + BAR_SPACING * (multiCount + 1) + BAR_H / 2 + 10
     : 0
   const barPad = Math.max(PAD, Math.ceil(barSpace))
 
   // Compute reading text extent for nestedReading
   const readingText = fact.nestedReading ? getDisplayReading(fact) : ''
   const readingTextW = readingText ? measureNestedReadingText(readingText) : 0
-  const READING_TIGHT_GAP = 4
 
   if (isV) {
     const totalH    = n * ROLE_W + (n - 1) * ROLE_GAP
     const padLeft   = Math.max(barsBelow ? barPad : PAD, rL)
     const padRight  = Math.max(barsBelow ? PAD    : barPad, rR)
+    const outermostBottomV = fact.y + totalH / 2 + rakeZoneB
     const padBottom = fact.nestedReading
-      ? Math.max(PAD, READING_TIGHT_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
+      ? Math.max(PAD, Math.ceil(rakeZoneB + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW))
       : PAD
     return {
       left:   fact.x - ROLE_H / 2 - padLeft,
@@ -99,19 +102,27 @@ export function nestedFactBounds(fact, rakeMinPad = {}) {
       cx: fact.x, cy: fact.y,
     }
   }
-  const totalW     = n * ROLE_W + (n - 1) * ROLE_GAP
-  const ow         = Math.max(totalW + PAD * 2, readingTextW + PAD * 2)
-  const readingPad = READING_TIGHT_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW
+  const totalW = n * ROLE_W + (n - 1) * ROLE_GAP
+  const ow     = Math.max(totalW + PAD * 2, readingTextW + PAD * 2)
   const readingAboveActive = fact.nestedReading && !!fact.readingAbove
   const barsAbove = hasAnyBar && !barsBelow
-  const readingAbovePad = Math.ceil(NESTED_READING_LINE_H * 1.5) + NESTED_READING_PAD_BELOW
-  const padTop = readingAboveActive
-    ? Math.max(barsAbove ? barPad : PAD, readingAbovePad, rT)
-    : Math.max(barsBelow ? PAD : barPad, rT)
+  const rakeZoneBelowH = barsBelow ? rakeZoneOnBarSide : rakeZoneB
+  const rakeZoneAboveH = !barsBelow ? rakeZoneOnBarSide : rakeZoneT
+  const outermostBelowH = hasAnyBar && barsBelow
+    ? fact.y + ROLE_H / 2 + effBarMargin + rakeZoneOnBarSide + BAR_SPACING * (multiCount + 1)
+    : fact.y + ROLE_H / 2 + rakeZoneBelowH
+  const outermostAboveH = hasAnyBar && !barsBelow
+    ? fact.y - ROLE_H / 2 - effBarMargin - rakeZoneOnBarSide - BAR_SPACING * (multiCount + 1)
+    : fact.y - ROLE_H / 2 - rakeZoneAboveH
+  const readingPadAbove = readingAboveActive
+    ? Math.ceil(fact.y - ROLE_H / 2 - outermostAboveH + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
+    : 0
+  const readingPadBelow = (fact.nestedReading && !readingAboveActive)
+    ? Math.ceil(outermostBelowH - fact.y - ROLE_H / 2 + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
+    : 0
+  const padTop = Math.max(barsAbove ? barPad : PAD, readingPadAbove, rT)
   const baseBottom = barsBelow ? barPad : PAD
-  const padBottom = (fact.nestedReading && !readingAboveActive)
-    ? Math.max(baseBottom, readingPad, rB)
-    : Math.max(baseBottom, rB)
+  const padBottom = Math.max(baseBottom, readingPadBelow, rB)
   return {
     left:   fact.x - ow / 2,
     right:  fact.x + ow / 2,
@@ -338,10 +349,11 @@ function stadiumEdge(cx, cy, hw, hh, tx, ty) {
 }
 
 
-const BAR_H       = 3    // stroke width of each uniqueness bar
-const BAR_MARGIN  = 4    // gap between top of role box and lowest bar
-const BAR_SPACING = 5    // vertical distance between successive bar levels
-const PREF_OFFSET = 2.5  // shift for preferred uniqueness bar (keeps inner line at original pos)
+const BAR_H            = 3    // stroke width of each uniqueness bar
+const BAR_MARGIN       = 4    // gap between top of role box and lowest bar (no-rake case)
+const BAR_SPACING      = 5    // vertical distance between successive bar levels
+const PREF_OFFSET      = 2.5  // shift for preferred uniqueness bar (keeps inner line at original pos)
+const BAR_SIDE_COMFORT = 2    // rake comfort used when bars sit beyond the rakes on the same side
 const UNARY_CAP_R = 8
 
 // Returns {T, B, L, R} counts of external-constraint rake heads per side of a fact.
@@ -445,9 +457,16 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const isRoleValueTool   = store.tool === 'addConstraint:valueRange'
   const isCrTool          = store.tool === 'addConstraint:cardinality'
   const isConnectorTool = isAssignTool || isSubtypeTool || store.tool === 'connectConstraint'
+  // For subtype tool: true when a different-kind endpoint is already in the draft
+  // (entity↔value subtype edges are not allowed).
+  const subtypeKindMismatch = isSubtypeTool && fact.objectified
+    && store.linkDraft?.type === 'subtype' && store.linkDraft.fromId && store.linkDraft.fromId !== fact.id
+    && (() => {
+        const k = subtypeKindOf(store.linkDraft.fromId, store.objectTypes, store.facts)
+        return k && k !== fact.objectifiedKind
+      })()
   const qd = store.queryEditDraft
   const inQueryEdit = !!qd
-  const isRefExpansion = !!fact._refExpansion
   const hasError = !fact._implicit && (store.validationErrors || []).some(e => e.elementId === fact.id)
 
   // When an OT copy is the pending first click, only the role boxes whose assigned OT
@@ -548,6 +567,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         if (!store.linkDraft) {
           store.setLinkDraft({ type: 'subtype', fromId: fact.id })
         } else if (store.linkDraft.fromId !== fact.id) {
+          // Reject mixed-kind subtype edges (entity↔value)
+          const draftKind = subtypeKindOf(store.linkDraft.fromId, store.objectTypes, store.facts)
+          if (draftKind && draftKind !== fact.objectifiedKind) return
           store.addSubtype(store.linkDraft.fromId, fact.id)
           store.clearLinkDraft()
           store.setTool('select')
@@ -559,8 +581,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         return
       }
       if (isRoleValueTool) {
-        const canHaveVr = fact.objectifiedKind === 'value'
-          || (fact.objectifiedKind !== 'value' && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
+        const canHaveVr = !!fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none'
         if (canHaveVr) { onNestedVrClick?.(e.clientX, e.clientY) }
         else { store.setTool('select') }
         return
@@ -629,12 +650,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     e.stopPropagation()
     if (inQueryEdit) return
     if (fact._implicit) return
-    if (fact._refExpansion) return
     if (store.sequenceConstruction || inConstruction) return
     if (store.tool !== 'select') return
     store.setTool('assignRole')
     store.setLinkDraft({ type: 'roleAssign', factId: fact.id, roleIndex, autoReturn: true })
-  }, [store, fact.id, fact._implicit, fact._refExpansion, inConstruction, inQueryEdit])
+  }, [store, fact.id, fact._implicit, inConstruction, inQueryEdit])
 
   const handleRoleContextMenu = useCallback((roleIndex, e) => {
     e.preventDefault(); e.stopPropagation()
@@ -712,6 +732,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         if (!store.linkDraft) {
           store.setLinkDraft({ type: 'subtype', fromId: fact.id })
         } else if (store.linkDraft.fromId !== fact.id) {
+          // Reject mixed-kind subtype edges (entity↔value)
+          const draftKind = subtypeKindOf(store.linkDraft.fromId, store.objectTypes, store.facts)
+          if (draftKind && draftKind !== fact.objectifiedKind) return
           store.addSubtype(store.linkDraft.fromId, fact.id)
           store.clearLinkDraft()
           store.setTool('select')
@@ -773,8 +796,6 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         return
       }
       // No source role yet (draft came from an object type click) → set this role as source
-      // Roles of ref-expansion facts cannot be reconnected
-      if (fact._refExpansion) return
       store.setLinkDraft({ type: 'roleAssign', factId: fact.id, roleIndex, autoReturn: draft?.autoReturn ?? true })
       return
     }
@@ -1108,13 +1129,11 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const gcConstraint = gc ? store.constraints.find(c => c.id === gc.constraintId) : null
   const isVcConstruction = gcConstraint?.constraintType === 'valueComparison'
 
-  // Helper: is a role connected to a value type or entity with a reference mode?
+  // Helper: is a role connected to a value type?
   const isVrEligibleRole = (role) => {
     if (!role.objectTypeId) return false
     const ot = store.objectTypes.find(o => o.id === role.objectTypeId)
-    if (ot) return ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none')
-    const nestedFact = store.facts.find(f => f.id === role.objectTypeId)
-    return !!(nestedFact && nestedFact.objectified && nestedFact.objectifiedKind === 'value')
+    return !!ot && ot.kind === 'value'
   }
 
   const vcEligibleRoles = isVcConstruction ? new Set(
@@ -1135,7 +1154,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       if (store.tool === 'connectConstraint') return ri === 0 ? 'pointer' : 'not-allowed'
       return isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab'
     }
-    if (isSubtypeTool && fact.objectified) return 'cell'
+    if (isSubtypeTool && fact.objectified) return subtypeKindMismatch ? 'not-allowed' : 'cell'
     if (isElementSelecting(store.tool, store.sequenceConstruction)) {
       if (store.sequenceConstruction) return 'pointer'
       if (store.tool === 'toggleMandatory') return 'pointer'
@@ -1143,7 +1162,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       if (isRoleValueTool) return vrEligibleRoles.has(ri) ? 'pointer' : 'not-allowed'
       if (isCrTool) return 'pointer'
       if (isAssignTool) return 'pointer'
-      if (isSubtypeTool) return fact.objectified ? 'pointer' : 'not-allowed'
+      if (isSubtypeTool) return fact.objectified ? (subtypeKindMismatch ? 'not-allowed' : 'pointer') : 'not-allowed'
       if (store.tool === 'connectConstraint') return 'pointer'
       return 'not-allowed'
     }
@@ -1155,10 +1174,45 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const roleInQueryPattern = (ri) => !!queryHighlightRoles?.has(ri)
   const isVertical = fact.orientation === 'vertical'
 
+  // Implied internal constraints derived from each preferred uniqueness:
+  // the role NOT covered by the preferred UC gets an implied unary UC + mandatory.
+  // Only rendered when no real unary UC already covers that role.
+  // Skipped for implicit-link synthetic facts — the inspector lookup uses the
+  // parent fact id, so implied selection wouldn't resolve correctly here.
+  // Computed before level assignment so that implied roles can influence hasUnary.
+  const existingUnaryRoles = new Set(
+    fact.uniqueness.filter(u => u.length === 1).map(u => u[0])
+  )
+  const impliedRoles = []
+  if (!fact._implicit) {
+    ;(fact.preferredUniqueness || []).forEach(pu => {
+      const covered = new Set(pu)
+      for (let ri = 0; ri < fact.arity; ri++) {
+        if (!covered.has(ri) && !existingUnaryRoles.has(ri) && !impliedRoles.includes(ri)) {
+          impliedRoles.push(ri)
+        }
+      }
+    })
+    // Cross-fact external uniqueness PI: the entity role in each involved binary
+    // fact also gets an implied unary UC + mandatory.
+    for (const ot of store.objectTypes) {
+      if (ot.kind !== 'entity') continue
+      const cp = findCompositePI(ot, store.facts, store.objectTypes, store.constraints)
+      if (!cp || !cp.factIds?.includes(fact.id)) continue
+      const ci = cp.factIds.indexOf(fact.id)
+      const entityRoleIdx = cp.entityRoleIndices?.[ci] ?? cp.entityRoleIndex
+      if (entityRoleIdx != null && !existingUnaryRoles.has(entityRoleIdx) && !impliedRoles.includes(entityRoleIdx)) {
+        impliedRoles.push(entityRoleIdx)
+      }
+    }
+  }
+
   // ── Uniqueness bar level assignment ────────────────────────────────────────
   // The uniqueness array is kept sorted in the store (ascending role count),
   // so level assignment here is simply positional.
-  const hasUnary = fact.uniqueness.some(u => u.length === 1)
+  // Implied unary UCs are treated as if explicitly specified for level purposes,
+  // so that explicit multi-role UCs are pushed to higher levels and don't overlap.
+  const hasUnary = fact.uniqueness.some(u => u.length === 1) || impliedRoles.length > 0
   let multiLevel = hasUnary ? 0 : -1
   const levels = fact.uniqueness.map(uRoles =>
     uRoles.length === 1 ? 0 : ++multiLevel
@@ -1174,8 +1228,13 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const rakeCounts  = rakeCountsForFact(fact, visibleConstraints ?? store.constraints)
   const rakeCount_h = barsBelow ? rakeCounts.B : rakeCounts.T
   const rakeCount_v = barsBelow ? rakeCounts.L : rakeCounts.R
-  const rakeZone_h  = rakeCount_h > 0 ? RAKE_TOOTH + (rakeCount_h - 1) * RAKE_STAGGER + RAKE_COMFORT : 0
-  const rakeZone_v  = rakeCount_v > 0 ? RAKE_TOOTH + (rakeCount_v - 1) * RAKE_STAGGER + RAKE_COMFORT : 0
+  // On the bar side use BAR_SIDE_COMFORT (tighter) so the bars sit close to the rakes.
+  const rakeZone_h  = rakeCount_h > 0 ? RAKE_TOOTH + (rakeCount_h - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
+  const rakeZone_v  = rakeCount_v > 0 ? RAKE_TOOTH + (rakeCount_v - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
+  // When rakes are on the bar side the rakeZone already ends close to the first bar;
+  // no additional margin is needed.
+  const effBarMargin_h = rakeZone_h > 0 ? 0 : BAR_MARGIN
+  const effBarMargin_v = rakeZone_v > 0 ? 0 : BAR_MARGIN
   const preferredKeys = new Set((fact.preferredUniqueness || []).map(pu => JSON.stringify([...pu].sort((a, b) => a - b))))
   if (fact._implicit) {
     const il = store.facts.find(f => f.id === fact._parentFactId)?.implicitLinks?.find(il => il.roleIndex === fact._implicitRoleIndex)
@@ -1192,8 +1251,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
 
   // Bar coordinate helpers
   const barY_h = (level) => barsBelow
-    ? topY + ROLE_H + BAR_MARGIN + rakeZone_h + BAR_SPACING * (level + 1) - BAR_H / 2
-    : topY - BAR_MARGIN - rakeZone_h - BAR_SPACING * (level + 1) + BAR_H / 2
+    ? topY + ROLE_H + effBarMargin_h + rakeZone_h + BAR_SPACING * (level + 1) - BAR_H / 2
+    : topY - effBarMargin_h - rakeZone_h - BAR_SPACING * (level + 1) + BAR_H / 2
 
   // Adjust barY to keep the preferred bar's inner line at the original position,
   // and shift bars further from role boxes (above the preferred) by the same amount.
@@ -1240,8 +1299,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
   const leftX_v   = fact.x - ROLE_H / 2
 
   const barX_v = (level) => barsBelow
-    ? leftX_v - BAR_MARGIN - rakeZone_v - BAR_SPACING * (level + 1) + BAR_H / 2
-    : leftX_v + ROLE_H + BAR_MARGIN + rakeZone_v + BAR_SPACING * (level + 1) - BAR_H / 2
+    ? leftX_v - effBarMargin_v - rakeZone_v - BAR_SPACING * (level + 1) + BAR_H / 2
+    : leftX_v + ROLE_H + effBarMargin_v + rakeZone_v + BAR_SPACING * (level + 1) - BAR_H / 2
 
   // Adjust barX similarly: inner line of preferred stays put; bars further away shift outward.
   const adjustedBarX = (level, isThisPreferred) => {
@@ -1380,14 +1439,15 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     if (!text && !editingReading) return null
 
     // Distance from role-box edge to outermost element (bar or rake) on each side.
-    // Used to position the reading so it clears the full stack on its side.
+    // Uses effBarMargin (0 when rakes are present) and BAR_SIDE_COMFORT, matching
+    // the nested-reading formula so both systems produce the same gap.
     const hasAnyBar_rd = fact.uniqueness.length > 0
     const topStackH_rd = (hasAnyBar_rd && !barsBelow)
-      ? BAR_MARGIN + rakeZone_h + BAR_SPACING * (multiCount + 1)
-      : rakeCounts.T > 0 ? RAKE_TOOTH + (rakeCounts.T - 1) * RAKE_STAGGER : 0
+      ? effBarMargin_h + rakeZone_h + BAR_SPACING * (multiCount + 1)
+      : rakeCounts.T > 0 ? RAKE_TOOTH + (rakeCounts.T - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
     const botStackH_rd = (hasAnyBar_rd && barsBelow)
-      ? BAR_MARGIN + rakeZone_h + BAR_SPACING * (multiCount + 1)
-      : rakeCounts.B > 0 ? RAKE_TOOTH + (rakeCounts.B - 1) * RAKE_STAGGER : 0
+      ? effBarMargin_h + rakeZone_h + BAR_SPACING * (multiCount + 1)
+      : rakeCounts.B > 0 ? RAKE_TOOTH + (rakeCounts.B - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
 
     const AUTO_DX = (() => {
       if (!isVertical) return 0
@@ -1404,25 +1464,26 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       if (fact.readingAbove) {
         // Reading to the right — stack is on the right side
         const rightStackW = (hasAnyBar_rd && !barsBelow)
-          ? BAR_MARGIN + rakeZone_v + BAR_SPACING * (multiCount + 1)
-          : rakeCounts.R > 0 ? RAKE_TOOTH + (rakeCounts.R - 1) * RAKE_STAGGER : 0
+          ? effBarMargin_v + rakeZone_v + BAR_SPACING * (multiCount + 1)
+          : rakeCounts.R > 0 ? RAKE_TOOTH + (rakeCounts.R - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
         return ROLE_H / 2 + rightStackW + tw / 2 + 10
       } else {
         // Reading to the left — stack is on the left side
         const leftStackW = (hasAnyBar_rd && barsBelow)
-          ? BAR_MARGIN + rakeZone_v + BAR_SPACING * (multiCount + 1)
-          : rakeCounts.L > 0 ? RAKE_TOOTH + (rakeCounts.L - 1) * RAKE_STAGGER : 0
+          ? effBarMargin_v + rakeZone_v + BAR_SPACING * (multiCount + 1)
+          : rakeCounts.L > 0 ? RAKE_TOOTH + (rakeCounts.L - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
         return -(ROLE_H / 2 + leftStackW + tw / 2 + 10)
       }
     })()
+    const READING_OFFSET = 13
     const AUTO_DY = isVertical ? 0
       : fact.readingAbove
         ? fact.objectified
-          ? nestedFactBounds(fact, nestedRakePad).top  - fact.y - 18
-          : -(ROLE_H / 2 + topStackH_rd + 18)
+          ? nestedFactBounds(fact, nestedRakePad).top    - fact.y - READING_OFFSET
+          : -(ROLE_H / 2 + topStackH_rd + READING_OFFSET)
         : fact.objectified
-          ? nestedFactBounds(fact, nestedRakePad).bottom - fact.y + (isShared ? 22 : 14)
-          : ROLE_H / 2 + botStackH_rd + 18
+          ? nestedFactBounds(fact, nestedRakePad).bottom - fact.y + READING_OFFSET
+          : ROLE_H / 2 + botStackH_rd + READING_OFFSET
     const defaultOff = { dx: AUTO_DX, dy: AUTO_DY }
     const storedOff = fact.readingAbove ? fact.readingOffsetAbove : fact.readingOffsetBelow
     const off = readingLive ?? (storedOff ?? defaultOff)
@@ -1602,27 +1663,30 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       if (hasReadingOnSide) {
         return rakeExtent + NESTED_READING_LINE_H + 2 * NESTED_READING_PAD_BELOW
       }
-      return rakeExtent + RAKE_COMFORT
+      return rakeExtent + 10
     }
     const rakeCountOnBarSide = isVertical
       ? (barsBelow_r ? counts.L : counts.R)
       : (barsBelow_r ? counts.B : counts.T)
     const rakeZoneOnBarSide = rakeCountOnBarSide > 0
-      ? RAKE_TOOTH + (rakeCountOnBarSide - 1) * RAKE_STAGGER + RAKE_COMFORT
+      ? RAKE_TOOTH + (rakeCountOnBarSide - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT
       : 0
+    const rakeZoneT = counts.T > 0 ? RAKE_TOOTH + (counts.T - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
+    const rakeZoneB = counts.B > 0 ? RAKE_TOOTH + (counts.B - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
     return {
       top:    minPad(counts.T, !barsBelow_r && hasAnyBar_r, readingAbove_r),
       bottom: minPad(counts.B,  barsBelow_r && hasAnyBar_r, readingBelow_r),
       left:   minPad(counts.L,  barsBelow_r && hasAnyBar_r, false),
       right:  minPad(counts.R, !barsBelow_r && hasAnyBar_r, false),
       rakeZoneOnBarSide,
+      rakeZoneT,
+      rakeZoneB,
     }
   })()
 
   // ── Nested fact VR/CR annotations (computed here so they render outside the glow group) ──
   const nestedVrAnnotation = !fact.objectified ? null : (() => {
-    const canHaveVr = fact.objectifiedKind === 'value'
-      || (fact.objectifiedKind !== 'value' && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
+    const canHaveVr = !!fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none'
     if (!canHaveVr) return null
     const vr = formatValueRange(fact.valueRange)
     if (!vr) return null
@@ -1771,11 +1835,12 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             if (isCrTool) return fact.objectified ? 'pointer' : 'not-allowed'
             if (isRoleValueTool) return fact.objectified ? 'pointer' : 'not-allowed'
             if (store.tool === 'toggleMandatory') return 'not-allowed'
-            if (isSubtypeTool || isConnectorTool) return fact.objectified ? 'pointer' : 'not-allowed'
+            if (isSubtypeTool) return fact.objectified ? (subtypeKindMismatch ? 'not-allowed' : 'pointer') : 'not-allowed'
+            if (isConnectorTool) return fact.objectified ? 'pointer' : 'not-allowed'
             if (isAssignTool) return fact.objectified && store.linkDraft?.factId != null ? 'pointer' : 'not-allowed'
             return 'not-allowed'
           }
-          if (isSubtypeTool && fact.objectified) return 'cell'
+          if (isSubtypeTool && fact.objectified) return subtypeKindMismatch ? 'not-allowed' : 'cell'
           if (isAssignTool && isAssigning && fact.objectified) return 'cell'
           return 'grab'
         })() }}
@@ -1794,20 +1859,18 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         const nestedCol  = isFactSelected      ? 'var(--accent)'
           : isDraftFrom                       ? 'var(--col-subtype)'
           : isConstraintTarget                ? '#1a7fd4'
-          : fact.objectifiedKind === 'value'  ? 'var(--col-value)'
           :                                     'var(--col-entity)'
         const nestedTextCol = isFactSelected ? 'var(--accent)'
           : isDraftFrom                       ? 'var(--col-subtype)'
-          : fact.objectifiedKind === 'value'  ? 'var(--col-value)'
           :                                     'var(--col-entity)'
-        const nestedDash    = fact.objectifiedKind === 'value' ? '6 3' : 'none'
+        const nestedDash    = 'none'
         const nestedFill    = isConstraintTarget ? '#1a7fd4' : nestedInQueryHighlight ? 'var(--fill-query-in)' : '#ffffff'
         const nestedStrokeW = (isFactSelected || isDraftFrom || isConstraintTarget) ? 2 : 1.5
-        const nestedRefText = (fact.objectifiedKind !== 'value' && store.showReferenceMode
+        const nestedRefText = (store.showReferenceMode
           && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
           ? `(${fact.objectifiedRefMode})` : null
         const PAD = 10
-        const hasAnyBar = fact.uniqueness.length > 0
+        const hasAnyBar = fact.uniqueness.length > 0 || impliedRoles.length > 0
         const rakeZone  = isVertical ? rakeZone_v : rakeZone_h
         const barSpace  = hasAnyBar
           ? BAR_MARGIN + rakeZone + BAR_SPACING * (multiCount + 1) + BAR_H / 2 + 5
@@ -1823,15 +1886,18 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
         if (isVertical) {
           const padLeft   = Math.max(barsBelow ? barPad : PAD, nestedRakePad.left)
           const padRight  = Math.max(barsBelow ? PAD    : barPad, nestedRakePad.right)
-          const READING_TIGHT_GAP = 4
+          // Reading sits at a fixed gap below the outermost rake (or role box if none)
+          const rakeExtentBottomV = rakeCounts.B > 0
+            ? RAKE_TOOTH + (rakeCounts.B - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
+          const outermostBottomV = fact.y + totalH_v / 2 + rakeExtentBottomV
           const padBottom = fact.nestedReading
-            ? Math.max(PAD, READING_TIGHT_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
+            ? Math.max(PAD, Math.ceil(rakeExtentBottomV + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW))
             : PAD
           const ow = ROLE_H + padLeft + padRight
           const oh = totalH_v + PAD + padBottom
           const boxTop = fact.y - totalH_v / 2 - PAD
           const nameY  = nestedRefText ? boxTop - 22 : boxTop - 10
-          const readingY = fact.y + totalH_v / 2 + READING_TIGHT_GAP + NESTED_READING_LINE_H / 2
+          const readingY = outermostBottomV + NESTED_READING_GAP + NESTED_READING_LINE_H / 2
           const nameOff  = nameLive ?? (fact.nameOffset ?? { dx: 0, dy: 0 })
           const nameTx   = fact.x + nameOff.dx
           const nameTy   = nameY  + nameOff.dy
@@ -1889,7 +1955,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                       setNameDraft(fact.objectifiedName || '')
                       setEditingName(true)
                     }}>
-                    {`\u201c${fact.objectifiedName}\u201d`}
+                    {`\u201c${fact.objectifiedName}${fact.isIndependent ? ' !' : ''}\u201d`}
                   </text>
                 )
               )}
@@ -2014,28 +2080,42 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           )
         }
 
-        const READING_TIGHT_GAP = 4
-        const readingPad = READING_TIGHT_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW
         const readingAboveActive = fact.nestedReading && !!fact.readingAbove
         const barsAbove = hasAnyBar && !barsBelow
-        // Baseline padTop for above reading (no rakes): outer box extends far enough that
-        // the reading top is NESTED_READING_PAD_BELOW from the outer box top.
-        const readingAbovePad = Math.ceil(NESTED_READING_LINE_H * 1.5) + NESTED_READING_PAD_BELOW
-        const padTop = readingAboveActive
-          ? Math.max(barsAbove ? barPad : PAD, readingAbovePad, nestedRakePad.top)
-          : Math.max(barsBelow ? PAD : barPad, nestedRakePad.top)
+
+        // Outermost bar/rake extent on each horizontal side, for anchoring the reading.
+        // On the bar side we reuse rakeZone_h; on the other side compute separately.
+        const rakeZoneBelowH = barsBelow
+          ? rakeZone_h
+          : (rakeCounts.B > 0 ? RAKE_TOOTH + (rakeCounts.B - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0)
+        const rakeZoneAboveH = !barsBelow
+          ? rakeZone_h
+          : (rakeCounts.T > 0 ? RAKE_TOOTH + (rakeCounts.T - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0)
+        const outermostBelowH = hasAnyBar && barsBelow
+          ? fact.y + ROLE_H / 2 + effBarMargin_h + rakeZone_h + BAR_SPACING * (multiCount + 1)
+          : fact.y + ROLE_H / 2 + rakeZoneBelowH
+        const outermostAboveH = hasAnyBar && !barsBelow
+          ? fact.y - ROLE_H / 2 - effBarMargin_h - rakeZone_h - BAR_SPACING * (multiCount + 1)
+          : fact.y - ROLE_H / 2 - rakeZoneAboveH
+
+        // Reading sits at a fixed gap from the outermost bar/rake on its side
+        const readingY = readingAboveActive
+          ? outermostAboveH - NESTED_READING_GAP - NESTED_READING_LINE_H / 2
+          : outermostBelowH + NESTED_READING_GAP + NESTED_READING_LINE_H / 2
+
+        // Outer box must contain bars/rakes and reading on each side
         const baseBottom = barsBelow ? barPad : PAD
-        const padBottom = (fact.nestedReading && !readingAboveActive)
-          ? Math.max(baseBottom, readingPad, nestedRakePad.bottom)
-          : Math.max(baseBottom, nestedRakePad.bottom)
+        const readingPadAbove = readingAboveActive
+          ? Math.ceil(fact.y - ROLE_H / 2 - outermostAboveH + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
+          : 0
+        const readingPadBelow = (fact.nestedReading && !readingAboveActive)
+          ? Math.ceil(outermostBelowH - fact.y - ROLE_H / 2 + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
+          : 0
+        const padTop = Math.max(barsAbove ? barPad : PAD, readingPadAbove, nestedRakePad.top)
+        const padBottom = Math.max(baseBottom, readingPadBelow, nestedRakePad.bottom)
         const ow = Math.max(totalW + PAD * 2, readingTextW + PAD * 2)
         const oh = ROLE_H + padTop + padBottom
         const nameY    = fact.y - ROLE_H / 2 - padTop - (nestedRefText ? 22 : 10)
-        // Reading is anchored to the outer box edge so it stays just inside the box
-        // even when the box expands to accommodate rakes on the same side.
-        const readingY = readingAboveActive
-          ? fact.y - ROLE_H / 2 - padTop + NESTED_READING_PAD_BELOW + NESTED_READING_LINE_H / 2
-          : fact.y + ROLE_H / 2 + padBottom - NESTED_READING_PAD_BELOW - NESTED_READING_LINE_H / 2
         const nameOff  = nameLive ?? (fact.nameOffset ?? { dx: 0, dy: 0 })
         const nameTx   = fact.x + nameOff.dx
         const nameTy   = nameY  + nameOff.dy
@@ -2093,7 +2173,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                     setNameDraft(fact.objectifiedName || '')
                     setEditingName(true)
                   }}>
-                  {`\u201c${fact.objectifiedName}\u201d`}
+                  {`\u201c${fact.objectifiedName}${fact.isIndependent ? ' !' : ''}\u201d`}
                 </text>
               )
             )}
@@ -2348,6 +2428,37 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
             )
           })}
 
+          {/* Implied unary uniqueness bars (vertical) — derived from preferred identifier */}
+          {impliedRoles.map(roleIndex => {
+            const isImplSelected = store.selectedUniqueness?.factId === fact.id &&
+              store.selectedUniqueness?.implied === true &&
+              store.selectedUniqueness?.impliedRoleIndex === roleIndex
+            const barStroke = isImplSelected ? 'var(--accent)' : 'var(--col-mandatory)'
+            const sw = isImplSelected ? BAR_H + 1 : BAR_H
+            const { runs } = buildRunsV([roleIndex], 0, `impl-${roleIndex}`)
+            const drov = displayRoleOrder(fact)
+            const pos_v = drov.indexOf(roleIndex)
+            const hitY1 = startY_v + pos_v * (ROLE_W + ROLE_GAP)
+            const hitY2 = hitY1 + ROLE_W
+            const barX = adjustedBarX(0, false)
+            return (
+              <g key={`impl-uc-${roleIndex}`} className="selectable-group" opacity={0.5}
+                style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isImplSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+                onMouseDown={e => e.stopPropagation()}
+                onClick={e => {
+                  e.stopPropagation()
+                  store.selectImpliedUniqueness(fact.id, roleIndex)
+                }}>
+                <line x1={barX} y1={hitY1} x2={barX} y2={hitY2} stroke="transparent" strokeWidth={10}/>
+                <rect className="hover-ring" x={barX - 3} y={hitY1 - 3} width={6} height={hitY2 - hitY1 + 6}/>
+                {runs.map(({ y1, y2, key }) => (
+                  <line key={`${key}-impl`} x1={barX} y1={y1} x2={barX} y2={y2}
+                    stroke={barStroke} strokeWidth={sw} strokeLinecap="butt"/>
+                ))}
+              </g>
+            )
+          })}
+
           {/* Construction preview bar (vertical) */}
           {inConstruction && store.uniquenessConstruction?.uIndex == null && (() => {
             const previewLevel = multiCount + 1
@@ -2502,6 +2613,37 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
                       strokeOpacity={solid ? 1 : 0.6}/>
                   ))
                 )}
+              </g>
+            )
+          })}
+
+          {/* Implied unary uniqueness bars (horizontal) — derived from preferred identifier */}
+          {impliedRoles.map(roleIndex => {
+            const isImplSelected = store.selectedUniqueness?.factId === fact.id &&
+              store.selectedUniqueness?.implied === true &&
+              store.selectedUniqueness?.impliedRoleIndex === roleIndex
+            const barStroke = isImplSelected ? 'var(--accent)' : 'var(--col-mandatory)'
+            const sw = isImplSelected ? BAR_H + 1 : BAR_H
+            const { runs } = buildRuns([roleIndex], 0, `impl-${roleIndex}`)
+            const droh = displayRoleOrder(fact)
+            const pos_h = droh.indexOf(roleIndex)
+            const hitX1 = startX + pos_h * (ROLE_W + ROLE_GAP)
+            const hitX2 = hitX1 + ROLE_W
+            const barY = adjustedBarY(0, false)
+            return (
+              <g key={`impl-uc-${roleIndex}`} className="selectable-group" opacity={0.5}
+                style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isImplSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+                onMouseDown={e => e.stopPropagation()}
+                onClick={e => {
+                  e.stopPropagation()
+                  store.selectImpliedUniqueness(fact.id, roleIndex)
+                }}>
+                <line x1={hitX1} y1={barY} x2={hitX2} y2={barY} stroke="transparent" strokeWidth={10}/>
+                <rect className="hover-ring" x={hitX1 - 3} y={barY - 3} width={hitX2 - hitX1 + 6} height={6}/>
+                {runs.map(({ x1, x2, key }) => (
+                  <line key={`${key}-impl`} x1={x1} y1={barY} x2={x2} y2={barY}
+                    stroke={barStroke} strokeWidth={sw} strokeLinecap="butt"/>
+                ))}
               </g>
             )
           })}

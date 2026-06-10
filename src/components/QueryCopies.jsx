@@ -168,7 +168,8 @@ function NestedOtCopyFrame({ copy, dx, dy, isPending, isOutput, factMap, onMouse
   const outerX = b.left + dx, outerY = b.top + dy
 
   // Inner role boxes (full size)
-  const seeded = new Set(copy.seededRoles ?? [])
+  const seededMap = new Map((copy.seededRoles ?? []).map(s =>
+    typeof s === 'number' ? [s, null] : [s.roleIndex, s.seqPosition]))
   const n   = Math.max(nf.arity, 1)
   const dro = displayRoleOrder(nf)
 
@@ -190,16 +191,28 @@ function NestedOtCopyFrame({ copy, dx, dy, isPending, isOutput, factMap, onMouse
         fill={FILL_OT} stroke={color} strokeWidth={sw} opacity={0.9}/>
       <rect className="hover-ring" x={outerX - 3} y={outerY - 3} width={outerW + 6} height={outerH + 6} rx={11}/>
       {/* Role boxes — on top; stop propagation so only role event fires */}
-      {roleBoxes.map(({ ri, x, y, w, h }) => (
-        <rect key={ri} x={x} y={y} width={w} height={h}
-          fill={seeded.has(ri) ? FILL_ROLE_SEEDED : FILL_ROLE_DEFAULT}
-          stroke={color} strokeWidth={2.5}
-          opacity={selectableRoles !== null && selectableRoles !== undefined && !selectableRoles.has(ri) ? 0.2 : 1}
-          style={{ cursor: onRoleMouseDown ? 'grab' : 'default' }}
-          onMouseDown={onRoleMouseDown
-            ? (e) => { e.stopPropagation(); onRoleMouseDown(e, copy.id, ri) }
-            : undefined}/>
-      ))}
+      {roleBoxes.map(({ ri, x, y, w, h }) => {
+        const isSeeded = seededMap.has(ri)
+        const seqPos   = isSeeded ? seededMap.get(ri) : null
+        return (
+          <g key={ri}>
+            <rect x={x} y={y} width={w} height={h}
+              fill={isSeeded ? FILL_ROLE_SEEDED : FILL_ROLE_DEFAULT}
+              stroke={color} strokeWidth={2.5}
+              opacity={selectableRoles !== null && selectableRoles !== undefined && !selectableRoles.has(ri) ? 0.2 : 1}
+              style={{ cursor: onRoleMouseDown ? 'grab' : 'default' }}
+              onMouseDown={onRoleMouseDown
+                ? (e) => { e.stopPropagation(); onRoleMouseDown(e, copy.id, ri) }
+                : undefined}/>
+            {isSeeded && seqPos != null && (
+              <text x={x + w / 2} y={y + h / 2} textAnchor="middle" dominantBaseline="middle"
+                fontSize={9} fill="white" fontWeight={700} style={{ pointerEvents: 'none' }}>
+                {seqPos + 1}
+              </text>
+            )}
+          </g>
+        )
+      })}
     </g>
   )
 }
@@ -213,8 +226,9 @@ function FactCopyFrame({ copy, dx, dy, isPending, factMap, allFacts, onRoleMouse
   const fact = factMap[copy.originalId] ?? allFacts.find(f => f.id === copy.originalId)
   if (!fact) return null
 
-  const seeded = new Set(copy.seededRoles ?? [])
-  const roleFill = (ri) => seeded.has(ri) ? FILL_ROLE_SEEDED : FILL_ROLE_DEFAULT
+  const seededMap = new Map((copy.seededRoles ?? []).map(s =>
+    typeof s === 'number' ? [s, null] : [s.roleIndex, s.seqPosition]))
+  const roleFill = (ri) => seededMap.has(ri) ? FILL_ROLE_SEEDED : FILL_ROLE_DEFAULT
   const roleOpacity = (ri) => selectableRoles !== null && selectableRoles !== undefined && !selectableRoles.has(ri) ? 0.2 : 1
 
   const n = Math.max(fact.arity, 1)
@@ -227,15 +241,26 @@ function FactCopyFrame({ copy, dx, dy, isPending, factMap, allFacts, onRoleMouse
     return (
       <g className="qc-frame" onContextMenu={onContextMenu}>
         <rect className="hover-ring" x={leftX - 3} y={startY - 3} width={ROLE_H + 6} height={totalH + 6} rx={4}/>
-        {dro.map((ri, pi) => (
-          <rect key={ri}
-            x={leftX} y={startY + pi * (ROLE_W + ROLE_GAP)}
-            width={ROLE_H} height={ROLE_W}
-            opacity={roleOpacity(ri)}
-            style={{ fill: roleFill(ri), stroke: color, strokeWidth: 2,
-              cursor: onRoleMouseDown ? 'grab' : 'default' }}
-            onMouseDown={onRoleMouseDown ? (e) => onRoleMouseDown(e, copy.id, ri) : undefined}/>
-        ))}
+        {dro.map((ri, pi) => {
+          const rx = leftX, ry = startY + pi * (ROLE_W + ROLE_GAP)
+          const isSeeded = seededMap.has(ri)
+          const seqPos   = isSeeded ? seededMap.get(ri) : null
+          return (
+            <g key={ri}>
+              <rect x={rx} y={ry} width={ROLE_H} height={ROLE_W}
+                opacity={roleOpacity(ri)}
+                style={{ fill: roleFill(ri), stroke: color, strokeWidth: 2,
+                  cursor: onRoleMouseDown ? 'grab' : 'default' }}
+                onMouseDown={onRoleMouseDown ? (e) => onRoleMouseDown(e, copy.id, ri) : undefined}/>
+              {isSeeded && seqPos != null && (
+                <text x={rx + ROLE_H / 2} y={ry + ROLE_W / 2} textAnchor="middle" dominantBaseline="middle"
+                  fontSize={9} fill="white" fontWeight={700} style={{ pointerEvents: 'none' }}>
+                  {seqPos + 1}
+                </text>
+              )}
+            </g>
+          )
+        })}
       </g>
     )
   }
@@ -246,15 +271,27 @@ function FactCopyFrame({ copy, dx, dy, isPending, factMap, allFacts, onRoleMouse
   return (
     <g className="qc-frame" onContextMenu={onContextMenu}>
       <rect className="hover-ring" x={startX - 3} y={topY - 3} width={totalW + 6} height={ROLE_H + 6} rx={4}/>
-      {dro.map((ri, pi) => (
-        <rect key={ri}
-          x={startX + pi * (ROLE_W + ROLE_GAP)} y={topY}
-          width={ROLE_W} height={ROLE_H}
-          opacity={roleOpacity(ri)}
-          style={{ fill: roleFill(ri), stroke: color, strokeWidth: 2,
-            cursor: onRoleMouseDown ? 'grab' : 'default' }}
-          onMouseDown={onRoleMouseDown ? (e) => onRoleMouseDown(e, copy.id, ri) : undefined}/>
-      ))}
+      {dro.map((ri, pi) => {
+        const rx = startX + pi * (ROLE_W + ROLE_GAP), ry = topY
+        const isSeeded = seededMap.has(ri)
+        const seqPos   = isSeeded ? seededMap.get(ri) : null
+        return (
+          <g key={ri}>
+            <rect x={rx} y={ry}
+              width={ROLE_W} height={ROLE_H}
+              opacity={roleOpacity(ri)}
+              style={{ fill: roleFill(ri), stroke: color, strokeWidth: 2,
+                cursor: onRoleMouseDown ? 'grab' : 'default' }}
+              onMouseDown={onRoleMouseDown ? (e) => onRoleMouseDown(e, copy.id, ri) : undefined}/>
+            {isSeeded && seqPos != null && (
+              <text x={rx + ROLE_W / 2} y={ry + ROLE_H / 2} textAnchor="middle" dominantBaseline="middle"
+                fontSize={9} fill="white" fontWeight={700} style={{ pointerEvents: 'none' }}>
+                {seqPos + 1}
+              </text>
+            )}
+          </g>
+        )
+      })}
     </g>
   )
 }

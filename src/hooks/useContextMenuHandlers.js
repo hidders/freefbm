@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { constraintMaxSequences, hasTargetObjectType, suppressRolePosition, isSingletonSequence } from '../utils/constraintRules'
+import { findRefMode } from '../utils/refMode'
 
 export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
 
@@ -33,8 +34,11 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     e.preventDefault()
     e.stopPropagation()
     store.select(ot.id, ot.kind)
-    const refExpansionItems = ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none' && !ot._refExpansion
-      ? ['---', ot.refModeExpanded
+    const hasRefMode = ot.kind === 'entity' && !!findRefMode(ot, store.facts, store.objectTypes)
+    const diagram = store.diagrams.find(d => d.id === store.activeDiagramId)
+    const isExpandedHere = (diagram?.expandedRefModes ?? []).includes(ot.id)
+    const refExpansionItems = hasRefMode
+      ? ['---', isExpandedHere
           ? { label: 'Collapse Reference Mode', action: () => store.collapseRefMode(ot.id) }
           : { label: 'Expand Reference Mode',   action: () => store.expandRefMode(ot.id)   }]
       : []
@@ -42,7 +46,6 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
       x: e.clientX, y: e.clientY,
       items: [
         { label: ot.kind === 'entity' ? 'Change to Value Type' : 'Change to Entity Type',
-          disabled: !!ot._refExpansion,
           action: () => store.updateObjectType(ot.id, { kind: ot.kind === 'entity' ? 'value' : 'entity' }) },
         ...refExpansionItems,
         '---',
@@ -102,50 +105,56 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     e.preventDefault()
     e.stopPropagation()
     store.select(fact.id, 'fact')
+    const hasRefMode = fact.objectified && fact.objectifiedKind !== 'value'
+      && !!findRefMode(fact, store.facts, store.objectTypes)
+    const diagram = store.diagrams.find(d => d.id === store.activeDiagramId)
+    const isExpandedHere = (diagram?.expandedRefModes ?? []).includes(fact.id)
+    const refExpansionItems = hasRefMode
+      ? [isExpandedHere
+          ? { label: 'Collapse Reference Mode', action: () => store.collapseRefMode(fact.id) }
+          : { label: 'Expand Reference Mode',   action: () => store.expandRefMode(fact.id)   },
+         '---']
+      : []
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'Add role',
-          action: () => store.setFactArity(fact.id, fact.arity + 1) },
-        { label: 'Remove last role',
-          disabled: fact.arity <= 1,
-          action: () => store.setFactArity(fact.id, fact.arity - 1) },
-        '---',
-        { label: fact.orientation === 'vertical' ? 'Show Horizontally' : 'Show Vertically',
-          action: () => store.updateFactLayout(fact.id, {
-            orientation: fact.orientation === 'vertical' ? 'horizontal' : 'vertical',
-          }) },
+        ...(fact.arity > 1 ? [
+          { label: 'Add spanning Uniq. Constr.',
+            disabled: (() => {
+              const allRoles = Array.from({ length: fact.arity }, (_, i) => i)
+              const key = JSON.stringify(allRoles)
+              return (fact.uniqueness || []).some(u => JSON.stringify([...u].sort()) === key)
+            })(),
+            action: () => {
+              const allRoles = Array.from({ length: fact.arity }, (_, i) => i)
+              store.toggleUniqueness(fact.id, allRoles)
+            } },
+          '---',
+        ] : []),
         ...(fact.arity === 2 ? [
           { label: 'Reverse Roles',
             action: () => store.reverseRoles(fact.id) },
         ] : []),
-        '---',
-        ...(fact.arity > 1 ? [
-          { label: 'Add Uniqueness Constraint',
-            action: () => store.startUniquenessConstruction(fact.id) },
-        ] : []),
+        { label: fact.orientation === 'vertical' ? 'Show Horizontally' : 'Show Vertically',
+          action: () => store.updateFactLayout(fact.id, {
+            orientation: fact.orientation === 'vertical' ? 'horizontal' : 'vertical',
+          }) },
         '---',
         { label: 'Change into', submenu: [
-            ...(!fact.objectified || fact.objectifiedKind === 'value' ? [
+            ...(!fact.objectified ? [
               { label: 'Nested Entity Type',
-                disabled: !!fact._refExpansion,
                 action: () => store.convertToNestedEntity(fact.id) },
-            ] : []),
-            ...(!fact.objectified || fact.objectifiedKind !== 'value' ? [
-              { label: 'Nested Value Type',
-                disabled: !!fact._refExpansion,
-                action: () => store.convertToNestedValue(fact.id) },
-            ] : []),
-            ...(fact.objectified ? [
+            ] : [
               { label: 'Fact Type',
                 action: () => store.updateFact(fact.id, {
                   objectified: false, objectifiedName: undefined,
                   nestedReading: false, readingAbove: false, readingOffsetAbove: null, readingOffsetBelow: null,
                 }) },
-            ] : []),
+            ]),
           ],
         },
         '---',
+        ...refExpansionItems,
         ...(fact.objectified ? (() => {
           const eligibleIls = (fact.implicitLinks || []).filter(il => fact.roles[il.roleIndex]?.objectTypeId)
           const shownCount  = eligibleIls.filter(il => store.isImplicitLinkShown(fact.id, il.roleIndex)).length
@@ -165,9 +174,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         { label: 'Remove from Diagram',
           action: () => store.removeElementFromDiagram(fact.id, store.activeDiagramId) },
         '---',
-        { label: fact.objectified
-            ? (fact.objectifiedKind === 'value' ? 'Delete Nested Value Type' : 'Delete Nested Entity Type')
-            : 'Delete Fact Type',
+        { label: fact.objectified ? 'Delete Nested Entity Type' : 'Delete Fact Type',
           danger: true, action: () => store.deleteFact(fact.id) },
       ],
     })
@@ -318,10 +325,22 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
       JSON.stringify([...pu].sort((a, b) => a - b)) === uKey
     )
     const canBePreferred = uRoles.length === fact.arity - 1
+    // The PI identifies the uncovered role's player. Disallow if that player
+    // would be a value type — value types are self-identifying via datatype.
+    let identifiesVt = false
+    if (canBePreferred) {
+      const covered = new Set(uRoles)
+      const uncoveredRi = fact.roles.findIndex((_, ri) => !covered.has(ri))
+      const uncoveredOtId = uncoveredRi >= 0 ? fact.roles[uncoveredRi]?.objectTypeId : null
+      const uncoveredOt = uncoveredOtId ? store.objectTypes.find(o => o.id === uncoveredOtId) : null
+      if (uncoveredOt?.kind === 'value') identifiesVt = true
+    }
+    const piDisabled = !canBePreferred || identifiesVt
+    const piTitle = identifiesVt ? 'A value type cannot have a preferred identifier' : undefined
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'Is Preferred', checked: isPreferred, disabled: !canBePreferred,
+        { label: 'Is Preferred', checked: isPreferred, disabled: piDisabled, title: piTitle,
           action: () => store.setPreferredUniqueness(fact.id, uRoles) },
         '---',
         { label: 'Change into Internal Frequency Constraint',
@@ -344,10 +363,19 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     const sortedKey = JSON.stringify([...uRoles].sort())
     const prefArr = il.preferredUniqueness || []
     const isPreferred = prefArr.some(pu => JSON.stringify([...pu].sort()) === sortedKey)
+    // PI on uRoles=[0] identifies the implicit link's role player (the parent
+    // fact's role at il.roleIndex). Disallow if that player is a value type.
+    let identifiesVt = false
+    if (uRoles.length === 1 && uRoles[0] === 0) {
+      const playerOtId = parentFact.roles?.[il.roleIndex]?.objectTypeId
+      const playerOt   = playerOtId ? store.objectTypes.find(o => o.id === playerOtId) : null
+      if (playerOt?.kind === 'value') identifiesVt = true
+    }
+    const piTitle = identifiesVt ? 'A value type cannot have a preferred identifier' : undefined
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'Is Preferred', checked: isPreferred,
+        { label: 'Is Preferred', checked: isPreferred, disabled: identifiesVt, title: piTitle,
           action: () => {
             const next = isPreferred
               ? prefArr.filter(pu => JSON.stringify([...pu].sort()) !== sortedKey)
@@ -419,9 +447,16 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
           action: () => store.updateConstraint(c.id, { constraintType: 'uniqueness', isPreferredIdentifier: false }) })
         items.push('---')
       } else if (c.constraintType === 'uniqueness') {
+        // External UC's target is the identified element. Disallow PI if the
+        // target is a value type — value types are self-identifying.
+        const targetOt = c.targetObjectTypeId
+          ? store.objectTypes.find(o => o.id === c.targetObjectTypeId) : null
+        const identifiesVt = targetOt?.kind === 'value'
         items.push({
           label: 'Is Preferred Identifier',
           checked: !!c.isPreferredIdentifier,
+          disabled: identifiesVt,
+          title: identifiesVt ? 'A value type cannot have a preferred identifier' : undefined,
           action: () => store.updateConstraint(c.id, { isPreferredIdentifier: !c.isPreferredIdentifier }),
         })
         items.push({ label: 'Change into External Frequency Constraint',

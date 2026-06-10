@@ -3,6 +3,7 @@ import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds, computeOtSize } from './ObjectTypeNode'
 import { factBounds, nestedFactBounds, ROLE_W, ROLE_H, ROLE_GAP } from './FactTypeNode'
+import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 
 const MM_W  = 170
 const MM_H  = 110
@@ -46,9 +47,10 @@ export default function Minimap() {
     return () => { if (animTimerRef.current) clearTimeout(animTimerRef.current) }
   }, [])
 
+  const bottomPanelH = store.bottomPanelCollapsed ? BOTTOM_PANEL_TAB_STRIP_H : store.bottomPanelHeight
   const defaultX = winW - MM_W - 250   // leave room for inspector (240px) + gap
-  // Sit above the pill row (status bar 26px + gap 8px + pill HDR_H) with an 8px gap
-  const pillRowTop = winH - 26 - 8 - HDR_H
+  // Sit above the pill row (status bar 26px + bottom panel + gap 8px + pill HDR_H) with an 8px gap
+  const pillRowTop = winH - 26 - bottomPanelH - 8 - HDR_H
   const defaultY = pillRowTop - MM_H - HDR_H - 8
 
   const posX = store.minimapPos.x ?? defaultX
@@ -92,8 +94,10 @@ export default function Minimap() {
 
   const handleExpand = useCallback(() => {
     const pw = 114
+    const s   = useOrmStore.getState()
+    const bph = s.bottomPanelCollapsed ? BOTTOM_PANEL_TAB_STRIP_H : s.bottomPanelHeight
     const px = window.innerWidth  - 258 - pw
-    const py = window.innerHeight - 26  - 8 - HDR_H
+    const py = window.innerHeight - 26 - bph - 8 - HDR_H
     setExpandFrom({ x: px, y: py })
     setCollapsed(false)
     setAnimating(true)
@@ -162,7 +166,7 @@ export default function Minimap() {
 
   const inspectorWidth = store.inspectorWidth
   const pillLeft = winW - inspectorWidth - 6 - PILL_W
-  const pillTop  = winH - 26 - 8 - HDR_H
+  const pillTop  = winH - 26 - bottomPanelH - 8 - HDR_H
   const displayLeft = expandFrom?.x ?? (collapsed ? pillLeft : posX)
   const displayTop  = expandFrom?.y ?? (collapsed ? pillTop  : posY)
 

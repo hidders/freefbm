@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, subtypeKindOf } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { useContextMenuHandlers } from '../hooks/useContextMenuHandlers'
 import ObjectTypeNode, { computeOtSize, entityBounds } from './ObjectTypeNode'
@@ -35,30 +35,34 @@ function noteEdgePoint(note, tx, ty) {
 
 // ── Validation error badges ──────────────────────────────────────────────────
 // OT badges are rendered inside ObjectTypeNode; this handles fact type and constraint badges.
-const BADGE_SEV_COLOUR = { error: '#dc2626', warning: '#d97706' }
-const BADGE_SEV_ICON   = { error: '✕', warning: '!' }
+const BADGE_SEV_COLOUR = { error: '#dc2626', warning: '#d97706', population: '#f5b400' }
+const BADGE_SEV_ICON   = { error: '✕', warning: '!', population: '!' }
 const BADGE_POPUP_FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
-function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints, positions }) {
-  const errors = store.validationErrors
+function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints, visibleSubtypes, positions }) {
+  const errors    = store.validationErrors || []
+  const popIssues = store.populationIssues || []
   const [popup, setPopup] = useState(null)  // { clientX, clientY, elementErrors }
 
-  useEffect(() => {
-    const onUp = () => setPopup(null)
-    window.addEventListener('mouseup', onUp)
-    return () => window.removeEventListener('mouseup', onUp)
-  }, [])
-
-  if (!errors || errors.length === 0) return null
+  if (errors.length === 0 && popIssues.length === 0) return null
 
   const errorIds = new Set(errors.map(e => e.elementId))
   const badgeColour = (id) => errors.some(e => e.elementId === id && e.severity === 'error') ? '#dc2626' : '#d97706'
   const R = 6
 
-  const handleMouseDown = (e, elementId) => {
-    if (e.button !== 0) return
+  const handleMouseEnter = (e, elementId) => {
     e.stopPropagation()
     setPopup({ clientX: e.clientX, clientY: e.clientY, elementErrors: errors.filter(err => err.elementId === elementId) })
+  }
+
+  // Population issues — yellow badges in the TL corner of the affected element.
+  const popIssueElementIds = new Set(popIssues.map(i => i.elementId))
+  const handlePopBadgeMouseEnter = (e, elementId) => {
+    e.stopPropagation()
+    const items = popIssues
+      .filter(i => i.elementId === elementId)
+      .map((i, idx) => ({ id: `pop-${elementId}-${idx}`, severity: 'population', message: i.message }))
+    setPopup({ clientX: e.clientX, clientY: e.clientY, elementErrors: items })
   }
 
   const POP_W = 260
@@ -72,7 +76,8 @@ function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints,
           const bx = ot.x + w / 2 - 1, by = ot.y - h / 2 + 1
           return (
             <g key={ot.id} style={{ cursor: 'help', pointerEvents: 'all' }}
-               onMouseDown={e => handleMouseDown(e, ot.id)}>
+               onMouseEnter={e => handleMouseEnter(e, ot.id)}
+               onMouseLeave={() => setPopup(null)}>
               <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
               <circle cx={bx} cy={by} r={R} fill={badgeColour(ot.id)}/>
               <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
@@ -83,21 +88,28 @@ function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints,
         {visibleFacts.filter(f => !f._implicit && errorIds.has(f.id)).map(f => {
           const p = positions[f.id]
           const fx = p?.x ?? f.x, fy = p?.y ?? f.y
-          const n = Math.max(f.arity, 1)
-          const isVert = (p?.orientation ?? f.orientation) === 'vertical'
           let bx, by
-          if (isVert) {
-            const totalH = n * ROLE_W + (n - 1) * ROLE_GAP
-            bx = fx + ROLE_H / 2 + R - 1
-            by = fy - totalH / 2 - R + 1
+          if (f.objectified) {
+            const b = nestedFactBounds({ ...f, x: fx, y: fy })
+            bx = b.right - 1
+            by = b.top   + 1
           } else {
-            const totalW = n * ROLE_W + (n - 1) * ROLE_GAP
-            bx = fx + totalW / 2 + R - 1
-            by = fy - ROLE_H / 2 - R + 1
+            const n = Math.max(f.arity, 1)
+            const isVert = (p?.orientation ?? f.orientation) === 'vertical'
+            if (isVert) {
+              const totalH = n * ROLE_W + (n - 1) * ROLE_GAP
+              bx = fx + ROLE_H / 2 + R - 1
+              by = fy - totalH / 2 - R + 1
+            } else {
+              const totalW = n * ROLE_W + (n - 1) * ROLE_GAP
+              bx = fx + totalW / 2 + R - 1
+              by = fy - ROLE_H / 2 - R + 1
+            }
           }
           return (
             <g key={f.id} style={{ cursor: 'help', pointerEvents: 'all' }}
-               onMouseDown={e => handleMouseDown(e, f.id)}>
+               onMouseEnter={e => handleMouseEnter(e, f.id)}
+               onMouseLeave={() => setPopup(null)}>
               <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
               <circle cx={bx} cy={by} r={R} fill={badgeColour(f.id)}/>
               <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
@@ -109,9 +121,124 @@ function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints,
           const bx = c.x + R, by = c.y - R
           return (
             <g key={c.id} style={{ cursor: 'help', pointerEvents: 'all' }}
-               onMouseDown={e => handleMouseDown(e, c.id)}>
+               onMouseEnter={e => handleMouseEnter(e, c.id)}
+               onMouseLeave={() => setPopup(null)}>
               <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
               <circle cx={bx} cy={by} r={R} fill={badgeColour(c.id)}/>
+              <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
+                fontSize={7} fontWeight={700} fill="#fff" style={{ pointerEvents: 'none' }}>!</text>
+            </g>
+          )
+        })}
+        {(() => {
+          const sts = (visibleSubtypes ?? []).filter(st => errorIds.has(st.id))
+          if (sts.length === 0) return null
+          const otMap     = Object.fromEntries(visibleOts.map(o => [o.id, o]))
+          const nestedMap = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
+          return sts.map(st => {
+            const subBounds = playerBounds(st.subId,   otMap, nestedMap)
+            const supBounds = playerBounds(st.superId, otMap, nestedMap)
+            if (!subBounds || !supBounds) return null
+            const from = rectBorderPoint(subBounds, supBounds.cx, supBounds.cy)
+            const to   = rectBorderPoint(supBounds, subBounds.cx, subBounds.cy)
+            const bx = (from.x + to.x) / 2
+            const by = (from.y + to.y) / 2
+            return (
+              <g key={st.id} style={{ cursor: 'help', pointerEvents: 'all' }}
+                 onMouseEnter={e => handleMouseEnter(e, st.id)}
+                 onMouseLeave={() => setPopup(null)}>
+                <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
+                <circle cx={bx} cy={by} r={R} fill={badgeColour(st.id)}/>
+                <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
+                  fontSize={7} fontWeight={700} fill="#fff" style={{ pointerEvents: 'none' }}>!</text>
+              </g>
+            )
+          })
+        })()}
+        {visibleOts.filter(ot => popIssueElementIds.has(ot.id)).map(ot => {
+          const { w, h } = computeOtSize(ot)
+          const bx = ot.x - w / 2 + 1, by = ot.y - h / 2 + 1
+          return (
+            <g key={`pop-${ot.id}`} style={{ cursor: 'help', pointerEvents: 'all' }}
+               onMouseEnter={e => handlePopBadgeMouseEnter(e, ot.id)}
+               onMouseLeave={() => setPopup(null)}>
+              <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
+              <circle cx={bx} cy={by} r={R} fill="#f5b400"/>
+              <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
+                fontSize={7} fontWeight={700} fill="#fff" style={{ pointerEvents: 'none' }}>!</text>
+            </g>
+          )
+        })}
+        {visibleFacts.filter(f => !f._implicit && popIssueElementIds.has(f.id)).map(f => {
+          const p = positions[f.id]
+          const fx = p?.x ?? f.x, fy = p?.y ?? f.y
+          let bx, by
+          if (f.objectified) {
+            const b = nestedFactBounds({ ...f, x: fx, y: fy })
+            bx = b.left + 1
+            by = b.top  + 1
+          } else {
+            const n = Math.max(f.arity, 1)
+            const isVert = (p?.orientation ?? f.orientation) === 'vertical'
+            if (isVert) {
+              const totalH = n * ROLE_W + (n - 1) * ROLE_GAP
+              bx = fx - ROLE_H / 2 - R + 1
+              by = fy - totalH / 2 - R + 1
+            } else {
+              const totalW = n * ROLE_W + (n - 1) * ROLE_GAP
+              bx = fx - totalW / 2 - R + 1
+              by = fy - ROLE_H / 2 - R + 1
+            }
+          }
+          return (
+            <g key={`pop-${f.id}`} style={{ cursor: 'help', pointerEvents: 'all' }}
+               onMouseEnter={e => handlePopBadgeMouseEnter(e, f.id)}
+               onMouseLeave={() => setPopup(null)}>
+              <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
+              <circle cx={bx} cy={by} r={R} fill="#f5b400"/>
+              <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
+                fontSize={7} fontWeight={700} fill="#fff" style={{ pointerEvents: 'none' }}>!</text>
+            </g>
+          )
+        })}
+        {(() => {
+          const sts = (visibleSubtypes ?? []).filter(st => popIssueElementIds.has(st.id))
+          if (sts.length === 0) return null
+          const otMap     = Object.fromEntries(visibleOts.map(o => [o.id, o]))
+          const nestedMap = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
+          return sts.map(st => {
+            const subBounds = playerBounds(st.subId,   otMap, nestedMap)
+            const supBounds = playerBounds(st.superId, otMap, nestedMap)
+            if (!subBounds || !supBounds) return null
+            const from = rectBorderPoint(subBounds, supBounds.cx, supBounds.cy)
+            const to   = rectBorderPoint(supBounds, subBounds.cx, subBounds.cy)
+            // Offset slightly from the midpoint so it doesn't overlap the
+            // error badge if both are present on the same edge.
+            const bx = (from.x + to.x) / 2 + R + 2
+            const by = (from.y + to.y) / 2
+            return (
+              <g key={`pop-${st.id}`} style={{ cursor: 'help', pointerEvents: 'all' }}
+                 onMouseEnter={e => handlePopBadgeMouseEnter(e, st.id)}
+                 onMouseLeave={() => setPopup(null)}>
+                <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
+                <circle cx={bx} cy={by} r={R} fill="#f5b400"/>
+                <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
+                  fontSize={7} fontWeight={700} fill="#fff" style={{ pointerEvents: 'none' }}>!</text>
+              </g>
+            )
+          })
+        })()}
+        {/* Population badges for constraints (exclusion / equality / subset violations).
+            Schema-error badges sit at (c.x+R, c.y-R); population badges go to the
+            left so both can be visible simultaneously. */}
+        {(visibleConstraints ?? []).filter(c => popIssueElementIds.has(c.id)).map(c => {
+          const bx = c.x - R, by = c.y - R
+          return (
+            <g key={`pop-${c.id}`} style={{ cursor: 'help', pointerEvents: 'all' }}
+               onMouseEnter={e => handlePopBadgeMouseEnter(e, c.id)}
+               onMouseLeave={() => setPopup(null)}>
+              <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
+              <circle cx={bx} cy={by} r={R} fill="#f5b400"/>
               <text x={bx} y={by} textAnchor="middle" dominantBaseline="middle"
                 fontSize={7} fontWeight={700} fill="#fff" style={{ pointerEvents: 'none' }}>!</text>
             </g>
@@ -368,6 +495,20 @@ export default function Canvas() {
       return { factIds: objectifiedIds, otIds: NONE, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true, dimInnerFact: true }
     }
     if (tool === 'addSubtype') {
+      // After the source is picked, only same-kind targets stay highlighted
+      // (entity↔entity or value↔value — kinds are disjoint).
+      const draftKind = linkDraft?.type === 'subtype' && linkDraft.fromId
+        ? subtypeKindOf(linkDraft.fromId, store.objectTypes, store.facts)
+        : null
+      if (draftKind) {
+        const sameKindOts = new Set(
+          visibleOts.filter(o => o.kind === draftKind).map(o => o.id)
+        )
+        const sameKindFactIds = new Set(
+          visibleFacts.filter(f => f.objectified && f.objectifiedKind === draftKind).map(f => f.id)
+        )
+        return { factIds: sameKindFactIds, otIds: sameKindOts, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true, dimInnerFact: true }
+      }
       return { factIds: objectifiedIds, otIds: NONE, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true, dimInnerFact: true }
     }
     if (tool === 'assignRole') {
@@ -399,7 +540,7 @@ export default function Canvas() {
     }
     if (tool === 'addConstraint:valueRange') {
       const eligibleOtIds = new Set(
-        visibleOts.filter(ot => ot.kind === 'value' || (ot.kind === 'entity' && ot.refMode && ot.refMode !== 'none')).map(ot => ot.id)
+        visibleOts.filter(ot => ot.kind === 'value').map(ot => ot.id)
       )
       return { factIds: NONE, otIds: eligibleOtIds, subtypesDim: true, constraintsDim: true, connectorsDim: true, dimObjectification: true }
     }
@@ -658,7 +799,6 @@ export default function Canvas() {
     if (store.tool === 'addValue')      { store.addValue(x, y);  store.setTool('select'); return }
     if (store.tool === 'addFact2')      { store.addFact(x, y, 2); store.setTool('select'); return }
     if (store.tool === 'addNestedFact')      { store.addNestedFact(x, y, 2); store.setTool('select'); return }
-    if (store.tool === 'addNestedValueFact') { store.addNestedValueFact(x, y, 2); store.setTool('select'); return }
     if (store.tool.startsWith('addConstraint:') && store.tool !== 'addConstraint:valueRange' && store.tool !== 'addConstraint:cardinality') {
       store.addConstraint(store.tool.split(':')[1], x, y)
       store.setTool('select'); return
@@ -1222,7 +1362,7 @@ export default function Canvas() {
               noteSubjectIds={isNotePickMode ? new Set() : rsIds}/>
           </g>
           <ConstraintMemberLabels/>
-          <ValidationBadges store={store} visibleOts={visibleOts} visibleFacts={visibleFacts} visibleConstraints={visibleConstraints} positions={store.diagrams.find(d => d.id === store.activeDiagramId)?.positions ?? {}}/>
+          <ValidationBadges store={store} visibleOts={visibleOts} visibleFacts={visibleFacts} visibleConstraints={visibleConstraints} visibleSubtypes={visibleSubtypes} positions={store.diagrams.find(d => d.id === store.activeDiagramId)?.positions ?? {}}/>
           </g>{/* end previewDim wrapper */}
           {(qd || store.queryIndexHighlight) && <QueryCopies
             mousePos={mousePos}

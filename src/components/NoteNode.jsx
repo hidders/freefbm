@@ -1,10 +1,43 @@
-import React from 'react'
+import React, { useRef, useState, useLayoutEffect } from 'react'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 const FOLD = 16  // dog-ear size
 
+const textStyle = {
+  fontSize: 11,
+  fontFamily: FONT,
+  lineHeight: '14px',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  overflow: 'hidden',
+  height: '100%',
+  boxSizing: 'border-box',
+}
+
 export default function NoteNode({ note, selected, onDragStart, onResizeStart, onDoubleClick, onContextMenu }) {
   const { id, x, y, w, h, text } = note
+  const [truncated, setTruncated] = useState(null)
+  const measRef = useRef(null)
+  const measKey = useRef('')
+
+  useLayoutEffect(() => {
+    const key = `${text}|${w}|${h}`
+    if (measKey.current === key) return
+    measKey.current = key
+
+    if (!text) { setTruncated(null); return }
+    const m = measRef.current
+    if (!m) return
+
+    m.textContent = text
+    if (m.scrollHeight <= m.clientHeight) { setTruncated(null); return }
+
+    const ratio = m.clientHeight / m.scrollHeight
+    const estimate = Math.floor(text.length * ratio * 0.92)
+    const safe = Math.max(1, Math.min(estimate, text.length - 5))
+    setTruncated(text.slice(0, safe) + ' [...]')
+  }, [text, w, h])
+
   const lx = x - w / 2
   const ly = y - h / 2
 
@@ -61,26 +94,30 @@ export default function NoteNode({ note, selected, onDragStart, onResizeStart, o
       {/* Text — foreignObject lets the browser handle word-wrapping as w/h change */}
       <foreignObject x={textX} y={textY} width={textW} height={textH}
         style={{ pointerEvents: 'none', overflow: 'hidden' }}>
-        <div
-          style={{
-            fontSize: 11,
-            fontFamily: FONT,
-            lineHeight: '14px',
-            color: text ? '#333' : '#bbb',
-            fontStyle: text ? 'normal' : 'italic',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            overflow: 'hidden',
-            height: '100%',
-            boxSizing: 'border-box',
-          }}
-        >
-          {/* Float placeholder clears only the fold triangle; text flows into the
-              full width below it automatically via normal CSS float behaviour. */}
-          {foldReserveH > 0 && (
-            <div style={{ float: 'right', width: FOLD, height: foldReserveH, pointerEvents: 'none' }}/>
-          )}
-          {text || 'Note…'}
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+          <div
+            style={{
+              ...textStyle,
+              color: text ? '#333' : '#bbb',
+              fontStyle: text ? 'normal' : 'italic',
+            }}
+          >
+            {/* Float placeholder clears only the fold triangle; text flows into the
+                full width below it automatically via normal CSS float behaviour. */}
+            {foldReserveH > 0 && (
+              <div style={{ float: 'right', width: FOLD, height: foldReserveH, pointerEvents: 'none' }}/>
+            )}
+            {truncated || text || 'Note…'}
+          </div>
+          {/* Hidden measurement — same font/width to match text wrapping exactly */}
+          <div
+            ref={measRef}
+            style={{
+              ...textStyle,
+              position: 'absolute', left: 0, top: 0,
+              visibility: 'hidden', pointerEvents: 'none',
+            }}
+          />
         </div>
       </foreignObject>
 

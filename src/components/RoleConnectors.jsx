@@ -6,6 +6,7 @@ import { ROLE_W, ROLE_H, ROLE_GAP, nestedFactBounds, displayRoleOrder } from './
 export { roleAnchor } from '../utils/geometry'
 import { roleAnchor } from '../utils/geometry'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
+import { findCompositePI } from '../utils/refMode'
 
 const DOT_R = 4  // mandatory dot radius
 
@@ -398,7 +399,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
           const anchor = roleAnchor(fact, ri, px, py)
           const border = playerBorderPoint(ot, nf, anchor.x, anchor.y)
           const pos    = dotAtObject ? border : anchor
-          const isSelected = sel?.factId === fact.id && sel?.roleIndex === ri
+          const isSelected = sel?.factId === fact.id && sel?.roleIndex === ri && !sel?.implied
           const dotOpacity = queryReachable != null
             ? (queryReachable.has(fact.id) && queryReachable.has(role.objectTypeId) ? 1 : 0.2)
             : 1
@@ -428,6 +429,66 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
           )
         }).filter(Boolean)
       )}
+      {/* Implied mandatory dots — one per preferred uniqueness, on the "other role".
+          Also one per cross-fact external uniqueness PI, on the entity role.
+          Only rendered when the role isn't already explicitly mandatory. */}
+      {visibleFacts.flatMap(fact => {
+        const prefs = fact.preferredUniqueness || []
+        const impliedRoleIndices = []
+        prefs.forEach(pu => {
+          const covered = new Set(pu)
+          for (let ri = 0; ri < fact.arity; ri++) {
+            if (!covered.has(ri) && !impliedRoleIndices.includes(ri)) impliedRoleIndices.push(ri)
+          }
+        })
+        if (!fact._implicit) {
+          for (const ot of store.objectTypes) {
+            if (ot.kind !== 'entity') continue
+            const cp = findCompositePI(ot, store.facts, store.objectTypes, store.constraints)
+            if (!cp || !cp.factIds?.includes(fact.id)) continue
+            const ci = cp.factIds.indexOf(fact.id)
+            const entityRoleIdx = cp.entityRoleIndices?.[ci] ?? cp.entityRoleIndex
+            if (entityRoleIdx != null && !impliedRoleIndices.includes(entityRoleIdx)) {
+              impliedRoleIndices.push(entityRoleIdx)
+            }
+          }
+        }
+        if (impliedRoleIndices.length === 0) return []
+        return impliedRoleIndices.map(ri => {
+          const role = fact.roles[ri]
+          if (!role || !role.objectTypeId) return null
+          if (role.mandatory) return null   // real dot already drawn
+          const ot = otMap[role.objectTypeId]
+          const nf = !ot ? nestedMap[role.objectTypeId] : null
+          if (!ot && !nf) return null
+          const { x: px, y: py } = playerXY(ot, nf)
+          const anchor = roleAnchor(fact, ri, px, py)
+          const border = playerBorderPoint(ot, nf, anchor.x, anchor.y)
+          const pos    = dotAtObject ? border : anchor
+          const isSelected = sel?.factId === fact.id && sel?.roleIndex === ri && sel?.implied === true
+          const dotOpacity = queryReachable != null
+            ? (queryReachable.has(fact.id) && queryReachable.has(role.objectTypeId) ? 0.2 : 0.2)
+            : 0.5
+          return (
+            <g key={`impl-dot-${fact.id}-${ri}`} className="selectable-group" opacity={dotOpacity}
+              style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer',
+                       filter: isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+              <circle
+                cx={pos.x} cy={pos.y} r={DOT_R}
+                fill={isSelected ? 'var(--accent)' : 'var(--col-mandatory)'}
+                onClick={e => {
+                  e.stopPropagation()
+                  if (store.queryEditDraft) return
+                  store.selectImpliedMandatoryDot(fact.id, ri)
+                }}/>
+              <rect className="hover-ring"
+                x={pos.x - DOT_R - 3} y={pos.y - DOT_R - 3}
+                width={(DOT_R + 3) * 2} height={(DOT_R + 3) * 2}
+                rx={DOT_R + 3}/>
+            </g>
+          )
+        }).filter(Boolean)
+      })}
       {/* Mandatory dots for implicit links (role 0 is always mandatory; role 1 is mandatory if base role is mandatory) */}
       {visibleFacts.flatMap(fact => {
         if (!fact.objectified) return []

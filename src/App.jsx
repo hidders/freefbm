@@ -1,8 +1,9 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import Toolbar from './components/Toolbar'
 import ToolPanel from './components/ToolPanel'
 import Canvas from './components/Canvas'
 import Inspector from './components/Inspector'
+import BottomPanel from './components/BottomPanel'
 import StatusBar from './components/StatusBar'
 import WelcomeScreen from './components/WelcomeScreen'
 import DiagramTabs from './components/DiagramTabs'
@@ -69,6 +70,11 @@ function useKeyboardShortcuts() {
         const s = useOrmStore.getState()
 
         if (s.selectedMandatoryDot) {
+          if (s.selectedMandatoryDot.implied) {
+            // Implied constraints cannot be deleted — just consume the keystroke
+            e.preventDefault()
+            return
+          }
           const { factId, roleIndex } = s.selectedMandatoryDot
           s.removeMandatoryRole(factId, roleIndex)
           e.preventDefault()
@@ -133,6 +139,10 @@ function useKeyboardShortcuts() {
         }
 
         if (selectedUniqueness) {
+          if (selectedUniqueness.implied) {
+            // Implied constraints cannot be deleted — just consume the keystroke
+            return
+          }
           const fact = store.facts.find(f => f.id === selectedUniqueness.factId)
           if (fact) {
             store.toggleUniqueness(selectedUniqueness.factId, fact.uniqueness[selectedUniqueness.uIndex])
@@ -234,6 +244,9 @@ export default function App() {
   useValidation()
 
   const isEmpty = store.objectTypes.length === 0 && store.facts.length === 0
+  const [welcomeDismissed, setWelcomeDismissed] = useState(
+    () => localStorage.getItem('hideWelcome') === 'true'
+  )
 
   return (
     <ErrorBoundary>
@@ -247,10 +260,17 @@ export default function App() {
 
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
           <div id="app-toolpanel" className="no-print" style={{ display: 'contents' }}><ToolPanel /></div>
-          <Canvas />
-          {isEmpty && <WelcomeScreen />}
-          <SchemaBrowser />
-          <ValidationPanel />
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+              <Canvas />
+              {isEmpty && !welcomeDismissed && (
+                <WelcomeScreen onClose={() => setWelcomeDismissed(true)} />
+              )}
+              <SchemaBrowser />
+              <ValidationPanel />
+            </div>
+            <BottomPanel />
+          </div>
           <div id="app-inspector" className="no-print" style={{ display: 'contents' }}><Inspector /></div>
         </div>
 
