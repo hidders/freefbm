@@ -150,6 +150,19 @@ const patchOccById = (diag, occId, patch) => ({
   occurrences: (diag.occurrences ?? []).map(o => o.id === occId ? { ...o, ...patch } : o),
 })
 
+// Build an initial roleOccurrenceMap for a fact given the occurrences in a diagram.
+// Maps role index (string) → occurrence ID of the first matching OT occurrence.
+const buildRoleOccurrenceMap = (fact, occurrences) => {
+  const map = {}
+  for (let i = 0; i < (fact.roles ?? []).length; i++) {
+    const r = fact.roles[i]
+    if (!r.objectTypeId) continue
+    const occ = occurrences.find(o => o.schemaElementId === r.objectTypeId)
+    if (occ) map[String(i)] = occ.id
+  }
+  return map
+}
+
 // Constraint-occurrence helpers (constraintOccurrences is separate from occurrences)
 const mkConstraintOcc = (schemaConstraintId, x, y) =>
   ({ id: `cocc_${uid()}`, schemaConstraintId, x: Math.round(x), y: Math.round(y), roleOccurrenceRefs: [] })
@@ -690,6 +703,7 @@ export const useOrmStore = create((set, get) => ({
 
   tool:      'select',
   linkDraft: null,
+  roleReconnectDraft: null,  // { factOccId, roleIndex, factSchemaId, currentOtSchemaId, diagramId } | null
   noteConnectorDraft:      null,  // { noteId } | null
   noteRemoveSubjectDraft:  null,  // { noteId } | null
 
@@ -1101,6 +1115,7 @@ export const useOrmStore = create((set, get) => ({
           selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitLink: null, selectedImplicitLinkRole: null,
           selectedUniqueness: null, multiSelectedIds: [],
           uniquenessConstruction: null, frequencyConstruction: null,
+          linkDraft: null, roleReconnectDraft: null,
           pan: { x: 0, y: 0 }, zoom: 1 })
   },
 
@@ -1422,6 +1437,7 @@ export const useOrmStore = create((set, get) => ({
       subtypeMappings,
       nestedEntityMappings,
       filePath, isDirty: false, selectedId: null, selectedKind: null,
+      linkDraft: null, roleReconnectDraft: null,
       // Restore schema-level display settings (v2 files only; defaults kept for older files)
       ...(schemaDisplaySettings.mandatoryDotPosition  != null && { mandatoryDotPosition:    schemaDisplaySettings.mandatoryDotPosition }),
       ...(schemaDisplaySettings.showReferenceMode     != null && { showReferenceMode:        schemaDisplaySettings.showReferenceMode }),
@@ -2402,18 +2418,102 @@ export const useOrmStore = create((set, get) => ({
     }))
   },
 
+  // ── occurrence-level role reconnect ──────────────────────────────────────
+
+  startRoleReconnect(factOccId, roleIndex, factSchemaId, currentOtSchemaId, diagramId) {
+    set({ roleReconnectDraft: { factOccId, roleIndex, factSchemaId, currentOtSchemaId, diagramId } })
+  },
+
+  cancelRoleReconnect() {
+    set({ roleReconnectDraft: null })
+  },
+
+  reconnectRoleOccurrence(newOtOccId) {
+    set(s => {
+      const draft = s.roleReconnectDraft
+      if (!draft) return {}
+      const { factOccId, roleIndex, factSchemaId, diagramId } = draft
+
+      const diag = s.diagrams.find(d => d.id === diagramId)
+      if (!diag) return { roleReconnectDraft: null }
+
+      const factOcc = (diag.occurrences ?? []).find(o => o.id === factOccId)
+      if (!factOcc) return { roleReconnectDraft: null }
+
+      const fact = s.facts.find(f => f.id === factSchemaId)
+      if (!fact) return { roleReconnectDraft: null }
+
+      const role = fact.roles[roleIndex]
+      if (!role) return { roleReconnectDraft: null }
+
+      const newOtOcc = (diag.occurrences ?? []).find(o => o.id === newOtOccId)
+      if (!newOtOcc) return { roleReconnectDraft: null }
+
+      const oldSchemaOtId = role.objectTypeId
+      const newSchemaOtId = newOtOcc.schemaElementId
+
+      const riKey = String(roleIndex)
+
+      if (oldSchemaOtId === newSchemaOtId) {
+        // Case 1: same schema type — only update FTO1's map
+        const updatedDiagrams = s.diagrams.map(d =>
+          d.id !== diagramId ? d
+          : patchOccById(d, factOccId, {
+              roleOccurrenceMap: { ...(factOcc.roleOccurrenceMap ?? {}), [riKey]: newOtOccId }
+            })
+        )
+        return { diagrams: updatedDiagrams, roleReconnectDraft: null, isDirty: true }
+      }
+
+      // Case 2: different schema type → schema change
+      const updatedFacts = s.facts.map(f =>
+        f.id !== fact.id ? f
+        : { ...f, roles: f.roles.map((r, i) => i !== roleIndex ? r : { ...r, objectTypeId: newSchemaOtId }) }
+      )
+
+      const updatedDiagrams = s.diagrams.map(d => {
+        const factOccsInDiag = (d.occurrences ?? []).filter(o => o.schemaElementId === fact.id)
+        if (factOccsInDiag.length === 0) return d
+
+        const newOtOccInDiag = (d.occurrences ?? []).find(o => o.schemaElementId === newSchemaOtId)
+        if (!newOtOccInDiag) {
+          // Case 2b-b2: remove all occurrences of this fact from the diagram
+          return { ...d, occurrences: (d.occurrences ?? []).filter(o => o.schemaElementId !== fact.id) }
+        }
+
+        // Case 2a or 2b-b1
+        const targetOtOccId = d.id === diagramId ? newOtOccId : newOtOccInDiag.id
+        return {
+          ...d,
+          occurrences: (d.occurrences ?? []).map(o =>
+            o.schemaElementId !== fact.id ? o
+            : { ...o, roleOccurrenceMap: { ...(o.roleOccurrenceMap ?? {}), [riKey]: targetOtOccId } }
+          )
+        }
+      })
+
+      const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, updatedFacts)
+      return { facts: updatedFacts, diagrams: syncedDiagrams, roleReconnectDraft: null, isDirty: true }
+    })
+  },
+
   // Add an extra occurrence of an element already in the diagram
   addExtraOccurrence(elementId, diagramId) {
     set(s => {
       const el = s.objectTypes.find(o => o.id === elementId) ?? s.facts.find(f => f.id === elementId)
       if (!el) return {}
-      const existingCount = s.diagrams
-        .find(d => d.id === diagramId)
-        ?.occurrences.filter(o => o.schemaElementId === elementId).length ?? 0
+      const diag = s.diagrams.find(d => d.id === diagramId)
+      const existingCount = diag?.occurrences.filter(o => o.schemaElementId === elementId).length ?? 0
       const offset = existingCount * 40
       const x = (el.x ?? 100) + offset
       const y = (el.y ?? 100) + offset
       const newOcc = mkOcc(elementId, x, y)
+      // If it's a fact, populate roleOccurrenceMap
+      const isFact = s.facts.some(f => f.id === elementId)
+      if (isFact && diag) {
+        const fact = s.facts.find(f => f.id === elementId)
+        newOcc.roleOccurrenceMap = buildRoleOccurrenceMap(fact, diag.occurrences)
+      }
       return {
         diagrams: s.diagrams.map(d =>
           d.id !== diagramId ? d : { ...d, occurrences: [...(d.occurrences ?? []), newOcc] }
@@ -5191,10 +5291,10 @@ export const useOrmStore = create((set, get) => ({
   setTool(tool)    {
     const prev = get().tool
     const clearRoleSelection = (prev === 'assignRole' && tool !== 'assignRole')
-    set({ tool, linkDraft: null, ...(clearRoleSelection ? { selectedId: null, selectedKind: null, selectedRole: null, selectedUniqueness: null } : {}) })
+    set({ tool, linkDraft: null, roleReconnectDraft: null, ...(clearRoleSelection ? { selectedId: null, selectedKind: null, selectedRole: null, selectedUniqueness: null } : {}) })
   },
   setLinkDraft(d)  { set({ linkDraft: d }) },
-  clearLinkDraft() { set({ linkDraft: null }) },
+  clearLinkDraft() { set({ linkDraft: null, roleReconnectDraft: null }) },
 
   // ── view ─────────────────────────────────────────────────────────────────
 

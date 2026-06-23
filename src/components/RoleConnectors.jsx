@@ -48,6 +48,11 @@ function playerXY(ot, nestedFact) {
 export default function RoleConnectors({ mousePos, queryReachable, queryOriginals }) {
   const store = useOrmStore()
   const { objectTypes, facts: visibleFacts } = useDiagramElements()
+  // Map by occurrence ID (for roleOccurrenceMap lookups)
+  const otByOccId = Object.fromEntries(
+    objectTypes.filter(o => o.occurrenceId).map(o => [o.occurrenceId, o])
+  )
+  // Map by schema ID (fallback — first occurrence found wins)
   const otMap     = Object.fromEntries(objectTypes.map(o => [o.id, o]))
   const nestedMap = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
   const dotAtObject = store.mandatoryDotPosition === 'object'
@@ -130,7 +135,9 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
   const connectors = visibleFacts.flatMap(fact =>
     fact.roles.map((role, ri) => {
       if (!role.objectTypeId) return null
-      const ot       = otMap[role.objectTypeId]
+      // Look up specific occurrence first, fall back to schema-ID match
+      const mappedOccId = fact.roleOccurrenceMap?.[String(ri)]
+      const ot       = (mappedOccId && otByOccId[mappedOccId]) || otMap[role.objectTypeId]
       const nf       = !ot ? nestedMap[role.objectTypeId] : null
       if (!ot && !nf) return null
 
