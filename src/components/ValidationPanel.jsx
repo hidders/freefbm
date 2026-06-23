@@ -139,10 +139,11 @@ export default function ValidationPanel() {
     if (e.elementKind === 'subtype') {
       const st = (store.subtypes || []).find(s => s.id === e.elementId)
       if (!st) return false
-      return !diagrams.some(d => d.elementIds === null ||
-        ((d.elementIds ?? []).includes(st.subId) && (d.elementIds ?? []).includes(st.superId)))
+      return !diagrams.some(d =>
+        d.occurrences?.some(o => o.schemaElementId === st.subId) &&
+        d.occurrences?.some(o => o.schemaElementId === st.superId))
     }
-    return !diagrams.some(d => d.elementIds === null || (d.elementIds ?? []).includes(e.elementId))
+    return !diagrams.some(d => d.occurrences?.some(o => o.schemaElementId === e.elementId))
   }
   const errors = (store.validationErrors || []).filter(e => !isElementOrphaned(e))
   const errorCount = errors.length

@@ -445,12 +445,12 @@ export default function QueryCopies({ onCopyClick, onCopyContextMenu, mousePos }
   const isPreview = !qd
 
 
-  // Apply diagram positions to all elements (not just visible ones)
+  // Apply diagram occurrence positions to all elements (not just visible ones)
   const diagram   = store.diagrams.find(d => d.id === store.activeDiagramId)
-  const positions = diagram?.positions ?? {}
+  const occMap    = Object.fromEntries((diagram?.occurrences ?? []).map(o => [o.schemaElementId, o]))
   // Also apply orientation and displayRoleOrder so copies mirror the diagram's presentation
   const applyPos  = (el) => {
-    const p = positions[el.id]
+    const p = occMap[el.id]
     if (!p) return el
     const r = { ...el, x: p.x ?? el.x, y: p.y ?? el.y }
     if (p.orientation     !== undefined) r.orientation     = p.orientation

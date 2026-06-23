@@ -18,11 +18,23 @@ export function useDiagramElements() {
 export function getDiagramElements(store) {
   const { objectTypes, facts, constraints, subtypes, diagrams, activeDiagramId } = store
   const diagram   = diagrams?.find(d => d.id === activeDiagramId) ?? diagrams?.[0]
-  const positions = diagram?.positions ?? {}
-  // elementIds: null  → no filter, show all (default/first diagram, old persisted state)
-  // elementIds: array → filter to exactly those ids (including intentionally empty [])
-  const hasFilter  = diagram?.elementIds != null
-  const elementIds = new Set(diagram?.elementIds ?? [])
+
+  // v2 format: diagram.occurrences array; v1 fallback: diagram.positions map
+  const hasOccurrences = diagram?.occurrences != null
+  const rawPositions = {}
+  if (hasOccurrences) {
+    for (const occ of (diagram?.occurrences ?? [])) {
+      const { id, schemaElementId, ...posData } = occ
+      rawPositions[schemaElementId] = posData
+    }
+  } else {
+    Object.assign(rawPositions, diagram?.positions ?? {})
+  }
+  const positions  = rawPositions
+  const hasFilter  = true
+  const elementIds = hasOccurrences
+    ? new Set((diagram?.occurrences ?? []).map(o => o.schemaElementId))
+    : new Set(diagram?.elementIds ?? [])
 
   const expandedRefModes = new Set(diagram?.expandedRefModes ?? [])
 
