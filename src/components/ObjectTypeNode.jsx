@@ -100,7 +100,15 @@ export function entityBounds(ot) {
 
 export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragStart, mousePos, onContextMenu, onDoubleClickValueRange, onValueRangeClick, onCardinalityRangeClick, onValueRangeContextMenu, onCardinalityRangeContextMenu, isShared, dimInternalConstraints }) {
   const store = useOrmStore()
-  const isSelected    = store.selectedId === ot.id || store.multiSelectedIds.includes(ot.id)
+  const isSelected = occurrenceId
+    ? ((store.selectedOccurrenceId !== null
+         ? store.selectedOccurrenceId === occurrenceId
+         : store.selectedId === ot.id)
+       ||
+       (store.multiSelectedOccurrenceIds.length > 0
+         ? store.multiSelectedOccurrenceIds.includes(occurrenceId)
+         : store.multiSelectedIds.includes(ot.id)))
+    : (store.selectedId === ot.id || store.multiSelectedIds.includes(ot.id))
   const isConstraintTarget = !store.queryEditDraft && !store.queryIndexHighlight && store.selectedKind === 'constraint' &&
     store.constraints.find(c => c.id === store.selectedId)?.targetObjectTypeId === ot.id
 
@@ -307,10 +315,10 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
       return
     }
     if (e.shiftKey) {
-      store.shiftSelect(ot.id)
+      store.shiftSelect(ot.id, occurrenceId ?? null)
       return
     }
-    store.select(ot.id, ot.kind)
+    store.select(ot.id, ot.kind, occurrenceId ?? null)
     onDragStart(ot.id, ot.kind, e, occurrenceId)
   }, [store, ot, onDragStart, isSubtypeTool, isAssignTool, editing, editingRef, occurrenceId])
 
@@ -339,7 +347,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
       className={store.queryEditDraft ? 'selectable-group qe-selectable' : 'selectable-group'}
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
-      onContextMenu={onContextMenu}
+      onContextMenu={e => onContextMenu(e, occurrenceId ?? null)}
       style={{ cursor: (() => {
         if (editing || editingRef) return 'text'
         if (store.queryEditDraft) return 'pointer'

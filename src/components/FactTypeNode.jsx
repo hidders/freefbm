@@ -443,7 +443,17 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   const store = useOrmStore()
   const isImplicitSelected = fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact._parentFactId && store.selectedImplicitLink === fact._implicitRoleIndex
   const hasSelectedImplicitLink = !fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact.id
-  const isSelected     = (store.selectedId === fact.id && !hasSelectedImplicitLink) || store.multiSelectedIds.includes(fact.id) || isImplicitSelected
+  const isSelected = isImplicitSelected || (fact._implicit ? false : (
+    occurrenceId
+      ? ((store.selectedOccurrenceId !== null
+           ? store.selectedOccurrenceId === occurrenceId
+           : store.selectedId === fact.id && !hasSelectedImplicitLink)
+         ||
+         (store.multiSelectedOccurrenceIds.length > 0
+           ? store.multiSelectedOccurrenceIds.includes(occurrenceId)
+           : store.multiSelectedIds.includes(fact.id)))
+      : ((store.selectedId === fact.id && !hasSelectedImplicitLink) || store.multiSelectedIds.includes(fact.id))
+  ))
   const hasSelectedRole = store.selectedRole?.factId === fact.id
   const hasSelectedUniqueness = store.selectedUniqueness?.factId === fact.id
   const hasSelectedImplicitLinkRole = fact._implicit && store.selectedImplicitLinkRole?.factId === fact._parentFactId &&
@@ -618,7 +628,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       return
     }
     if (e.shiftKey) {
-      store.shiftSelect(fact.id)
+      store.shiftSelect(fact.id, fact._implicit ? null : (occurrenceId ?? null))
       onDragStart(fact.id, fact._implicit ? 'implicitLink' : 'fact', e, occurrenceId)
       return
     }
@@ -627,7 +637,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       onDragStart(fact.id, 'implicitLink', e)
       return
     }
-    store.select(fact.id, 'fact')
+    store.select(fact.id, 'fact', occurrenceId ?? null)
     onDragStart(fact.id, 'fact', e, occurrenceId)
   }, [store, fact.id, onDragStart, isAssignTool, inConstruction, inFrequencyConstruction, occurrenceId])
 
@@ -712,7 +722,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       onDragStart(fact.id, 'implicitLink', e)
       return
     }
-    if (e.shiftKey) { store.shiftSelect(fact.id); return }
+    if (e.shiftKey) { store.shiftSelect(fact.id, occurrenceId ?? null); return }
     if (store.sequenceConstruction) {
       if (isVcConstruction && !vcEligibleRoles.has(roleIndex)) return
       store.collectSequenceMember({ kind: 'role', factId: fact.id, roleIndex })
@@ -1823,7 +1833,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     )}
       {/* ── Main fact-type group (role boxes + bars + reading) ───────────────── */}
       <g className={inQueryEdit && fact.objectified ? 'selectable-group qe-selectable' : 'selectable-group'}
-        onMouseDown={handleMouseDown} onContextMenu={onContextMenu}
+        onMouseDown={handleMouseDown} onContextMenu={e => onContextMenu(e, occurrenceId ?? null)}
         style={{ cursor: (() => {
           if (fact._implicit) return isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab'
           if (inQueryEdit) return fact.objectified ? 'pointer' : 'default'
