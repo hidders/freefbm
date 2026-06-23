@@ -143,6 +143,11 @@ export default function ValidationPanel() {
         d.occurrences?.some(o => o.schemaElementId === st.subId) &&
         d.occurrences?.some(o => o.schemaElementId === st.superId))
     }
+    // Check constraintOccurrences for constraint elements
+    const isConstraint = (store.constraints || []).some(c => c.id === e.elementId)
+    if (isConstraint) {
+      return !diagrams.some(d => d.constraintOccurrences?.some(co => co.schemaConstraintId === e.elementId))
+    }
     return !diagrams.some(d => d.occurrences?.some(o => o.schemaElementId === e.elementId))
   }
   const errors = (store.validationErrors || []).filter(e => !isElementOrphaned(e))

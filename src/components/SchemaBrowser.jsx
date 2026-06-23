@@ -34,9 +34,14 @@ const CONSTRAINT_ICON_MAP = {
   valueComparison: <ValueComparisonConstraintIcon />,
 }
 
-// Returns the set of diagram IDs that contain an element
+// Returns the set of diagrams that contain an element (non-constraint)
 function diagramsContaining(elementId, diagrams) {
   return diagrams.filter(d => d.occurrences?.some(o => o.schemaElementId === elementId))
+}
+
+// Returns the set of diagrams that contain a constraint
+function constraintDiagramsContaining(constraintId, diagrams) {
+  return diagrams.filter(d => d.constraintOccurrences?.some(co => co.schemaConstraintId === constraintId))
 }
 
 function subtypeDiagramsContaining(st, diagrams) {
@@ -147,7 +152,7 @@ function ImpliedLinkIcon() {
   )
 }
 
-function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd, onDelete }) {
+function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd, onAddExtra, addButtonStyle, onDelete }) {
   return (
     <div
       onClick={onSelect}
@@ -169,10 +174,34 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
             onClick={e => { e.stopPropagation(); onAdd() }}
             title="Add to this diagram"
             style={{
+              background: addButtonStyle?.background ?? 'none',
+              border: `1px solid ${addButtonStyle?.borderColor ?? 'var(--border)'}`,
+              borderRadius: 3, cursor: 'pointer',
+              fontSize: 9, color: addButtonStyle?.color ?? 'var(--ink-muted)', padding: '1px 5px',
+              width: '100%',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = '#1e3a8a'
+              e.currentTarget.style.color = 'white'
+              e.currentTarget.style.borderColor = '#1e3a8a'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = addButtonStyle?.background ?? 'none'
+              e.currentTarget.style.color = addButtonStyle?.color ?? 'var(--ink-muted)'
+              e.currentTarget.style.borderColor = addButtonStyle?.borderColor ?? 'var(--border)'
+            }}
+          >+</button>
+        )}
+        {inCurrentDiagram && onAddExtra && (
+          <button
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onAddExtra() }}
+            title="Add another occurrence"
+            style={{
               background: 'none', border: '1px solid var(--border)',
               borderRadius: 3, cursor: 'pointer',
-              fontSize: 9, color: 'var(--ink-muted)', padding: '1px 5px',
-              width: '100%',
+              fontSize: 11, color: 'var(--ink-muted)', padding: '0px 3px',
+              width: '100%', lineHeight: '14px',
             }}
             onMouseEnter={e => {
               e.currentTarget.style.background = '#1e3a8a'
@@ -184,7 +213,7 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
               e.currentTarget.style.color = 'var(--ink-muted)'
               e.currentTarget.style.borderColor = 'var(--border)'
             }}
-          >+</button>
+          >⊕</button>
         )}
       </div>
       <span style={{ flexShrink: 0, marginRight: 5, lineHeight: 0, transform: 'scale(0.8)' }}>
@@ -357,6 +386,7 @@ export default function SchemaBrowser() {
 
   // "in current diagram" checks
   const inDiag = (id) => diagram?.occurrences?.some(o => o.schemaElementId === id) ?? false
+  const cInCurrentDiag = (id) => diagram?.constraintOccurrences?.some(co => co.schemaConstraintId === id) ?? false
 
   const subtypeInDiag = (st) =>
     (diagram?.occurrences?.some(o => o.schemaElementId === st.subId) &&
@@ -366,19 +396,63 @@ export default function SchemaBrowser() {
   const ilInDiag = (il) => inDiag(il.factId) && shownImplicitLinksSet.has(`${il.factId}:${il.roleIndex}`)
 
   // "orphaned" = not in any diagram
-  const isOrphaned   = (id) => !diagrams.some(d => d.occurrences?.some(o => o.schemaElementId === id))
-  const isStOrphaned = (st) => !diagrams.some(d =>
+  const isOrphaned    = (id) => !diagrams.some(d => d.occurrences?.some(o => o.schemaElementId === id))
+  const isCOrphaned   = (id) => !diagrams.some(d => d.constraintOccurrences?.some(co => co.schemaConstraintId === id))
+  const isStOrphaned  = (st) => !diagrams.some(d =>
     d.occurrences?.some(o => o.schemaElementId === st.subId) &&
     d.occurrences?.some(o => o.schemaElementId === st.superId)
   )
 
   const expandedRefModes = new Set(diagram?.expandedRefModes ?? [])
 
+  // Constraint dep-readiness helper
+  const constraintDepsStatus = (c) => {
+    const deps = []
+    if (c.sequences) {
+      for (const seq of c.sequences)
+        for (const m of seq) {
+          if (m.kind === 'role' && m.factId) {
+            if (m.factId.includes('_il_')) {
+              const [fid] = m.factId.split('_il_')
+              deps.push({ kind: 'fact', id: fid })
+            } else {
+              deps.push({ kind: 'fact', id: m.factId })
+            }
+          }
+          if (m.kind === 'subtype' && m.subtypeId) deps.push({ kind: 'subtype', id: m.subtypeId })
+        }
+    }
+    if (c.roleSequences) {
+      for (const seq of c.roleSequences)
+        for (const ref of seq)
+          if (ref.factId) {
+            const id = ref.factId.includes('_il_') ? ref.factId.split('_il_')[0] : ref.factId
+            deps.push({ kind: 'fact', id })
+          }
+    }
+    if (c.targetObjectTypeId) deps.push({ kind: 'ot', id: c.targetObjectTypeId })
+    if (deps.length === 0) return 'empty'
+    const allPresent = deps.every(dep => {
+      if (dep.kind === 'fact') return inDiag(dep.id)
+      if (dep.kind === 'ot')   return inDiag(dep.id)
+      if (dep.kind === 'subtype') {
+        const st = store.subtypes.find(s => s.id === dep.id)
+        return st && inDiag(st.subId) && inDiag(st.superId)
+      }
+      return false
+    })
+    return allPresent ? 'ready' : 'partial'
+  }
+
+  const readyConstraintCount = store.constraints.filter(c =>
+    !cInCurrentDiag(c.id) && constraintDepsStatus(c) === 'ready'
+  ).length
+
   const allOrphanCount = [
     ...store.objectTypes.filter(o => isOrphaned(o.id)),
     ...store.facts.filter(f => isOrphaned(f.id)),
     ...store.subtypes.filter(st => isStOrphaned(st)),
-    ...store.constraints.filter(c => isOrphaned(c.id)),
+    ...store.constraints.filter(c => isCOrphaned(c.id)),
   ].length
 
   useEffect(() => {
@@ -488,6 +562,7 @@ export default function SchemaBrowser() {
             inCurrentDiagram={inDiag(el.id)}
             onSelect={() => selectEl(el.id, el.kind)}
             onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
+            onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
             onDelete={() => store.deleteObjectType(el.id)}
           />
         )
@@ -504,6 +579,7 @@ export default function SchemaBrowser() {
           inCurrentDiagram={inDiag(el.id)}
           onSelect={() => selectEl(el.id, el.kind)}
           onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
+          onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
           onDelete={() => store.deleteFact(el.id)}
         />
       ),
@@ -519,6 +595,7 @@ export default function SchemaBrowser() {
           inCurrentDiagram={inDiag(el.id)}
           onSelect={() => selectEl(el.id, el.kind)}
           onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
+          onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
           onDelete={() => store.deleteObjectType(el.id)}
         />
       ),
@@ -563,6 +640,7 @@ export default function SchemaBrowser() {
             inCurrentDiagram={inDiag(f.id)}
             onSelect={() => selectEl(f.id, 'fact')}
             onAdd={() => store.addElementToDiagram(f.id, diagram?.id)}
+            onAddExtra={diagram ? () => store.addExtraOccurrence(f.id, diagram.id) : undefined}
             onDelete={() => store.deleteFact(f.id)}
           />
         )
@@ -589,20 +667,30 @@ export default function SchemaBrowser() {
     },
     {
       title: 'External Constraints',
-      items: showOrphans ? constraintNodes.filter(c => isOrphaned(c.id)) : constraintNodes,
-      renderRow: (c) => (
-        <ElementRow key={c.id}
-          icon={CONSTRAINT_ICON_MAP[c.constraintType] ?? <UniquenessConstraintIcon />}
-          label={<span style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic' }}>
-            {c.constraintType}
-          </span>}
-          isOrphaned={isOrphaned(c.id)}
-          inCurrentDiagram={inDiag(c.id)}
-          onSelect={() => selectEl(c.id, 'constraint')}
-          onAdd={() => store.addElementToDiagram(c.id, diagram?.id)}
-          onDelete={() => store.deleteConstraint(c.id)}
-        />
-      ),
+      items: showOrphans ? constraintNodes.filter(c => isCOrphaned(c.id)) : constraintNodes,
+      renderRow: (c) => {
+        const inCurrent = cInCurrentDiag(c.id)
+        const status = inCurrent ? null : constraintDepsStatus(c)
+        const addStyle = status === 'ready'
+          ? { color: '#166534', borderColor: '#16a34a', background: 'rgba(22,163,74,0.07)' }
+          : status === 'partial'
+            ? { color: '#92400e', borderColor: '#d97706', background: 'rgba(217,119,6,0.07)' }
+            : undefined
+        return (
+          <ElementRow key={c.id}
+            icon={CONSTRAINT_ICON_MAP[c.constraintType] ?? <UniquenessConstraintIcon />}
+            label={<span style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic' }}>
+              {c.constraintType}
+            </span>}
+            isOrphaned={isCOrphaned(c.id)}
+            inCurrentDiagram={inCurrent}
+            onSelect={() => selectEl(c.id, 'constraint')}
+            onAdd={() => store.addElementToDiagram(c.id, diagram?.id)}
+            addButtonStyle={addStyle}
+            onDelete={() => store.deleteConstraint(c.id)}
+          />
+        )
+      },
     },
     {
       title: 'Notes',
@@ -669,6 +757,13 @@ export default function SchemaBrowser() {
               minWidth: 14, textAlign: 'center',
             }}>{allOrphanCount}</span>
           )}
+          {readyConstraintCount > 0 && (
+            <span style={{
+              background: '#16a34a', color: 'white',
+              borderRadius: 8, fontSize: 9, padding: '0 4px', lineHeight: '14px',
+              minWidth: 14, textAlign: 'center',
+            }}>{readyConstraintCount}</span>
+          )}
         </div>
 
         {/* Panel content */}
@@ -697,6 +792,19 @@ export default function SchemaBrowser() {
               ⠿ schema browser
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              {readyConstraintCount > 0 && (
+                <span
+                  title={`${readyConstraintCount} constraint${readyConstraintCount !== 1 ? 's' : ''} ready to add`}
+                  style={{
+                    fontSize: 9, color: 'white',
+                    border: '1px solid #16a34a',
+                    borderRadius: 3, padding: '0 4px', lineHeight: '14px',
+                    background: '#16a34a', pointerEvents: 'none',
+                  }}
+                >
+                  {readyConstraintCount} ready
+                </span>
+              )}
               {allOrphanCount > 0 && (
                 <span
                   onClick={() => setShowOrphans(p => !p)}

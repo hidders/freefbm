@@ -439,7 +439,7 @@ export function factBounds(fact) {
   }
 }
 
-export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleContextMenu, onBarContextMenu, onRoleValueClick, onNestedVrClick, onRoleCardinalityClick, onNestedCrClick, onIfContextMenu, onRoleValueContextMenu, onRoleCrContextMenu, onNestedVrContextMenu, onNestedCrContextMenu, isShared, dimObjectification, dimInnerFact, visibleConstraints, dimInternalConstraints }) {
+export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContextMenu, onRoleContextMenu, onBarContextMenu, onRoleValueClick, onNestedVrClick, onRoleCardinalityClick, onNestedCrClick, onIfContextMenu, onRoleValueContextMenu, onRoleCrContextMenu, onNestedVrContextMenu, onNestedCrContextMenu, isShared, dimObjectification, dimInnerFact, visibleConstraints, dimInternalConstraints }) {
   const store = useOrmStore()
   const isImplicitSelected = fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact._parentFactId && store.selectedImplicitLink === fact._implicitRoleIndex
   const hasSelectedImplicitLink = !fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact.id
@@ -619,7 +619,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     }
     if (e.shiftKey) {
       store.shiftSelect(fact.id)
-      onDragStart(fact.id, fact._implicit ? 'implicitLink' : 'fact', e)
+      onDragStart(fact.id, fact._implicit ? 'implicitLink' : 'fact', e, occurrenceId)
       return
     }
     if (fact._implicit) {
@@ -628,8 +628,8 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
       return
     }
     store.select(fact.id, 'fact')
-    onDragStart(fact.id, 'fact', e)
-  }, [store, fact.id, onDragStart, isAssignTool, inConstruction, inFrequencyConstruction])
+    onDragStart(fact.id, 'fact', e, occurrenceId)
+  }, [store, fact.id, onDragStart, isAssignTool, inConstruction, inFrequencyConstruction, occurrenceId])
 
   const isRoleSelected = (ri) =>
     store.selectedRole?.factId === fact.id && store.selectedRole?.roleIndex === ri
@@ -816,7 +816,7 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
           if (done) return; done = true
           window.removeEventListener('mousemove', onMove)
           window.removeEventListener('mouseup',   onUp)
-          onDragStart(fact.id, 'fact', { clientX: startX, clientY: startY })
+          onDragStart(fact.id, 'fact', { clientX: startX, clientY: startY }, occurrenceId)
         }
       }
       const onUp = (ue) => {
@@ -837,9 +837,9 @@ export default function FactTypeNode({ fact, onDragStart, onContextMenu, onRoleC
     } else {
       // Border click: select fact and start drag
       store.select(fact.id, 'fact')
-      onDragStart(fact.id, 'fact', e)
+      onDragStart(fact.id, 'fact', e, occurrenceId)
     }
-  }, [store, fact.id, isAssignTool, inConstruction, inFrequencyConstruction, isSelected, onDragStart])
+  }, [store, fact.id, isAssignTool, inConstruction, inFrequencyConstruction, isSelected, onDragStart, occurrenceId])
 
   // Dynamic cursor on role boxes: crosshair (interior → selects role) vs pointer (border → selects fact)
   const handleRoleMouseMove = useCallback((e) => {
