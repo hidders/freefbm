@@ -173,16 +173,19 @@ function useKeyboardShortcuts() {
         const step = e.shiftKey ? 50 : 10
         const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
         const dy = e.key === 'ArrowUp'   ? -step : e.key === 'ArrowDown'  ? step : 0
-        const diagramPositions = useOrmStore.getState().diagrams
-          ?.find(d => d.id === store.activeDiagramId)?.positions ?? {}
+        const activeDiag = useOrmStore.getState().diagrams
+          ?.find(d => d.id === store.activeDiagramId)
+        const occMap = Object.fromEntries(
+          (activeDiag?.occurrences ?? []).map(o => [o.schemaElementId, o])
+        )
         for (const id of ids) {
-          const dp = diagramPositions[id]
+          const occ = occMap[id]
           const ot = store.objectTypes.find(o => o.id === id)
-          if (ot) { const p = dp ?? ot; store.moveObjectType(id, p.x + dx, p.y + dy); continue }
+          if (ot) { const p = occ ?? ot; store.moveObjectType(id, p.x + dx, p.y + dy); continue }
           const f  = store.facts.find(f => f.id === id)
-          if (f)  { const p = dp ?? f;  store.moveFact(id, p.x + dx, p.y + dy); continue }
+          if (f)  { const p = occ ?? f;  store.moveFact(id, p.x + dx, p.y + dy); continue }
           const c  = store.constraints.find(c => c.id === id)
-          if (c)  { const p = dp ?? c;  store.moveConstraint(id, p.x + dx, p.y + dy) }
+          if (c)  { const p = occ ?? c;  store.moveConstraint(id, p.x + dx, p.y + dy) }
         }
         return
       }

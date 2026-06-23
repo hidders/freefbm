@@ -125,9 +125,26 @@ const mkConstraint = (type, x, y) => ({
   subtypeIds: [],
 })
 
-// elementIds: null  = no filter, show all elements (default / first diagram)
-// elementIds: []    = intentionally empty (new user-created diagram)
-const mkDiagram = (name = 'Main') => ({ id: uid(), name, elementIds: null, positions: {}, multiSelectedIds: [], profileId: null, shownImplicitLinks: [], notes: [], expandedRefModes: [] })
+// ── occurrence helpers ─────────────────────────────────────────────────────────
+const mkOcc = (schemaElementId, x, y, extra = {}) =>
+  ({ id: `occ_${uid()}`, schemaElementId, x: Math.round(x), y: Math.round(y), ...extra })
+
+const occOf    = (diag, elementId)        => diag.occurrences?.find(o => o.schemaElementId === elementId)
+const inDiag   = (diag, elementId)        => diag.occurrences?.some(o => o.schemaElementId === elementId) ?? false
+const patchOcc = (diag, elementId, patch) => ({
+  ...diag,
+  occurrences: (diag.occurrences ?? []).map(o =>
+    o.schemaElementId === elementId ? { ...o, ...patch } : o
+  ),
+})
+const addOccIfAbsent = (diag, elementId, x, y, extra = {}) =>
+  inDiag(diag, elementId) ? diag : { ...diag, occurrences: [...(diag.occurrences ?? []), mkOcc(elementId, x, y, extra)] }
+const rmOcc = (diag, elementId) => ({
+  ...diag,
+  occurrences: (diag.occurrences ?? []).filter(o => o.schemaElementId !== elementId),
+})
+
+const mkDiagram = (name = 'Main') => ({ id: uid(), name, occurrences: [], implicitLinkPositions: {}, multiSelectedIds: [], profileId: null, shownImplicitLinks: [], notes: [], expandedRefModes: [] })
 const mkNote    = (x, y)          => ({ id: uid(), x: Math.round(x), y: Math.round(y), w: 160, h: 100, text: '', connectors: [] })
 
 // ── name uniqueness ───────────────────────────────────────────────────────────
@@ -145,7 +162,7 @@ function makeUniqueName(originalName, usedNames) {
 // in any diagram (show-all diagrams always count as containing every constraint).
 function purgeOrphanedConstraints(diagrams, constraints) {
   if (!constraints.length) return constraints
-  const inAnyDiagram = (id) => diagrams.some(d => d.elementIds === null || d.elementIds.includes(id))
+  const inAnyDiagram = (id) => diagrams.some(d => inDiag(d, id))
   const kept = constraints.filter(c => inAnyDiagram(c.id))
   return kept.length === constraints.length ? constraints : kept
 }
@@ -425,42 +442,37 @@ function hasNoConnectors(c) {
 // Constraints with no connectors persist in the diagram until explicitly removed.
 function syncConstraints(diagrams, constraints, subtypes, facts) {
   return diagrams.map(d => {
-    if (d.elementIds === null) return d   // show-all diagram: no sync needed
-
     const shownImplicitLinks = d.shownImplicitLinks || []
     const constraintIdSet = new Set(constraints.map(c => c.id))
+    const currentSchemaIds = new Set((d.occurrences ?? []).map(o => o.schemaElementId))
 
-    // Separate existing constraints into connectorless and connectorful
-    const existingConstraintIds = d.elementIds.filter(id => constraintIdSet.has(id))
+    const existingConstraintIds = [...currentSchemaIds].filter(id => constraintIdSet.has(id))
     const connectorlessExisting = existingConstraintIds.filter(id => {
       const c = constraints.find(cc => cc.id === id)
       return c && hasNoConnectors(c)
     })
 
     // Non-constraint IDs + existing connectorless constraints should always stay
-    const nonConstraintIds = d.elementIds.filter(id => !constraintIdSet.has(id))
+    const nonConstraintIds = [...currentSchemaIds].filter(id => !constraintIdSet.has(id))
     const mustKeep = new Set([...nonConstraintIds, ...connectorlessExisting])
-    const mustKeepSet = mustKeep
 
     // Compute eligible constraints (those with connectors whose deps are all present)
-    const eligible = eligibleConstraints(constraints, subtypes, mustKeepSet, facts, shownImplicitLinks)
+    const eligible = eligibleConstraints(constraints, subtypes, mustKeep, facts, shownImplicitLinks)
 
-    const newElementIds = [
-      ...mustKeep,
-      ...eligible.map(c => c.id),
-    ]
+    const newSchemaIds = new Set([...mustKeep, ...eligible.map(c => c.id)])
 
-    // Avoid unnecessary object allocation if nothing changed
-    const oldSet = new Set(d.elementIds)
-    const unchanged = newElementIds.length === d.elementIds.length &&
-      newElementIds.every(id => oldSet.has(id))
+    const unchanged = newSchemaIds.size === currentSchemaIds.size &&
+      [...newSchemaIds].every(id => currentSchemaIds.has(id))
     if (unchanged) return d
 
-    const newPositions = { ...d.positions }
+    // Filter out occurrences no longer needed, add new constraint occurrences
+    let occurrences = (d.occurrences ?? []).filter(o => newSchemaIds.has(o.schemaElementId))
     for (const c of eligible) {
-      if (!newPositions[c.id]) newPositions[c.id] = { x: c.x, y: c.y }
+      if (!currentSchemaIds.has(c.id)) {
+        occurrences = [...occurrences, mkOcc(c.id, c.x, c.y)]
+      }
     }
-    return { ...d, elementIds: newElementIds, positions: newPositions }
+    return { ...d, occurrences }
   })
 }
 
@@ -716,11 +728,10 @@ export const useOrmStore = create((set, get) => ({
 
     // Capture per-diagram positions from the source diagram so paste/duplicate
     // preserves the actual on-screen layout, not just the schema base positions.
-    const sourcePos = activeDiagram?.positions ?? {}
     const clipPositions = {}
     for (const el of [...copiedOts, ...copiedFacts, ...copiedCons]) {
-      const p = sourcePos[el.id]
-      clipPositions[el.id] = p ? { x: p.x, y: p.y } : { x: el.x, y: el.y }
+      const occ = occOf(activeDiagram, el.id)
+      clipPositions[el.id] = occ ? { x: occ.x, y: occ.y } : { x: el.x, y: el.y }
     }
 
     const newClipboard = {
@@ -758,11 +769,7 @@ export const useOrmStore = create((set, get) => ({
     if (!clipboard) return
 
     const activeDiagram = diagrams.find(d => d.id === activeDiagramId)
-    const existingIds = new Set(
-      activeDiagram?.elementIds === null
-        ? [...objectTypes.map(o => o.id), ...facts.map(f => f.id), ...constraints.map(c => c.id)]
-        : (activeDiagram?.elementIds ?? [])
-    )
+    const existingIds = new Set((activeDiagram?.occurrences ?? []).map(o => o.schemaElementId))
 
     // Principle 3: ensure role-player OTs of clipboard facts are also added (even if
     // they are in the schema but not in the clipboard itself)
@@ -824,7 +831,7 @@ export const useOrmStore = create((set, get) => ({
     // • non-empty      → centre of bounding box on current viewport centre
     let ox = 0, oy = 0
     const positioned = toAdd.filter(el => el.x != null || clipPos[el.id])
-    if (activeDiagram?.elementIds !== null && positioned.length > 0) {
+    if (positioned.length > 0) {
       const allX = positioned.map(el => getClipPos(el).x)
       const allY = positioned.map(el => getClipPos(el).y)
       const minX = Math.min(...allX)
@@ -853,13 +860,13 @@ export const useOrmStore = create((set, get) => ({
       const updatedDiagrams = s.diagrams.map(d => {
         if (d.id !== activeDiagramId) return d
 
-        const elementIds = d.elementIds === null ? null : [...d.elementIds, ...addIds]
-        const positions = {
-          ...d.positions,
-          ...Object.fromEntries(toAdd.map(el => {
-            const cp = getClipPos(el)
-            return [el.id, d.positions[el.id] ?? { x: cp.x + ox, y: cp.y + oy }]
-          })),
+        let nd = d
+        for (const el of toAdd) {
+          const cp = getClipPos(el)
+          // Only add if not already present; use clipboard position + offset
+          if (!inDiag(nd, el.id)) {
+            nd = { ...nd, occurrences: [...(nd.occurrences ?? []), mkOcc(el.id, cp.x + ox, cp.y + oy)] }
+          }
         }
 
         // Add implied links to shownImplicitLinks
@@ -875,9 +882,7 @@ export const useOrmStore = create((set, get) => ({
           : oldExpandedRefs
 
         return {
-          ...d,
-          elementIds,
-          positions,
+          ...nd,
           shownImplicitLinks: shownChanged ? [...newShown] : shown,
           expandedRefModes:   newExpandedRefs,
         }
@@ -975,21 +980,21 @@ export const useOrmStore = create((set, get) => ({
       facts:       [...s.facts,       ...newFacts],
       constraints: [...s.constraints, ...newCons],
       subtypes:    [...s.subtypes,    ...newSts],
-      diagrams: s.diagrams.map(d => d.id !== activeDiagramId ? d : {
-        ...d,
-        elementIds: d.elementIds === null ? null : [...d.elementIds, ...newOts.map(o => o.id), ...newFacts.map(f => f.id), ...newCons.map(c => c.id)],
-        positions: {
-          ...d.positions,
-          ...Object.fromEntries(newOts.map(o  => [o.id, { x: o.x, y: o.y }])),
-          ...Object.fromEntries(newFacts.map(f => [f.id, { x: f.x, y: f.y }])),
-          ...Object.fromEntries(newCons.map(c  => [c.id, { x: c.x, y: c.y }])),
-        },
-        shownImplicitLinks: newShownILKeys.length > 0
-          ? [...new Set([...(d.shownImplicitLinks ?? []), ...newShownILKeys])]
-          : (d.shownImplicitLinks ?? []),
-        expandedRefModes: dupExpandedRefs.size > 0
-          ? [...new Set([...(d.expandedRefModes ?? []), ...dupExpandedRefs])]
-          : (d.expandedRefModes ?? []),
+      diagrams: s.diagrams.map(d => {
+        if (d.id !== activeDiagramId) return d
+        let nd = d
+        for (const o of newOts)   nd = addOccIfAbsent(nd, o.id, o.x, o.y)
+        for (const f of newFacts) nd = addOccIfAbsent(nd, f.id, f.x, f.y)
+        for (const c of newCons)  nd = addOccIfAbsent(nd, c.id, c.x, c.y)
+        return {
+          ...nd,
+          shownImplicitLinks: newShownILKeys.length > 0
+            ? [...new Set([...(d.shownImplicitLinks ?? []), ...newShownILKeys])]
+            : (d.shownImplicitLinks ?? []),
+          expandedRefModes: dupExpandedRefs.size > 0
+            ? [...new Set([...(d.expandedRefModes ?? []), ...dupExpandedRefs])]
+            : (d.expandedRefModes ?? []),
+        }
       }),
       selectedId:       newIds.length === 1 ? newIds[0] : null,
       selectedKind:     newIds.length === 1 ? singleKind : null,
@@ -1162,24 +1167,76 @@ export const useOrmStore = create((set, get) => ({
     const parsedOts  = d.objectTypes  || []
     const parsedSts  = d.subtypes      || []
 
-    let diagrams, activeDiagramId
-    if (d.diagrams && d.diagrams.length > 0) {
-      // Always start with empty selection; strip any persisted selection state
-      diagrams        = d.diagrams.map(diag => ({
+    // ── diagram migration helper ──────────────────────────────────────────────
+    function migrateOldDiagram(diag, parsedOts, facts, constraints) {
+      const positions = diag.positions ?? {}
+      const occurrences = []
+      const implicitLinkPositions = {}
+
+      // Split positions into element positions vs implicit-link positions
+      for (const [k, v] of Object.entries(positions)) {
+        if (k.includes(':il:')) {
+          implicitLinkPositions[k] = v
+        } else {
+          const { x, y, ...extra } = v
+          if (x != null || y != null) {
+            occurrences.push({ id: `occ_${uid()}`, schemaElementId: k, x: x ?? 0, y: y ?? 0, ...extra })
+          }
+        }
+      }
+
+      // elementIds: null means "show all"; explicit array means "these only"
+      const elementIds = diag.elementIds
+      if (elementIds === null) {
+        // Show-all: create occurrences for all elements not already covered
+        const covered = new Set(occurrences.map(o => o.schemaElementId))
+        for (const el of [...parsedOts, ...facts, ...constraints]) {
+          if (!covered.has(el.id)) {
+            occurrences.push({ id: `occ_${uid()}`, schemaElementId: el.id, x: el.x ?? 0, y: el.y ?? 0 })
+          }
+        }
+      } else if (Array.isArray(elementIds)) {
+        // Explicit list: add occurrences for ids in elementIds but not yet covered
+        const covered = new Set(occurrences.map(o => o.schemaElementId))
+        for (const id of elementIds) {
+          if (covered.has(id)) continue
+          const el = parsedOts.find(o => o.id === id)
+                ?? facts.find(f => f.id === id)
+                ?? constraints.find(c => c.id === id)
+          const x = el?.x ?? 0, y = el?.y ?? 0
+          occurrences.push({ id: `occ_${uid()}`, schemaElementId: id, x, y })
+        }
+      }
+
+      return {
         ...diag,
+        occurrences,
+        implicitLinkPositions,
         multiSelectedIds: [],
         expandedRefModes: diag.expandedRefModes ?? [],
-      }))
+      }
+    }
+
+    let diagrams, activeDiagramId
+    if (d.diagrams && d.diagrams.length > 0) {
+      diagrams = d.diagrams.map(diag => {
+        if (diag.occurrences) {
+          // v2 format already
+          return { ...diag, implicitLinkPositions: diag.implicitLinkPositions ?? {}, multiSelectedIds: [], expandedRefModes: diag.expandedRefModes ?? [] }
+        }
+        // old format (elementIds + positions)
+        return migrateOldDiagram(diag, parsedOts, facts, constraints)
+      })
       activeDiagramId = d.activeDiagramId ?? d.diagrams[0].id
     } else {
-      // Migrate: put all existing elements into a single default diagram
-      const positions = {}
-      parsedOts.forEach(o  => { positions[o.id]  = { x: o.x,  y: o.y  } })
-      facts.forEach(f      => { positions[f.id]  = { x: f.x,  y: f.y  } })
-      constraints.forEach(c => { positions[c.id] = { x: c.x,  y: c.y  } })
-      const allIds = [...parsedOts.map(o => o.id), ...facts.map(f => f.id), ...constraints.map(c => c.id)]
-      const diag   = { id: uid(), name: 'Main', elementIds: allIds, positions, multiSelectedIds: [], expandedRefModes: [] }
-      diagrams        = [diag]
+      // v1: no diagrams at all — create one from element x,y positions
+      const occurrences = [
+        ...parsedOts.map(o => ({ id: `occ_${uid()}`, schemaElementId: o.id, x: o.x ?? 0, y: o.y ?? 0 })),
+        ...facts.map(f => ({ id: `occ_${uid()}`, schemaElementId: f.id, x: f.x ?? 0, y: f.y ?? 0 })),
+        ...constraints.map(c => ({ id: `occ_${uid()}`, schemaElementId: c.id, x: c.x ?? 0, y: c.y ?? 0 })),
+      ]
+      const diag = { ...mkDiagram('Main'), occurrences }
+      diagrams = [diag]
       activeDiagramId = diag.id
     }
 
@@ -1325,11 +1382,7 @@ export const useOrmStore = create((set, get) => ({
       const e = { ...base, name: `Entity${n}` }
       return {
       objectTypes: [...s.objectTypes, e],
-      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
-        ...d,
-        elementIds: d.elementIds === null ? null : [...d.elementIds, e.id],
-        positions:  { ...d.positions, [e.id]: { x: e.x, y: e.y } },
-      }),
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : addOccIfAbsent(d, e.id, e.x, e.y)),
       isDirty: true, selectedId: e.id, selectedKind: 'entity',
     }})
     return base.id
@@ -1346,11 +1399,7 @@ export const useOrmStore = create((set, get) => ({
       const v = { ...base, name: `Value${n}` }
       return {
         objectTypes: [...s.objectTypes, v],
-        diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
-          ...d,
-          elementIds: d.elementIds === null ? null : [...d.elementIds, v.id],
-          positions:  { ...d.positions, [v.id]: { x: v.x, y: v.y } },
-        }),
+        diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : addOccIfAbsent(d, v.id, v.x, v.y)),
         isDirty: true, selectedId: v.id, selectedKind: 'value',
       }
     })
@@ -1470,18 +1519,18 @@ export const useOrmStore = create((set, get) => ({
             .filter(pu => !(pu.length === 1 && pu[0] === current.vtRoleIndex)),
         })),
         // Keep the now-orphan fact/VT visible by expanding them in the active diagram.
-        diagrams: state.diagrams.map(d => d.id !== state.activeDiagramId ? d : ({
-          ...d,
-          expandedRefModes: (d.expandedRefModes ?? []).includes(entityId)
-            ? d.expandedRefModes
-            : [...(d.expandedRefModes ?? []), entityId],
-          elementIds: d.elementIds === null ? null : (
-            [current.vtId, current.factId].reduce(
-              (ids, eid) => ids.includes(eid) ? ids : [...ids, eid],
-              d.elementIds,
-            )
-          ),
-        })),
+        diagrams: state.diagrams.map(d => {
+          if (d.id !== state.activeDiagramId) return d
+          let nd = {
+            ...d,
+            expandedRefModes: (d.expandedRefModes ?? []).includes(entityId)
+              ? d.expandedRefModes
+              : [...(d.expandedRefModes ?? []), entityId],
+          }
+          nd = addOccIfAbsent(nd, current.vtId, state.objectTypes.find(o => o.id === current.vtId)?.x ?? 0, state.objectTypes.find(o => o.id === current.vtId)?.y ?? 0)
+          nd = addOccIfAbsent(nd, current.factId, state.facts.find(f => f.id === current.factId)?.x ?? 0, state.facts.find(f => f.id === current.factId)?.y ?? 0)
+          return nd
+        }),
         isDirty: true,
       }))
       return
@@ -1505,11 +1554,7 @@ export const useOrmStore = create((set, get) => ({
           let nextDiagrams = state.diagrams
           if (!oldVtUsedElsewhere) {
             nextOts = nextOts.filter(o => o.id !== current.vtId)
-            nextDiagrams = nextDiagrams.map(d => ({
-              ...d,
-              elementIds: d.elementIds === null ? null : d.elementIds.filter(eid => eid !== current.vtId),
-              positions: Object.fromEntries(Object.entries(d.positions).filter(([k]) => k !== current.vtId)),
-            }))
+            nextDiagrams = nextDiagrams.map(d => rmOcc(d, current.vtId))
           }
           return { objectTypes: nextOts, facts: newFacts, diagrams: nextDiagrams, isDirty: true }
         })
@@ -1542,13 +1587,12 @@ export const useOrmStore = create((set, get) => ({
         return {
           facts: cFacts,
           constraints: cCons,
-          diagrams: state.diagrams.map(d => d.id !== state.activeDiagramId ? d : ({
-            ...d,
-            elementIds: d.elementIds === null ? null : [
-              ...d.elementIds,
-              ...[matchFact.fact.id, existing.id].filter(id => !d.elementIds.includes(id)),
-            ],
-          })),
+          diagrams: state.diagrams.map(d => {
+            if (d.id !== state.activeDiagramId) return d
+            let nd = addOccIfAbsent(d, matchFact.fact.id, state.facts.find(f => f.id === matchFact.fact.id)?.x ?? 0, state.facts.find(f => f.id === matchFact.fact.id)?.y ?? 0)
+            nd = addOccIfAbsent(nd, existing.id, existing.x ?? 0, existing.y ?? 0)
+            return nd
+          }),
           isDirty: true,
         }
       }
@@ -1570,7 +1614,6 @@ export const useOrmStore = create((set, get) => ({
         readingParts: ['', 'has', ''],
         alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'refers to', ''] }],
       }
-      const newIds = existing ? [ft.id] : [vt.id, ft.id]
       const factsAfterAdd = [...state.facts, ft]
       // The new fact's PI identifies `entity` — demote any pre-existing PIs for it.
       const { facts: cFacts, constraints: cCons } =
@@ -1579,15 +1622,12 @@ export const useOrmStore = create((set, get) => ({
         objectTypes: nextOts,
         facts: cFacts,
         constraints: cCons,
-        diagrams: state.diagrams.map(d => d.id !== state.activeDiagramId ? d : ({
-          ...d,
-          elementIds: d.elementIds === null ? null : [...d.elementIds, ...newIds.filter(nid => !d.elementIds.includes(nid))],
-          positions: {
-            ...d.positions,
-            ...(existing ? {} : { [vt.id]: { x: vt.x, y: vt.y } }),
-            [ft.id]: { x: ft.x, y: ft.y },
-          },
-        })),
+        diagrams: state.diagrams.map(d => {
+          if (d.id !== state.activeDiagramId) return d
+          let nd = existing ? d : addOccIfAbsent(d, vt.id, vt.x, vt.y)
+          nd = addOccIfAbsent(nd, ft.id, ft.x, ft.y)
+          return nd
+        }),
         isDirty: true,
       }
     })
@@ -1618,15 +1658,20 @@ export const useOrmStore = create((set, get) => ({
           ...f,
           preferredUniqueness: (f.preferredUniqueness || []).filter(pu => !(pu.length === 1 && pu[0] === current.vtRoleIndex)),
         })),
-        diagrams: state.diagrams.map(d => d.id !== state.activeDiagramId ? d : ({
-          ...d,
-          expandedRefModes: (d.expandedRefModes ?? []).includes(factId)
-            ? d.expandedRefModes
-            : [...(d.expandedRefModes ?? []), factId],
-          elementIds: d.elementIds === null ? null : (
-            [current.vtId, current.factId].reduce((ids, eid) => ids.includes(eid) ? ids : [...ids, eid], d.elementIds)
-          ),
-        })),
+        diagrams: state.diagrams.map(d => {
+          if (d.id !== state.activeDiagramId) return d
+          let nd = {
+            ...d,
+            expandedRefModes: (d.expandedRefModes ?? []).includes(factId)
+              ? d.expandedRefModes
+              : [...(d.expandedRefModes ?? []), factId],
+          }
+          const vtEl = state.objectTypes.find(o => o.id === current.vtId)
+          const ftEl = state.facts.find(f => f.id === current.factId)
+          nd = addOccIfAbsent(nd, current.vtId, vtEl?.x ?? 0, vtEl?.y ?? 0)
+          nd = addOccIfAbsent(nd, current.factId, ftEl?.x ?? 0, ftEl?.y ?? 0)
+          return nd
+        }),
         isDirty: true,
       }))
       return
@@ -1662,13 +1707,12 @@ export const useOrmStore = create((set, get) => ({
         })
         return {
           facts: factsWithPi,
-          diagrams: state.diagrams.map(d => d.id !== state.activeDiagramId ? d : ({
-            ...d,
-            elementIds: d.elementIds === null ? null : [
-              ...d.elementIds,
-              ...[matchFact.fact.id, existing.id].filter(id => !d.elementIds.includes(id)),
-            ],
-          })),
+          diagrams: state.diagrams.map(d => {
+            if (d.id !== state.activeDiagramId) return d
+            let nd = addOccIfAbsent(d, matchFact.fact.id, state.facts.find(f => f.id === matchFact.fact.id)?.x ?? 0, state.facts.find(f => f.id === matchFact.fact.id)?.y ?? 0)
+            nd = addOccIfAbsent(nd, existing.id, existing.x ?? 0, existing.y ?? 0)
+            return nd
+          }),
           isDirty: true,
         }
       }
@@ -1689,19 +1733,15 @@ export const useOrmStore = create((set, get) => ({
         readingParts: ['', 'has', ''],
         alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'refers to', ''] }],
       }
-      const newIds = existing ? [ft.id] : [vt.id, ft.id]
       return {
         objectTypes: nextOts,
         facts: [...state.facts, ft],
-        diagrams: state.diagrams.map(d => d.id !== state.activeDiagramId ? d : ({
-          ...d,
-          elementIds: d.elementIds === null ? null : [...d.elementIds, ...newIds.filter(nid => !d.elementIds.includes(nid))],
-          positions: {
-            ...d.positions,
-            ...(existing ? {} : { [vt.id]: { x: vt.x, y: vt.y } }),
-            [ft.id]: { x: ft.x, y: ft.y },
-          },
-        })),
+        diagrams: state.diagrams.map(d => {
+          if (d.id !== state.activeDiagramId) return d
+          let nd = existing ? d : addOccIfAbsent(d, vt.id, vt.x, vt.y)
+          nd = addOccIfAbsent(nd, ft.id, ft.x, ft.y)
+          return nd
+        }),
         isDirty: true,
       }
     })
@@ -2224,10 +2264,7 @@ export const useOrmStore = create((set, get) => ({
 
   moveObjectType(id, x, y) {
     set(s => ({
-      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
-        ...d,
-        positions: { ...d.positions, [id]: { x, y } },
-      }),
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : patchOcc(d, id, { x, y })),
       isDirty: true,
     }))
   },
@@ -2251,15 +2288,17 @@ export const useOrmStore = create((set, get) => ({
           ...c,
           subtypeIds: (c.subtypeIds || []).filter(sid => !removedSubtypeIds.has(sid)),
         })),
-      diagrams: s.diagrams.map(d => ({
-        ...d,
-        elementIds: d.elementIds === null ? null : d.elementIds.filter(eid => eid !== id),
-        positions:  Object.fromEntries(Object.entries(d.positions).filter(([k]) => {
-          if (k === id) return false
-          if (k.startsWith(`${id}:il:`)) return false
-          return true
-        })),
-      })),
+      diagrams: s.diagrams.map(d => {
+        let nd = rmOcc(d, id)
+        // Remove any implicit link positions that belong to the deleted OT's facts
+        const newILP = Object.fromEntries(
+          Object.entries(nd.implicitLinkPositions ?? {}).filter(([k]) => !k.startsWith(`${id}:il:`))
+        )
+        if (Object.keys(newILP).length !== Object.keys(nd.implicitLinkPositions ?? {}).length) {
+          nd = { ...nd, implicitLinkPositions: newILP }
+        }
+        return nd
+      }),
         selectedId: s.selectedId === id ? null : s.selectedId,
         isDirty: true,
       }
@@ -2280,15 +2319,15 @@ export const useOrmStore = create((set, get) => ({
     const rm = findRefMode(owner, facts, objectTypes)
     if (!rm) return
     const targetDiagramId = diagramId ?? activeDiagramId
+    const rmVt = objectTypes.find(o => o.id === rm.vtId)
+    const rmFt = facts.find(f => f.id === rm.factId)
     set(s => ({
       diagrams: s.diagrams.map(d => {
         if (d.id !== targetDiagramId) return d
         if ((d.expandedRefModes ?? []).includes(otId)) return d
-        const elementIds = d.elementIds === null ? null : [
-          ...d.elementIds,
-          ...([rm.vtId, rm.factId].filter(eid => !d.elementIds.includes(eid))),
-        ]
-        return { ...d, elementIds, expandedRefModes: [...(d.expandedRefModes ?? []), otId] }
+        let nd = addOccIfAbsent(d, rm.vtId, rmVt?.x ?? 0, rmVt?.y ?? 0)
+        nd = addOccIfAbsent(nd, rm.factId, rmFt?.x ?? 0, rmFt?.y ?? 0)
+        return { ...nd, expandedRefModes: [...(d.expandedRefModes ?? []), otId] }
       }),
       isDirty: true,
     }))
@@ -2313,11 +2352,7 @@ export const useOrmStore = create((set, get) => ({
     const f = { ...mkFact(Math.round(x), Math.round(y), arity), readingParts: defaultReadingParts(arity, n) }
     set(s => ({
       facts: [...s.facts, f],
-      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
-        ...d,
-        elementIds: d.elementIds === null ? null : [...d.elementIds, f.id],
-        positions:  { ...d.positions, [f.id]: { x: f.x, y: f.y } },
-      }),
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : addOccIfAbsent(d, f.id, f.x, f.y)),
       isDirty: true, selectedId: f.id, selectedKind: 'fact',
     }))
     return f.id
@@ -2337,11 +2372,7 @@ export const useOrmStore = create((set, get) => ({
       const f = { ...base, objectifiedName: `Entity${n}` }
       return {
         facts: [...s.facts, f],
-        diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
-          ...d,
-          elementIds: d.elementIds === null ? null : [...d.elementIds, f.id],
-          positions:  { ...d.positions, [f.id]: { x: f.x, y: f.y } },
-        }),
+        diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : addOccIfAbsent(d, f.id, f.x, f.y)),
         isDirty: true, selectedId: f.id, selectedKind: 'fact',
       }
     })
@@ -2377,17 +2408,14 @@ export const useOrmStore = create((set, get) => ({
   moveFact(id, x, y) {
     set(s => {
       const diag   = s.diagrams.find(d => d.id === s.activeDiagramId)
-      const oldPos = diag?.positions?.[id]
+      const occ    = occOf(diag, id)
       const fact   = s.facts.find(f => f.id === id)
-      const oldX   = oldPos?.x ?? fact?.x ?? 0
-      const oldY   = oldPos?.y ?? fact?.y ?? 0
+      const oldX   = occ?.x ?? fact?.x ?? 0
+      const oldY   = occ?.y ?? fact?.y ?? 0
       const dx = x - oldX
       const dy = y - oldY
       return {
-        diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
-          ...d,
-          positions: { ...d.positions, [id]: { ...(d.positions[id] ?? {}), x, y } },
-        }),
+        diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : patchOcc(d, id, { x, y })),
         facts: s.facts.map(f => f.id !== id || !f.internalFrequency?.length ? f : {
           ...f,
           internalFrequency: f.internalFrequency.map(if_ => ({
@@ -2400,55 +2428,37 @@ export const useOrmStore = create((set, get) => ({
   },
 
   // Update per-diagram layout properties for a fact (readingAbove, readingOffsetAbove, readingOffsetBelow,
-  // uniquenessBelow, nestedReading). Stored in diagram.positions alongside x,y.
+  // uniquenessBelow, nestedReading). Stored in occurrence alongside x,y.
   updateFactLayout(id, patch) {
     set(s => ({
-      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
-        ...d,
-        positions: {
-          ...d.positions,
-          [id]: { ...(d.positions[id] ?? {}), ...patch },
-        },
-      }),
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : patchOcc(d, id, patch)),
       isDirty: true,
     }))
   },
 
-  // Store role-name label offset per diagram (in positions[factId].roleNameOffsets[roleIndex]).
+  // Store role-name label offset per diagram (in occurrence.roleNameOffsets[roleIndex]).
   updateRoleNameOffset(factId, roleIndex, offset) {
     set(s => ({
-      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
-        ...d,
-        positions: {
-          ...d.positions,
-          [factId]: {
-            ...(d.positions[factId] ?? {}),
-            roleNameOffsets: {
-              ...((d.positions[factId] ?? {}).roleNameOffsets ?? {}),
-              [roleIndex]: offset,
-            },
-          },
-        },
+      diagrams: s.diagrams.map(d => {
+        if (d.id !== s.activeDiagramId) return d
+        const cur = occOf(d, factId) ?? {}
+        return patchOcc(d, factId, {
+          roleNameOffsets: { ...(cur.roleNameOffsets ?? {}), [roleIndex]: offset },
+        })
       }),
       isDirty: true,
     }))
   },
 
-  // Store value-range label offset per diagram (in positions[factId].valueRangeOffsets[roleIndex]).
+  // Store value-range label offset per diagram (in occurrence.valueRangeOffsets[roleIndex]).
   updateValueRangeOffset(factId, roleIndex, offset) {
     set(s => ({
-      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
-        ...d,
-        positions: {
-          ...d.positions,
-          [factId]: {
-            ...(d.positions[factId] ?? {}),
-            valueRangeOffsets: {
-              ...((d.positions[factId] ?? {}).valueRangeOffsets ?? {}),
-              [roleIndex]: offset,
-            },
-          },
-        },
+      diagrams: s.diagrams.map(d => {
+        if (d.id !== s.activeDiagramId) return d
+        const cur = occOf(d, factId) ?? {}
+        return patchOcc(d, factId, {
+          valueRangeOffsets: { ...(cur.valueRangeOffsets ?? {}), [roleIndex]: offset },
+        })
       }),
       isDirty: true,
     }))
@@ -2456,18 +2466,12 @@ export const useOrmStore = create((set, get) => ({
 
   updateCardinalityRangeOffset(factId, roleIndex, offset) {
     set(s => ({
-      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
-        ...d,
-        positions: {
-          ...d.positions,
-          [factId]: {
-            ...(d.positions[factId] ?? {}),
-            cardinalityRangeOffsets: {
-              ...((d.positions[factId] ?? {}).cardinalityRangeOffsets ?? {}),
-              [roleIndex]: offset,
-            },
-          },
-        },
+      diagrams: s.diagrams.map(d => {
+        if (d.id !== s.activeDiagramId) return d
+        const cur = occOf(d, factId) ?? {}
+        return patchOcc(d, factId, {
+          cardinalityRangeOffsets: { ...(cur.cardinalityRangeOffsets ?? {}), [roleIndex]: offset },
+        })
       }),
       isDirty: true,
     }))
@@ -2631,19 +2635,19 @@ export const useOrmStore = create((set, get) => ({
           return { ...f, roles, uniqueness, readingParts, alternativeReadings, implicitLinks }
         }),
       diagrams: s.diagrams.map(d => {
-        const positions = { ...d.positions }
-        const ilKeys = Object.keys(positions).filter(k => k.startsWith(`${factId}:il:`))
+        const ilp = { ...(d.implicitLinkPositions ?? {}) }
+        const ilKeys = Object.keys(ilp).filter(k => k.startsWith(`${factId}:il:`))
         for (const k of ilKeys) {
           const ri = Number(k.split(':')[2])
           const newRi = oldToNew[ri]
           if (newRi !== undefined && newRi !== ri) {
-            positions[`${factId}:il:${newRi}`] = positions[k]
-            delete positions[k]
+            ilp[`${factId}:il:${newRi}`] = ilp[k]
+            delete ilp[k]
             // Remap implied frequency positions
             for (const fk of ilKeys.filter(x => x.startsWith(`${factId}:il:${ri}:if:`))) {
               const newFk = fk.replace(`${factId}:il:${ri}:if:`, `${factId}:il:${newRi}:if:`)
-              positions[newFk] = positions[fk]
-              delete positions[fk]
+              ilp[newFk] = ilp[fk]
+              delete ilp[fk]
             }
           }
         }
@@ -2656,7 +2660,7 @@ export const useOrmStore = create((set, get) => ({
           const newRi = oldToNew[ri]
           return newRi !== undefined ? `${factId}:${newRi}` : key
         })
-        return { ...d, positions, shownImplicitLinks: remappedShown }
+        return { ...d, implicitLinkPositions: ilp, shownImplicitLinks: remappedShown }
       }),
       // Permute tuple cells in the fact's population to match the new role order
       factPopulations: (() => {
@@ -2682,17 +2686,11 @@ export const useOrmStore = create((set, get) => ({
       const f = s.facts.find(f => f.id === factId)
       if (!f || f.arity !== 2) return {}
       const diag = s.diagrams.find(d => d.id === s.activeDiagramId)
-      const pos = diag?.positions?.[factId]
-      const currentRoleOrder = pos?.roleOrder || [0, 1]
+      const occ = occOf(diag, factId)
+      const currentRoleOrder = occ?.roleOrder || [0, 1]
       const newRoleOrder = currentRoleOrder[0] === 0 && currentRoleOrder[1] === 1 ? [1, 0] : [0, 1]
       return {
-        diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
-          ...d,
-          positions: {
-            ...d.positions,
-            [factId]: { ...(d.positions[factId] ?? {}), roleOrder: newRoleOrder },
-          },
-        }),
+        diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : patchOcc(d, factId, { roleOrder: newRoleOrder })),
         isDirty: true,
       }
     })
@@ -2752,17 +2750,17 @@ export const useOrmStore = create((set, get) => ({
       }))
       return { facts, constraints, isDirty: true,
         diagrams: s.diagrams.map(d => {
-          const positions = { ...d.positions }
-          const ilKeys = Object.keys(positions).filter(k => k.startsWith(`${factId}:il:`)).sort((a, b) => Number(b.split(':')[2]) - Number(a.split(':')[2]))
+          const ilp = { ...(d.implicitLinkPositions ?? {}) }
+          const ilKeys = Object.keys(ilp).filter(k => k.startsWith(`${factId}:il:`)).sort((a, b) => Number(b.split(':')[2]) - Number(a.split(':')[2]))
           for (const k of ilKeys) {
             const ri = Number(k.split(':')[2])
             if (ri >= atIndex) {
-              positions[`${factId}:il:${ri + 1}`] = positions[k]
-              delete positions[k]
+              ilp[`${factId}:il:${ri + 1}`] = ilp[k]
+              delete ilp[k]
               // Remap implied frequency positions
-              for (const fk of Object.keys(positions).filter(x => x.startsWith(`${factId}:il:${ri}:if:`))) {
-                positions[fk.replace(`${factId}:il:${ri}:if:`, `${factId}:il:${ri + 1}:if:`)] = positions[fk]
-                delete positions[fk]
+              for (const fk of Object.keys(ilp).filter(x => x.startsWith(`${factId}:il:${ri}:if:`))) {
+                ilp[fk.replace(`${factId}:il:${ri}:if:`, `${factId}:il:${ri + 1}:if:`)] = ilp[fk]
+                delete ilp[fk]
               }
             }
           }
@@ -2774,7 +2772,7 @@ export const useOrmStore = create((set, get) => ({
             const ri = Number(key.substring(shownPrefix.length))
             return ri >= atIndex ? `${factId}:${ri + 1}` : key
           })
-          return { ...d, positions, shownImplicitLinks: remappedShown }
+          return { ...d, implicitLinkPositions: ilp, shownImplicitLinks: remappedShown }
         }),
       }
     })
@@ -2826,27 +2824,27 @@ export const useOrmStore = create((set, get) => ({
       }))
       return { facts, constraints, isDirty: true,
         diagrams: s.diagrams.map(d => {
-          const positions = { ...d.positions }
+          const ilp = { ...(d.implicitLinkPositions ?? {}) }
           const ilKey = `${factId}:il:${roleIndex}`
           // Remove the deleted implicit link's position and its implied frequency positions
-          delete positions[ilKey]
-          for (const k of Object.keys(positions)) {
-            if (k.startsWith(`${ilKey}:if:`)) delete positions[k]
+          delete ilp[ilKey]
+          for (const k of Object.keys(ilp)) {
+            if (k.startsWith(`${ilKey}:if:`)) delete ilp[k]
           }
-          for (const [k, v] of Object.entries(positions)) {
+          for (const [k, v] of Object.entries(ilp)) {
             if (k.startsWith(`${factId}:il:`)) {
               const parts = k.split(':')
               const ri = Number(parts[2])
               if (ri > roleIndex) {
                 const newKey = `${factId}:il:${ri - 1}`
-                positions[newKey] = v
-                delete positions[k]
+                ilp[newKey] = v
+                delete ilp[k]
                 // Remap implied frequency positions too
-                for (const fk of Object.keys(positions)) {
+                for (const fk of Object.keys(ilp)) {
                   if (fk.startsWith(`${factId}:il:${ri}:if:`)) {
                     const newFk = fk.replace(`${factId}:il:${ri}:if:`, `${factId}:il:${ri - 1}:if:`)
-                    positions[newFk] = positions[fk]
-                    delete positions[fk]
+                    ilp[newFk] = ilp[fk]
+                    delete ilp[fk]
                   }
                 }
               }
@@ -2862,7 +2860,7 @@ export const useOrmStore = create((set, get) => ({
               return ri > roleIndex ? `${factId}:${ri - 1}` : key
             })
             .filter(key => key !== `${factId}:${roleIndex}`)
-          return { ...d, positions, shownImplicitLinks: remappedShown }
+          return { ...d, implicitLinkPositions: ilp, shownImplicitLinks: remappedShown }
         }),
       }
     })
@@ -2888,19 +2886,12 @@ export const useOrmStore = create((set, get) => ({
 
       // Principle 3: add objectTypeId to every diagram that already contains factId
       const ot = s.objectTypes.find(o => o.id === objectTypeId) ?? s.facts.find(f => f.id === objectTypeId)
-      const otPos = ot ? { x: ot.x, y: ot.y } : { x: 100, y: 100 }
+      const otX = ot?.x ?? 100
+      const otY = ot?.y ?? 100
 
       const updatedDiagrams = s.diagrams.map(d => {
-        const factInDiagram = d.elementIds === null || d.elementIds.includes(factId)
-        if (!factInDiagram) return d
-        // show-all diagram already shows everything; no entry needed
-        if (d.elementIds === null) return d
-        if (d.elementIds.includes(objectTypeId)) return d
-        return {
-          ...d,
-          elementIds: [...d.elementIds, objectTypeId],
-          positions: { ...d.positions, [objectTypeId]: d.positions[objectTypeId] ?? otPos },
-        }
+        if (!inDiag(d, factId)) return d
+        return addOccIfAbsent(d, objectTypeId, otX, otY)
       })
 
       return {
@@ -3115,10 +3106,10 @@ export const useOrmStore = create((set, get) => ({
       if (Object.keys(positionPatch).length > 0) {
         const key = `${factId}:il:${roleIndex}`
         const diag = s.diagrams.find(d => d.id === s.activeDiagramId)
-        const positions = { ...(diag?.positions || {}) }
-        positions[key] = { ...(positions[key] || {}), ...positionPatch }
+        const ilp = { ...(diag?.implicitLinkPositions ?? {}) }
+        ilp[key] = { ...(ilp[key] ?? {}), ...positionPatch }
         changes.diagrams = s.diagrams.map(d =>
-          d.id === s.activeDiagramId ? { ...d, positions } : d
+          d.id === s.activeDiagramId ? { ...d, implicitLinkPositions: ilp } : d
         )
       }
       return Object.keys(changes).length > 0 ? { ...changes, isDirty: true } : {}
@@ -3141,10 +3132,10 @@ export const useOrmStore = create((set, get) => ({
     set(s => {
       const key = `${factId}:il:${roleIndex}:if:${origIfId}`
       const diag = s.diagrams.find(d => d.id === s.activeDiagramId)
-      const positions = { ...(diag?.positions || {}) }
-      positions[key] = { ...(positions[key] || {}), ...patch }
+      const ilp = { ...(diag?.implicitLinkPositions ?? {}) }
+      ilp[key] = { ...(ilp[key] ?? {}), ...patch }
       return {
-        diagrams: s.diagrams.map(d => d.id === s.activeDiagramId ? { ...d, positions } : d),
+        diagrams: s.diagrams.map(d => d.id === s.activeDiagramId ? { ...d, implicitLinkPositions: ilp } : d),
         isDirty: true,
       }
     })
@@ -3174,11 +3165,17 @@ export const useOrmStore = create((set, get) => ({
           ? c.roleSequences.map(g => g.filter(r => r.factId !== id))
           : undefined,
       })),
-      diagrams: s.diagrams.map(d => ({
-        ...d,
-        elementIds: d.elementIds === null ? null : d.elementIds.filter(eid => eid !== id),
-        positions:  Object.fromEntries(Object.entries(d.positions).filter(([k]) => k !== id)),
-      })),
+      diagrams: s.diagrams.map(d => {
+        let nd = rmOcc(d, id)
+        // Remove implicit link positions for this fact
+        const newILP = Object.fromEntries(
+          Object.entries(nd.implicitLinkPositions ?? {}).filter(([k]) => !k.startsWith(`${id}:il:`))
+        )
+        if (Object.keys(newILP).length !== Object.keys(nd.implicitLinkPositions ?? {}).length) {
+          nd = { ...nd, implicitLinkPositions: newILP }
+        }
+        return nd
+      }),
       selectedId: s.selectedId === id ? null : s.selectedId,
       isDirty: true,
       }
@@ -4267,15 +4264,12 @@ export const useOrmStore = create((set, get) => ({
       const updatedDiagrams = s.diagrams.map(d => {
         if (d.id !== s.activeDiagramId) return d
 
-        let elementIds = d.elementIds === null ? null : [...d.elementIds, c.id]
-        let positions  = { ...d.positions, [c.id]: { x: c.x, y: c.y } }
+        let nd = addOccIfAbsent(d, c.id, c.x, c.y)
 
         for (const id of idsToAdd) {
-          if (elementIds !== null && elementIds.includes(id)) continue
           const el = s.objectTypes.find(o => o.id === id) ?? s.facts.find(f => f.id === id)
           if (!el) continue
-          if (elementIds !== null) elementIds = [...elementIds, id]
-          positions = { ...positions, [id]: positions[id] ?? { x: el.x, y: el.y } }
+          nd = addOccIfAbsent(nd, id, el.x ?? 0, el.y ?? 0)
         }
 
         // Add implied links to shownImplicitLinks
@@ -4285,9 +4279,7 @@ export const useOrmStore = create((set, get) => ({
         const shownChanged = newShown.size !== shown.length || [...newShown].some(k => !shown.includes(k))
 
         return {
-          ...d,
-          elementIds,
-          positions,
+          ...nd,
           shownImplicitLinks: shownChanged ? [...newShown] : shown,
         }
       })
@@ -4333,10 +4325,7 @@ export const useOrmStore = create((set, get) => ({
 
   moveConstraint(id, x, y) {
     set(s => ({
-      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : {
-        ...d,
-        positions: { ...d.positions, [id]: { x, y } },
-      }),
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : patchOcc(d, id, { x, y })),
       isDirty: true,
     }))
   },
@@ -4366,11 +4355,7 @@ export const useOrmStore = create((set, get) => ({
     if (get().sequenceConstruction?.constraintId === id) return
     set(s => ({
       constraints: s.constraints.filter(c => c.id !== id),
-      diagrams: s.diagrams.map(d => ({
-        ...d,
-        elementIds: d.elementIds === null ? null : d.elementIds.filter(eid => eid !== id),
-        positions:  Object.fromEntries(Object.entries(d.positions).filter(([k]) => k !== id)),
-      })),
+      diagrams: s.diagrams.map(d => rmOcc(d, id)),
       selectedId: s.selectedId === id ? null : s.selectedId,
       isDirty: true,
     }))
@@ -4482,9 +4467,8 @@ export const useOrmStore = create((set, get) => ({
   selectAll() {
     const { objectTypes, facts, constraints, subtypes, diagrams, activeDiagramId } = get()
     const activeDiagram = diagrams.find(d => d.id === activeDiagramId)
-    const elementIds = activeDiagram?.elementIds  // null = show-all diagram
 
-    const visible = (id) => elementIds === null || elementIds.includes(id)
+    const visible = (id) => inDiag(activeDiagram, id)
 
     const shownILKeys = new Set(activeDiagram?.shownImplicitLinks ?? [])
     const impliedLinkIds = facts
@@ -4567,7 +4551,6 @@ export const useOrmStore = create((set, get) => ({
     if (multiSelectedIds.length < 2) return
     const idSet   = new Set(multiSelectedIds)
     const diagram = diagrams.find(d => d.id === activeDiagramId)
-    const pos     = diagram?.positions ?? {}
 
     // Collect ref-mode fact/VT IDs whose parent entity has a collapsed ref-mode
     // in this diagram — these are rendered as part of the entity node and must
@@ -4585,7 +4568,8 @@ export const useOrmStore = create((set, get) => ({
     }
 
     const getAxis = (id) => {
-      if (pos[id]) return pos[id][axis]
+      const occ = occOf(diagram, id)
+      if (occ) return occ[axis]
       const ot = objectTypes.find(o => o.id === id); if (ot) return ot[axis]
       const f  = facts.find(f => f.id === id);       if (f)  return f[axis]
       const c  = constraints.find(c => c.id === id); if (c)  return c[axis]
@@ -4602,20 +4586,15 @@ export const useOrmStore = create((set, get) => ({
     if (ids.length < 2) return
     const target = Math.round(ids.reduce((s, id) => s + getAxis(id), 0) / ids.length)
 
-    const newPos = { ...pos }
-    ids.forEach(id => {
-      const base = pos[id]
-        ?? (() => {
-          const ot = objectTypes.find(o => o.id === id); if (ot) return { x: ot.x, y: ot.y }
-          const f  = facts.find(f => f.id === id);       if (f)  return { x: f.x,  y: f.y  }
-          const c  = constraints.find(c => c.id === id); if (c)  return { x: c.x,  y: c.y  }
-          return { x: 0, y: 0 }
-        })()
-      newPos[id] = { ...base, [axis]: target }
-    })
-
     set(s => ({
-      diagrams: s.diagrams.map(d => d.id !== activeDiagramId ? d : { ...d, positions: newPos }),
+      diagrams: s.diagrams.map(d => {
+        if (d.id !== activeDiagramId) return d
+        let nd = d
+        for (const id of ids) {
+          nd = patchOcc(nd, id, { [axis]: target })
+        }
+        return nd
+      }),
       isDirty: true,
     }))
   },
@@ -4679,21 +4658,24 @@ export const useOrmStore = create((set, get) => ({
             }
             return updated
           }),
-        diagrams: s.diagrams.map(d => ({
-          ...d,
-          elementIds: d.elementIds === null ? null : d.elementIds.filter(id => !otIds.has(id) && !factIds.has(id) && !conIds.has(id)),
-          positions:  Object.fromEntries(
-            Object.entries(d.positions).filter(([k]) => {
-              if (otIds.has(k) || factIds.has(k) || conIds.has(k) || ilPosKeysToRemove.has(k)) return false
-              // Remove implied frequency constraint positions for deleted implicit links
+        diagrams: s.diagrams.map(d => {
+          // Remove occurrences for deleted elements
+          let nd = { ...d, occurrences: (d.occurrences ?? []).filter(o =>
+            !otIds.has(o.schemaElementId) && !factIds.has(o.schemaElementId) && !conIds.has(o.schemaElementId)
+          )}
+          // Clean up implicit link positions
+          const newILP = Object.fromEntries(
+            Object.entries(nd.implicitLinkPositions ?? {}).filter(([k]) => {
+              if (ilPosKeysToRemove.has(k)) return false
               for (const ilKey of ilKeysToRemove) {
                 if (k.startsWith(`${ilKey}:if:`)) return false
               }
               return true
             })
-          ),
-          shownImplicitLinks: (d.shownImplicitLinks || []).filter(ilKey => !ilKeysToRemove.has(ilKey)),
-        })),
+          )
+          nd = { ...nd, implicitLinkPositions: newILP, shownImplicitLinks: (d.shownImplicitLinks || []).filter(ilKey => !ilKeysToRemove.has(ilKey)) }
+          return nd
+        }),
         selectedId: null,
         selectedKind: null,
         selectedRole: null,
@@ -4965,7 +4947,7 @@ export const useOrmStore = create((set, get) => ({
   removeInternalFrequency(factId, ifId) {
     set(s => {
       const fact = s.facts.find(f => f.id === factId)
-      const ilKeysToRemove = (fact?.implicitLinks || []).map(il => `${factId}:il:${il.roleIndex}:if:${ifId}`)
+      const ilKeysToRemove = new Set((fact?.implicitLinks || []).map(il => `${factId}:il:${il.roleIndex}:if:${ifId}`))
       return {
         facts: s.facts.map(f => f.id !== factId ? f : {
           ...f,
@@ -4973,7 +4955,7 @@ export const useOrmStore = create((set, get) => ({
         }),
         diagrams: s.diagrams.map(d => ({
           ...d,
-          positions: Object.fromEntries(Object.entries(d.positions).filter(([k]) => !ilKeysToRemove.includes(k))),
+          implicitLinkPositions: Object.fromEntries(Object.entries(d.implicitLinkPositions ?? {}).filter(([k]) => !ilKeysToRemove.has(k))),
         })),
         selectedInternalFrequency: null,
         isDirty: true,
@@ -5014,7 +4996,8 @@ export const useOrmStore = create((set, get) => ({
     const ifId = uid()
     const key = JSON.stringify([...uRoles].sort((a, b) => a - b))
     const activeDiagram = get().diagrams.find(d => d.id === get().activeDiagramId)
-    const factPos = activeDiagram?.positions[factId] ?? { x: fact.x, y: fact.y }
+    const factOcc = occOf(activeDiagram, factId)
+    const factPos = factOcc ? { x: factOcc.x, y: factOcc.y } : { x: fact.x, y: fact.y }
     set(s => ({
       facts: s.facts.map(f => {
         if (f.id !== factId) return f
@@ -5064,8 +5047,10 @@ export const useOrmStore = create((set, get) => ({
   centerOnElement(id) {
     const { objectTypes, facts, constraints, subtypes, diagrams, activeDiagramId, zoom } = get()
     const diagram = diagrams.find(d => d.id === activeDiagramId)
-    const positions = diagram?.positions ?? {}
-    const getElemPos = el => { const p = positions[el.id]; return { x: p?.x ?? el.x, y: p?.y ?? el.y } }
+    const getElemPos = el => {
+      const occ = occOf(diagram, el.id)
+      return { x: occ?.x ?? el.x, y: occ?.y ?? el.y }
+    }
 
     let wx, wy
     const ot = objectTypes.find(o => o.id === id)
@@ -5120,10 +5105,10 @@ export const useOrmStore = create((set, get) => ({
 
     // Switch to a diagram that contains the element (prefer active, then any)
     const active = diagrams.find(d => d.id === activeDiagramId)
-    const inActive = active?.elementIds === null || active?.elementIds?.includes(elementId)
+    const inActive = inDiag(active, elementId)
     if (!inActive) {
       const target = diagrams.find(d =>
-        d.id !== activeDiagramId && (d.elementIds === null || d.elementIds?.includes(elementId))
+        d.id !== activeDiagramId && inDiag(d, elementId)
       )
       if (target) get().setActiveDiagram(target.id)
     }
@@ -5147,13 +5132,14 @@ export const useOrmStore = create((set, get) => ({
   fitToContent(vpW = 1200, vpH = 700) {
     const { objectTypes, facts, constraints, diagrams, activeDiagramId } = get()
     const diagram = diagrams?.find(d => d.id === activeDiagramId)
-    const positions = diagram?.positions ?? {}
-    const elementIds = new Set(diagram?.elementIds ?? [])
-    const getPos = (el) => positions[el.id] ?? { x: el.x, y: el.y }
+    const getPos = (el) => {
+      const occ = occOf(diagram, el.id)
+      return occ ? { x: occ.x, y: occ.y } : { x: el.x, y: el.y }
+    }
     const pts = [
-      ...objectTypes.filter(ot => !elementIds.size || elementIds.has(ot.id)).map(ot => ({ ...getPos(ot), hw: 70, hh: 28 })),
-      ...facts.filter(f => !elementIds.size || elementIds.has(f.id)).map(f => ({ ...getPos(f), hw: f.arity * 16, hh: 16 })),
-      ...constraints.filter(c => !elementIds.size || elementIds.has(c.id)).map(c => ({ ...getPos(c), hw: 16, hh: 16 })),
+      ...objectTypes.filter(ot => inDiag(diagram, ot.id)).map(ot => ({ ...getPos(ot), hw: 70, hh: 28 })),
+      ...facts.filter(f => inDiag(diagram, f.id)).map(f => ({ ...getPos(f), hw: f.arity * 16, hh: 16 })),
+      ...constraints.filter(c => inDiag(diagram, c.id)).map(c => ({ ...getPos(c), hw: 16, hh: 16 })),
     ]
     if (!pts.length) return
     const PAD = 40
@@ -5176,20 +5162,11 @@ export const useOrmStore = create((set, get) => ({
   // ── diagram management ───────────────────────────────────────────────────
 
   addDiagram(name = 'Diagram') {
-    const d = { ...mkDiagram(name), elementIds: [] }   // intentionally empty
+    const d = mkDiagram(name)   // starts with empty occurrences
     set(s => {
-      // Freeze any show-all diagrams (elementIds: null) to an explicit snapshot
-      // of the current element IDs so elements created in the new diagram don't
-      // automatically appear in existing diagrams.
-      const allIds = [
-        ...s.objectTypes.map(o => o.id),
-        ...s.facts.map(f => f.id),
-        ...s.constraints.map(c => c.id),
-      ]
-      const diagrams = s.diagrams.map(diag =>
-        diag.elementIds === null ? { ...diag, elementIds: allIds } : diag
-      )
-      return { diagrams: [...diagrams, d], activeDiagramId: d.id, pan: { x: 0, y: 0 }, zoom: 1, isDirty: true }
+      // In v2 all diagrams already have explicit occurrences lists (no show-all concept).
+      // No migration needed — just add the new empty diagram.
+      return { diagrams: [...s.diagrams, d], activeDiagramId: d.id, pan: { x: 0, y: 0 }, zoom: 1, isDirty: true }
     })
     return d.id
   },
@@ -5227,7 +5204,7 @@ export const useOrmStore = create((set, get) => ({
     )
     const incoming = savedDiagrams.find(d => d.id === id)
     const restoredSelection = (incoming?.multiSelectedIds ?? []).filter(selId =>
-      incoming?.elementIds === null || (incoming?.elementIds ?? []).includes(selId)
+      inDiag(incoming, selId)
     )
 
     set({
@@ -5331,20 +5308,16 @@ export const useOrmStore = create((set, get) => ({
       }
 
       const targetDiagram = s.diagrams.find(d => d.id === diagramId)
-      const existingIds = new Set(targetDiagram?.elementIds ?? [])
+      const existingIds = new Set((targetDiagram?.occurrences ?? []).map(o => o.schemaElementId))
 
       const updatedDiagrams = s.diagrams.map(d => {
         if (d.id !== diagramId) return d
 
-        let elementIds = d.elementIds === null ? null : [...d.elementIds]
-        let positions  = { ...d.positions }
-
+        let nd = d
         for (const id of idsToAdd) {
-          if (elementIds !== null && elementIds.includes(id)) continue
           const el = s.objectTypes.find(o => o.id === id) ?? s.facts.find(f => f.id === id)
           if (!el) continue
-          if (elementIds !== null) elementIds = [...elementIds, id]
-          positions = { ...positions, [id]: positions[id] ?? { x: el.x, y: el.y } }
+          nd = addOccIfAbsent(nd, id, el.x ?? 0, el.y ?? 0)
         }
 
         // Add implied links to shownImplicitLinks
@@ -5354,22 +5327,18 @@ export const useOrmStore = create((set, get) => ({
         const shownChanged = newShown.size !== shown.length || [...newShown].some(k => !shown.includes(k))
 
         return {
-          ...d,
-          elementIds,
-          positions,
+          ...nd,
           shownImplicitLinks: shownChanged ? [...newShown] : shown,
         }
       })
 
       // Select all newly added OT/fact IDs as multi-selection (including synced constraints)
-      const newlyAdded = [...idsToAdd].filter(id =>
-        targetDiagram?.elementIds === null ? false : !existingIds.has(id)
-      )
+      const newlyAdded = [...idsToAdd].filter(id => !existingIds.has(id))
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
       const syncedTarget = syncedDiagrams.find(d => d.id === diagramId)
-      const newConstraintIds = (syncedTarget?.elementIds ?? []).filter(id =>
-        !existingIds.has(id) && s.constraints.some(c => c.id === id)
-      )
+      const newConstraintIds = (syncedTarget?.occurrences ?? [])
+        .map(o => o.schemaElementId)
+        .filter(id => !existingIds.has(id) && s.constraints.some(c => c.id === id))
       const addedIds = newlyAdded.length > 0 ? newlyAdded : [...idsToAdd]
       const multiSelectedIds = [...new Set([...addedIds, ...newConstraintIds])]
 
@@ -5390,15 +5359,10 @@ export const useOrmStore = create((set, get) => ({
 
       const updatedDiagrams = s.diagrams.map(d => {
         if (d.id !== diagramId) return d
-        // null means "show all" — convert to explicit list minus removed elements
-        const base = d.elementIds === null
-          ? [...s.objectTypes.map(o => o.id), ...s.facts.map(f => f.id), ...s.constraints.map(c => c.id)]
-          : d.elementIds
         return {
           ...d,
-          elementIds: base.filter(id => !toRemove.has(id)),
-          // Positions are kept so elements re-added later resume their previous location.
-          positions: d.positions,
+          occurrences: (d.occurrences ?? []).filter(o => !toRemove.has(o.schemaElementId)),
+          // Positions are kept (implicitLinkPositions not cleaned here — no schema identity loss)
           expandedRefModes: (d.expandedRefModes ?? []).filter(id => !toRemove.has(id)),
         }
       })
@@ -5429,21 +5393,20 @@ export const useOrmStore = create((set, get) => ({
 
       const updatedDiagrams = s.diagrams.map(d => {
         if (d.id !== diagramId) return d
-        const base = d.elementIds === null
-          ? [...s.objectTypes.map(o => o.id), ...s.facts.map(f => f.id), ...s.constraints.map(c => c.id)]
-          : d.elementIds
+        // Remove occurrences for cascaded IDs
+        const newOccs = (d.occurrences ?? []).filter(o => !cascaded.has(o.schemaElementId))
+        // Clean up implicit link positions for removed links
+        const newILP = Object.fromEntries(Object.entries(d.implicitLinkPositions ?? {}).filter(([k]) => {
+          if (ilPosKeysToRemove.has(k)) return false
+          for (const ilKey of ilKeysToRemove) {
+            if (k.startsWith(`${ilKey}:if:`)) return false
+          }
+          return true
+        }))
         return {
           ...d,
-          elementIds: base.filter(id => !cascaded.has(id)),
-          // Element positions are kept so re-added elements resume their previous location.
-          // Only implied-link-specific position keys are cleaned up (they have no schema identity).
-          positions:  Object.fromEntries(Object.entries(d.positions).filter(([k]) => {
-            if (ilPosKeysToRemove.has(k)) return false
-            for (const ilKey of ilKeysToRemove) {
-              if (k.startsWith(`${ilKey}:if:`)) return false
-            }
-            return true
-          })),
+          occurrences: newOccs,
+          implicitLinkPositions: newILP,
           shownImplicitLinks: (d.shownImplicitLinks || []).filter(ilKey => !ilKeysToRemove.has(ilKey)),
           expandedRefModes: (d.expandedRefModes ?? []).filter(id => !cascaded.has(id)),
         }
@@ -5461,7 +5424,7 @@ export const useOrmStore = create((set, get) => ({
   getSharedIds() {
     const { diagrams } = get()
     const counts = {}
-    diagrams.forEach(d => (d.elementIds ?? []).forEach(id => { counts[id] = (counts[id] || 0) + 1 }))
+    diagrams.forEach(d => (d.occurrences ?? []).forEach(o => { counts[o.schemaElementId] = (counts[o.schemaElementId] || 0) + 1 }))
     return new Set(Object.keys(counts).filter(id => counts[id] > 1))
   },
 }))

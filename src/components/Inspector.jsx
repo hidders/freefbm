@@ -257,10 +257,10 @@ function DiagramList({ elementId, kind, subtypeEndpointIds, factId, roleIndex })
     }
     if (subtypeEndpointIds) {
       const [a, b] = subtypeEndpointIds
-      return d.elementIds === null ||
-        ((d.elementIds ?? []).includes(a) && (d.elementIds ?? []).includes(b))
+      return d.occurrences?.some(o => o.schemaElementId === a) &&
+             d.occurrences?.some(o => o.schemaElementId === b)
     }
-    return d.elementIds === null || (d.elementIds ?? []).includes(elementId)
+    return d.occurrences?.some(o => o.schemaElementId === elementId) ?? false
   })
   const handleClick = (d) => {
     store.setActiveDiagram(d.id)
@@ -2183,9 +2183,8 @@ function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
   const store = useOrmStore()
   const ilRaw = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
 
-  const activeDiagramPos = store.diagrams?.find(d => d.id === store.activeDiagramId)?.positions ?? {}
   const ilKey = `${parentFact.id}:il:${roleIndex}`
-  const ilPos = activeDiagramPos[ilKey] ?? {}
+  const ilPos = store.diagrams?.find(d => d.id === store.activeDiagramId)?.implicitLinkPositions?.[ilKey] ?? {}
   const il = ilRaw ? { ...ilRaw, ...ilPos } : null
 
   React.useEffect(() => {
@@ -2381,9 +2380,8 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
   const store = useOrmStore()
   const il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
 
-  const activeDiagramPos = store.diagrams?.find(d => d.id === store.activeDiagramId)?.positions ?? {}
   const ilKey = `${parentFact.id}:il:${roleIndex}`
-  const ilPos = activeDiagramPos[ilKey] ?? {}
+  const ilPos = store.diagrams?.find(d => d.id === store.activeDiagramId)?.implicitLinkPositions?.[ilKey] ?? {}
   const mergedIl = il ? { ...il, ...ilPos } : null
 
   // Auto-create missing implicit link entry on mount (e.g. from old files)
@@ -3562,11 +3560,13 @@ export default function Inspector() {
   const activeDiag = store.diagrams.find(d => d.id === store.activeDiagramId)
   const note = selectedKind === 'note' ? (activeDiag?.notes ?? []).find(n => n.id === selectedId) : null
   const rawFact = store.facts.find(f => f.id === selectedId)
-  // Merge per-diagram position overrides so the inspector sees the same values as the canvas
-  const activeDiagramPos = store.diagrams?.find(d => d.id === store.activeDiagramId)?.positions ?? {}
+  // Merge per-diagram occurrence overrides so the inspector sees the same values as the canvas
+  const activeDiagOccMap = Object.fromEntries(
+    (store.diagrams?.find(d => d.id === store.activeDiagramId)?.occurrences ?? []).map(o => [o.schemaElementId, o])
+  )
   const mergeDiagramPos = (f) => {
     if (!f) return f
-    const p = activeDiagramPos[f.id]
+    const p = activeDiagOccMap[f.id]
     if (!p) return f
     const merged = { ...f }
     if (p.readingAbove        !== undefined) merged.readingAbove        = p.readingAbove

@@ -39,7 +39,7 @@ const BADGE_SEV_COLOUR = { error: '#dc2626', warning: '#d97706', population: '#f
 const BADGE_SEV_ICON   = { error: '✕', warning: '!', population: '!' }
 const BADGE_POPUP_FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
-function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints, visibleSubtypes, positions }) {
+function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints, visibleSubtypes }) {
   const errors    = store.validationErrors || []
   const popIssues = store.populationIssues || []
   const [popup, setPopup] = useState(null)  // { clientX, clientY, elementErrors }
@@ -86,24 +86,22 @@ function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints,
           )
         })}
         {visibleFacts.filter(f => !f._implicit && errorIds.has(f.id)).map(f => {
-          const p = positions[f.id]
-          const fx = p?.x ?? f.x, fy = p?.y ?? f.y
           let bx, by
           if (f.objectified) {
-            const b = nestedFactBounds({ ...f, x: fx, y: fy })
+            const b = nestedFactBounds(f)
             bx = b.right - 1
             by = b.top   + 1
           } else {
             const n = Math.max(f.arity, 1)
-            const isVert = (p?.orientation ?? f.orientation) === 'vertical'
+            const isVert = f.orientation === 'vertical'
             if (isVert) {
               const totalH = n * ROLE_W + (n - 1) * ROLE_GAP
-              bx = fx + ROLE_H / 2 + R - 1
-              by = fy - totalH / 2 - R + 1
+              bx = f.x + ROLE_H / 2 + R - 1
+              by = f.y - totalH / 2 - R + 1
             } else {
               const totalW = n * ROLE_W + (n - 1) * ROLE_GAP
-              bx = fx + totalW / 2 + R - 1
-              by = fy - ROLE_H / 2 - R + 1
+              bx = f.x + totalW / 2 + R - 1
+              by = f.y - ROLE_H / 2 - R + 1
             }
           }
           return (
@@ -640,7 +638,7 @@ export default function Canvas() {
         const assoc  = visibleOts.find(o => o.id === role?.objectTypeId)
                     || visibleFacts.find(vf => vf.id === role?.objectTypeId && vf.objectified)
         if (assoc) {
-          const ilPos = diag?.positions[`${f.id}:il:${il.roleIndex}`]
+          const ilPos = diag?.implicitLinkPositions?.[`${f.id}:il:${il.roleIndex}`]
           const ilX   = ilPos?.x ?? Math.round((f.x + assoc.x) / 2)
           const ilY   = ilPos?.y ?? Math.round((f.y + assoc.y) / 2)
           if (Math.hypot(wx - ilX, wy - ilY) < 18) return `${f.id}_il_${il.roleIndex}`
@@ -857,8 +855,7 @@ export default function Canvas() {
       const il = parentFact?.implicitLinks?.find(l => l.roleIndex === roleIndex)
       if (!parentFact || !il) return
       const diag = store.diagrams.find(d => d.id === store.activeDiagramId)
-      const positions = diag?.positions ?? {}
-      const ilPos = positions[`${factId}:il:${roleIndex}`]
+      const ilPos = diag?.implicitLinkPositions?.[`${factId}:il:${roleIndex}`]
       const role = parentFact.roles[roleIndex]
       const associatedOtid = role?.objectTypeId
       const associatedOt = visibleOts.find(o => o.id === associatedOtid)
@@ -890,8 +887,7 @@ export default function Canvas() {
           const il = parentFact?.implicitLinks?.find(l => l.roleIndex === roleIndex)
           if (parentFact && il) {
             const diag = store.diagrams.find(d => d.id === store.activeDiagramId)
-            const positions = diag?.positions ?? {}
-            const ilPos = positions[`${factId}:il:${roleIndex}`]
+            const ilPos = diag?.implicitLinkPositions?.[`${factId}:il:${roleIndex}`]
             const role = parentFact.roles[roleIndex]
             const associatedOtid = role?.objectTypeId
             const associatedOt = visibleOts.find(o => o.id === associatedOtid)
@@ -988,7 +984,7 @@ export default function Canvas() {
       // so the hit-test matches what is actually rendered on screen.
       const nestedMap = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
       const diag = store.diagrams.find(d => d.id === store.activeDiagramId)
-      const diagPos = diag?.positions ?? {}
+      const diagPos = diag?.implicitLinkPositions ?? {}
       const ids = [
         ...visibleOts        .filter(o  => inBand(o.x, o.y))           .map(o  => o.id),
         ...visibleFacts      .filter(f  => boxInBand(factBounds(f)))    .map(f  => f.id),
@@ -1233,7 +1229,7 @@ export default function Canvas() {
               const assoc = pf ? (visibleOts.find(o => o.id === pf.roles[Number(riStr)]?.objectTypeId)
                               || visibleFacts.find(f => f.id === pf.roles[Number(riStr)]?.objectTypeId)) : null
               if (pf && assoc) {
-                const ilPos = activeDiagram?.positions[`${fid}:il:${Number(riStr)}`]
+                const ilPos = activeDiagram?.implicitLinkPositions?.[`${fid}:il:${Number(riStr)}`]
                 tx = ilPos?.x ?? Math.round((pf.x + assoc.x) / 2)
                 ty = ilPos?.y ?? Math.round((pf.y + assoc.y) / 2)
               }
@@ -1362,7 +1358,7 @@ export default function Canvas() {
               noteSubjectIds={isNotePickMode ? new Set() : rsIds}/>
           </g>
           <ConstraintMemberLabels/>
-          <ValidationBadges store={store} visibleOts={visibleOts} visibleFacts={visibleFacts} visibleConstraints={visibleConstraints} visibleSubtypes={visibleSubtypes} positions={store.diagrams.find(d => d.id === store.activeDiagramId)?.positions ?? {}}/>
+          <ValidationBadges store={store} visibleOts={visibleOts} visibleFacts={visibleFacts} visibleConstraints={visibleConstraints} visibleSubtypes={visibleSubtypes}/>
           </g>{/* end previewDim wrapper */}
           {(qd || store.queryIndexHighlight) && <QueryCopies
             mousePos={mousePos}

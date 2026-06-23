@@ -226,16 +226,15 @@ export function makeImplicitLinkFact(parentFact, implicitLink) {
 
   const state = useOrmStore.getState()
   const diag = state.diagrams.find(d => d.id === state.activeDiagramId)
-  const positions = diag?.positions ?? {}
-  const ilKey = `${parentFact.id}:il:${implicitLink.roleIndex}`
-  const ilPos = positions[ilKey]
+  const occMap = Object.fromEntries((diag?.occurrences ?? []).map(o => [o.schemaElementId, o]))
+  const ilPos = diag?.implicitLinkPositions?.[`${parentFact.id}:il:${implicitLink.roleIndex}`]
 
   const otMap = Object.fromEntries(state.objectTypes.map(o => {
-    const p = positions[o.id]
+    const p = occMap[o.id]
     return [o.id, p ? { ...o, x: p.x, y: p.y } : o]
   }))
   const nestedMap = Object.fromEntries(state.facts.filter(f => f.objectified).map(f => {
-    const p = positions[f.id]
+    const p = occMap[f.id]
     return [f.id, p ? { ...f, x: p.x, y: p.y } : f]
   }))
   const associatedOt = otMap[associatedOtid]

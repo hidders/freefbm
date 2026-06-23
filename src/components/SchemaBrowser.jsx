@@ -36,13 +36,13 @@ const CONSTRAINT_ICON_MAP = {
 
 // Returns the set of diagram IDs that contain an element
 function diagramsContaining(elementId, diagrams) {
-  return diagrams.filter(d => d.elementIds === null || (d.elementIds ?? []).includes(elementId))
+  return diagrams.filter(d => d.occurrences?.some(o => o.schemaElementId === elementId))
 }
 
 function subtypeDiagramsContaining(st, diagrams) {
   return diagrams.filter(d =>
-    d.elementIds === null ||
-    ((d.elementIds ?? []).includes(st.subId) && (d.elementIds ?? []).includes(st.superId))
+    d.occurrences?.some(o => o.schemaElementId === st.subId) &&
+    d.occurrences?.some(o => o.schemaElementId === st.superId)
   )
 }
 
@@ -356,21 +356,20 @@ export default function SchemaBrowser() {
   }
 
   // "in current diagram" checks
-  const inDiag = diagram?.elementIds === null
-    ? () => true
-    : (id) => (diagram?.elementIds ?? []).includes(id)
+  const inDiag = (id) => diagram?.occurrences?.some(o => o.schemaElementId === id) ?? false
 
-  const subtypeInDiag = (st) => diagram?.elementIds === null ||
-    ((diagram?.elementIds ?? []).includes(st.subId) && (diagram?.elementIds ?? []).includes(st.superId))
+  const subtypeInDiag = (st) =>
+    (diagram?.occurrences?.some(o => o.schemaElementId === st.subId) &&
+     diagram?.occurrences?.some(o => o.schemaElementId === st.superId)) ?? false
 
   const shownImplicitLinksSet = new Set(diagram?.shownImplicitLinks ?? [])
   const ilInDiag = (il) => inDiag(il.factId) && shownImplicitLinksSet.has(`${il.factId}:${il.roleIndex}`)
 
   // "orphaned" = not in any diagram
-  const isOrphaned   = (id) => !diagrams.some(d => d.elementIds === null || (d.elementIds ?? []).includes(id))
+  const isOrphaned   = (id) => !diagrams.some(d => d.occurrences?.some(o => o.schemaElementId === id))
   const isStOrphaned = (st) => !diagrams.some(d =>
-    d.elementIds === null ||
-    ((d.elementIds ?? []).includes(st.subId) && (d.elementIds ?? []).includes(st.superId))
+    d.occurrences?.some(o => o.schemaElementId === st.subId) &&
+    d.occurrences?.some(o => o.schemaElementId === st.superId)
   )
 
   const expandedRefModes = new Set(diagram?.expandedRefModes ?? [])

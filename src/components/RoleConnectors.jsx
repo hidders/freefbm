@@ -52,11 +52,15 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
   const nestedMap = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
   const dotAtObject = store.mandatoryDotPosition === 'object'
 
-  // Read diagram positions for role name offsets
-  const diagPos = store.diagrams?.find(d => d.id === store.activeDiagramId)?.positions ?? {}
+  // Read diagram occurrence data for per-element overrides (e.g. roleNameOffsets)
+  const activeDiag = store.diagrams?.find(d => d.id === store.activeDiagramId)
+  const diagOccMap = Object.fromEntries(
+    (activeDiag?.occurrences ?? []).map(o => [o.schemaElementId, o])
+  )
+  const diagIlPos = activeDiag?.implicitLinkPositions ?? {}
 
   const getRoleNameOffset = (factId, roleIndex) => {
-    const p = diagPos[factId]
+    const p = diagOccMap[factId]
     return p?.roleNameOffsets?.[roleIndex] ?? null
   }
 
@@ -171,7 +175,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
       if (!ot && !nf) return []
       const roleNames = il.roleNames || [null, null]
       const ilKey = `${fact.id}:il:${il.roleIndex}`
-      const ilPos = diagPos[ilKey]
+      const ilPos = diagIlPos[ilKey]
       const roleOrder = ilPos?.roleOrder || il.roleOrder || [0, 1]
       const schemaX = il.x
       const schemaY = il.y
@@ -385,7 +389,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
   const nestedMap  = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
   const dotAtObject = store.mandatoryDotPosition === 'object'
   const sel        = store.selectedMandatoryDot
-  const diagPos    = store.diagrams?.find(d => d.id === store.activeDiagramId)?.positions ?? {}
+  const diagIlPos  = store.diagrams?.find(d => d.id === store.activeDiagramId)?.implicitLinkPositions ?? {}
 
   return (
     <g>
@@ -495,7 +499,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
         return (fact.implicitLinks || []).filter(il => store.isImplicitLinkShown(fact.id, il.roleIndex)).map(il => {
           const role = fact.roles[il.roleIndex]
           const ilKeyDot = `${fact.id}:il:${il.roleIndex}`
-          const ilPosDot = diagPos[ilKeyDot]
+          const ilPosDot = diagIlPos[ilKeyDot]
           const roleOrder = ilPosDot?.roleOrder || il.roleOrder || [0, 1]
           const results = []
           const dotDimIl = queryReachable != null

@@ -511,7 +511,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     const il = store.facts.find(f => f.id === factId)?.implicitLinks?.find(l => l.roleIndex === roleIndex)
     const ilKey = `${factId}:il:${roleIndex}`
     const activeDiag = store.diagrams.find(d => d.id === store.activeDiagramId)
-    const ilPos = activeDiag?.positions?.[ilKey] ?? {}
+    const ilPos = activeDiag?.implicitLinkPositions?.[ilKey] ?? {}
     const isVertical = (ilPos.orientation ?? il?.orientation) === 'vertical'
     setContextMenu({
       x: e.clientX, y: e.clientY,
