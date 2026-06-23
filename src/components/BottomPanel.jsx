@@ -319,7 +319,7 @@ function RingConstraintPopulation({ con }) {
           </div>
           <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 280 }}>
             {isC1 ? (
-              <table style={{ borderCollapse: 'collapse', minWidth: 240, border: '1px solid var(--border-soft)' }}>
+              <table style={{ borderCollapse: 'collapse', minWidth: 240 }}>
                 <thead>
                   <tr>
                     <th style={{ ...hdrSt, width: 120 }}>Left</th>
@@ -336,7 +336,7 @@ function RingConstraintPopulation({ con }) {
                 </tbody>
               </table>
             ) : (
-              <table style={{ borderCollapse: 'collapse', minWidth: 480, border: '1px solid var(--border-soft)' }}>
+              <table style={{ borderCollapse: 'collapse', minWidth: 480 }}>
                 <thead>
                   <tr>
                     <th style={{ ...hdrSt, width: 120 }}>Left</th>
@@ -651,7 +651,7 @@ function InclusiveOrConstraintPopulation({ con }) {
         <EmptyState>Target object type has no instances.</EmptyState>
       ) : (
         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 280 }}>
-          <table style={{ borderCollapse: 'collapse', minWidth: 100 + 120 + 100 * seqCount, border: '1px solid var(--border-soft)' }}>
+          <table style={{ borderCollapse: 'collapse', minWidth: 100 + 120 + 100 * seqCount }}>
             <thead>
               <tr>
                 <th style={{ ...headerStyle, width: 100 }}>LCA key</th>
@@ -759,7 +759,7 @@ function ExclusiveOrConstraintPopulation({ con }) {
         <EmptyState>Target object type has no instances.</EmptyState>
       ) : (
         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 280 }}>
-          <table style={{ borderCollapse: 'collapse', minWidth: 100 + 120 + 100 * seqCount, border: '1px solid var(--border-soft)' }}>
+          <table style={{ borderCollapse: 'collapse', minWidth: 100 + 120 + 100 * seqCount }}>
             <thead>
               <tr>
                 <th style={{ ...headerStyle, width: 100 }}>LCA key</th>
@@ -874,7 +874,7 @@ function ExclusionConstraintPopulation({ con }) {
         <EmptyState>No query results — all sequences are empty.</EmptyState>
       ) : (
         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 280 }}>
-          <table style={{ borderCollapse: 'collapse', minWidth: 120 + 120 * seqCount, border: '1px solid var(--border-soft)' }}>
+          <table style={{ borderCollapse: 'collapse', minWidth: 120 + 120 * seqCount }}>
             <thead>
               <tr>
                 <th style={{ ...headerStyle, width: 120 }}>LCA tuple</th>
@@ -956,7 +956,7 @@ function SetConstraintTable({ label, rows, seqCount, positionInfo, violationCoun
         <EmptyState>No query results — all sequences are empty.</EmptyState>
       ) : (
         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 280 }}>
-          <table style={{ borderCollapse: 'collapse', minWidth: 120 + 120 * seqCount, border: '1px solid var(--border-soft)' }}>
+          <table style={{ borderCollapse: 'collapse', minWidth: 120 + 120 * seqCount }}>
             <thead>
               <tr>
                 <th style={{ ...headerStyle, width: 120 }}>LCA tuple</th>

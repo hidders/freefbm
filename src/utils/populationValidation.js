@@ -1185,26 +1185,14 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
 
       // Build DSU so instances from different types that represent the same object
       // are treated as identical (C2 case: left and right roles have different PI roots).
-      const { dsuFind: ringDsuFind, nodeKey: ringNodeKey, translateToLCA: ringTranslate } =
+      const { dsuFind: ringDsuFind, nodeKey: ringNodeKey } =
         buildSubtypeDSU({ objectTypes, facts, populations, subtypes, subtypeMappings, factPopulations, nestedEntityMappings })
 
-      // Compute the LCA for translating identifiers in violation messages.
-      const ringData = { objectTypes, facts, populations, subtypes, subtypeMappings, factPopulations, nestedEntityMappings, constraints }
-      const { isC1: ringIsC1, piRoot: ringPiRoot } = checkC1ForTypes([leftOtId, rightOtId].filter(Boolean), ringData)
-      let ringLcaId = null
-      if (ringIsC1) {
-        ringLcaId = ringPiRoot
-      } else {
-        const ringLCAs = findLCAsForTypes([leftOtId, rightOtId].filter(Boolean), subtypes || [])
-        ringLcaId = ringLCAs[0] ?? null
-      }
-
       // Compute DSU representative for a norm value at a given OT.
-      const keyToNorm  = new Map()  // rep string → norm value (for violation display)
-      const keyToOtId  = new Map()  // rep string → OT id (for LCA translation)
+      const keyToNorm = new Map()  // rep string → norm value (for violation display)
       const toRep = (otId, norm) => {
         const rep = otId ? ringDsuFind(ringNodeKey(otId, norm)) : JSON.stringify(norm)
-        if (!keyToNorm.has(rep)) { keyToNorm.set(rep, norm); if (otId) keyToOtId.set(rep, otId) }
+        if (!keyToNorm.has(rep)) keyToNorm.set(rep, norm)
         return rep
       }
 
@@ -1260,14 +1248,6 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
       }
 
       const dv = (v) => projCellDisplay(v)
-      // Translate a norm value at a given OT to the LCA level before display.
-      const dvLCA = (norm, otId) => {
-        if (ringLcaId && otId) {
-          const t = ringTranslate(otId, norm, ringLcaId)
-          if (t !== null) return dv(t)
-        }
-        return dv(norm)
-      }
       const push = (ringType, extra) => issues.push({
         kind: 'ringViolation', elementId: con.id, constraintId: con.id, ringType, ...extra,
       })
@@ -1278,7 +1258,7 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
           for (const { a, b, aKey, bKey } of rel) {
             if (aKey !== bKey) continue
             push(rt, { value: a,
-              message: `Irreflexivity violated: (${dvLCA(a, leftOtId)}, ${dvLCA(b, rightOtId)}) is a self-pair` })
+              message: `Irreflexivity violated: (${dv(a)}, ${dv(b)}) is a self-pair` })
           }
 
         } else if (rt === 'reflexive') {
@@ -1290,16 +1270,15 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
           }
           for (const [key, val] of participants) {
             if (hasPair(key, key)) continue
-            const dvVal = dvLCA(val, keyToOtId.get(key))
             push(rt, { value: val,
-              message: `Local reflexivity violated: ${dvVal} participates in the relation but (${dvVal}, ${dvVal}) is not in the population` })
+              message: `Local reflexivity violated: ${dv(val)} participates in the relation but (${dv(val)}, ${dv(val)}) is not in the population` })
           }
 
         } else if (rt === 'purely-reflexive') {
           for (const { a, b, aKey, bKey } of rel) {
             if (aKey === bKey) continue
             push(rt, { value: a, value2: b,
-              message: `Pure reflexivity violated: (${dvLCA(a, leftOtId)}, ${dvLCA(b, rightOtId)}) is not a self-pair` })
+              message: `Pure reflexivity violated: (${dv(a)}, ${dv(b)}) is not a self-pair` })
           }
 
         } else if (rt === 'asymmetric') {
@@ -1308,7 +1287,7 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
             if (!hasPair(bKey, aKey)) continue
             if (aKey > bKey) continue  // deduplicate
             push(rt, { value: a, value2: b,
-              message: `Asymmetry violated: both (${dvLCA(a, leftOtId)}, ${dvLCA(b, rightOtId)}) and (${dvLCA(b, rightOtId)}, ${dvLCA(a, leftOtId)}) are in the population` })
+              message: `Asymmetry violated: both (${dv(a)}, ${dv(b)}) and (${dv(b)}, ${dv(a)}) are in the population` })
           }
 
         } else if (rt === 'symmetric') {
@@ -1316,7 +1295,7 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
           for (const { a, b, aKey, bKey } of rel) {
             if (hasPair(bKey, aKey)) continue
             push(rt, { value: a, value2: b,
-              message: `Symmetry violated: (${dvLCA(a, leftOtId)}, ${dvLCA(b, rightOtId)}) is in the population but (${dvLCA(b, rightOtId)}, ${dvLCA(a, leftOtId)}) is not` })
+              message: `Symmetry violated: (${dv(a)}, ${dv(b)}) is in the population but (${dv(b)}, ${dv(a)}) is not` })
           }
 
         } else if (rt === 'antisymmetric') {
@@ -1326,7 +1305,7 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
             if (!hasPair(bKey, aKey)) continue
             if (aKey > bKey) continue  // deduplicate
             push(rt, { value: a, value2: b,
-              message: `Antisymmetry violated: both (${dvLCA(a, leftOtId)}, ${dvLCA(b, rightOtId)}) and (${dvLCA(b, rightOtId)}, ${dvLCA(a, leftOtId)}) are in the population` })
+              message: `Antisymmetry violated: both (${dv(a)}, ${dv(b)}) and (${dv(b)}, ${dv(a)}) are in the population` })
           }
 
         } else if (rt === 'transitive') {
@@ -1339,9 +1318,8 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
               if (reported.has(rk)) continue
               reported.add(rk)
               const cVal = keyToNorm.get(cKey) ?? cKey
-              const cOtId = keyToOtId.get(cKey) ?? rightOtId
               push(rt, { value: a, value2: cVal,
-                message: `Transitivity violated: (${dvLCA(a, leftOtId)}, ${dvLCA(b, rightOtId)}) and (${dvLCA(b, rightOtId)}, ${dvLCA(cVal, cOtId)}) are in the population but (${dvLCA(a, leftOtId)}, ${dvLCA(cVal, cOtId)}) is not` })
+                message: `Transitivity violated: (${dv(a)}, ${dv(b)}) and (${dv(b)}, ${dv(cVal)}) are in the population but (${dv(a)}, ${dv(cVal)}) is not` })
             }
           }
 
@@ -1355,9 +1333,8 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
               if (reported.has(rk)) continue
               reported.add(rk)
               const cVal = keyToNorm.get(cKey) ?? cKey
-              const cOtId = keyToOtId.get(cKey) ?? rightOtId
               push(rt, { value: a, value2: cVal,
-                message: `Intransitivity violated: (${dvLCA(a, leftOtId)}, ${dvLCA(b, rightOtId)}), (${dvLCA(b, rightOtId)}, ${dvLCA(cVal, cOtId)}), and (${dvLCA(a, leftOtId)}, ${dvLCA(cVal, cOtId)}) are all in the population` })
+                message: `Intransitivity violated: (${dv(a)}, ${dv(b)}), (${dv(b)}, ${dv(cVal)}), and (${dv(a)}, ${dv(cVal)}) are all in the population` })
             }
           }
 
@@ -1386,11 +1363,10 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
               if (reported.has(rk)) continue
               reported.add(rk)
               const zVal = keyToNorm.get(zKey) ?? zKey
-              const zOtId = keyToOtId.get(zKey) ?? rightOtId
               push(rt, { value: x, value2: zVal,
                 message: zKey === yKey
-                  ? `Strong intransitivity violated: (${dvLCA(x, leftOtId)}, ${dvLCA(y, rightOtId)}) is in the population and ${dvLCA(y, rightOtId)} can reach itself (cycle), so (${dvLCA(x, leftOtId)}, ${dvLCA(y, rightOtId)}) should not exist`
-                  : `Strong intransitivity violated: (${dvLCA(x, leftOtId)}, ${dvLCA(y, rightOtId)}) is in the population, ${dvLCA(y, rightOtId)} can reach ${dvLCA(zVal, zOtId)}, but (${dvLCA(x, leftOtId)}, ${dvLCA(zVal, zOtId)}) is also in the population` })
+                  ? `Strong intransitivity violated: (${dv(x)}, ${dv(y)}) is in the population and ${dv(y)} can reach itself (cycle), so (${dv(x)}, ${dv(y)}) should not exist`
+                  : `Strong intransitivity violated: (${dv(x)}, ${dv(y)}) is in the population, ${dv(y)} can reach ${dv(zVal)}, but (${dv(x)}, ${dv(zVal)}) is also in the population` })
             }
           }
 
@@ -1424,8 +1400,7 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
 
           if (foundCycle) {
             const cycleParsed = foundCycle.map(k => keyToNorm.get(k) ?? k)
-            const cycleLabel  = foundCycle.concat([foundCycle[0]])
-              .map(k => dvLCA(keyToNorm.get(k) ?? k, keyToOtId.get(k))).join(' → ')
+            const cycleLabel  = [...cycleParsed, cycleParsed[0]].map(dv).join(' → ')
             push(rt, { cycle: cycleParsed,
               message: `Acyclicity violated: cycle ${cycleLabel}` })
           }

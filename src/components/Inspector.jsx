@@ -3085,7 +3085,7 @@ function ExternalConstraintInspector({ c }) {
         const { active, implied, isEmpty } = computeRingImplied(explicit)
         const wouldEmpty = key =>
           !active.has(key) && computeRingImplied([...explicit, key]).isEmpty
-        const SYM_W = 21, SYM_H = 15
+        const SYM_W = 28, SYM_H = 20
         return (
           <Row>
             <Label>Ring Properties</Label>
@@ -3130,7 +3130,7 @@ function ExternalConstraintInspector({ c }) {
                     }}
                     style={{ width: 'auto', padding: 0, border: 'none', flexShrink: 0 }}/>
                   <svg width={SYM_W} height={SYM_H} style={{ flexShrink: 0, overflow: 'visible' }}>
-                    <RingMiniSymbol type={key} cx={SYM_W / 2} cy={SYM_H / 2} color={color} scale={0.75}/>
+                    <RingMiniSymbol type={key} cx={SYM_W / 2} cy={SYM_H / 2} color={color}/>
                   </svg>
                   {label}
                   {isImplied && (
