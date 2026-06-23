@@ -20,7 +20,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         { label: 'Align vertically', disabled: !canAlign,
           action: () => store.alignMultiSelection('x') },
         '---',
-        { label: 'Remove from Diagram', disabled: idsToRemove.length === 0 && occIdsToRemove.length === 0,
+        { label: 'Remove Selection from Diagram', disabled: idsToRemove.length === 0 && occIdsToRemove.length === 0,
           action: () => {
             if (occIdsToRemove.length > 0) {
               for (const occId of occIdsToRemove) {
@@ -30,7 +30,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
               store.removeMultiSelectionFromDiagram(store.activeDiagramId, idsToRemove)
             }
           } },
-        { label: 'Delete Selection', danger: true,
+        { label: 'Delete Selection from Schema', danger: true,
           action: () => store.deleteMultiSelection() },
       ],
     })
@@ -45,11 +45,13 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     store.select(ot.id, ot.kind, occurrenceId)
     const hasRefMode = ot.kind === 'entity' && !!findRefMode(ot, store.facts, store.objectTypes)
     const diagram = store.diagrams.find(d => d.id === store.activeDiagramId)
-    const isExpandedHere = (diagram?.expandedRefModes ?? []).includes(ot.id)
-    const refExpansionItems = hasRefMode
+    const isExpandedHere = occurrenceId
+      ? (diagram?.expandedRefModeOccs ?? []).includes(occurrenceId)
+      : (diagram?.expandedRefModes ?? []).includes(ot.id)
+    const refExpansionItems = hasRefMode && occurrenceId
       ? ['---', isExpandedHere
-          ? { label: 'Collapse Reference Mode', action: () => store.collapseRefMode(ot.id) }
-          : { label: 'Expand Reference Mode',   action: () => store.expandRefMode(ot.id)   }]
+          ? { label: 'Collapse Reference Mode', action: () => store.collapseRefMode(occurrenceId) }
+          : { label: 'Expand Reference Mode',   action: () => store.expandRefMode(occurrenceId)   }]
       : []
     setContextMenu({
       x: e.clientX, y: e.clientY,
@@ -119,11 +121,13 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     const hasRefMode = fact.objectified && fact.objectifiedKind !== 'value'
       && !!findRefMode(fact, store.facts, store.objectTypes)
     const diagram = store.diagrams.find(d => d.id === store.activeDiagramId)
-    const isExpandedHere = (diagram?.expandedRefModes ?? []).includes(fact.id)
-    const refExpansionItems = hasRefMode
+    const isExpandedHere = occurrenceId
+      ? (diagram?.expandedRefModeOccs ?? []).includes(occurrenceId)
+      : (diagram?.expandedRefModes ?? []).includes(fact.id)
+    const refExpansionItems = hasRefMode && occurrenceId
       ? [isExpandedHere
-          ? { label: 'Collapse Reference Mode', action: () => store.collapseRefMode(fact.id) }
-          : { label: 'Expand Reference Mode',   action: () => store.expandRefMode(fact.id)   },
+          ? { label: 'Collapse Reference Mode', action: () => store.collapseRefMode(occurrenceId) }
+          : { label: 'Expand Reference Mode',   action: () => store.expandRefMode(occurrenceId)   },
          '---']
       : []
     setContextMenu({

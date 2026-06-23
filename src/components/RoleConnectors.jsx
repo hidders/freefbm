@@ -52,8 +52,9 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
   const otByOccId = Object.fromEntries(
     objectTypes.filter(o => o.occurrenceId).map(o => [o.occurrenceId, o])
   )
-  // Map by schema ID (fallback — first occurrence found wins)
-  const otMap     = Object.fromEntries(objectTypes.map(o => [o.id, o]))
+  // Map by schema ID (fallback — first occurrence wins; do NOT use Object.fromEntries which keeps last)
+  const otMap = {}
+  for (const o of objectTypes) { if (!(o.id in otMap)) otMap[o.id] = o }
   const nestedMap = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
   const dotAtObject = store.mandatoryDotPosition === 'object'
 

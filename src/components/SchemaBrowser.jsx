@@ -177,8 +177,9 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
               background: addButtonStyle?.background ?? 'none',
               border: `1px solid ${addButtonStyle?.borderColor ?? 'var(--border)'}`,
               borderRadius: 3, cursor: 'pointer',
-              fontSize: 9, color: addButtonStyle?.color ?? 'var(--ink-muted)', padding: '1px 5px',
-              width: '100%',
+              padding: '2px 4px', width: '100%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: addButtonStyle?.color ?? 'var(--ink-muted)',
             }}
             onMouseEnter={e => {
               e.currentTarget.style.background = '#1e3a8a'
@@ -190,7 +191,13 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
               e.currentTarget.style.color = addButtonStyle?.color ?? 'var(--ink-muted)'
               e.currentTarget.style.borderColor = addButtonStyle?.borderColor ?? 'var(--border)'
             }}
-          >+</button>
+          >
+            {/* Bold filled plus */}
+            <svg width="9" height="9" viewBox="0 0 9 9" style={{ display: 'block' }}>
+              <rect x="3.5" y="0" width="2" height="9" rx="0.5" fill="currentColor"/>
+              <rect x="0" y="3.5" width="9" height="2" rx="0.5" fill="currentColor"/>
+            </svg>
+          </button>
         )}
         {inCurrentDiagram && onAddExtra && (
           <button
@@ -200,8 +207,9 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
             style={{
               background: 'none', border: '1px solid var(--border)',
               borderRadius: 3, cursor: 'pointer',
-              fontSize: 11, color: 'var(--ink-muted)', padding: '0px 3px',
-              width: '100%', lineHeight: '14px',
+              padding: '2px 4px', width: '100%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--ink-muted)',
             }}
             onMouseEnter={e => {
               e.currentTarget.style.background = '#1e3a8a'
@@ -213,7 +221,13 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
               e.currentTarget.style.color = 'var(--ink-muted)'
               e.currentTarget.style.borderColor = 'var(--border)'
             }}
-          >⊕</button>
+          >
+            {/* Outlined plus with grey shadow — mirrors the multi-occurrence shadow in the diagram */}
+            <svg width="9" height="9" viewBox="0 0 9 9" style={{ display: 'block', filter: 'drop-shadow(1.5px 1.5px 0px rgba(150,150,150,0.7))' }}>
+              <rect x="3.5" y="0.5" width="2" height="8" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1.2"/>
+              <rect x="0.5" y="3.5" width="8" height="2" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1.2"/>
+            </svg>
+          </button>
         )}
       </div>
       <span style={{ flexShrink: 0, marginRight: 5, lineHeight: 0, transform: 'scale(0.8)' }}>
@@ -403,8 +417,6 @@ export default function SchemaBrowser() {
     d.occurrences?.some(o => o.schemaElementId === st.superId)
   )
 
-  const expandedRefModes = new Set(diagram?.expandedRefModes ?? [])
-
   // Constraint dep-readiness helper
   const constraintDepsStatus = (c) => {
     const deps = []
@@ -487,10 +499,25 @@ export default function SchemaBrowser() {
     .map(o => ({ id: o.id, label: o.name || '(unnamed)', kind: 'value' }))
     .sort((a, b) => a.label.localeCompare(b.label))
 
+  const factSortKey = f => {
+    const parts = f.readingParts || []
+    const n = f.arity || 0
+    if (!parts.some(p => p?.trim())) return f.objectifiedName || f.name || ''
+    const tokens = []
+    for (let i = 0; i <= n; i++) {
+      const seg = parts[i]?.trim()
+      if (seg) tokens.push(seg)
+      if (i < n) {
+        const otName = otAndNestedMap[f.roles?.[i]?.objectTypeId]?.name
+        if (otName) tokens.push(otName)
+      }
+    }
+    return tokens.join(' ')
+  }
   const factTypes = [
     ...store.facts.filter(f => !f.objectified),
     ...impliedLinks.map(il => ({ ...il, isImpliedLink: true })),
-  ]
+  ].sort((a, b) => factSortKey(a).localeCompare(factSortKey(b)))
 
   const subtypeEdges = [...store.subtypes].sort((a, b) => {
     const supA = otAndNestedMap[a.superId]?.name ?? ''

@@ -47,45 +47,52 @@ export function getDiagramElements(store) {
     ? occurrenceElementIds
     : new Set(diagram?.elementIds ?? [])
 
-  const expandedRefModes = new Set(diagram?.expandedRefModes ?? [])
+  const expandedRefModeOccs = new Set(diagram?.expandedRefModeOccs ?? [])
 
-  // Identify VT/FT IDs that should be hidden because they are the ref-mode pair
-  // for an entity that is *not* expanded in this diagram. The entity displays
-  // the ref mode as shorthand inside its own rect instead.
+  // v2 (occurrence-based): an occurrence is hidden if it was created as part of a ref-mode
+  // expansion (refModeOwnerOccId set) but its owner occurrence is no longer expanded.
+  // Independent occurrences (refModeOwnerOccId absent/null) are always visible.
   //
-  // Two-pass:
-  //  1. Collect the ref-mode facts that will be hidden (one per collapsed entity).
-  //     These are always hidden — they only carry the entity/VT 1:1 relationship.
-  //  2. For each such pair, hide the VT only if no OTHER visible fact uses it as
-  //     a role player. Otherwise leave the VT visible in the diagram.
-  const hiddenByShorthand = new Set()
-  const collapsedRefModes = []
-  for (const ot of objectTypes) {
-    if (ot.kind !== 'entity') continue
-    if (expandedRefModes.has(ot.id)) continue
-    const rm = findRefMode(ot, facts, objectTypes)
-    if (!rm) continue
-    if (hasFilter && !elementIds.has(ot.id)) continue
-    collapsedRefModes.push(rm)
-    hiddenByShorthand.add(rm.factId)
-  }
-  for (const nf of facts) {
-    if (!nf.objectified || nf.objectifiedKind === 'value') continue
-    if (expandedRefModes.has(nf.id)) continue
-    const rm = findRefMode(nf, facts, objectTypes)
-    if (!rm) continue
-    if (hasFilter && !elementIds.has(nf.id)) continue
-    collapsedRefModes.push(rm)
-    hiddenByShorthand.add(rm.factId)
-  }
-  for (const rm of collapsedRefModes) {
-    const vtUsedByOtherVisibleFact = facts.some(f => {
-      if (f.id === rm.factId) return false
-      if (hiddenByShorthand.has(f.id)) return false   // hidden via another collapse
-      if (hasFilter && !elementIds.has(f.id)) return false
-      return f.roles?.some(r => r.objectTypeId === rm.vtId)
-    })
-    if (!vtUsedByOtherVisibleFact) hiddenByShorthand.add(rm.vtId)
+  // v1 fallback (positions map): use the old schema-level hiddenByShorthand logic.
+  const hiddenOccurrenceIds = new Set()
+  const hiddenByShorthand = new Set()   // only used for v1 fallback path
+  if (hasOccurrences) {
+    for (const occ of occurrencesList) {
+      if (occ.refModeOwnerOccId != null && !expandedRefModeOccs.has(occ.refModeOwnerOccId)) {
+        hiddenOccurrenceIds.add(occ.id)
+      }
+    }
+  } else {
+    // v1: build schema-level hiddenByShorthand (original logic)
+    const expandedRefModes = new Set(diagram?.expandedRefModes ?? [])
+    const collapsedRefModes = []
+    for (const ot of objectTypes) {
+      if (ot.kind !== 'entity') continue
+      if (expandedRefModes.has(ot.id)) continue
+      const rm = findRefMode(ot, facts, objectTypes)
+      if (!rm) continue
+      if (hasFilter && !elementIds.has(ot.id)) continue
+      collapsedRefModes.push(rm)
+      hiddenByShorthand.add(rm.factId)
+    }
+    for (const nf of facts) {
+      if (!nf.objectified || nf.objectifiedKind === 'value') continue
+      if (expandedRefModes.has(nf.id)) continue
+      const rm = findRefMode(nf, facts, objectTypes)
+      if (!rm) continue
+      if (hasFilter && !elementIds.has(nf.id)) continue
+      collapsedRefModes.push(rm)
+      hiddenByShorthand.add(rm.factId)
+    }
+    for (const rm of collapsedRefModes) {
+      const vtUsedByOtherVisibleFact = facts.some(f => {
+        if (f.id === rm.factId) return false
+        if (hiddenByShorthand.has(f.id)) return false
+        if (hasFilter && !elementIds.has(f.id)) return false
+        return f.roles?.some(r => r.objectTypeId === rm.vtId)
+      })
+      if (!vtUsedByOtherVisibleFact) hiddenByShorthand.add(rm.vtId)
+    }
   }
 
   const withPos = (el) => {
@@ -111,23 +118,8 @@ export function getDiagramElements(store) {
     return merged
   }
 
-  // VT/FT IDs that must be visible because their entity's ref mode is expanded
-  // in this diagram. Overrides the elementIds filter so they always show when
-  // the user has chosen the expanded form.
-  const expandedByRefMode = new Set()
-  for (const entityId of expandedRefModes) {
-    const entity = objectTypes.find(o => o.id === entityId)
-      ?? facts.find(f => f.id === entityId && f.objectified && f.objectifiedKind !== 'value')
-    if (!entity) continue
-    const rm = findRefMode(entity, facts, objectTypes)
-    if (!rm) continue
-    expandedByRefMode.add(rm.vtId)
-    expandedByRefMode.add(rm.factId)
-  }
-
   const inDiagram = (el) => {
     if (hiddenByShorthand.has(el.id)) return false
-    if (expandedByRefMode.has(el.id)) return true
     return !hasFilter || elementIds.has(el.id)
   }
 
@@ -143,7 +135,7 @@ export function getDiagramElements(store) {
       .filter(occ => {
         const ot = otMap[occ.schemaElementId]
         if (!ot) return false
-        if (hiddenByShorthand.has(occ.schemaElementId)) return false
+        if (hiddenOccurrenceIds.has(occ.id)) return false
         return true
       })
       .map(occ => {
@@ -153,19 +145,11 @@ export function getDiagramElements(store) {
         return merged
       })
 
-    // Also add OTs that are expanded via ref mode (not in occurrences directly)
-    for (const id of expandedByRefMode) {
-      const ot = otMap[id]
-      if (ot && !elementIds.has(id) && !hiddenByShorthand.has(id)) {
-        visibleObjectTypes.push({ ...withPos(ot), occurrenceId: null })
-      }
-    }
-
     visibleFacts = occurrencesList
       .filter(occ => {
         const f = factMap[occ.schemaElementId]
         if (!f) return false
-        if (hiddenByShorthand.has(occ.schemaElementId)) return false
+        if (hiddenOccurrenceIds.has(occ.id)) return false
         return true
       })
       .map(occ => {
@@ -188,14 +172,6 @@ export function getDiagramElements(store) {
         if (posData.readingDisplay      !== undefined) merged.readingDisplay      = posData.readingDisplay
         return merged
       })
-
-    // Also add facts that are expanded via ref mode (not in occurrences directly)
-    for (const id of expandedByRefMode) {
-      const f = factMap[id]
-      if (f && !elementIds.has(id) && !hiddenByShorthand.has(id)) {
-        visibleFacts.push({ ...withPos(f), occurrenceId: null })
-      }
-    }
   } else {
     // v1 fallback: use positions map
     visibleObjectTypes = objectTypes.filter(inDiagram).map(ot => ({ ...withPos(ot), occurrenceId: null }))
@@ -217,11 +193,8 @@ export function getDiagramElements(store) {
   const allVisibleIds  = new Set([...visibleOtIds, ...visibleFactIds])
 
   // Subtypes are shown automatically when both endpoints are visible
-  // With multi-occurrence: check the set of schema element IDs that appear in occurrences
-  const occElementIds = hasOccurrences ? occurrenceElementIds : elementIds
   const allVisibleSubtypes = subtypes.filter(st =>
-    (allVisibleIds.has(st.subId) || expandedByRefMode.has(st.subId)) &&
-    (allVisibleIds.has(st.superId) || expandedByRefMode.has(st.superId))
+    allVisibleIds.has(st.subId) && allVisibleIds.has(st.superId)
   )
 
   return {

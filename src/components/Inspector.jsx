@@ -209,9 +209,11 @@ function Section({ title, children }) {
 }
 function Row({ children }) { return <div style={{ marginBottom: 8 }}>{children}</div> }
 
-function RefModeExpandCollapseButtons({ factId, store }) {
+function RefModeExpandCollapseButtons({ factId, occurrenceId, store }) {
   const activeDiagram = store.diagrams?.find(d => d.id === store.activeDiagramId)
-  const isExpandedHere = (activeDiagram?.expandedRefModes ?? []).includes(factId)
+  const isExpandedHere = occurrenceId
+    ? (activeDiagram?.expandedRefModeOccs ?? []).includes(occurrenceId)
+    : (activeDiagram?.expandedRefModes ?? []).includes(factId)
   const refMode = findRefMode({ id: factId }, store.facts, store.objectTypes)
   if (!refMode) return null
   const refVt = store.objectTypes.find(o => o.id === refMode.vtId)
@@ -233,13 +235,15 @@ function RefModeExpandCollapseButtons({ factId, store }) {
           Value Type
         </button>
       )}
-      <button
-        onClick={() => isExpandedHere ? store.collapseRefMode(factId) : store.expandRefMode(factId)}
-        style={{ fontSize: 10, padding: '1px 6px',
-          background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
-          borderRadius: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
-        {isExpandedHere ? 'Collapse in this diagram' : 'Expand in this diagram'}
-      </button>
+      {occurrenceId && (
+        <button
+          onClick={() => isExpandedHere ? store.collapseRefMode(occurrenceId) : store.expandRefMode(occurrenceId)}
+          style={{ fontSize: 10, padding: '1px 6px',
+            background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
+            borderRadius: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
+          {isExpandedHere ? 'Collapse in this diagram' : 'Expand in this diagram'}
+        </button>
+      )}
     </div>
   )
 }
@@ -755,7 +759,7 @@ function ObjectTypeInspector({ ot }) {
           </Row>
         )
       )}
-      <RefModeExpandCollapseButtons factId={ot.id} store={store}/>
+      <RefModeExpandCollapseButtons factId={ot.id} occurrenceId={ot.occurrenceId} store={store}/>
       {ot.kind === 'entity' && refVt && (
         <Row>
           <Label>Datatype</Label>
@@ -2130,7 +2134,7 @@ function FactInspector({ fact }) {
                 onSet={a => store.updateFact(fact.id, { datatypeAssignment: a })}
               />
             )}
-            <RefModeExpandCollapseButtons factId={fact.id} store={store}/>
+            <RefModeExpandCollapseButtons factId={fact.id} occurrenceId={fact.occurrenceId} store={store}/>
             <Row>
               <Label>Arity</Label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

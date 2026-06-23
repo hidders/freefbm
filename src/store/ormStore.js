@@ -139,6 +139,23 @@ const patchOcc = (diag, elementId, patch) => ({
 })
 const addOccIfAbsent = (diag, elementId, x, y, extra = {}) =>
   inDiag(diag, elementId) ? diag : { ...diag, occurrences: [...(diag.occurrences ?? []), mkOcc(elementId, x, y, extra)] }
+
+// For each occurrence of `ownerId`, add owned VT/FT occurrences that are hidden until the
+// owner is expanded. Skips VT or FT if they already have any occurrence in the diagram.
+const addOwnedRefModeOccsIfAbsent = (diag, ownerId, vtId, vtX, vtY, ftId, ftX, ftY) => {
+  const ownerOccs = (diag.occurrences ?? []).filter(o => o.schemaElementId === ownerId)
+  if (ownerOccs.length === 0) return diag
+  const vtPresent = (diag.occurrences ?? []).some(o => o.schemaElementId === vtId)
+  const ftPresent = (diag.occurrences ?? []).some(o => o.schemaElementId === ftId)
+  const extraOccs = ownerOccs.flatMap(ownerOcc => {
+    const newOccs = []
+    if (!vtPresent) newOccs.push(mkOcc(vtId, vtX, vtY, { refModeOwnerOccId: ownerOcc.id }))
+    if (!ftPresent) newOccs.push(mkOcc(ftId, ftX, ftY, { refModeOwnerOccId: ownerOcc.id }))
+    return newOccs
+  })
+  if (extraOccs.length === 0) return diag
+  return { ...diag, occurrences: [...(diag.occurrences ?? []), ...extraOccs] }
+}
 const rmOcc = (diag, elementId) => ({
   ...diag,
   occurrences: (diag.occurrences ?? []).filter(o => o.schemaElementId !== elementId),
@@ -181,7 +198,7 @@ const rmCOcc = (diag, cId) => ({
   constraintOccurrences: (diag.constraintOccurrences ?? []).filter(co => co.schemaConstraintId !== cId),
 })
 
-const mkDiagram = (name = 'Main') => ({ id: uid(), name, occurrences: [], constraintOccurrences: [], implicitLinkPositions: {}, multiSelectedIds: [], profileId: null, shownImplicitLinks: [], notes: [], expandedRefModes: [] })
+const mkDiagram = (name = 'Main') => ({ id: uid(), name, occurrences: [], constraintOccurrences: [], implicitLinkPositions: {}, multiSelectedIds: [], profileId: null, shownImplicitLinks: [], notes: [], expandedRefModes: [], expandedRefModeOccs: [] })
 const mkNote    = (x, y)          => ({ id: uid(), x: Math.round(x), y: Math.round(y), w: 160, h: 100, text: '', connectors: [] })
 
 // ── name uniqueness ───────────────────────────────────────────────────────────
@@ -1247,6 +1264,34 @@ export const useOrmStore = create((set, get) => ({
     // ── diagram migration helper ──────────────────────────────────────────────
     const constraintIdSet = new Set(constraints.map(c => c.id))
 
+    // Migrate old expandedRefModes (schema OT IDs) → expandedRefModeOccs (occurrence IDs).
+    // Also marks VT/FT occurrences with refModeOwnerOccId so the new visibility logic works.
+    function migrateRefModeExpansion(diag, parsedOts, facts) {
+      if (!diag.expandedRefModes?.length || diag.expandedRefModeOccs?.length) {
+        return { ...diag, expandedRefModeOccs: diag.expandedRefModeOccs ?? [] }
+      }
+      const expandedRefModeOccs = []
+      let updatedOccs = [...(diag.occurrences ?? [])]
+      for (const schemaId of diag.expandedRefModes) {
+        const firstOcc = updatedOccs.find(o => o.schemaElementId === schemaId)
+        if (!firstOcc) continue
+        expandedRefModeOccs.push(firstOcc.id)
+        const ot = parsedOts.find(o => o.id === schemaId)
+        const nested = !ot ? facts.find(f => f.id === schemaId && f.objectified && f.objectifiedKind !== 'value') : null
+        const owner = ot ?? nested
+        if (!owner) continue
+        const rm = findRefMode(owner, facts, parsedOts)
+        if (!rm) continue
+        updatedOccs = updatedOccs.map(o => {
+          if ((o.schemaElementId === rm.vtId || o.schemaElementId === rm.factId) && !o.refModeOwnerOccId) {
+            return { ...o, refModeOwnerOccId: firstOcc.id }
+          }
+          return o
+        })
+      }
+      return { ...diag, occurrences: updatedOccs, expandedRefModeOccs }
+    }
+
     function migrateOldDiagram(diag, parsedOts, facts, constraints) {
       const positions = diag.positions ?? {}
       const occurrences = []
@@ -1318,7 +1363,8 @@ export const useOrmStore = create((set, get) => ({
       diagrams = d.diagrams.map(diag => {
         if (diag.constraintOccurrences) {
           // Phase 3 format: constraintOccurrences already split out
-          return { ...diag, constraintOccurrences: diag.constraintOccurrences, implicitLinkPositions: diag.implicitLinkPositions ?? {}, multiSelectedIds: [], expandedRefModes: diag.expandedRefModes ?? [] }
+          const d3 = { ...diag, constraintOccurrences: diag.constraintOccurrences, implicitLinkPositions: diag.implicitLinkPositions ?? {}, multiSelectedIds: [], expandedRefModes: diag.expandedRefModes ?? [] }
+          return migrateRefModeExpansion(d3, parsedOts, facts)
         }
         if (diag.occurrences) {
           // Phase 1/2 format: occurrences exist but constraintOccurrences does not — split them
@@ -1326,7 +1372,7 @@ export const useOrmStore = create((set, get) => ({
           const constraintOccs = diag.occurrences
             .filter(o => constraintIdSet.has(o.schemaElementId))
             .map(o => mkConstraintOcc(o.schemaElementId, o.x, o.y))
-          return {
+          const d12 = {
             ...diag,
             occurrences: nonConstraintOccs,
             constraintOccurrences: constraintOccs,
@@ -1334,9 +1380,10 @@ export const useOrmStore = create((set, get) => ({
             multiSelectedIds: [],
             expandedRefModes: diag.expandedRefModes ?? [],
           }
+          return migrateRefModeExpansion(d12, parsedOts, facts)
         }
         // old format (elementIds + positions)
-        return migrateOldDiagram(diag, parsedOts, facts, constraints)
+        return migrateRefModeExpansion(migrateOldDiagram(diag, parsedOts, facts, constraints), parsedOts, facts)
       })
       activeDiagramId = d.activeDiagramId ?? d.diagrams[0].id
     } else {
@@ -1661,15 +1708,21 @@ export const useOrmStore = create((set, get) => ({
           preferredUniqueness: (f.preferredUniqueness || [])
             .filter(pu => !(pu.length === 1 && pu[0] === current.vtRoleIndex)),
         })),
-        // Keep the now-orphan fact/VT visible by expanding them in the active diagram.
+        // Make VT/FT visible by converting owned occurrences to independent.
         diagrams: state.diagrams.map(d => {
           if (d.id !== state.activeDiagramId) return d
+          const entityOccIds = new Set((d.occurrences ?? []).filter(o => o.schemaElementId === entityId).map(o => o.id))
           let nd = {
             ...d,
-            expandedRefModes: (d.expandedRefModes ?? []).includes(entityId)
-              ? d.expandedRefModes
-              : [...(d.expandedRefModes ?? []), entityId],
+            occurrences: (d.occurrences ?? []).map(o => {
+              if ((o.schemaElementId === current.vtId || o.schemaElementId === current.factId) && entityOccIds.has(o.refModeOwnerOccId)) {
+                return { ...o, refModeOwnerOccId: null }
+              }
+              return o
+            }),
+            expandedRefModeOccs: (d.expandedRefModeOccs ?? []).filter(id => !entityOccIds.has(id)),
           }
+          // Ensure independent occurrences exist (backward compat with pre-owned files).
           nd = addOccIfAbsent(nd, current.vtId, state.objectTypes.find(o => o.id === current.vtId)?.x ?? 0, state.objectTypes.find(o => o.id === current.vtId)?.y ?? 0)
           nd = addOccIfAbsent(nd, current.factId, state.facts.find(f => f.id === current.factId)?.x ?? 0, state.facts.find(f => f.id === current.factId)?.y ?? 0)
           return nd
@@ -1732,9 +1785,8 @@ export const useOrmStore = create((set, get) => ({
           constraints: cCons,
           diagrams: state.diagrams.map(d => {
             if (d.id !== state.activeDiagramId) return d
-            let nd = addOccIfAbsent(d, matchFact.fact.id, state.facts.find(f => f.id === matchFact.fact.id)?.x ?? 0, state.facts.find(f => f.id === matchFact.fact.id)?.y ?? 0)
-            nd = addOccIfAbsent(nd, existing.id, existing.x ?? 0, existing.y ?? 0)
-            return nd
+            const ftEl = state.facts.find(f => f.id === matchFact.fact.id)
+            return addOwnedRefModeOccsIfAbsent(d, entityId, existing.id, existing.x ?? 0, existing.y ?? 0, matchFact.fact.id, ftEl?.x ?? 0, ftEl?.y ?? 0)
           }),
           isDirty: true,
         }
@@ -1767,9 +1819,7 @@ export const useOrmStore = create((set, get) => ({
         constraints: cCons,
         diagrams: state.diagrams.map(d => {
           if (d.id !== state.activeDiagramId) return d
-          let nd = existing ? d : addOccIfAbsent(d, vt.id, vt.x, vt.y)
-          nd = addOccIfAbsent(nd, ft.id, ft.x, ft.y)
-          return nd
+          return addOwnedRefModeOccsIfAbsent(d, entityId, vt.id, vt.x, vt.y, ft.id, ft.x, ft.y)
         }),
         isDirty: true,
       }
@@ -1803,11 +1853,16 @@ export const useOrmStore = create((set, get) => ({
         })),
         diagrams: state.diagrams.map(d => {
           if (d.id !== state.activeDiagramId) return d
+          const nestedOccIds = new Set((d.occurrences ?? []).filter(o => o.schemaElementId === factId).map(o => o.id))
           let nd = {
             ...d,
-            expandedRefModes: (d.expandedRefModes ?? []).includes(factId)
-              ? d.expandedRefModes
-              : [...(d.expandedRefModes ?? []), factId],
+            occurrences: (d.occurrences ?? []).map(o => {
+              if ((o.schemaElementId === current.vtId || o.schemaElementId === current.factId) && nestedOccIds.has(o.refModeOwnerOccId)) {
+                return { ...o, refModeOwnerOccId: null }
+              }
+              return o
+            }),
+            expandedRefModeOccs: (d.expandedRefModeOccs ?? []).filter(id => !nestedOccIds.has(id)),
           }
           const vtEl = state.objectTypes.find(o => o.id === current.vtId)
           const ftEl = state.facts.find(f => f.id === current.factId)
@@ -1852,9 +1907,8 @@ export const useOrmStore = create((set, get) => ({
           facts: factsWithPi,
           diagrams: state.diagrams.map(d => {
             if (d.id !== state.activeDiagramId) return d
-            let nd = addOccIfAbsent(d, matchFact.fact.id, state.facts.find(f => f.id === matchFact.fact.id)?.x ?? 0, state.facts.find(f => f.id === matchFact.fact.id)?.y ?? 0)
-            nd = addOccIfAbsent(nd, existing.id, existing.x ?? 0, existing.y ?? 0)
-            return nd
+            const ftEl = state.facts.find(f => f.id === matchFact.fact.id)
+            return addOwnedRefModeOccsIfAbsent(d, factId, existing.id, existing.x ?? 0, existing.y ?? 0, matchFact.fact.id, ftEl?.x ?? 0, ftEl?.y ?? 0)
           }),
           isDirty: true,
         }
@@ -1881,9 +1935,7 @@ export const useOrmStore = create((set, get) => ({
         facts: [...state.facts, ft],
         diagrams: state.diagrams.map(d => {
           if (d.id !== state.activeDiagramId) return d
-          let nd = existing ? d : addOccIfAbsent(d, vt.id, vt.x, vt.y)
-          nd = addOccIfAbsent(nd, ft.id, ft.x, ft.y)
-          return nd
+          return addOwnedRefModeOccsIfAbsent(d, factId, vt.id, vt.x, vt.y, ft.id, ft.x, ft.y)
         }),
         isDirty: true,
       }
@@ -2422,6 +2474,21 @@ export const useOrmStore = create((set, get) => ({
 
   // ── occurrence-level role reconnect ──────────────────────────────────────
 
+  updateRoleOccurrenceMap(factOccId, roleIndex, otOccurrenceId, diagramId) {
+    set(s => ({
+      diagrams: s.diagrams.map(d =>
+        d.id !== diagramId ? d : {
+          ...d,
+          occurrences: (d.occurrences ?? []).map(o =>
+            o.id !== factOccId ? o
+            : { ...o, roleOccurrenceMap: { ...(o.roleOccurrenceMap ?? {}), [String(roleIndex)]: otOccurrenceId } }
+          ),
+        }
+      ),
+      isDirty: true,
+    }))
+  },
+
   startRoleReconnect(factOccId, roleIndex, factSchemaId, currentOtSchemaId, diagramId) {
     set({ roleReconnectDraft: { factOccId, roleIndex, factSchemaId, currentOtSchemaId, diagramId } })
   },
@@ -2565,37 +2632,53 @@ export const useOrmStore = create((set, get) => ({
   // elements (instead of as shorthand inside the entity rect). The VT and FT
   // already exist as schema elements; this just adds them to elementIds and
   // marks the entity expanded in the target diagram.
-  expandRefMode(otId, diagramId = null) {
-    const { objectTypes, facts, activeDiagramId } = get()
-    const ot = objectTypes.find(o => o.id === otId)
-    const nested = !ot ? facts.find(f => f.id === otId && f.objectified && f.objectifiedKind !== 'value') : null
+  expandRefMode(otOccurrenceId, diagramId = null) {
+    const { objectTypes, facts, activeDiagramId, diagrams } = get()
+    const targetDiagramId = diagramId ?? activeDiagramId
+    const targetDiagram = diagrams.find(d => d.id === targetDiagramId)
+    const occ = targetDiagram?.occurrences?.find(o => o.id === otOccurrenceId)
+    if (!occ) return
+    const ot = objectTypes.find(o => o.id === occ.schemaElementId)
+    const nested = !ot ? facts.find(f => f.id === occ.schemaElementId && f.objectified && f.objectifiedKind !== 'value') : null
     const owner = ot ?? nested
     if (!owner) return
     if (ot && ot.kind !== 'entity') return
     const rm = findRefMode(owner, facts, objectTypes)
     if (!rm) return
-    const targetDiagramId = diagramId ?? activeDiagramId
     const rmVt = objectTypes.find(o => o.id === rm.vtId)
     const rmFt = facts.find(f => f.id === rm.factId)
     set(s => ({
       diagrams: s.diagrams.map(d => {
         if (d.id !== targetDiagramId) return d
-        if ((d.expandedRefModes ?? []).includes(otId)) return d
-        let nd = addOccIfAbsent(d, rm.vtId, rmVt?.x ?? 0, rmVt?.y ?? 0)
-        nd = addOccIfAbsent(nd, rm.factId, rmFt?.x ?? 0, rmFt?.y ?? 0)
-        return { ...nd, expandedRefModes: [...(d.expandedRefModes ?? []), otId] }
+        if ((d.expandedRefModeOccs ?? []).includes(otOccurrenceId)) return d
+        // Only create new owned occurrences if none already exist for this owner
+        const alreadyOwned = (d.occurrences ?? []).some(o => o.refModeOwnerOccId === otOccurrenceId)
+        const newOccs = alreadyOwned ? [] : [
+          mkOcc(rm.vtId,   rmVt?.x ?? 0, rmVt?.y ?? 0,  { refModeOwnerOccId: otOccurrenceId }),
+          mkOcc(rm.factId, rmFt?.x ?? 0, rmFt?.y ?? 0,  { refModeOwnerOccId: otOccurrenceId }),
+        ]
+        return {
+          ...d,
+          occurrences: [...(d.occurrences ?? []), ...newOccs],
+          expandedRefModeOccs: [...(d.expandedRefModeOccs ?? []), otOccurrenceId],
+        }
       }),
       isDirty: true,
     }))
   },
 
-  collapseRefMode(otId, diagramId = null) {
+  collapseRefMode(otOccurrenceId, diagramId = null) {
     const { activeDiagramId } = get()
     const targetDiagramId = diagramId ?? activeDiagramId
+    // Only remove from expandedRefModeOccs; owned VT/FT occurrences stay in the
+    // occurrences array (hidden by visibility logic) so their positions/IDs are preserved.
     set(s => ({
       diagrams: s.diagrams.map(d => {
         if (d.id !== targetDiagramId) return d
-        return { ...d, expandedRefModes: (d.expandedRefModes ?? []).filter(id => id !== otId) }
+        return {
+          ...d,
+          expandedRefModeOccs: (d.expandedRefModeOccs ?? []).filter(id => id !== otOccurrenceId),
+        }
       }),
       isDirty: true,
     }))
@@ -3140,14 +3223,23 @@ export const useOrmStore = create((set, get) => ({
         return { ...f, roles: f.roles.map((r, i) => i === roleIndex ? { ...r, objectTypeId } : r) }
       })
 
-      // Principle 3: add objectTypeId to every diagram that already contains factId
-      const ot = s.objectTypes.find(o => o.id === objectTypeId) ?? s.facts.find(f => f.id === objectTypeId)
-      const otX = ot?.x ?? 100
-      const otY = ot?.y ?? 100
-
+      // For every diagram containing the fact: if the new OT is present keep the fact
+      // (and update roleOccurrenceMap to its first occurrence); if absent, remove the
+      // fact — adding the OT silently to foreign diagrams would violate user intent.
+      const riKey = String(roleIndex)
       const updatedDiagrams = s.diagrams.map(d => {
         if (!inDiag(d, factId)) return d
-        return addOccIfAbsent(d, objectTypeId, otX, otY)
+        const newOtOcc = (d.occurrences ?? []).find(o => o.schemaElementId === objectTypeId)
+        if (!newOtOcc) {
+          return { ...d, occurrences: (d.occurrences ?? []).filter(o => o.schemaElementId !== factId) }
+        }
+        return {
+          ...d,
+          occurrences: (d.occurrences ?? []).map(o =>
+            o.schemaElementId !== factId ? o
+            : { ...o, roleOccurrenceMap: { ...(o.roleOccurrenceMap ?? {}), [riKey]: newOtOcc.id } }
+          ),
+        }
       })
 
       return {
@@ -4777,8 +4869,10 @@ export const useOrmStore = create((set, get) => ({
         if (ot) {
           const rm = findRefMode(ot, s.facts, s.objectTypes)
           if (rm) {
-            const expanded = (s.diagrams.find(d => d.id === s.activeDiagramId)?.expandedRefModes ?? []).includes(id)
-            if (!expanded) {
+            const activeDiag = s.diagrams.find(d => d.id === s.activeDiagramId)
+            const expOccs = new Set(activeDiag?.expandedRefModeOccs ?? [])
+            const anyExpanded = (activeDiag?.occurrences ?? []).some(o => o.schemaElementId === id && expOccs.has(o.id))
+            if (!anyExpanded) {
               if (isRemoving) {
                 nextBase = nextBase.filter(i => i !== rm.factId && i !== rm.vtId)
               } else {
@@ -4802,13 +4896,15 @@ export const useOrmStore = create((set, get) => ({
             selectedRole: null, selectedUniqueness: null })
     } else {
       set(s => {
-        const expanded = new Set(s.diagrams.find(d => d.id === s.activeDiagramId)?.expandedRefModes ?? [])
+        const activeDiagMulti = s.diagrams.find(d => d.id === s.activeDiagramId)
+        const expOccsMulti = new Set(activeDiagMulti?.expandedRefModeOccs ?? [])
         const result = [...ids]
         const idSet = new Set(ids)
         for (const id of ids) {
           const ot = s.objectTypes.find(o => o.id === id)
                  ?? s.facts.find(f => f.id === id && f.objectified)
-          if (!ot || expanded.has(id)) continue
+          const anyExpanded = (activeDiagMulti?.occurrences ?? []).some(o => o.schemaElementId === id && expOccsMulti.has(o.id))
+          if (!ot || anyExpanded) continue
           const rm = findRefMode(ot, s.facts, s.objectTypes)
           if (!rm) continue
           if (!idSet.has(rm.factId)) { idSet.add(rm.factId); result.push(rm.factId) }
@@ -4834,14 +4930,15 @@ export const useOrmStore = create((set, get) => ({
     // Collect ref-mode fact/VT IDs whose parent entity has a collapsed ref-mode
     // in this diagram — these are rendered as part of the entity node and must
     // not participate in alignment as independent elements.
-    const expandedRefModes = new Set(diagram?.expandedRefModes ?? [])
+    const expOccsAlign = new Set(diagram?.expandedRefModeOccs ?? [])
     const impliedCollapsed = new Set()
     for (const id of multiSelectedIds) {
       const ot = objectTypes.find(o => o.id === id)
              ?? facts.find(f => f.id === id && f.objectified)
       if (!ot) continue
       const rm = findRefMode(ot, facts, objectTypes)
-      if (!rm || expandedRefModes.has(id)) continue
+      const anyExpandedAlign = (diagram?.occurrences ?? []).some(o => o.schemaElementId === id && expOccsAlign.has(o.id))
+      if (!rm || anyExpandedAlign) continue
       impliedCollapsed.add(rm.factId)
       impliedCollapsed.add(rm.vtId)
     }
@@ -5653,11 +5750,14 @@ export const useOrmStore = create((set, get) => ({
 
       const updatedDiagrams = s.diagrams.map(d => {
         if (d.id !== diagramId) return d
+        const remainingOccs = (d.occurrences ?? []).filter(o => !toRemove.has(o.schemaElementId))
+        const remainingOccIds = new Set(remainingOccs.map(o => o.id))
         return {
           ...d,
-          occurrences: (d.occurrences ?? []).filter(o => !toRemove.has(o.schemaElementId)),
+          occurrences: remainingOccs,
           // Positions are kept (implicitLinkPositions not cleaned here — no schema identity loss)
-          expandedRefModes: (d.expandedRefModes ?? []).filter(id => !toRemove.has(id)),
+          expandedRefModes:    (d.expandedRefModes    ?? []).filter(id => !toRemove.has(id)),
+          expandedRefModeOccs: (d.expandedRefModeOccs ?? []).filter(id => remainingOccIds.has(id)),
         }
       })
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
@@ -5672,8 +5772,9 @@ export const useOrmStore = create((set, get) => ({
       const occ = (diag.occurrences ?? []).find(o => o.id === occurrenceId)
       if (!occ) return {}
       const schemaElementId = occ.schemaElementId
-      const remainingOccs   = (diag.occurrences ?? []).filter(o => o.id !== occurrenceId)
-      const stillPresent    = remainingOccs.some(o => o.schemaElementId === schemaElementId)
+      // Remove the occurrence itself and any owned ref-mode occurrences
+      let remainingOccs = (diag.occurrences ?? []).filter(o => o.id !== occurrenceId && o.refModeOwnerOccId !== occurrenceId)
+      const stillPresent = remainingOccs.some(o => o.schemaElementId === schemaElementId)
 
       let finalOccs = remainingOccs
       if (!stillPresent) {
@@ -5683,8 +5784,13 @@ export const useOrmStore = create((set, get) => ({
         finalOccs = remainingOccs.filter(o => !toRemove.has(o.schemaElementId))
       }
 
+      const finalOccIds = new Set(finalOccs.map(o => o.id))
       const updatedDiagrams = s.diagrams.map(d =>
-        d.id !== diagramId ? d : { ...d, occurrences: finalOccs }
+        d.id !== diagramId ? d : {
+          ...d,
+          occurrences: finalOccs,
+          expandedRefModeOccs: (d.expandedRefModeOccs ?? []).filter(id => id !== occurrenceId && finalOccIds.has(id)),
+        }
       )
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
       return {
@@ -5759,7 +5865,8 @@ export const useOrmStore = create((set, get) => ({
           constraintOccurrences: newCOccs,
           implicitLinkPositions: newILP,
           shownImplicitLinks: (d.shownImplicitLinks || []).filter(ilKey => !ilKeysToRemove.has(ilKey)),
-          expandedRefModes: (d.expandedRefModes ?? []).filter(id => !cascaded.has(id)),
+          expandedRefModes:    (d.expandedRefModes    ?? []).filter(id => !cascaded.has(id)),
+          expandedRefModeOccs: (() => { const s = new Set(newOccs.map(o => o.id)); return (d.expandedRefModeOccs ?? []).filter(id => s.has(id)) })(),
         }
       })
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)

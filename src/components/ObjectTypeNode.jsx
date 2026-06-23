@@ -9,7 +9,10 @@ function getEntityRefLabel(ot) {
   if (ot.kind !== 'entity') return null
   const s = useOrmStore.getState()
   const diagram = s.diagrams?.find(d => d.id === s.activeDiagramId) ?? s.diagrams?.[0]
-  if ((diagram?.expandedRefModes ?? []).includes(ot.id)) return null
+  // Per-occurrence check (new format): is THIS occurrence expanded?
+  if (ot.occurrenceId && (diagram?.expandedRefModeOccs ?? []).includes(ot.occurrenceId)) return null
+  // Legacy schema-level check (old format / v1)
+  if (!ot.occurrenceId && (diagram?.expandedRefModes ?? []).includes(ot.id)) return null
   const rm = findRefMode(ot, s.facts, s.objectTypes)
   if (!rm) return null
   const vt = s.objectTypes.find(o => o.id === rm.vtId)
@@ -302,6 +305,9 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
       const draft = store.linkDraft
       if (draft?.factId != null && draft?.roleIndex != null) {
         store.assignObjectTypeToRole(draft.factId, draft.roleIndex, ot.id)
+        if (draft.factOccId && occurrenceId) {
+          store.updateRoleOccurrenceMap(draft.factOccId, draft.roleIndex, occurrenceId, store.activeDiagramId)
+        }
         const autoReturn = draft?.autoReturn
         store.clearLinkDraft()
         if (autoReturn) store.setTool('select')

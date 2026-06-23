@@ -662,15 +662,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     if (store.sequenceConstruction || inConstruction) return
     if (store.tool !== 'select') return
 
-    const role = fact.roles[roleIndex]
-    if (fact.occurrenceId && role?.objectTypeId) {
-      store.startRoleReconnect(fact.occurrenceId, roleIndex, fact.id, role.objectTypeId, store.activeDiagramId)
-      return
-    }
-    // Legacy: schema-level assignRole
     store.setTool('assignRole')
-    store.setLinkDraft({ type: 'roleAssign', factId: fact.id, roleIndex, autoReturn: true })
-  }, [store, fact.id, fact.occurrenceId, fact.roles, fact._implicit, inConstruction, inQueryEdit])
+    store.setLinkDraft({ type: 'roleAssign', factId: fact.id, factOccId: fact.occurrenceId ?? null, roleIndex, autoReturn: true })
+  }, [store, fact.id, fact.occurrenceId, fact._implicit, inConstruction, inQueryEdit])
 
   const handleRoleContextMenu = useCallback((roleIndex, e) => {
     e.preventDefault(); e.stopPropagation()
