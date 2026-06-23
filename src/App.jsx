@@ -175,6 +175,23 @@ function useKeyboardShortcuts() {
         const dy = e.key === 'ArrowUp'   ? -step : e.key === 'ArrowDown'  ? step : 0
         const activeDiag = useOrmStore.getState().diagrams
           ?.find(d => d.id === store.activeDiagramId)
+
+        // When occurrence IDs are tracked, use them for precise positioning
+        const multiOccIds = store.multiSelectedOccurrenceIds
+        const singleOccId = store.selectedOccurrenceId
+        if (multiOccIds.length > 0) {
+          const occurrences = activeDiag?.occurrences ?? []
+          for (const occId of multiOccIds) {
+            const occ = occurrences.find(o => o.id === occId)
+            if (occ) store.moveOccurrence(occId, occ.x + dx, occ.y + dy)
+          }
+          return
+        }
+        if (singleOccId && store.multiSelectedIds.length === 0) {
+          const occ = (activeDiag?.occurrences ?? []).find(o => o.id === singleOccId)
+          if (occ) { store.moveOccurrence(singleOccId, occ.x + dx, occ.y + dy); return }
+        }
+
         const occMap = Object.fromEntries(
           (activeDiag?.occurrences ?? []).map(o => [o.schemaElementId, o])
         )

@@ -11,6 +11,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     const idsToRemove = store.multiSelectedIds.filter(id =>
       store.objectTypes.some(o => o.id === id) || store.facts.some(f => f.id === id) || id.includes('_il_')
     )
+    const occIdsToRemove = store.multiSelectedOccurrenceIds
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
@@ -19,21 +20,29 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         { label: 'Align vertically', disabled: !canAlign,
           action: () => store.alignMultiSelection('x') },
         '---',
-        { label: 'Remove from Diagram', disabled: idsToRemove.length === 0,
-          action: () => store.removeMultiSelectionFromDiagram(store.activeDiagramId, idsToRemove) },
+        { label: 'Remove from Diagram', disabled: idsToRemove.length === 0 && occIdsToRemove.length === 0,
+          action: () => {
+            if (occIdsToRemove.length > 0) {
+              for (const occId of occIdsToRemove) {
+                store.removeOccurrenceFromDiagram(occId, store.activeDiagramId)
+              }
+            } else {
+              store.removeMultiSelectionFromDiagram(store.activeDiagramId, idsToRemove)
+            }
+          } },
         { label: 'Delete Selection', danger: true,
           action: () => store.deleteMultiSelection() },
       ],
     })
   }, [store, setContextMenu])
 
-  const handleOtContextMenu = useCallback((ot, e) => {
+  const handleOtContextMenu = useCallback((ot, e, occurrenceId = null) => {
     if (store.multiSelectedIds.length > 1 && store.multiSelectedIds.includes(ot.id)) {
       return handleMultiSelectionContextMenu(e)
     }
     e.preventDefault()
     e.stopPropagation()
-    store.select(ot.id, ot.kind)
+    store.select(ot.id, ot.kind, occurrenceId)
     const hasRefMode = ot.kind === 'entity' && !!findRefMode(ot, store.facts, store.objectTypes)
     const diagram = store.diagrams.find(d => d.id === store.activeDiagramId)
     const isExpandedHere = (diagram?.expandedRefModes ?? []).includes(ot.id)
@@ -50,9 +59,11 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         ...refExpansionItems,
         '---',
         { label: 'Remove from Diagram',
-          action: () => store.removeElementFromDiagram(ot.id, store.activeDiagramId) },
+          action: () => occurrenceId
+            ? store.removeOccurrenceFromDiagram(occurrenceId, store.activeDiagramId)
+            : store.removeElementFromDiagram(ot.id, store.activeDiagramId) },
         '---',
-        { label: `Delete ${ot.kind === 'entity' ? 'Entity' : 'Value'} Type`,
+        { label: 'Remove from Schema',
           danger: true, action: () => store.deleteObjectType(ot.id) },
       ],
     })
@@ -98,13 +109,13 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     })
   }, [store, setContextMenu])
 
-  const handleFactContextMenu = useCallback((fact, e) => {
+  const handleFactContextMenu = useCallback((fact, e, occurrenceId = null) => {
     if (store.multiSelectedIds.length > 1 && store.multiSelectedIds.includes(fact.id)) {
       return handleMultiSelectionContextMenu(e)
     }
     e.preventDefault()
     e.stopPropagation()
-    store.select(fact.id, 'fact')
+    store.select(fact.id, 'fact', occurrenceId)
     const hasRefMode = fact.objectified && fact.objectifiedKind !== 'value'
       && !!findRefMode(fact, store.facts, store.objectTypes)
     const diagram = store.diagrams.find(d => d.id === store.activeDiagramId)
@@ -172,9 +183,11 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         })() : []),
         '---',
         { label: 'Remove from Diagram',
-          action: () => store.removeElementFromDiagram(fact.id, store.activeDiagramId) },
+          action: () => occurrenceId
+            ? store.removeOccurrenceFromDiagram(occurrenceId, store.activeDiagramId)
+            : store.removeElementFromDiagram(fact.id, store.activeDiagramId) },
         '---',
-        { label: fact.objectified ? 'Delete Nested Entity Type' : 'Delete Fact Type',
+        { label: 'Remove from Schema',
           danger: true, action: () => store.deleteFact(fact.id) },
       ],
     })
@@ -408,13 +421,13 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     })
   }, [store, setContextMenu, handleMultiSelectionContextMenu])
 
-  const handleConstraintContextMenu = useCallback((c, e) => {
+  const handleConstraintContextMenu = useCallback((c, e, constraintOccurrenceId = null) => {
     if (store.multiSelectedIds.length > 1 && store.multiSelectedIds.includes(c.id)) {
       return handleMultiSelectionContextMenu(e)
     }
     e.preventDefault()
     e.stopPropagation()
-    store.select(c.id, 'constraint')
+    store.select(c.id, 'constraint', constraintOccurrenceId)
     const maxSequences  = constraintMaxSequences(c.constraintType)
     const hasTargetOt   = hasTargetObjectType(c.constraintType)
     const noRolePos     = suppressRolePosition(c.constraintType)
@@ -495,7 +508,12 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
       }
     }
     if (items.length === 0 || items[items.length - 1] !== '---') items.push('---')
-    items.push({ label: 'Delete Constraint', danger: true,
+    items.push({ label: 'Remove from Diagram',
+      action: () => constraintOccurrenceId
+        ? store.removeConstraintOccurrenceFromDiagram(constraintOccurrenceId, store.activeDiagramId)
+        : store.removeElementFromDiagram(c.id, store.activeDiagramId) })
+    items.push('---')
+    items.push({ label: 'Remove from Schema', danger: true,
       action: () => store.deleteConstraint(c.id) })
     setContextMenu({ x: e.clientX, y: e.clientY, items })
   }, [store, setContextMenu, handleMultiSelectionContextMenu])

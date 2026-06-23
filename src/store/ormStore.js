@@ -680,6 +680,8 @@ export const useOrmStore = create((set, get) => ({
   selectedValueRange:      null,   // { otId? } | { factId, roleIndex } | { nestedFactId } | null
   selectedCardinalityRange: null,  // same shape as selectedValueRange | null
   multiSelectedIds:        [],     // ids of additionally selected elements
+  selectedOccurrenceId:      null,  // occurrence ID when a specific occurrence was clicked
+  multiSelectedOccurrenceIds: [],   // parallel to multiSelectedIds; one entry per selected occurrence
   uniquenessConstruction:  null,   // { factId, roleIndices: number[] } | null
   frequencyConstruction:   null,   // { stage:2|3, factId, x, y, roleIndices:number[], ifId?:string, range?:[] } | null
   sequenceConstruction:    null,   // { constraintId, steps: [{sequenceIndex}][], collected: [{sequenceIndex, member}][] } | null
@@ -1099,7 +1101,7 @@ export const useOrmStore = create((set, get) => ({
   newModel() {
     set({ ...EMPTY(), filePath: null, isDirty: false,
           selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitLink: null, selectedImplicitLinkRole: null,
-          selectedUniqueness: null, multiSelectedIds: [],
+          selectedUniqueness: null, multiSelectedIds: [], selectedOccurrenceId: null, multiSelectedOccurrenceIds: [],
           uniquenessConstruction: null, frequencyConstruction: null,
           pan: { x: 0, y: 0 }, zoom: 1 })
   },
@@ -1421,7 +1423,7 @@ export const useOrmStore = create((set, get) => ({
       factPopulations,
       subtypeMappings,
       nestedEntityMappings,
-      filePath, isDirty: false, selectedId: null, selectedKind: null,
+      filePath, isDirty: false, selectedId: null, selectedKind: null, selectedOccurrenceId: null, multiSelectedOccurrenceIds: [],
       // Restore schema-level display settings (v2 files only; defaults kept for older files)
       ...(schemaDisplaySettings.mandatoryDotPosition  != null && { mandatoryDotPosition:    schemaDisplaySettings.mandatoryDotPosition }),
       ...(schemaDisplaySettings.showReferenceMode     != null && { showReferenceMode:        schemaDisplaySettings.showReferenceMode }),
@@ -4517,7 +4519,7 @@ export const useOrmStore = create((set, get) => ({
 
   // ── selection ────────────────────────────────────────────────────────────
 
-   select(id, kind) {
+   select(id, kind, occurrenceId = null) {
     if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
     if (get().frequencyConstruction) get().abandonFrequencyConstruction()
     if (get().sequenceConstruction) get().abandonSequenceConstruction()
@@ -4525,12 +4527,14 @@ export const useOrmStore = create((set, get) => ({
       const [factId, roleIndex] = id.split('_il_').map((v, i) => i === 0 ? v : Number(v))
       set({ selectedId: id, selectedKind: 'implicitLink', selectedImplicitLink: roleIndex, selectedRole: null, selectedUniqueness: null, selectedImplicitLinkRole: null,
             selectedMandatoryDot: null, selectedInternalFrequency: null,
-            selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
+            selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+            selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
       return
     }
     set({ selectedId: id, selectedKind: kind, selectedRole: null, selectedImplicitLink: null, selectedImplicitLinkRole: null, selectedUniqueness: null,
           selectedMandatoryDot: null, selectedInternalFrequency: null,
-          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
+          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+          selectedOccurrenceId: occurrenceId, multiSelectedOccurrenceIds: [] })
   },
   clearSelection() {
     if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
@@ -4538,7 +4542,8 @@ export const useOrmStore = create((set, get) => ({
     if (get().sequenceConstruction) get().abandonSequenceConstruction()
     set({ selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitLink: null, selectedImplicitLinkRole: null, selectedUniqueness: null,
           selectedMandatoryDot: null, selectedInternalFrequency: null,
-          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
+          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+          selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
   },
 
   selectMandatoryDot(factId, roleIndex) {
@@ -4546,7 +4551,8 @@ export const useOrmStore = create((set, get) => ({
     if (get().frequencyConstruction) get().abandonFrequencyConstruction()
     set({ selectedMandatoryDot: { factId, roleIndex }, selectedId: null, selectedKind: null,
           selectedRole: null, selectedUniqueness: null, selectedInternalFrequency: null,
-          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
+          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+          selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
   },
   deselectMandatoryDot() { set({ selectedMandatoryDot: null }) },
 
@@ -4560,7 +4566,8 @@ export const useOrmStore = create((set, get) => ({
     set({ selectedUniqueness: { factId, impliedRoleIndex: roleIndex, implied: true },
           selectedId: null, selectedKind: null, selectedRole: null,
           selectedMandatoryDot: null, selectedInternalFrequency: null,
-          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
+          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+          selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
   },
   selectImpliedMandatoryDot(factId, roleIndex) {
     if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
@@ -4568,7 +4575,8 @@ export const useOrmStore = create((set, get) => ({
     set({ selectedMandatoryDot: { factId, roleIndex, implied: true },
           selectedId: null, selectedKind: null, selectedRole: null,
           selectedUniqueness: null, selectedInternalFrequency: null,
-          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
+          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+          selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
   },
 
   selectInternalFrequency(factId, ifId) {
@@ -4576,14 +4584,16 @@ export const useOrmStore = create((set, get) => ({
     if (get().frequencyConstruction) get().abandonFrequencyConstruction()
     set({ selectedInternalFrequency: { factId, ifId }, selectedId: null, selectedKind: null,
           selectedRole: null, selectedUniqueness: null, selectedMandatoryDot: null,
-          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [] })
+          selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+          selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
   },
   deselectInternalFrequency() { set({ selectedInternalFrequency: null }) },
 
   selectValueRange(desc) {
     set({ selectedValueRange: desc, selectedId: null, selectedKind: null,
           selectedRole: null, selectedUniqueness: null, selectedMandatoryDot: null,
-          selectedInternalFrequency: null, selectedCardinalityRange: null, multiSelectedIds: [] })
+          selectedInternalFrequency: null, selectedCardinalityRange: null, multiSelectedIds: [],
+          selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
   },
   deselectValueRange() { set({ selectedValueRange: null }) },
   removeValueRange(desc) {
@@ -4596,7 +4606,8 @@ export const useOrmStore = create((set, get) => ({
   selectCardinalityRange(desc) {
     set({ selectedCardinalityRange: desc, selectedId: null, selectedKind: null,
           selectedRole: null, selectedUniqueness: null, selectedMandatoryDot: null,
-          selectedInternalFrequency: null, selectedValueRange: null, multiSelectedIds: [] })
+          selectedInternalFrequency: null, selectedValueRange: null, multiSelectedIds: [],
+          selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
   },
   deselectCardinalityRange() { set({ selectedCardinalityRange: null }) },
   removeCardinalityRange(desc) {
@@ -4642,39 +4653,52 @@ export const useOrmStore = create((set, get) => ({
           selectedRole: null, selectedUniqueness: null })
   },
 
-  shiftSelect(id) {
+  shiftSelect(id, occurrenceId = null) {
     set(s => {
       const base = s.multiSelectedIds.length > 0
         ? s.multiSelectedIds
         : (s.selectedId ? [s.selectedId] : [])
-      const isRemoving = base.includes(id)
-      let next = isRemoving ? base.filter(i => i !== id) : [...base, id]
+      const baseOccs = s.multiSelectedOccurrenceIds.length > 0
+        ? s.multiSelectedOccurrenceIds
+        : (s.selectedOccurrenceId ? [s.selectedOccurrenceId] : [])
+
+      const isRemoving = occurrenceId ? baseOccs.includes(occurrenceId) : base.includes(id)
+
+      let nextBase = isRemoving ? base.filter(i => i !== id) : (base.includes(id) ? base : [...base, id])
+      let nextOccs = occurrenceId
+        ? (isRemoving ? baseOccs.filter(o => o !== occurrenceId) : [...baseOccs, occurrenceId])
+        : baseOccs
+
       // When adding/removing an entity with a collapsed ref-mode, also add/remove
-      // the implied fact type and value type.
-      const ot = s.objectTypes.find(o => o.id === id)
-             ?? s.facts.find(f => f.id === id && f.objectified)
-      if (ot) {
-        const rm = findRefMode(ot, s.facts, s.objectTypes)
-        if (rm) {
-          const expanded = (s.diagrams.find(d => d.id === s.activeDiagramId)?.expandedRefModes ?? []).includes(id)
-          if (!expanded) {
-            if (isRemoving) {
-              next = next.filter(i => i !== rm.factId && i !== rm.vtId)
-            } else {
-              if (!next.includes(rm.factId)) next = [...next, rm.factId]
-              if (!next.includes(rm.vtId))   next = [...next, rm.vtId]
+      // the implied fact type and value type (only for schema-level operations).
+      if (!occurrenceId || !isRemoving) {
+        const ot = s.objectTypes.find(o => o.id === id)
+               ?? s.facts.find(f => f.id === id && f.objectified)
+        if (ot) {
+          const rm = findRefMode(ot, s.facts, s.objectTypes)
+          if (rm) {
+            const expanded = (s.diagrams.find(d => d.id === s.activeDiagramId)?.expandedRefModes ?? []).includes(id)
+            if (!expanded) {
+              if (isRemoving) {
+                nextBase = nextBase.filter(i => i !== rm.factId && i !== rm.vtId)
+              } else {
+                if (!nextBase.includes(rm.factId)) nextBase = [...nextBase, rm.factId]
+                if (!nextBase.includes(rm.vtId))   nextBase = [...nextBase, rm.vtId]
+              }
             }
           }
         }
       }
-      return { multiSelectedIds: next, selectedId: null, selectedKind: null,
+      return { multiSelectedIds: nextBase, multiSelectedOccurrenceIds: nextOccs,
+               selectedId: null, selectedKind: null, selectedOccurrenceId: null,
                selectedRole: null, selectedUniqueness: null }
     })
   },
 
-  setMultiSelection(ids) {
+  setMultiSelection(ids, occurrenceIds = []) {
     if (ids.length === 0) {
-      set({ multiSelectedIds: [], selectedId: null, selectedKind: null,
+      set({ multiSelectedIds: [], multiSelectedOccurrenceIds: [],
+            selectedId: null, selectedKind: null, selectedOccurrenceId: null,
             selectedRole: null, selectedUniqueness: null })
     } else {
       set(s => {
@@ -4690,14 +4714,15 @@ export const useOrmStore = create((set, get) => ({
           if (!idSet.has(rm.factId)) { idSet.add(rm.factId); result.push(rm.factId) }
           if (!idSet.has(rm.vtId))   { idSet.add(rm.vtId);   result.push(rm.vtId) }
         }
-        return { multiSelectedIds: result, selectedId: null, selectedKind: null,
+        return { multiSelectedIds: result, multiSelectedOccurrenceIds: occurrenceIds,
+                 selectedId: null, selectedKind: null, selectedOccurrenceId: null,
                  selectedRole: null, selectedUniqueness: null }
       })
     }
   },
 
   clearMultiSelection() {
-    set({ multiSelectedIds: [] })
+    set({ multiSelectedIds: [], multiSelectedOccurrenceIds: [] })
   },
 
   alignMultiSelection(axis) {
@@ -4834,6 +4859,8 @@ export const useOrmStore = create((set, get) => ({
         selectedKind: null,
         selectedRole: null,
         multiSelectedIds: [],
+        selectedOccurrenceId: null,
+        multiSelectedOccurrenceIds: [],
         isDirty: true,
       }
     })
@@ -4967,6 +4994,7 @@ export const useOrmStore = create((set, get) => ({
       selectedUniqueness: { factId, uIndex },
       selectedRole: null, selectedMandatoryDot: null, selectedInternalFrequency: null,
       selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+      selectedOccurrenceId: null, multiSelectedOccurrenceIds: [],
     })
   },
 
@@ -5537,6 +5565,55 @@ export const useOrmStore = create((set, get) => ({
     })
   },
 
+  removeOccurrenceFromDiagram(occurrenceId, diagramId) {
+    set(s => {
+      const diag = s.diagrams.find(d => d.id === diagramId)
+      if (!diag) return {}
+      const occ = (diag.occurrences ?? []).find(o => o.id === occurrenceId)
+      if (!occ) return {}
+      const schemaElementId = occ.schemaElementId
+      const remainingOccs   = (diag.occurrences ?? []).filter(o => o.id !== occurrenceId)
+      const stillPresent    = remainingOccs.some(o => o.schemaElementId === schemaElementId)
+
+      let finalOccs = remainingOccs
+      if (!stillPresent) {
+        // Last occurrence of this element — cascade-remove dependent facts/OTs
+        const toRemove = computeCascadeRemove(schemaElementId, s.facts)
+        toRemove.delete(schemaElementId)
+        finalOccs = remainingOccs.filter(o => !toRemove.has(o.schemaElementId))
+      }
+
+      const updatedDiagrams = s.diagrams.map(d =>
+        d.id !== diagramId ? d : { ...d, occurrences: finalOccs }
+      )
+      const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
+      return {
+        diagrams: syncedDiagrams,
+        selectedId:             s.selectedOccurrenceId === occurrenceId ? null : s.selectedId,
+        selectedKind:           s.selectedOccurrenceId === occurrenceId ? null : s.selectedKind,
+        selectedOccurrenceId:   s.selectedOccurrenceId === occurrenceId ? null : s.selectedOccurrenceId,
+        multiSelectedIds:        s.multiSelectedIds.filter(id => id !== schemaElementId || remainingOccs.some(o => o.schemaElementId === id)),
+        multiSelectedOccurrenceIds: s.multiSelectedOccurrenceIds.filter(oid => oid !== occurrenceId),
+        isDirty: true,
+      }
+    })
+  },
+
+  removeConstraintOccurrenceFromDiagram(cOccId, diagramId) {
+    set(s => ({
+      diagrams: s.diagrams.map(d =>
+        d.id !== diagramId ? d : {
+          ...d,
+          constraintOccurrences: (d.constraintOccurrences ?? []).filter(co => co.id !== cOccId),
+        }
+      ),
+      selectedId:           s.selectedOccurrenceId === cOccId ? null : s.selectedId,
+      selectedOccurrenceId: s.selectedOccurrenceId === cOccId ? null : s.selectedOccurrenceId,
+      multiSelectedOccurrenceIds: s.multiSelectedOccurrenceIds.filter(id => id !== cOccId),
+      isDirty: true,
+    }))
+  },
+
   removeMultiSelectionFromDiagram(diagramId, idsOverride = null) {
     const multiSelectedIds = idsOverride ?? get().multiSelectedIds
     if (multiSelectedIds.length === 0) return
@@ -5589,7 +5666,9 @@ export const useOrmStore = create((set, get) => ({
       return {
         diagrams: syncedDiagrams,
         multiSelectedIds: [],
-        selectedId: null, selectedKind: null, selectedRole: null, selectedUniqueness: null,
+        multiSelectedOccurrenceIds: [],
+        selectedId: null, selectedKind: null, selectedOccurrenceId: null,
+        selectedRole: null, selectedUniqueness: null,
         isDirty: true,
       }
     })

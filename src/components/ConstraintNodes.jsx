@@ -852,7 +852,15 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
   return (
     <g>
       {visibleConstraints.map(c => {
-        const isSelected  = store.selectedId === c.id || store.multiSelectedIds.includes(c.id)
+        const isSelected = c.constraintOccurrenceId
+          ? ((store.selectedOccurrenceId !== null
+               ? store.selectedOccurrenceId === c.constraintOccurrenceId
+               : store.selectedId === c.id)
+             ||
+             (store.multiSelectedOccurrenceIds.length > 0
+               ? store.multiSelectedOccurrenceIds.includes(c.constraintOccurrenceId)
+               : store.multiSelectedIds.includes(c.id)))
+          : (store.selectedId === c.id || store.multiSelectedIds.includes(c.id))
         const color = CONSTRAINT_COLOR[c.constraintType] || 'var(--ink-3)'
         const symbol = CONSTRAINT_SYMBOL[c.constraintType] || '?'
 
@@ -1034,24 +1042,24 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
               }
               if (store.tool === 'assignRole' || store.tool === 'addSubtype' || store.tool === 'toggleMandatory' || store.tool === 'addInternalUniqueness' || store.tool === 'addInternalFrequency') { store.clearLinkDraft(); store.setTool('select'); return }
               if (e.shiftKey) {
-                store.shiftSelect(c.id)
+                store.shiftSelect(c.id, c.constraintOccurrenceId ?? null)
                 return
               }
               if (store.sequenceConstruction) {
                 store.select(c.id, 'constraint')
                 return
               }
-              store.select(c.id, 'constraint')
+              store.select(c.id, 'constraint', c.constraintOccurrenceId ?? null)
               onDragStart(c.id, 'constraint', e, c.constraintOccurrenceId)
             }}
             onDoubleClick={(e) => {
               e.stopPropagation()
               if (!EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType)) return
               if (store.sequenceConstruction) return
-              store.select(c.id, 'constraint')
+              store.select(c.id, 'constraint', c.constraintOccurrenceId ?? null)
               store.startSequenceConstruction(c.id, 'newSequence')
             }}
-            onContextMenu={(e) => onContextMenu(c, e)}
+            onContextMenu={(e) => onContextMenu(c, e, c.constraintOccurrenceId ?? null)}
             style={{ cursor: (() => {
               if (store.queryEditDraft) return 'not-allowed'
               if (isElementSelecting(store.tool, store.sequenceConstruction)) {
