@@ -751,6 +751,9 @@ export default function Canvas() {
     const isBackground = e.target === svgRef.current || e.target.closest('.canvas-bg')
     if (!isBackground) return
 
+    // Role reconnect mode: background click cancels it
+    if (store.roleReconnectDraft) { store.cancelRoleReconnect(); return }
+
     // Target pick mode: background click cancels it
     if (store.pendingTargetPick) { store.cancelTargetPick(); return }
 
@@ -834,6 +837,12 @@ export default function Canvas() {
 
   // ── element drag start (called by child nodes) ──────────────────────────
   const handleDragStart = useCallback((id, kind, e, occurrenceId) => {
+    // Role reconnect mode: clicking an OT occurrence completes the reconnect
+    if (store.roleReconnectDraft && kind === 'ot') {
+      store.reconnectRoleOccurrence(occurrenceId)
+      return
+    }
+
     // Query edit mode: no dragging allowed
     if (store.queryEditDraft) return
     // Selection-mode tools and sequence construction handle interactions in child components; prevent fallback dragging

@@ -109,6 +109,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
          ? store.multiSelectedOccurrenceIds.includes(occurrenceId)
          : store.multiSelectedIds.includes(ot.id)))
     : (store.selectedId === ot.id || store.multiSelectedIds.includes(ot.id))
+  const isReconnectTarget = !!store.roleReconnectDraft
   const isConstraintTarget = !store.queryEditDraft && !store.queryIndexHighlight && store.selectedKind === 'constraint' &&
     store.constraints.find(c => c.id === store.selectedId)?.targetObjectTypeId === ot.id
 
@@ -328,11 +329,15 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
 
   const stroke = isSelected          ? 'var(--accent)'
     : isDraftFrom                    ? 'var(--col-subtype)'
+    : isReconnectTarget && !isSelected ? 'var(--warning, #d97706)'
     : isConstraintTarget             ? '#1a7fd4'
     : ot.kind === 'entity'           ? 'var(--col-entity)'
     :                                  'var(--col-value)'
 
-  const strokeW = (isSelected || isDraftFrom) ? 2.5 : isConstraintTarget ? 2 : 1.5
+  const strokeW = (isSelected || isDraftFrom) ? 2.5 : isConstraintTarget ? 2 : (isReconnectTarget && !isSelected) ? 2 : 1.5
+  const strokeDash = (isReconnectTarget && !isSelected)
+    ? '4 2'
+    : ot.kind === 'value' ? '6 3' : 'none'
   const fill    = isConstraintTarget ? '#1a7fd4' : inQueryHighlight ? 'var(--fill-query-in)' : '#ffffff'
 
   // Text vertical positions
@@ -376,7 +381,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     >
       <rect x={ot.x - w/2} y={ot.y - h/2} width={w} height={h} rx={6}
         fill={fill} stroke={stroke} strokeWidth={strokeW}
-        strokeDasharray={ot.kind === 'value' ? '6 3' : 'none'}/>
+        strokeDasharray={strokeDash}/>
 
       {editing ? (
         <foreignObject x={ot.x - w/2 + 2} y={nameY - OT_SIZE_NAME * 0.75}
