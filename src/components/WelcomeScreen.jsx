@@ -116,6 +116,19 @@ const SAMPLE = {
       readingAbove: false, readingOffset: null, internalFrequency: [], implicitLinks: [],
       preferredUniqueness: [], shownReadingOrder: null, orientation: 'horizontal',
     },
+    {
+      id: 'f5', kind: 'fact', x: 40, y: 160, arity: 2,
+      readingParts: ['', 'manages', ''],
+      alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'is managed by', ''] }],
+      roles: [
+        { id: 'r5a', objectTypeId: 'ot1', roleName: '', mandatory: false, linkReadingParts: ['', '', ''], linkReadingReverseParts: null },
+        { id: 'r5b', objectTypeId: 'ot1', roleName: '', mandatory: false, linkReadingParts: ['', '', ''], linkReadingReverseParts: null },
+      ],
+      uniqueness: [[0, 1]],
+      readingDisplay: 'forward', uniquenessBelow: false,
+      readingAbove: false, readingOffset: null, internalFrequency: [], implicitLinks: [],
+      preferredUniqueness: [], shownReadingOrder: null, orientation: 'horizontal',
+    },
   ],
   subtypes: [
     // Manager has its own .id ref mode, so the subtype edge to Person does
@@ -126,24 +139,24 @@ const SAMPLE = {
   ],
   constraints: [
     {
-      id: 'c1', kind: 'constraint', constraintType: 'ring', x: 130, y: 410,
+      id: 'c1', kind: 'constraint', constraintType: 'ring', x: 40, y: 210,
       sequences: [[
-        { kind: 'role', factId: 'f1', roleIndex: 0 },
-        { kind: 'role', factId: 'f1', roleIndex: 1 },
+        { kind: 'role', factId: 'f5', roleIndex: 0 },
+        { kind: 'role', factId: 'f5', roleIndex: 1 },
       ]],
       ringTypes: ['irreflexive'],
       queries: [{
         copies: [
-          { id: 'n1779876495448_2', kind: 'fact',       originalId: 'f1',  isOutput: false, seededRoles: [{ roleIndex: 0, seqPosition: 0 }], dx: 16, dy: 16 },
-          { id: 'n1779876495448_3', kind: 'fact',       originalId: 'f1',  isOutput: false, seededRoles: [{ roleIndex: 1, seqPosition: 1 }], dx: 32, dy: 32 },
-          { id: 'n1779876504508_4', kind: 'objectType', originalId: 'ot1', isOutput: false, dx: 16, dy: 16 },
-          { id: 'n1779876509442_5', kind: 'objectType', originalId: 'ot2', isOutput: false, dx: 16, dy: 16 },
+          { id: 'c1_fa', kind: 'fact',       originalId: 'f5',  isOutput: false, seededRoles: [{ roleIndex: 0, seqPosition: 0 }], dx: 16, dy: 16 },
+          { id: 'c1_fb', kind: 'fact',       originalId: 'f5',  isOutput: false, seededRoles: [{ roleIndex: 1, seqPosition: 1 }], dx: 32, dy: 32 },
+          { id: 'c1_pa', kind: 'objectType', originalId: 'ot1', isOutput: false, dx: 16, dy: 16 },
+          { id: 'c1_pb', kind: 'objectType', originalId: 'ot1', isOutput: false, dx: 32, dy: 32 },
         ],
         links: [
-          { copyId: 'n1779876495448_2', roleIndex: 0, variableId: 'n1779876504508_4' },
-          { copyId: 'n1779876495448_3', roleIndex: 0, variableId: 'n1779876504508_4' },
-          { copyId: 'n1779876495448_2', roleIndex: 1, variableId: 'n1779876509442_5' },
-          { copyId: 'n1779876495448_3', roleIndex: 1, variableId: 'n1779876509442_5' },
+          { copyId: 'c1_fa', roleIndex: 0, variableId: 'c1_pa' },
+          { copyId: 'c1_fb', roleIndex: 0, variableId: 'c1_pa' },
+          { copyId: 'c1_fa', roleIndex: 1, variableId: 'c1_pb' },
+          { copyId: 'c1_fb', roleIndex: 1, variableId: 'c1_pb' },
         ],
       }],
     },
@@ -153,7 +166,7 @@ const SAMPLE = {
       id: 'sample_main',
       name: 'Main',
       elementIds: ['ot1','ot2','ot3','ot4','ot5','ot6','rv1','rv2','rv3','rv4',
-                   'rf1','rf2','rf3','rf4','f1','f2','f3','f4','c1'],
+                   'rf1','rf2','rf3','rf4','f1','f2','f3','f4','f5','c1'],
       positions: {
         ot1: { x: 160, y: 160 },
         ot2: { x: 500, y: 160 },
@@ -173,7 +186,8 @@ const SAMPLE = {
         f2:  { x: 110, y: 260, orientation: 'vertical' },
         f3:  { x: 330, y:  80 },
         f4:  { x: 500, y: 260, orientation: 'vertical' },
-        c1:  { x: 360, y: 220 },
+        f5:  { x:  40, y: 160 },
+        c1:  { x:  40, y: 220 },
       },
       expandedRefModes: [],
       profileId: 'abstract',
@@ -197,6 +211,7 @@ const SAMPLE = {
     f2: [['P001', 'Alice'], ['P002', 'Bob'], ['P003', 'Carol']],
     f3: [['P001', '50000'], ['P002', '75000'], ['P003', '60000']],
     f4: [['BigCo', 'PRJ-1'], ['Acme', 'PRJ-2']],
+    f5: [['P002', 'P001'], ['P002', 'P003']],
   },
   subtypeMappings: {
     // Manager M001 corresponds to Person P002 (i.e., Bob).
