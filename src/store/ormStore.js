@@ -1059,7 +1059,21 @@ export const useOrmStore = create((set, get) => ({
   },
 
    loadModel(data, filePath = null) {
-    const d = typeof data === 'string' ? JSON.parse(data) : data
+    let d = typeof data === 'string' ? JSON.parse(data) : data
+
+    // v2 format: { version: 2, schema: { objectTypes, factTypes, subtypes, externalConstraints, displaySettings }, diagrams, ... }
+    let schemaDisplaySettings = {}
+    if (d.version === 2 && d.schema) {
+      schemaDisplaySettings = d.schema.displaySettings ?? {}
+      d = {
+        ...d,
+        objectTypes: d.schema.objectTypes        ?? [],
+        facts:       d.schema.factTypes          ?? [],
+        subtypes:    d.schema.subtypes           ?? [],
+        constraints: d.schema.externalConstraints ?? [],
+      }
+    }
+
     const facts = (d.facts || []).map(f => {
       // Migration: if readingParts was stored as an all-empty array from the old format,
       // treat it as null (no reading). Only keep it if at least one fragment has content.
@@ -1313,6 +1327,7 @@ export const useOrmStore = create((set, get) => ({
     }
 
     const activeDiag = diagrams.find(d => d.id === activeDiagramId)
+    const diagDS = activeDiag?.displaySettings ?? {}
     set({
       objectTypes: parsedOts,
       facts,
@@ -1327,15 +1342,32 @@ export const useOrmStore = create((set, get) => ({
       subtypeMappings,
       nestedEntityMappings,
       filePath, isDirty: false, selectedId: null, selectedKind: null,
+      // Restore schema-level display settings (v2 files only; defaults kept for older files)
+      ...(schemaDisplaySettings.mandatoryDotPosition  != null && { mandatoryDotPosition:    schemaDisplaySettings.mandatoryDotPosition }),
+      ...(schemaDisplaySettings.showReferenceMode     != null && { showReferenceMode:        schemaDisplaySettings.showReferenceMode }),
+      ...(schemaDisplaySettings.showRoleNames         != null && { showRoleNames:            schemaDisplaySettings.showRoleNames }),
+      ...(schemaDisplaySettings.showSequenceMembership != null && { showSequenceMembership: schemaDisplaySettings.showSequenceMembership }),
+      ...(schemaDisplaySettings.showConstraintQueries  != null && { showConstraintQueries:  schemaDisplaySettings.showConstraintQueries }),
+      // Restore diagram-level display settings from the active diagram
+      ...(diagDS.showMinimap != null && { showMinimap: diagDS.showMinimap }),
+      ...(diagDS.minimapPos  != null && { minimapPos:  diagDS.minimapPos }),
     })
   },
 
   serialize() {
-    const { objectTypes, facts, subtypes, constraints, diagrams, activeDiagramId, populations, factPopulations, subtypeMappings, nestedEntityMappings, pan, zoom } = get()
-    // Strip in-memory-only selection state; flush current pan/zoom into active diagram
-    const cleanDiagrams = diagrams.map(({ multiSelectedIds: _, ...d }) =>
-      d.id === activeDiagramId ? { ...d, pan, zoom } : d
-    )
+    const {
+      objectTypes, facts, subtypes, constraints, diagrams, activeDiagramId,
+      populations, factPopulations, subtypeMappings, nestedEntityMappings,
+      pan, zoom,
+      mandatoryDotPosition, showReferenceMode, showRoleNames,
+      showSequenceMembership, showConstraintQueries,
+      showMinimap, minimapPos,
+    } = get()
+    // Strip in-memory-only selection state; flush current pan/zoom + display settings into diagrams
+    const cleanDiagrams = diagrams.map(({ multiSelectedIds: _, ...d }) => ({
+      ...(d.id === activeDiagramId ? { ...d, pan, zoom } : d),
+      displaySettings: { showMinimap, minimapPos },
+    }))
     // Drop any stored identifying-fact populations — they are derived at runtime.
     const cleanFactPops = {}
     for (const [fid, tuples] of Object.entries(factPopulations ?? {})) {
@@ -1357,11 +1389,24 @@ export const useOrmStore = create((set, get) => ({
       if (facts.find(f => f.id === fid && f.objectified)) cleanNem[fid] = rows
     }
     return JSON.stringify({
-      objectTypes, facts, subtypes, constraints,
+      version: 2,
+      schema: {
+        objectTypes,
+        factTypes:            facts,
+        subtypes,
+        externalConstraints:  constraints,
+        displaySettings: {
+          mandatoryDotPosition,
+          showReferenceMode,
+          showRoleNames,
+          showSequenceMembership,
+          showConstraintQueries,
+        },
+      },
       diagrams: cleanDiagrams, activeDiagramId,
-      populations:         populations    ?? {},
-      factPopulations:     cleanFactPops,
-      subtypeMappings:     cleanStMaps,
+      populations:          populations    ?? {},
+      factPopulations:      cleanFactPops,
+      subtypeMappings:      cleanStMaps,
       nestedEntityMappings: cleanNem,
     }, null, 2)
   },
