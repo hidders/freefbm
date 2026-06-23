@@ -168,8 +168,7 @@ function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints,
           )
         })}
         {visibleFacts.filter(f => !f._implicit && popIssueElementIds.has(f.id)).map(f => {
-          const p = positions[f.id]
-          const fx = p?.x ?? f.x, fy = p?.y ?? f.y
+          const fx = f.x, fy = f.y
           let bx, by
           if (f.objectified) {
             const b = nestedFactBounds({ ...f, x: fx, y: fy })
@@ -177,7 +176,7 @@ function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints,
             by = b.top  + 1
           } else {
             const n = Math.max(f.arity, 1)
-            const isVert = (p?.orientation ?? f.orientation) === 'vertical'
+            const isVert = f.orientation === 'vertical'
             if (isVert) {
               const totalH = n * ROLE_W + (n - 1) * ROLE_GAP
               bx = fx - ROLE_H / 2 - R + 1
@@ -834,7 +833,7 @@ export default function Canvas() {
   }, [store, screenToWorld, snapEnabled])
 
   // ── element drag start (called by child nodes) ──────────────────────────
-  const handleDragStart = useCallback((id, kind, e) => {
+  const handleDragStart = useCallback((id, kind, e, occurrenceId) => {
     // Query edit mode: no dragging allowed
     if (store.queryEditDraft) return
     // Selection-mode tools and sequence construction handle interactions in child components; prevent fallback dragging
@@ -923,7 +922,8 @@ export default function Canvas() {
     if (!el) return
     setDragState({ type: 'element', id, kind,
                    startX: e.clientX, startY: e.clientY,
-                   origX: el.x, origY: el.y })
+                   origX: el.x, origY: el.y,
+                   occurrenceId: occurrenceId ?? null })
   }, [store, visibleOts, visibleFacts, visibleConstraints])
 
   // ── mouse move ──────────────────────────────────────────────────────────
@@ -942,11 +942,16 @@ export default function Canvas() {
       let wx = dragState.origX + dx / store.zoom
       let wy = dragState.origY + dy / store.zoom
       if (snapEnabled) { wx = snap(wx); wy = snap(wy) }
-      if (dragState.kind === 'fact')            store.moveFact(dragState.id, wx, wy)
-      else if (dragState.kind === 'constraint') store.moveConstraint(dragState.id, wx, wy)
+      if (dragState.kind === 'fact') {
+        if (dragState.occurrenceId) store.moveOccurrence(dragState.occurrenceId, wx, wy)
+        else store.moveFact(dragState.id, wx, wy)
+      } else if (dragState.kind === 'constraint') store.moveConstraint(dragState.id, wx, wy)
       else if (dragState.kind === 'implicitLink') store.updateImplicitLink(dragState.implicitFactId, dragState.implicitRoleIndex, { x: snapEnabled ? snap(wx) : wx, y: snapEnabled ? snap(wy) : wy })
       else if (dragState.kind === 'note')       store.updateNote(dragState.id, { x: snapEnabled ? snap(wx) : wx, y: snapEnabled ? snap(wy) : wy })
-      else                                      store.moveObjectType(dragState.id, wx, wy)
+      else {
+        if (dragState.occurrenceId) store.moveOccurrence(dragState.occurrenceId, wx, wy)
+        else store.moveObjectType(dragState.id, wx, wy)
+      }
     } else if (dragState.type === 'noteResize') {
       const newW = Math.max(80, dragState.origW + dx / store.zoom)
       const newH = Math.max(40, dragState.origH + dy / store.zoom)
@@ -1287,8 +1292,8 @@ export default function Canvas() {
             const factDimmed = isFactDimmed(f) || (rsIds != null && !rsIds.has(f.id)) || isNotePickMode
             const factOpacity = factDimmed ? (rsIds != null ? 0.12 : 0.35) : (queryOpacity(f.id) ?? 1)
             return (
-            <g key={f.id} opacity={factOpacity < 1 ? factOpacity : 1} style={factOpacity <= 0.2 ? { pointerEvents: 'none' } : undefined}>
-            <FactTypeNode fact={f} onDragStart={handleDragStart}
+            <g key={f.occurrenceId ?? f.id} opacity={factOpacity < 1 ? factOpacity : 1} style={factOpacity <= 0.2 ? { pointerEvents: 'none' } : undefined}>
+            <FactTypeNode fact={f} occurrenceId={f.occurrenceId} onDragStart={handleDragStart}
               dimObjectification={!!(f.objectified && dimMode?.dimObjectification)}
               dimInnerFact={!!(f.objectified && dimMode?.dimInnerFact)}
               dimInternalConstraints={!!store.noteConnectorDraft || (rsIds != null && rsIds.has(f.id))}
@@ -1334,8 +1339,9 @@ export default function Canvas() {
             const otDimmed = isOtDimmed(ot) || (rsIds != null && !rsIds.has(ot.id)) || isNotePickMode
             const otOpacity = otDimmed ? (rsIds != null ? 0.12 : 0.35) : (queryOpacity(ot.id) ?? 1)
             return (
-            <g key={ot.id} opacity={otOpacity < 1 ? otOpacity : 1} style={otOpacity <= 0.2 ? { pointerEvents: 'none' } : undefined}>
+            <g key={ot.occurrenceId ?? ot.id} opacity={otOpacity < 1 ? otOpacity : 1} style={otOpacity <= 0.2 ? { pointerEvents: 'none' } : undefined}>
             <ObjectTypeNode objectType={ot}
+              occurrenceId={ot.occurrenceId}
               onDragStart={handleDragStart}
               mousePos={mousePos}
               isShared={sharedIds.has(ot.id)}

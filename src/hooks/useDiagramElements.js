@@ -3,7 +3,7 @@ import { findRefMode } from '../utils/refMode'
 
 /**
  * Returns schema elements filtered to the active diagram,
- * with positions merged from diagram.positions (falling back to element x,y).
+ * with positions merged from diagram.occurrences.
  * Also returns the active diagram object and the elementIds Set.
  */
 export function useDiagramElements() {
@@ -30,10 +30,21 @@ export function getDiagramElements(store) {
   } else {
     Object.assign(rawPositions, diagram?.positions ?? {})
   }
-  const positions  = rawPositions
+
+  // Build constraint positions from constraintOccurrences
+  const constraintPositions = {}
+  for (const cocc of (diagram?.constraintOccurrences ?? [])) {
+    constraintPositions[cocc.schemaConstraintId] = { x: cocc.x, y: cocc.y, constraintOccurrenceId: cocc.id }
+  }
+
+  // Non-constraint element IDs in occurrences
+  const occurrencesList = diagram?.occurrences ?? []
+  const occurrenceElementIds = new Set(occurrencesList.map(o => o.schemaElementId))
+
+  // For backward compat with v1 (positions map, no occurrences)
   const hasFilter  = true
   const elementIds = hasOccurrences
-    ? new Set((diagram?.occurrences ?? []).map(o => o.schemaElementId))
+    ? occurrenceElementIds
     : new Set(diagram?.elementIds ?? [])
 
   const expandedRefModes = new Set(diagram?.expandedRefModes ?? [])
@@ -78,7 +89,7 @@ export function getDiagramElements(store) {
   }
 
   const withPos = (el) => {
-    const p = positions[el.id]
+    const p = rawPositions[el.id]
     const merged = p ? { ...el, x: p.x, y: p.y } : { ...el }
     // Per-diagram layout overrides for facts
     if (el.kind === 'fact') {
@@ -120,23 +131,106 @@ export function getDiagramElements(store) {
     return !hasFilter || elementIds.has(el.id)
   }
 
-  const visibleOts         = objectTypes.filter(inDiagram).map(withPos)
-  const visibleFacts       = facts.filter(inDiagram).map(withPos)
-  const visibleConstraints = constraints.filter(inDiagram).map(withPos)
-  const visibleOtIds       = new Set(visibleOts.map(o => o.id))
-  // Subtypes are shown automatically when both endpoints are visible
-  const visibleSubtypes    = subtypes.filter(st => visibleOtIds.has(st.subId) && visibleOtIds.has(st.superId))
-  // Also include subtypes where one endpoint is an objectified fact visible in the diagram
+  // Build per-occurrence lists for multi-occurrence support
+  let visibleObjectTypes, visibleFacts
+
+  if (hasOccurrences) {
+    const otMap   = Object.fromEntries(objectTypes.map(o => [o.id, o]))
+    const factMap = Object.fromEntries(facts.map(f => [f.id, f]))
+
+    // One entry per occurrence (supports multiple occurrences of same element)
+    visibleObjectTypes = occurrencesList
+      .filter(occ => {
+        const ot = otMap[occ.schemaElementId]
+        if (!ot) return false
+        if (hiddenByShorthand.has(occ.schemaElementId)) return false
+        return true
+      })
+      .map(occ => {
+        const { id: occurrenceId, schemaElementId, ...posData } = occ
+        const ot = otMap[schemaElementId]
+        const merged = { ...ot, ...posData, x: occ.x, y: occ.y, occurrenceId }
+        return merged
+      })
+
+    // Also add OTs that are expanded via ref mode (not in occurrences directly)
+    for (const id of expandedByRefMode) {
+      const ot = otMap[id]
+      if (ot && !elementIds.has(id) && !hiddenByShorthand.has(id)) {
+        visibleObjectTypes.push({ ...withPos(ot), occurrenceId: null })
+      }
+    }
+
+    visibleFacts = occurrencesList
+      .filter(occ => {
+        const f = factMap[occ.schemaElementId]
+        if (!f) return false
+        if (hiddenByShorthand.has(occ.schemaElementId)) return false
+        return true
+      })
+      .map(occ => {
+        const { id: occurrenceId, schemaElementId, ...posData } = occ
+        const f = factMap[schemaElementId]
+        const merged = { ...f, ...posData, x: occ.x, y: occ.y, occurrenceId }
+        // Apply per-diagram layout overrides
+        if (posData.readingAbove        !== undefined) merged.readingAbove        = posData.readingAbove
+        if (posData.readingOffsetAbove  !== undefined) merged.readingOffsetAbove  = posData.readingOffsetAbove
+        if (posData.readingOffsetBelow  !== undefined) merged.readingOffsetBelow  = posData.readingOffsetBelow
+        if (posData.uniquenessBelow     !== undefined) merged.uniquenessBelow     = posData.uniquenessBelow
+        if (posData.nestedReading       !== undefined) merged.nestedReading       = posData.nestedReading
+        if (posData.roleNameOffsets     !== undefined) merged.roleNameOffsets     = posData.roleNameOffsets
+        if (posData.valueRangeOffsets   !== undefined) merged.valueRangeOffsets   = posData.valueRangeOffsets
+        if (posData.cardinalityRangeOffsets !== undefined) merged.cardinalityRangeOffsets = posData.cardinalityRangeOffsets
+        if (posData.nameOffset          !== undefined) merged.nameOffset          = posData.nameOffset
+        if (posData.roleOrder           !== undefined) merged.roleOrder           = posData.roleOrder
+        if (posData.readingOrder        !== undefined) merged.readingOrder        = posData.readingOrder
+        if (posData.orientation         !== undefined) merged.orientation         = posData.orientation
+        if (posData.readingDisplay      !== undefined) merged.readingDisplay      = posData.readingDisplay
+        return merged
+      })
+
+    // Also add facts that are expanded via ref mode (not in occurrences directly)
+    for (const id of expandedByRefMode) {
+      const f = factMap[id]
+      if (f && !elementIds.has(id) && !hiddenByShorthand.has(id)) {
+        visibleFacts.push({ ...withPos(f), occurrenceId: null })
+      }
+    }
+  } else {
+    // v1 fallback: use positions map
+    visibleObjectTypes = objectTypes.filter(inDiagram).map(ot => ({ ...withPos(ot), occurrenceId: null }))
+    visibleFacts       = facts.filter(inDiagram).map(f => ({ ...withPos(f), occurrenceId: null }))
+  }
+
+  // visibleConstraints come from constraintOccurrences
+  const constraintMap = Object.fromEntries(constraints.map(c => [c.id, c]))
+  const visibleConstraints = (diagram?.constraintOccurrences ?? [])
+    .map(cocc => {
+      const c = constraintMap[cocc.schemaConstraintId]
+      if (!c) return null
+      return { ...c, x: cocc.x, y: cocc.y, constraintOccurrenceId: cocc.id, roleOccurrenceRefs: cocc.roleOccurrenceRefs ?? [] }
+    })
+    .filter(Boolean)
+
+  const visibleOtIds   = new Set(visibleObjectTypes.map(o => o.id))
   const visibleFactIds = new Set(visibleFacts.map(f => f.id))
   const allVisibleIds  = new Set([...visibleOtIds, ...visibleFactIds])
-  const allVisibleSubtypes = subtypes.filter(st => allVisibleIds.has(st.subId) && allVisibleIds.has(st.superId))
+
+  // Subtypes are shown automatically when both endpoints are visible
+  // With multi-occurrence: check the set of schema element IDs that appear in occurrences
+  const occElementIds = hasOccurrences ? occurrenceElementIds : elementIds
+  const allVisibleSubtypes = subtypes.filter(st =>
+    (allVisibleIds.has(st.subId) || expandedByRefMode.has(st.subId)) &&
+    (allVisibleIds.has(st.superId) || expandedByRefMode.has(st.superId))
+  )
 
   return {
-    objectTypes:  visibleOts,
-    facts:        visibleFacts,
-    constraints:  visibleConstraints,
-    subtypes:     allVisibleSubtypes,
+    objectTypes:        visibleObjectTypes,
+    facts:              visibleFacts,
+    constraints:        visibleConstraints,
+    subtypes:           allVisibleSubtypes,
     diagram,
     elementIds,
+    occurrenceElementIds,
   }
 }

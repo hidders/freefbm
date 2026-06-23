@@ -1019,7 +1019,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
         const subtypeArcs = []  // now handled inside arcs above
 
         return (
-          <g key={c.id}
+          <g key={c.constraintOccurrenceId ?? c.id}
             className="selectable-group"
             opacity={noteSubjectIds != null && !noteSubjectIds.has(c.id) ? 0.12 : 1}
             onMouseDown={(e) => {
@@ -1042,7 +1042,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                 return
               }
               store.select(c.id, 'constraint')
-              onDragStart(c.id, 'constraint', e)
+              onDragStart(c.id, 'constraint', e, c.constraintOccurrenceId)
             }}
             onDoubleClick={(e) => {
               e.stopPropagation()

@@ -260,6 +260,9 @@ function DiagramList({ elementId, kind, subtypeEndpointIds, factId, roleIndex })
       return d.occurrences?.some(o => o.schemaElementId === a) &&
              d.occurrences?.some(o => o.schemaElementId === b)
     }
+    if (kind === 'constraint') {
+      return d.constraintOccurrences?.some(co => co.schemaConstraintId === elementId) ?? false
+    }
     return d.occurrences?.some(o => o.schemaElementId === elementId) ?? false
   })
   const handleClick = (d) => {

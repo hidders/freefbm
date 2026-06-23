@@ -144,7 +144,31 @@ const rmOcc = (diag, elementId) => ({
   occurrences: (diag.occurrences ?? []).filter(o => o.schemaElementId !== elementId),
 })
 
-const mkDiagram = (name = 'Main') => ({ id: uid(), name, occurrences: [], implicitLinkPositions: {}, multiSelectedIds: [], profileId: null, shownImplicitLinks: [], notes: [], expandedRefModes: [] })
+// Patch occurrence by its own ID (not schema element ID) — needed for multi-occurrence drag
+const patchOccById = (diag, occId, patch) => ({
+  ...diag,
+  occurrences: (diag.occurrences ?? []).map(o => o.id === occId ? { ...o, ...patch } : o),
+})
+
+// Constraint-occurrence helpers (constraintOccurrences is separate from occurrences)
+const mkConstraintOcc = (schemaConstraintId, x, y) =>
+  ({ id: `cocc_${uid()}`, schemaConstraintId, x: Math.round(x), y: Math.round(y), roleOccurrenceRefs: [] })
+const cOccOf    = (diag, cId) => (diag.constraintOccurrences ?? []).find(co => co.schemaConstraintId === cId)
+const cInDiag   = (diag, cId) => (diag.constraintOccurrences ?? []).some(co => co.schemaConstraintId === cId)
+const patchCOcc = (diag, cId, patch) => ({
+  ...diag,
+  constraintOccurrences: (diag.constraintOccurrences ?? []).map(co =>
+    co.schemaConstraintId === cId ? { ...co, ...patch } : co
+  ),
+})
+const addCOccIfAbsent = (diag, cId, x, y) =>
+  cInDiag(diag, cId) ? diag : { ...diag, constraintOccurrences: [...(diag.constraintOccurrences ?? []), mkConstraintOcc(cId, x, y)] }
+const rmCOcc = (diag, cId) => ({
+  ...diag,
+  constraintOccurrences: (diag.constraintOccurrences ?? []).filter(co => co.schemaConstraintId !== cId),
+})
+
+const mkDiagram = (name = 'Main') => ({ id: uid(), name, occurrences: [], constraintOccurrences: [], implicitLinkPositions: {}, multiSelectedIds: [], profileId: null, shownImplicitLinks: [], notes: [], expandedRefModes: [] })
 const mkNote    = (x, y)          => ({ id: uid(), x: Math.round(x), y: Math.round(y), w: 160, h: 100, text: '', connectors: [] })
 
 // ── name uniqueness ───────────────────────────────────────────────────────────
@@ -162,7 +186,7 @@ function makeUniqueName(originalName, usedNames) {
 // in any diagram (show-all diagrams always count as containing every constraint).
 function purgeOrphanedConstraints(diagrams, constraints) {
   if (!constraints.length) return constraints
-  const inAnyDiagram = (id) => diagrams.some(d => inDiag(d, id))
+  const inAnyDiagram = (id) => diagrams.some(d => cInDiag(d, id))
   const kept = constraints.filter(c => inAnyDiagram(c.id))
   return kept.length === constraints.length ? constraints : kept
 }
@@ -440,39 +464,54 @@ function hasNoConnectors(c) {
 // Recomputes which constraints belong in each diagram based on what elements are present.
 // Constraints with connectors follow their referred elements automatically.
 // Constraints with no connectors persist in the diagram until explicitly removed.
+// Constraints are stored in constraintOccurrences[], separate from occurrences[].
 function syncConstraints(diagrams, constraints, subtypes, facts) {
   return diagrams.map(d => {
     const shownImplicitLinks = d.shownImplicitLinks || []
     const constraintIdSet = new Set(constraints.map(c => c.id))
-    const currentSchemaIds = new Set((d.occurrences ?? []).map(o => o.schemaElementId))
 
-    const existingConstraintIds = [...currentSchemaIds].filter(id => constraintIdSet.has(id))
-    const connectorlessExisting = existingConstraintIds.filter(id => {
+    // Non-constraint element IDs in occurrences (constraints are no longer in occurrences)
+    const nonConstraintIds = new Set((d.occurrences ?? []).map(o => o.schemaElementId))
+
+    // Existing constraint occurrences
+    const currentConstraintOccs = d.constraintOccurrences ?? []
+    const currentConstraintIds = new Set(currentConstraintOccs.map(co => co.schemaConstraintId))
+
+    // Connectorless constraints that are currently in this diagram should persist
+    const connectorlessExisting = [...currentConstraintIds].filter(id => {
       const c = constraints.find(cc => cc.id === id)
       return c && hasNoConnectors(c)
     })
 
-    // Non-constraint IDs + existing connectorless constraints should always stay
-    const nonConstraintIds = [...currentSchemaIds].filter(id => !constraintIdSet.has(id))
-    const mustKeep = new Set([...nonConstraintIds, ...connectorlessExisting])
+    // mustKeep = non-constraint element IDs (for eligibility checks)
+    const mustKeep = new Set([...nonConstraintIds])
 
     // Compute eligible constraints (those with connectors whose deps are all present)
     const eligible = eligibleConstraints(constraints, subtypes, mustKeep, facts, shownImplicitLinks)
 
-    const newSchemaIds = new Set([...mustKeep, ...eligible.map(c => c.id)])
+    // New constraint IDs: connectorless existing + eligible
+    const newConstraintIds = new Set([...connectorlessExisting, ...eligible.map(c => c.id)])
 
-    const unchanged = newSchemaIds.size === currentSchemaIds.size &&
-      [...newSchemaIds].every(id => currentSchemaIds.has(id))
+    // Check if unchanged
+    const unchanged = newConstraintIds.size === currentConstraintIds.size &&
+      [...newConstraintIds].every(id => currentConstraintIds.has(id))
     if (unchanged) return d
 
-    // Filter out occurrences no longer needed, add new constraint occurrences
-    let occurrences = (d.occurrences ?? []).filter(o => newSchemaIds.has(o.schemaElementId))
+    // Filter out constraint occurrences no longer needed, add new ones
+    let constraintOccurrences = currentConstraintOccs.filter(co => newConstraintIds.has(co.schemaConstraintId))
     for (const c of eligible) {
-      if (!currentSchemaIds.has(c.id)) {
-        occurrences = [...occurrences, mkOcc(c.id, c.x, c.y)]
+      if (!currentConstraintIds.has(c.id)) {
+        constraintOccurrences = [...constraintOccurrences, mkConstraintOcc(c.id, c.x, c.y)]
       }
     }
-    return { ...d, occurrences }
+    // Also add connectorless constraints that weren't yet in constraintOccurrences
+    for (const cId of connectorlessExisting) {
+      if (!currentConstraintIds.has(cId)) {
+        const c = constraints.find(cc => cc.id === cId)
+        if (c) constraintOccurrences = [...constraintOccurrences, mkConstraintOcc(cId, c.x, c.y)]
+      }
+    }
+    return { ...d, constraintOccurrences }
   })
 }
 
@@ -729,9 +768,13 @@ export const useOrmStore = create((set, get) => ({
     // Capture per-diagram positions from the source diagram so paste/duplicate
     // preserves the actual on-screen layout, not just the schema base positions.
     const clipPositions = {}
-    for (const el of [...copiedOts, ...copiedFacts, ...copiedCons]) {
+    for (const el of [...copiedOts, ...copiedFacts]) {
       const occ = occOf(activeDiagram, el.id)
       clipPositions[el.id] = occ ? { x: occ.x, y: occ.y } : { x: el.x, y: el.y }
+    }
+    for (const c of copiedCons) {
+      const cocc = cOccOf(activeDiagram, c.id)
+      clipPositions[c.id] = cocc ? { x: cocc.x, y: cocc.y } : { x: c.x, y: c.y }
     }
 
     const newClipboard = {
@@ -861,10 +904,13 @@ export const useOrmStore = create((set, get) => ({
         if (d.id !== activeDiagramId) return d
 
         let nd = d
+        const pasteConstraintIdSet = new Set(s.constraints.map(c => c.id))
         for (const el of toAdd) {
           const cp = getClipPos(el)
           // Only add if not already present; use clipboard position + offset
-          if (!inDiag(nd, el.id)) {
+          if (pasteConstraintIdSet.has(el.id)) {
+            nd = addCOccIfAbsent(nd, el.id, cp.x + ox, cp.y + oy)
+          } else if (!inDiag(nd, el.id)) {
             nd = { ...nd, occurrences: [...(nd.occurrences ?? []), mkOcc(el.id, cp.x + ox, cp.y + oy)] }
           }
         }
@@ -985,7 +1031,7 @@ export const useOrmStore = create((set, get) => ({
         let nd = d
         for (const o of newOts)   nd = addOccIfAbsent(nd, o.id, o.x, o.y)
         for (const f of newFacts) nd = addOccIfAbsent(nd, f.id, f.x, f.y)
-        for (const c of newCons)  nd = addOccIfAbsent(nd, c.id, c.x, c.y)
+        for (const c of newCons)  nd = addCOccIfAbsent(nd, c.id, c.x, c.y)
         return {
           ...nd,
           shownImplicitLinks: newShownILKeys.length > 0
@@ -1182,9 +1228,12 @@ export const useOrmStore = create((set, get) => ({
     const parsedSts  = d.subtypes      || []
 
     // ── diagram migration helper ──────────────────────────────────────────────
+    const constraintIdSet = new Set(constraints.map(c => c.id))
+
     function migrateOldDiagram(diag, parsedOts, facts, constraints) {
       const positions = diag.positions ?? {}
       const occurrences = []
+      const constraintOccurrences = []
       const implicitLinkPositions = {}
 
       // Split positions into element positions vs implicit-link positions
@@ -1194,7 +1243,11 @@ export const useOrmStore = create((set, get) => ({
         } else {
           const { x, y, ...extra } = v
           if (x != null || y != null) {
-            occurrences.push({ id: `occ_${uid()}`, schemaElementId: k, x: x ?? 0, y: y ?? 0, ...extra })
+            if (constraintIdSet.has(k)) {
+              constraintOccurrences.push({ id: `cocc_${uid()}`, schemaConstraintId: k, x: x ?? 0, y: y ?? 0, roleOccurrenceRefs: [] })
+            } else {
+              occurrences.push({ id: `occ_${uid()}`, schemaElementId: k, x: x ?? 0, y: y ?? 0, ...extra })
+            }
           }
         }
       }
@@ -1204,27 +1257,39 @@ export const useOrmStore = create((set, get) => ({
       if (elementIds === null) {
         // Show-all: create occurrences for all elements not already covered
         const covered = new Set(occurrences.map(o => o.schemaElementId))
-        for (const el of [...parsedOts, ...facts, ...constraints]) {
+        const coveredC = new Set(constraintOccurrences.map(co => co.schemaConstraintId))
+        for (const el of [...parsedOts, ...facts]) {
           if (!covered.has(el.id)) {
             occurrences.push({ id: `occ_${uid()}`, schemaElementId: el.id, x: el.x ?? 0, y: el.y ?? 0 })
+          }
+        }
+        for (const c of constraints) {
+          if (!coveredC.has(c.id)) {
+            constraintOccurrences.push({ id: `cocc_${uid()}`, schemaConstraintId: c.id, x: c.x ?? 0, y: c.y ?? 0, roleOccurrenceRefs: [] })
           }
         }
       } else if (Array.isArray(elementIds)) {
         // Explicit list: add occurrences for ids in elementIds but not yet covered
         const covered = new Set(occurrences.map(o => o.schemaElementId))
+        const coveredC = new Set(constraintOccurrences.map(co => co.schemaConstraintId))
         for (const id of elementIds) {
-          if (covered.has(id)) continue
-          const el = parsedOts.find(o => o.id === id)
-                ?? facts.find(f => f.id === id)
-                ?? constraints.find(c => c.id === id)
-          const x = el?.x ?? 0, y = el?.y ?? 0
-          occurrences.push({ id: `occ_${uid()}`, schemaElementId: id, x, y })
+          if (constraintIdSet.has(id)) {
+            if (coveredC.has(id)) continue
+            const c = constraints.find(cc => cc.id === id)
+            constraintOccurrences.push({ id: `cocc_${uid()}`, schemaConstraintId: id, x: c?.x ?? 0, y: c?.y ?? 0, roleOccurrenceRefs: [] })
+          } else {
+            if (covered.has(id)) continue
+            const el = parsedOts.find(o => o.id === id) ?? facts.find(f => f.id === id)
+            const x = el?.x ?? 0, y = el?.y ?? 0
+            occurrences.push({ id: `occ_${uid()}`, schemaElementId: id, x, y })
+          }
         }
       }
 
       return {
         ...diag,
         occurrences,
+        constraintOccurrences,
         implicitLinkPositions,
         multiSelectedIds: [],
         expandedRefModes: diag.expandedRefModes ?? [],
@@ -1234,9 +1299,24 @@ export const useOrmStore = create((set, get) => ({
     let diagrams, activeDiagramId
     if (d.diagrams && d.diagrams.length > 0) {
       diagrams = d.diagrams.map(diag => {
+        if (diag.constraintOccurrences) {
+          // Phase 3 format: constraintOccurrences already split out
+          return { ...diag, constraintOccurrences: diag.constraintOccurrences, implicitLinkPositions: diag.implicitLinkPositions ?? {}, multiSelectedIds: [], expandedRefModes: diag.expandedRefModes ?? [] }
+        }
         if (diag.occurrences) {
-          // v2 format already
-          return { ...diag, implicitLinkPositions: diag.implicitLinkPositions ?? {}, multiSelectedIds: [], expandedRefModes: diag.expandedRefModes ?? [] }
+          // Phase 1/2 format: occurrences exist but constraintOccurrences does not — split them
+          const nonConstraintOccs = diag.occurrences.filter(o => !constraintIdSet.has(o.schemaElementId))
+          const constraintOccs = diag.occurrences
+            .filter(o => constraintIdSet.has(o.schemaElementId))
+            .map(o => mkConstraintOcc(o.schemaElementId, o.x, o.y))
+          return {
+            ...diag,
+            occurrences: nonConstraintOccs,
+            constraintOccurrences: constraintOccs,
+            implicitLinkPositions: diag.implicitLinkPositions ?? {},
+            multiSelectedIds: [],
+            expandedRefModes: diag.expandedRefModes ?? [],
+          }
         }
         // old format (elementIds + positions)
         return migrateOldDiagram(diag, parsedOts, facts, constraints)
@@ -1247,9 +1327,9 @@ export const useOrmStore = create((set, get) => ({
       const occurrences = [
         ...parsedOts.map(o => ({ id: `occ_${uid()}`, schemaElementId: o.id, x: o.x ?? 0, y: o.y ?? 0 })),
         ...facts.map(f => ({ id: `occ_${uid()}`, schemaElementId: f.id, x: f.x ?? 0, y: f.y ?? 0 })),
-        ...constraints.map(c => ({ id: `occ_${uid()}`, schemaElementId: c.id, x: c.x ?? 0, y: c.y ?? 0 })),
       ]
-      const diag = { ...mkDiagram('Main'), occurrences }
+      const constraintOccurrences = constraints.map(c => ({ id: `cocc_${uid()}`, schemaConstraintId: c.id, x: c.x ?? 0, y: c.y ?? 0, roleOccurrenceRefs: [] }))
+      const diag = { ...mkDiagram('Main'), occurrences, constraintOccurrences }
       diagrams = [diag]
       activeDiagramId = diag.id
     }
@@ -2312,6 +2392,35 @@ export const useOrmStore = create((set, get) => ({
       diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : patchOcc(d, id, { x, y })),
       isDirty: true,
     }))
+  },
+
+  // Move an occurrence by its own occurrence ID (for multi-occurrence elements)
+  moveOccurrence(occId, x, y) {
+    set(s => ({
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : patchOccById(d, occId, { x: Math.round(x), y: Math.round(y) })),
+      isDirty: true,
+    }))
+  },
+
+  // Add an extra occurrence of an element already in the diagram
+  addExtraOccurrence(elementId, diagramId) {
+    set(s => {
+      const el = s.objectTypes.find(o => o.id === elementId) ?? s.facts.find(f => f.id === elementId)
+      if (!el) return {}
+      const existingCount = s.diagrams
+        .find(d => d.id === diagramId)
+        ?.occurrences.filter(o => o.schemaElementId === elementId).length ?? 0
+      const offset = existingCount * 40
+      const x = (el.x ?? 100) + offset
+      const y = (el.y ?? 100) + offset
+      const newOcc = mkOcc(elementId, x, y)
+      return {
+        diagrams: s.diagrams.map(d =>
+          d.id !== diagramId ? d : { ...d, occurrences: [...(d.occurrences ?? []), newOcc] }
+        ),
+        isDirty: true,
+      }
+    })
   },
 
   deleteObjectType(id) {
@@ -4309,7 +4418,7 @@ export const useOrmStore = create((set, get) => ({
       const updatedDiagrams = s.diagrams.map(d => {
         if (d.id !== s.activeDiagramId) return d
 
-        let nd = addOccIfAbsent(d, c.id, c.x, c.y)
+        let nd = addCOccIfAbsent(d, c.id, c.x, c.y)
 
         for (const id of idsToAdd) {
           const el = s.objectTypes.find(o => o.id === id) ?? s.facts.find(f => f.id === id)
@@ -4370,7 +4479,7 @@ export const useOrmStore = create((set, get) => ({
 
   moveConstraint(id, x, y) {
     set(s => ({
-      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : patchOcc(d, id, { x, y })),
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : patchCOcc(d, id, { x, y })),
       isDirty: true,
     }))
   },
@@ -4400,7 +4509,7 @@ export const useOrmStore = create((set, get) => ({
     if (get().sequenceConstruction?.constraintId === id) return
     set(s => ({
       constraints: s.constraints.filter(c => c.id !== id),
-      diagrams: s.diagrams.map(d => rmOcc(d, id)),
+      diagrams: s.diagrams.map(d => rmCOcc(d, id)),
       selectedId: s.selectedId === id ? null : s.selectedId,
       isDirty: true,
     }))
@@ -5106,7 +5215,10 @@ export const useOrmStore = create((set, get) => ({
     }
     if (wx == null) {
       const c = constraints.find(c => c.id === id)
-      if (c) { const p = getElemPos(c); wx = p.x; wy = p.y }
+      if (c) {
+        const cocc = cOccOf(diagram, id)
+        wx = cocc?.x ?? c.x; wy = cocc?.y ?? c.y
+      }
     }
     if (wx == null) {
       const st = subtypes.find(s => s.id === id)
@@ -5146,14 +5258,15 @@ export const useOrmStore = create((set, get) => ({
   },
 
   navigateToElement(elementId, elementKind) {
-    const { diagrams, activeDiagramId, objectTypes } = get()
+    const { diagrams, activeDiagramId, objectTypes, constraints } = get()
+    const isConstraint = constraints.some(c => c.id === elementId)
 
     // Switch to a diagram that contains the element (prefer active, then any)
     const active = diagrams.find(d => d.id === activeDiagramId)
-    const inActive = inDiag(active, elementId)
+    const inActive = isConstraint ? cInDiag(active, elementId) : inDiag(active, elementId)
     if (!inActive) {
       const target = diagrams.find(d =>
-        d.id !== activeDiagramId && inDiag(d, elementId)
+        d.id !== activeDiagramId && (isConstraint ? cInDiag(d, elementId) : inDiag(d, elementId))
       )
       if (target) get().setActiveDiagram(target.id)
     }
@@ -5381,9 +5494,10 @@ export const useOrmStore = create((set, get) => ({
       const newlyAdded = [...idsToAdd].filter(id => !existingIds.has(id))
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
       const syncedTarget = syncedDiagrams.find(d => d.id === diagramId)
-      const newConstraintIds = (syncedTarget?.occurrences ?? [])
-        .map(o => o.schemaElementId)
-        .filter(id => !existingIds.has(id) && s.constraints.some(c => c.id === id))
+      const existingConstraintIds = new Set((s.diagrams.find(d => d.id === diagramId)?.constraintOccurrences ?? []).map(co => co.schemaConstraintId))
+      const newConstraintIds = (syncedTarget?.constraintOccurrences ?? [])
+        .map(co => co.schemaConstraintId)
+        .filter(id => !existingConstraintIds.has(id))
       const addedIds = newlyAdded.length > 0 ? newlyAdded : [...idsToAdd]
       const multiSelectedIds = [...new Set([...addedIds, ...newConstraintIds])]
 
@@ -5398,6 +5512,13 @@ export const useOrmStore = create((set, get) => ({
 
   removeElementFromDiagram(elementId, diagramId) {
     set(s => {
+      // If removing a constraint directly, remove it from constraintOccurrences
+      const isConstraint = s.constraints.some(c => c.id === elementId)
+      if (isConstraint) {
+        const updatedDiagrams = s.diagrams.map(d => d.id !== diagramId ? d : rmCOcc(d, elementId))
+        return { diagrams: updatedDiagrams, isDirty: true }
+      }
+
       // Cascade: removing an OT also removes every fact that has it as a role player,
       // and recursively any further OTs/facts linked through objectified facts.
       const toRemove = computeCascadeRemove(elementId, s.facts)
@@ -5432,14 +5553,21 @@ export const useOrmStore = create((set, get) => ({
     set(s => {
       // Collect all IDs to remove, including cascade for each selected element
       const cascaded = new Set()
+      const constraintIdSetLocal = new Set(s.constraints.map(c => c.id))
+      // Directly selected constraint IDs (to remove from constraintOccurrences)
+      const directConstraintIds = new Set(multiSelectedIds.filter(id => constraintIdSetLocal.has(id)))
       for (const id of multiSelectedIds) {
-        computeCascadeRemove(id, s.facts).forEach(cid => cascaded.add(cid))
+        if (!constraintIdSetLocal.has(id)) {
+          computeCascadeRemove(id, s.facts).forEach(cid => cascaded.add(cid))
+        }
       }
 
       const updatedDiagrams = s.diagrams.map(d => {
         if (d.id !== diagramId) return d
         // Remove occurrences for cascaded IDs
         const newOccs = (d.occurrences ?? []).filter(o => !cascaded.has(o.schemaElementId))
+        // Remove directly selected constraints from constraintOccurrences
+        const newCOccs = (d.constraintOccurrences ?? []).filter(co => !directConstraintIds.has(co.schemaConstraintId))
         // Clean up implicit link positions for removed links
         const newILP = Object.fromEntries(Object.entries(d.implicitLinkPositions ?? {}).filter(([k]) => {
           if (ilPosKeysToRemove.has(k)) return false
@@ -5451,6 +5579,7 @@ export const useOrmStore = create((set, get) => ({
         return {
           ...d,
           occurrences: newOccs,
+          constraintOccurrences: newCOccs,
           implicitLinkPositions: newILP,
           shownImplicitLinks: (d.shownImplicitLinks || []).filter(ilKey => !ilKeysToRemove.has(ilKey)),
           expandedRefModes: (d.expandedRefModes ?? []).filter(id => !cascaded.has(id)),

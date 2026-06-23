@@ -98,7 +98,7 @@ export function entityBounds(ot) {
            cx: ot.x, cy: ot.y }
 }
 
-export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, onContextMenu, onDoubleClickValueRange, onValueRangeClick, onCardinalityRangeClick, onValueRangeContextMenu, onCardinalityRangeContextMenu, isShared, dimInternalConstraints }) {
+export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragStart, mousePos, onContextMenu, onDoubleClickValueRange, onValueRangeClick, onCardinalityRangeClick, onValueRangeContextMenu, onCardinalityRangeContextMenu, isShared, dimInternalConstraints }) {
   const store = useOrmStore()
   const isSelected    = store.selectedId === ot.id || store.multiSelectedIds.includes(ot.id)
   const isConstraintTarget = !store.queryEditDraft && !store.queryIndexHighlight && store.selectedKind === 'constraint' &&
@@ -311,8 +311,8 @@ export default function ObjectTypeNode({ objectType: ot, onDragStart, mousePos, 
       return
     }
     store.select(ot.id, ot.kind)
-    onDragStart(ot.id, ot.kind, e)
-  }, [store, ot, onDragStart, isSubtypeTool, isAssignTool, editing, editingRef])
+    onDragStart(ot.id, ot.kind, e, occurrenceId)
+  }, [store, ot, onDragStart, isSubtypeTool, isAssignTool, editing, editingRef, occurrenceId])
 
   const isVrTool      = store.tool === 'addConstraint:valueRange'
   const isVrCandidate = isVrTool && ot.kind === 'value'
