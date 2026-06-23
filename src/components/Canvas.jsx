@@ -915,10 +915,10 @@ export default function Canvas() {
     }
 
     const el = kind === 'fact'
-      ? visibleFacts.find(f => f.id === id)
+      ? (occurrenceId ? visibleFacts.find(f => f.occurrenceId === occurrenceId) : visibleFacts.find(f => f.id === id))
       : kind === 'constraint'
         ? visibleConstraints.find(c => c.id === id)
-        : visibleOts.find(o => o.id === id)
+        : (occurrenceId ? visibleOts.find(o => o.occurrenceId === occurrenceId) : visibleOts.find(o => o.id === id))
     if (!el) return
     setDragState({ type: 'element', id, kind,
                    startX: e.clientX, startY: e.clientY,
