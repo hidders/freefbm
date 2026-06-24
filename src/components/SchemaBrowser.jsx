@@ -728,7 +728,7 @@ export default function SchemaBrowser() {
             isOrphaned={isCOrphaned(c.id)}
             inCurrentDiagram={inCurrent}
             onSelect={() => selectEl(c.id, 'constraint')}
-            onAdd={() => store.addElementToDiagram(c.id, diagram?.id)}
+            onAdd={() => store.startConstraintEndpointPick(c.id, diagram?.id)}
             addButtonStyle={addStyle}
             addButtonDisabled={inCurrent || false}
             onDelete={() => store.deleteConstraint(c.id)}

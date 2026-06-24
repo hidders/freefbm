@@ -558,6 +558,15 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       return
     }
 
+    // Constraint endpoint pick: click fact to select which occurrence to connect
+    if (store.linkDraft?.type === 'constraintEndpointPick') {
+      const pick = store.linkDraft.pendingPicks?.[0]
+      if (pick && pick.kind === 'fact' && fact.id === pick.schemaId) {
+        store.pickConstraintEndpoint(occurrenceId ?? fact.id)
+      }
+      return
+    }
+
     // Objectified (nested) facts also act as entity types for role assignment and subtype links
     if (fact.objectified) {
       if (isAssignTool) {
@@ -1839,6 +1848,11 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           if (fact._implicit) return isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab'
           if (inQueryEdit) return fact.objectified ? 'pointer' : 'default'
           if (store.pendingTargetPick) return fact.objectified ? 'pointer' : 'not-allowed'
+          if (store.linkDraft?.type === 'constraintEndpointPick') {
+            const pick = store.linkDraft.pendingPicks?.[0]
+            if (pick?.kind === 'fact') return fact.id === pick.schemaId ? 'pointer' : 'not-allowed'
+            return 'not-allowed'
+          }
           if (isElementSelecting(store.tool, store.sequenceConstruction)) {
             if (store.sequenceConstruction) return fact.objectified ? 'pointer' : 'not-allowed'
             if (isUniquenessTool || isFrequencyTool) return 'pointer'

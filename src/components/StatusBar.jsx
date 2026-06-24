@@ -52,6 +52,25 @@ export default function StatusBar() {
     )
   }
 
+  // ── Tier 4b: constraint endpoint-pick mode ──────────────────────────────
+  if (store.linkDraft?.type === 'constraintEndpointPick') {
+    const pick = store.linkDraft.pendingPicks?.[0]
+    const remaining = store.linkDraft.pendingPicks?.length ?? 0
+    const targetName = pick?.label ?? 'element'
+    const stepHint = remaining > 1 ? ` (${remaining} left)` : ''
+    return (
+      <div style={{ height: 26, display: 'flex', alignItems: 'center',
+        padding: '0 14px', gap: 16,
+        background: 'var(--bg-surface)', borderTop: '1px solid var(--border-soft)',
+        flexShrink: 0 }}>
+        <span style={{ fontSize: 11, color: 'var(--accent)', flex: 1, fontWeight: 600 }}>
+          Click the occurrence of <em>{targetName}</em> to connect{stepHint} · Esc to cancel
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{Math.round(store.zoom * 100)}%</span>
+      </div>
+    )
+  }
+
   // ── Tier 4 (highest): target-pick mode ───────────────────────────────────
   if (store.pendingTargetPick) {
     return (

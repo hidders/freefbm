@@ -439,6 +439,30 @@ function findPathDown(fromId, toId, subtypes) {
   return null
 }
 
+// ── constraint endpoint deps ─────────────────────────────────────────────────
+// Returns unique fact/OT deps from a constraint's sequences, grouped by schema ID.
+// Each dep: { schemaId, kind: 'fact'|'ot', label, memberKeys: ['si:mi', ...] }
+// memberKeys are the roleOccurrenceRefs keys that reference this element.
+function getConstraintDeps(c, facts, objectTypes) {
+  const factDepsMap = new Map()  // schemaId → memberKeys[]
+  const seqs = c.sequences ?? c.roleSequences ?? []
+  seqs.forEach((seq, si) => {
+    seq.forEach((m, mi) => {
+      const fid = m.factId ?? m.factId  // roleSequences use {factId, roleIndex}; sequences use {kind, factId, roleIndex}
+      if (!fid || fid.includes('_il_')) return
+      const key = `${si}:${mi}`
+      if (!factDepsMap.has(fid)) factDepsMap.set(fid, [])
+      factDepsMap.get(fid).push(key)
+    })
+  })
+  const deps = []
+  for (const [schemaId, memberKeys] of factDepsMap) {
+    const el = facts?.find(f => f.id === schemaId)
+    deps.push({ schemaId, kind: 'fact', label: el?.name ?? schemaId, memberKeys })
+  }
+  return deps
+}
+
 // ── constraint auto-sync ──────────────────────────────────────────────────────
 // Returns the set of constraint IDs that are eligible for a given elementId set.
 // A constraint is eligible when every fact/OT/subtype-endpoint it refers to is present.
@@ -3738,22 +3762,44 @@ export const useOrmStore = create((set, get) => ({
   },
 
   // Begin a guided endpoint-pick flow when there is ambiguity (multiple occurrences of sub or super type).
+  // If a side has zero occurrences in the diagram, a fresh occurrence is created automatically.
   startSubtypeEndpointPick(stId, diagramId) {
     const s = get()
     const st = s.subtypes.find(x => x.id === stId)
     if (!st) return
     const diag = s.diagrams.find(d => d.id === diagramId) ?? s.diagrams.find(d => d.id === s.activeDiagramId)
     if (!diag) return
-    const occs     = diag.occurrences ?? []
-    const subOccs  = occs.filter(o => o.schemaElementId === st.subId)
-    const superOccs = occs.filter(o => o.schemaElementId === st.superId)
+    const targetDiagramId = diag.id
+    let occs      = diag.occurrences ?? []
+    let subOccs   = occs.filter(o => o.schemaElementId === st.subId)
+    let superOccs = occs.filter(o => o.schemaElementId === st.superId)
+
+    // For any endpoint with no occurrences, auto-create one.
+    const newOccs = []
+    if (subOccs.length === 0) {
+      const el = s.objectTypes.find(o => o.id === st.subId) ?? s.facts.find(f => f.id === st.subId)
+      if (el) { const occ = mkOcc(st.subId, el.x ?? 0, el.y ?? 0); newOccs.push(occ); subOccs = [occ] }
+    }
+    if (superOccs.length === 0) {
+      const el = s.objectTypes.find(o => o.id === st.superId) ?? s.facts.find(f => f.id === st.superId)
+      if (el) { const occ = mkOcc(st.superId, el.x ?? 0, el.y ?? 0); newOccs.push(occ); superOccs = [occ] }
+    }
+    if (newOccs.length > 0) {
+      set(s => ({
+        diagrams: s.diagrams.map(d => d.id !== targetDiagramId ? d : {
+          ...d, occurrences: [...(d.occurrences ?? []), ...newOccs],
+        }),
+        isDirty: true,
+      }))
+    }
+
     const subOccId   = subOccs.length === 1   ? subOccs[0].id   : null
     const superOccId = superOccs.length === 1 ? superOccs[0].id : null
     if (subOccId !== null && superOccId !== null) {
-      get().addSubtypeToDiagram(stId, diagramId, subOccId, superOccId)
+      get().addSubtypeToDiagram(stId, targetDiagramId, subOccId, superOccId)
       return
     }
-    set({ linkDraft: { type: 'subtypeEndpointPick', stId, diagramId, subOccId, superOccId } })
+    set({ linkDraft: { type: 'subtypeEndpointPick', stId, diagramId: targetDiagramId, subOccId, superOccId } })
   },
 
   // Called when user clicks an OT occurrence while in subtypeEndpointPick mode.
@@ -3769,6 +3815,94 @@ export const useOrmStore = create((set, get) => ({
       set({ linkDraft: null })
     } else {
       set({ linkDraft: { ...draft, subOccId, superOccId } })
+    }
+  },
+
+  // Add a constraint occurrence with explicit roleOccurrenceRefs (bypasses syncConstraints auto-add).
+  addConstraintToDiagram(constraintId, diagramId, roleOccurrenceRefs = {}) {
+    const s = get()
+    const c = s.constraints.find(x => x.id === constraintId)
+    if (!c) return
+    const diag = s.diagrams.find(d => d.id === diagramId)
+    if (!diag || cInDiag(diag, constraintId)) return
+    set(s => ({
+      diagrams: s.diagrams.map(d => {
+        if (d.id !== diagramId) return d
+        const cocc = { ...mkConstraintOcc(constraintId, c.x ?? 0, c.y ?? 0), roleOccurrenceRefs }
+        return { ...d, constraintOccurrences: [...(d.constraintOccurrences ?? []), cocc] }
+      }),
+      isDirty: true,
+      selectedId: constraintId, selectedKind: 'constraint',
+    }))
+  },
+
+  // Begin a guided pick flow for adding a constraint when its referenced facts have
+  // multiple occurrences in the diagram. Resolves unambiguous deps automatically
+  // (auto-creates an occurrence if none exist; auto-selects if exactly one exists).
+  startConstraintEndpointPick(constraintId, diagramId) {
+    const s = get()
+    const c = s.constraints.find(x => x.id === constraintId)
+    if (!c) return
+    const diag = s.diagrams.find(d => d.id === diagramId) ?? s.diagrams.find(d => d.id === s.activeDiagramId)
+    if (!diag) return
+    const targetDiagramId = diag.id
+
+    const deps = getConstraintDeps(c, s.facts, s.objectTypes)
+    if (deps.length === 0) {
+      get().addConstraintToDiagram(constraintId, targetDiagramId, {})
+      return
+    }
+
+    let occs = diag.occurrences ?? []
+    const newOccs = []
+    const resolvedRefs = {}
+    const pendingPicks = []
+
+    for (const dep of deps) {
+      const existing = occs.filter(o => o.schemaElementId === dep.schemaId)
+      if (existing.length === 0) {
+        const el = s.facts.find(f => f.id === dep.schemaId) ?? s.objectTypes.find(o => o.id === dep.schemaId)
+        if (el) {
+          const newOcc = mkOcc(dep.schemaId, el.x ?? 0, el.y ?? 0)
+          newOccs.push(newOcc)
+          for (const mk of dep.memberKeys) resolvedRefs[mk] = newOcc.id
+        }
+      } else if (existing.length === 1) {
+        for (const mk of dep.memberKeys) resolvedRefs[mk] = existing[0].id
+      } else {
+        pendingPicks.push(dep)
+      }
+    }
+
+    if (newOccs.length > 0) {
+      set(s => ({
+        diagrams: s.diagrams.map(d => d.id !== targetDiagramId ? d : {
+          ...d, occurrences: [...(d.occurrences ?? []), ...newOccs],
+        }),
+        isDirty: true,
+      }))
+    }
+
+    if (pendingPicks.length === 0) {
+      get().addConstraintToDiagram(constraintId, targetDiagramId, resolvedRefs)
+      return
+    }
+    set({ linkDraft: { type: 'constraintEndpointPick', constraintId, diagramId: targetDiagramId, pendingPicks, resolvedRefs } })
+  },
+
+  // Called when the user clicks a fact or OT occurrence during constraintEndpointPick mode.
+  pickConstraintEndpoint(occurrenceId) {
+    const draft = get().linkDraft
+    if (!draft || draft.type !== 'constraintEndpointPick') return
+    const [currentPick, ...remainingPicks] = draft.pendingPicks
+    if (!currentPick) return
+    const newRefs = { ...draft.resolvedRefs }
+    for (const mk of currentPick.memberKeys) newRefs[mk] = occurrenceId
+    if (remainingPicks.length === 0) {
+      get().addConstraintToDiagram(draft.constraintId, draft.diagramId, newRefs)
+      set({ linkDraft: null })
+    } else {
+      set({ linkDraft: { ...draft, pendingPicks: remainingPicks, resolvedRefs: newRefs } })
     }
   },
 

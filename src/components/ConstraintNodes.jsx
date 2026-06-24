@@ -620,6 +620,7 @@ function borderPoint(ot, tx, ty) {
 export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, noteSubjectIds }) {
   const store = useOrmStore()
   const { objectTypes, facts, constraints: visibleConstraints, subtypes } = useDiagramElements()
+  // factMap: schema ID → last occurrence (default for constraints with no roleOccurrenceRefs)
   const factMap    = Object.fromEntries(facts.map(f => [f.id, f]))
   // Add synthetic implied link facts so constraint connectors can resolve them
   facts.filter(f => f.objectified).forEach(f => {
@@ -630,9 +631,28 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
       }
     })
   })
+  // occFactMap: occurrence ID → specific fact entry (used when roleOccurrenceRefs is set)
+  const occFactMap = {}
+  facts.forEach(f => { if (f.occurrenceId) occFactMap[f.occurrenceId] = f })
   const subtypeMap = Object.fromEntries(subtypes.map(st => [st.id, st]))
   const otMap      = Object.fromEntries(objectTypes.map(o => [o.id, o]))
   const nestedMap  = Object.fromEntries(facts.filter(f => f.objectified).map(f => [f.id, f]))
+
+  // Build a per-constraint fact map that respects roleOccurrenceRefs for occurrence-aware rendering.
+  function buildLocalFactMap(c) {
+    const refs = c.roleOccurrenceRefs
+    if (!refs || Array.isArray(refs) || !c.sequences) return factMap
+    const override = { ...factMap }
+    for (const [key, occId] of Object.entries(refs)) {
+      if (key === 'targetOt') continue
+      const [si, mi] = key.split(':').map(Number)
+      const member = c.sequences[si]?.[mi]
+      if (!member || member.kind !== 'role') continue
+      const factOcc = occFactMap[occId]
+      if (factOcc) override[member.factId] = factOcc
+    }
+    return override
+  }
 
 
   // Returns true when every member across all groups resolves to the same object type,
@@ -652,9 +672,9 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
 
   // If two consecutive roles in the same fact, returns the point on the shared edge
   // (top/bottom for horizontal facts, left/right for vertical) closest to (cx, cy); else null.
-  function consecutiveRoleMidpoint(factId0, ri0, factId1, ri1, cx, cy) {
+  function consecutiveRoleMidpoint(factId0, ri0, factId1, ri1, cx, cy, fMap = factMap) {
     if (factId0 !== factId1) return null
-    const fact = factMap[factId0]
+    const fact = fMap[factId0]
     if (!fact) return null
     const dro = displayRoleOrder(fact)
     const pos0 = dro.indexOf(ri0)
@@ -682,11 +702,11 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
   // Returns a string key identifying which fact+side a rake would land on, or null if
   // the sequence doesn't qualify for a rake. Used to group same-side rakes for staggering.
   // roleSeq: [{factId, roleIndex}]
-  function rakeKeyFor(roleSeq, cx, cy) {
+  function rakeKeyFor(roleSeq, cx, cy, fMap = factMap) {
     if (!roleSeq || roleSeq.length < 2) return null
     const factId = roleSeq[0]?.factId
     if (!roleSeq.every(m => m.factId === factId)) return null
-    const fact = factMap[factId]
+    const fact = fMap[factId]
     if (!fact) return null
     if (roleSeq.length === 2) {
       const dro = displayRoleOrder(fact)
@@ -707,11 +727,11 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
   // roleSeq: [{factId, roleIndex}]  →  {spineStart, spineEnd, anchor, teeth} or null
   // stagger: 0-based index within same-side rakes — each level pushes the spine further out.
   // When the spine side has uniqueness bars the rakes sit between the role boxes and the bars.
-  function rakeForRoleSeq(roleSeq, cx, cy, stagger = 0) {
+  function rakeForRoleSeq(roleSeq, cx, cy, stagger = 0, fMap = factMap) {
     if (roleSeq.length < 2) return null
     const factId = roleSeq[0].factId
     if (!roleSeq.every(m => m.factId === factId)) return null
-    const fact = factMap[factId]
+    const fact = fMap[factId]
     if (!fact) return null
     // Skip the simple adjacent-pair case — consecutiveRoleMidpoint handles it
     if (roleSeq.length === 2) {
@@ -788,11 +808,11 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
   }
 
   // Geometry helper: line from constraint centre to a member (role or subtype midpoint)
-  function memberArcLine(member, key, cx, cy, r0, color, selected, markerEnd) {
+  function memberArcLine(member, key, cx, cy, r0, color, selected, markerEnd, fMap = factMap) {
     const sw = selected ? 2.2 : 1.2
     const op = selected ? 1   : 0.75
     if (member.kind === 'role') {
-      const fact = factMap[member.factId]
+      const fact = fMap[member.factId]
       if (!fact) return null
       const anchor = roleAnchor(fact, member.roleIndex, cx, cy)
       const dx = anchor.x - cx, dy = anchor.y - cy
@@ -875,13 +895,14 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
           return gMatch && pMatch
         }
 
+        const localFactMap = buildLocalFactMap(c)
         const arcs = EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType)
           ? (c.sequences || []).flatMap((seq, gi) => {
               const markerEnd = c.constraintType === 'subset' && gi === 1 ? 'url(#arrowSubsetSolid)' : undefined
               // Rake: all-role sequence targeting same fact, ≥3 members or non-adjacent pair
               const allRole  = seq.every(m => m.kind === 'role')
               const roleRefs = allRole ? seq.map(m => ({ factId: m.factId, roleIndex: m.roleIndex })) : null
-              const rake     = roleRefs && rakeForRoleSeq(roleRefs, c.x, c.y, getRakeStagger(roleRefs, c.x, c.y, c.id, gi))
+              const rake     = roleRefs && rakeForRoleSeq(roleRefs, c.x, c.y, getRakeStagger(roleRefs, c.x, c.y, c.id, gi), localFactMap)
               if (rake) {
                 // Per-tooth highlighting: connector lit if any tooth lit;
                 // spine drawn at base style with an orange overlay from the anchor
@@ -938,7 +959,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
               }
               // Two consecutive roles in the same fact → single arc to the midpoint
               if (seq.length === 2 && seq[0].kind === 'role' && seq[1].kind === 'role') {
-                const mid = consecutiveRoleMidpoint(seq[0].factId, seq[0].roleIndex, seq[1].factId, seq[1].roleIndex, c.x, c.y)
+                const mid = consecutiveRoleMidpoint(seq[0].factId, seq[0].roleIndex, seq[1].factId, seq[1].roleIndex, c.x, c.y, localFactMap)
                 if (mid) {
                   const lit = isArcHighlighted(gi, 0) || isArcHighlighted(gi, 1)
                   const sw = lit ? 2.2 : 1.2, op = lit ? 1 : 0.75
@@ -955,14 +976,14 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
               return seq.map((member, mi) => {
                 const lit = isArcHighlighted(gi, mi)
                 return memberArcLine(member, `${c.id}-g${gi}-m${mi}`, c.x, c.y, r0,
-                  lit ? HIGHLIGHT_ARC_COLOR : color, lit, markerEnd)
+                  lit ? HIGHLIGHT_ARC_COLOR : color, lit, markerEnd, localFactMap)
               }).filter(Boolean)
             })
           : (c.roleSequences || []).flatMap((seq, gi) => {
               const dashArray = gi === 1 ? '4 2' : 'none'
               const markerEnd = c.constraintType === 'subset' && gi === 0 ? 'url(#arrowSubset)' : undefined
               // Rake: all roles in same fact, ≥3 members or non-adjacent pair
-              const rake = rakeForRoleSeq(seq, c.x, c.y, getRakeStagger(seq, c.x, c.y, c.id, gi))
+              const rake = rakeForRoleSeq(seq, c.x, c.y, getRakeStagger(seq, c.x, c.y, c.id, gi), localFactMap)
               if (rake) {
                 const dx = rake.anchor.x - c.x, dy = rake.anchor.y - c.y
                 const len = Math.sqrt(dx * dx + dy * dy) || 1
@@ -986,7 +1007,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
               }
               // Two consecutive roles in the same fact → single arc to the midpoint
               if (seq.length === 2) {
-                const mid = consecutiveRoleMidpoint(seq[0].factId, seq[0].roleIndex, seq[1].factId, seq[1].roleIndex, c.x, c.y)
+                const mid = consecutiveRoleMidpoint(seq[0].factId, seq[0].roleIndex, seq[1].factId, seq[1].roleIndex, c.x, c.y, localFactMap)
                 if (mid) {
                   const dx = mid.x - c.x, dy = mid.y - c.y
                   const len = Math.sqrt(dx * dx + dy * dy) || 1
@@ -999,7 +1020,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                 }
               }
               return seq.map((ref, ri) => {
-                const fact = factMap[ref.factId]
+                const fact = localFactMap[ref.factId]
                 if (!fact) return null
                 const rc = roleCenter(fact, ref.roleIndex)
                 const dx = rc.x - c.x, dy = rc.y - c.y
@@ -1020,7 +1041,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
         const gc = store.sequenceConstruction?.constraintId === c.id ? store.sequenceConstruction : null
         const constructionArcs = gc
           ? gc.collected.map(({ member }, i) =>
-              memberArcLine(member, `${c.id}-gc-${i}`, c.x, c.y, r0, color, true)
+              memberArcLine(member, `${c.id}-gc-${i}`, c.x, c.y, r0, color, true, undefined, localFactMap)
             ).filter(Boolean)
           : []
 

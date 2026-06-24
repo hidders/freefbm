@@ -281,6 +281,13 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
       }
       return
     }
+    if (store.linkDraft?.type === 'constraintEndpointPick') {
+      const pick = store.linkDraft.pendingPicks?.[0]
+      if (pick && pick.kind === 'ot' && ot.id === pick.schemaId) {
+        store.pickConstraintEndpoint(occurrenceId ?? ot.id)
+      }
+      return
+    }
 
     if (isSubtypeTool) {
       if (!store.linkDraft) {
@@ -377,6 +384,11 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
           const epSt = store.subtypes.find(x => x.id === store.linkDraft.stId)
           const epTarget = store.linkDraft.subOccId === null ? epSt?.subId : epSt?.superId
           return ot.id === epTarget ? 'pointer' : 'not-allowed'
+        }
+        if (store.linkDraft?.type === 'constraintEndpointPick') {
+          const pick = store.linkDraft.pendingPicks?.[0]
+          if (pick?.kind === 'ot') return ot.id === pick.schemaId ? 'pointer' : 'not-allowed'
+          return 'not-allowed'
         }
         if (isElementSelecting(store.tool, store.sequenceConstruction)) {
           if (store.tool === 'addSubtype') {
