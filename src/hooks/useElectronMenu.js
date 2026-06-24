@@ -47,15 +47,7 @@ export function useElectronMenu() {
       if (fp) { store.setFilePath(fp); store.markClean() }
     })
 
-    on('menu:deleteSelected', () => {
-      const { selectedId, selectedKind } = storeRef.current
-      if (!selectedId) return
-      const store = storeRef.current
-      if (selectedKind === 'entity' || selectedKind === 'value') store.deleteObjectType(selectedId)
-      else if (selectedKind === 'fact')       store.deleteFact(selectedId)
-      else if (selectedKind === 'subtype')    store.deleteSubtype(selectedId)
-      else if (selectedKind === 'constraint') store.deleteConstraint(selectedId)
-    })
+    on('menu:deleteSelected', () => storeRef.current.removeSelectedFromDiagram())
 
     on('menu:zoomIn',    () => storeRef.current.zoomBy(0.1))
     on('menu:zoomOut',   () => storeRef.current.zoomBy(-0.1))

@@ -6292,6 +6292,36 @@ export const useOrmStore = create((set, get) => ({
     })
   },
 
+  // Remove the current selection from the active diagram without touching the schema.
+  // Handles single selection (all element kinds) and multi-selection.
+  removeSelectedFromDiagram() {
+    const { selectedId, selectedKind, selectedOccurrenceId,
+            multiSelectedIds, activeDiagramId } = get()
+    if (!activeDiagramId) return
+
+    if (multiSelectedIds.length > 0) {
+      get().removeMultiSelectionFromDiagram(activeDiagramId)
+      return
+    }
+
+    if (!selectedId) return
+
+    if (selectedKind === 'constraint') {
+      if (selectedOccurrenceId)
+        get().removeConstraintOccurrenceFromDiagram(selectedOccurrenceId, activeDiagramId)
+      else
+        get().removeElementFromDiagram(selectedId, activeDiagramId)
+    } else if (selectedKind === 'subtype') {
+      get().removeElementFromDiagram(selectedId, activeDiagramId)
+    } else if (selectedKind === 'entity' || selectedKind === 'value' || selectedKind === 'fact') {
+      if (selectedOccurrenceId)
+        get().removeOccurrenceFromDiagram(selectedOccurrenceId, activeDiagramId)
+      else
+        get().removeElementFromDiagram(selectedId, activeDiagramId)
+    }
+    // selectedRole / selectedUniqueness: no-op (sub-element selections, not whole occurrences)
+  },
+
   getSharedIds() {
     const { diagrams } = get()
     const counts = {}

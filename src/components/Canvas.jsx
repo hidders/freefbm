@@ -1152,6 +1152,19 @@ export default function Canvas() {
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
   }, [])
 
+  // Backspace → remove selected occurrence(s) from diagram (same as Delete key via Electron menu)
+  useEffect(() => {
+    const down = (e) => {
+      if (e.key !== 'Backspace') return
+      const tag = document.activeElement?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      e.preventDefault()
+      useOrmStore.getState().removeSelectedFromDiagram()
+    }
+    window.addEventListener('keydown', down)
+    return () => window.removeEventListener('keydown', down)
+  }, [])
+
   // ── cursor ──────────────────────────────────────────────────────────────
   const cursor =
     dragState?.type === 'pan'          ? 'grabbing'
