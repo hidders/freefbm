@@ -4306,6 +4306,20 @@ export const useOrmStore = create((set, get) => ({
         }, [])
         if (roleMembers.length === 0 || roleMembers.length !== seq.length) continue
 
+        // Rule 0: all roles within the same fact type → fact copy with the sequence roles as output variables
+        const factIds = new Set(roleMembers.map(m => m.factId))
+        if (factIds.size === 1) {
+          const factCopyId = uid()
+          existingQueries[i] = {
+            copies: [{ id: factCopyId, kind: 'fact', originalId: [...factIds][0],
+              isOutput: false, seededRoles: roleMembers.map(m => ({ roleIndex: m.roleIndex, seqPosition: m.seqPos })),
+              dx: 16, dy: 16 }],
+            links: [],
+          }
+          changed = true
+          continue
+        }
+
         // Rule 1: all roles in binary fact types; other-role OTs share a unique LCA
         let allBinary = true
         for (const m of roleMembers) {
@@ -4355,19 +4369,6 @@ export const useOrmStore = create((set, get) => ({
               }
             }
           }
-        }
-
-        // Rule 2: all roles in the same fact type → single fact copy with all roles marked
-        const factIds = new Set(roleMembers.map(m => m.factId))
-        if (factIds.size === 1) {
-          const factCopyId = uid()
-          existingQueries[i] = {
-            copies: [{ id: factCopyId, kind: 'fact', originalId: [...factIds][0],
-              isOutput: false, seededRoles: roleMembers.map(m => ({ roleIndex: m.roleIndex, seqPosition: m.seqPos })),
-              dx: 16, dy: 16 }],
-            links: [],
-          }
-          changed = true
         }
       }
 

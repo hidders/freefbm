@@ -37,7 +37,19 @@ export default function ConstraintMemberLabels() {
   const sequences = c.sequences || []
   if (sequences.length === 0) return null
 
-  const factMap    = Object.fromEntries(visibleFacts.map(f  => [f.id,  f]))
+  // Use queryOccurrenceRefs to position labels at the anchored occurrence of each fact type.
+  const activeDiag = store.diagrams.find(d => d.id === store.activeDiagramId)
+  const activeCocc = activeDiag?.constraintOccurrences?.find(co => co.schemaConstraintId === selectedId)
+  const qor = activeCocc?.queryOccurrenceRefs ?? {}
+  const factByOccId = Object.fromEntries(visibleFacts.filter(f => f.occurrenceId).map(f => [f.occurrenceId, f]))
+
+  // Build factMap: first occurrence as default, then override with anchored occurrence.
+  const factMap = {}
+  for (const f of visibleFacts) { if (!(f.id in factMap)) factMap[f.id] = f }
+  for (const [schemaId, occId] of Object.entries(qor)) {
+    const anchored = factByOccId[occId]
+    if (anchored) factMap[schemaId] = anchored
+  }
   // Add synthetic implied link facts so member labels can resolve them
   store.facts.filter(f => f.objectified).forEach(f => {
     if (factMap[f.id]) {

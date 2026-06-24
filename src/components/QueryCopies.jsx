@@ -478,6 +478,15 @@ export default function QueryCopies({ onCopyClick, onCopyContextMenu, mousePos }
     ...store.facts.map(applyPos),
     ...facts,
   ].map(f => [f.id, f]))
+  // Override with the anchored occurrence for any schema element in qor.
+  // The spreads above use Object.fromEntries which keeps the last entry, so the
+  // last visible occurrence can override the correct applyPos result. Fix that here.
+  for (const [schemaId, occId] of Object.entries(qor)) {
+    const anchoredFact = facts.find(f => f.occurrenceId === occId)
+    if (anchoredFact) { factMap[schemaId] = anchoredFact; continue }
+    const anchoredOt = objectTypes.find(o => o.occurrenceId === occId)
+    if (anchoredOt) otMap[schemaId] = anchoredOt
+  }
   const subtypeMap = Object.fromEntries(store.subtypes.map(s => [s.id, s]))
 
   const isPending = (copyId) =>
