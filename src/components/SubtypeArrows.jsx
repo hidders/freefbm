@@ -76,7 +76,7 @@ export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes,
           ? { x: to.x - edgeDx / edgeDist * arrowLen, y: to.y - edgeDy / edgeDist * arrowLen }
           : to
 
-        const filterId = `stGlow-${st.id}`
+        const filterId = `stGlow-${st.occurrenceKey ?? st.id}`
         const fp = 15
         const filterProps = isSelected ? {
           id: filterId,
@@ -88,7 +88,7 @@ export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes,
         } : null
 
         return (
-          <g key={st.id}
+          <g key={st.occurrenceKey ?? st.id}
             className={qd ? undefined : 'selectable-group'}
             opacity={queryReachable != null
               ? (queryReachable.has(st.id) ? 1 : 0.2)

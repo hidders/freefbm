@@ -219,6 +219,20 @@ const rmCOcc = (diag, cId) => ({
   constraintOccurrences: (diag.constraintOccurrences ?? []).filter(co => co.schemaConstraintId !== cId),
 })
 
+// Normalize subtypeEndpointOccs value to always be an array.
+// Handles migration from the old single-object format { subOccId, superOccId }.
+const normalizeStEps = (raw) => {
+  if (!raw) return []
+  return Array.isArray(raw) ? raw : [raw]
+}
+
+// Returns a canonical fingerprint for a constraint occurrence's roleOccurrenceRefs,
+// used to detect duplicate combinations when allowing multiple constraint occurrences.
+const roleOccRefsKey = (refs) => {
+  const r = refs && !Array.isArray(refs) ? refs : {}
+  return Object.entries(r).sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}:${v}`).join('|')
+}
+
 const mkDiagram = (name = 'Main') => ({ id: uid(), name, occurrences: [], constraintOccurrences: [], implicitLinkPositions: {}, multiSelectedIds: [], profileId: null, shownImplicitLinks: [], notes: [], expandedRefModes: [], expandedRefModeOccs: [], subtypeOccurrences: [], subtypeEndpointOccs: {} })
 const mkNote    = (x, y)          => ({ id: uid(), x: Math.round(x), y: Math.round(y), w: 160, h: 100, text: '', connectors: [] })
 
@@ -1366,18 +1380,28 @@ export const useOrmStore = create((set, get) => ({
     // per-diagram subtype tracking. A subtype is included when both its endpoints have
     // occurrences in the diagram; the endpoint occurrence IDs are recorded so the arrow
     // stays pinned to specific occurrences rather than drifting to new ones.
+    // subtypeEndpointOccs values are always stored as Array<{ subOccId, superOccId }>.
     function migrateSubtypeOccurrences(diag, parsedSts) {
       const occs = diag.occurrences ?? []
       if (diag.subtypeOccurrences != null) {
-        // subtypeOccurrences already exists — backfill subtypeEndpointOccs if missing
-        if (diag.subtypeEndpointOccs != null) return diag
+        // subtypeOccurrences already exists.
+        // Normalize subtypeEndpointOccs: backfill if missing, convert old single-object format to array.
+        const existingEps = diag.subtypeEndpointOccs ?? {}
+        const needsNormalization = !diag.subtypeEndpointOccs ||
+          Object.values(existingEps).some(v => v && !Array.isArray(v))
+        if (!needsNormalization) return diag
         const subtypeEndpointOccs = {}
         for (const stId of diag.subtypeOccurrences) {
-          const st = parsedSts.find(x => x.id === stId)
-          if (!st) continue
-          const subOcc  = occs.find(o => o.schemaElementId === st.subId)
-          const superOcc = occs.find(o => o.schemaElementId === st.superId)
-          if (subOcc && superOcc) subtypeEndpointOccs[stId] = { subOccId: subOcc.id, superOccId: superOcc.id }
+          const existing = existingEps[stId]
+          if (existing) {
+            subtypeEndpointOccs[stId] = Array.isArray(existing) ? existing : [existing]
+          } else {
+            const st = parsedSts.find(x => x.id === stId)
+            if (!st) continue
+            const subOcc  = occs.find(o => o.schemaElementId === st.subId)
+            const superOcc = occs.find(o => o.schemaElementId === st.superId)
+            if (subOcc && superOcc) subtypeEndpointOccs[stId] = [{ subOccId: subOcc.id, superOccId: superOcc.id }]
+          }
         }
         return { ...diag, subtypeEndpointOccs }
       }
@@ -1389,7 +1413,7 @@ export const useOrmStore = create((set, get) => ({
         const superOcc = occs.find(o => o.schemaElementId === st.superId)
         if (subOcc && superOcc) {
           subtypeOccurrences.push(st.id)
-          subtypeEndpointOccs[st.id] = { subOccId: subOcc.id, superOccId: superOcc.id }
+          subtypeEndpointOccs[st.id] = [{ subOccId: subOcc.id, superOccId: superOcc.id }]
         }
       }
       return { ...diag, subtypeOccurrences, subtypeEndpointOccs }
@@ -1503,7 +1527,7 @@ export const useOrmStore = create((set, get) => ({
         const superOcc = occurrences.find(o => o.schemaElementId === st.superId)
         if (subOcc && superOcc) {
           subtypeOccurrences.push(st.id)
-          subtypeEndpointOccs[st.id] = { subOccId: subOcc.id, superOccId: superOcc.id }
+          subtypeEndpointOccs[st.id] = [{ subOccId: subOcc.id, superOccId: superOcc.id }]
         }
       }
       const diag = { ...mkDiagram('Main'), occurrences, constraintOccurrences, subtypeOccurrences, subtypeEndpointOccs }
@@ -3716,14 +3740,15 @@ export const useOrmStore = create((set, get) => ({
         // Use the explicitly clicked occurrence IDs when provided; fall back to first match.
         const resolvedSubOcc   = subOccId   ? occs.find(o => o.id === subOccId)   : occs.find(o => o.schemaElementId === subId)
         const resolvedSuperOcc = superOccId ? occs.find(o => o.id === superOccId) : occs.find(o => o.schemaElementId === superId)
+        const newPair = resolvedSubOcc && resolvedSuperOcc
+          ? { subOccId: resolvedSubOcc.id, superOccId: resolvedSuperOcc.id }
+          : null
         return {
           ...d,
           subtypeOccurrences: [...(d.subtypeOccurrences ?? []), st.id],
           subtypeEndpointOccs: {
             ...(d.subtypeEndpointOccs ?? {}),
-            ...(resolvedSubOcc && resolvedSuperOcc
-              ? { [st.id]: { subOccId: resolvedSubOcc.id, superOccId: resolvedSuperOcc.id } }
-              : {}),
+            [st.id]: newPair ? [newPair] : [],
           },
         }
       }),
@@ -3768,24 +3793,57 @@ export const useOrmStore = create((set, get) => ({
   },
 
   // Add an already-existing subtype schema element to a specific diagram with pinned occurrence endpoints.
+  // Allows multiple occurrences of the same schema subtype (one per unique sub/super occurrence pair).
+  // Silently does nothing if this exact (subOccId, superOccId) pair already exists (rule 2).
   addSubtypeToDiagram(stId, diagramId, subOccId, superOccId) {
     const s = get()
     const st = s.subtypes.find(x => x.id === stId)
     if (!st) return
     const diag = s.diagrams.find(d => d.id === diagramId)
     if (!diag) return
-    if ((diag.subtypeOccurrences ?? []).includes(stId)) return
     set(s => ({
       diagrams: s.diagrams.map(d => {
         if (d.id !== diagramId) return d
+        const existingPairs = normalizeStEps((d.subtypeEndpointOccs ?? {})[stId])
+        if (existingPairs.some(ep => ep.subOccId === subOccId && ep.superOccId === superOccId)) return d
+        const alreadyInOccs = (d.subtypeOccurrences ?? []).includes(stId)
         return {
           ...d,
-          subtypeOccurrences: [...(d.subtypeOccurrences ?? []), stId],
-          subtypeEndpointOccs: { ...(d.subtypeEndpointOccs ?? {}), [stId]: { subOccId, superOccId } },
+          subtypeOccurrences: alreadyInOccs ? d.subtypeOccurrences : [...(d.subtypeOccurrences ?? []), stId],
+          subtypeEndpointOccs: {
+            ...(d.subtypeEndpointOccs ?? {}),
+            [stId]: [...existingPairs, { subOccId, superOccId }],
+          },
         }
       }),
       isDirty: true,
       selectedId: stId, selectedKind: 'subtype',
+    }))
+  },
+
+  // Remove a single (subOccId, superOccId) pair for a schema subtype from a diagram.
+  // If the last pair is removed, the schema subtype is fully removed from the diagram.
+  removeSubtypeOccurrenceFromDiagram(stId, subOccId, superOccId, diagramId) {
+    set(s => ({
+      diagrams: s.diagrams.map(d => {
+        if (d.id !== diagramId) return d
+        const existingPairs = normalizeStEps((d.subtypeEndpointOccs ?? {})[stId])
+        const remainingPairs = existingPairs.filter(ep => ep.subOccId !== subOccId || ep.superOccId !== superOccId)
+        if (remainingPairs.length === existingPairs.length) return d  // pair not found
+        if (remainingPairs.length === 0) {
+          const { [stId]: _dropped, ...restEndpoints } = d.subtypeEndpointOccs ?? {}
+          return {
+            ...d,
+            subtypeOccurrences: (d.subtypeOccurrences ?? []).filter(id => id !== stId),
+            subtypeEndpointOccs: restEndpoints,
+          }
+        }
+        return {
+          ...d,
+          subtypeEndpointOccs: { ...(d.subtypeEndpointOccs ?? {}), [stId]: remainingPairs },
+        }
+      }),
+      isDirty: true,
     }))
   },
 
@@ -3847,12 +3905,19 @@ export const useOrmStore = create((set, get) => ({
   },
 
   // Add a constraint occurrence with explicit roleOccurrenceRefs and queryOccurrenceRefs.
+  // Allows multiple occurrences of the same schema constraint (one per unique roleOccurrenceRefs combination).
+  // Silently does nothing if this exact roleOccurrenceRefs fingerprint already exists (rule 2).
   addConstraintToDiagram(constraintId, diagramId, roleOccurrenceRefs = {}, queryOccurrenceRefs = {}) {
     const s = get()
     const c = s.constraints.find(x => x.id === constraintId)
     if (!c) return
     const diag = s.diagrams.find(d => d.id === diagramId)
-    if (!diag || cInDiag(diag, constraintId)) return
+    if (!diag) return
+    const newKey = roleOccRefsKey(roleOccurrenceRefs)
+    const isDuplicate = (diag.constraintOccurrences ?? []).some(co =>
+      co.schemaConstraintId === constraintId && roleOccRefsKey(co.roleOccurrenceRefs) === newKey
+    )
+    if (isDuplicate) return
     set(s => ({
       diagrams: s.diagrams.map(d => {
         if (d.id !== diagramId) return d
@@ -6117,7 +6182,7 @@ export const useOrmStore = create((set, get) => ({
           nd = addOccIfAbsent(nd, id, el.x ?? 0, el.y ?? 0)
         }
 
-        // Add subtype occurrences with endpoint occurrence IDs
+        // Add subtype occurrences with endpoint occurrence IDs (array format)
         if (subtypeIdsToAdd.size > 0) {
           const currentStOccs = new Set(nd.subtypeOccurrences ?? [])
           const newStIds = [...subtypeIdsToAdd].filter(id => !currentStOccs.has(id))
@@ -6128,7 +6193,7 @@ export const useOrmStore = create((set, get) => ({
               if (!st) continue
               const subOcc  = (nd.occurrences ?? []).find(o => o.schemaElementId === st.subId)
               const superOcc = (nd.occurrences ?? []).find(o => o.schemaElementId === st.superId)
-              if (subOcc && superOcc) newEndpoints[stId] = { subOccId: subOcc.id, superOccId: superOcc.id }
+              if (subOcc && superOcc) newEndpoints[stId] = [{ subOccId: subOcc.id, superOccId: superOcc.id }]
             }
             nd = {
               ...nd,
@@ -6203,21 +6268,24 @@ export const useOrmStore = create((set, get) => ({
         const remainingOccs = (d.occurrences ?? []).filter(o => !toRemove.has(o.schemaElementId))
         const remainingOccIds = new Set(remainingOccs.map(o => o.id))
         const remainingElIds  = new Set(remainingOccs.map(o => o.schemaElementId))
-        const keptStIds = (d.subtypeOccurrences ?? []).filter(stId => {
+        const newSubtypeEndpointOccs = {}
+        const keptStIds = []
+        for (const stId of (d.subtypeOccurrences ?? [])) {
           const st = s.subtypes.find(x => x.id === stId)
-          return st && remainingElIds.has(st.subId) && remainingElIds.has(st.superId)
-        })
-        const keptStIdSet = new Set(keptStIds)
-        const subtypeEndpointOccs = Object.fromEntries(
-          Object.entries(d.subtypeEndpointOccs ?? {}).filter(([stId]) => keptStIdSet.has(stId))
-        )
+          if (!st || !remainingElIds.has(st.subId) || !remainingElIds.has(st.superId)) continue
+          const remainingPairs = normalizeStEps((d.subtypeEndpointOccs ?? {})[stId])
+            .filter(ep => remainingOccIds.has(ep.subOccId) && remainingOccIds.has(ep.superOccId))
+          if (remainingPairs.length === 0) continue
+          keptStIds.push(stId)
+          newSubtypeEndpointOccs[stId] = remainingPairs
+        }
         return {
           ...d,
           occurrences: remainingOccs,
           expandedRefModes:    (d.expandedRefModes    ?? []).filter(id => !toRemove.has(id)),
           expandedRefModeOccs: (d.expandedRefModeOccs ?? []).filter(id => remainingOccIds.has(id)),
           subtypeOccurrences:  keptStIds,
-          subtypeEndpointOccs,
+          subtypeEndpointOccs: newSubtypeEndpointOccs,
         }
       })
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
@@ -6248,23 +6316,25 @@ export const useOrmStore = create((set, get) => ({
       const finalElIds   = new Set(finalOccs.map(o => o.schemaElementId))
       const updatedDiagrams = s.diagrams.map(d => {
         if (d.id !== diagramId) return d
-        // Remove subtypes whose pinned endpoint occurrence is being removed,
-        // or whose schema endpoint is no longer present at all.
-        const keptStIds = (d.subtypeOccurrences ?? []).filter(stId => {
-          const ep = (d.subtypeEndpointOccs ?? {})[stId]
-          if (ep && (ep.subOccId === occurrenceId || ep.superOccId === occurrenceId)) return false
+        // Remove subtype pairs that pin to the removed occurrence; drop the schema subtype
+        // entirely if all its pairs are gone or its schema endpoints are no longer present.
+        const newSubtypeEndpointOccs = {}
+        const keptStIds = []
+        for (const stId of (d.subtypeOccurrences ?? [])) {
           const st = s.subtypes.find(x => x.id === stId)
-          return st && finalElIds.has(st.subId) && finalElIds.has(st.superId)
-        })
-        const keptStIdSet = new Set(keptStIds)
+          if (!st || !finalElIds.has(st.subId) || !finalElIds.has(st.superId)) continue
+          const remainingPairs = normalizeStEps((d.subtypeEndpointOccs ?? {})[stId])
+            .filter(ep => ep.subOccId !== occurrenceId && ep.superOccId !== occurrenceId)
+          if (remainingPairs.length === 0) continue
+          keptStIds.push(stId)
+          newSubtypeEndpointOccs[stId] = remainingPairs
+        }
         return {
           ...d,
           occurrences: finalOccs,
           expandedRefModeOccs: (d.expandedRefModeOccs ?? []).filter(id => id !== occurrenceId && finalOccIds.has(id)),
           subtypeOccurrences:  keptStIds,
-          subtypeEndpointOccs: Object.fromEntries(
-            Object.entries(d.subtypeEndpointOccs ?? {}).filter(([stId]) => keptStIdSet.has(stId))
-          ),
+          subtypeEndpointOccs: newSubtypeEndpointOccs,
         }
       })
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
@@ -6338,12 +6408,19 @@ export const useOrmStore = create((set, get) => ({
           return true
         }))
         const remainingElIds = new Set(newOccs.map(o => o.schemaElementId))
-        const keptStIds = (d.subtypeOccurrences ?? []).filter(stId => {
-          if (directSubtypeIds.has(stId)) return false
+        const newOccIds      = new Set(newOccs.map(o => o.id))
+        const newSubtypeEndpointOccs2 = {}
+        const keptStIds = []
+        for (const stId of (d.subtypeOccurrences ?? [])) {
+          if (directSubtypeIds.has(stId)) continue
           const st = s.subtypes.find(x => x.id === stId)
-          return st && remainingElIds.has(st.subId) && remainingElIds.has(st.superId)
-        })
-        const keptStIdSet = new Set(keptStIds)
+          if (!st || !remainingElIds.has(st.subId) || !remainingElIds.has(st.superId)) continue
+          const remainingPairs = normalizeStEps((d.subtypeEndpointOccs ?? {})[stId])
+            .filter(ep => newOccIds.has(ep.subOccId) && newOccIds.has(ep.superOccId))
+          if (remainingPairs.length === 0) continue
+          keptStIds.push(stId)
+          newSubtypeEndpointOccs2[stId] = remainingPairs
+        }
         return {
           ...d,
           occurrences: newOccs,
@@ -6353,9 +6430,7 @@ export const useOrmStore = create((set, get) => ({
           expandedRefModes:    (d.expandedRefModes    ?? []).filter(id => !cascaded.has(id)),
           expandedRefModeOccs: (() => { const s = new Set(newOccs.map(o => o.id)); return (d.expandedRefModeOccs ?? []).filter(id => s.has(id)) })(),
           subtypeOccurrences:  keptStIds,
-          subtypeEndpointOccs: Object.fromEntries(
-            Object.entries(d.subtypeEndpointOccs ?? {}).filter(([stId]) => keptStIdSet.has(stId))
-          ),
+          subtypeEndpointOccs: newSubtypeEndpointOccs2,
         }
       })
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)

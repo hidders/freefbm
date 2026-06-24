@@ -425,18 +425,27 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     e.preventDefault()
     e.stopPropagation()
     store.select(st.id, 'subtype')
-    setContextMenu({
-      x: e.clientX, y: e.clientY,
-      items: [
-        {
-          label: 'Inherits Preferred Identifier',
-          checked: st.inheritsPreferredIdentifier !== false,
-          action: () => store.updateSubtype(st.id, { inheritsPreferredIdentifier: st.inheritsPreferredIdentifier === false }),
-        },
-        '---',
-        { label: 'Delete Subtype Relationship', danger: true, action: () => store.deleteSubtype(st.id) },
-      ],
-    })
+    const diagramId = store.activeDiagramId
+    const activeDiag = store.diagrams?.find(d => d.id === diagramId)
+    const rawEps = activeDiag?.subtypeEndpointOccs?.[st.id]
+    const epsArr = Array.isArray(rawEps) ? rawEps : (rawEps ? [rawEps] : [])
+    const canRemoveOccurrence = st.subOccId != null && st.superOccId != null && epsArr.length > 1
+    const items = [
+      {
+        label: 'Inherits Preferred Identifier',
+        checked: st.inheritsPreferredIdentifier !== false,
+        action: () => store.updateSubtype(st.id, { inheritsPreferredIdentifier: st.inheritsPreferredIdentifier === false }),
+      },
+      '---',
+    ]
+    if (canRemoveOccurrence) {
+      items.push({ label: 'Remove this occurrence from diagram',
+        action: () => store.removeSubtypeOccurrenceFromDiagram(st.id, st.subOccId, st.superOccId, diagramId) })
+    }
+    items.push({ label: 'Remove all occurrences from diagram',
+      action: () => store.removeElementFromDiagram(st.id, diagramId) })
+    items.push({ label: 'Delete Subtype Relationship', danger: true, action: () => store.deleteSubtype(st.id) })
+    setContextMenu({ x: e.clientX, y: e.clientY, items })
   }, [store, setContextMenu, handleMultiSelectionContextMenu])
 
   const handleConstraintContextMenu = useCallback((c, e, constraintOccurrenceId = null) => {

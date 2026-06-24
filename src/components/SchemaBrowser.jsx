@@ -416,6 +416,58 @@ export default function SchemaBrowser() {
     (d.subtypeOccurrences ?? []).includes(st.id)
   )
 
+  // Returns true when all (subOcc, superOcc) pairs are already covered for this subtype.
+  const subtypeAllCombinationsCovered = (st) => {
+    const occs = diagram?.occurrences ?? []
+    const subOccs  = occs.filter(o => o.schemaElementId === st.subId)
+    const superOccs = occs.filter(o => o.schemaElementId === st.superId)
+    if (subOccs.length === 0 || superOccs.length === 0) return false
+    const raw = diagram?.subtypeEndpointOccs?.[st.id]
+    const pairsArr = Array.isArray(raw) ? raw : (raw ? [raw] : [])
+    const coveredSet = new Set(pairsArr.map(ep => `${ep.subOccId}|${ep.superOccId}`))
+    for (const sub of subOccs) {
+      for (const sup of superOccs) {
+        if (!coveredSet.has(`${sub.id}|${sup.id}`)) return false
+      }
+    }
+    return true
+  }
+
+  // Returns true when all role-occurrence combinations are already covered for this constraint.
+  const allConstraintCombinationsCovered = (c) => {
+    if (!diagram) return false
+    // Collect the set of fact types that contribute roles to this constraint.
+    const factIds = new Set()
+    for (const seq of (c.sequences ?? []))
+      for (const m of seq)
+        if (m.kind === 'role' && m.factId && !m.factId.includes('_il_')) factIds.add(m.factId)
+    for (const seq of (c.roleSequences ?? []))
+      for (const ref of seq)
+        if (ref.factId && !ref.factId.includes('_il_')) factIds.add(ref.factId)
+    if (factIds.size === 0) return diagram?.constraintOccurrences?.some(co => co.schemaConstraintId === c.id) ?? false
+    // Build list of occurrences per fact type that are currently in the diagram.
+    const occs = diagram?.occurrences ?? []
+    const factOccs = {}
+    for (const fid of factIds) {
+      factOccs[fid] = occs.filter(o => o.schemaElementId === fid)
+      if (factOccs[fid].length === 0) return false
+    }
+    // Build set of already-covered roleOccurrenceRefs keys.
+    const coveredKeys = new Set(
+      (diagram?.constraintOccurrences ?? [])
+        .filter(co => co.schemaConstraintId === c.id)
+        .map(co => {
+          const refs = co.roleOccurrenceRefs ?? {}
+          return Object.entries(refs).sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}:${v}`).join('|')
+        })
+    )
+    // Count total combinations: product of fact-occ counts.
+    const factIdArr = [...factIds]
+    const counts = factIdArr.map(fid => factOccs[fid].length)
+    const total = counts.reduce((a, b) => a * b, 1)
+    return coveredKeys.size >= total
+  }
+
   // Constraint dep-readiness helper
   // "ready" = all directly-connected elements AND all query elements have ≥1 occurrence in diagram.
   const constraintDepsStatus = (c) => {
@@ -725,7 +777,7 @@ export default function SchemaBrowser() {
               }
             }}
             addButtonStyle={stAddStyle}
-            addButtonDisabled={alreadyIn || false}
+            addButtonDisabled={subtypeAllCombinationsCovered(st)}
             onDelete={() => store.deleteSubtype(st.id)}
           />
         )
@@ -756,7 +808,7 @@ export default function SchemaBrowser() {
             onSelect={() => selectEl(c.id, 'constraint')}
             onAdd={() => store.startConstraintEndpointPick(c.id, diagram?.id)}
             addButtonStyle={addStyle}
-            addButtonDisabled={inCurrent || false}
+            addButtonDisabled={allConstraintCombinationsCovered(c)}
             onDelete={() => store.deleteConstraint(c.id)}
           />
         )

@@ -201,9 +201,15 @@ export function getDiagramElements(store) {
       subtypeOccurrenceSet.has(st.id) &&
       allVisibleIds.has(st.subId) && allVisibleIds.has(st.superId)
     )
-    .map(st => {
-      const ep = subtypeEndpointOccs[st.id]
-      return { ...st, subOccId: ep?.subOccId ?? null, superOccId: ep?.superOccId ?? null }
+    .flatMap(st => {
+      const raw = subtypeEndpointOccs[st.id]
+      const eps = Array.isArray(raw) ? raw : (raw ? [raw] : [{ subOccId: null, superOccId: null }])
+      return eps.map(ep => ({
+        ...st,
+        subOccId:      ep.subOccId   ?? null,
+        superOccId:    ep.superOccId ?? null,
+        occurrenceKey: `${st.id}:${ep.subOccId ?? 'null'}:${ep.superOccId ?? 'null'}`,
+      }))
     })
 
   return {
