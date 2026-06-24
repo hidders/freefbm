@@ -43,8 +43,15 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     e.preventDefault()
     e.stopPropagation()
     store.select(ot.id, ot.kind, occurrenceId)
-    const hasRefMode = ot.kind === 'entity' && !!findRefMode(ot, store.facts, store.objectTypes)
     const diagram = store.diagrams.find(d => d.id === store.activeDiagramId)
+    // Only offer expand/collapse if this occurrence owns ref-mode child occurrences.
+    // Without owned occurrences the VT/FT are independently visible; expand would
+    // create redundant duplicates and collapse would have no effect.
+    const hasOwnedRefModeOccs = occurrenceId
+      ? (diagram?.occurrences ?? []).some(o => o.refModeOwnerOccId === occurrenceId)
+      : false
+    const hasRefMode = ot.kind === 'entity' && !!findRefMode(ot, store.facts, store.objectTypes)
+      && (occurrenceId ? hasOwnedRefModeOccs : true)
     const isExpandedHere = occurrenceId
       ? (diagram?.expandedRefModeOccs ?? []).includes(occurrenceId)
       : (diagram?.expandedRefModes ?? []).includes(ot.id)

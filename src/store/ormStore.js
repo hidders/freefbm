@@ -141,16 +141,37 @@ const addOccIfAbsent = (diag, elementId, x, y, extra = {}) =>
   inDiag(diag, elementId) ? diag : { ...diag, occurrences: [...(diag.occurrences ?? []), mkOcc(elementId, x, y, extra)] }
 
 // For each occurrence of `ownerId`, add owned VT/FT occurrences that are hidden until the
-// owner is expanded. Skips VT or FT if they already have any occurrence in the diagram.
-const addOwnedRefModeOccsIfAbsent = (diag, ownerId, vtId, vtX, vtY, ftId, ftX, ftY) => {
-  const ownerOccs = (diag.occurrences ?? []).filter(o => o.schemaElementId === ownerId)
+// owner is expanded. Each owner occurrence gets its own fresh VT occurrence (no sharing
+// between ref modes by default). vtRoleIndex is used to wire roleOccurrenceMap on the FT
+// occurrence so role connectors find the right VT occurrence when multiple VT occs exist.
+const addOwnedRefModeOccsIfAbsent = (diag, ownerId, vtId, vtX, vtY, ftId, ftX, ftY, vtRoleIndex = null) => {
+  const allOccs = diag.occurrences ?? []
+  const ownerOccs = allOccs.filter(o => o.schemaElementId === ownerId)
   if (ownerOccs.length === 0) return diag
-  const vtPresent = (diag.occurrences ?? []).some(o => o.schemaElementId === vtId)
-  const ftPresent = (diag.occurrences ?? []).some(o => o.schemaElementId === ftId)
   const extraOccs = ownerOccs.flatMap(ownerOcc => {
+    // Check per-owner-occurrence: each owner occ gets its own VT/FT pair.
+    const hasOwnedVt = allOccs.some(o => o.schemaElementId === vtId && o.refModeOwnerOccId === ownerOcc.id)
+    const hasOwnedFt = allOccs.some(o => o.schemaElementId === ftId && o.refModeOwnerOccId === ownerOcc.id)
+    if (hasOwnedVt && hasOwnedFt) return []
     const newOccs = []
-    if (!vtPresent) newOccs.push(mkOcc(vtId, vtX, vtY, { refModeOwnerOccId: ownerOcc.id }))
-    if (!ftPresent) newOccs.push(mkOcc(ftId, ftX, ftY, { refModeOwnerOccId: ownerOcc.id }))
+    let vtOccId = hasOwnedVt
+      ? allOccs.find(o => o.schemaElementId === vtId && o.refModeOwnerOccId === ownerOcc.id)?.id ?? null
+      : null
+    if (!hasOwnedVt) {
+      const vtOcc = mkOcc(vtId, vtX, vtY, { refModeOwnerOccId: ownerOcc.id })
+      vtOccId = vtOcc.id
+      newOccs.push(vtOcc)
+    }
+    if (!hasOwnedFt) {
+      const ftExtra = { refModeOwnerOccId: ownerOcc.id }
+      if (vtRoleIndex !== null && vtOccId) {
+        ftExtra.roleOccurrenceMap = {
+          [String(1 - vtRoleIndex)]: ownerOcc.id,
+          [String(vtRoleIndex)]: vtOccId,
+        }
+      }
+      newOccs.push(mkOcc(ftId, ftX, ftY, ftExtra))
+    }
     return newOccs
   })
   if (extraOccs.length === 0) return diag
@@ -1829,7 +1850,7 @@ export const useOrmStore = create((set, get) => ({
           diagrams: state.diagrams.map(d => {
             if (d.id !== state.activeDiagramId) return d
             const ftEl = state.facts.find(f => f.id === matchFact.fact.id)
-            return addOwnedRefModeOccsIfAbsent(d, entityId, existing.id, existing.x ?? 0, existing.y ?? 0, matchFact.fact.id, ftEl?.x ?? 0, ftEl?.y ?? 0)
+            return addOwnedRefModeOccsIfAbsent(d, entityId, existing.id, existing.x ?? 0, existing.y ?? 0, matchFact.fact.id, ftEl?.x ?? 0, ftEl?.y ?? 0, matchFact.vtRoleIndex)
           }),
           isDirty: true,
         }
@@ -1862,7 +1883,7 @@ export const useOrmStore = create((set, get) => ({
         constraints: cCons,
         diagrams: state.diagrams.map(d => {
           if (d.id !== state.activeDiagramId) return d
-          return addOwnedRefModeOccsIfAbsent(d, entityId, vt.id, vt.x, vt.y, ft.id, ft.x, ft.y)
+          return addOwnedRefModeOccsIfAbsent(d, entityId, vt.id, vt.x, vt.y, ft.id, ft.x, ft.y, 1)
         }),
         isDirty: true,
       }
@@ -1951,7 +1972,7 @@ export const useOrmStore = create((set, get) => ({
           diagrams: state.diagrams.map(d => {
             if (d.id !== state.activeDiagramId) return d
             const ftEl = state.facts.find(f => f.id === matchFact.fact.id)
-            return addOwnedRefModeOccsIfAbsent(d, factId, existing.id, existing.x ?? 0, existing.y ?? 0, matchFact.fact.id, ftEl?.x ?? 0, ftEl?.y ?? 0)
+            return addOwnedRefModeOccsIfAbsent(d, factId, existing.id, existing.x ?? 0, existing.y ?? 0, matchFact.fact.id, ftEl?.x ?? 0, ftEl?.y ?? 0, matchFact.vtRoleIndex)
           }),
           isDirty: true,
         }
@@ -1978,7 +1999,7 @@ export const useOrmStore = create((set, get) => ({
         facts: [...state.facts, ft],
         diagrams: state.diagrams.map(d => {
           if (d.id !== state.activeDiagramId) return d
-          return addOwnedRefModeOccsIfAbsent(d, factId, vt.id, vt.x, vt.y, ft.id, ft.x, ft.y)
+          return addOwnedRefModeOccsIfAbsent(d, factId, vt.id, vt.x, vt.y, ft.id, ft.x, ft.y, 1)
         }),
         isDirty: true,
       }
@@ -2696,10 +2717,18 @@ export const useOrmStore = create((set, get) => ({
         if ((d.expandedRefModeOccs ?? []).includes(otOccurrenceId)) return d
         // Only create new owned occurrences if none already exist for this owner
         const alreadyOwned = (d.occurrences ?? []).some(o => o.refModeOwnerOccId === otOccurrenceId)
-        const newOccs = alreadyOwned ? [] : [
-          mkOcc(rm.vtId,   rmVt?.x ?? 0, rmVt?.y ?? 0,  { refModeOwnerOccId: otOccurrenceId }),
-          mkOcc(rm.factId, rmFt?.x ?? 0, rmFt?.y ?? 0,  { refModeOwnerOccId: otOccurrenceId }),
-        ]
+        let newOccs = []
+        if (!alreadyOwned) {
+          const vtOcc = mkOcc(rm.vtId, rmVt?.x ?? 0, rmVt?.y ?? 0, { refModeOwnerOccId: otOccurrenceId })
+          const ftOcc = mkOcc(rm.factId, rmFt?.x ?? 0, rmFt?.y ?? 0, {
+            refModeOwnerOccId: otOccurrenceId,
+            roleOccurrenceMap: {
+              [String(1 - rm.vtRoleIndex)]: otOccurrenceId,
+              [String(rm.vtRoleIndex)]: vtOcc.id,
+            },
+          })
+          newOccs = [vtOcc, ftOcc]
+        }
         return {
           ...d,
           occurrences: [...(d.occurrences ?? []), ...newOccs],
@@ -2711,15 +2740,46 @@ export const useOrmStore = create((set, get) => ({
   },
 
   collapseRefMode(otOccurrenceId, diagramId = null) {
-    const { activeDiagramId } = get()
+    const { activeDiagramId, facts, objectTypes } = get()
     const targetDiagramId = diagramId ?? activeDiagramId
-    // Only remove from expandedRefModeOccs; owned VT/FT occurrences stay in the
-    // occurrences array (hidden by visibility logic) so their positions/IDs are preserved.
     set(s => ({
       diagrams: s.diagrams.map(d => {
         if (d.id !== targetDiagramId) return d
+        const occs = d.occurrences ?? []
+
+        // Find the owner occurrence and resolve its ref mode VT schema ID
+        const ownerOcc = occs.find(o => o.id === otOccurrenceId)
+        let vtSchemaId = null
+        if (ownerOcc) {
+          const ownerEl = objectTypes.find(o => o.id === ownerOcc.schemaElementId)
+            ?? facts.find(f => f.id === ownerOcc.schemaElementId && f.objectified && f.objectifiedKind !== 'value')
+          const rm = ownerEl ? findRefMode(ownerEl, facts, objectTypes) : null
+          if (rm) vtSchemaId = rm.vtId
+        }
+
+        // If the VT's owned occurrence is also used as a role player in any
+        // independent (non-owned-by-this) visible fact occurrence, liberate it
+        // so it stays visible after collapse.
+        let newOccs = occs
+        if (vtSchemaId) {
+          const vtOwnedOcc = occs.find(o =>
+            o.schemaElementId === vtSchemaId && o.refModeOwnerOccId === otOccurrenceId)
+          if (vtOwnedOcc) {
+            const neededByOtherFact = occs.some(o => {
+              if (o.refModeOwnerOccId === otOccurrenceId) return false
+              const f = facts.find(x => x.id === o.schemaElementId)
+              return f?.roles?.some(r => r.objectTypeId === vtSchemaId)
+            })
+            if (neededByOtherFact) {
+              newOccs = occs.map(o =>
+                o.id === vtOwnedOcc.id ? { ...o, refModeOwnerOccId: null } : o)
+            }
+          }
+        }
+
         return {
           ...d,
+          occurrences: newOccs,
           expandedRefModeOccs: (d.expandedRefModeOccs ?? []).filter(id => id !== otOccurrenceId),
         }
       }),
@@ -3638,6 +3698,63 @@ export const useOrmStore = create((set, get) => ({
       selectedId: s.selectedId === id ? null : s.selectedId,
       isDirty: true,
     }))
+  },
+
+  // Add an already-existing subtype schema element to a specific diagram with pinned occurrence endpoints.
+  addSubtypeToDiagram(stId, diagramId, subOccId, superOccId) {
+    const s = get()
+    const st = s.subtypes.find(x => x.id === stId)
+    if (!st) return
+    const diag = s.diagrams.find(d => d.id === diagramId)
+    if (!diag) return
+    if ((diag.subtypeOccurrences ?? []).includes(stId)) return
+    set(s => ({
+      diagrams: s.diagrams.map(d => {
+        if (d.id !== diagramId) return d
+        return {
+          ...d,
+          subtypeOccurrences: [...(d.subtypeOccurrences ?? []), stId],
+          subtypeEndpointOccs: { ...(d.subtypeEndpointOccs ?? {}), [stId]: { subOccId, superOccId } },
+        }
+      }),
+      isDirty: true,
+      selectedId: stId, selectedKind: 'subtype',
+    }))
+  },
+
+  // Begin a guided endpoint-pick flow when there is ambiguity (multiple occurrences of sub or super type).
+  startSubtypeEndpointPick(stId, diagramId) {
+    const s = get()
+    const st = s.subtypes.find(x => x.id === stId)
+    if (!st) return
+    const diag = s.diagrams.find(d => d.id === diagramId) ?? s.diagrams.find(d => d.id === s.activeDiagramId)
+    if (!diag) return
+    const occs     = diag.occurrences ?? []
+    const subOccs  = occs.filter(o => o.schemaElementId === st.subId)
+    const superOccs = occs.filter(o => o.schemaElementId === st.superId)
+    const subOccId   = subOccs.length === 1   ? subOccs[0].id   : null
+    const superOccId = superOccs.length === 1 ? superOccs[0].id : null
+    if (subOccId !== null && superOccId !== null) {
+      get().addSubtypeToDiagram(stId, diagramId, subOccId, superOccId)
+      return
+    }
+    set({ linkDraft: { type: 'subtypeEndpointPick', stId, diagramId, subOccId, superOccId } })
+  },
+
+  // Called when user clicks an OT occurrence while in subtypeEndpointPick mode.
+  pickSubtypeEndpoint(occurrenceId) {
+    const draft = get().linkDraft
+    if (!draft || draft.type !== 'subtypeEndpointPick') return
+    let subOccId   = draft.subOccId
+    let superOccId = draft.superOccId
+    if (subOccId === null)        subOccId   = occurrenceId
+    else if (superOccId === null) superOccId = occurrenceId
+    if (subOccId !== null && superOccId !== null) {
+      get().addSubtypeToDiagram(draft.stId, draft.diagramId, subOccId, superOccId)
+      set({ linkDraft: null })
+    } else {
+      set({ linkDraft: { ...draft, subOccId, superOccId } })
+    }
   },
 
   toggleSubtypeInConstraint(constraintId, subtypeId) {

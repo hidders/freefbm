@@ -31,6 +31,27 @@ export default function StatusBar() {
   const store = useOrmStore()
   const isSel = store.tool === 'select'
 
+  // ── Tier 4a: subtype endpoint-pick mode ──────────────────────────────────
+  if (store.linkDraft?.type === 'subtypeEndpointPick') {
+    const pickSt = store.subtypes?.find(x => x.id === store.linkDraft.stId)
+    const pickingSub = store.linkDraft.subOccId === null
+    const targetId = pickingSub ? pickSt?.subId : pickSt?.superId
+    const targetEl = store.objectTypes?.find(o => o.id === targetId) ?? store.facts?.find(f => f.id === targetId)
+    const targetName = targetEl?.name ?? 'occurrence'
+    const role = pickingSub ? 'subtype' : 'supertype'
+    return (
+      <div style={{ height: 26, display: 'flex', alignItems: 'center',
+        padding: '0 14px', gap: 16,
+        background: 'var(--bg-surface)', borderTop: '1px solid var(--border-soft)',
+        flexShrink: 0 }}>
+        <span style={{ fontSize: 11, color: 'var(--accent)', flex: 1, fontWeight: 600 }}>
+          Click the {role} occurrence of <em>{targetName}</em> to connect · Esc to cancel
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{Math.round(store.zoom * 100)}%</span>
+      </div>
+    )
+  }
+
   // ── Tier 4 (highest): target-pick mode ───────────────────────────────────
   if (store.pendingTargetPick) {
     return (

@@ -508,6 +508,15 @@ export default function Canvas() {
       }
       return { factIds: objectifiedIds, otIds: NONE, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true, dimInnerFact: true }
     }
+    if (linkDraft?.type === 'subtypeEndpointPick') {
+      const pickSt = store.subtypes.find(x => x.id === linkDraft.stId)
+      if (pickSt) {
+        const targetSchemaId = linkDraft.subOccId === null ? pickSt.subId : pickSt.superId
+        const candidateOtIds = new Set(visibleOts.filter(o => o.id === targetSchemaId).map(o => o.id))
+        const candidateFactIds = new Set(visibleFacts.filter(f => f.objectified && f.id === targetSchemaId).map(f => f.id))
+        return { factIds: candidateFactIds, otIds: candidateOtIds, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true, dimInnerFact: true }
+      }
+    }
     if (tool === 'assignRole') {
       if (linkDraft?.type === 'roleAssign' && linkDraft.factId != null) {
         return { factIds: new Set([...objectifiedIds, linkDraft.factId]), otIds: NONE, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true, dimInnerFact: true }

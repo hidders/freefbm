@@ -690,7 +690,16 @@ export default function SchemaBrowser() {
             isOrphaned={isStOrphaned(st)}
             inCurrentDiagram={alreadyIn}
             onSelect={() => selectSubtype(st)}
-            onAdd={() => store.addElementToDiagram(st.id, diagram?.id)}
+            onAdd={() => {
+              const occs = diagram?.occurrences ?? []
+              const subOccs  = occs.filter(o => o.schemaElementId === st.subId)
+              const superOccs = occs.filter(o => o.schemaElementId === st.superId)
+              if (subOccs.length > 1 || superOccs.length > 1) {
+                store.startSubtypeEndpointPick(st.id, diagram?.id)
+              } else {
+                store.addElementToDiagram(st.id, diagram?.id)
+              }
+            }}
             addButtonStyle={stAddStyle}
             addButtonDisabled={alreadyIn || false}
             onDelete={() => store.deleteSubtype(st.id)}

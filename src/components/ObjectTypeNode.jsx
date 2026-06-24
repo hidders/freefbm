@@ -272,6 +272,16 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
       return
     }
 
+    if (store.linkDraft?.type === 'subtypeEndpointPick') {
+      const pickSt = store.subtypes.find(x => x.id === store.linkDraft.stId)
+      const pickingSub = store.linkDraft.subOccId === null
+      const targetSchemaId = pickingSub ? pickSt?.subId : pickSt?.superId
+      if (pickSt && ot.id === targetSchemaId) {
+        store.pickSubtypeEndpoint(occurrenceId ?? ot.id)
+      }
+      return
+    }
+
     if (isSubtypeTool) {
       if (!store.linkDraft) {
         store.setLinkDraft({ type: 'subtype', fromId: ot.id })
@@ -363,6 +373,11 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
         if (editing || editingRef) return 'text'
         if (store.queryEditDraft) return 'pointer'
         if (isPickingTarget) return 'pointer'
+        if (store.linkDraft?.type === 'subtypeEndpointPick') {
+          const epSt = store.subtypes.find(x => x.id === store.linkDraft.stId)
+          const epTarget = store.linkDraft.subOccId === null ? epSt?.subId : epSt?.superId
+          return ot.id === epTarget ? 'pointer' : 'not-allowed'
+        }
         if (isElementSelecting(store.tool, store.sequenceConstruction)) {
           if (store.tool === 'addSubtype') {
             const fromId = store.linkDraft?.type === 'subtype' ? store.linkDraft.fromId : null
