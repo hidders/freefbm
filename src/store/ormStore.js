@@ -158,7 +158,10 @@ const addOwnedRefModeOccsIfAbsent = (diag, ownerId, vtId, vtX, vtY, ftId, ftX, f
       ? allOccs.find(o => o.schemaElementId === vtId && o.refModeOwnerOccId === ownerOcc.id)?.id ?? null
       : null
     if (!hasOwnedVt) {
-      const vtOcc = mkOcc(vtId, vtX, vtY, { refModeOwnerOccId: ownerOcc.id })
+      // Place each owned VT/FT occurrence at the standard ref-mode offsets from its owner
+      // occurrence, not at the schema VT/FT coordinates (which are anchored to the first entity
+      // that created them and would cause all subsequent expansions to overlap).
+      const vtOcc = mkOcc(vtId, ownerOcc.x + 160, ownerOcc.y, { refModeOwnerOccId: ownerOcc.id })
       vtOccId = vtOcc.id
       newOccs.push(vtOcc)
     }
@@ -170,7 +173,7 @@ const addOwnedRefModeOccsIfAbsent = (diag, ownerId, vtId, vtX, vtY, ftId, ftX, f
           [String(vtRoleIndex)]: vtOccId,
         }
       }
-      newOccs.push(mkOcc(ftId, ftX, ftY, ftExtra))
+      newOccs.push(mkOcc(ftId, ownerOcc.x + 80, ownerOcc.y, ftExtra))
     }
     return newOccs
   })
@@ -2789,11 +2792,12 @@ export const useOrmStore = create((set, get) => ({
         if (d.id !== targetDiagramId) return d
         if ((d.expandedRefModeOccs ?? []).includes(otOccurrenceId)) return d
         // Only create new owned occurrences if none already exist for this owner
+        const ownerOcc2 = (d.occurrences ?? []).find(o => o.id === otOccurrenceId)
         const alreadyOwned = (d.occurrences ?? []).some(o => o.refModeOwnerOccId === otOccurrenceId)
         let newOccs = []
-        if (!alreadyOwned) {
-          const vtOcc = mkOcc(rm.vtId, rmVt?.x ?? 0, rmVt?.y ?? 0, { refModeOwnerOccId: otOccurrenceId })
-          const ftOcc = mkOcc(rm.factId, rmFt?.x ?? 0, rmFt?.y ?? 0, {
+        if (!alreadyOwned && ownerOcc2) {
+          const vtOcc = mkOcc(rm.vtId, ownerOcc2.x + 160, ownerOcc2.y, { refModeOwnerOccId: otOccurrenceId })
+          const ftOcc = mkOcc(rm.factId, ownerOcc2.x + 80, ownerOcc2.y, {
             refModeOwnerOccId: otOccurrenceId,
             roleOccurrenceMap: {
               [String(1 - rm.vtRoleIndex)]: otOccurrenceId,
