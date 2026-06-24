@@ -294,6 +294,7 @@ export default function SchemaBrowser() {
   const [expandFrom,  setExpandFrom]  = useState(null)
   const [animating,   setAnimating]   = useState(false)
   const [showOrphans, setShowOrphans] = useState(false)
+  const [showReady,   setShowReady]   = useState(false)
   const [resizing,    setResizing]    = useState(false)
   const [pos,  setPos]  = useState(null)
   const [size, setSize] = useState({ w: INIT_W, h: INIT_H })
@@ -468,6 +469,9 @@ export default function SchemaBrowser() {
   useEffect(() => {
     if (allOrphanCount === 0) setShowOrphans(false)
   }, [allOrphanCount])
+  useEffect(() => {
+    if (readyConstraintCount === 0) setShowReady(false)
+  }, [readyConstraintCount])
 
   // ── groups ────────────────────────────────────────────────────────────────
 
@@ -709,7 +713,9 @@ export default function SchemaBrowser() {
     },
     {
       title: 'External Constraints',
-      items: showOrphans ? constraintNodes.filter(c => isCOrphaned(c.id)) : constraintNodes,
+      items: showOrphans ? constraintNodes.filter(c => isCOrphaned(c.id))
+           : showReady   ? constraintNodes.filter(c => !cInCurrentDiag(c.id) && constraintDepsStatus(c) === 'ready')
+           : constraintNodes,
       renderRow: (c) => {
         const inCurrent = cInCurrentDiag(c.id)
         const status = constraintDepsStatus(c)
@@ -838,12 +844,15 @@ export default function SchemaBrowser() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               {readyConstraintCount > 0 && (
                 <span
-                  title={`${readyConstraintCount} constraint${readyConstraintCount !== 1 ? 's' : ''} ready to add`}
+                  onClick={() => { setShowReady(p => !p); setShowOrphans(false) }}
+                  title={showReady ? 'Show all elements' : 'Show only ready-to-add constraints'}
                   style={{
-                    fontSize: 9, color: 'white',
+                    fontSize: 9,
+                    color: showReady ? 'white' : '#16a34a',
                     border: '1px solid #16a34a',
                     borderRadius: 3, padding: '0 4px', lineHeight: '14px',
-                    background: '#16a34a', pointerEvents: 'none',
+                    cursor: 'pointer',
+                    background: showReady ? '#16a34a' : 'transparent',
                   }}
                 >
                   {readyConstraintCount} ready
@@ -851,7 +860,7 @@ export default function SchemaBrowser() {
               )}
               {allOrphanCount > 0 && (
                 <span
-                  onClick={() => setShowOrphans(p => !p)}
+                  onClick={() => { setShowOrphans(p => !p); setShowReady(false) }}
                   title={showOrphans ? 'Show all elements' : 'Show only orphans'}
                   style={{
                     fontSize: 9,
