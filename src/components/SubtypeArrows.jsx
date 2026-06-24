@@ -24,17 +24,32 @@ export function playerBounds(id, otMap, nestedMap) {
   return null
 }
 
+// Look up bounds by occurrence ID first (pinned endpoint), fall back to schema ID.
+function playerBoundsForEndpoint(occId, schemaId, otByOccId, nestedByOccId, otMap, nestedMap) {
+  if (occId) {
+    const asOt = otByOccId[occId]
+    if (asOt) return entityBounds(asOt)
+    const asNf = nestedByOccId[occId]
+    if (asNf) return nestedFactBounds(asNf)
+  }
+  return playerBounds(schemaId, otMap, nestedMap)
+}
+
 export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes, queryReachable, queryOriginals, noteSubjectIds }) {
   const store     = useOrmStore()
   const { objectTypes, facts, subtypes } = useDiagramElements()
+  // Schema-ID maps (for fallback and for the link-draft preview)
   const otMap     = Object.fromEntries(objectTypes.map(o => [o.id, o]))
   const nestedMap = Object.fromEntries(facts.filter(f => f.objectified).map(f => [f.id, f]))
+  // Occurrence-ID maps (for pinned endpoint lookup)
+  const otByOccId     = Object.fromEntries(objectTypes.filter(o => o.occurrenceId).map(o => [o.occurrenceId, o]))
+  const nestedByOccId = Object.fromEntries(facts.filter(f => f.objectified && f.occurrenceId).map(f => [f.occurrenceId, f]))
 
   return (
     <g>
       {subtypes.map(st => {
-        const subBounds = playerBounds(st.subId,   otMap, nestedMap)
-        const supBounds = playerBounds(st.superId,  otMap, nestedMap)
+        const subBounds = playerBoundsForEndpoint(st.subOccId,   st.subId,   otByOccId, nestedByOccId, otMap, nestedMap)
+        const supBounds = playerBoundsForEndpoint(st.superOccId, st.superId, otByOccId, nestedByOccId, otMap, nestedMap)
         if (!subBounds || !supBounds) return null
 
         const from = rectBorderPoint(subBounds, supBounds.cx, supBounds.cy)

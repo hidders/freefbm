@@ -370,6 +370,8 @@
       ],
       "expandedRefModeOccs": [],
       "expandedRefModes": [],
+      "subtypeOccurrences": ["st1"],
+      "subtypeEndpointOccs": { "st1": { "subOccId": "occ_ot6", "superOccId": "occ_ot1" } },
       "multiSelectedIds": [],
       "implicitLinkPositions": {},
       "shownImplicitLinks": [],

@@ -45,10 +45,7 @@ function constraintDiagramsContaining(constraintId, diagrams) {
 }
 
 function subtypeDiagramsContaining(st, diagrams) {
-  return diagrams.filter(d =>
-    d.occurrences?.some(o => o.schemaElementId === st.subId) &&
-    d.occurrences?.some(o => o.schemaElementId === st.superId)
-  )
+  return diagrams.filter(d => (d.subtypeOccurrences ?? []).includes(st.id))
 }
 
 // ── sub-components ────────────────────────────────────────────────────────────
@@ -152,7 +149,7 @@ function ImpliedLinkIcon() {
   )
 }
 
-function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd, onAddExtra, addButtonStyle, onDelete }) {
+function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd, onAddExtra, addButtonStyle, addButtonDisabled, onDelete }) {
   return (
     <div
       onClick={onSelect}
@@ -168,25 +165,28 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
     >
       {/* Fixed-width add button slot keeps icon/name aligned across all rows */}
       <div style={{ width: 22, flexShrink: 0, marginRight: 5 }}>
-        {!inCurrentDiagram && onAdd && (
+        {((!inCurrentDiagram && onAdd) || (addButtonDisabled != null && onAdd)) && (
           <button
             onMouseDown={e => e.stopPropagation()}
-            onClick={e => { e.stopPropagation(); onAdd() }}
-            title="Add to this diagram"
+            onClick={e => { if (addButtonDisabled) return; e.stopPropagation(); onAdd() }}
+            title={addButtonDisabled ? 'Already in this diagram' : 'Add to this diagram'}
             style={{
-              background: addButtonStyle?.background ?? 'none',
-              border: `1px solid ${addButtonStyle?.borderColor ?? 'var(--border)'}`,
-              borderRadius: 3, cursor: 'pointer',
+              background: addButtonDisabled ? 'none' : (addButtonStyle?.background ?? 'none'),
+              border: `1px solid ${addButtonDisabled ? 'var(--border-soft)' : (addButtonStyle?.borderColor ?? 'var(--border)')}`,
+              borderRadius: 3, cursor: addButtonDisabled ? 'default' : 'pointer',
               padding: '2px 4px', width: '100%',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: addButtonStyle?.color ?? 'var(--ink-muted)',
+              color: addButtonDisabled ? 'var(--border)' : (addButtonStyle?.color ?? 'var(--ink-muted)'),
+              opacity: addButtonDisabled ? 0.5 : 1,
             }}
             onMouseEnter={e => {
+              if (addButtonDisabled) return
               e.currentTarget.style.background = '#1e3a8a'
               e.currentTarget.style.color = 'white'
               e.currentTarget.style.borderColor = '#1e3a8a'
             }}
             onMouseLeave={e => {
+              if (addButtonDisabled) return
               e.currentTarget.style.background = addButtonStyle?.background ?? 'none'
               e.currentTarget.style.color = addButtonStyle?.color ?? 'var(--ink-muted)'
               e.currentTarget.style.borderColor = addButtonStyle?.borderColor ?? 'var(--border)'
@@ -403,8 +403,7 @@ export default function SchemaBrowser() {
   const cInCurrentDiag = (id) => diagram?.constraintOccurrences?.some(co => co.schemaConstraintId === id) ?? false
 
   const subtypeInDiag = (st) =>
-    (diagram?.occurrences?.some(o => o.schemaElementId === st.subId) &&
-     diagram?.occurrences?.some(o => o.schemaElementId === st.superId)) ?? false
+    (diagram?.subtypeOccurrences ?? []).includes(st.id)
 
   const shownImplicitLinksSet = new Set(diagram?.shownImplicitLinks ?? [])
   const ilInDiag = (il) => inDiag(il.factId) && shownImplicitLinksSet.has(`${il.factId}:${il.roleIndex}`)
@@ -413,8 +412,7 @@ export default function SchemaBrowser() {
   const isOrphaned    = (id) => !diagrams.some(d => d.occurrences?.some(o => o.schemaElementId === id))
   const isCOrphaned   = (id) => !diagrams.some(d => d.constraintOccurrences?.some(co => co.schemaConstraintId === id))
   const isStOrphaned  = (st) => !diagrams.some(d =>
-    d.occurrences?.some(o => o.schemaElementId === st.subId) &&
-    d.occurrences?.some(o => o.schemaElementId === st.superId)
+    (d.subtypeOccurrences ?? []).includes(st.id)
   )
 
   // Constraint dep-readiness helper
@@ -679,14 +677,22 @@ export default function SchemaBrowser() {
       renderRow: (st) => {
         const subName  = otAndNestedMap[st.subId]?.name  ?? '?'
         const supName  = otAndNestedMap[st.superId]?.name ?? '?'
+        const alreadyIn = subtypeInDiag(st)
+        const endpointsPresent = inDiag(st.subId) && inDiag(st.superId)
+        const stAddStyle = alreadyIn ? undefined
+          : endpointsPresent
+            ? { color: '#166534', borderColor: '#16a34a', background: 'rgba(22,163,74,0.07)' }
+            : { color: '#991b1b', borderColor: '#dc2626', background: 'rgba(220,38,38,0.07)' }
         return (
           <ElementRow key={st.id}
             icon={<SubtypeIcon />}
             label={<span style={{ fontSize: 11 }}>{subName} <span style={{ color: 'var(--ink-muted)' }}>⊂</span> {supName}</span>}
             isOrphaned={isStOrphaned(st)}
-            inCurrentDiagram={subtypeInDiag(st)}
+            inCurrentDiagram={alreadyIn}
             onSelect={() => selectSubtype(st)}
             onAdd={() => store.addElementToDiagram(st.id, diagram?.id)}
+            addButtonStyle={stAddStyle}
+            addButtonDisabled={alreadyIn || false}
             onDelete={() => store.deleteSubtype(st.id)}
           />
         )
@@ -697,12 +703,13 @@ export default function SchemaBrowser() {
       items: showOrphans ? constraintNodes.filter(c => isCOrphaned(c.id)) : constraintNodes,
       renderRow: (c) => {
         const inCurrent = cInCurrentDiag(c.id)
-        const status = inCurrent ? null : constraintDepsStatus(c)
-        const addStyle = status === 'ready'
-          ? { color: '#166534', borderColor: '#16a34a', background: 'rgba(22,163,74,0.07)' }
-          : status === 'partial'
-            ? { color: '#92400e', borderColor: '#d97706', background: 'rgba(217,119,6,0.07)' }
-            : undefined
+        const status = constraintDepsStatus(c)
+        const addStyle = inCurrent ? undefined
+          : status === 'ready'
+            ? { color: '#166534', borderColor: '#16a34a', background: 'rgba(22,163,74,0.07)' }
+            : status === 'partial'
+              ? { color: '#991b1b', borderColor: '#dc2626', background: 'rgba(220,38,38,0.07)' }
+              : undefined
         return (
           <ElementRow key={c.id}
             icon={CONSTRAINT_ICON_MAP[c.constraintType] ?? <UniquenessConstraintIcon />}
@@ -714,6 +721,7 @@ export default function SchemaBrowser() {
             onSelect={() => selectEl(c.id, 'constraint')}
             onAdd={() => store.addElementToDiagram(c.id, diagram?.id)}
             addButtonStyle={addStyle}
+            addButtonDisabled={inCurrent || false}
             onDelete={() => store.deleteConstraint(c.id)}
           />
         )

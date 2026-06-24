@@ -198,7 +198,7 @@ const rmCOcc = (diag, cId) => ({
   constraintOccurrences: (diag.constraintOccurrences ?? []).filter(co => co.schemaConstraintId !== cId),
 })
 
-const mkDiagram = (name = 'Main') => ({ id: uid(), name, occurrences: [], constraintOccurrences: [], implicitLinkPositions: {}, multiSelectedIds: [], profileId: null, shownImplicitLinks: [], notes: [], expandedRefModes: [], expandedRefModeOccs: [] })
+const mkDiagram = (name = 'Main') => ({ id: uid(), name, occurrences: [], constraintOccurrences: [], implicitLinkPositions: {}, multiSelectedIds: [], profileId: null, shownImplicitLinks: [], notes: [], expandedRefModes: [], expandedRefModeOccs: [], subtypeOccurrences: [], subtypeEndpointOccs: {} })
 const mkNote    = (x, y)          => ({ id: uid(), x: Math.round(x), y: Math.round(y), w: 160, h: 100, text: '', connectors: [] })
 
 // ── name uniqueness ───────────────────────────────────────────────────────────
@@ -1292,6 +1292,39 @@ export const useOrmStore = create((set, get) => ({
       return { ...diag, occurrences: updatedOccs, expandedRefModeOccs }
     }
 
+    // Populate subtypeOccurrences / subtypeEndpointOccs for diagrams that pre-date
+    // per-diagram subtype tracking. A subtype is included when both its endpoints have
+    // occurrences in the diagram; the endpoint occurrence IDs are recorded so the arrow
+    // stays pinned to specific occurrences rather than drifting to new ones.
+    function migrateSubtypeOccurrences(diag, parsedSts) {
+      const occs = diag.occurrences ?? []
+      if (diag.subtypeOccurrences != null) {
+        // subtypeOccurrences already exists — backfill subtypeEndpointOccs if missing
+        if (diag.subtypeEndpointOccs != null) return diag
+        const subtypeEndpointOccs = {}
+        for (const stId of diag.subtypeOccurrences) {
+          const st = parsedSts.find(x => x.id === stId)
+          if (!st) continue
+          const subOcc  = occs.find(o => o.schemaElementId === st.subId)
+          const superOcc = occs.find(o => o.schemaElementId === st.superId)
+          if (subOcc && superOcc) subtypeEndpointOccs[stId] = { subOccId: subOcc.id, superOccId: superOcc.id }
+        }
+        return { ...diag, subtypeEndpointOccs }
+      }
+      // Neither field exists — build both from scratch
+      const subtypeOccurrences = []
+      const subtypeEndpointOccs = {}
+      for (const st of parsedSts) {
+        const subOcc  = occs.find(o => o.schemaElementId === st.subId)
+        const superOcc = occs.find(o => o.schemaElementId === st.superId)
+        if (subOcc && superOcc) {
+          subtypeOccurrences.push(st.id)
+          subtypeEndpointOccs[st.id] = { subOccId: subOcc.id, superOccId: superOcc.id }
+        }
+      }
+      return { ...diag, subtypeOccurrences, subtypeEndpointOccs }
+    }
+
     function migrateOldDiagram(diag, parsedOts, facts, constraints) {
       const positions = diag.positions ?? {}
       const occurrences = []
@@ -1364,7 +1397,7 @@ export const useOrmStore = create((set, get) => ({
         if (diag.constraintOccurrences) {
           // Phase 3 format: constraintOccurrences already split out
           const d3 = { ...diag, constraintOccurrences: diag.constraintOccurrences, implicitLinkPositions: diag.implicitLinkPositions ?? {}, multiSelectedIds: [], expandedRefModes: diag.expandedRefModes ?? [] }
-          return migrateRefModeExpansion(d3, parsedOts, facts)
+          return migrateSubtypeOccurrences(migrateRefModeExpansion(d3, parsedOts, facts), parsedSts)
         }
         if (diag.occurrences) {
           // Phase 1/2 format: occurrences exist but constraintOccurrences does not — split them
@@ -1380,10 +1413,10 @@ export const useOrmStore = create((set, get) => ({
             multiSelectedIds: [],
             expandedRefModes: diag.expandedRefModes ?? [],
           }
-          return migrateRefModeExpansion(d12, parsedOts, facts)
+          return migrateSubtypeOccurrences(migrateRefModeExpansion(d12, parsedOts, facts), parsedSts)
         }
         // old format (elementIds + positions)
-        return migrateRefModeExpansion(migrateOldDiagram(diag, parsedOts, facts, constraints), parsedOts, facts)
+        return migrateSubtypeOccurrences(migrateRefModeExpansion(migrateOldDiagram(diag, parsedOts, facts, constraints), parsedOts, facts), parsedSts)
       })
       activeDiagramId = d.activeDiagramId ?? d.diagrams[0].id
     } else {
@@ -1393,7 +1426,17 @@ export const useOrmStore = create((set, get) => ({
         ...facts.map(f => ({ id: `occ_${uid()}`, schemaElementId: f.id, x: f.x ?? 0, y: f.y ?? 0 })),
       ]
       const constraintOccurrences = constraints.map(c => ({ id: `cocc_${uid()}`, schemaConstraintId: c.id, x: c.x ?? 0, y: c.y ?? 0, roleOccurrenceRefs: [] }))
-      const diag = { ...mkDiagram('Main'), occurrences, constraintOccurrences }
+      const subtypeOccurrences = []
+      const subtypeEndpointOccs = {}
+      for (const st of parsedSts) {
+        const subOcc  = occurrences.find(o => o.schemaElementId === st.subId)
+        const superOcc = occurrences.find(o => o.schemaElementId === st.superId)
+        if (subOcc && superOcc) {
+          subtypeOccurrences.push(st.id)
+          subtypeEndpointOccs[st.id] = { subOccId: subOcc.id, superOccId: superOcc.id }
+        }
+      }
+      const diag = { ...mkDiagram('Main'), occurrences, constraintOccurrences, subtypeOccurrences, subtypeEndpointOccs }
       diagrams = [diag]
       activeDiagramId = diag.id
     }
@@ -3541,8 +3584,25 @@ export const useOrmStore = create((set, get) => ({
     const superKind = subtypeKindOf(superId, s0.objectTypes, s0.facts)
     if (subKind && superKind && subKind !== superKind) return
     const st = mkSubtype(subId, superId)
-    set(s => ({ subtypes: [...s.subtypes, st], isDirty: true,
-                selectedId: st.id, selectedKind: 'subtype' }))
+    set(s => ({
+      subtypes: [...s.subtypes, st],
+      diagrams: s.diagrams.map(d => {
+        if (d.id !== s.activeDiagramId) return d
+        const occs = d.occurrences ?? []
+        const subOcc  = occs.find(o => o.schemaElementId === subId)
+        const superOcc = occs.find(o => o.schemaElementId === superId)
+        return {
+          ...d,
+          subtypeOccurrences: [...(d.subtypeOccurrences ?? []), st.id],
+          subtypeEndpointOccs: {
+            ...(d.subtypeEndpointOccs ?? {}),
+            ...(subOcc && superOcc ? { [st.id]: { subOccId: subOcc.id, superOccId: superOcc.id } } : {}),
+          },
+        }
+      }),
+      isDirty: true,
+      selectedId: st.id, selectedKind: 'subtype',
+    }))
   },
 
   updateSubtype(id, patch) {
@@ -3555,6 +3615,14 @@ export const useOrmStore = create((set, get) => ({
   deleteSubtype(id) {
     set(s => ({
       subtypes: s.subtypes.filter(st => st.id !== id),
+      diagrams: s.diagrams.map(d => {
+        const { [id]: _dropped, ...restEndpoints } = d.subtypeEndpointOccs ?? {}
+        return {
+          ...d,
+          subtypeOccurrences: (d.subtypeOccurrences ?? []).filter(sid => sid !== id),
+          subtypeEndpointOccs: restEndpoints,
+        }
+      }),
       constraints: s.constraints.map(c => {
         if (c.sequences) {
           // Remove entire positions where any sequence references this subtype
@@ -5625,6 +5693,7 @@ export const useOrmStore = create((set, get) => ({
       //                         subtype endpoints, target OT; constraint itself added by syncConstraints
       // • Implied link factId → parse "factId_il_roleIndex", queue parent fact, mark implied link shown
       const idsToAdd = new Set()
+      const subtypeIdsToAdd = new Set()
       const impliedLinksToShow = new Set() // "factId:roleIndex"
       const visited  = new Set()
       const queue    = [elementId]
@@ -5636,6 +5705,7 @@ export const useOrmStore = create((set, get) => ({
 
         const st = s.subtypes.find(x => x.id === id)
         if (st) {
+          subtypeIdsToAdd.add(id)
           if (!visited.has(st.subId))   queue.push(st.subId)
           if (!visited.has(st.superId)) queue.push(st.superId)
           continue
@@ -5703,6 +5773,27 @@ export const useOrmStore = create((set, get) => ({
           nd = addOccIfAbsent(nd, id, el.x ?? 0, el.y ?? 0)
         }
 
+        // Add subtype occurrences with endpoint occurrence IDs
+        if (subtypeIdsToAdd.size > 0) {
+          const currentStOccs = new Set(nd.subtypeOccurrences ?? [])
+          const newStIds = [...subtypeIdsToAdd].filter(id => !currentStOccs.has(id))
+          if (newStIds.length > 0) {
+            const newEndpoints = {}
+            for (const stId of newStIds) {
+              const st = s.subtypes.find(x => x.id === stId)
+              if (!st) continue
+              const subOcc  = (nd.occurrences ?? []).find(o => o.schemaElementId === st.subId)
+              const superOcc = (nd.occurrences ?? []).find(o => o.schemaElementId === st.superId)
+              if (subOcc && superOcc) newEndpoints[stId] = { subOccId: subOcc.id, superOccId: superOcc.id }
+            }
+            nd = {
+              ...nd,
+              subtypeOccurrences: [...(nd.subtypeOccurrences ?? []), ...newStIds],
+              subtypeEndpointOccs: { ...(nd.subtypeEndpointOccs ?? {}), ...newEndpoints },
+            }
+          }
+        }
+
         // Add implied links to shownImplicitLinks
         const shown = d.shownImplicitLinks || []
         const newShown = new Set(shown)
@@ -5744,6 +5835,21 @@ export const useOrmStore = create((set, get) => ({
         return { diagrams: updatedDiagrams, isDirty: true }
       }
 
+      // If removing a subtype directly, remove it from subtypeOccurrences and subtypeEndpointOccs
+      const isSubtype = s.subtypes.some(st => st.id === elementId)
+      if (isSubtype) {
+        const updatedDiagrams = s.diagrams.map(d => {
+          if (d.id !== diagramId) return d
+          const { [elementId]: _dropped, ...restEndpoints } = d.subtypeEndpointOccs ?? {}
+          return {
+            ...d,
+            subtypeOccurrences: (d.subtypeOccurrences ?? []).filter(id => id !== elementId),
+            subtypeEndpointOccs: restEndpoints,
+          }
+        })
+        return { diagrams: updatedDiagrams, isDirty: true }
+      }
+
       // Cascade: removing an OT also removes every fact that has it as a role player,
       // and recursively any further OTs/facts linked through objectified facts.
       const toRemove = computeCascadeRemove(elementId, s.facts)
@@ -5752,12 +5858,22 @@ export const useOrmStore = create((set, get) => ({
         if (d.id !== diagramId) return d
         const remainingOccs = (d.occurrences ?? []).filter(o => !toRemove.has(o.schemaElementId))
         const remainingOccIds = new Set(remainingOccs.map(o => o.id))
+        const remainingElIds  = new Set(remainingOccs.map(o => o.schemaElementId))
+        const keptStIds = (d.subtypeOccurrences ?? []).filter(stId => {
+          const st = s.subtypes.find(x => x.id === stId)
+          return st && remainingElIds.has(st.subId) && remainingElIds.has(st.superId)
+        })
+        const keptStIdSet = new Set(keptStIds)
+        const subtypeEndpointOccs = Object.fromEntries(
+          Object.entries(d.subtypeEndpointOccs ?? {}).filter(([stId]) => keptStIdSet.has(stId))
+        )
         return {
           ...d,
           occurrences: remainingOccs,
-          // Positions are kept (implicitLinkPositions not cleaned here — no schema identity loss)
           expandedRefModes:    (d.expandedRefModes    ?? []).filter(id => !toRemove.has(id)),
           expandedRefModeOccs: (d.expandedRefModeOccs ?? []).filter(id => remainingOccIds.has(id)),
+          subtypeOccurrences:  keptStIds,
+          subtypeEndpointOccs,
         }
       })
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
@@ -5784,14 +5900,29 @@ export const useOrmStore = create((set, get) => ({
         finalOccs = remainingOccs.filter(o => !toRemove.has(o.schemaElementId))
       }
 
-      const finalOccIds = new Set(finalOccs.map(o => o.id))
-      const updatedDiagrams = s.diagrams.map(d =>
-        d.id !== diagramId ? d : {
+      const finalOccIds  = new Set(finalOccs.map(o => o.id))
+      const finalElIds   = new Set(finalOccs.map(o => o.schemaElementId))
+      const updatedDiagrams = s.diagrams.map(d => {
+        if (d.id !== diagramId) return d
+        // Remove subtypes whose pinned endpoint occurrence is being removed,
+        // or whose schema endpoint is no longer present at all.
+        const keptStIds = (d.subtypeOccurrences ?? []).filter(stId => {
+          const ep = (d.subtypeEndpointOccs ?? {})[stId]
+          if (ep && (ep.subOccId === occurrenceId || ep.superOccId === occurrenceId)) return false
+          const st = s.subtypes.find(x => x.id === stId)
+          return st && finalElIds.has(st.subId) && finalElIds.has(st.superId)
+        })
+        const keptStIdSet = new Set(keptStIds)
+        return {
           ...d,
           occurrences: finalOccs,
           expandedRefModeOccs: (d.expandedRefModeOccs ?? []).filter(id => id !== occurrenceId && finalOccIds.has(id)),
+          subtypeOccurrences:  keptStIds,
+          subtypeEndpointOccs: Object.fromEntries(
+            Object.entries(d.subtypeEndpointOccs ?? {}).filter(([stId]) => keptStIdSet.has(stId))
+          ),
         }
-      )
+      })
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
       return {
         diagrams: syncedDiagrams,
@@ -5837,10 +5968,13 @@ export const useOrmStore = create((set, get) => ({
       // Collect all IDs to remove, including cascade for each selected element
       const cascaded = new Set()
       const constraintIdSetLocal = new Set(s.constraints.map(c => c.id))
+      const subtypeIdSetLocal    = new Set(s.subtypes.map(st => st.id))
       // Directly selected constraint IDs (to remove from constraintOccurrences)
       const directConstraintIds = new Set(multiSelectedIds.filter(id => constraintIdSetLocal.has(id)))
+      // Directly selected subtype IDs (to remove from subtypeOccurrences)
+      const directSubtypeIds = new Set(multiSelectedIds.filter(id => subtypeIdSetLocal.has(id)))
       for (const id of multiSelectedIds) {
-        if (!constraintIdSetLocal.has(id)) {
+        if (!constraintIdSetLocal.has(id) && !subtypeIdSetLocal.has(id)) {
           computeCascadeRemove(id, s.facts).forEach(cid => cascaded.add(cid))
         }
       }
@@ -5859,6 +5993,13 @@ export const useOrmStore = create((set, get) => ({
           }
           return true
         }))
+        const remainingElIds = new Set(newOccs.map(o => o.schemaElementId))
+        const keptStIds = (d.subtypeOccurrences ?? []).filter(stId => {
+          if (directSubtypeIds.has(stId)) return false
+          const st = s.subtypes.find(x => x.id === stId)
+          return st && remainingElIds.has(st.subId) && remainingElIds.has(st.superId)
+        })
+        const keptStIdSet = new Set(keptStIds)
         return {
           ...d,
           occurrences: newOccs,
@@ -5867,6 +6008,10 @@ export const useOrmStore = create((set, get) => ({
           shownImplicitLinks: (d.shownImplicitLinks || []).filter(ilKey => !ilKeysToRemove.has(ilKey)),
           expandedRefModes:    (d.expandedRefModes    ?? []).filter(id => !cascaded.has(id)),
           expandedRefModeOccs: (() => { const s = new Set(newOccs.map(o => o.id)); return (d.expandedRefModeOccs ?? []).filter(id => s.has(id)) })(),
+          subtypeOccurrences:  keptStIds,
+          subtypeEndpointOccs: Object.fromEntries(
+            Object.entries(d.subtypeEndpointOccs ?? {}).filter(([stId]) => keptStIdSet.has(stId))
+          ),
         }
       })
       const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)

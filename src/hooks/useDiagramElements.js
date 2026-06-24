@@ -192,10 +192,19 @@ export function getDiagramElements(store) {
   const visibleFactIds = new Set(visibleFacts.map(f => f.id))
   const allVisibleIds  = new Set([...visibleOtIds, ...visibleFactIds])
 
-  // Subtypes are shown automatically when both endpoints are visible
-  const allVisibleSubtypes = subtypes.filter(st =>
-    allVisibleIds.has(st.subId) && allVisibleIds.has(st.superId)
-  )
+  // Subtypes are shown only when explicitly added to the diagram (subtypeOccurrences)
+  // and both their endpoints are currently visible.
+  const subtypeOccurrenceSet  = new Set(diagram?.subtypeOccurrences ?? [])
+  const subtypeEndpointOccs   = diagram?.subtypeEndpointOccs ?? {}
+  const allVisibleSubtypes = subtypes
+    .filter(st =>
+      subtypeOccurrenceSet.has(st.id) &&
+      allVisibleIds.has(st.subId) && allVisibleIds.has(st.superId)
+    )
+    .map(st => {
+      const ep = subtypeEndpointOccs[st.id]
+      return { ...st, subOccId: ep?.subOccId ?? null, superOccId: ep?.superOccId ?? null }
+    })
 
   return {
     objectTypes:        visibleObjectTypes,
