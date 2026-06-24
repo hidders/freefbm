@@ -215,6 +215,12 @@ const patchCOcc = (diag, cId, patch) => ({
     co.schemaConstraintId === cId ? { ...co, ...patch } : co
   ),
 })
+const patchCOccById = (diag, cOccId, patch) => ({
+  ...diag,
+  constraintOccurrences: (diag.constraintOccurrences ?? []).map(co =>
+    co.id === cOccId ? { ...co, ...patch } : co
+  ),
+})
 const addCOccIfAbsent = (diag, cId, x, y) =>
   cInDiag(diag, cId) ? diag : { ...diag, constraintOccurrences: [...(diag.constraintOccurrences ?? []), mkConstraintOcc(cId, x, y)] }
 const rmCOcc = (diag, cId) => ({
@@ -3925,7 +3931,10 @@ export const useOrmStore = create((set, get) => ({
     set(s => ({
       diagrams: s.diagrams.map(d => {
         if (d.id !== diagramId) return d
-        const cocc = { ...mkConstraintOcc(constraintId, c.x ?? 0, c.y ?? 0), roleOccurrenceRefs, queryOccurrenceRefs }
+        // Offset subsequent occurrences so they don't land on top of existing ones.
+        const existingCount = (d.constraintOccurrences ?? []).filter(co => co.schemaConstraintId === constraintId).length
+        const offsetX = existingCount * 24
+        const cocc = { ...mkConstraintOcc(constraintId, (c.x ?? 0) + offsetX, (c.y ?? 0) + offsetX), roleOccurrenceRefs, queryOccurrenceRefs }
         return { ...d, constraintOccurrences: [...(d.constraintOccurrences ?? []), cocc] }
       }),
       isDirty: true,
@@ -5155,6 +5164,13 @@ export const useOrmStore = create((set, get) => ({
   moveConstraint(id, x, y) {
     set(s => ({
       diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : patchCOcc(d, id, { x, y })),
+      isDirty: true,
+    }))
+  },
+
+  moveConstraintOccurrence(cOccId, x, y) {
+    set(s => ({
+      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : patchCOccById(d, cOccId, { x: Math.round(x), y: Math.round(y) })),
       isDirty: true,
     }))
   },

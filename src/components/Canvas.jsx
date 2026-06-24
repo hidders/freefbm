@@ -983,7 +983,7 @@ export default function Canvas() {
     const el = kind === 'fact'
       ? (occurrenceId ? visibleFacts.find(f => f.occurrenceId === occurrenceId) : visibleFacts.find(f => f.id === id))
       : kind === 'constraint'
-        ? visibleConstraints.find(c => c.id === id)
+        ? (occurrenceId ? visibleConstraints.find(c => c.constraintOccurrenceId === occurrenceId) : visibleConstraints.find(c => c.id === id))
         : (occurrenceId ? visibleOts.find(o => o.occurrenceId === occurrenceId) : visibleOts.find(o => o.id === id))
     if (!el) return
     setDragState({ type: 'element', id, kind,
@@ -1011,7 +1011,10 @@ export default function Canvas() {
       if (dragState.kind === 'fact') {
         if (dragState.occurrenceId) store.moveOccurrence(dragState.occurrenceId, wx, wy)
         else store.moveFact(dragState.id, wx, wy)
-      } else if (dragState.kind === 'constraint') store.moveConstraint(dragState.id, wx, wy)
+      } else if (dragState.kind === 'constraint') {
+        if (dragState.occurrenceId) store.moveConstraintOccurrence(dragState.occurrenceId, wx, wy)
+        else store.moveConstraint(dragState.id, wx, wy)
+      }
       else if (dragState.kind === 'implicitLink') store.updateImplicitLink(dragState.implicitFactId, dragState.implicitRoleIndex, { x: snapEnabled ? snap(wx) : wx, y: snapEnabled ? snap(wy) : wy })
       else if (dragState.kind === 'note')       store.updateNote(dragState.id, { x: snapEnabled ? snap(wx) : wx, y: snapEnabled ? snap(wy) : wy })
       else {
@@ -1031,7 +1034,7 @@ export default function Canvas() {
         let wy = el.origY + wdy
         if (snapEnabled) { wx = snap(wx); wy = snap(wy) }
         if (el.occurrenceId) store.moveOccurrence(el.occurrenceId, wx, wy)
-        else if (el.constraintOccurrenceId) store.moveConstraint(el.id, wx, wy)
+        else if (el.constraintOccurrenceId) store.moveConstraintOccurrence(el.constraintOccurrenceId, wx, wy)
         else if (el.kind === 'fact') store.moveFact(el.id, wx, wy)
         else if (el.kind === 'constraint') store.moveConstraint(el.id, wx, wy)
         else if (el.kind === 'implicitLink') store.updateImplicitLink(el.implicitFactId, el.implicitRoleIndex, { x: snapEnabled ? snap(wx) : wx, y: snapEnabled ? snap(wy) : wy })
