@@ -458,6 +458,10 @@ export default function SchemaBrowser() {
   const readyConstraintCount = store.constraints.filter(c =>
     !cInCurrentDiag(c.id) && constraintDepsStatus(c) === 'ready'
   ).length
+  const readySubtypeCount = subtypeEdges.filter(st =>
+    !subtypeInDiag(st) && inDiag(st.subId) && inDiag(st.superId)
+  ).length
+  const readyCount = readyConstraintCount + readySubtypeCount
 
   const allOrphanCount = [
     ...store.objectTypes.filter(o => isOrphaned(o.id)),
@@ -470,8 +474,8 @@ export default function SchemaBrowser() {
     if (allOrphanCount === 0) setShowOrphans(false)
   }, [allOrphanCount])
   useEffect(() => {
-    if (readyConstraintCount === 0) setShowReady(false)
-  }, [readyConstraintCount])
+    if (readyCount === 0) setShowReady(false)
+  }, [readyCount])
 
   // ── groups ────────────────────────────────────────────────────────────────
 
@@ -581,7 +585,7 @@ export default function SchemaBrowser() {
   const sections = [
     {
       title: 'Entity Types',
-      items: showOrphans ? entityTypes.filter(el => isOrphaned(el.id)) : entityTypes,
+      items: showOrphans ? entityTypes.filter(el => isOrphaned(el.id)) : showReady ? [] : entityTypes,
       renderRow: (el) => {
         return (
           <ElementRow key={el.id}
@@ -599,7 +603,7 @@ export default function SchemaBrowser() {
     },
     {
       title: 'Nested Entity Types',
-      items: showOrphans ? nestedEntityTypes.filter(el => isOrphaned(el.id)) : nestedEntityTypes,
+      items: showOrphans ? nestedEntityTypes.filter(el => isOrphaned(el.id)) : showReady ? [] : nestedEntityTypes,
       renderRow: (el) => (
         <ElementRow key={el.id}
           icon={<NestedFactTypeIcon />}
@@ -615,7 +619,7 @@ export default function SchemaBrowser() {
     },
     {
       title: 'Value Types',
-      items: showOrphans ? valueTypes.filter(el => isOrphaned(el.id)) : valueTypes,
+      items: showOrphans ? valueTypes.filter(el => isOrphaned(el.id)) : showReady ? [] : valueTypes,
       renderRow: (el) => (
         <ElementRow key={el.id}
           icon={<ValueTypeIcon />}
@@ -634,7 +638,7 @@ export default function SchemaBrowser() {
       items: showOrphans ? factTypes.filter(f => {
         if (f.isImpliedLink) return false
         return isOrphaned(f.id)
-      }) : factTypes,
+      }) : showReady ? [] : factTypes,
       renderRow: (f) => {
         if (f.isImpliedLink) {
           // Construct a synthetic 2-role fact so FactLabel can render the reading naturally.
@@ -677,7 +681,9 @@ export default function SchemaBrowser() {
     },
     {
       title: 'Subtype Relationships',
-      items: showOrphans ? subtypeEdges.filter(st => isStOrphaned(st)) : subtypeEdges,
+      items: showOrphans ? subtypeEdges.filter(st => isStOrphaned(st))
+           : showReady   ? subtypeEdges.filter(st => !subtypeInDiag(st) && inDiag(st.subId) && inDiag(st.superId))
+           : subtypeEdges,
       renderRow: (st) => {
         const subName  = otAndNestedMap[st.subId]?.name  ?? '?'
         const supName  = otAndNestedMap[st.superId]?.name ?? '?'
@@ -744,7 +750,7 @@ export default function SchemaBrowser() {
     },
     {
       title: 'Notes',
-      items: showOrphans ? [] : (diagram?.notes ?? []),
+      items: showOrphans || showReady ? [] : (diagram?.notes ?? []),
       renderRow: (note) => {
         const preview = (note.text || '').split('\n')[0].slice(0, 40) || '(empty)'
         return (
@@ -807,12 +813,12 @@ export default function SchemaBrowser() {
               minWidth: 14, textAlign: 'center',
             }}>{allOrphanCount}</span>
           )}
-          {readyConstraintCount > 0 && (
+          {readyCount > 0 && (
             <span style={{
               background: '#16a34a', color: 'white',
               borderRadius: 8, fontSize: 9, padding: '0 4px', lineHeight: '14px',
               minWidth: 14, textAlign: 'center',
-            }}>{readyConstraintCount}</span>
+            }}>{readyCount}</span>
           )}
         </div>
 
@@ -842,10 +848,10 @@ export default function SchemaBrowser() {
               ⠿ schema browser
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              {readyConstraintCount > 0 && (
+              {readyCount > 0 && (
                 <span
                   onClick={() => { setShowReady(p => !p); setShowOrphans(false) }}
-                  title={showReady ? 'Show all elements' : 'Show only ready-to-add constraints'}
+                  title={showReady ? 'Show all elements' : 'Show only ready-to-add subtypes and constraints'}
                   style={{
                     fontSize: 9,
                     color: showReady ? 'white' : '#16a34a',
@@ -855,7 +861,7 @@ export default function SchemaBrowser() {
                     background: showReady ? '#16a34a' : 'transparent',
                   }}
                 >
-                  {readyConstraintCount} ready
+                  {readyCount} ready
                 </span>
               )}
               {allOrphanCount > 0 && (
