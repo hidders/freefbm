@@ -620,8 +620,10 @@ function borderPoint(ot, tx, ty) {
 export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, noteSubjectIds }) {
   const store = useOrmStore()
   const { objectTypes, facts, constraints: visibleConstraints, subtypes } = useDiagramElements()
-  // factMap: schema ID → last occurrence (default for constraints with no roleOccurrenceRefs)
-  const factMap    = Object.fromEntries(facts.map(f => [f.id, f]))
+  // factMap: schema ID → first (oldest) occurrence, so adding a second occurrence of a fact
+  // doesn't move existing constraint connectors that have no explicit roleOccurrenceRefs.
+  const factMap = {}
+  for (const f of facts) { if (!(f.id in factMap)) factMap[f.id] = f }
   // Add synthetic implied link facts so constraint connectors can resolve them
   facts.filter(f => f.objectified).forEach(f => {
     (f.implicitLinks || []).forEach(il => {
