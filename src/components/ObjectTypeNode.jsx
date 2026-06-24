@@ -297,12 +297,12 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
 
     if (isSubtypeTool) {
       if (!store.linkDraft) {
-        store.setLinkDraft({ type: 'subtype', fromId: ot.id })
+        store.setLinkDraft({ type: 'subtype', fromId: ot.id, fromOccId: occurrenceId ?? null })
       } else if (store.linkDraft.fromId !== ot.id) {
         // Reject mixed-kind subtype edges (entity↔value)
         const draftKind = subtypeKindOf(store.linkDraft.fromId, store.objectTypes, store.facts)
         if (draftKind && draftKind !== ot.kind) return
-        store.addSubtype(store.linkDraft.fromId, ot.id)
+        store.addSubtype(store.linkDraft.fromId, ot.id, store.linkDraft.fromOccId, occurrenceId ?? null)
         store.clearLinkDraft()
         store.setTool('select')
       } else {

@@ -3699,7 +3699,7 @@ export const useOrmStore = create((set, get) => ({
 
   // ── subtypes ────────────────────────────────────────────────────────────
 
-  addSubtype(subId, superId) {
+  addSubtype(subId, superId, subOccId = null, superOccId = null) {
     const s0 = get()
     const exists = s0.subtypes.some(s => s.subId === subId && s.superId === superId)
     if (exists || subId === superId) return
@@ -3713,14 +3713,17 @@ export const useOrmStore = create((set, get) => ({
       diagrams: s.diagrams.map(d => {
         if (d.id !== s.activeDiagramId) return d
         const occs = d.occurrences ?? []
-        const subOcc  = occs.find(o => o.schemaElementId === subId)
-        const superOcc = occs.find(o => o.schemaElementId === superId)
+        // Use the explicitly clicked occurrence IDs when provided; fall back to first match.
+        const resolvedSubOcc   = subOccId   ? occs.find(o => o.id === subOccId)   : occs.find(o => o.schemaElementId === subId)
+        const resolvedSuperOcc = superOccId ? occs.find(o => o.id === superOccId) : occs.find(o => o.schemaElementId === superId)
         return {
           ...d,
           subtypeOccurrences: [...(d.subtypeOccurrences ?? []), st.id],
           subtypeEndpointOccs: {
             ...(d.subtypeEndpointOccs ?? {}),
-            ...(subOcc && superOcc ? { [st.id]: { subOccId: subOcc.id, superOccId: superOcc.id } } : {}),
+            ...(resolvedSubOcc && resolvedSuperOcc
+              ? { [st.id]: { subOccId: resolvedSubOcc.id, superOccId: resolvedSuperOcc.id } }
+              : {}),
           },
         }
       }),
