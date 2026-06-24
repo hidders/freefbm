@@ -58,13 +58,15 @@ export default function StatusBar() {
     const remaining = store.linkDraft.pendingPicks?.length ?? 0
     const targetName = pick?.label ?? 'element'
     const stepHint = remaining > 1 ? ` (${remaining} left)` : ''
+    const isQueryAnchor = pick?.targetRef === 'query'
+    const verb = isQueryAnchor ? 'anchor the query to' : 'connect the constraint to'
     return (
       <div style={{ height: 26, display: 'flex', alignItems: 'center',
         padding: '0 14px', gap: 16,
         background: 'var(--bg-surface)', borderTop: '1px solid var(--border-soft)',
         flexShrink: 0 }}>
         <span style={{ fontSize: 11, color: 'var(--accent)', flex: 1, fontWeight: 600 }}>
-          Click the occurrence of <em>{targetName}</em> to connect{stepHint} · Esc to cancel
+          Click an occurrence of <em>{targetName}</em> to {verb}{stepHint} · Esc to cancel
         </span>
         <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{Math.round(store.zoom * 100)}%</span>
       </div>

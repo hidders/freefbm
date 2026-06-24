@@ -448,20 +448,27 @@ export default function QueryCopies({ onCopyClick, onCopyContextMenu, mousePos }
   // Apply diagram occurrence positions to all elements (not just visible ones)
   const diagram   = store.diagrams.find(d => d.id === store.activeDiagramId)
   const occMap    = Object.fromEntries((diagram?.occurrences ?? []).map(o => [o.schemaElementId, o]))
-  // Also apply orientation and displayRoleOrder so copies mirror the diagram's presentation
+
+  // Per-diagram copy position overrides (different diagrams can have different layouts)
+  const constraintId    = qd?.constraintId ?? qh?.constraintId
+  const sequenceIndex   = qd?.sequenceIndex ?? qh?.queryIndex
+  const diagCopyPos     = diagram?.queryPositions?.[constraintId]?.[sequenceIndex] ?? {}
+
+  // Use queryOccurrenceRefs to position each copy at its anchored occurrence
+  const activeCocc  = diagram?.constraintOccurrences?.find(co => co.schemaConstraintId === constraintId)
+  const qor         = activeCocc?.queryOccurrenceRefs ?? {}
+  const occByOccId  = Object.fromEntries((diagram?.occurrences ?? []).map(o => [o.id, o]))
+
+  // Apply anchored occurrence position; fall back to schema-level position
   const applyPos  = (el) => {
-    const p = occMap[el.id]
+    const anchoredOccId = qor[el.id]
+    const p = anchoredOccId ? occByOccId[anchoredOccId] : occMap[el.id]
     if (!p) return el
     const r = { ...el, x: p.x ?? el.x, y: p.y ?? el.y }
     if (p.orientation     !== undefined) r.orientation     = p.orientation
     if (p.displayRoleOrder !== undefined) r.displayRoleOrder = p.displayRoleOrder
     return r
   }
-
-  // Per-diagram copy position overrides (different diagrams can have different layouts)
-  const constraintId    = qd?.constraintId ?? qh?.constraintId
-  const sequenceIndex   = qd?.sequenceIndex ?? qh?.queryIndex
-  const diagCopyPos     = diagram?.queryPositions?.[constraintId]?.[sequenceIndex] ?? {}
 
   const otMap   = Object.fromEntries([
     ...store.objectTypes.map(applyPos),

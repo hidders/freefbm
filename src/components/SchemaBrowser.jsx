@@ -417,6 +417,7 @@ export default function SchemaBrowser() {
   )
 
   // Constraint dep-readiness helper
+  // "ready" = all directly-connected elements AND all query elements have ≥1 occurrence in diagram.
   const constraintDepsStatus = (c) => {
     const deps = []
     if (c.sequences) {
@@ -443,7 +444,7 @@ export default function SchemaBrowser() {
     }
     if (c.targetObjectTypeId) deps.push({ kind: 'ot', id: c.targetObjectTypeId })
     if (deps.length === 0) return 'empty'
-    const allPresent = deps.every(dep => {
+    const seqAllPresent = deps.every(dep => {
       if (dep.kind === 'fact') return inDiag(dep.id)
       if (dep.kind === 'ot')   return inDiag(dep.id)
       if (dep.kind === 'subtype') {
@@ -452,13 +453,26 @@ export default function SchemaBrowser() {
       }
       return false
     })
-    return allPresent ? 'ready' : 'partial'
+    if (!seqAllPresent) return 'partial'
+    // Also check query deps: every element used in the constraint's queries must be present
+    for (const q of (c.queries ?? [])) {
+      if (!q?.copies) continue
+      for (const cp of q.copies) {
+        if (!cp.originalId || cp.originalId.includes('_il_')) continue
+        if (cp.kind === 'subtype') {
+          if (!subtypeInDiag({ id: cp.originalId })) return 'partial'
+        } else {
+          if (!inDiag(cp.originalId)) return 'partial'
+        }
+      }
+    }
+    return 'ready'
   }
 
   const readyConstraintCount = store.constraints.filter(c =>
     !cInCurrentDiag(c.id) && constraintDepsStatus(c) === 'ready'
   ).length
-  const readySubtypeCount = subtypeEdges.filter(st =>
+  const readySubtypeCount = store.subtypes.filter(st =>
     !subtypeInDiag(st) && inDiag(st.subId) && inDiag(st.superId)
   ).length
   const readyCount = readyConstraintCount + readySubtypeCount

@@ -121,6 +121,12 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     if (!store.showConstraintQueries || store.selectedKind !== 'constraint') return false
     const c = store.constraints.find(c => c.id === store.selectedId)
     if (!c?.queries) return false
+    // Only highlight the anchored occurrence when queryOccurrenceRefs is set
+    const activeDiag = store.diagrams.find(d => d.id === store.activeDiagramId)
+    const activeCocc = activeDiag?.constraintOccurrences?.find(co => co.schemaConstraintId === store.selectedId)
+    const qor = activeCocc?.queryOccurrenceRefs ?? {}
+    const anchoredOccId = qor[ot.id]
+    if (anchoredOccId && ot.occurrenceId && ot.occurrenceId !== anchoredOccId) return false
     return c.queries.some(q => q?.copies?.some(cp => cp.originalId === ot.id))
   })()
   const isPickingTarget    = !!store.pendingTargetPick

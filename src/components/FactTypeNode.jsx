@@ -488,7 +488,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     fact.roles.forEach((r, ri) => { if (r.objectTypeId === pendingOrigId) s.add(ri) })
     return s
   })()
-  // Roles highlighted because the selected constraint's queries include them
+  // Roles highlighted because the selected constraint's queries include them.
+  // When queryOccurrenceRefs is set on the constraint occurrence, only highlight the
+  // anchored occurrence of each fact type (not all occurrences of the same schema element).
   const { queryHighlightRoles, nestedInQueryHighlight } = (() => {
     if (inQueryEdit) return { queryHighlightRoles: null, nestedInQueryHighlight: false }
     const qh = store.queryIndexHighlight
@@ -496,6 +498,14 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     if (qh || !showAll) return { queryHighlightRoles: null, nestedInQueryHighlight: false }
     const c = store.constraints.find(c => c.id === store.selectedId)
     if (!c?.queries) return { queryHighlightRoles: null, nestedInQueryHighlight: false }
+    // Check whether this specific occurrence is the anchored one for the query
+    const activeDiag = store.diagrams.find(d => d.id === store.activeDiagramId)
+    const activeCocc = activeDiag?.constraintOccurrences?.find(co => co.schemaConstraintId === store.selectedId)
+    const qor = activeCocc?.queryOccurrenceRefs ?? {}
+    const anchoredOccId = qor[fact.id]
+    if (anchoredOccId && occurrenceId && occurrenceId !== anchoredOccId) {
+      return { queryHighlightRoles: null, nestedInQueryHighlight: false }
+    }
     const roles = new Set()
     let nestedHighlight = false
     for (let qi = 0; qi < c.queries.length; qi++) {
@@ -506,7 +516,6 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         const cp = q.copies.find(cp => cp.id === lk.copyId)
         if (cp?.kind === 'fact' && cp.originalId === fact.id) roles.add(lk.roleIndex)
       }
-      // Objectified fact used as an OT variable: check copies of any kind with this originalId
       if (fact.objectified && q.copies.some(cp => cp.originalId === fact.id)) nestedHighlight = true
     }
     return { queryHighlightRoles: roles.size > 0 ? roles : null, nestedInQueryHighlight: nestedHighlight }
@@ -694,6 +703,13 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     e.stopPropagation()
     if (e.button !== 0) return
     if (e.detail >= 2) return  // second click of a double-click: do nothing
+    if (store.linkDraft?.type === 'constraintEndpointPick') {
+      const pick = store.linkDraft.pendingPicks?.[0]
+      if (pick && pick.kind === 'fact' && fact.id === pick.schemaId) {
+        store.pickConstraintEndpoint(occurrenceId ?? fact.id)
+      }
+      return
+    }
     if (inQueryEdit) {
       store.queryEditClick({ type: 'factOriginalRole', id: fact.id, roleIndex })
       return

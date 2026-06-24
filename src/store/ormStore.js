@@ -203,7 +203,7 @@ const buildRoleOccurrenceMap = (fact, occurrences) => {
 
 // Constraint-occurrence helpers (constraintOccurrences is separate from occurrences)
 const mkConstraintOcc = (schemaConstraintId, x, y) =>
-  ({ id: `cocc_${uid()}`, schemaConstraintId, x: Math.round(x), y: Math.round(y), roleOccurrenceRefs: [] })
+  ({ id: `cocc_${uid()}`, schemaConstraintId, x: Math.round(x), y: Math.round(y), roleOccurrenceRefs: {}, queryOccurrenceRefs: {} })
 const cOccOf    = (diag, cId) => (diag.constraintOccurrences ?? []).find(co => co.schemaConstraintId === cId)
 const cInDiag   = (diag, cId) => (diag.constraintOccurrences ?? []).some(co => co.schemaConstraintId === cId)
 const patchCOcc = (diag, cId, patch) => ({
@@ -443,6 +443,25 @@ function findPathDown(fromId, toId, subtypes) {
 // Returns unique fact/OT deps from a constraint's sequences, grouped by schema ID.
 // Each dep: { schemaId, kind: 'fact'|'ot', label, memberKeys: ['si:mi', ...] }
 // memberKeys are the roleOccurrenceRefs keys that reference this element.
+function factTypeLabel(f, objectTypes) {
+  if (!f) return null
+  if (f.objectifiedName) return f.objectifiedName
+  if (f.name) return f.name
+  const parts = f.readingParts || []
+  const roles = f.roles || []
+  if (roles.length === 0) return null
+  const tokens = []
+  for (let i = 0; i <= roles.length; i++) {
+    const seg = parts[i]?.trim()
+    if (seg) tokens.push(seg)
+    if (i < roles.length) {
+      const ot = objectTypes?.find(o => o.id === roles[i].objectTypeId)
+      tokens.push(ot?.name ?? '?')
+    }
+  }
+  return tokens.join(' ') || null
+}
+
 function getConstraintDeps(c, facts, objectTypes) {
   const factDepsMap = new Map()  // schemaId → memberKeys[]
   const seqs = c.sequences ?? c.roleSequences ?? []
@@ -458,13 +477,42 @@ function getConstraintDeps(c, facts, objectTypes) {
   const deps = []
   for (const [schemaId, memberKeys] of factDepsMap) {
     const el = facts?.find(f => f.id === schemaId)
-    deps.push({ schemaId, kind: 'fact', label: el?.name ?? schemaId, memberKeys })
+    const label = factTypeLabel(el, objectTypes) ?? schemaId
+    deps.push({ schemaId, kind: 'fact', label, memberKeys })
   }
   return deps
 }
 
 // ── constraint auto-sync ──────────────────────────────────────────────────────
 // Returns the set of constraint IDs that are eligible for a given elementId set.
+// Returns deduplicated list of all schema elements (facts, OTs, subtypes) referenced in
+// the constraint's query copies, excluding those already covered by getConstraintDeps.
+function getConstraintQueryDeps(c, facts, objectTypes, subtypes) {
+  const seen = new Set()
+  const deps = []
+  for (const q of (c.queries ?? [])) {
+    if (!q?.copies) continue
+    for (const cp of q.copies) {
+      const schemaId = cp.originalId
+      if (!schemaId || seen.has(schemaId) || schemaId.includes('_il_')) continue
+      seen.add(schemaId)
+      if (cp.kind === 'fact') {
+        const el = facts?.find(f => f.id === schemaId)
+        deps.push({ schemaId, kind: 'fact', label: factTypeLabel(el, objectTypes) ?? schemaId })
+      } else if (cp.kind === 'objectType') {
+        const el = objectTypes?.find(o => o.id === schemaId)
+        deps.push({ schemaId, kind: 'ot', label: el?.name ?? schemaId })
+      } else if (cp.kind === 'subtype') {
+        const st = subtypes?.find(s => s.id === schemaId)
+        const subName = objectTypes?.find(o => o.id === st?.subId)?.name ?? '?'
+        const supName = objectTypes?.find(o => o.id === st?.superId)?.name ?? '?'
+        deps.push({ schemaId, kind: 'subtype', label: `${subName} → ${supName}` })
+      }
+    }
+  }
+  return deps
+}
+
 // A constraint is eligible when every fact/OT/subtype-endpoint it refers to is present.
 // For implied link fact IDs (e.g. "abc_il_0"), checks that the parent fact is in the
 // diagram and the implied link is shown in shownImplicitLinks.
@@ -540,53 +588,30 @@ function hasNoConnectors(c) {
 // Constraints with connectors follow their referred elements automatically.
 // Constraints with no connectors persist in the diagram until explicitly removed.
 // Constraints are stored in constraintOccurrences[], separate from occurrences[].
+// This function only REMOVES constraint occurrences when their deps leave the diagram.
+// New constraint occurrences are never auto-added — they must be added explicitly.
 function syncConstraints(diagrams, constraints, subtypes, facts) {
   return diagrams.map(d => {
     const shownImplicitLinks = d.shownImplicitLinks || []
     const constraintIdSet = new Set(constraints.map(c => c.id))
-
-    // Non-constraint element IDs in occurrences (constraints are no longer in occurrences)
     const nonConstraintIds = new Set((d.occurrences ?? []).map(o => o.schemaElementId))
-
-    // Existing constraint occurrences
     const currentConstraintOccs = d.constraintOccurrences ?? []
-    const currentConstraintIds = new Set(currentConstraintOccs.map(co => co.schemaConstraintId))
 
-    // Connectorless constraints that are currently in this diagram should persist
-    const connectorlessExisting = [...currentConstraintIds].filter(id => {
-      const c = constraints.find(cc => cc.id === id)
-      return c && hasNoConnectors(c)
+    const mustKeep = new Set([...nonConstraintIds])
+    const eligible = eligibleConstraints(constraints, subtypes, mustKeep, facts, shownImplicitLinks)
+    const eligibleIds = new Set(eligible.map(c => c.id))
+
+    // Keep an occurrence only if: the constraint still exists in the schema AND
+    // (it has no connectors OR all its deps are still present in the diagram).
+    const filtered = currentConstraintOccs.filter(co => {
+      if (!constraintIdSet.has(co.schemaConstraintId)) return false
+      const c = constraints.find(cc => cc.id === co.schemaConstraintId)
+      if (!c) return false
+      return hasNoConnectors(c) || eligibleIds.has(co.schemaConstraintId)
     })
 
-    // mustKeep = non-constraint element IDs (for eligibility checks)
-    const mustKeep = new Set([...nonConstraintIds])
-
-    // Compute eligible constraints (those with connectors whose deps are all present)
-    const eligible = eligibleConstraints(constraints, subtypes, mustKeep, facts, shownImplicitLinks)
-
-    // New constraint IDs: connectorless existing + eligible
-    const newConstraintIds = new Set([...connectorlessExisting, ...eligible.map(c => c.id)])
-
-    // Check if unchanged
-    const unchanged = newConstraintIds.size === currentConstraintIds.size &&
-      [...newConstraintIds].every(id => currentConstraintIds.has(id))
-    if (unchanged) return d
-
-    // Filter out constraint occurrences no longer needed, add new ones
-    let constraintOccurrences = currentConstraintOccs.filter(co => newConstraintIds.has(co.schemaConstraintId))
-    for (const c of eligible) {
-      if (!currentConstraintIds.has(c.id)) {
-        constraintOccurrences = [...constraintOccurrences, mkConstraintOcc(c.id, c.x, c.y)]
-      }
-    }
-    // Also add connectorless constraints that weren't yet in constraintOccurrences
-    for (const cId of connectorlessExisting) {
-      if (!currentConstraintIds.has(cId)) {
-        const c = constraints.find(cc => cc.id === cId)
-        if (c) constraintOccurrences = [...constraintOccurrences, mkConstraintOcc(cId, c.x, c.y)]
-      }
-    }
-    return { ...d, constraintOccurrences }
+    if (filtered.length === currentConstraintOccs.length) return d
+    return { ...d, constraintOccurrences: filtered }
   })
 }
 
@@ -3818,8 +3843,8 @@ export const useOrmStore = create((set, get) => ({
     }
   },
 
-  // Add a constraint occurrence with explicit roleOccurrenceRefs (bypasses syncConstraints auto-add).
-  addConstraintToDiagram(constraintId, diagramId, roleOccurrenceRefs = {}) {
+  // Add a constraint occurrence with explicit roleOccurrenceRefs and queryOccurrenceRefs.
+  addConstraintToDiagram(constraintId, diagramId, roleOccurrenceRefs = {}, queryOccurrenceRefs = {}) {
     const s = get()
     const c = s.constraints.find(x => x.id === constraintId)
     if (!c) return
@@ -3828,7 +3853,7 @@ export const useOrmStore = create((set, get) => ({
     set(s => ({
       diagrams: s.diagrams.map(d => {
         if (d.id !== diagramId) return d
-        const cocc = { ...mkConstraintOcc(constraintId, c.x ?? 0, c.y ?? 0), roleOccurrenceRefs }
+        const cocc = { ...mkConstraintOcc(constraintId, c.x ?? 0, c.y ?? 0), roleOccurrenceRefs, queryOccurrenceRefs }
         return { ...d, constraintOccurrences: [...(d.constraintOccurrences ?? []), cocc] }
       }),
       isDirty: true,
@@ -3836,9 +3861,11 @@ export const useOrmStore = create((set, get) => ({
     }))
   },
 
-  // Begin a guided pick flow for adding a constraint when its referenced facts have
-  // multiple occurrences in the diagram. Resolves unambiguous deps automatically
-  // (auto-creates an occurrence if none exist; auto-selects if exactly one exists).
+  // Begin a guided pick flow for adding a constraint.
+  // Phase 1: sequence deps (fact types/OTs directly connected via sequences/roleSequences).
+  // Phase 2: query deps (all elements referenced in the constraint's query copies).
+  // For each dep: 0 occurrences → auto-create; 1 → auto-resolve; 2+ → user picks.
+  // Sequence deps also serve as query anchors so they are not re-asked in phase 2.
   startConstraintEndpointPick(constraintId, diagramId) {
     const s = get()
     const c = s.constraints.find(x => x.id === constraintId)
@@ -3847,47 +3874,88 @@ export const useOrmStore = create((set, get) => ({
     if (!diag) return
     const targetDiagramId = diag.id
 
-    const deps = getConstraintDeps(c, s.facts, s.objectTypes)
-    if (deps.length === 0) {
-      get().addConstraintToDiagram(constraintId, targetDiagramId, {})
-      return
-    }
+    const seqDeps = getConstraintDeps(c, s.facts, s.objectTypes)
+    const queryDeps = getConstraintQueryDeps(c, s.facts, s.objectTypes, s.subtypes)
+    const seqDepIds = new Set(seqDeps.map(d => d.schemaId))
 
-    let occs = diag.occurrences ?? []
+    let occs = [...(diag.occurrences ?? [])]
     const newOccs = []
+    const newSubtypeOccs = []
     const resolvedRefs = {}
+    const queryResolvedRefs = {}
     const pendingPicks = []
 
-    for (const dep of deps) {
+    // Phase 1: sequence deps
+    for (const dep of seqDeps) {
       const existing = occs.filter(o => o.schemaElementId === dep.schemaId)
       if (existing.length === 0) {
         const el = s.facts.find(f => f.id === dep.schemaId) ?? s.objectTypes.find(o => o.id === dep.schemaId)
         if (el) {
           const newOcc = mkOcc(dep.schemaId, el.x ?? 0, el.y ?? 0)
           newOccs.push(newOcc)
+          occs.push(newOcc)
           for (const mk of dep.memberKeys) resolvedRefs[mk] = newOcc.id
+          queryResolvedRefs[dep.schemaId] = newOcc.id
         }
       } else if (existing.length === 1) {
         for (const mk of dep.memberKeys) resolvedRefs[mk] = existing[0].id
+        queryResolvedRefs[dep.schemaId] = existing[0].id
       } else {
-        pendingPicks.push(dep)
+        pendingPicks.push({ ...dep, targetRef: 'role' })
       }
     }
 
-    if (newOccs.length > 0) {
+    // Phase 2: query-only deps (skip anything already handled as a sequence dep)
+    const processedQueryIds = new Set(seqDepIds)
+    for (const dep of queryDeps) {
+      if (processedQueryIds.has(dep.schemaId)) continue
+      processedQueryIds.add(dep.schemaId)
+
+      if (dep.kind === 'subtype') {
+        // Subtypes have at most one occurrence; auto-add if missing
+        const stOccs = diag.subtypeOccurrences ?? []
+        if (!stOccs.includes(dep.schemaId)) newSubtypeOccs.push(dep.schemaId)
+        // No queryOccurrenceRef needed for subtypes (only one occurrence possible)
+        continue
+      }
+
+      const existing = occs.filter(o => o.schemaElementId === dep.schemaId)
+      if (existing.length === 0) {
+        const el = s.facts.find(f => f.id === dep.schemaId) ?? s.objectTypes.find(o => o.id === dep.schemaId)
+        if (el) {
+          const newOcc = mkOcc(dep.schemaId, el.x ?? 0, el.y ?? 0)
+          newOccs.push(newOcc)
+          occs.push(newOcc)
+          queryResolvedRefs[dep.schemaId] = newOcc.id
+        }
+      } else if (existing.length === 1) {
+        queryResolvedRefs[dep.schemaId] = existing[0].id
+      } else {
+        pendingPicks.push({ ...dep, targetRef: 'query' })
+      }
+    }
+
+    if (newOccs.length > 0 || newSubtypeOccs.length > 0) {
       set(s => ({
-        diagrams: s.diagrams.map(d => d.id !== targetDiagramId ? d : {
-          ...d, occurrences: [...(d.occurrences ?? []), ...newOccs],
+        diagrams: s.diagrams.map(d => {
+          if (d.id !== targetDiagramId) return d
+          return {
+            ...d,
+            occurrences: newOccs.length > 0 ? [...(d.occurrences ?? []), ...newOccs] : d.occurrences,
+            subtypeOccurrences: newSubtypeOccs.length > 0
+              ? [...new Set([...(d.subtypeOccurrences ?? []), ...newSubtypeOccs])]
+              : d.subtypeOccurrences,
+          }
         }),
         isDirty: true,
       }))
     }
 
     if (pendingPicks.length === 0) {
-      get().addConstraintToDiagram(constraintId, targetDiagramId, resolvedRefs)
+      get().addConstraintToDiagram(constraintId, targetDiagramId, resolvedRefs, queryResolvedRefs)
       return
     }
-    set({ linkDraft: { type: 'constraintEndpointPick', constraintId, diagramId: targetDiagramId, pendingPicks, resolvedRefs } })
+    set({ linkDraft: { type: 'constraintEndpointPick', constraintId, diagramId: targetDiagramId, pendingPicks, resolvedRefs, queryResolvedRefs } })
   },
 
   // Called when the user clicks a fact or OT occurrence during constraintEndpointPick mode.
@@ -3897,12 +3965,18 @@ export const useOrmStore = create((set, get) => ({
     const [currentPick, ...remainingPicks] = draft.pendingPicks
     if (!currentPick) return
     const newRefs = { ...draft.resolvedRefs }
-    for (const mk of currentPick.memberKeys) newRefs[mk] = occurrenceId
+    const newQueryRefs = { ...(draft.queryResolvedRefs ?? {}) }
+    if (currentPick.targetRef !== 'query') {
+      // Sequence dep: update roleOccurrenceRefs for each memberKey
+      for (const mk of (currentPick.memberKeys ?? [])) newRefs[mk] = occurrenceId
+    }
+    // All picks also anchor this schema element in queryOccurrenceRefs
+    newQueryRefs[currentPick.schemaId] = occurrenceId
     if (remainingPicks.length === 0) {
-      get().addConstraintToDiagram(draft.constraintId, draft.diagramId, newRefs)
+      get().addConstraintToDiagram(draft.constraintId, draft.diagramId, newRefs, newQueryRefs)
       set({ linkDraft: null })
     } else {
-      set({ linkDraft: { ...draft, pendingPicks: remainingPicks, resolvedRefs: newRefs } })
+      set({ linkDraft: { ...draft, pendingPicks: remainingPicks, resolvedRefs: newRefs, queryResolvedRefs: newQueryRefs } })
     }
   },
 
