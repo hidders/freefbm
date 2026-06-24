@@ -682,7 +682,7 @@ export default function SchemaBrowser() {
         const stAddStyle = alreadyIn ? undefined
           : endpointsPresent
             ? { color: '#166534', borderColor: '#16a34a', background: 'rgba(22,163,74,0.07)' }
-            : { color: '#991b1b', borderColor: '#dc2626', background: 'rgba(220,38,38,0.07)' }
+            : { color: '#92400e', borderColor: '#d97706', background: 'rgba(217,119,6,0.07)' }
         return (
           <ElementRow key={st.id}
             icon={<SubtypeIcon />}
@@ -717,7 +717,7 @@ export default function SchemaBrowser() {
           : status === 'ready'
             ? { color: '#166534', borderColor: '#16a34a', background: 'rgba(22,163,74,0.07)' }
             : status === 'partial'
-              ? { color: '#991b1b', borderColor: '#dc2626', background: 'rgba(220,38,38,0.07)' }
+              ? { color: '#92400e', borderColor: '#d97706', background: 'rgba(217,119,6,0.07)' }
               : undefined
         return (
           <ElementRow key={c.id}

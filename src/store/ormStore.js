@@ -2747,34 +2747,49 @@ export const useOrmStore = create((set, get) => ({
         if (d.id !== targetDiagramId) return d
         const occs = d.occurrences ?? []
 
-        // Find the owner occurrence and resolve its ref mode VT schema ID
         const ownerOcc = occs.find(o => o.id === otOccurrenceId)
-        let vtSchemaId = null
-        if (ownerOcc) {
-          const ownerEl = objectTypes.find(o => o.id === ownerOcc.schemaElementId)
-            ?? facts.find(f => f.id === ownerOcc.schemaElementId && f.objectified && f.objectifiedKind !== 'value')
-          const rm = ownerEl ? findRefMode(ownerEl, facts, objectTypes) : null
-          if (rm) vtSchemaId = rm.vtId
-        }
+        const ownerEl = ownerOcc
+          ? (objectTypes.find(o => o.id === ownerOcc.schemaElementId)
+            ?? facts.find(f => f.id === ownerOcc.schemaElementId && f.objectified && f.objectifiedKind !== 'value'))
+          : null
+        const rm = ownerEl ? findRefMode(ownerEl, facts, objectTypes) : null
 
-        // If the VT's owned occurrence is also used as a role player in any
-        // independent (non-owned-by-this) visible fact occurrence, liberate it
-        // so it stays visible after collapse.
-        let newOccs = occs
-        if (vtSchemaId) {
-          const vtOwnedOcc = occs.find(o =>
-            o.schemaElementId === vtSchemaId && o.refModeOwnerOccId === otOccurrenceId)
-          if (vtOwnedOcc) {
-            const neededByOtherFact = occs.some(o => {
+        // FT occ to collapse: owned by this entity occurrence, or independent (no owner).
+        const ftOcc = rm ? occs.find(o =>
+          o.schemaElementId === rm.factId &&
+          (!o.refModeOwnerOccId || o.refModeOwnerOccId === otOccurrenceId)
+        ) : null
+
+        // VT occ to handle: owned by this entity occurrence, or independent.
+        // Occurrences owned by other entities are left untouched.
+        const vtOcc = rm ? occs.find(o =>
+          o.schemaElementId === rm.vtId &&
+          (!o.refModeOwnerOccId || o.refModeOwnerOccId === otOccurrenceId)
+        ) : null
+
+        // VT is needed by another visible fact if any non-B-owned fact occurrence
+        // (excluding the FT being collapsed) has the VT as a role player.
+        const vtNeededByOtherFact = vtOcc && rm
+          ? occs.some(o => {
+              if (ftOcc && o.id === ftOcc.id) return false
               if (o.refModeOwnerOccId === otOccurrenceId) return false
               const f = facts.find(x => x.id === o.schemaElementId)
-              return f?.roles?.some(r => r.objectTypeId === vtSchemaId)
+              return f?.roles?.some(r => r.objectTypeId === rm.vtId)
             })
-            if (neededByOtherFact) {
-              newOccs = occs.map(o =>
-                o.id === vtOwnedOcc.id ? { ...o, refModeOwnerOccId: null } : o)
-            }
-          }
+          : false
+
+        let newOccs = occs
+        // Adopt the FT (ensure it is owned by B so it hides when B is not expanded).
+        if (ftOcc) {
+          newOccs = newOccs.map(o =>
+            o.id === ftOcc.id ? { ...o, refModeOwnerOccId: otOccurrenceId } : o)
+        }
+        // VT: adopt if not needed by others; liberate (make independent) if it is.
+        if (vtOcc) {
+          newOccs = newOccs.map(o =>
+            o.id === vtOcc.id
+              ? { ...o, refModeOwnerOccId: vtNeededByOtherFact ? null : otOccurrenceId }
+              : o)
         }
 
         return {

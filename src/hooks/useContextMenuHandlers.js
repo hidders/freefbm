@@ -44,16 +44,23 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     e.stopPropagation()
     store.select(ot.id, ot.kind, occurrenceId)
     const diagram = store.diagrams.find(d => d.id === store.activeDiagramId)
-    // Only offer expand/collapse if this occurrence owns ref-mode child occurrences.
-    // Without owned occurrences the VT/FT are independently visible; expand would
-    // create redundant duplicates and collapse would have no effect.
-    const hasOwnedRefModeOccs = occurrenceId
-      ? (diagram?.occurrences ?? []).some(o => o.refModeOwnerOccId === occurrenceId)
-      : false
-    const hasRefMode = ot.kind === 'entity' && !!findRefMode(ot, store.facts, store.objectTypes)
-      && (occurrenceId ? hasOwnedRefModeOccs : true)
+    const rmInfo = ot.kind === 'entity' ? findRefMode(ot, store.facts, store.objectTypes) : null
+    const diagramOccs = diagram?.occurrences ?? []
+    const expandedOccsSet = new Set(diagram?.expandedRefModeOccs ?? [])
+    // FT is "visible for B" if it is owned by B and B is expanded, or if it is independent.
+    const ftVisible = !!(rmInfo && occurrenceId && diagramOccs.some(o => {
+      if (o.schemaElementId !== rmInfo.factId) return false
+      if (!o.refModeOwnerOccId) return true
+      return o.refModeOwnerOccId === occurrenceId && expandedOccsSet.has(occurrenceId)
+    }))
+    // VT is visible by any means (independent or any owner expanded).
+    const vtVisible = !!(rmInfo && occurrenceId && diagramOccs.some(o =>
+      o.schemaElementId === rmInfo.vtId &&
+      (!o.refModeOwnerOccId || expandedOccsSet.has(o.refModeOwnerOccId))
+    ))
+    const hasRefMode = ot.kind === 'entity' && !!rmInfo
     const isExpandedHere = occurrenceId
-      ? (diagram?.expandedRefModeOccs ?? []).includes(occurrenceId)
+      ? (ftVisible && vtVisible)
       : (diagram?.expandedRefModes ?? []).includes(ot.id)
     const refExpansionItems = hasRefMode && occurrenceId
       ? ['---', isExpandedHere
