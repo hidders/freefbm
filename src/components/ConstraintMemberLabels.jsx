@@ -83,9 +83,14 @@ export default function ConstraintMemberLabels() {
   const labels = []
   const seenPosKeys = new Set()   // dedup across occurrences by position
 
-  // Use a sentinel when there are no recorded occurrences (e.g. constraints without
-  // queryOccurrenceRefs yet) so we still fall back to the first-visible-occurrence map.
-  const coccList = allCoccs.length > 0 ? allCoccs : [{ queryOccurrenceRefs: {} }]
+  // Restrict to the selected occurrence when one is identified; otherwise fall back to
+  // the first occurrence (or a sentinel when none are recorded yet).
+  const activeCocc = store.selectedOccurrenceId
+    ? allCoccs.find(co => co.id === store.selectedOccurrenceId)
+    : null
+  const coccList = activeCocc
+    ? [activeCocc]
+    : allCoccs.length > 0 ? [allCoccs[0]] : [{ queryOccurrenceRefs: {} }]
 
   for (const cocc of coccList) {
     // Build a factMap anchored to this specific constraint occurrence.
