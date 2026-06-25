@@ -468,6 +468,15 @@ export default function SchemaBrowser() {
     return coveredKeys.size >= total
   }
 
+  // Fact type dep-readiness: green if all role-connected OTs already in diagram, orange otherwise
+  const factDepsStatus = (fact) => {
+    const roleOtIds = (fact.roles ?? []).map(r => r.objectTypeId).filter(Boolean)
+    return roleOtIds.every(otId => inDiag(otId)) ? 'ready' : 'partial'
+  }
+
+  const FACT_ADD_STYLE_READY   = { color: '#166534', borderColor: '#16a34a', background: 'rgba(22,163,74,0.07)' }
+  const FACT_ADD_STYLE_PARTIAL = { color: '#92400e', borderColor: '#d97706', background: 'rgba(217,119,6,0.07)' }
+
   // Constraint dep-readiness helper
   // "ready" = all directly-connected elements AND all query elements have ≥1 occurrence in diagram.
   const constraintDepsStatus = (c) => {
@@ -670,18 +679,25 @@ export default function SchemaBrowser() {
     {
       title: 'Nested Entity Types',
       items: showOrphans ? nestedEntityTypes.filter(el => isOrphaned(el.id)) : showReady ? [] : nestedEntityTypes,
-      renderRow: (el) => (
-        <ElementRow key={el.id}
-          icon={<NestedFactTypeIcon />}
-          label={el.label}
-          isOrphaned={isOrphaned(el.id)}
-          inCurrentDiagram={inDiag(el.id)}
-          onSelect={() => selectEl(el.id, el.kind)}
-          onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
-          onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
-          onDelete={() => store.deleteFact(el.id)}
-        />
-      ),
+      renderRow: (el) => {
+        const neFact = store.facts.find(f => f.id === el.id)
+        const neAddStyle = neFact
+          ? (factDepsStatus(neFact) === 'ready' ? FACT_ADD_STYLE_READY : FACT_ADD_STYLE_PARTIAL)
+          : undefined
+        return (
+          <ElementRow key={el.id}
+            icon={<NestedFactTypeIcon />}
+            label={el.label}
+            isOrphaned={isOrphaned(el.id)}
+            inCurrentDiagram={inDiag(el.id)}
+            onSelect={() => selectEl(el.id, el.kind)}
+            onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
+            onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
+            addButtonStyle={neAddStyle}
+            onDelete={() => store.deleteFact(el.id)}
+          />
+        )
+      },
     },
     {
       title: 'Value Types',
@@ -731,6 +747,7 @@ export default function SchemaBrowser() {
             />
           )
         }
+        const fAddStyle = factDepsStatus(f) === 'ready' ? FACT_ADD_STYLE_READY : FACT_ADD_STYLE_PARTIAL
         return (
           <ElementRow key={f.id}
             icon={<FactTypeIcon />}
@@ -740,6 +757,7 @@ export default function SchemaBrowser() {
             onSelect={() => selectEl(f.id, 'fact')}
             onAdd={() => store.addElementToDiagram(f.id, diagram?.id)}
             onAddExtra={diagram ? () => store.addExtraOccurrence(f.id, diagram.id) : undefined}
+            addButtonStyle={fAddStyle}
             onDelete={() => store.deleteFact(f.id)}
           />
         )
