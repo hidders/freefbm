@@ -529,12 +529,12 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         const at = q.atoms.find(at => at.id === lk.atomId)
         if (at?.kind === 'fact' && at.originalId === fact.id) roles.add(lk.roleIndex)
       }
-      // Also highlight seeded roles — present on fact atoms with no OT links yet
       for (const at of q.atoms) {
         if (at.kind === 'fact' && at.originalId === fact.id) {
-          for (const s of (at.seededRoles ?? [])) {
-            roles.add(typeof s === 'number' ? s : s.roleIndex)
-          }
+          // Highlight all roles: the whole fact type participates in this constraint.
+          // Seeded/linked roles alone are unreliable for visibility because the
+          // ConstraintMemberLabels badge sits on the seeded role and covers the fill.
+          for (let ri = 0; ri < fact.arity; ri++) roles.add(ri)
         }
       }
       if (fact.objectified && q.atoms.some(at => at.originalId === fact.id)) nestedHighlight = true

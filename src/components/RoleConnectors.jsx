@@ -161,7 +161,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
       const autoOy =  edgeDx / len * 9
 
       return {
-        key: `${fact.id}-${ri}`,
+        key: `${fact.occurrenceId ?? fact.id}-${ri}`,
         factId: fact.id, otId: role.objectTypeId, roleIndex: ri,
         anchor, border, dotPos,
         mx, my,
@@ -218,7 +218,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
         const edgeDy = border.y - anchor.y
         const len = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy) || 1
         return {
-          key: `${fact.id}_il_${il.roleIndex}-${ri}`,
+          key: `${fact.occurrenceId ?? fact.id}_il_${il.roleIndex}-${ri}`,
           factId: synthFact.id, roleIndex: ri,
           anchor, border, dotPos,
           mx, my,
@@ -417,7 +417,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
             : 1
           const dotDim = dotOpacity < 1
           return (
-            <g key={`dot-${fact.id}-${ri}`} className="selectable-group" opacity={dotOpacity} style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+            <g key={`dot-${fact.occurrenceId ?? fact.id}-${ri}`} className="selectable-group" opacity={dotOpacity} style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
               <circle
                 cx={pos.x} cy={pos.y} r={DOT_R}
                 fill="var(--col-mandatory)"
@@ -482,7 +482,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
             ? (queryReachable.has(fact.id) && queryReachable.has(role.objectTypeId) ? 0.2 : 0.2)
             : 0.5
           return (
-            <g key={`impl-dot-${fact.id}-${ri}`} className="selectable-group" opacity={dotOpacity}
+            <g key={`impl-dot-${fact.occurrenceId ?? fact.id}-${ri}`} className="selectable-group" opacity={dotOpacity}
               style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer',
                        filter: isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
               <circle
