@@ -2846,25 +2846,34 @@ export const useOrmStore = create((set, get) => ({
           : null
         const rm = ownerEl ? findRefMode(ownerEl, facts, objectTypes) : null
 
-        // FT occ to collapse: owned by this entity occurrence, or independent (no owner).
-        const ftOcc = rm ? occs.find(o =>
-          o.schemaElementId === rm.factId &&
-          (!o.refModeOwnerOccId || o.refModeOwnerOccId === otOccurrenceId)
+        // FT occ to collapse: prefer one explicitly owned by this entity occ; fall back to
+        // an independent occ (for v1 compat). Skip occs owned by OTHER entities.
+        const ftOcc = rm ? (
+          occs.find(o => o.schemaElementId === rm.factId && o.refModeOwnerOccId === otOccurrenceId) ??
+          occs.find(o => o.schemaElementId === rm.factId && !o.refModeOwnerOccId)
         ) : null
 
-        // VT occ to handle: owned by this entity occurrence, or independent.
-        // Occurrences owned by other entities are left untouched.
-        const vtOcc = rm ? occs.find(o =>
-          o.schemaElementId === rm.vtId &&
-          (!o.refModeOwnerOccId || o.refModeOwnerOccId === otOccurrenceId)
+        // VT occ: same preference — owned by this entity first, then independent.
+        const vtOcc = rm ? (
+          occs.find(o => o.schemaElementId === rm.vtId && o.refModeOwnerOccId === otOccurrenceId) ??
+          occs.find(o => o.schemaElementId === rm.vtId && !o.refModeOwnerOccId)
         ) : null
 
-        // VT is needed by another visible fact if any non-B-owned fact occurrence
-        // (excluding the FT being collapsed) has the VT as a role player.
+        // VT is needed by another visible fact if any non-owned fact occurrence (excluding
+        // the FT being collapsed) SPECIFICALLY references vtOcc via its roleOccurrenceMap.
+        // Fall back to schema-level role check for facts without a roleOccurrenceMap.
+        const expandedSet = new Set(d.expandedRefModeOccs ?? [])
         const vtNeededByOtherFact = vtOcc && rm
           ? occs.some(o => {
               if (ftOcc && o.id === ftOcc.id) return false
               if (o.refModeOwnerOccId === otOccurrenceId) return false
+              // Only count currently visible fact occurrences.
+              if (o.refModeOwnerOccId && !expandedSet.has(o.refModeOwnerOccId)) return false
+              // Check if this fact occ specifically uses vtOcc via roleOccurrenceMap.
+              if (o.roleOccurrenceMap) {
+                return Object.values(o.roleOccurrenceMap).includes(vtOcc.id)
+              }
+              // v1 fallback: schema-level role check.
               const f = facts.find(x => x.id === o.schemaElementId)
               return f?.roles?.some(r => r.objectTypeId === rm.vtId)
             })
@@ -6264,6 +6273,20 @@ export const useOrmStore = create((set, get) => ({
           const el = s.objectTypes.find(o => o.id === id) ?? s.facts.find(f => f.id === id)
           if (!el) continue
           nd = addOccIfAbsent(nd, id, el.x ?? 0, el.y ?? 0)
+          // If this element has a ref mode, also create its owned VT/FT occurrences now
+          // so each entity gets its own VT occurrence immediately (not only upon expansion).
+          const ownerEl = s.objectTypes.find(o => o.id === id && o.kind === 'entity')
+            ?? s.facts.find(f => f.id === id && f.objectified && f.objectifiedKind !== 'value')
+          if (ownerEl) {
+            const rm = findRefMode(ownerEl, s.facts, s.objectTypes)
+            if (rm) {
+              const vtEl = s.objectTypes.find(o => o.id === rm.vtId)
+              const ftEl = s.facts.find(f => f.id === rm.factId)
+              if (vtEl && ftEl) {
+                nd = addOwnedRefModeOccsIfAbsent(nd, id, rm.vtId, vtEl.x ?? 0, vtEl.y ?? 0, rm.factId, ftEl.x ?? 0, ftEl.y ?? 0, rm.vtRoleIndex)
+              }
+            }
+          }
         }
 
         // Add subtype occurrences with endpoint occurrence IDs (array format)
