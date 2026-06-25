@@ -529,6 +529,14 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         const cp = q.copies.find(cp => cp.id === lk.copyId)
         if (cp?.kind === 'fact' && cp.originalId === fact.id) roles.add(lk.roleIndex)
       }
+      // Also highlight seeded roles — present on fact copies with no OT links yet
+      for (const cp of q.copies) {
+        if (cp.kind === 'fact' && cp.originalId === fact.id) {
+          for (const s of (cp.seededRoles ?? [])) {
+            roles.add(typeof s === 'number' ? s : s.roleIndex)
+          }
+        }
+      }
       if (fact.objectified && q.copies.some(cp => cp.originalId === fact.id)) nestedHighlight = true
     }
     return { queryHighlightRoles: roles.size > 0 ? roles : null, nestedInQueryHighlight: nestedHighlight }
