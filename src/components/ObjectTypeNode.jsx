@@ -126,7 +126,17 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     const activeCocc = store.selectedOccurrenceId
       ? activeDiag?.constraintOccurrences?.find(co => co.id === store.selectedOccurrenceId)
       : activeDiag?.constraintOccurrences?.find(co => co.schemaConstraintId === store.selectedId)
-    const qor = activeCocc?.queryOccurrenceRefs ?? {}
+    // Fill gaps in queryOccurrenceRefs from roleOccurrenceRefs (same as FactTypeNode / QueryCopies).
+    const rorOt = activeCocc?.roleOccurrenceRefs ?? {}
+    const qor = { ...(activeCocc?.queryOccurrenceRefs ?? {}) }
+    ;(c.sequences ?? c.roleSequences ?? []).forEach((seq, si) => {
+      seq.forEach((m, mi) => {
+        const sid = m.factId ?? null
+        if (!sid || qor[sid]) return
+        const mk = `${si}:${mi}`
+        if (rorOt[mk]) qor[sid] = rorOt[mk]
+      })
+    })
     const anchoredOccId = qor[ot.id]
     if (anchoredOccId && ot.occurrenceId && ot.occurrenceId !== anchoredOccId) return false
     return c.queries.some(q => q?.copies?.some(cp => cp.originalId === ot.id))

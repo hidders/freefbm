@@ -454,14 +454,31 @@ export default function QueryCopies({ onCopyClick, onCopyContextMenu, mousePos }
   const sequenceIndex   = qd?.sequenceIndex ?? qh?.queryIndex
   const diagCopyPos     = diagram?.queryPositions?.[constraintId]?.[sequenceIndex] ?? {}
 
-  // Use queryOccurrenceRefs to position each copy at its anchored occurrence
-  const activeCocc  = diagram?.constraintOccurrences?.find(co => co.schemaConstraintId === constraintId)
+  // Use queryOccurrenceRefs to position each copy at its anchored occurrence.
+  // Prefer the selected occurrence when multiple exist; fall back to first match.
+  const activeCocc  = store.selectedOccurrenceId
+    ? diagram?.constraintOccurrences?.find(co => co.id === store.selectedOccurrenceId)
+    : diagram?.constraintOccurrences?.find(co => co.schemaConstraintId === constraintId)
   const qor         = activeCocc?.queryOccurrenceRefs ?? {}
+  // Fill gaps in queryOccurrenceRefs from roleOccurrenceRefs for sequence-connected elements.
+  // This keeps copy positions correct when queryOccurrenceRefs was not populated at add-time.
+  const ror         = activeCocc?.roleOccurrenceRefs ?? {}
+  const cSchema     = constraintId ? store.constraints.find(x => x.id === constraintId) : null
+  const cSeqs       = cSchema?.sequences ?? cSchema?.roleSequences ?? []
+  const effectiveQor = { ...qor }
+  cSeqs.forEach((seq, si) => {
+    seq.forEach((m, mi) => {
+      const schemaId = m.factId ?? null
+      if (!schemaId || effectiveQor[schemaId]) return
+      const mk = `${si}:${mi}`
+      if (ror[mk]) effectiveQor[schemaId] = ror[mk]
+    })
+  })
   const occByOccId  = Object.fromEntries((diagram?.occurrences ?? []).map(o => [o.id, o]))
 
   // Apply anchored occurrence position; fall back to schema-level position
   const applyPos  = (el) => {
-    const anchoredOccId = qor[el.id]
+    const anchoredOccId = effectiveQor[el.id]
     const p = anchoredOccId ? occByOccId[anchoredOccId] : occMap[el.id]
     if (!p) return el
     const r = { ...el, x: p.x ?? el.x, y: p.y ?? el.y }
@@ -478,10 +495,10 @@ export default function QueryCopies({ onCopyClick, onCopyContextMenu, mousePos }
     ...store.facts.map(applyPos),
     ...facts,
   ].map(f => [f.id, f]))
-  // Override with the anchored occurrence for any schema element in qor.
+  // Override with the anchored occurrence for any schema element in effectiveQor.
   // The spreads above use Object.fromEntries which keeps the last entry, so the
   // last visible occurrence can override the correct applyPos result. Fix that here.
-  for (const [schemaId, occId] of Object.entries(qor)) {
+  for (const [schemaId, occId] of Object.entries(effectiveQor)) {
     const anchoredFact = facts.find(f => f.occurrenceId === occId)
     if (anchoredFact) { factMap[schemaId] = anchoredFact; continue }
     const anchoredOt = objectTypes.find(o => o.occurrenceId === occId)

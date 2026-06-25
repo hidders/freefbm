@@ -503,7 +503,18 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     const activeCocc = store.selectedOccurrenceId
       ? activeDiag?.constraintOccurrences?.find(co => co.id === store.selectedOccurrenceId)
       : activeDiag?.constraintOccurrences?.find(co => co.schemaConstraintId === store.selectedId)
-    const qor = activeCocc?.queryOccurrenceRefs ?? {}
+    // Build effective QOR: fill gaps in queryOccurrenceRefs from roleOccurrenceRefs so
+    // that elements added to the diagram before queryOccurrenceRefs was tracked still anchor correctly.
+    const rorFt = activeCocc?.roleOccurrenceRefs ?? {}
+    const qor = { ...(activeCocc?.queryOccurrenceRefs ?? {}) }
+    ;(c.sequences ?? c.roleSequences ?? []).forEach((seq, si) => {
+      seq.forEach((m, mi) => {
+        const sid = m.factId ?? null
+        if (!sid || qor[sid]) return
+        const mk = `${si}:${mi}`
+        if (rorFt[mk]) qor[sid] = rorFt[mk]
+      })
+    })
     const anchoredOccId = qor[fact.id]
     if (anchoredOccId && occurrenceId && occurrenceId !== anchoredOccId) {
       return { queryHighlightRoles: null, nestedInQueryHighlight: false }
