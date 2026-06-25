@@ -54,7 +54,15 @@ export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes,
 
         const from = rectBorderPoint(subBounds, supBounds.cx, supBounds.cy)
         const to   = rectBorderPoint(supBounds, subBounds.cx, subBounds.cy)
-        const isSelected  = store.selectedId === st.id || store.multiSelectedIds.includes(st.id)
+        const isSelected = st.occurrenceKey
+          ? ((store.selectedOccurrenceId !== null
+               ? store.selectedOccurrenceId === st.occurrenceKey
+               : store.selectedId === st.id)
+             ||
+             (store.multiSelectedOccurrenceIds.length > 0
+               ? store.multiSelectedOccurrenceIds.includes(st.occurrenceKey)
+               : store.multiSelectedIds.includes(st.id)))
+          : (store.selectedId === st.id || store.multiSelectedIds.includes(st.id))
         const gc = store.sequenceConstruction
         const qd = store.queryEditDraft
         const qh = store.queryIndexHighlight
@@ -112,8 +120,8 @@ export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes,
               }
               if (store.tool === 'assignRole' || store.tool === 'addSubtype' || store.tool === 'toggleMandatory' || store.tool === 'addInternalUniqueness' || store.tool === 'addInternalFrequency' || store.tool === 'addConstraint:valueRange' || store.tool === 'addConstraint:cardinality') { store.setTool('select'); return }
               if (store.tool === 'connectConstraint') { store.clearSelection(); store.setTool('select'); return }
-              if (e.shiftKey) { store.shiftSelect(st.id); return }
-              store.select(st.id, 'subtype')
+              if (e.shiftKey) { store.shiftSelect(st.id, st.occurrenceKey ?? null); return }
+              store.select(st.id, 'subtype', st.occurrenceKey ?? null)
             }}>
             {filterProps && (
               <defs>

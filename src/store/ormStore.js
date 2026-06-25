@@ -6485,7 +6485,15 @@ export const useOrmStore = create((set, get) => ({
       else
         get().removeElementFromDiagram(selectedId, activeDiagramId)
     } else if (selectedKind === 'subtype') {
-      get().removeElementFromDiagram(selectedId, activeDiagramId)
+      if (selectedOccurrenceId) {
+        // occurrenceKey format: "${stId}:${subOccId}:${superOccId}"
+        const [stId, rawSub, rawSuper] = selectedOccurrenceId.split(':')
+        const subOccId   = rawSub   === 'null' ? null : rawSub
+        const superOccId = rawSuper === 'null' ? null : rawSuper
+        get().removeSubtypeOccurrenceFromDiagram(stId, subOccId, superOccId, activeDiagramId)
+      } else {
+        get().removeElementFromDiagram(selectedId, activeDiagramId)
+      }
     } else if (selectedKind === 'entity' || selectedKind === 'value' || selectedKind === 'fact') {
       if (selectedOccurrenceId)
         get().removeOccurrenceFromDiagram(selectedOccurrenceId, activeDiagramId)
