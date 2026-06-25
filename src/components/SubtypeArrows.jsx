@@ -140,7 +140,7 @@ export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes,
       })}
 
       {store.linkDraft?.type === 'subtype' && (() => {
-        const fromBounds = playerBounds(store.linkDraft.fromId, otMap, nestedMap)
+        const fromBounds = playerBoundsForEndpoint(store.linkDraft.fromOccId, store.linkDraft.fromId, otByOccId, nestedByOccId, otMap, nestedMap)
         if (!fromBounds) return null
         const bp = rectBorderPoint(fromBounds, mousePos.x, mousePos.y)
         return (
