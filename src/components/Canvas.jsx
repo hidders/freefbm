@@ -937,14 +937,17 @@ export default function Canvas() {
           }
         }
       } else {
-        // Legacy schema-ID-based drag
+        // Legacy schema-ID-based drag — collects ALL visible occurrences per schema ID
+        // and passes occurrenceId so moveOccurrence is used instead of moveFact/moveObjectType.
+        // This prevents multi-occurrence facts from having occurrences scattered when only
+        // one of them is moved (which would leave "isolated" role connectors behind).
         const getPos = (eid) => {
-          const ot = visibleOts.find(o => o.id === eid)
-          if (ot) return { id: eid, kind: 'ot', origX: ot.x, origY: ot.y }
-          const f = visibleFacts.find(f => f.id === eid)
-          if (f) return { id: eid, kind: 'fact', origX: f.x, origY: f.y }
-          const c = visibleConstraints.find(c => c.id === eid)
-          if (c) return { id: eid, kind: 'constraint', origX: c.x, origY: c.y }
+          const otOccs = visibleOts.filter(o => o.id === eid)
+          if (otOccs.length > 0) return otOccs.map(o => ({ id: eid, kind: 'ot', origX: o.x, origY: o.y, occurrenceId: o.occurrenceId ?? null }))
+          const factOccs = visibleFacts.filter(f => f.id === eid)
+          if (factOccs.length > 0) return factOccs.map(f => ({ id: eid, kind: 'fact', origX: f.x, origY: f.y, occurrenceId: f.occurrenceId ?? null }))
+          const cOccs = visibleConstraints.filter(c => c.id === eid)
+          if (cOccs.length > 0) return cOccs.map(c => ({ id: eid, kind: 'constraint', origX: c.x, origY: c.y, constraintOccurrenceId: c.constraintOccurrenceId ?? null }))
           if (eid.includes('_il_')) {
             const [factId, roleIndex] = eid.split('_il_').map((v, i) => i === 0 ? v : Number(v))
             const parentFact = visibleFacts.find(f => f.id === factId)
@@ -958,12 +961,12 @@ export default function Canvas() {
               const associatedNf = !associatedOt ? visibleFacts.find(f => f.id === associatedOtid && f.objectified) : null
               const defaultX = (associatedOt || associatedNf) ? Math.round((parentFact.x + (associatedOt || associatedNf).x) / 2) : parentFact.x
               const defaultY = (associatedOt || associatedNf) ? Math.round((parentFact.y + (associatedOt || associatedNf).y) / 2) : parentFact.y
-              return { id: eid, kind: 'implicitLink', origX: ilPos?.x ?? il.x ?? defaultX, origY: ilPos?.y ?? il.y ?? defaultY, implicitFactId: factId, implicitRoleIndex: roleIndex }
+              return [{ id: eid, kind: 'implicitLink', origX: ilPos?.x ?? il.x ?? defaultX, origY: ilPos?.y ?? il.y ?? defaultY, implicitFactId: factId, implicitRoleIndex: roleIndex }]
             }
           }
-          return null
+          return []
         }
-        elements = multiIds.map(getPos).filter(Boolean)
+        elements = multiIds.flatMap(getPos)
       }
       setDragState({ type: 'multiElement', startX: e.clientX, startY: e.clientY, elements })
       return

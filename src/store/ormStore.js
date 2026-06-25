@@ -4143,6 +4143,7 @@ export const useOrmStore = create((set, get) => ({
     set(s => {
       const newConstraints = s.constraints.map(c => {
         if (c.id !== constraintId) return c
+        const originalLength = (c.sequences || []).length
         let sequences = (c.sequences || []).map(g => [...g])
         for (const { sequenceIndex, member } of collected) {
           if (sequenceIndex >= sequences.length) {
@@ -4152,6 +4153,19 @@ export const useOrmStore = create((set, get) => ({
             sequences[sequenceIndex] = [...sequences[sequenceIndex], member]
           }
         }
+        // Remove newly added sequences that are schema-equivalent to an existing one
+        // (same roles/subtypes in same order, regardless of which occurrences were chosen)
+        const seqMemberEq = (a, b) => {
+          if (!a || !b || a.kind !== b.kind) return false
+          if (a.kind === 'role') return a.factId === b.factId && a.roleIndex === b.roleIndex
+          if (a.kind === 'subtype') return a.subtypeId === b.subtypeId
+          return false
+        }
+        const existingSeqs = sequences.slice(0, originalLength)
+        sequences = sequences.filter((seq, i) =>
+          i < originalLength ||
+          !existingSeqs.some(ex => ex.length === seq.length && ex.every((m, j) => seqMemberEq(m, seq[j])))
+        )
         // Pad queries array to match sequences length (new sequences get null query)
         const queries = [...(c.queries || [])]
         while (queries.length < sequences.length) queries.push(null)
@@ -6087,12 +6101,22 @@ export const useOrmStore = create((set, get) => ({
       inDiag(incoming, selId)
     )
 
+    // Rebuild occurrence IDs for the restored selection so the occurrence-aware
+    // drag path is taken on the first drag after returning to this diagram.
+    const restoredOccIds = restoredSelection.flatMap(selId => {
+      const occs = (incoming?.occurrences ?? []).filter(o => o.schemaElementId === selId)
+      if (occs.length > 0) return occs.map(o => o.id)
+      const cocc = (incoming?.constraintOccurrences ?? []).find(co => co.schemaConstraintId === selId)
+      return cocc ? [cocc.id] : []
+    })
+
     set({
       diagrams:        savedDiagrams,
       activeDiagramId: id,
       pan:             incoming?.pan  ?? { x: 0, y: 0 },
       zoom:            incoming?.zoom ?? 1,
       multiSelectedIds: restoredSelection,
+      multiSelectedOccurrenceIds: restoredOccIds,
       selectedId:       null,
       selectedKind:     null,
       selectedRole:     null,
