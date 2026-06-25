@@ -500,7 +500,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     if (!c?.queries) return { queryHighlightRoles: null, nestedInQueryHighlight: false }
     // Check whether this specific occurrence is the anchored one for the query
     const activeDiag = store.diagrams.find(d => d.id === store.activeDiagramId)
-    const activeCocc = activeDiag?.constraintOccurrences?.find(co => co.schemaConstraintId === store.selectedId)
+    const activeCocc = store.selectedOccurrenceId
+      ? activeDiag?.constraintOccurrences?.find(co => co.id === store.selectedOccurrenceId)
+      : activeDiag?.constraintOccurrences?.find(co => co.schemaConstraintId === store.selectedId)
     const qor = activeCocc?.queryOccurrenceRefs ?? {}
     const anchoredOccId = qor[fact.id]
     if (anchoredOccId && occurrenceId && occurrenceId !== anchoredOccId) {

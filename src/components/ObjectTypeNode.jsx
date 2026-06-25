@@ -123,7 +123,9 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     if (!c?.queries) return false
     // Only highlight the anchored occurrence when queryOccurrenceRefs is set
     const activeDiag = store.diagrams.find(d => d.id === store.activeDiagramId)
-    const activeCocc = activeDiag?.constraintOccurrences?.find(co => co.schemaConstraintId === store.selectedId)
+    const activeCocc = store.selectedOccurrenceId
+      ? activeDiag?.constraintOccurrences?.find(co => co.id === store.selectedOccurrenceId)
+      : activeDiag?.constraintOccurrences?.find(co => co.schemaConstraintId === store.selectedId)
     const qor = activeCocc?.queryOccurrenceRefs ?? {}
     const anchoredOccId = qor[ot.id]
     if (anchoredOccId && ot.occurrenceId && ot.occurrenceId !== anchoredOccId) return false
