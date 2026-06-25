@@ -37,30 +37,15 @@ export default function ConstraintMemberLabels() {
   const sequences = c.sequences || []
   if (sequences.length === 0) return null
 
-  // Use queryOccurrenceRefs to position labels at the anchored occurrence of each fact type.
+  // Collect all constraint occurrences for this constraint so labels appear on
+  // every occurrence's connected fact-type positions, not just the first one.
   const activeDiag = store.diagrams.find(d => d.id === store.activeDiagramId)
-  const activeCocc = activeDiag?.constraintOccurrences?.find(co => co.schemaConstraintId === selectedId)
-  const qor = activeCocc?.queryOccurrenceRefs ?? {}
+  const allCoccs   = (activeDiag?.constraintOccurrences ?? []).filter(co => co.schemaConstraintId === selectedId)
   const factByOccId = Object.fromEntries(visibleFacts.filter(f => f.occurrenceId).map(f => [f.occurrenceId, f]))
+  // Schema-ID fallback map: first visible occurrence per schema fact
+  const firstFactBySchemaId = {}
+  for (const f of visibleFacts) { if (!(f.id in firstFactBySchemaId)) firstFactBySchemaId[f.id] = f }
 
-  // Build factMap: first occurrence as default, then override with anchored occurrence.
-  const factMap = {}
-  for (const f of visibleFacts) { if (!(f.id in factMap)) factMap[f.id] = f }
-  for (const [schemaId, occId] of Object.entries(qor)) {
-    const anchored = factByOccId[occId]
-    if (anchored) factMap[schemaId] = anchored
-  }
-  // Add synthetic implied link facts so member labels can resolve them
-  store.facts.filter(f => f.objectified).forEach(f => {
-    if (factMap[f.id]) {
-      (f.implicitLinks || []).forEach(il => {
-        if (store.isImplicitLinkShown(f.id, il.roleIndex)) {
-          const synth = makeImplicitLinkFact(f, il)
-          factMap[synth.id] = synth
-        }
-      })
-    }
-  })
   const subtypeMap = Object.fromEntries(subtypes.map(st => [st.id, st]))
   const otMap      = Object.fromEntries(objectTypes.map(o  => [o.id,  o]))
 
@@ -92,48 +77,81 @@ export default function ConstraintMemberLabels() {
     )
   }
 
-  // One label per unique member
+  // One label per unique (factOccurrenceId-or-schemaId, roleIndex) position across
+  // ALL constraint occurrences. Iterating over allCoccs ensures every occurrence's
+  // connected fact-type positions gets a label, not just the first one's.
   const labels = []
-  const seen   = new Set()
+  const seenPosKeys = new Set()   // dedup across occurrences by position
 
-  for (let gi = 0; gi < sequences.length; gi++) {
-    if (editingSequenceIndex !== null && gi !== editingSequenceIndex) continue
-    for (let pi = 0; pi < sequences[gi].length; pi++) {
-      const m   = sequences[gi][pi]
-      const key = m.kind === 'role'
-        ? `role:${m.factId}:${m.roleIndex}`
-        : `subtype:${m.subtypeId}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      if (allowedKeys && !allowedKeys.has(key)) continue
+  // Use a sentinel when there are no recorded occurrences (e.g. constraints without
+  // queryOccurrenceRefs yet) so we still fall back to the first-visible-occurrence map.
+  const coccList = allCoccs.length > 0 ? allCoccs : [{ queryOccurrenceRefs: {} }]
 
-      const positions = posMap[key]
-      const text = positions.length > 1
-        ? '{..}'
-        : `${positions[0].gi + 1}.${positions[0].pi + 1}`
-
-      let x, y, isVertical = false
-      if (m.kind === 'role') {
-        const fact = factMap[m.factId]
-        if (!fact) continue
-        const rc = roleCenter(fact, m.roleIndex)
-        x = rc.x; y = rc.y
-        isVertical = fact.orientation === 'vertical'
-      } else {
-        const st    = subtypeMap[m.subtypeId]
-        if (!st) continue
-        const subOt = otMap[st.subId], supOt = otMap[st.superId]
-        if (!subOt || !supOt) continue
-        const from  = borderPoint(subOt, supOt.x, supOt.y)
-        const to    = borderPoint(supOt, subOt.x, subOt.y)
-        x = (from.x + to.x) / 2
-        y = (from.y + to.y) / 2
+  for (const cocc of coccList) {
+    // Build a factMap anchored to this specific constraint occurrence.
+    const qor = cocc.queryOccurrenceRefs ?? {}
+    const factMap = { ...firstFactBySchemaId }
+    for (const [schemaId, occId] of Object.entries(qor)) {
+      const anchored = factByOccId[occId]
+      if (anchored) factMap[schemaId] = anchored
+    }
+    // Synthetic implied-link facts for objectified fact types.
+    store.facts.filter(f => f.objectified).forEach(f => {
+      if (factMap[f.id]) {
+        (f.implicitLinks || []).forEach(il => {
+          if (store.isImplicitLinkShown(f.id, il.roleIndex)) {
+            const synth = makeImplicitLinkFact(f, il)
+            factMap[synth.id] = synth
+          }
+        })
       }
+    })
 
-      const w = text.length * CHAR_W + PAD_X * 2
-      const h = FONT_SIZE + PAD_Y * 2
+    const seenSchemaKeys = new Set()  // dedup within this occurrence
 
-      labels.push({ key, x, y, text, w, h, isVertical })
+    for (let gi = 0; gi < sequences.length; gi++) {
+      if (editingSequenceIndex !== null && gi !== editingSequenceIndex) continue
+      for (let pi = 0; pi < sequences[gi].length; pi++) {
+        const m = sequences[gi][pi]
+        const schemaKey = m.kind === 'role'
+          ? `role:${m.factId}:${m.roleIndex}`
+          : `subtype:${m.subtypeId}`
+        if (seenSchemaKeys.has(schemaKey)) continue
+        seenSchemaKeys.add(schemaKey)
+        if (allowedKeys && !allowedKeys.has(schemaKey)) continue
+
+        const positions = posMap[schemaKey]
+        const text = positions.length > 1
+          ? '{..}'
+          : `${positions[0].gi + 1}.${positions[0].pi + 1}`
+
+        let x, y, isVertical = false, posKey
+        if (m.kind === 'role') {
+          const fact = factMap[m.factId]
+          if (!fact) continue
+          const rc = roleCenter(fact, m.roleIndex)
+          x = rc.x; y = rc.y
+          isVertical = fact.orientation === 'vertical'
+          posKey = `role:${fact.occurrenceId ?? m.factId}:${m.roleIndex}`
+        } else {
+          const st    = subtypeMap[m.subtypeId]
+          if (!st) continue
+          const subOt = otMap[st.subId], supOt = otMap[st.superId]
+          if (!subOt || !supOt) continue
+          const from  = borderPoint(subOt, supOt.x, supOt.y)
+          const to    = borderPoint(supOt, subOt.x, subOt.y)
+          x = (from.x + to.x) / 2
+          y = (from.y + to.y) / 2
+          posKey = `subtype:${m.subtypeId}`
+        }
+
+        if (seenPosKeys.has(posKey)) continue
+        seenPosKeys.add(posKey)
+
+        const w = text.length * CHAR_W + PAD_X * 2
+        const h = FONT_SIZE + PAD_Y * 2
+        labels.push({ key: posKey, x, y, text, w, h, isVertical })
+      }
     }
   }
 
