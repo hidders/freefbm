@@ -509,23 +509,23 @@ function getConstraintDeps(c, facts, objectTypes) {
 // ── constraint auto-sync ──────────────────────────────────────────────────────
 // Returns the set of constraint IDs that are eligible for a given elementId set.
 // Returns deduplicated list of all schema elements (facts, OTs, subtypes) referenced in
-// the constraint's query copies, excluding those already covered by getConstraintDeps.
+// the constraint's query atoms, excluding those already covered by getConstraintDeps.
 function getConstraintQueryDeps(c, facts, objectTypes, subtypes) {
   const seen = new Set()
   const deps = []
   for (const q of (c.queries ?? [])) {
-    if (!q?.copies) continue
-    for (const cp of q.copies) {
-      const schemaId = cp.originalId
+    if (!q?.atoms) continue
+    for (const at of q.atoms) {
+      const schemaId = at.originalId
       if (!schemaId || seen.has(schemaId) || schemaId.includes('_il_')) continue
       seen.add(schemaId)
-      if (cp.kind === 'fact') {
+      if (at.kind === 'fact') {
         const el = facts?.find(f => f.id === schemaId)
         deps.push({ schemaId, kind: 'fact', label: factTypeLabel(el, objectTypes) ?? schemaId })
-      } else if (cp.kind === 'objectType') {
+      } else if (at.kind === 'objectType') {
         const el = objectTypes?.find(o => o.id === schemaId)
         deps.push({ schemaId, kind: 'ot', label: el?.name ?? schemaId })
-      } else if (cp.kind === 'subtype') {
+      } else if (at.kind === 'subtype') {
         const st = subtypes?.find(s => s.id === schemaId)
         const subName = objectTypes?.find(o => o.id === st?.subId)?.name ?? '?'
         const supName = objectTypes?.find(o => o.id === st?.superId)?.name ?? '?'
@@ -742,20 +742,20 @@ const EMPTY = () => {
   }
 }
 
-// ── query helper: merge fact/nested-OT copies with identical role→OT connectivity ──
-function runFactMergePass(copies, links, allFacts) {
+// ── query helper: merge fact/nested-OT atoms with identical role→OT connectivity ──
+function runFactMergePass(atoms, links, allFacts) {
   const getArity = (factId) => {
     if (factId.includes('_il_')) return 2
     const f = allFacts.find(f => f.id === factId)
     return f?.arity ?? f?.roles?.length ?? 0
   }
   const isObjectifiedId = (id) => allFacts.some(f => f.id === id && f.objectified)
-  let mCopies = copies, mLinks = links, again = true
+  let mAtoms = atoms, mLinks = links, again = true
   while (again) {
     again = false
-    const factCopies = mCopies.filter(c => c.kind === 'fact' || (c.kind === 'objectType' && isObjectifiedId(c.originalId)))
+    const factAtoms = mAtoms.filter(a => a.kind === 'fact' || (a.kind === 'objectType' && isObjectifiedId(a.originalId)))
     const byOrig = {}
-    for (const c of factCopies) { if (!byOrig[c.originalId]) byOrig[c.originalId] = []; byOrig[c.originalId].push(c) }
+    for (const a of factAtoms) { if (!byOrig[a.originalId]) byOrig[a.originalId] = []; byOrig[a.originalId].push(a) }
     for (const group of Object.values(byOrig)) {
       if (group.length < 2) continue
       const arity = getArity(group[0].originalId)
@@ -763,16 +763,16 @@ function runFactMergePass(copies, links, allFacts) {
       const allRoles = Array.from({ length: arity }, (_, k) => k)
       let found = false
       for (let i = 0; i < group.length && !found; i++) {
-        const m1 = {}; for (const l of mLinks) if (l.copyId === group[i].id) m1[l.roleIndex] = l.variableId
+        const m1 = {}; for (const l of mLinks) if (l.atomId === group[i].id) m1[l.roleIndex] = l.variableId
         if (!allRoles.every(r => m1[r] != null)) continue
         for (let j = i + 1; j < group.length && !found; j++) {
-          const m2 = {}; for (const l of mLinks) if (l.copyId === group[j].id) m2[l.roleIndex] = l.variableId
+          const m2 = {}; for (const l of mLinks) if (l.atomId === group[j].id) m2[l.roleIndex] = l.variableId
           if (!allRoles.every(r => m2[r] != null)) continue
           if (!allRoles.every(r => m1[r] === m2[r])) continue
           const merged = { ...group[i], seededRoles: [...new Set([...(group[i].seededRoles ?? []), ...(group[j].seededRoles ?? [])])] }
-          mCopies = mCopies.filter(c => c.id !== group[j].id).map(c => c.id === group[i].id ? merged : c)
+          mAtoms = mAtoms.filter(a => a.id !== group[j].id).map(a => a.id === group[i].id ? merged : a)
           mLinks  = mLinks
-            .filter(l => l.copyId !== group[j].id)
+            .filter(l => l.atomId !== group[j].id)
             .map(l => l.variableId === group[j].id ? { ...l, variableId: group[i].id } : l)
           found = again = true
         }
@@ -780,7 +780,7 @@ function runFactMergePass(copies, links, allFacts) {
       if (again) break
     }
   }
-  return { copies: mCopies, links: mLinks }
+  return { atoms: mAtoms, links: mLinks }
 }
 
 // ── store ─────────────────────────────────────────────────────────────────────
@@ -810,7 +810,7 @@ export const useOrmStore = create((set, get) => ({
   sequenceConstruction:    null,   // { constraintId, steps: [{sequenceIndex}][], collected: [{sequenceIndex, member}][] } | null
   constraintHighlight:     null,   // { constraintId, sequenceIndex: number|null, positionIndex: number|null } | null
   queryIndexHighlight:     null,   // { constraintId, queryIndex: number } | null
-  queryEditDraft:          null,   // { constraintId, sequenceIndex, copies:[{id,kind,originalId,isOutput}], links:[{copyId,roleIndex,variableId}], pendingClick } | null
+  queryEditDraft:          null,   // { constraintId, sequenceIndex, atoms:[{id,kind,originalId,isOutput}], links:[{atomId,roleIndex,variableId}], pendingClick } | null
   pendingTargetPick:       null,   // { constraintId } | null  — set while the user is clicking a target OT in the diagram
 
   tool:      'select',
@@ -1345,9 +1345,18 @@ export const useOrmStore = create((set, get) => ({
             : { type: 'range', lower: String(min), upper: String(max) }
         out = { ...out, frequency: spec ? [spec] : null }
       }
-      // Discard old-format queries (patternRoles/patternSubtypes) — replaced by copy-graph format
+      // Discard old-format queries (patternRoles/patternSubtypes) — replaced by atom-graph format
       if (out.queries && out.queries.some(q => q && q.patternRoles)) {
         out = { ...out, queries: out.queries.map(q => (q && q.patternRoles) ? null : q) }
+      }
+      // Migrate 'copies'/'copyId' terminology to 'atoms'/'atomId'
+      if (out.queries) {
+        out = { ...out, queries: out.queries.map(q => {
+          if (!q || q.atoms) return q
+          const atoms = q.copies ?? []
+          const links = (q.links ?? []).map(lk => lk.copyId !== undefined && lk.atomId === undefined ? { ...lk, atomId: lk.copyId } : lk)
+          return { ...q, atoms, links }
+        })}
       }
       return out
     })
@@ -3944,7 +3953,7 @@ export const useOrmStore = create((set, get) => ({
 
   // Begin a guided pick flow for adding a constraint.
   // Phase 1: sequence deps (fact types/OTs directly connected via sequences/roleSequences).
-  // Phase 2: query deps (all elements referenced in the constraint's query copies).
+  // Phase 2: query deps (all elements referenced in the constraint's query atoms).
   // For each dep: 0 occurrences → auto-create; 1 → auto-resolve; 2+ → user picks.
   // Sequence deps also serve as query anchors so they are not re-asked in phase 2.
   startConstraintEndpointPick(constraintId, diagramId) {
@@ -4195,13 +4204,13 @@ export const useOrmStore = create((set, get) => ({
       if (c.queries?.[0] != null) return
 
       const hasTargetOt = c.constraintType === 'uniqueness' || c.constraintType === 'frequency'
-      const commitQuery = (copies, links, lcaId) => {
+      const commitQuery = (atoms, links, lcaId) => {
         set(s => ({
           constraints: s.constraints.map(con => {
             if (con.id !== constraintId) return con
             const queries = [...(con.queries || [])]
             while (queries.length < 1) queries.push(null)
-            queries[0] = { copies, links }
+            queries[0] = { atoms, links }
             return { ...con, ...(hasTargetOt && lcaId ? { targetObjectTypeId: lcaId } : {}), queries }
           }),
           isDirty: true,
@@ -4247,11 +4256,11 @@ export const useOrmStore = create((set, get) => ({
       if (!lcaId) return
       if (hasTargetOt && c.targetObjectTypeId && c.targetObjectTypeId !== lcaId) return
 
-      // Build tree: root OT copy for LCA; per branch a path of subtype edge copies
-      // from the LCA down to the other-role OT, then the fact copy.
-      const rootCopyId = uid()
-      const copies = [
-        { id: rootCopyId, kind: 'objectType', originalId: lcaId,
+      // Build tree: root OT atom for LCA; per branch a path of subtype edge atoms
+      // from the LCA down to the other-role OT, then the fact atom.
+      const rootAtomId = uid()
+      const atoms = [
+        { id: rootAtomId, kind: 'objectType', originalId: lcaId,
           isOutput: hasTargetOt, dx: 16, dy: 16 },
       ]
       const links = []
@@ -4262,27 +4271,27 @@ export const useOrmStore = create((set, get) => ({
         const path = findPathDown(lcaId, P, subtypes)
         if (path === null) return  // LCA not actually an ancestor — schema inconsistency
 
-        let prevOtCopyId = rootCopyId
+        let prevOtAtomId = rootAtomId
         for (const step of path) {
-          const childOtCopyId = uid()
-          const stCopyId = uid()
-          copies.push({ id: childOtCopyId, kind: 'objectType', originalId: step.toId,
+          const childOtAtomId = uid()
+          const stAtomId = uid()
+          atoms.push({ id: childOtAtomId, kind: 'objectType', originalId: step.toId,
             isOutput: false, dx: (i + 2) * 16, dy: (i + 2) * 16 })
-          copies.push({ id: stCopyId, kind: 'subtype', originalId: step.subtypeId,
+          atoms.push({ id: stAtomId, kind: 'subtype', originalId: step.subtypeId,
             isOutput: false, dx: (i + 2) * 16, dy: (i + 2) * 16 })
-          links.push({ copyId: stCopyId, roleIndex: 1, variableId: prevOtCopyId })  // supertype end
-          links.push({ copyId: stCopyId, roleIndex: 0, variableId: childOtCopyId }) // subtype end
-          prevOtCopyId = childOtCopyId
+          links.push({ atomId: stAtomId, roleIndex: 1, variableId: prevOtAtomId })  // supertype end
+          links.push({ atomId: stAtomId, roleIndex: 0, variableId: childOtAtomId }) // subtype end
+          prevOtAtomId = childOtAtomId
         }
 
-        const factCopyId = uid()
-        copies.push({ id: factCopyId, kind: 'fact', originalId: m.factId,
+        const factAtomId = uid()
+        atoms.push({ id: factAtomId, kind: 'fact', originalId: m.factId,
           isOutput: false, seededRoles: [{ roleIndex: m.roleIndex, seqPosition: i }],
           dx: (i + 3) * 16, dy: (i + 3) * 16 })
-        links.push({ copyId: factCopyId, roleIndex: 1 - m.roleIndex, variableId: prevOtCopyId })
+        links.push({ atomId: factAtomId, roleIndex: 1 - m.roleIndex, variableId: prevOtAtomId })
       }
 
-      commitQuery(copies, links, lcaId)
+      commitQuery(atoms, links, lcaId)
     }
 
     if (c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr') {
@@ -4321,27 +4330,27 @@ export const useOrmStore = create((set, get) => ({
       if (members.every(mem => mem !== null)) {
         const lcaId = findUniqueLCA(members.map(mem => mem.anchorOtId), allSubtypes)
         if (lcaId) {
-          // LCA becomes the target OT; queries no longer contain a copy for it.
+          // LCA becomes the target OT; queries no longer contain an atom for it.
           applyQueries(lcaId, i => {
             const mem = members[i]
             if (mem.kind === 'subtype') {
-              const subOtCopyId = uid(), stCopyId = uid()
+              const subOtAtomId = uid(), stAtomId = uid()
               return {
-                copies: [
-                  { id: subOtCopyId, kind: 'objectType', originalId: mem.st.subId,
+                atoms: [
+                  { id: subOtAtomId, kind: 'objectType', originalId: mem.st.subId,
                     isOutput: false, dx: 16, dy: 16 },
-                  { id: stCopyId, kind: 'subtype', originalId: mem.st.id,
+                  { id: stAtomId, kind: 'subtype', originalId: mem.st.id,
                     isOutput: true, isSeeded: true, dx: 24, dy: 24 },
                 ],
                 links: [
-                  { copyId: stCopyId, roleIndex: 0, variableId: subOtCopyId },
+                  { atomId: stAtomId, roleIndex: 0, variableId: subOtAtomId },
                 ],
               }
             } else {
-              const factCopyId = uid()
+              const factAtomId = uid()
               return {
-                copies: [
-                  { id: factCopyId, kind: 'fact', originalId: mem.m.factId,
+                atoms: [
+                  { id: factAtomId, kind: 'fact', originalId: mem.m.factId,
                     isOutput: false, seededRoles: [{ roleIndex: mem.m.roleIndex, seqPosition: 0 }],
                     dx: 16, dy: 16 },
                 ],
@@ -4374,19 +4383,19 @@ export const useOrmStore = create((set, get) => ({
         if (c.constraintType === 'exclusion' && seq.length === 1 && seq[0].kind === 'subtype') {
           const st = allSubtypes.find(s => s.id === seq[0].subtypeId)
           if (st) {
-            const subOtCopyId = uid(), supOtCopyId = uid(), stCopyId = uid()
+            const subOtAtomId = uid(), supOtAtomId = uid(), stAtomId = uid()
             existingQueries[i] = {
-              copies: [
-                { id: subOtCopyId, kind: 'objectType', originalId: st.subId,
+              atoms: [
+                { id: subOtAtomId, kind: 'objectType', originalId: st.subId,
                   isOutput: false, dx: 16, dy: 16 },
-                { id: supOtCopyId, kind: 'objectType', originalId: st.superId,
+                { id: supOtAtomId, kind: 'objectType', originalId: st.superId,
                   isOutput: false, dx: 32, dy: 32 },
-                { id: stCopyId, kind: 'subtype', originalId: st.id,
+                { id: stAtomId, kind: 'subtype', originalId: st.id,
                   isSeeded: true, dx: 24, dy: 24 },
               ],
               links: [
-                { copyId: stCopyId, roleIndex: 0, variableId: subOtCopyId },
-                { copyId: stCopyId, roleIndex: 1, variableId: supOtCopyId },
+                { atomId: stAtomId, roleIndex: 0, variableId: subOtAtomId },
+                { atomId: stAtomId, roleIndex: 1, variableId: supOtAtomId },
               ],
             }
             changed = true
@@ -4401,12 +4410,12 @@ export const useOrmStore = create((set, get) => ({
         }, [])
         if (roleMembers.length === 0 || roleMembers.length !== seq.length) continue
 
-        // Rule 0: all roles within the same fact type → fact copy with the sequence roles as output variables
+        // Rule 0: all roles within the same fact type → fact atom with the sequence roles as output variables
         const factIds = new Set(roleMembers.map(m => m.factId))
         if (factIds.size === 1) {
-          const factCopyId = uid()
+          const factAtomId = uid()
           existingQueries[i] = {
-            copies: [{ id: factCopyId, kind: 'fact', originalId: [...factIds][0],
+            atoms: [{ id: factAtomId, kind: 'fact', originalId: [...factIds][0],
               isOutput: false, seededRoles: roleMembers.map(m => ({ roleIndex: m.roleIndex, seqPosition: m.seqPos })),
               dx: 16, dy: 16 }],
             links: [],
@@ -4435,30 +4444,30 @@ export const useOrmStore = create((set, get) => ({
             if (lcaId) {
               const paths = otherOtIds.map(otId => findPathDown(lcaId, otId, allSubtypes))
               if (paths.every(p => p !== null)) {
-                const rootCopyId = uid()
-                // exclusion / equality / subset never designate a target OT — root copy is a plain join variable.
-                const copies = [{ id: rootCopyId, kind: 'objectType', originalId: lcaId,
+                const rootAtomId = uid()
+                // exclusion / equality / subset never designate a target OT — root atom is a plain join variable.
+                const atoms = [{ id: rootAtomId, kind: 'objectType', originalId: lcaId,
                   isOutput: false, dx: 16, dy: 16 }]
                 const links = []
                 roleMembers.forEach((m, j) => {
-                  let prevOtCopyId = rootCopyId
+                  let prevOtAtomId = rootAtomId
                   for (const step of paths[j]) {
-                    const childOtCopyId = uid(), pathStCopyId = uid()
-                    copies.push({ id: childOtCopyId, kind: 'objectType', originalId: step.toId,
+                    const childOtAtomId = uid(), pathStAtomId = uid()
+                    atoms.push({ id: childOtAtomId, kind: 'objectType', originalId: step.toId,
                       isOutput: false, dx: (j + 2) * 16, dy: (j + 2) * 16 })
-                    copies.push({ id: pathStCopyId, kind: 'subtype', originalId: step.subtypeId,
+                    atoms.push({ id: pathStAtomId, kind: 'subtype', originalId: step.subtypeId,
                       isOutput: false, dx: (j + 2) * 16, dy: (j + 2) * 16 })
-                    links.push({ copyId: pathStCopyId, roleIndex: 1, variableId: prevOtCopyId })
-                    links.push({ copyId: pathStCopyId, roleIndex: 0, variableId: childOtCopyId })
-                    prevOtCopyId = childOtCopyId
+                    links.push({ atomId: pathStAtomId, roleIndex: 1, variableId: prevOtAtomId })
+                    links.push({ atomId: pathStAtomId, roleIndex: 0, variableId: childOtAtomId })
+                    prevOtAtomId = childOtAtomId
                   }
-                  const factCopyId = uid()
-                  copies.push({ id: factCopyId, kind: 'fact', originalId: m.factId,
+                  const factAtomId = uid()
+                  atoms.push({ id: factAtomId, kind: 'fact', originalId: m.factId,
                     isOutput: false, seededRoles: [{ roleIndex: m.roleIndex, seqPosition: m.seqPos }],
                     dx: (j + 3) * 16, dy: (j + 3) * 16 })
-                  links.push({ copyId: factCopyId, roleIndex: 1 - m.roleIndex, variableId: prevOtCopyId })
+                  links.push({ atomId: factAtomId, roleIndex: 1 - m.roleIndex, variableId: prevOtAtomId })
                 })
-                existingQueries[i] = { copies, links }
+                existingQueries[i] = { atoms, links }
                 changed = true
                 continue
               }
@@ -4576,14 +4585,14 @@ export const useOrmStore = create((set, get) => ({
   getQueryEditValidation() {
     const qd = get().queryEditDraft
     if (!qd) return { valid: false, reason: null }
-    const { copies, links } = qd
-    if (copies.length === 0) return { valid: false, reason: 'Pattern is empty' }
-    // Union-find on copies — edges are links between fact/subtype copies and OT copies
+    const { atoms, links } = qd
+    if (atoms.length === 0) return { valid: false, reason: 'Pattern is empty' }
+    // Union-find on atoms — edges are links between fact/subtype atoms and OT atoms
     const parent = {}
     const find = id => { if (parent[id] === undefined) parent[id] = id; return parent[id] === id ? id : (parent[id] = find(parent[id])) }
     const union = (a, b) => { parent[find(a)] = find(b) }
-    for (const lk of links) union(lk.copyId, lk.variableId)
-    const roots = new Set(copies.map(c => find(c.id)))
+    for (const lk of links) union(lk.atomId, lk.variableId)
+    const roots = new Set(atoms.map(a => find(a.id)))
     if (roots.size > 1) return { valid: false, reason: 'Pattern is not connected' }
     return { valid: true, reason: null }
   },
@@ -4592,17 +4601,19 @@ export const useOrmStore = create((set, get) => ({
     const c = get().constraints.find(c => c.id === constraintId)
     if (!c) return
     const existing = (c.queries || [])[sequenceIndex] || null
-    // Re-edit an already-saved new-format query
-    if (existing?.copies) {
-      set({ queryEditDraft: { constraintId, sequenceIndex, copies: existing.copies, links: existing.links, pendingClick: null } })
+    // Re-edit an already-saved query (atoms is the current field; copies is the old name for backward compat)
+    if (existing?.atoms || existing?.copies) {
+      const atoms = existing.atoms ?? existing.copies ?? []
+      const links = (existing.links ?? []).map(lk => lk.copyId !== undefined && lk.atomId === undefined ? { ...lk, atomId: lk.copyId } : lk)
+      set({ queryEditDraft: { constraintId, sequenceIndex, atoms, links, pendingClick: null } })
       return
     }
     // Seed fresh graph from sequence members
     const seq = c.sequences[sequenceIndex] || []
     const facts   = get().facts
     const subtypes = get().subtypes
-    const copies = [], links = []
-    const offsetCount = {}  // originalId → how many copies created so far
+    const atoms = [], links = []
+    const offsetCount = {}  // originalId → how many atoms created so far
     const nextOffset = (originalId) => {
       const n = offsetCount[originalId] ?? 0
       offsetCount[originalId] = n + 1
@@ -4614,43 +4625,43 @@ export const useOrmStore = create((set, get) => ({
     // targetObjectTypeId may be set as a side-effect of auto-generation but should not be marked output
     const hasOutputOt = ['uniqueness', 'frequency', 'inclusiveOr', 'exclusiveOr'].includes(c.constraintType)
 
-    // Target copy — created first so it is never shared with role variables
+    // Target atom — created first so it is never shared with role variables
     if (hasExplicitTarget) {
-      const targetCopyId = uid()
-      copies.push({ id: targetCopyId, kind: 'objectType', originalId: c.targetObjectTypeId, isOutput: hasOutputOt, ...nextOffset(c.targetObjectTypeId) })
+      const targetAtomId = uid()
+      atoms.push({ id: targetAtomId, kind: 'objectType', originalId: c.targetObjectTypeId, isOutput: hasOutputOt, ...nextOffset(c.targetObjectTypeId) })
     }
 
-    // Each role gets its own fresh fact copy; OT copies are added by the user later
+    // Each role gets its own fresh fact atom; OT atoms are added by the user later
     seq.forEach((m, seqPos) => {
       if (m.kind !== 'role') return
-      const factCopyId = uid()
-      copies.push({ id: factCopyId, kind: 'fact', originalId: m.factId, isOutput: false, seededRoles: [{ roleIndex: m.roleIndex, seqPosition: seqPos }], ...nextOffset(m.factId) })
+      const factAtomId = uid()
+      atoms.push({ id: factAtomId, kind: 'fact', originalId: m.factId, isOutput: false, seededRoles: [{ roleIndex: m.roleIndex, seqPosition: seqPos }], ...nextOffset(m.factId) })
     })
     for (const m of seq) {
       if (m.kind !== 'subtype') continue
       const st = subtypes.find(s => s.id === m.subtypeId)
       if (!st) continue
-      const stCopyId = uid()
-      copies.push({ id: stCopyId, kind: 'subtype', originalId: m.subtypeId, isOutput: !hasExplicitTarget, isSeeded: true, ...nextOffset(m.subtypeId) })
-      const makeOtCopy = (otId) => {
+      const stAtomId = uid()
+      atoms.push({ id: stAtomId, kind: 'subtype', originalId: m.subtypeId, isOutput: !hasExplicitTarget, isSeeded: true, ...nextOffset(m.subtypeId) })
+      const makeOtAtom = (otId) => {
         const cid = uid()
-        copies.push({ id: cid, kind: 'objectType', originalId: otId, isOutput: false, ...nextOffset(otId) })
+        atoms.push({ id: cid, kind: 'objectType', originalId: otId, isOutput: false, ...nextOffset(otId) })
         return cid
       }
-      links.push({ copyId: stCopyId, roleIndex: 0, variableId: makeOtCopy(st.subId)   })
-      links.push({ copyId: stCopyId, roleIndex: 1, variableId: makeOtCopy(st.superId) })
+      links.push({ atomId: stAtomId, roleIndex: 0, variableId: makeOtAtom(st.subId)   })
+      links.push({ atomId: stAtomId, roleIndex: 1, variableId: makeOtAtom(st.superId) })
     }
-    set({ queryEditDraft: { constraintId, sequenceIndex, copies, links, pendingClick: null } })
+    set({ queryEditDraft: { constraintId, sequenceIndex, atoms, links, pendingClick: null } })
   },
 
   queryEditClick(target) {
-    // target: { type: 'otCopy'|'otOriginal'|'factCopyRole'|'factOriginalRole'|'subtypeCopy'|'subtypeOriginal', id, roleIndex? }
+    // target: { type: 'otAtom'|'otOriginal'|'factAtomRole'|'factOriginalRole'|'subtypeAtom'|'subtypeOriginal', id, roleIndex? }
     const qd = get().queryEditDraft
     if (!qd) return
     const { pendingClick } = qd
     if (!pendingClick) {
-      // First click must be on a copy, not an original
-      if (target.type !== 'otCopy' && target.type !== 'factCopyRole' && target.type !== 'subtypeCopy') return
+      // First click must be on an atom, not an original
+      if (target.type !== 'otAtom' && target.type !== 'factAtomRole' && target.type !== 'subtypeAtom') return
       set({ queryEditDraft: { ...qd, pendingClick: target } })
       return
     }
@@ -4659,17 +4670,17 @@ export const useOrmStore = create((set, get) => ({
       set({ queryEditDraft: { ...qd, pendingClick: null } })
       return
     }
-    const isOtSide   = t => t.type === 'otCopy'   || t.type === 'otOriginal'
-    const isRoleSide = t => t.type === 'factCopyRole' || t.type === 'factOriginalRole' || t.type === 'subtypeCopy' || t.type === 'subtypeOriginal'
+    const isOtSide   = t => t.type === 'otAtom'   || t.type === 'otOriginal'
+    const isRoleSide = t => t.type === 'factAtomRole' || t.type === 'factOriginalRole' || t.type === 'subtypeAtom' || t.type === 'subtypeOriginal'
 
     // Two OT-side clicks
     if (isOtSide(pendingClick) && isOtSide(target)) {
 
       // Resolve original IDs for both sides
-      const ot1OrigId = pendingClick.type === 'otCopy'
-        ? qd.copies.find(c => c.id === pendingClick.id)?.originalId : pendingClick.id
-      const ot2OrigId = target.type === 'otCopy'
-        ? qd.copies.find(c => c.id === target.id)?.originalId : target.id
+      const ot1OrigId = pendingClick.type === 'otAtom'
+        ? qd.atoms.find(a => a.id === pendingClick.id)?.originalId : pendingClick.id
+      const ot2OrigId = target.type === 'otAtom'
+        ? qd.atoms.find(a => a.id === target.id)?.originalId : target.id
       if (!ot1OrigId || !ot2OrigId) { set({ queryEditDraft: { ...qd, pendingClick: null } }); return }
 
       // Find a subtype edge connecting the two OTs (either direction)
@@ -4680,31 +4691,31 @@ export const useOrmStore = create((set, get) => ({
       )
       if (!st) { set({ queryEditDraft: { ...qd, pendingClick: null } }); return }
 
-      const newCopies2 = [...qd.copies]
+      const newAtoms2 = [...qd.atoms]
       const newLinks2  = [...qd.links]
       const offsetFor  = (origId) => {
-        const n = newCopies2.filter(c => c.originalId === origId).length
+        const n = newAtoms2.filter(a => a.originalId === origId).length
         return { dx: (n + 1) * 16, dy: (n + 1) * 16 }
       }
 
-      // Resolve or create OT1 copy
-      let ot1CopyId
-      if (pendingClick.type === 'otCopy') { ot1CopyId = pendingClick.id }
-      else { ot1CopyId = uid(); newCopies2.push({ id: ot1CopyId, kind: 'objectType', originalId: ot1OrigId, isOutput: false, ...offsetFor(ot1OrigId) }) }
+      // Resolve or create OT1 atom
+      let ot1AtomId
+      if (pendingClick.type === 'otAtom') { ot1AtomId = pendingClick.id }
+      else { ot1AtomId = uid(); newAtoms2.push({ id: ot1AtomId, kind: 'objectType', originalId: ot1OrigId, isOutput: false, ...offsetFor(ot1OrigId) }) }
 
-      // Resolve or create OT2 copy
-      let ot2CopyId
-      if (target.type === 'otCopy') { ot2CopyId = target.id }
-      else { ot2CopyId = uid(); newCopies2.push({ id: ot2CopyId, kind: 'objectType', originalId: ot2OrigId, isOutput: false, ...offsetFor(ot2OrigId) }) }
+      // Resolve or create OT2 atom
+      let ot2AtomId
+      if (target.type === 'otAtom') { ot2AtomId = target.id }
+      else { ot2AtomId = uid(); newAtoms2.push({ id: ot2AtomId, kind: 'objectType', originalId: ot2OrigId, isOutput: false, ...offsetFor(ot2OrigId) }) }
 
-      // Create subtype copy linking them
-      const stCopyId = uid()
+      // Create subtype atom linking them
+      const stAtomId = uid()
       const stIsOutput = !get().constraints.find(c => c.id === qd.constraintId)?.targetObjectTypeId
-      newCopies2.push({ id: stCopyId, kind: 'subtype', originalId: st.id, isOutput: stIsOutput, isSeeded: false, ...offsetFor(st.id) })
-      newLinks2.push({ copyId: stCopyId, roleIndex: 0, variableId: st.subId   === ot1OrigId ? ot1CopyId : ot2CopyId })
-      newLinks2.push({ copyId: stCopyId, roleIndex: 1, variableId: st.superId === ot1OrigId ? ot1CopyId : ot2CopyId })
+      newAtoms2.push({ id: stAtomId, kind: 'subtype', originalId: st.id, isOutput: stIsOutput, isSeeded: false, ...offsetFor(st.id) })
+      newLinks2.push({ atomId: stAtomId, roleIndex: 0, variableId: st.subId   === ot1OrigId ? ot1AtomId : ot2AtomId })
+      newLinks2.push({ atomId: stAtomId, roleIndex: 1, variableId: st.superId === ot1OrigId ? ot1AtomId : ot2AtomId })
 
-      set({ queryEditDraft: { ...qd, copies: newCopies2, links: newLinks2, pendingClick: null } })
+      set({ queryEditDraft: { ...qd, atoms: newAtoms2, links: newLinks2, pendingClick: null } })
       return
     }
 
@@ -4715,56 +4726,56 @@ export const useOrmStore = create((set, get) => ({
 
     const facts    = get().facts
     const subtypes = get().subtypes
-    const newCopies = [...qd.copies]
+    const newAtoms = [...qd.atoms]
     const newLinks  = [...qd.links]
 
-    // Helper: initial dx/dy for a new copy based on how many of the same originalId already exist
-    const newCopyOffset = (originalId) => {
-      const n = newCopies.filter(c => c.originalId === originalId).length
+    // Helper: initial dx/dy for a new atom based on how many of the same originalId already exist
+    const newAtomOffset = (originalId) => {
+      const n = newAtoms.filter(a => a.originalId === originalId).length
       return { dx: (n + 1) * 16, dy: (n + 1) * 16 }
     }
 
-    // Resolve or create OT copy
-    let otCopyId, otOriginalId
-    if (otTarget.type === 'otCopy') {
-      otCopyId = otTarget.id
-      otOriginalId = newCopies.find(c => c.id === otCopyId)?.originalId
+    // Resolve or create OT atom
+    let otAtomId, otOriginalId
+    if (otTarget.type === 'otAtom') {
+      otAtomId = otTarget.id
+      otOriginalId = newAtoms.find(a => a.id === otAtomId)?.originalId
     } else {
-      otCopyId = uid(); otOriginalId = otTarget.id
-      newCopies.push({ id: otCopyId, kind: 'objectType', originalId: otOriginalId, isOutput: false, ...newCopyOffset(otOriginalId) })
+      otAtomId = uid(); otOriginalId = otTarget.id
+      newAtoms.push({ id: otAtomId, kind: 'objectType', originalId: otOriginalId, isOutput: false, ...newAtomOffset(otOriginalId) })
     }
     if (!otOriginalId) { set({ queryEditDraft: { ...qd, pendingClick: null } }); return }
 
-    // Resolve or create fact/subtype copy and determine roleIndex
-    let roleCopyId, roleIndex
-    if (roleTarget.type === 'factCopyRole') {
-      roleCopyId = roleTarget.id; roleIndex = roleTarget.roleIndex
+    // Resolve or create fact/subtype atom and determine roleIndex
+    let roleAtomId, roleIndex
+    if (roleTarget.type === 'factAtomRole') {
+      roleAtomId = roleTarget.id; roleIndex = roleTarget.roleIndex
     } else if (roleTarget.type === 'factOriginalRole') {
-      roleCopyId = uid(); roleIndex = roleTarget.roleIndex
+      roleAtomId = uid(); roleIndex = roleTarget.roleIndex
       const isObjectified = facts.find(f => f.id === roleTarget.id)?.objectified
-      newCopies.push({ id: roleCopyId, kind: isObjectified ? 'objectType' : 'fact', originalId: roleTarget.id, isOutput: false, ...newCopyOffset(roleTarget.id) })
+      newAtoms.push({ id: roleAtomId, kind: isObjectified ? 'objectType' : 'fact', originalId: roleTarget.id, isOutput: false, ...newAtomOffset(roleTarget.id) })
     } else {
       // Subtype: infer which end from OT type
-      const stOriginalId = roleTarget.type === 'subtypeCopy'
-        ? (qd.copies.find(c => c.id === roleTarget.id)?.originalId)
+      const stOriginalId = roleTarget.type === 'subtypeAtom'
+        ? (qd.atoms.find(a => a.id === roleTarget.id)?.originalId)
         : roleTarget.id
       const st = subtypes.find(s => s.id === stOriginalId)
       if (!st) { set({ queryEditDraft: { ...qd, pendingClick: null } }); return }
       if      (otOriginalId === st.subId)   roleIndex = 0
       else if (otOriginalId === st.superId) roleIndex = 1
       else { set({ queryEditDraft: { ...qd, pendingClick: null } }); return }
-      if (roleTarget.type === 'subtypeCopy') {
-        roleCopyId = roleTarget.id
+      if (roleTarget.type === 'subtypeAtom') {
+        roleAtomId = roleTarget.id
       } else {
-        roleCopyId = uid()
+        roleAtomId = uid()
         const stOut = !get().constraints.find(c => c.id === qd.constraintId)?.targetObjectTypeId
-        newCopies.push({ id: roleCopyId, kind: 'subtype', originalId: stOriginalId, isOutput: stOut, isSeeded: false, ...newCopyOffset(stOriginalId) })
+        newAtoms.push({ id: roleAtomId, kind: 'subtype', originalId: stOriginalId, isOutput: stOut, isSeeded: false, ...newAtomOffset(stOriginalId) })
       }
     }
 
     // Type-check for fact role slots
-    if (roleTarget.type === 'factCopyRole' || roleTarget.type === 'factOriginalRole') {
-      const factOrigId = newCopies.find(c => c.id === roleCopyId)?.originalId
+    if (roleTarget.type === 'factAtomRole' || roleTarget.type === 'factOriginalRole') {
+      const factOrigId = newAtoms.find(a => a.id === roleAtomId)?.originalId
       let expectedOtId
       if (factOrigId?.includes('_il_')) {
         const [pFid, riStr] = factOrigId.split('_il_')
@@ -4777,12 +4788,12 @@ export const useOrmStore = create((set, get) => ({
     }
 
     // If the role slot is already filled, drop the old connection before adding the new one
-    const existingIdx = newLinks.findIndex(l => l.copyId === roleCopyId && l.roleIndex === roleIndex)
+    const existingIdx = newLinks.findIndex(l => l.atomId === roleAtomId && l.roleIndex === roleIndex)
     if (existingIdx !== -1) newLinks.splice(existingIdx, 1)
 
-    newLinks.push({ copyId: roleCopyId, roleIndex, variableId: otCopyId })
+    newLinks.push({ atomId: roleAtomId, roleIndex, variableId: otAtomId })
 
-    set({ queryEditDraft: { ...qd, copies: newCopies, links: newLinks, pendingClick: null } })
+    set({ queryEditDraft: { ...qd, atoms: newAtoms, links: newLinks, pendingClick: null } })
   },
 
   commitQueryEdit() {
@@ -4794,7 +4805,7 @@ export const useOrmStore = create((set, get) => ({
         if (c.id !== qd.constraintId) return c
         const queries = [...(c.queries || [])]
         while (queries.length <= qd.sequenceIndex) queries.push(null)
-        queries[qd.sequenceIndex] = { copies: qd.copies, links: qd.links }
+        queries[qd.sequenceIndex] = { atoms: qd.atoms, links: qd.links }
         return { ...c, queries }
       }),
       isDirty: true,
@@ -4810,7 +4821,7 @@ export const useOrmStore = create((set, get) => ({
     if (qd?.pendingClick) set({ queryEditDraft: { ...qd, pendingClick: null } })
   },
 
-  updateQueryCopyOffset(copyId, dx, dy) {
+  updateQueryAtomOffset(atomId, dx, dy) {
     const qd = get().queryEditDraft
     if (!qd) return
     set(s => {
@@ -4819,7 +4830,7 @@ export const useOrmStore = create((set, get) => ({
         const qp = d.queryPositions ?? {}
         const forC = qp[qd.constraintId] ?? {}
         const forS = forC[qd.sequenceIndex] ?? {}
-        return { ...d, queryPositions: { ...qp, [qd.constraintId]: { ...forC, [qd.sequenceIndex]: { ...forS, [copyId]: { dx, dy } } } } }
+        return { ...d, queryPositions: { ...qp, [qd.constraintId]: { ...forC, [qd.sequenceIndex]: { ...forS, [atomId]: { dx, dy } } } } }
       })
       return {
         diagrams,
@@ -4828,7 +4839,7 @@ export const useOrmStore = create((set, get) => ({
     })
   },
 
-  resetQueryCopyPosition(copyId) {
+  resetQueryAtomPosition(atomId) {
     const qd = get().queryEditDraft
     if (!qd) return
     set(s => {
@@ -4837,56 +4848,56 @@ export const useOrmStore = create((set, get) => ({
         const qp = d.queryPositions ?? {}
         const forC = qp[qd.constraintId] ?? {}
         const forS = { ...(forC[qd.sequenceIndex] ?? {}) }
-        delete forS[copyId]
+        delete forS[atomId]
         return { ...d, queryPositions: { ...qp, [qd.constraintId]: { ...forC, [qd.sequenceIndex]: forS } } }
       })
       return { diagrams, isDirty: true }
     })
   },
 
-  mergeOtCopyInto(draggedId, targetId) {
+  mergeOtAtomInto(draggedId, targetId) {
     const qd = get().queryEditDraft
     if (!qd) return
-    const dragged = qd.copies.find(c => c.id === draggedId)
-    const target  = qd.copies.find(c => c.id === targetId)
+    const dragged = qd.atoms.find(a => a.id === draggedId)
+    const target  = qd.atoms.find(a => a.id === targetId)
     if (!dragged || !target || dragged.originalId !== target.originalId) return
     const survived = (dragged.isOutput || target.isOutput) ? { ...target, isOutput: true } : target
-    const afterMergeCopies = qd.copies.filter(c => c.id !== draggedId).map(c => c.id === targetId ? survived : c)
-    const afterMergeLinks  = qd.links.map(l => l.variableId === draggedId ? { ...l, variableId: targetId } : l)
-    const { copies, links } = runFactMergePass(afterMergeCopies, afterMergeLinks, get().facts)
-    set({ queryEditDraft: { ...qd, copies, links, pendingClick: null } })
+    const afterMergeAtoms = qd.atoms.filter(a => a.id !== draggedId).map(a => a.id === targetId ? survived : a)
+    const afterMergeLinks = qd.links.map(l => l.variableId === draggedId ? { ...l, variableId: targetId } : l)
+    const { atoms, links } = runFactMergePass(afterMergeAtoms, afterMergeLinks, get().facts)
+    set({ queryEditDraft: { ...qd, atoms, links, pendingClick: null } })
   },
 
-  splitOtCopy(copyId) {
+  splitOtAtom(atomId) {
     const qd = get().queryEditDraft
     if (!qd) return
-    const cp = qd.copies.find(c => c.id === copyId)
-    if (!cp || cp.kind !== 'objectType') return
+    const at = qd.atoms.find(a => a.id === atomId)
+    if (!at || at.kind !== 'objectType') return
 
     const allFacts = get().facts
     const isObjectifiedId = (id) => allFacts.some(f => f.id === id && f.objectified)
-    const isFactSide = (c) => c.kind === 'fact' || (c.kind === 'objectType' && isObjectifiedId(c.originalId))
+    const isFactSide = (a) => a.kind === 'fact' || (a.kind === 'objectType' && isObjectifiedId(a.originalId))
 
-    // Only links where the role side is a fact/nested-OT copy
+    // Only links where the role side is a fact/nested-OT atom
     const roleLinks = qd.links.filter(l =>
-      l.variableId === copyId &&
-      qd.copies.some(c => c.id === l.copyId && isFactSide(c))
+      l.variableId === atomId &&
+      qd.atoms.some(a => a.id === l.atomId && isFactSide(a))
     )
     if (roleLinks.length < 2) return
 
     const n = roleLinks.length
-    const baseDx = cp.dx ?? 16, baseDy = cp.dy ?? 16
-    let newCopies = [...qd.copies]
+    const baseDx = at.dx ?? 16, baseDy = at.dy ?? 16
+    let newAtoms = [...qd.atoms]
     let newLinks  = [...qd.links]
 
-    // Create one replacement OT copy per role link, spread in a circle
+    // Create one replacement OT atom per role link, spread in a circle
     roleLinks.forEach((lk, i) => {
       const newId = uid()
       const angle  = (2 * Math.PI * i) / n
       const radius = 30
-      newCopies.push({
-        id: newId, kind: cp.kind, originalId: cp.originalId,
-        isOutput: cp.isOutput && i === 0,
+      newAtoms.push({
+        id: newId, kind: at.kind, originalId: at.originalId,
+        isOutput: at.isOutput && i === 0,
         dx: baseDx + Math.round(Math.cos(angle) * radius),
         dy: baseDy + Math.round(Math.sin(angle) * radius),
       })
@@ -4894,103 +4905,103 @@ export const useOrmStore = create((set, get) => ({
       newLinks[idx] = { ...lk, variableId: newId }
     })
 
-    // Remove the original copy and any remaining links to it (e.g. subtype links)
-    newCopies = newCopies.filter(c => c.id !== copyId)
-    newLinks  = newLinks.filter(l => l.variableId !== copyId && l.copyId !== copyId)
+    // Remove the original atom and any remaining links to it (e.g. subtype links)
+    newAtoms = newAtoms.filter(a => a.id !== atomId)
+    newLinks  = newLinks.filter(l => l.variableId !== atomId && l.atomId !== atomId)
 
-    // Drop orphaned subtype copies (missing either endpoint)
+    // Drop orphaned subtype atoms (missing either endpoint)
     const orphaned = new Set(
-      newCopies.filter(c => {
-        if (c.kind !== 'subtype') return false
-        return !newLinks.some(l => l.copyId === c.id && l.roleIndex === 0) ||
-               !newLinks.some(l => l.copyId === c.id && l.roleIndex === 1)
-      }).map(c => c.id)
+      newAtoms.filter(a => {
+        if (a.kind !== 'subtype') return false
+        return !newLinks.some(l => l.atomId === a.id && l.roleIndex === 0) ||
+               !newLinks.some(l => l.atomId === a.id && l.roleIndex === 1)
+      }).map(a => a.id)
     )
-    newCopies = newCopies.filter(c => !orphaned.has(c.id))
-    newLinks  = newLinks.filter(l => !orphaned.has(l.copyId) && !orphaned.has(l.variableId))
+    newAtoms = newAtoms.filter(a => !orphaned.has(a.id))
+    newLinks  = newLinks.filter(l => !orphaned.has(l.atomId) && !orphaned.has(l.variableId))
 
-    set({ queryEditDraft: { ...qd, copies: newCopies, links: newLinks, pendingClick: null } })
+    set({ queryEditDraft: { ...qd, atoms: newAtoms, links: newLinks, pendingClick: null } })
   },
 
-  splitFactCopy(copyId) {
+  splitFactAtom(atomId) {
     const qd = get().queryEditDraft
     if (!qd) return
-    const cp = qd.copies.find(c => c.id === copyId)
-    if (!cp) return
+    const at = qd.atoms.find(a => a.id === atomId)
+    if (!at) return
 
     const allFacts = get().facts
     const isObjectifiedId = (id) => allFacts.some(f => f.id === id && f.objectified)
 
-    // Applies to plain fact copies and objectified-fact OT copies
-    if (cp.kind !== 'fact' && !(cp.kind === 'objectType' && isObjectifiedId(cp.originalId))) return
+    // Applies to plain fact atoms and objectified-fact OT atoms
+    if (at.kind !== 'fact' && !(at.kind === 'objectType' && isObjectifiedId(at.originalId))) return
 
-    const fact = allFacts.find(f => f.id === cp.originalId)
+    const fact = allFacts.find(f => f.id === at.originalId)
     const arity = fact?.arity ?? fact?.roles?.length ?? 0
     if (arity < 2) return
 
-    const seededMap = new Map((cp.seededRoles ?? []).map(s =>
+    const seededMap = new Map((at.seededRoles ?? []).map(s =>
       typeof s === 'number' ? [s, { roleIndex: s, seqPosition: null }] : [s.roleIndex, s]))
-    const baseDx  = cp.dx ?? 16, baseDy = cp.dy ?? 16
+    const baseDx  = at.dx ?? 16, baseDy = at.dy ?? 16
 
     // Snapshot existing role connections before we filter links
     const roleConnections = {}
     for (let ri = 0; ri < arity; ri++) {
-      const lk = qd.links.find(l => l.copyId === copyId && l.roleIndex === ri)
+      const lk = qd.links.find(l => l.atomId === atomId && l.roleIndex === ri)
       if (lk) roleConnections[ri] = lk.variableId
     }
 
-    // Remove all links associated with the original copy (role links and back-links)
-    let newLinks  = qd.links.filter(l => l.copyId !== copyId && l.variableId !== copyId)
-    let newCopies = qd.copies.filter(c => c.id !== copyId)
+    // Remove all links associated with the original atom (role links and back-links)
+    let newLinks  = qd.links.filter(l => l.atomId !== atomId && l.variableId !== atomId)
+    let newAtoms = qd.atoms.filter(a => a.id !== atomId)
 
-    // Create one replacement copy per role, spread in a circle
+    // Create one replacement atom per role, spread in a circle
     for (let ri = 0; ri < arity; ri++) {
       const newId  = uid()
       const angle  = (2 * Math.PI * ri) / arity
       const radius = 30
-      newCopies.push({
-        id: newId, kind: cp.kind, originalId: cp.originalId,
+      newAtoms.push({
+        id: newId, kind: at.kind, originalId: at.originalId,
         isOutput: false,
         seededRoles: seededMap.has(ri) ? [seededMap.get(ri)] : [],
         dx: baseDx + Math.round(Math.cos(angle) * radius),
         dy: baseDy + Math.round(Math.sin(angle) * radius),
       })
       if (roleConnections[ri] !== undefined) {
-        newLinks.push({ copyId: newId, roleIndex: ri, variableId: roleConnections[ri] })
+        newLinks.push({ atomId: newId, roleIndex: ri, variableId: roleConnections[ri] })
       }
     }
 
-    set({ queryEditDraft: { ...qd, copies: newCopies, links: newLinks, pendingClick: null } })
+    set({ queryEditDraft: { ...qd, atoms: newAtoms, links: newLinks, pendingClick: null } })
   },
 
-  splitOutputRoles(copyId) {
+  splitOutputRoles(atomId) {
     const qd = get().queryEditDraft
     if (!qd) return
-    const cp = qd.copies.find(c => c.id === copyId)
-    if (!cp) return
+    const at = qd.atoms.find(a => a.id === atomId)
+    if (!at) return
 
     const allFacts = get().facts
     const isObjectifiedId = (id) => allFacts.some(f => f.id === id && f.objectified)
-    if (cp.kind !== 'fact' && !(cp.kind === 'objectType' && isObjectifiedId(cp.originalId))) return
+    if (at.kind !== 'fact' && !(at.kind === 'objectType' && isObjectifiedId(at.originalId))) return
 
-    const seededRoles = cp.seededRoles ?? []
+    const seededRoles = at.seededRoles ?? []
     if (seededRoles.length <= 1) return
 
     const [firstRole, ...otherRoles] = seededRoles
-    const baseDx = cp.dx ?? 16, baseDy = cp.dy ?? 16
+    const baseDx = at.dx ?? 16, baseDy = at.dy ?? 16
 
-    // Original copy keeps only the first output role; all its links are preserved
-    let newCopies = qd.copies.map(c =>
-      c.id === copyId ? { ...c, seededRoles: [firstRole] } : c
+    // Original atom keeps only the first output role; all its links are preserved
+    let newAtoms = qd.atoms.map(a =>
+      a.id === atomId ? { ...a, seededRoles: [firstRole] } : a
     )
     const newLinks = [...qd.links]
 
-    // One fresh, unconnected copy per remaining output role
+    // One fresh, unconnected atom per remaining output role
     otherRoles.forEach((ri, i) => {
       const angle  = (2 * Math.PI * (i + 1)) / (otherRoles.length + 1)
       const radius = 36
-      newCopies.push({
-        id: uid(), kind: cp.kind, originalId: cp.originalId,
+      newAtoms.push({
+        id: uid(), kind: at.kind, originalId: at.originalId,
         isOutput: false,
         seededRoles: [ri],
         dx: baseDx + Math.round(Math.cos(angle) * radius),
@@ -4998,29 +5009,29 @@ export const useOrmStore = create((set, get) => ({
       })
     })
 
-    set({ queryEditDraft: { ...qd, copies: newCopies, links: newLinks, pendingClick: null } })
+    set({ queryEditDraft: { ...qd, atoms: newAtoms, links: newLinks, pendingClick: null } })
   },
 
-  removeQueryCopy(copyId) {
+  removeQueryAtom(atomId) {
     const qd = get().queryEditDraft
     if (!qd) return
-    // Remove links touching this copy
-    const remainingLinks = qd.links.filter(l => l.copyId !== copyId && l.variableId !== copyId)
-    // Orphan any subtype copies whose sub or super OT copy is now missing
+    // Remove links touching this atom
+    const remainingLinks = qd.links.filter(l => l.atomId !== atomId && l.variableId !== atomId)
+    // Orphan any subtype atoms whose sub or super OT atom is now missing
     const orphaned = new Set(
-      qd.copies
-        .filter(cp => {
-          if (cp.kind !== 'subtype') return false
-          const hasSubLink = remainingLinks.some(l => l.copyId === cp.id && l.roleIndex === 0)
-          const hasSupLink = remainingLinks.some(l => l.copyId === cp.id && l.roleIndex === 1)
+      qd.atoms
+        .filter(at => {
+          if (at.kind !== 'subtype') return false
+          const hasSubLink = remainingLinks.some(l => l.atomId === at.id && l.roleIndex === 0)
+          const hasSupLink = remainingLinks.some(l => l.atomId === at.id && l.roleIndex === 1)
           return !hasSubLink || !hasSupLink
         })
-        .map(cp => cp.id)
+        .map(at => at.id)
     )
-    orphaned.add(copyId)
-    const newCopies = qd.copies.filter(cp => !orphaned.has(cp.id))
-    const newLinks  = remainingLinks.filter(l => !orphaned.has(l.copyId) && !orphaned.has(l.variableId))
-    set({ queryEditDraft: { ...qd, copies: newCopies, links: newLinks, pendingClick: null } })
+    orphaned.add(atomId)
+    const newAtoms = qd.atoms.filter(at => !orphaned.has(at.id))
+    const newLinks = remainingLinks.filter(l => !orphaned.has(l.atomId) && !orphaned.has(l.variableId))
+    set({ queryEditDraft: { ...qd, atoms: newAtoms, links: newLinks, pendingClick: null } })
   },
 
   clearConstraintQuery(constraintId, sequenceIndex) {

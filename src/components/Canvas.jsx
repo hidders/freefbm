@@ -12,7 +12,7 @@ import RoleConnectors, { MandatoryDots } from './RoleConnectors'
 import Minimap from './Minimap'
 import ContextMenu from './ContextMenu'
 import ConstraintMemberLabels from './ConstraintMemberLabels'
-import QueryCopies from './QueryCopies'
+import QueryAtoms from './QueryAtoms'
 import NoteNode from './NoteNode'
 import { ValueRangeEditor } from './Inspector'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
@@ -573,17 +573,17 @@ export default function Canvas() {
   }
 
   // During query construction: set of original IDs that are NOT selectable next (used by SubtypeArrows/RoleConnectors)
-  const queryOriginals = qd ? new Set(qd.copies.map(cp => cp.originalId)) : null
+  const queryOriginals = qd ? new Set(qd.atoms.map(at => at.originalId)) : null
   const queryReachable = (() => {
     if (!qd) return null
     if (!qd.pendingClick) return new Set()  // no first click yet — all originals dimmed
 
-    // After first click on a copy: only originals directly reachable from its underlying original
+    // After first click on an atom: only originals directly reachable from its underlying original
     const pending = qd.pendingClick
     const reachable = new Set()  // intentionally empty — no 0.45 tier
 
-    if (pending.type === 'otCopy') {
-      const pendingOrigId = qd.copies.find(c => c.id === pending.id)?.originalId
+    if (pending.type === 'otAtom') {
+      const pendingOrigId = qd.atoms.find(a => a.id === pending.id)?.originalId
       if (pendingOrigId) {
         if (store.objectTypes.some(o => o.id === pendingOrigId)) {
           store.facts.forEach(f => {
@@ -607,15 +607,15 @@ export default function Canvas() {
           })
         }
       }
-    } else if (pending.type === 'factCopyRole') {
-      const factOrigId = qd.copies.find(c => c.id === pending.id)?.originalId
+    } else if (pending.type === 'factAtomRole') {
+      const factOrigId = qd.atoms.find(a => a.id === pending.id)?.originalId
       const fact = factOrigId ? store.facts.find(f => f.id === factOrigId) : null
       if (fact) {
         const otId = fact.roles[pending.roleIndex]?.objectTypeId
         if (otId) reachable.add(otId)
       }
-    } else if (pending.type === 'subtypeCopy') {
-      const stOrigId = qd.copies.find(c => c.id === pending.id)?.originalId
+    } else if (pending.type === 'subtypeAtom') {
+      const stOrigId = qd.atoms.find(a => a.id === pending.id)?.originalId
       const st = stOrigId ? store.subtypes.find(s => s.id === stOrigId) : null
       if (st) { reachable.add(st.subId); reachable.add(st.superId) }
     }
@@ -1293,7 +1293,7 @@ export default function Canvas() {
           <marker id="arrowSubtypeQueryIn" markerWidth="4.5" markerHeight="4.5" refX="0.25" refY="2" orient="auto">
             <path d="M 0.25 0.25 L 4.25 2 L 0.25 3.75 Z" fill="var(--col-query-in)" stroke="none"/>
           </marker>
-          <marker id="arrowSubtypeCopy" markerWidth="4.5" markerHeight="4.5" refX="0.25" refY="2" orient="auto">
+          <marker id="arrowSubtypeAtom" markerWidth="4.5" markerHeight="4.5" refX="0.25" refY="2" orient="auto">
             <path d="M 0.25 0.25 L 4.25 2 L 0.25 3.75 Z" fill="#15803d" stroke="none"/>
           </marker>
           <marker id="arrowSubset" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto">
@@ -1462,16 +1462,16 @@ export default function Canvas() {
           <ConstraintMemberLabels/>
           <ValidationBadges store={store} visibleOts={visibleOts} visibleFacts={visibleFacts} visibleConstraints={visibleConstraints} visibleSubtypes={visibleSubtypes}/>
           </g>{/* end previewDim wrapper */}
-          {(qd || store.queryIndexHighlight) && <QueryCopies
+          {(qd || store.queryIndexHighlight) && <QueryAtoms
             mousePos={mousePos}
-            onCopyClick={target => store.queryEditClick(target)}
-            onCopyContextMenu={(e, copyId, isProtected, isAtDefault) => {
+            onAtomClick={target => store.queryEditClick(target)}
+            onAtomContextMenu={(e, atomId, isProtected, isAtDefault) => {
               setContextMenu({
                 x: e.clientX, y: e.clientY,
                 items: [
-                  { label: 'Reset position', disabled: isAtDefault, action: () => store.resetQueryCopyPosition(copyId) },
+                  { label: 'Reset position', disabled: isAtDefault, action: () => store.resetQueryAtomPosition(atomId) },
                   '---',
-                  { label: 'Remove copy', danger: !isProtected, disabled: isProtected, action: () => store.removeQueryCopy(copyId) },
+                  { label: 'Remove atom', danger: !isProtected, disabled: isProtected, action: () => store.removeQueryAtom(atomId) },
                 ],
               })
             }}

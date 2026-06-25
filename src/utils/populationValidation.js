@@ -904,10 +904,10 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
     //
     // The evaluator handles three structural forms:
     //
-    // A) Subtype copy (no fact copies): result = population of the sub OT.
+    // A) Subtype atom (no fact atoms): result = population of the sub OT.
     //
-    // B) Fact copies with seeded-role output positions (the standard form for
-    //    exclusion / equality / subset).  OT copies are pure join variables —
+    // B) Fact atoms with seeded-role output positions (the standard form for
+    //    exclusion / equality / subset).  OT atoms are pure join variables —
     //    they constrain which fact rows may be combined but never appear in the
     //    output.  A recursive nested-loop join collects (seeded-role value)
     //    tuples ordered by seqPosition.
@@ -1121,14 +1121,14 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
       // of a query result record.  "Target" means the value bound to the OT
       // copy whose originalId matches con.targetObjectTypeId.
       if (con.isPreferredIdentifier && con.targetObjectTypeId && query) {
-        const targetCopy = query.copies.find(
-          c => c.kind === 'objectType' && c.originalId === con.targetObjectTypeId
+        const targetAtom = query.atoms.find(
+          a => a.kind === 'objectType' && a.originalId === con.targetObjectTypeId
         )
-        if (targetCopy) {
+        if (targetAtom) {
           const targetCounts = new Map()
           const resetQuery = (con.queries ?? [])[0] ?? null
           evaluateQuery(resetQuery, facts, populations, effectiveFactTuples, (varAssign) => {
-            const normKey = varAssign.get(targetCopy.id)
+            const normKey = varAssign.get(targetAtom.id)
             if (normKey != null) {
               targetCounts.set(normKey, (targetCounts.get(normKey) ?? 0) + 1)
             }
@@ -2651,20 +2651,20 @@ function computeEffectiveFactTuples(fact, facts, factPopulations, objectTypes, p
 
 function evaluateQuery(query, facts, populations, effectiveFactTuplesFn, onResult) {
   if (!query) return null
-  const { copies, links } = query
-  if (!copies || copies.length === 0) return null
+  const { atoms, links } = query
+  if (!atoms || atoms.length === 0) return null
 
-  const factCopies = copies.filter(c => c.kind === 'fact')
-  const otCopies   = copies.filter(c => c.kind === 'objectType')
-  const stCopies   = copies.filter(c => c.kind === 'subtype')
+  const factAtoms = atoms.filter(a => a.kind === 'fact')
+  const otAtoms   = atoms.filter(a => a.kind === 'objectType')
+  const stAtoms   = atoms.filter(a => a.kind === 'subtype')
 
-  // ── A: single subtype copy → supertype population (output bound via supertype PI) ──
-  if (stCopies.length === 1 && factCopies.length === 0) {
-    const stCopy  = stCopies[0]
-    const supLink = links.find(l => l.copyId === stCopy.id && l.roleIndex === 1)
-    const supOtCopy = supLink ? otCopies.find(c => c.id === supLink.variableId) : null
-    if (!supOtCopy) return null
-    const subPop = populations?.[supOtCopy.originalId] ?? []
+  // ── A: single subtype atom → supertype population (output bound via supertype PI) ──
+  if (stAtoms.length === 1 && factAtoms.length === 0) {
+    const stAtom  = stAtoms[0]
+    const supLink = links.find(l => l.atomId === stAtom.id && l.roleIndex === 1)
+    const supOtAtom = supLink ? otAtoms.find(a => a.id === supLink.variableId) : null
+    if (!supOtAtom) return null
+    const subPop = populations?.[supOtAtom.originalId] ?? []
     const keys = new Set(), values = []
     for (const inst of subPop) {
       if (!isCompleteValue(inst)) continue
@@ -2674,11 +2674,11 @@ function evaluateQuery(query, facts, populations, effectiveFactTuplesFn, onResul
     return { keys, values }
   }
 
-  if (factCopies.length === 0) return null
+  if (factAtoms.length === 0) return null
 
-  // Collect output positions from seeded roles across all fact copies
+  // Collect output positions from seeded roles across all fact atoms
   const outputPositions = []
-  for (const fc of factCopies) {
+  for (const fc of factAtoms) {
     for (const s of (fc.seededRoles ?? []).map(normalizeSeededRole)) {
       if (s.seqPosition != null)
         outputPositions.push({ fcId: fc.id, roleIndex: s.roleIndex, seqPosition: s.seqPosition })
@@ -2690,12 +2690,12 @@ function evaluateQuery(query, facts, populations, effectiveFactTuplesFn, onResul
   if (outputPositions.length > 0) {
     const fcLinks = new Map()
     for (const lk of links) {
-      if (!fcLinks.has(lk.copyId)) fcLinks.set(lk.copyId, [])
-      fcLinks.get(lk.copyId).push(lk)
+      if (!fcLinks.has(lk.atomId)) fcLinks.set(lk.atomId, [])
+      fcLinks.get(lk.atomId).push(lk)
     }
 
     const fcRows = new Map()
-    for (const fc of factCopies) {
+    for (const fc of factAtoms) {
       const fact = (facts || []).find(f => f.id === fc.originalId)
       if (!fact) return null
       fcRows.set(fc.id, effectiveFactTuplesFn(fact) ?? [])
@@ -2705,7 +2705,7 @@ function evaluateQuery(query, facts, populations, effectiveFactTuplesFn, onResul
     const resultCounts = new Map()
 
     const enumerate = (fcIdx, varAssign, rowAssign) => {
-      if (fcIdx === factCopies.length) {
+      if (fcIdx === factAtoms.length) {
         const tuple = outputPositions.map(op => {
           const row = rowAssign.get(op.fcId)
           return Array.isArray(row) ? row[op.roleIndex] : null
@@ -2720,7 +2720,7 @@ function evaluateQuery(query, facts, populations, effectiveFactTuplesFn, onResul
         if (onResult) onResult(varAssign)
         return
       }
-      const fc = factCopies[fcIdx]
+      const fc = factAtoms[fcIdx]
       const myLinks = fcLinks.get(fc.id) ?? []
       for (const row of (fcRows.get(fc.id) ?? [])) {
         if (!Array.isArray(row)) continue
@@ -2747,12 +2747,12 @@ function evaluateQuery(query, facts, populations, effectiveFactTuplesFn, onResul
     return { keys: new Set(results.keys()), values: [...results.values()], counts: new Map(resultCounts) }
   }
 
-  // ── C: legacy — single isOutput OT copy, intersection across fact copies
-  const outputOtCopies = otCopies.filter(c => c.isOutput)
-  if (outputOtCopies.length !== 1 || stCopies.length > 0) return null
-  const targetCopy = outputOtCopies[0]
-  const factSets = factCopies.map(fc => {
-    const link = links.find(l => l.copyId === fc.id && l.variableId === targetCopy.id)
+  // ── C: legacy — single isOutput OT atom, intersection across fact atoms
+  const outputOtAtoms = otAtoms.filter(a => a.isOutput)
+  if (outputOtAtoms.length !== 1 || stAtoms.length > 0) return null
+  const targetAtom = outputOtAtoms[0]
+  const factSets = factAtoms.map(fc => {
+    const link = links.find(l => l.atomId === fc.id && l.variableId === targetAtom.id)
     if (!link) return null
     const fact = (facts || []).find(f => f.id === fc.originalId)
     if (!fact) return null

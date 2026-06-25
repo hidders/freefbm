@@ -508,13 +508,13 @@ export default function SchemaBrowser() {
     if (!seqAllPresent) return 'partial'
     // Also check query deps: every element used in the constraint's queries must be present
     for (const q of (c.queries ?? [])) {
-      if (!q?.copies) continue
-      for (const cp of q.copies) {
-        if (!cp.originalId || cp.originalId.includes('_il_')) continue
-        if (cp.kind === 'subtype') {
-          if (!subtypeInDiag({ id: cp.originalId })) return 'partial'
+      if (!q?.atoms) continue
+      for (const at of q.atoms) {
+        if (!at.originalId || at.originalId.includes('_il_')) continue
+        if (at.kind === 'subtype') {
+          if (!subtypeInDiag({ id: at.originalId })) return 'partial'
         } else {
-          if (!inDiag(cp.originalId)) return 'partial'
+          if (!inDiag(at.originalId)) return 'partial'
         }
       }
     }

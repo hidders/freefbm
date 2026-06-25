@@ -3324,7 +3324,7 @@ function ExternalConstraintInspector({ c }) {
         if (qd) {
           // Editing banner
           const validation = store.getQueryEditValidation()
-          const copyCount = qd.copies.length
+          const atomCount = qd.atoms.length
           const linkCount = qd.links.length
           return (
             <div style={{ marginBottom: 12 }}>
@@ -3334,10 +3334,10 @@ function ExternalConstraintInspector({ c }) {
                   Editing query for S{qd.sequenceIndex + 1}
                 </div>
                 <div style={{ opacity: 0.9, marginBottom: 4 }}>
-                  Click a copy and an original (or two copies) to link them. Output copies are fixed.
+                  Click an atom and an original (or two atoms) to link them. Output atoms are fixed.
                 </div>
                 <div style={{ opacity: 0.85, marginBottom: 6, fontSize: 10 }}>
-                  {copyCount} cop{copyCount !== 1 ? 'ies' : 'y'}, {linkCount} link{linkCount !== 1 ? 's' : ''}
+                  {atomCount} atom{atomCount !== 1 ? 's' : ''}, {linkCount} link{linkCount !== 1 ? 's' : ''}
                   {qd.pendingClick ? ' — waiting for second click' : ''}
                 </div>
                 <div style={{ fontWeight: 600, marginBottom: 6,
@@ -3379,9 +3379,9 @@ function ExternalConstraintInspector({ c }) {
             {sequences.map((seq, gi) => {
               if (seq.length === 0) return null
               const q = queries[gi] || null
-              const copyCount = q?.copies?.length ?? 0
+              const atomCount = q?.atoms?.length ?? 0
               const statusText = q
-                ? `${copyCount} cop${copyCount !== 1 ? 'ies' : 'y'}`
+                ? `${atomCount} atom${atomCount !== 1 ? 's' : ''}`
                 : 'Not defined'
               const qPressed = pressedQueryIndex === gi
               return (

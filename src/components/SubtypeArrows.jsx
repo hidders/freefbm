@@ -71,8 +71,8 @@ export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes,
         const inQueryHighlight = selectedConstraint
           ? (selectedConstraint.queries || []).some((q, qi) => {
               if (qh && qh.constraintId === selectedConstraint.id && qh.queryIndex !== qi) return false
-              if (!q?.copies) return (selectedConstraint.sequences?.[qi] || []).some(m => m.kind === 'subtype' && m.subtypeId === st.id)
-              return q.copies.some(cp => cp.kind === 'subtype' && cp.originalId === st.id)
+              if (!q?.atoms) return (selectedConstraint.sequences?.[qi] || []).some(m => m.kind === 'subtype' && m.subtypeId === st.id)
+              return q.atoms.some(at => at.kind === 'subtype' && at.originalId === st.id)
             })
           : false
 

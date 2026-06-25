@@ -478,11 +478,11 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   const inQueryEdit = !!qd
   const hasError = !fact._implicit && (store.validationErrors || []).some(e => e.elementId === fact.id)
 
-  // When an OT copy is the pending first click, only the role boxes whose assigned OT
+  // When an OT atom is the pending first click, only the role boxes whose assigned OT
   // matches the pending original are selectable next — all others are dimmed.
   const querySelectableRoles = (() => {
-    if (!inQueryEdit || !qd.pendingClick || qd.pendingClick.type !== 'otCopy') return null
-    const pendingOrigId = qd.copies.find(c => c.id === qd.pendingClick.id)?.originalId
+    if (!inQueryEdit || !qd.pendingClick || qd.pendingClick.type !== 'otAtom') return null
+    const pendingOrigId = qd.atoms.find(c => c.id === qd.pendingClick.id)?.originalId
     if (!pendingOrigId) return null
     const s = new Set()
     fact.roles.forEach((r, ri) => { if (r.objectTypeId === pendingOrigId) s.add(ri) })
@@ -524,20 +524,20 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     for (let qi = 0; qi < c.queries.length; qi++) {
       const q = c.queries[qi]
       if (!q) continue
-      if (!q.copies) continue  // old format — skip
+      if (!q.atoms) continue  // old format — skip
       for (const lk of q.links) {
-        const cp = q.copies.find(cp => cp.id === lk.copyId)
-        if (cp?.kind === 'fact' && cp.originalId === fact.id) roles.add(lk.roleIndex)
+        const at = q.atoms.find(at => at.id === lk.atomId)
+        if (at?.kind === 'fact' && at.originalId === fact.id) roles.add(lk.roleIndex)
       }
-      // Also highlight seeded roles — present on fact copies with no OT links yet
-      for (const cp of q.copies) {
-        if (cp.kind === 'fact' && cp.originalId === fact.id) {
-          for (const s of (cp.seededRoles ?? [])) {
+      // Also highlight seeded roles — present on fact atoms with no OT links yet
+      for (const at of q.atoms) {
+        if (at.kind === 'fact' && at.originalId === fact.id) {
+          for (const s of (at.seededRoles ?? [])) {
             roles.add(typeof s === 'number' ? s : s.roleIndex)
           }
         }
       }
-      if (fact.objectified && q.copies.some(cp => cp.originalId === fact.id)) nestedHighlight = true
+      if (fact.objectified && q.atoms.some(at => at.originalId === fact.id)) nestedHighlight = true
     }
     return { queryHighlightRoles: roles.size > 0 ? roles : null, nestedInQueryHighlight: nestedHighlight }
   })()

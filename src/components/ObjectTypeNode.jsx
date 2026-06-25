@@ -126,7 +126,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     const activeCocc = store.selectedOccurrenceId
       ? activeDiag?.constraintOccurrences?.find(co => co.id === store.selectedOccurrenceId)
       : activeDiag?.constraintOccurrences?.find(co => co.schemaConstraintId === store.selectedId)
-    // Fill gaps in queryOccurrenceRefs from roleOccurrenceRefs (same as FactTypeNode / QueryCopies).
+    // Fill gaps in queryOccurrenceRefs from roleOccurrenceRefs (same as FactTypeNode / QueryAtoms).
     const rorOt = activeCocc?.roleOccurrenceRefs ?? {}
     const qor = { ...(activeCocc?.queryOccurrenceRefs ?? {}) }
     ;(c.sequences ?? c.roleSequences ?? []).forEach((seq, si) => {
@@ -139,7 +139,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     })
     const anchoredOccId = qor[ot.id]
     if (anchoredOccId && ot.occurrenceId && ot.occurrenceId !== anchoredOccId) return false
-    return c.queries.some(q => q?.copies?.some(cp => cp.originalId === ot.id))
+    return c.queries.some(q => q?.atoms?.some(at => at.originalId === ot.id))
   })()
   const isPickingTarget    = !!store.pendingTargetPick
   const isSubtypeTool      = store.tool === 'addSubtype'
