@@ -755,10 +755,21 @@ export default function SchemaBrowser() {
         const supName  = otAndNestedMap[st.superId]?.name ?? '?'
         const alreadyIn = subtypeInDiag(st)
         const endpointsPresent = inDiag(st.subId) && inDiag(st.superId)
+        const allCoveredSt = subtypeAllCombinationsCovered(st)
         const stAddStyle = alreadyIn ? undefined
           : endpointsPresent
             ? { color: '#166534', borderColor: '#16a34a', background: 'rgba(22,163,74,0.07)' }
             : { color: '#92400e', borderColor: '#d97706', background: 'rgba(217,119,6,0.07)' }
+        const stAddFn = () => {
+          const occs = diagram?.occurrences ?? []
+          const subOccs  = occs.filter(o => o.schemaElementId === st.subId)
+          const superOccs = occs.filter(o => o.schemaElementId === st.superId)
+          if (subOccs.length > 1 || superOccs.length > 1) {
+            store.startSubtypeEndpointPick(st.id, diagram?.id)
+          } else {
+            store.addElementToDiagram(st.id, diagram?.id)
+          }
+        }
         return (
           <ElementRow key={st.id}
             icon={<SubtypeIcon />}
@@ -766,18 +777,10 @@ export default function SchemaBrowser() {
             isOrphaned={isStOrphaned(st)}
             inCurrentDiagram={alreadyIn}
             onSelect={() => selectSubtype(st)}
-            onAdd={() => {
-              const occs = diagram?.occurrences ?? []
-              const subOccs  = occs.filter(o => o.schemaElementId === st.subId)
-              const superOccs = occs.filter(o => o.schemaElementId === st.superId)
-              if (subOccs.length > 1 || superOccs.length > 1) {
-                store.startSubtypeEndpointPick(st.id, diagram?.id)
-              } else {
-                store.addElementToDiagram(st.id, diagram?.id)
-              }
-            }}
+            onAdd={(!alreadyIn || allCoveredSt) ? stAddFn : undefined}
+            onAddExtra={alreadyIn && !allCoveredSt ? stAddFn : undefined}
             addButtonStyle={stAddStyle}
-            addButtonDisabled={subtypeAllCombinationsCovered(st)}
+            addButtonDisabled={allCoveredSt ? true : undefined}
             onDelete={() => store.deleteSubtype(st.id)}
           />
         )
@@ -790,6 +793,7 @@ export default function SchemaBrowser() {
            : constraintNodes,
       renderRow: (c) => {
         const inCurrent = cInCurrentDiag(c.id)
+        const allCoveredC = allConstraintCombinationsCovered(c)
         const status = constraintDepsStatus(c)
         const addStyle = inCurrent ? undefined
           : status === 'ready'
@@ -797,6 +801,7 @@ export default function SchemaBrowser() {
             : status === 'partial'
               ? { color: '#92400e', borderColor: '#d97706', background: 'rgba(217,119,6,0.07)' }
               : undefined
+        const cAddFn = () => store.startConstraintEndpointPick(c.id, diagram?.id)
         return (
           <ElementRow key={c.id}
             icon={CONSTRAINT_ICON_MAP[c.constraintType] ?? <UniquenessConstraintIcon />}
@@ -806,9 +811,10 @@ export default function SchemaBrowser() {
             isOrphaned={isCOrphaned(c.id)}
             inCurrentDiagram={inCurrent}
             onSelect={() => selectEl(c.id, 'constraint')}
-            onAdd={() => store.startConstraintEndpointPick(c.id, diagram?.id)}
+            onAdd={(!inCurrent || allCoveredC) ? cAddFn : undefined}
+            onAddExtra={inCurrent && !allCoveredC ? cAddFn : undefined}
             addButtonStyle={addStyle}
-            addButtonDisabled={allConstraintCombinationsCovered(c)}
+            addButtonDisabled={allCoveredC ? true : undefined}
             onDelete={() => store.deleteConstraint(c.id)}
           />
         )
