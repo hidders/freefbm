@@ -353,7 +353,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     }
 
     if (store.sequenceConstruction) {
-      store.select(ot.id, ot.kind)
+      store.select(ot.id, ot.kind, occurrenceId ?? null)
       return
     }
     if (e.shiftKey) {

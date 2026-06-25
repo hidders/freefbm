@@ -454,8 +454,10 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
            : store.multiSelectedIds.includes(fact.id)))
       : ((store.selectedId === fact.id && !hasSelectedImplicitLink) || store.multiSelectedIds.includes(fact.id))
   ))
-  const hasSelectedRole = store.selectedRole?.factId === fact.id
-  const hasSelectedUniqueness = store.selectedUniqueness?.factId === fact.id
+  const hasSelectedRole = store.selectedRole?.factId === fact.id &&
+    (!occurrenceId || !store.selectedRole?.occurrenceId || store.selectedRole?.occurrenceId === occurrenceId)
+  const hasSelectedUniqueness = store.selectedUniqueness?.factId === fact.id &&
+    (!occurrenceId || !store.selectedUniqueness?.occurrenceId || store.selectedUniqueness?.occurrenceId === occurrenceId)
   const hasSelectedImplicitLinkRole = fact._implicit && store.selectedImplicitLinkRole?.factId === fact._parentFactId &&
     store.selectedImplicitLinkRole?.roleIndex === fact._implicitRoleIndex
   const isFactSelected  = isSelected && !hasSelectedRole && !hasSelectedUniqueness && !hasSelectedImplicitLinkRole
@@ -663,7 +665,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     if (inConstruction) return  // Enter key confirms; clicking fact body does nothing
     if (inFrequencyConstruction) return  // Enter key confirms
     if (store.sequenceConstruction) {
-      store.select(fact.id, 'fact')
+      store.select(fact.id, 'fact', occurrenceId ?? null)
       return
     }
     if (e.shiftKey) {
@@ -681,7 +683,8 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   }, [store, fact.id, onDragStart, isAssignTool, inConstruction, inFrequencyConstruction, occurrenceId])
 
   const isRoleSelected = (ri) =>
-    store.selectedRole?.factId === fact.id && store.selectedRole?.roleIndex === ri
+    store.selectedRole?.factId === fact.id && store.selectedRole?.roleIndex === ri &&
+    (!occurrenceId || !store.selectedRole?.occurrenceId || store.selectedRole?.occurrenceId === occurrenceId)
 
   const isImplicitLinkRoleSelected = (ri) =>
     fact._implicit && store.selectedImplicitLinkRole?.factId === fact._parentFactId &&
@@ -857,7 +860,8 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     }
 
     // Select mode: use click position to decide border (→ fact) vs interior (→ role)
-    const thisRoleSelected = store.selectedRole?.factId === fact.id && store.selectedRole?.roleIndex === roleIndex
+    const thisRoleSelected = store.selectedRole?.factId === fact.id && store.selectedRole?.roleIndex === roleIndex &&
+      (!occurrenceId || !store.selectedRole?.occurrenceId || store.selectedRole?.occurrenceId === occurrenceId)
     const BORDER_PX = 3 * store.zoom
     const bbox = e.currentTarget.getBoundingClientRect()
     const inInterior = (
@@ -883,17 +887,18 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         // Second click of a double-click: the onUp listener was registered by the
         // first click's mousedown. Skip — handleRoleDoubleClick already handled it.
         if (ue.detail >= 2) return
-        if (store.selectedRole?.factId === fact.id && store.selectedRole?.roleIndex === roleIndex) {
-          store.select(fact.id, 'fact')
+        if (store.selectedRole?.factId === fact.id && store.selectedRole?.roleIndex === roleIndex &&
+            (!occurrenceId || !store.selectedRole?.occurrenceId || store.selectedRole?.occurrenceId === occurrenceId)) {
+          store.select(fact.id, 'fact', occurrenceId ?? null)
         } else {
-          store.selectRole(fact.id, roleIndex)
+          store.selectRole(fact.id, roleIndex, occurrenceId ?? null)
         }
       }
       window.addEventListener('mousemove', onMove)
       window.addEventListener('mouseup',   onUp)
     } else {
       // Border click: select fact and start drag
-      store.select(fact.id, 'fact')
+      store.select(fact.id, 'fact', occurrenceId ?? null)
       onDragStart(fact.id, 'fact', e, occurrenceId)
     }
   }, [store, fact.id, isAssignTool, inConstruction, inFrequencyConstruction, isSelected, onDragStart, occurrenceId])
@@ -1411,7 +1416,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       store.selectImplicitLinkUniqueness(fact._parentFactId, fact._implicitRoleIndex, ui)
       return
     }
-    store.selectUniqueness(fact.id, ui)
+    store.selectUniqueness(fact.id, ui, occurrenceId ?? null)
   }
 
   const barDoubleClickHandler = (ui) => (e) => {
@@ -1633,7 +1638,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           if (fact._implicit) {
             store.selectImplicitLink(fact._parentFactId, fact._implicitRoleIndex)
           } else {
-            store.select(fact.id, 'fact')
+            store.select(fact.id, 'fact', occurrenceId ?? null)
           }
         }}
         onDoubleClick={e => {
@@ -2425,7 +2430,8 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           {fact.uniqueness.map((uRoles, ui) => {
             const isEditing = inConstruction && store.uniquenessConstruction?.uIndex === ui
             const displayRoles = isEditing ? ucRoles : uRoles
-            const isUSelected = ((store.selectedUniqueness?.factId === fact.id && store.selectedUniqueness?.uIndex === ui) ||
+            const isUSelected = ((store.selectedUniqueness?.factId === fact.id && store.selectedUniqueness?.uIndex === ui &&
+              (!occurrenceId || !store.selectedUniqueness?.occurrenceId || store.selectedUniqueness?.occurrenceId === occurrenceId)) ||
               (fact._implicit && store.selectedUniqueness?.factId === fact._parentFactId && store.selectedUniqueness?.roleIndex === fact._implicitRoleIndex && store.selectedUniqueness?.uIndex === ui)) || isEditing
             const barStroke = isUSelected ? 'var(--accent)' : 'var(--col-mandatory)'
             const isEditingUnary = isEditing && uRoles.length === 1
@@ -2492,6 +2498,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           {/* Implied unary uniqueness bars (vertical) — derived from preferred identifier */}
           {impliedRoles.map(roleIndex => {
             const isImplSelected = store.selectedUniqueness?.factId === fact.id &&
+              (!occurrenceId || !store.selectedUniqueness?.occurrenceId || store.selectedUniqueness?.occurrenceId === occurrenceId) &&
               store.selectedUniqueness?.implied === true &&
               store.selectedUniqueness?.impliedRoleIndex === roleIndex
             const barStroke = isImplSelected ? 'var(--accent)' : 'var(--col-mandatory)'
@@ -2614,7 +2621,8 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           {fact.uniqueness.map((uRoles, ui) => {
             const isEditing = inConstruction && store.uniquenessConstruction?.uIndex === ui
             const displayRoles = isEditing ? ucRoles : uRoles
-            const isUSelected = ((store.selectedUniqueness?.factId === fact.id && store.selectedUniqueness?.uIndex === ui) ||
+            const isUSelected = ((store.selectedUniqueness?.factId === fact.id && store.selectedUniqueness?.uIndex === ui &&
+              (!occurrenceId || !store.selectedUniqueness?.occurrenceId || store.selectedUniqueness?.occurrenceId === occurrenceId)) ||
               (fact._implicit && store.selectedUniqueness?.factId === fact._parentFactId && store.selectedUniqueness?.roleIndex === fact._implicitRoleIndex && store.selectedUniqueness?.uIndex === ui)) || isEditing
             const barStroke = isUSelected ? 'var(--accent)' : 'var(--col-mandatory)'
             const isEditingUnary = isEditing && uRoles.length === 1
@@ -2681,6 +2689,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           {/* Implied unary uniqueness bars (horizontal) — derived from preferred identifier */}
           {impliedRoles.map(roleIndex => {
             const isImplSelected = store.selectedUniqueness?.factId === fact.id &&
+              (!occurrenceId || !store.selectedUniqueness?.occurrenceId || store.selectedUniqueness?.occurrenceId === occurrenceId) &&
               store.selectedUniqueness?.implied === true &&
               store.selectedUniqueness?.impliedRoleIndex === roleIndex
             const barStroke = isImplSelected ? 'var(--accent)' : 'var(--col-mandatory)'

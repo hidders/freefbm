@@ -295,6 +295,7 @@ export default function SchemaBrowser() {
   const [animating,   setAnimating]   = useState(false)
   const [showOrphans, setShowOrphans] = useState(false)
   const [showReady,   setShowReady]   = useState(false)
+  const [occPicker,   setOccPicker]   = useState(null)
   const [resizing,    setResizing]    = useState(false)
   const [pos,  setPos]  = useState(null)
   const [size, setSize] = useState({ w: INIT_W, h: INIT_H })
@@ -536,7 +537,13 @@ export default function SchemaBrowser() {
   const readySubtypeCount = store.subtypes.filter(st =>
     !subtypeInDiag(st) && inDiag(st.subId) && inDiag(st.superId)
   ).length
-  const readyCount = readyConstraintCount + readySubtypeCount
+  const readyFactCount = store.facts.filter(f =>
+    !f.objectified && !inDiag(f.id) && factDepsStatus(f) === 'ready'
+  ).length
+  const readyNestedEntityCount = store.facts.filter(f =>
+    f.objectified && f.objectifiedKind !== 'value' && !inDiag(f.id) && factDepsStatus(f) === 'ready'
+  ).length
+  const readyCount = readyConstraintCount + readySubtypeCount + readyFactCount + readyNestedEntityCount
 
   const allOrphanCount = [
     ...store.objectTypes.filter(o => isOrphaned(o.id)),
@@ -551,6 +558,12 @@ export default function SchemaBrowser() {
   useEffect(() => {
     if (readyCount === 0) setShowReady(false)
   }, [readyCount])
+  useEffect(() => {
+    if (!occPicker) return
+    const handler = () => setOccPicker(null)
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [occPicker])
 
   // ── groups ────────────────────────────────────────────────────────────────
 
@@ -642,9 +655,18 @@ export default function SchemaBrowser() {
   // Only center when the element is visible in the current diagram.
   // Exceptions: implied links (center on parent fact if fact is in diagram)
   // and ref-expansion rows (always center on parent entity — handled inline).
-  const selectEl = (id, kind) => {
-    store.select(id, kind)
-    if (inDiag(id)) store.centerOnElement(id)
+  const selectEl = (e, id, kind) => {
+    const occs = (diagram?.occurrences ?? [])
+      .filter(o => o.schemaElementId === id)
+      .sort((a, b) => a.y !== b.y ? a.y - b.y : a.x - b.x)
+    if (occs.length <= 1) {
+      const occId = occs[0]?.id ?? null
+      store.select(id, kind, occId)
+      if (occId) store.centerOnOccurrence(occId)
+    } else {
+      const rect = e.currentTarget.getBoundingClientRect()
+      setOccPicker({ x: rect.right + 6, y: rect.top, id, kind, occs })
+    }
   }
 
   const selectSubtype = (st) => {
@@ -668,7 +690,7 @@ export default function SchemaBrowser() {
             label={el.label}
             isOrphaned={isOrphaned(el.id)}
             inCurrentDiagram={inDiag(el.id)}
-            onSelect={() => selectEl(el.id, el.kind)}
+            onSelect={(e) => selectEl(e, el.id, el.kind)}
             onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
             onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
             onDelete={() => store.deleteObjectType(el.id)}
@@ -678,7 +700,12 @@ export default function SchemaBrowser() {
     },
     {
       title: 'Nested Entity Types',
-      items: showOrphans ? nestedEntityTypes.filter(el => isOrphaned(el.id)) : showReady ? [] : nestedEntityTypes,
+      items: showOrphans ? nestedEntityTypes.filter(el => isOrphaned(el.id))
+           : showReady   ? nestedEntityTypes.filter(el => {
+               const neFact = store.facts.find(f => f.id === el.id)
+               return !inDiag(el.id) && neFact && factDepsStatus(neFact) === 'ready'
+             })
+           : nestedEntityTypes,
       renderRow: (el) => {
         const neFact = store.facts.find(f => f.id === el.id)
         const neAddStyle = neFact
@@ -690,7 +717,7 @@ export default function SchemaBrowser() {
             label={el.label}
             isOrphaned={isOrphaned(el.id)}
             inCurrentDiagram={inDiag(el.id)}
-            onSelect={() => selectEl(el.id, el.kind)}
+            onSelect={(e) => selectEl(e, el.id, el.kind)}
             onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
             onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
             addButtonStyle={neAddStyle}
@@ -708,7 +735,7 @@ export default function SchemaBrowser() {
           label={el.label}
           isOrphaned={isOrphaned(el.id)}
           inCurrentDiagram={inDiag(el.id)}
-          onSelect={() => selectEl(el.id, el.kind)}
+          onSelect={(e) => selectEl(e, el.id, el.kind)}
           onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
           onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
           onDelete={() => store.deleteObjectType(el.id)}
@@ -717,10 +744,9 @@ export default function SchemaBrowser() {
     },
     {
       title: 'Fact Types',
-      items: showOrphans ? factTypes.filter(f => {
-        if (f.isImpliedLink) return false
-        return isOrphaned(f.id)
-      }) : showReady ? [] : factTypes,
+      items: showOrphans ? factTypes.filter(f => !f.isImpliedLink && isOrphaned(f.id))
+           : showReady   ? factTypes.filter(f => !f.isImpliedLink && !inDiag(f.id) && factDepsStatus(f) === 'ready')
+           : factTypes,
       renderRow: (f) => {
         if (f.isImpliedLink) {
           // Construct a synthetic 2-role fact so FactLabel can render the reading naturally.
@@ -754,7 +780,7 @@ export default function SchemaBrowser() {
             label={<FactLabel fact={f} otMap={otAndNestedMap} />}
             isOrphaned={isOrphaned(f.id)}
             inCurrentDiagram={inDiag(f.id)}
-            onSelect={() => selectEl(f.id, 'fact')}
+            onSelect={(e) => selectEl(e, f.id, 'fact')}
             onAdd={() => store.addElementToDiagram(f.id, diagram?.id)}
             onAddExtra={diagram ? () => store.addExtraOccurrence(f.id, diagram.id) : undefined}
             addButtonStyle={fAddStyle}
@@ -828,7 +854,7 @@ export default function SchemaBrowser() {
             </span>}
             isOrphaned={isCOrphaned(c.id)}
             inCurrentDiagram={inCurrent}
-            onSelect={() => selectEl(c.id, 'constraint')}
+            onSelect={(e) => selectEl(e, c.id, 'constraint')}
             onAdd={(!inCurrent || allCoveredC) ? cAddFn : undefined}
             onAddExtra={inCurrent && !allCoveredC ? cAddFn : undefined}
             addButtonStyle={addStyle}
@@ -1007,6 +1033,52 @@ export default function SchemaBrowser() {
           <div style={rHandle('sw')} onMouseDown={e => handleResizeMouseDown(e, 'sw')} />
         </div>
       </div>
+
+      {occPicker && (
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            left: occPicker.x,
+            top: occPicker.y,
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
+            padding: '6px 8px',
+            zIndex: 9999,
+            fontFamily: FONT,
+          }}
+        >
+          <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 5 }}>
+            Select occurrence:
+          </div>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {occPicker.occs.map((occ, i) => (
+              <button
+                key={occ.id}
+                onClick={() => {
+                  store.select(occPicker.id, occPicker.kind, occ.id)
+                  store.centerOnOccurrence(occ.id)
+                  setOccPicker(null)
+                }}
+                style={{
+                  width: 28, height: 28,
+                  border: '1px solid var(--border)',
+                  borderRadius: 4,
+                  background: 'var(--bg-raised)',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: 'var(--ink)',
+                }}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </>
   )
 }

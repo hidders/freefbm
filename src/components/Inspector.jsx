@@ -254,7 +254,9 @@ function RefModeExpandCollapseButtons({ factId, occurrenceId, store }) {
 function DiagramList({ elementId, kind, subtypeEndpointIds, factId, roleIndex }) {
   const store = useOrmStore()
   const { diagrams } = store
+  const [occPicker, setOccPicker] = useState(null)
   const isImplicitLink = kind === 'implicitLink' && factId != null && roleIndex != null
+  const needsOccurrencePick = !isImplicitLink && !subtypeEndpointIds && kind !== 'constraint'
   const containing = diagrams.filter(d => {
     if (isImplicitLink) {
       return (d.shownImplicitLinks || []).includes(`${factId}:${roleIndex}`)
@@ -269,45 +271,113 @@ function DiagramList({ elementId, kind, subtypeEndpointIds, factId, roleIndex })
     }
     return d.occurrences?.some(o => o.schemaElementId === elementId) ?? false
   })
-  const handleClick = (d) => {
+
+  useEffect(() => {
+    if (!occPicker) return
+    const handler = () => setOccPicker(null)
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [occPicker])
+
+  const handleClick = (d, e) => {
     store.setActiveDiagram(d.id)
     if (isImplicitLink) {
       store.selectImplicitLink(factId, roleIndex)
-    } else {
+      return
+    }
+    if (!needsOccurrencePick) {
       store.select(elementId, kind)
+      setTimeout(() => store.centerOnElement(elementId), 0)
+      return
+    }
+    const occs = (d.occurrences ?? [])
+      .filter(o => o.schemaElementId === elementId)
+      .sort((a, b) => a.y !== b.y ? a.y - b.y : a.x - b.x)
+    if (occs.length <= 1) {
+      const occId = occs[0]?.id ?? null
+      store.select(elementId, kind, occId)
+      if (occId) setTimeout(() => store.centerOnOccurrence(occId), 0)
+    } else {
+      const rect = e.currentTarget.getBoundingClientRect()
+      setOccPicker({ x: rect.right + 6, y: rect.top, occs })
     }
   }
+
   return (
-    <Row>
-      <Label>Appears in</Label>
-      {containing.length === 0 ? (
-        <span style={{ fontSize: 11, color: 'var(--danger)', fontStyle: 'italic' }}>
-          not in any diagram (orphaned)
-        </span>
-      ) : (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-          {containing.map(d => (
-            <span key={d.id} onClick={() => handleClick(d)}
-              style={{
-                fontSize: 10, padding: '1px 6px',
-                background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
-                borderRadius: 3, color: 'var(--ink-2)', cursor: 'pointer',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = 'var(--accent)'
-                e.currentTarget.style.color = 'white'
-                e.currentTarget.style.borderColor = 'var(--accent)'
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = 'var(--bg-raised)'
-                e.currentTarget.style.color = 'var(--ink-2)'
-                e.currentTarget.style.borderColor = 'var(--border-soft)'
-              }}
-            >{d.name}</span>
-          ))}
+    <>
+      <Row>
+        <Label>Appears in</Label>
+        {containing.length === 0 ? (
+          <span style={{ fontSize: 11, color: 'var(--danger)', fontStyle: 'italic' }}>
+            not in any diagram (orphaned)
+          </span>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {containing.map(d => (
+              <span key={d.id} onClick={(e) => handleClick(d, e)}
+                style={{
+                  fontSize: 10, padding: '1px 6px',
+                  background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
+                  borderRadius: 3, color: 'var(--ink-2)', cursor: 'pointer',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'var(--accent)'
+                  e.currentTarget.style.color = 'white'
+                  e.currentTarget.style.borderColor = 'var(--accent)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'var(--bg-raised)'
+                  e.currentTarget.style.color = 'var(--ink-2)'
+                  e.currentTarget.style.borderColor = 'var(--border-soft)'
+                }}
+              >{d.name}</span>
+            ))}
+          </div>
+        )}
+      </Row>
+      {occPicker && (
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            left: occPicker.x,
+            top: occPicker.y,
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
+            padding: '6px 8px',
+            zIndex: 9999,
+          }}
+        >
+          <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 5 }}>
+            Select occurrence:
+          </div>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {occPicker.occs.map((occ, i) => (
+              <button
+                key={occ.id}
+                onClick={() => {
+                  store.select(elementId, kind, occ.id)
+                  store.centerOnOccurrence(occ.id)
+                  setOccPicker(null)
+                }}
+                style={{
+                  width: 28, height: 28,
+                  border: '1px solid var(--border)',
+                  borderRadius: 4,
+                  background: 'var(--bg-raised)',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: 'var(--ink)',
+                }}
+              >{i + 1}</button>
+            ))}
+          </div>
         </div>
       )}
-    </Row>
+    </>
   )
 }
 

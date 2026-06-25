@@ -5920,16 +5920,18 @@ export const useOrmStore = create((set, get) => ({
     get().selectInternalFrequency(factId, ifId)
   },
 
-  selectRole(factId, roleIndex) {
-    set({ selectedId: factId, selectedKind: 'fact', selectedRole: { factId, roleIndex }, selectedUniqueness: null,
-          selectedMandatoryDot: null, selectedInternalFrequency: null,
+  selectRole(factId, roleIndex, occurrenceId = null) {
+    set({ selectedId: factId, selectedKind: 'fact', selectedRole: { factId, roleIndex, occurrenceId },
+          selectedOccurrenceId: occurrenceId, multiSelectedOccurrenceIds: [],
+          selectedUniqueness: null, selectedMandatoryDot: null, selectedInternalFrequency: null,
           selectedValueRange: null, selectedCardinalityRange: null })
   },
-  selectUniqueness(factId, uIndex) {
+  selectUniqueness(factId, uIndex, occurrenceId = null) {
     if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
     if (get().frequencyConstruction) get().abandonFrequencyConstruction()
-    set({ selectedId: factId, selectedKind: 'fact', selectedUniqueness: { factId, uIndex }, selectedRole: null,
-          selectedMandatoryDot: null, selectedInternalFrequency: null,
+    set({ selectedId: factId, selectedKind: 'fact', selectedUniqueness: { factId, uIndex, occurrenceId },
+          selectedOccurrenceId: occurrenceId, multiSelectedOccurrenceIds: [],
+          selectedRole: null, selectedMandatoryDot: null, selectedInternalFrequency: null,
           selectedValueRange: null, selectedCardinalityRange: null })
   },
 
@@ -5983,6 +5985,33 @@ export const useOrmStore = create((set, get) => ({
       if (note) { wx = note.x; wy = note.y }
     }
     if (wx == null) return
+    const svg = document.getElementById('orm2-canvas-svg')
+    if (!svg) return
+    const rect = svg.getBoundingClientRect()
+    const targetX = rect.width  / 2 - wx * zoom
+    const targetY = rect.height / 2 - wy * zoom
+    const { pan: startPan } = get()
+    const fromX = startPan.x, fromY = startPan.y
+    const DURATION = 750
+    const easeInOut = t => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+    const startTime = performance.now()
+    if (_panAnimId) cancelAnimationFrame(_panAnimId)
+    const step = (now) => {
+      const t = Math.min((now - startTime) / DURATION, 1)
+      const e = easeInOut(t)
+      set({ pan: { x: fromX + (targetX - fromX) * e, y: fromY + (targetY - fromY) * e } })
+      if (t < 1) _panAnimId = requestAnimationFrame(step)
+      else _panAnimId = null
+    }
+    _panAnimId = requestAnimationFrame(step)
+  },
+
+  centerOnOccurrence(occurrenceId) {
+    const { diagrams, activeDiagramId, zoom } = get()
+    const diagram = diagrams.find(d => d.id === activeDiagramId)
+    const occ = diagram?.occurrences?.find(o => o.id === occurrenceId)
+    if (!occ) return
+    const wx = occ.x, wy = occ.y
     const svg = document.getElementById('orm2-canvas-svg')
     if (!svg) return
     const rect = svg.getBoundingClientRect()
