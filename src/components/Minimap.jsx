@@ -265,7 +265,7 @@ export default function Minimap() {
               const player = ot ?? nf
               if (!player) return null
               return (
-                <line key={`${fact.id}-${ri}`}
+                <line key={`${fact.occurrenceId ?? fact.id}-${ri}`}
                   x1={wx(player.x)} y1={wy(player.y)} x2={wx(fact.x)} y2={wy(fact.y)}
                   stroke="var(--col-fact)" strokeWidth={0.6} strokeOpacity={0.4}/>
               )
@@ -286,7 +286,7 @@ export default function Minimap() {
             const sup = playerXY(st.superId)
             if (!sub || !sup) return null
             return (
-              <line key={st.id}
+              <line key={st.occurrenceId ?? st.id}
                 x1={wx(sub.x)} y1={wy(sub.y)} x2={wx(sup.x)} y2={wy(sup.y)}
                 stroke="var(--col-subtype)" strokeWidth={0.8} strokeOpacity={0.5}/>
             )
@@ -299,7 +299,7 @@ export default function Minimap() {
           const { w: otW, h: otH } = computeOtSize(ot)
           const ew = Math.max(4, otW * scale), eh = Math.max(2, otH * scale)
           return (
-            <rect key={ot.id}
+            <rect key={ot.occurrenceId ?? ot.id}
               x={wx(ot.x) - ew/2} y={wy(ot.y) - eh/2} width={ew} height={eh} rx={2}
               fill={isSel ? 'var(--accent)' : 'var(--bg-raised)'}
               stroke={isSel ? 'var(--accent)' : (ot.kind === 'value' ? 'var(--col-value)' : 'var(--col-entity)')}
@@ -325,7 +325,7 @@ export default function Minimap() {
             const nw = Math.max(4, (nb.right - nb.left) * scale)
             const nh = Math.max(3, (nb.bottom - nb.top) * scale)
             return (
-              <g key={f.id}>
+              <g key={f.occurrenceId ?? f.id}>
                 {/* outer entity box */}
                 <rect
                   x={wx(nb.left)} y={wy(nb.top)} width={nw} height={nh} rx={2}
@@ -342,7 +342,7 @@ export default function Minimap() {
             )
           }
           return (
-            <rect key={f.id}
+            <rect key={f.occurrenceId ?? f.id}
               x={rx} y={ry} width={rw} height={rh} rx={1}
               fill={isSel ? 'var(--accent)' : '#f0ede8'}
               stroke={isSel ? 'var(--accent)' : 'var(--col-fact)'}
@@ -408,7 +408,7 @@ export default function Minimap() {
           const isSubtype = c.constraintType === 'exclusiveOr' || c.constraintType === 'exclusion' || c.constraintType === 'inclusiveOr'
           const r = Math.max(1.5, (isSubtype ? 8 : 14) * scale)
           return (
-            <circle key={c.id} cx={wx(c.x)} cy={wy(c.y)} r={r}
+            <circle key={c.occurrenceId ?? c.id} cx={wx(c.x)} cy={wy(c.y)} r={r}
               fill="var(--bg-canvas)" stroke="var(--col-constraint)" strokeWidth={0.7}/>
           )
         })}

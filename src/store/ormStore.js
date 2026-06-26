@@ -1901,12 +1901,20 @@ export const useOrmStore = create((set, get) => ({
             const roles = f.roles.map((r, i) => i === current.vtRoleIndex ? { ...r, objectTypeId: existingMatch.id } : r)
             return { ...f, roles }
           })
-          let nextOts = state.objectTypes
-          let nextDiagrams = state.diagrams
-          if (!oldVtUsedElsewhere) {
-            nextOts = nextOts.filter(o => o.id !== current.vtId)
-            nextDiagrams = nextDiagrams.map(d => rmOcc(d, current.vtId))
-          }
+          let nextOts = oldVtUsedElsewhere
+            ? state.objectTypes
+            : state.objectTypes.filter(o => o.id !== current.vtId)
+          const nextDiagrams = state.diagrams.map(d => {
+            const entityOccIds = new Set((d.occurrences ?? []).filter(o => o.schemaElementId === entityId).map(o => o.id))
+            let nd = oldVtUsedElsewhere ? d : rmOcc(d, current.vtId)
+            // Remove stale owned FT occs — their roleOccurrenceMap points to the now-deleted vtOcc
+            nd = { ...nd, occurrences: (nd.occurrences ?? []).filter(o =>
+              !(o.schemaElementId === current.factId && entityOccIds.has(o.refModeOwnerOccId))
+            )}
+            // Create fresh owned VT/FT occs wired to the new (existing) VT
+            nd = addOwnedRefModeOccsIfAbsent(nd, entityId, existingMatch.id, existingMatch.x ?? 0, existingMatch.y ?? 0, current.factId, 0, 0, current.vtRoleIndex)
+            return nd
+          })
           return { objectTypes: nextOts, facts: newFacts, diagrams: nextDiagrams, isDirty: true }
         })
       } else {
