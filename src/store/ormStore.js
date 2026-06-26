@@ -74,7 +74,6 @@ const mkFact = (x, y, arity = 2) => ({
   readingOffsetBelow: null,
   readingAbove: false,
   uniquenessBelow: false,
-  preferredUniqueness: false,
   implicitLinks: [], // [{ roleIndex, x, y, readingParts, alternativeReadings, readingDisplay, orientation, readingOffsetAbove, readingOffsetBelow, readingAbove, uniquenessBelow, preferredUniqueness, roleNames }]
 })
 
@@ -490,7 +489,7 @@ function getConstraintDeps(c, facts, objectTypes) {
   const seqs = c.sequences ?? c.roleSequences ?? []
   seqs.forEach((seq, si) => {
     seq.forEach((m, mi) => {
-      const fid = m.factId ?? m.factId  // roleSequences use {factId, roleIndex}; sequences use {kind, factId, roleIndex}
+      const fid = m.factId
       if (!fid || fid.includes('_il_')) return
       const key = `${si}:${mi}`
       if (!factDepsMap.has(fid)) factDepsMap.set(fid, [])
@@ -1719,29 +1718,22 @@ export const useOrmStore = create((set, get) => ({
   addEntity(x, y) {
     const base = mkEntity(Math.round(x), Math.round(y))
     set(s => {
-      const used = new Set(
-        s.objectTypes.map(o => o.name).concat(s.facts.map(f => f.objectifiedName).filter(Boolean))
-      )
-      let n = 1
-      while (used.has(`Entity${n}`)) n++
-      const e = { ...base, name: `Entity${n}` }
+      const used = new Set(s.objectTypes.map(o => o.name).concat(s.facts.map(f => f.objectifiedName).filter(Boolean)))
+      const e = { ...base, name: makeUniqueName('Entity', used) }
       return {
-      objectTypes: [...s.objectTypes, e],
-      diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : addOccIfAbsent(d, e.id, e.x, e.y)),
-      isDirty: true, selectedId: e.id, selectedKind: 'entity',
-    }})
+        objectTypes: [...s.objectTypes, e],
+        diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : addOccIfAbsent(d, e.id, e.x, e.y)),
+        isDirty: true, selectedId: e.id, selectedKind: 'entity',
+      }
+    })
     return base.id
   },
 
   addValue(x, y) {
     const base = mkValue(Math.round(x), Math.round(y))
     set(s => {
-      const used = new Set(
-        s.objectTypes.map(o => o.name).concat(s.facts.map(f => f.objectifiedName).filter(Boolean))
-      )
-      let n = 1
-      while (used.has(`Value${n}`)) n++
-      const v = { ...base, name: `Value${n}` }
+      const used = new Set(s.objectTypes.map(o => o.name).concat(s.facts.map(f => f.objectifiedName).filter(Boolean)))
+      const v = { ...base, name: makeUniqueName('Value', used) }
       return {
         objectTypes: [...s.objectTypes, v],
         diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : addOccIfAbsent(d, v.id, v.x, v.y)),
@@ -2005,7 +1997,6 @@ export const useOrmStore = create((set, get) => ({
 
     if (trimmed === '') {
       const current = findRefMode(fact, s.facts, s.objectTypes)
-      set(trimmed ? 'nothing' : null) // no-op placeholder
       setDisplay(null)
       if (!current) return
       // Remove PI from the existing ref-mode fact, keep FT+VT visible.
@@ -6260,10 +6251,10 @@ export const useOrmStore = create((set, get) => ({
         }
 
         // OT or fact
-        const el = s.objectTypes.find(o => o.id === id) ?? s.facts.find(f => f.id === id)
+        const fact = s.facts.find(f => f.id === id)
+        const el   = fact ?? s.objectTypes.find(o => o.id === id)
         if (el) {
           idsToAdd.add(id)
-          const fact = s.facts.find(f => f.id === id)
           if (fact)
             for (const r of fact.roles)
               if (r.objectTypeId && !visited.has(r.objectTypeId)) queue.push(r.objectTypeId)
