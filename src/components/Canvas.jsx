@@ -492,21 +492,10 @@ export default function Canvas() {
       return { factIds: objectifiedIds, otIds: NONE, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true, dimInnerFact: true }
     }
     if (tool === 'addSubtype') {
-      // After the source is picked, only same-kind targets stay highlighted
-      // (entity↔entity or value↔value — kinds are disjoint).
-      const draftKind = linkDraft?.type === 'subtype' && linkDraft.fromId
-        ? subtypeKindOf(linkDraft.fromId, store.objectTypes, store.facts)
-        : null
-      if (draftKind) {
-        const sameKindOts = new Set(
-          visibleOts.filter(o => o.kind === draftKind).map(o => o.id)
-        )
-        const sameKindFactIds = new Set(
-          visibleFacts.filter(f => f.objectified && f.objectifiedKind === draftKind).map(f => f.id)
-        )
-        return { factIds: sameKindFactIds, otIds: sameKindOts, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true, dimInnerFact: true }
-      }
-      return { factIds: objectifiedIds, otIds: NONE, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true, dimInnerFact: true }
+      // Value types cannot be subtype endpoints — only entity OTs and entity-objectified facts.
+      const entityOtIds = new Set(visibleOts.filter(o => o.kind === 'entity').map(o => o.id))
+      const entityFactIds = new Set(visibleFacts.filter(f => f.objectified && f.objectifiedKind !== 'value').map(f => f.id))
+      return { factIds: entityFactIds, otIds: entityOtIds, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true, dimInnerFact: true }
     }
     if (linkDraft?.type === 'subtypeEndpointPick') {
       const pickSt = store.subtypes.find(x => x.id === linkDraft.stId)
@@ -548,6 +537,15 @@ export default function Canvas() {
       return { factIds: NONE, otIds: ALL, subtypesDim: true, constraintsDim: true, connectorsDim: true, impliedLinksDim: true }
     }
     if (sequenceConstruction) {
+      const scConstraint = store.constraints.find(c => c.id === sequenceConstruction.constraintId)
+      if (scConstraint?.constraintType === 'valueComparison') {
+        const vcFactIds = new Set(
+          visibleFacts.filter(f =>
+            f.roles.some(r => store.objectTypes.find(o => o.id === r.objectTypeId)?.kind === 'value')
+          ).map(f => f.id)
+        )
+        return { factIds: vcFactIds, otIds: ALL, subtypesDim: true, constraintsDim: true, connectorsDim: true }
+      }
       return { factIds: NONE, otIds: ALL, subtypesDim: false, constraintsDim: true, connectorsDim: true }
     }
     if (tool === 'connectConstraint') {

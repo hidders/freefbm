@@ -562,7 +562,7 @@ export function runValidation({ objectTypes, facts, constraints, subtypes = [] }
                 id: `vc-different-players-${c.id}`,
                 category: 'constraintStructure',
                 elementId: c.id, elementKind: 'constraint',
-                message: `${label} constraint: both roles must be played by the same object type`,
+                message: `${label} constraint: both roles must be played by the same value type`,
                 severity: 'warning',
               })
             } else if (ot0 && otById.get(ot0)?.kind !== 'value') {

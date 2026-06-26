@@ -2390,7 +2390,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
               const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
               return (
                   <g key={role.id} className="role-box-group" filter={roleSelected ? 'url(#selectGlow)' : undefined}
-                     opacity={querySelectableRoles !== null && !querySelectableRoles.has(ri) ? 0.2 : 1}>
+                     opacity={querySelectableRoles !== null && !querySelectableRoles.has(ri) ? 0.2 : isVcConstruction && !vcEligibleRoles.has(ri) ? 0.35 : 1}>
                    <rect x={leftX_v} y={ry} width={ROLE_H} height={ROLE_W}
                      fill={
                        roleInQueryPattern(ri) || nestedInQueryHighlight ? 'var(--fill-query-in)'
@@ -2580,7 +2580,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
               const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
               return (
                   <g key={role.id} className="role-box-group" filter={roleSelected ? 'url(#selectGlow)' : undefined}
-                     opacity={querySelectableRoles !== null && !querySelectableRoles.has(ri) ? 0.2 : 1}>
+                     opacity={querySelectableRoles !== null && !querySelectableRoles.has(ri) ? 0.2 : isVcConstruction && !vcEligibleRoles.has(ri) ? 0.35 : 1}>
                    <rect
                      x={rx} y={topY} width={ROLE_W} height={ROLE_H}
                      fill={
