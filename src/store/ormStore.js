@@ -394,6 +394,95 @@ function findMatchingRefModeFact(entityId, vtId, facts) {
   return null
 }
 
+// ── ref-mode label helpers ────────────────────────────────────────────────────
+// Shared by setEntityRefModeLabel and setNestedRefModeLabel.
+
+// Returns the state patch that demotes a ref-mode PI and converts owned
+// VT/FT occurrences back to independent so they remain visible on the canvas.
+// ownerId: the entity OT ID or objectified-fact ID whose ref mode is being cleared.
+function clearRefModePI(state, ownerId, current) {
+  return {
+    facts: state.facts.map(f => f.id !== current.factId ? f : ({
+      ...f,
+      preferredUniqueness: (f.preferredUniqueness || [])
+        .filter(pu => !(pu.length === 1 && pu[0] === current.vtRoleIndex)),
+    })),
+    diagrams: state.diagrams.map(d => {
+      if (d.id !== state.activeDiagramId) return d
+      const ownerOccIds = new Set((d.occurrences ?? []).filter(o => o.schemaElementId === ownerId).map(o => o.id))
+      let nd = {
+        ...d,
+        occurrences: (d.occurrences ?? []).map(o => {
+          if ((o.schemaElementId === current.vtId || o.schemaElementId === current.factId) && ownerOccIds.has(o.refModeOwnerOccId))
+            return { ...o, refModeOwnerOccId: null }
+          return o
+        }),
+        expandedRefModeOccs: (d.expandedRefModeOccs ?? []).filter(id => !ownerOccIds.has(id)),
+      }
+      const vtEl = state.objectTypes.find(o => o.id === current.vtId)
+      const ftEl = state.facts.find(f => f.id === current.factId)
+      nd = addOccIfAbsent(nd, current.vtId,  vtEl?.x ?? 0, vtEl?.y ?? 0)
+      nd = addOccIfAbsent(nd, current.factId, ftEl?.x ?? 0, ftEl?.y ?? 0)
+      return nd
+    }),
+    isDirty: true,
+  }
+}
+
+// Returns the state patch for adding a ref mode when none currently exists.
+// owner: { id, name, x, y } — the entity OT or objectified-fact acting as owner.
+// demoteTargetId: entity OT ID to demote competing PIs for (null for nested entities).
+function applyFreshRefMode(state, owner, targetVtName, existing, matchFact, demoteTargetId) {
+  if (matchFact) {
+    const factsWithPi = state.facts.map(f => {
+      if (f.id !== matchFact.fact.id) return f
+      const alreadySet = (f.preferredUniqueness || []).some(pu => pu.length === 1 && pu[0] === matchFact.vtRoleIndex)
+      if (alreadySet) return f
+      return { ...f, preferredUniqueness: [...(f.preferredUniqueness || []), [matchFact.vtRoleIndex]] }
+    })
+    const { facts: cFacts, constraints: cCons } = demoteTargetId
+      ? demoteOtherPIsFor(demoteTargetId, factsWithPi, state.constraints, matchFact.fact.id, null)
+      : { facts: factsWithPi, constraints: state.constraints }
+    return {
+      facts: cFacts, constraints: cCons,
+      diagrams: state.diagrams.map(d => {
+        if (d.id !== state.activeDiagramId) return d
+        const ftEl = state.facts.find(f => f.id === matchFact.fact.id)
+        return addOwnedRefModeOccsIfAbsent(d, owner.id, existing.id, existing.x ?? 0, existing.y ?? 0, matchFact.fact.id, ftEl?.x ?? 0, ftEl?.y ?? 0, matchFact.vtRoleIndex)
+      }),
+      isDirty: true,
+    }
+  }
+  let nextOts = state.objectTypes
+  let vt
+  if (existing) {
+    vt = existing
+  } else {
+    const { vt: newVt } = mkRefModePair(owner, targetVtName)
+    vt = newVt
+    nextOts = [...nextOts, newVt]
+  }
+  const ft = {
+    ...mkFact(Math.round(owner.x + 80), Math.round(owner.y), 2),
+    roles: [{ ...mkRole(), objectTypeId: owner.id }, { ...mkRole(), objectTypeId: vt.id }],
+    uniqueness: [[1]], preferredUniqueness: [[1]],
+    readingParts: ['', 'has', ''],
+    alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'refers to', ''] }],
+  }
+  const factsAfterAdd = [...state.facts, ft]
+  const { facts: cFacts, constraints: cCons } = demoteTargetId
+    ? demoteOtherPIsFor(demoteTargetId, factsAfterAdd, state.constraints, ft.id, null)
+    : { facts: factsAfterAdd, constraints: state.constraints }
+  return {
+    objectTypes: nextOts, facts: cFacts, constraints: cCons,
+    diagrams: state.diagrams.map(d => {
+      if (d.id !== state.activeDiagramId) return d
+      return addOwnedRefModeOccsIfAbsent(d, owner.id, vt.id, vt.x, vt.y, ft.id, ft.x, ft.y, 1)
+    }),
+    isDirty: true,
+  }
+}
+
 // ── query-generation helpers ──────────────────────────────────────────────────
 
 // Returns the unique minimal common ancestor of all `otIds` in the subtype DAG
@@ -708,6 +797,134 @@ function computeConnectedIds(startId, { objectTypes, facts, subtypes, constraint
     }
   }
   return [...visited]
+}
+
+// ── diagram migration helpers ─────────────────────────────────────────────────
+// These run during loadModel to bring older file formats up to the current shape.
+// They are pure functions of their arguments — no store access.
+
+// Migrate old expandedRefModes (schema OT IDs) → expandedRefModeOccs (occurrence IDs).
+// Also marks VT/FT occurrences with refModeOwnerOccId so the new visibility logic works.
+function migrateRefModeExpansion(diag, parsedOts, facts) {
+  if (!diag.expandedRefModes?.length || diag.expandedRefModeOccs?.length) {
+    return { ...diag, expandedRefModeOccs: diag.expandedRefModeOccs ?? [] }
+  }
+  const expandedRefModeOccs = []
+  let updatedOccs = [...(diag.occurrences ?? [])]
+  for (const schemaId of diag.expandedRefModes) {
+    const firstOcc = updatedOccs.find(o => o.schemaElementId === schemaId)
+    if (!firstOcc) continue
+    expandedRefModeOccs.push(firstOcc.id)
+    const ot = parsedOts.find(o => o.id === schemaId)
+    const nested = !ot ? facts.find(f => f.id === schemaId && f.objectified && f.objectifiedKind !== 'value') : null
+    const owner = ot ?? nested
+    if (!owner) continue
+    const rm = findRefMode(owner, facts, parsedOts)
+    if (!rm) continue
+    updatedOccs = updatedOccs.map(o => {
+      if ((o.schemaElementId === rm.vtId || o.schemaElementId === rm.factId) && !o.refModeOwnerOccId)
+        return { ...o, refModeOwnerOccId: firstOcc.id }
+      return o
+    })
+  }
+  return { ...diag, occurrences: updatedOccs, expandedRefModeOccs }
+}
+
+// Populate subtypeOccurrences / subtypeEndpointOccs for diagrams that pre-date
+// per-diagram subtype tracking. Always stores endpoint pairs as Array<{ subOccId, superOccId }>.
+function migrateSubtypeOccurrences(diag, parsedSts) {
+  const occs = diag.occurrences ?? []
+  if (diag.subtypeOccurrences != null) {
+    const existingEps = diag.subtypeEndpointOccs ?? {}
+    const needsNormalization = !diag.subtypeEndpointOccs ||
+      Object.values(existingEps).some(v => v && !Array.isArray(v))
+    if (!needsNormalization) return diag
+    const subtypeEndpointOccs = {}
+    for (const stId of diag.subtypeOccurrences) {
+      const existing = existingEps[stId]
+      if (existing) {
+        subtypeEndpointOccs[stId] = Array.isArray(existing) ? existing : [existing]
+      } else {
+        const st = parsedSts.find(x => x.id === stId)
+        if (!st) continue
+        const subOcc  = occs.find(o => o.schemaElementId === st.subId)
+        const superOcc = occs.find(o => o.schemaElementId === st.superId)
+        if (subOcc && superOcc) subtypeEndpointOccs[stId] = [{ subOccId: subOcc.id, superOccId: superOcc.id }]
+      }
+    }
+    return { ...diag, subtypeEndpointOccs }
+  }
+  const subtypeOccurrences = []
+  const subtypeEndpointOccs = {}
+  for (const st of parsedSts) {
+    const subOcc  = occs.find(o => o.schemaElementId === st.subId)
+    const superOcc = occs.find(o => o.schemaElementId === st.superId)
+    if (subOcc && superOcc) {
+      subtypeOccurrences.push(st.id)
+      subtypeEndpointOccs[st.id] = [{ subOccId: subOcc.id, superOccId: superOcc.id }]
+    }
+  }
+  return { ...diag, subtypeOccurrences, subtypeEndpointOccs }
+}
+
+// Migrate the oldest format (elementIds + positions map) to the occurrence-based format.
+function migrateOldDiagram(diag, parsedOts, facts, constraints, constraintIdSet) {
+  const positions = diag.positions ?? {}
+  const occurrences = []
+  const constraintOccurrences = []
+  const implicitLinkPositions = {}
+
+  for (const [k, v] of Object.entries(positions)) {
+    if (k.includes(':il:')) {
+      implicitLinkPositions[k] = v
+    } else {
+      const { x, y, ...extra } = v
+      if (x != null || y != null) {
+        if (constraintIdSet.has(k)) {
+          constraintOccurrences.push({ id: `cocc_${uid()}`, schemaConstraintId: k, x: x ?? 0, y: y ?? 0, roleOccurrenceRefs: [] })
+        } else {
+          occurrences.push({ id: `occ_${uid()}`, schemaElementId: k, x: x ?? 0, y: y ?? 0, ...extra })
+        }
+      }
+    }
+  }
+
+  const elementIds = diag.elementIds
+  if (elementIds === null) {
+    const covered  = new Set(occurrences.map(o => o.schemaElementId))
+    const coveredC = new Set(constraintOccurrences.map(co => co.schemaConstraintId))
+    for (const el of [...parsedOts, ...facts]) {
+      if (!covered.has(el.id))
+        occurrences.push({ id: `occ_${uid()}`, schemaElementId: el.id, x: el.x ?? 0, y: el.y ?? 0 })
+    }
+    for (const c of constraints) {
+      if (!coveredC.has(c.id))
+        constraintOccurrences.push({ id: `cocc_${uid()}`, schemaConstraintId: c.id, x: c.x ?? 0, y: c.y ?? 0, roleOccurrenceRefs: [] })
+    }
+  } else if (Array.isArray(elementIds)) {
+    const covered  = new Set(occurrences.map(o => o.schemaElementId))
+    const coveredC = new Set(constraintOccurrences.map(co => co.schemaConstraintId))
+    for (const id of elementIds) {
+      if (constraintIdSet.has(id)) {
+        if (coveredC.has(id)) continue
+        const c = constraints.find(cc => cc.id === id)
+        constraintOccurrences.push({ id: `cocc_${uid()}`, schemaConstraintId: id, x: c?.x ?? 0, y: c?.y ?? 0, roleOccurrenceRefs: [] })
+      } else {
+        if (covered.has(id)) continue
+        const el = parsedOts.find(o => o.id === id) ?? facts.find(f => f.id === id)
+        occurrences.push({ id: `occ_${uid()}`, schemaElementId: id, x: el?.x ?? 0, y: el?.y ?? 0 })
+      }
+    }
+  }
+
+  return {
+    ...diag,
+    occurrences,
+    constraintOccurrences,
+    implicitLinkPositions,
+    multiSelectedIds: [],
+    expandedRefModes: diag.expandedRefModes ?? [],
+  }
 }
 
 // ── empty model ───────────────────────────────────────────────────────────────
@@ -1362,145 +1579,7 @@ export const useOrmStore = create((set, get) => ({
     const parsedOts  = d.objectTypes  || []
     const parsedSts  = d.subtypes      || []
 
-    // ── diagram migration helper ──────────────────────────────────────────────
     const constraintIdSet = new Set(constraints.map(c => c.id))
-
-    // Migrate old expandedRefModes (schema OT IDs) → expandedRefModeOccs (occurrence IDs).
-    // Also marks VT/FT occurrences with refModeOwnerOccId so the new visibility logic works.
-    function migrateRefModeExpansion(diag, parsedOts, facts) {
-      if (!diag.expandedRefModes?.length || diag.expandedRefModeOccs?.length) {
-        return { ...diag, expandedRefModeOccs: diag.expandedRefModeOccs ?? [] }
-      }
-      const expandedRefModeOccs = []
-      let updatedOccs = [...(diag.occurrences ?? [])]
-      for (const schemaId of diag.expandedRefModes) {
-        const firstOcc = updatedOccs.find(o => o.schemaElementId === schemaId)
-        if (!firstOcc) continue
-        expandedRefModeOccs.push(firstOcc.id)
-        const ot = parsedOts.find(o => o.id === schemaId)
-        const nested = !ot ? facts.find(f => f.id === schemaId && f.objectified && f.objectifiedKind !== 'value') : null
-        const owner = ot ?? nested
-        if (!owner) continue
-        const rm = findRefMode(owner, facts, parsedOts)
-        if (!rm) continue
-        updatedOccs = updatedOccs.map(o => {
-          if ((o.schemaElementId === rm.vtId || o.schemaElementId === rm.factId) && !o.refModeOwnerOccId) {
-            return { ...o, refModeOwnerOccId: firstOcc.id }
-          }
-          return o
-        })
-      }
-      return { ...diag, occurrences: updatedOccs, expandedRefModeOccs }
-    }
-
-    // Populate subtypeOccurrences / subtypeEndpointOccs for diagrams that pre-date
-    // per-diagram subtype tracking. A subtype is included when both its endpoints have
-    // occurrences in the diagram; the endpoint occurrence IDs are recorded so the arrow
-    // stays pinned to specific occurrences rather than drifting to new ones.
-    // subtypeEndpointOccs values are always stored as Array<{ subOccId, superOccId }>.
-    function migrateSubtypeOccurrences(diag, parsedSts) {
-      const occs = diag.occurrences ?? []
-      if (diag.subtypeOccurrences != null) {
-        // subtypeOccurrences already exists.
-        // Normalize subtypeEndpointOccs: backfill if missing, convert old single-object format to array.
-        const existingEps = diag.subtypeEndpointOccs ?? {}
-        const needsNormalization = !diag.subtypeEndpointOccs ||
-          Object.values(existingEps).some(v => v && !Array.isArray(v))
-        if (!needsNormalization) return diag
-        const subtypeEndpointOccs = {}
-        for (const stId of diag.subtypeOccurrences) {
-          const existing = existingEps[stId]
-          if (existing) {
-            subtypeEndpointOccs[stId] = Array.isArray(existing) ? existing : [existing]
-          } else {
-            const st = parsedSts.find(x => x.id === stId)
-            if (!st) continue
-            const subOcc  = occs.find(o => o.schemaElementId === st.subId)
-            const superOcc = occs.find(o => o.schemaElementId === st.superId)
-            if (subOcc && superOcc) subtypeEndpointOccs[stId] = [{ subOccId: subOcc.id, superOccId: superOcc.id }]
-          }
-        }
-        return { ...diag, subtypeEndpointOccs }
-      }
-      // Neither field exists — build both from scratch
-      const subtypeOccurrences = []
-      const subtypeEndpointOccs = {}
-      for (const st of parsedSts) {
-        const subOcc  = occs.find(o => o.schemaElementId === st.subId)
-        const superOcc = occs.find(o => o.schemaElementId === st.superId)
-        if (subOcc && superOcc) {
-          subtypeOccurrences.push(st.id)
-          subtypeEndpointOccs[st.id] = [{ subOccId: subOcc.id, superOccId: superOcc.id }]
-        }
-      }
-      return { ...diag, subtypeOccurrences, subtypeEndpointOccs }
-    }
-
-    function migrateOldDiagram(diag, parsedOts, facts, constraints) {
-      const positions = diag.positions ?? {}
-      const occurrences = []
-      const constraintOccurrences = []
-      const implicitLinkPositions = {}
-
-      // Split positions into element positions vs implicit-link positions
-      for (const [k, v] of Object.entries(positions)) {
-        if (k.includes(':il:')) {
-          implicitLinkPositions[k] = v
-        } else {
-          const { x, y, ...extra } = v
-          if (x != null || y != null) {
-            if (constraintIdSet.has(k)) {
-              constraintOccurrences.push({ id: `cocc_${uid()}`, schemaConstraintId: k, x: x ?? 0, y: y ?? 0, roleOccurrenceRefs: [] })
-            } else {
-              occurrences.push({ id: `occ_${uid()}`, schemaElementId: k, x: x ?? 0, y: y ?? 0, ...extra })
-            }
-          }
-        }
-      }
-
-      // elementIds: null means "show all"; explicit array means "these only"
-      const elementIds = diag.elementIds
-      if (elementIds === null) {
-        // Show-all: create occurrences for all elements not already covered
-        const covered = new Set(occurrences.map(o => o.schemaElementId))
-        const coveredC = new Set(constraintOccurrences.map(co => co.schemaConstraintId))
-        for (const el of [...parsedOts, ...facts]) {
-          if (!covered.has(el.id)) {
-            occurrences.push({ id: `occ_${uid()}`, schemaElementId: el.id, x: el.x ?? 0, y: el.y ?? 0 })
-          }
-        }
-        for (const c of constraints) {
-          if (!coveredC.has(c.id)) {
-            constraintOccurrences.push({ id: `cocc_${uid()}`, schemaConstraintId: c.id, x: c.x ?? 0, y: c.y ?? 0, roleOccurrenceRefs: [] })
-          }
-        }
-      } else if (Array.isArray(elementIds)) {
-        // Explicit list: add occurrences for ids in elementIds but not yet covered
-        const covered = new Set(occurrences.map(o => o.schemaElementId))
-        const coveredC = new Set(constraintOccurrences.map(co => co.schemaConstraintId))
-        for (const id of elementIds) {
-          if (constraintIdSet.has(id)) {
-            if (coveredC.has(id)) continue
-            const c = constraints.find(cc => cc.id === id)
-            constraintOccurrences.push({ id: `cocc_${uid()}`, schemaConstraintId: id, x: c?.x ?? 0, y: c?.y ?? 0, roleOccurrenceRefs: [] })
-          } else {
-            if (covered.has(id)) continue
-            const el = parsedOts.find(o => o.id === id) ?? facts.find(f => f.id === id)
-            const x = el?.x ?? 0, y = el?.y ?? 0
-            occurrences.push({ id: `occ_${uid()}`, schemaElementId: id, x, y })
-          }
-        }
-      }
-
-      return {
-        ...diag,
-        occurrences,
-        constraintOccurrences,
-        implicitLinkPositions,
-        multiSelectedIds: [],
-        expandedRefModes: diag.expandedRefModes ?? [],
-      }
-    }
 
     let diagrams, activeDiagramId
     if (d.diagrams && d.diagrams.length > 0) {
@@ -1527,7 +1606,7 @@ export const useOrmStore = create((set, get) => ({
           return migrateSubtypeOccurrences(migrateRefModeExpansion(d12, parsedOts, facts), parsedSts)
         }
         // old format (elementIds + positions)
-        return migrateSubtypeOccurrences(migrateRefModeExpansion(migrateOldDiagram(diag, parsedOts, facts, constraints), parsedOts, facts), parsedSts)
+        return migrateSubtypeOccurrences(migrateRefModeExpansion(migrateOldDiagram(diag, parsedOts, facts, constraints, constraintIdSet), parsedOts, facts), parsedSts)
       })
       activeDiagramId = d.activeDiagramId ?? d.diagrams[0].id
     } else {
@@ -1849,33 +1928,7 @@ export const useOrmStore = create((set, get) => ({
 
     if (trimmed === '') {
       if (!current) return
-      set(state => ({
-        facts: state.facts.map(f => f.id !== current.factId ? f : ({
-          ...f,
-          preferredUniqueness: (f.preferredUniqueness || [])
-            .filter(pu => !(pu.length === 1 && pu[0] === current.vtRoleIndex)),
-        })),
-        // Make VT/FT visible by converting owned occurrences to independent.
-        diagrams: state.diagrams.map(d => {
-          if (d.id !== state.activeDiagramId) return d
-          const entityOccIds = new Set((d.occurrences ?? []).filter(o => o.schemaElementId === entityId).map(o => o.id))
-          let nd = {
-            ...d,
-            occurrences: (d.occurrences ?? []).map(o => {
-              if ((o.schemaElementId === current.vtId || o.schemaElementId === current.factId) && entityOccIds.has(o.refModeOwnerOccId)) {
-                return { ...o, refModeOwnerOccId: null }
-              }
-              return o
-            }),
-            expandedRefModeOccs: (d.expandedRefModeOccs ?? []).filter(id => !entityOccIds.has(id)),
-          }
-          // Ensure independent occurrences exist (backward compat with pre-owned files).
-          nd = addOccIfAbsent(nd, current.vtId, state.objectTypes.find(o => o.id === current.vtId)?.x ?? 0, state.objectTypes.find(o => o.id === current.vtId)?.y ?? 0)
-          nd = addOccIfAbsent(nd, current.factId, state.facts.find(f => f.id === current.factId)?.x ?? 0, state.facts.find(f => f.id === current.factId)?.y ?? 0)
-          return nd
-        }),
-        isDirty: true,
-      }))
+      set(state => clearRefModePI(state, entityId, current))
       return
     }
 
@@ -1893,7 +1946,7 @@ export const useOrmStore = create((set, get) => ({
             const roles = f.roles.map((r, i) => i === current.vtRoleIndex ? { ...r, objectTypeId: existingMatch.id } : r)
             return { ...f, roles }
           })
-          let nextOts = oldVtUsedElsewhere
+          const nextOts = oldVtUsedElsewhere
             ? state.objectTypes
             : state.objectTypes.filter(o => o.id !== current.vtId)
           const nextDiagrams = state.diagrams.map(d => {
@@ -1918,67 +1971,9 @@ export const useOrmStore = create((set, get) => ({
       return
     }
 
-    // No ref mode yet: create or attach to an existing VT, then create (or reuse) the fact.
     const existing = s.objectTypes.find(o => o.kind === 'value' && o.name === targetVtName)
-    // If the target VT already exists, look for a fact with the same reading rather than creating a duplicate.
     const matchFact = existing ? findMatchingRefModeFact(entity.id, existing.id, s.facts) : null
-    set(state => {
-      if (matchFact) {
-        // Reuse the existing fact: ensure preferredUniqueness is set on the VT role.
-        const factsWithPi = state.facts.map(f => {
-          if (f.id !== matchFact.fact.id) return f
-          const alreadySet = (f.preferredUniqueness || []).some(
-            pu => pu.length === 1 && pu[0] === matchFact.vtRoleIndex
-          )
-          if (alreadySet) return f
-          return { ...f, preferredUniqueness: [...(f.preferredUniqueness || []), [matchFact.vtRoleIndex]] }
-        })
-        const { facts: cFacts, constraints: cCons } =
-          demoteOtherPIsFor(entity.id, factsWithPi, state.constraints, matchFact.fact.id, null)
-        return {
-          facts: cFacts,
-          constraints: cCons,
-          diagrams: state.diagrams.map(d => {
-            if (d.id !== state.activeDiagramId) return d
-            const ftEl = state.facts.find(f => f.id === matchFact.fact.id)
-            return addOwnedRefModeOccsIfAbsent(d, entityId, existing.id, existing.x ?? 0, existing.y ?? 0, matchFact.fact.id, ftEl?.x ?? 0, ftEl?.y ?? 0, matchFact.vtRoleIndex)
-          }),
-          isDirty: true,
-        }
-      }
-      let nextOts = state.objectTypes
-      let vt
-      if (existing) {
-        vt = existing
-      } else {
-        const { vt: newVt } = mkRefModePair(entity, targetVtName)
-        vt = newVt
-        nextOts = [...nextOts, newVt]
-      }
-      // Build the fact (always new — even when reusing an existing VT, the relationship is per-entity)
-      const ft = {
-        ...mkFact(Math.round(entity.x + 80), Math.round(entity.y), 2),
-        roles: [{ ...mkRole(), objectTypeId: entity.id }, { ...mkRole(), objectTypeId: vt.id }],
-        uniqueness: [[1]],
-        preferredUniqueness: [[1]],
-        readingParts: ['', 'has', ''],
-        alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'refers to', ''] }],
-      }
-      const factsAfterAdd = [...state.facts, ft]
-      // The new fact's PI identifies `entity` — demote any pre-existing PIs for it.
-      const { facts: cFacts, constraints: cCons } =
-        demoteOtherPIsFor(entity.id, factsAfterAdd, state.constraints, ft.id, null)
-      return {
-        objectTypes: nextOts,
-        facts: cFacts,
-        constraints: cCons,
-        diagrams: state.diagrams.map(d => {
-          if (d.id !== state.activeDiagramId) return d
-          return addOwnedRefModeOccsIfAbsent(d, entityId, vt.id, vt.x, vt.y, ft.id, ft.x, ft.y, 1)
-        }),
-        isDirty: true,
-      }
-    })
+    set(state => applyFreshRefMode(state, entity, targetVtName, existing, matchFact, entity.id))
   },
 
   setNestedRefModeLabel(factId, label) {
@@ -1999,33 +1994,7 @@ export const useOrmStore = create((set, get) => ({
       const current = findRefMode(fact, s.facts, s.objectTypes)
       setDisplay(null)
       if (!current) return
-      // Remove PI from the existing ref-mode fact, keep FT+VT visible.
-      set(state => ({
-        facts: state.facts.map(f => f.id !== current.factId ? f : ({
-          ...f,
-          preferredUniqueness: (f.preferredUniqueness || []).filter(pu => !(pu.length === 1 && pu[0] === current.vtRoleIndex)),
-        })),
-        diagrams: state.diagrams.map(d => {
-          if (d.id !== state.activeDiagramId) return d
-          const nestedOccIds = new Set((d.occurrences ?? []).filter(o => o.schemaElementId === factId).map(o => o.id))
-          let nd = {
-            ...d,
-            occurrences: (d.occurrences ?? []).map(o => {
-              if ((o.schemaElementId === current.vtId || o.schemaElementId === current.factId) && nestedOccIds.has(o.refModeOwnerOccId)) {
-                return { ...o, refModeOwnerOccId: null }
-              }
-              return o
-            }),
-            expandedRefModeOccs: (d.expandedRefModeOccs ?? []).filter(id => !nestedOccIds.has(id)),
-          }
-          const vtEl = state.objectTypes.find(o => o.id === current.vtId)
-          const ftEl = state.facts.find(f => f.id === current.factId)
-          nd = addOccIfAbsent(nd, current.vtId, vtEl?.x ?? 0, vtEl?.y ?? 0)
-          nd = addOccIfAbsent(nd, current.factId, ftEl?.x ?? 0, ftEl?.y ?? 0)
-          return nd
-        }),
-        isDirty: true,
-      }))
+      set(state => clearRefModePI(state, factId, current))
       return
     }
 
@@ -2035,7 +2004,6 @@ export const useOrmStore = create((set, get) => ({
     const current = findRefMode(fact, s.facts, s.objectTypes)
 
     if (current) {
-      // Rename existing VT to match new label.
       set(state => ({
         objectTypes: state.objectTypes.map(o => o.id === current.vtId ? { ...o, name: targetVtName } : o),
         isDirty: true,
@@ -2043,57 +2011,10 @@ export const useOrmStore = create((set, get) => ({
       return
     }
 
-    // No ref mode yet: create VT + binary fact + set PI (or reuse an existing matching fact).
     const existing = s.objectTypes.find(o => o.kind === 'value' && o.name === targetVtName)
     const wrapEntity = { id: factId, name: entityName, x: fact.x, y: fact.y }
     const matchFact = existing ? findMatchingRefModeFact(factId, existing.id, s.facts) : null
-    set(state => {
-      if (matchFact) {
-        const factsWithPi = state.facts.map(f => {
-          if (f.id !== matchFact.fact.id) return f
-          const alreadySet = (f.preferredUniqueness || []).some(
-            pu => pu.length === 1 && pu[0] === matchFact.vtRoleIndex
-          )
-          if (alreadySet) return f
-          return { ...f, preferredUniqueness: [...(f.preferredUniqueness || []), [matchFact.vtRoleIndex]] }
-        })
-        return {
-          facts: factsWithPi,
-          diagrams: state.diagrams.map(d => {
-            if (d.id !== state.activeDiagramId) return d
-            const ftEl = state.facts.find(f => f.id === matchFact.fact.id)
-            return addOwnedRefModeOccsIfAbsent(d, factId, existing.id, existing.x ?? 0, existing.y ?? 0, matchFact.fact.id, ftEl?.x ?? 0, ftEl?.y ?? 0, matchFact.vtRoleIndex)
-          }),
-          isDirty: true,
-        }
-      }
-      let nextOts = state.objectTypes
-      let vt
-      if (existing) {
-        vt = existing
-      } else {
-        const pair = mkRefModePair(wrapEntity, targetVtName)
-        vt = pair.vt
-        nextOts = [...nextOts, pair.vt]
-      }
-      const ft = {
-        ...mkFact(Math.round(wrapEntity.x + 80), Math.round(wrapEntity.y), 2),
-        roles: [{ ...mkRole(), objectTypeId: wrapEntity.id }, { ...mkRole(), objectTypeId: vt.id }],
-        uniqueness: [[1]],
-        preferredUniqueness: [[1]],
-        readingParts: ['', 'has', ''],
-        alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'refers to', ''] }],
-      }
-      return {
-        objectTypes: nextOts,
-        facts: [...state.facts, ft],
-        diagrams: state.diagrams.map(d => {
-          if (d.id !== state.activeDiagramId) return d
-          return addOwnedRefModeOccsIfAbsent(d, factId, vt.id, vt.x, vt.y, ft.id, ft.x, ft.y, 1)
-        }),
-        isDirty: true,
-      }
-    })
+    set(state => applyFreshRefMode(state, wrapEntity, targetVtName, existing, matchFact, null))
   },
 
   // ── populations (sample data per object type) ──────────────────────────
