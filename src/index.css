@@ -41,6 +41,12 @@
   --fill-query-in:  #cffafe;  /* light teal fill for included pattern elements */
   --col-query-out:  #94a3b8;  /* muted slate — element not in query pattern (dimmed) */
 
+  /* Formalisation tab — formula token colours */
+  --formula-var:     #1a5fb4;  /* blue — variables */
+  --formula-reading: #3d3529;  /* ink — reading fragments */
+  --formula-type:    #0e7490;  /* teal — object type predicates */
+  --formula-op:      #7c4dbd;  /* violet — connectives and quantifiers */
+
   --accent:       #b45309;
   --accent-light: #d97706;
   --selection:    rgba(180,83,9,0.15);
