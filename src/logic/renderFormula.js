@@ -115,7 +115,7 @@ export function renderFormula(formula, ctx) {
         }
         push(' ')
         const b = f.body
-        if (b.t === 'fact' || QUANTIFIERS.has(b.t) || b.t === 'not') render(b)
+        if (b.t === 'fact' || b.t === 'type' || QUANTIFIERS.has(b.t) || b.t === 'not') render(b)
         else wrapped(b)
         unbind(f.vars.length)
         return

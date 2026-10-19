@@ -374,6 +374,17 @@ function ringEntries(c, q, entry) {
   })
 }
 
+// ── Subtype edges ────────────────────────────────────────────────────────────
+
+// Every instance of the subtype is an instance of the supertype:
+// ∀Manager Person(Manager).
+function subtypeEntry(st, ctx) {
+  const x = mkVar(st.subId)
+  return { key: st.id, elementId: st.id, kind: 'Subtype',
+    subject: `${ctx.typeName(st.subId)} is a ${ctx.typeName(st.superId)}`,
+    formula: forall([x], typeAtom(st.superId, x)) }
+}
+
 // ── Scope: which constraints belong to the current selection ─────────────────
 
 export function makeContext(state) {
@@ -411,10 +422,13 @@ export function formalise(state) {
   for (const s of [state.selectedMandatoryDot, state.selectedUniqueness, state.selectedInternalFrequency])
     if (s?.factId) selected.add(s.factId)
 
-  let factIds, otIds, constraintIds
+  const subtypes = state.subtypes ?? []
+  let factIds, otIds, constraintIds, subtypeIds
   if (selected.size === 0) {
     const diagram = (state.diagrams ?? []).find(d => d.id === state.activeDiagramId)
     const onDiagram = new Set((diagram?.occurrences ?? []).map(o => o.schemaElementId))
+    subtypeIds = new Set(diagram?.subtypeOccurrences
+      ?? subtypes.filter(st => onDiagram.has(st.subId) && onDiagram.has(st.superId)).map(st => st.id))
     factIds = new Set([...ctx.factById.keys()].filter(id => onDiagram.has(id)))
     otIds = new Set()
     for (const co of (diagram?.constraintOccurrences ?? [])) onDiagram.add(co.schemaConstraintId)
@@ -426,6 +440,8 @@ export function formalise(state) {
   } else {
     factIds = new Set([...selected].filter(id => ctx.factById.has(id)))
     otIds = new Set([...selected].filter(id => ctx.otById.has(id)))
+    subtypeIds = new Set(subtypes.filter(st =>
+      selected.has(st.id) || (selected.has(st.subId) && selected.has(st.superId))).map(st => st.id))
     constraintIds = new Set(constraints.filter(c => {
       if (selected.has(c.id)) return true
       const fs = constraintFactIds(c)
@@ -433,7 +449,7 @@ export function formalise(state) {
     }).map(c => c.id))
   }
 
-  const entries = []
+  const entries = subtypes.filter(st => subtypeIds.has(st.id)).map(st => subtypeEntry(st, ctx))
   for (const fact of (state.facts ?? [])) {
     if (factIds.has(fact.id)) { entries.push(...factEntries(fact, ctx)); continue }
     // A selected object type brings the mandatory roles it plays.
