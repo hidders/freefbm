@@ -70,7 +70,9 @@ function Formula({ formula, ctx }) {
     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap', userSelect: 'text' }}>
       {tokens.map((t, i) => t.sup
         ? <sup key={i} style={{ ...TOKEN_STYLE.op, fontSize: '0.75em' }}>{t.text}</sup>
-        : <span key={i} style={TOKEN_STYLE[t.cls]}>{t.text}</span>)}
+        : t.sub
+          ? <sub key={i} style={{ ...TOKEN_STYLE[t.cls], fontSize: '0.75em' }}>{t.text}</sub>
+          : <span key={i} style={TOKEN_STYLE[t.cls]}>{t.text}</span>)}
     </div>
   )
 }
