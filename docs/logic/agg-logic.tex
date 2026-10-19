@@ -48,6 +48,7 @@
 \newcommand{\dataVal}[1]{\textcolor{ForestGreen}{#1}}
 \newcommand{\dataEq}{\mathrel{\textcolor{ForestGreen}{\doteq}}}
 \newcommand{\dt}[1]{\mathsf{\textcolor{ForestGreen}{\textsc{#1}}}}
+\newcommand{\TC}{\mathsf{TC}}
 \newcommand{\dvar}[1]{\var{#1}^{\textcolor{Magenta}{*}}}
 
 
@@ -501,36 +502,59 @@ of arbitrary length in a binary relation. Rather than relaxing the
 restriction on derivation rules, we introduce transitive closure as a
 dedicated, non-recursive construct in the logic itself, with fixed
 built-in semantics. This keeps the acyclicity restriction on derivation
-rules fully general, with no exception.
+rules fully general, with no exception. We use the notation of
+\emph{transitive closure logic} as it is commonly found in the finite model
+theory literature, so that it will be familiar to readers who know that
+work.
 
 \begin{definition}
-Let $v_1, v_2$ be distinct variables of the same type $T$, and let $\varphi$
-be a formula with $v_1, v_2$ free (other free variables of $\varphi$ act as
-parameters, exactly as in aggregation). Then $\mathsf{TR}\, v_1, v_2\,
-(\varphi)$ is a \emph{predicate}: for terms $t_1, t_2$ of type $T$,
-$$(\mathsf{TR}\, v_1, v_2\, (\varphi))(t_1, t_2)$$
-is a formula. It is true under interpretation $\iota$ and binding $\beta$
-iff there exist $n \geq 1$ and $a_0, \ldots, a_n \in \iota(T)$ with
+Let $v_1, v_2$ be distinct variables of the same type $T$, let $\varphi$
+be a formula, and let $t_1, t_2$ be terms of type $T$. Then
+$$[\TC_{v_1, v_2}\, \varphi](t_1, t_2)
+  \qquad\text{and}\qquad
+  [\TC^{*}_{v_1, v_2}\, \varphi](t_1, t_2)$$
+are formulas. The first is true under interpretation $\iota$ and binding
+$\beta$ iff there exist $n \geq 1$ and $a_0, \ldots, a_n \in \iota(T)$ with
 $a_0 = \beta(t_1)$ and $a_n = \beta(t_2)$, such that for each
 $i = 1, \ldots, n$, $\varphi$ holds under $\beta[v_1 \mapsto a_{i-1},
-v_2 \mapsto a_i]$.
+v_2 \mapsto a_i]$. The second is defined in the same way, except that
+$n \geq 0$ is allowed, so that it is also true whenever $t_1$ and $t_2$
+denote the same domain object.
 \end{definition}
 
 \begin{remark}
-$\mathsf{TR}\, v_1, v_2\, (\varphi)$ denotes the transitive closure of the
-finite binary relation on $\iota(T)$ defined by $\varphi$, and is therefore
-always well-defined and computable (e.g.\ by reachability search) in time
-polynomial in $|\iota(T)|$. Since $\mathsf{TR}\, v_1, v_2\, (\varphi)$ is a
-predicate, it may be used anywhere in the logic that a predicate symbol
-such as $p$ may be used: applied to arbitrary terms, negated, combined
+$\TC$ denotes the transitive closure and $\TC^{*}$ the
+reflexive-transitive closure of the finite binary relation on $\iota(T)$
+that $\varphi$ defines between $v_1$ and $v_2$. When $t_1$ and $t_2$ are
+variables, $[\TC^{*}_{v_1, v_2}\, \varphi](t_1, t_2)$ is equivalent to
+$t_1 = t_2 \vee [\TC_{v_1, v_2}\, \varphi](t_1, t_2)$. Note that the
+reflexive part ranges over all of $\iota(T)$, not only over the objects
+that occur in the relation defined by $\varphi$. Both closures are always
+well-defined and computable (e.g.\ by reachability search) in time
+polynomial in $|\iota(T)|$.
+\end{remark}
+
+\begin{remark}[Binding and scope]
+$\TC$ and $\TC^{*}$ bind $v_1$ and $v_2$, in the same way as $\forall$ and
+$\exists$ bind their variables: the scope of $v_1$ and $v_2$ is the formula
+$\varphi$ inside the square brackets, and they can be renamed consistently
+within that scope without changing the meaning. The free variables of
+$[\TC_{v_1, v_2}\, \varphi](t_1, t_2)$ are therefore the free variables of
+$\varphi$ other than $v_1$ and $v_2$, together with the variables of $t_1$
+and $t_2$. Free variables of $\varphi$ other than $v_1$ and $v_2$ act as
+parameters, exactly as in aggregation. Since the arguments $t_1, t_2$ are
+arbitrary terms, the construct can be applied to the same variable twice,
+as in $[\TC_{v_1, v_2}\, \varphi](x, x)$, and it can be negated, combined
 with other formulas by any connective, and nested inside quantifiers or
-further occurrences of $\mathsf{TR}$. No new grammatical category is
-introduced; $\mathsf{TR}$ is simply a predicate-forming operator, in the
-same spirit as $\forall$ and $\exists$ are formula-forming operators.
+inside further occurrences of $\TC$. The square brackets delimit the scope
+of the bound variables, which keeps such nested formulas easy to parse.
+Although bound variables may in principle reuse the names of variables
+used elsewhere in the formula, we recommend fresh names, as in the
+examples below, to keep formulas readable.
 \end{remark}
 
 \begin{remark}
-Unlike a recursive derivation rule, $\mathsf{TR}$ is not defined by
+Unlike a recursive derivation rule, $\TC$ is not defined by
 solving a fixpoint equation supplied by the modeller; its semantics is
 fixed once and for all as reachability. This is what allows it to be
 added to the logic without reopening the question of recursive derivation
@@ -539,39 +563,38 @@ dependency graph of derivation rules acyclic (see the remark above).
 \end{remark}
 
 \begin{remark}[Generalisation to tuples]
-The definition of $\mathsf{TR}$ generalises directly from single variables
-to equal-length tuples of variables: for tuples $\vec{v} = (v_1,\ldots,v_k)$
-and $\vec{w} = (w_1,\ldots,w_k)$, matched component-wise by type, and a
-formula $\varphi$ with $\vec{v}, \vec{w}$ free, $\mathsf{TR}\, \vec{v},
-\vec{w}\, (\varphi)$ is a predicate over $k$-tuples, with the evident
-lifted semantics: $(\mathsf{TR}\, \vec{v}, \vec{w}\,(\varphi))(\vec{s},
-\vec{t})$ holds iff there is a chain of $k$-tuples from $\vec{s}$ to
-$\vec{t}$ with $\varphi$ holding between each consecutive pair. This is
-the same generalisation from binary relations to relations between
-$k$-tuples familiar from transitive closure logic in finite model theory,
-and is directly useful for ORM2 given its native support for $n$-ary fact
-types: a closure that must track more than one role position jointly as
-a chain extends requires exactly this generalisation.
+The definition generalises directly from single variables to equal-length
+tuples of distinct variables: for tuples $\vec{v} = (v_1,\ldots,v_k)$ and
+$\vec{w} = (w_1,\ldots,w_k)$, matched component-wise by type, and tuples of
+terms $\vec{s}$ and $\vec{t}$ of the same types,
+$[\TC_{\vec{v}, \vec{w}}\, \varphi](\vec{s}, \vec{t})$ holds iff there is a
+chain of $k$-tuples from $\vec{s}$ to $\vec{t}$ with $\varphi$ holding
+between each consecutive pair, and similarly for $\TC^{*}$. This is the
+same generalisation from binary relations to relations between $k$-tuples
+familiar from transitive closure logic in finite model theory, and is
+directly useful for ORM2 given its native support for $n$-ary fact types:
+a closure that must track more than one role position jointly as a chain
+extends requires exactly this generalisation.
 
 We adopt the convention that a tuple of length $1$ is written as a bare
-variable rather than a singleton $(v)$. Under this convention $\mathsf{TR}\,
-v, w\, (\varphi)$ is simply the $k=1$ case of $\mathsf{TR}\, \vec{v},
-\vec{w}\, (\varphi)$, and every example in this document uses this case;
-the tuple notation is needed only when $k \geq 2$, and does not affect
-the notation used elsewhere.
+variable or term rather than a singleton $(v)$. Under this convention
+$[\TC_{v, w}\, \varphi](s, t)$ is simply the $k=1$ case of
+$[\TC_{\vec{v}, \vec{w}}\, \varphi](\vec{s}, \vec{t})$, and every example in
+this document uses this case; the tuple notation is needed only when
+$k \geq 2$, and does not affect the notation used elsewhere.
 \end{remark}
 
 \begin{remark}[A continuum between schema and formula]
-The tuple-indexed generalisation of $\mathsf{TR}$ likely adds no
-expressive power beyond the $k=1$ case together with ORM2's existing
-\emph{objectification} (nesting) mechanism. Given $\varphi(\vec{v},
-\vec{w})$ with $k \geq 2$, the (finite, definable) set of tuples occurring
-as either endpoint of an edge of $\varphi$ can be introduced as an
-ordinary derived fact type and objectified into a new entity type $S$;
-$\varphi$ then re-expresses as an ordinary binary relation over $S$, to
-which the plain $k=1$ form of $\mathsf{TR}$ applies. We state this as a
-conjecture rather than a proven result, but it fits the same pattern as
-several other reducibility results in this document.
+The tuple-indexed generalisation of $\TC$ likely adds no expressive power
+beyond the $k=1$ case together with ORM2's existing \emph{objectification}
+(nesting) mechanism. Given $\varphi$ relating $\vec{v}$ and $\vec{w}$ with
+$k \geq 2$, the (finite, definable) set of tuples occurring as either
+endpoint of an edge of $\varphi$ can be introduced as an ordinary derived
+fact type and objectified into a new entity type $S$; $\varphi$ then
+re-expresses as an ordinary binary relation over $S$, to which the plain
+$k=1$ form of $\TC$ applies. We state this as a conjecture rather than a
+proven result, but it fits the same pattern as several other reducibility
+results in this document.
 
 This reducibility points to a more general design principle worth making
 explicit to modellers: whenever a constraint requires tracking a compound
@@ -580,8 +603,8 @@ where to place the resulting complexity. It can be placed \emph{in the
 schema}, by objectifying the compound state as a named, nested entity
 type — visible on the diagram, reusable elsewhere, and independently
 verbalisable — or it can be placed \emph{in the formula}, using the
-tuple-indexed form of $\mathsf{TR}$ directly, keeping the diagram minimal
-at the cost of a more elaborate formalisation. Neither option is uniformly
+tuple-indexed form of $\TC$ directly, keeping the diagram minimal at the
+cost of a more elaborate formalisation. Neither option is uniformly
 preferable; the choice trades diagram complexity against formula
 complexity, and different modellers, or different constraints within the
 same schema, may reasonably be placed at different points along this
@@ -592,27 +615,27 @@ continuum.
 \label{ex:ring}
 Let $p \in \FactPreds$ be a binary ring predicate with $\sigma(p) = (T, T)$
 for some type $T$. The \emph{acyclic} ring constraint is expressed as:
-$$\forall\, \var{T}_1\, \bigl(\neg\, (\mathsf{TR}\, \var{T}_4, \var{T}_5\, (p(\var{T}_4,\var{T}_5)))(\var{T}_1, \var{T}_1)\bigr).$$
+$$\forall\, \var{T}_1\, \bigl(\neg\, [\TC_{\var{T}_4, \var{T}_5}\, p(\var{T}_4,\var{T}_5)](\var{T}_1, \var{T}_1)\bigr).$$
 The \emph{strongly intransitive} ring constraint is expressed as:
 $$\forall\, \var{T}_1, \var{T}_2, \var{T}_3\, \bigl(p(\var{T}_1,\var{T}_2) \wedge
-  (\mathsf{TR}\, \var{T}_4, \var{T}_5\, (p(\var{T}_4,\var{T}_5)))(\var{T}_2, \var{T}_3) \to \neg\, p(\var{T}_1,\var{T}_3)\bigr).$$
+  [\TC_{\var{T}_4, \var{T}_5}\, p(\var{T}_4,\var{T}_5)](\var{T}_2, \var{T}_3) \to \neg\, p(\var{T}_1,\var{T}_3)\bigr).$$
 \end{example}
 
 \begin{remark}
-The verbalisation quality of a formula involving $\mathsf{TR}$ depends
-strongly on whether $\varphi$ is a single named predicate atom or a more
-complex formula. When $\varphi$ is $p(v_1, v_2)$ for a named predicate $p$,
-$(\mathsf{TR}\, v_1, v_2\, (p(v_1,v_2)))(t_1, t_2)$ can be verbalised
-uniformly using $p$'s own reading, following the pattern already used by
-existing ORM2 tools (e.g.\ ``$t_1$ is indirectly related to $t_2$ by one
-or more applications of $p$''), regardless of how complex $p$'s own
-definition is internally. When $\varphi$ is a compound formula (for
-example, a join of two other predicates), no such reading is available,
-and verbalisation must fall back to a more technical description of
-$\varphi$ itself. We therefore recommend, though do not require, that
-$\mathsf{TR}$ be applied to a named predicate — introduced, if necessary,
-via an ordinary non-recursive derivation rule — rather than to an inline
-compound formula.
+The verbalisation quality of a formula involving $\TC$ depends strongly on
+whether $\varphi$ is a single named predicate atom or a more complex
+formula. When $\varphi$ is $p(v_1, v_2)$ for a named predicate $p$,
+$[\TC_{v_1, v_2}\, p(v_1,v_2)](t_1, t_2)$ can be verbalised uniformly using
+$p$'s own reading, following the pattern already used by existing ORM2
+tools (e.g.\ ``$t_1$ is indirectly related to $t_2$ by one or more
+applications of $p$'', or ``zero or more'' for $\TC^{*}$), regardless of
+how complex $p$'s own definition is internally. When $\varphi$ is a
+compound formula (for example, a join of two other predicates), no such
+reading is available, and verbalisation must fall back to a more technical
+description of $\varphi$ itself. We therefore recommend, though do not
+require, that $\TC$ be applied to a named predicate — introduced, if
+necessary, via an ordinary non-recursive derivation rule — rather than to
+an inline compound formula.
 \end{remark}
 
 \begin{remark}
@@ -622,36 +645,22 @@ and concatenation of binary predicates are already expressible as ordinary
 non-recursive derivation rules ($q(x,y) \Leftarrow p_1(x,y) \vee p_2(x,y)$
 and $q(x,z) \Leftarrow \exists\, y\, (p_1(x,y) \wedge p_2(y,z))$
 respectively), so the full expressive power of regular path queries can be
-reached by composing such rules with applications of $\mathsf{TR}$ to
+reached by composing such rules with applications of $\TC$ and $\TC^{*}$ to
 named derived predicates.
 \end{remark}
 
 \begin{remark}
 A construct of the form ``$\psi$ \textbf{where} $p_1 := \varphi_1, \ldots,
 p_k := \varphi_k$'', allowing local predicate definitions to be introduced
-within a single formula and referenced (including via $\mathsf{TR}$)
-in $\psi$, would improve readability when a formula requires several
-auxiliary named predicates that are not otherwise part of the schema. We
-leave the precise syntax and scoping rules of such a construct for future
-work.
-
-To illustrate, the ring constraints of Example~\ref{ex:ring} could be
-written using a local name $q$ for the closure predicate itself:
-$$\forall\, \var{T}_1\, \bigl(\neg\, q(\var{T}_1,\var{T}_1)\bigr) \quad \textbf{where}\quad
-  q := \mathsf{TR}\, \var{T}_4, \var{T}_5\, (p(\var{T}_4,\var{T}_5))$$
-for acyclicity, and
-$$\forall\, \var{T}_1, \var{T}_2, \var{T}_3\, \bigl(p(\var{T}_1,\var{T}_2) \wedge q(\var{T}_2,\var{T}_3) \to \neg\, p(\var{T}_1,\var{T}_3)\bigr)
-  \quad \textbf{where}\quad q := \mathsf{TR}\, \var{T}_4, \var{T}_5\, (p(\var{T}_4,\var{T}_5))$$
-for strong intransitivity. In both cases the main formula $\psi$ is left
-with only ordinary predicate applications — $q(\var{T}_1,\var{T}_1)$, $p(\var{T}_1,\var{T}_2)$, and so on
-— and all reference to $\mathsf{TR}$, together with its variable-binding
-notation, is confined to the \textbf{where} clause. This separates the
-constraint itself, which is what a stakeholder ultimately wants to
-understand and verbalise, from the auxiliary machinery needed to define
-the closure predicate it depends on, and mirrors how a modeller would
-first introduce the derived fact type ``$q$'' on the diagram and then
-state the ring constraint over it.
+within a single formula and referenced in $\psi$, would improve readability
+when a formula requires several auxiliary named predicates that are not
+otherwise part of the schema. We leave the precise syntax and scoping rules
+of such a construct for future work. Note that, since $\TC$ already
+delimits its bound variables with square brackets and takes its arguments
+directly, such a construct is not needed merely to make closures readable;
+its value lies in naming auxiliary predicates that are used more than once
+or that a modeller would want to verbalise separately.
 \end{remark}
 
 
-\end{document}  
+\end{document}
