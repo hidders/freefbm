@@ -128,7 +128,12 @@ function Formula({ formula, ctx }) {
       {tokens.map((t, i) => t.sup
         ? <sup key={i} style={{ ...TOKEN_STYLE.op, fontSize: '0.75em' }}>{t.text}</sup>
         : t.sub
-          ? <sub key={i} style={{ ...TOKEN_STYLE[t.cls], fontSize: '0.75em' }}>{t.text}</sub>
+          // A run of subscript tokens (TC's bound variables) copies as _{…}.
+          ? <React.Fragment key={i}>
+              {!tokens[i - 1]?.sub && <span className="copy-only">_{'{'}</span>}
+              <sub style={{ ...TOKEN_STYLE[t.cls], fontSize: '0.75em' }}>{t.text}</sub>
+              {!tokens[i + 1]?.sub && <span className="copy-only">{'}'}</span>}
+            </React.Fragment>
           : <span key={i} style={TOKEN_STYLE[t.cls]}>{t.text}</span>)}
     </div>
   )

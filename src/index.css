@@ -164,6 +164,9 @@ input.cell-issue:-webkit-autofill:focus {
   outline: none;
 }
 .text-panel:focus-visible { border-color: var(--border-dark); }
+/* Text that is copied with a selection but not drawn, e.g. the _{ } around
+   a subscript. */
+.copy-only { font-size: 0; }
 .text-panel-section {
   font-size: 11px; font-weight: 600; color: var(--ink-2);
   margin: 14px 0 6px; padding-top: 6px; border-top: 1px solid var(--border-soft);

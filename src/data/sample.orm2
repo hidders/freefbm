@@ -28,7 +28,11 @@
         "x": 120,
         "y": 140,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": {
+          "profileId": "abstract",
+          "datatypeId": "text",
+          "params": {}
+        }
       },
       {
         "id": "ot_Email",
@@ -37,7 +41,11 @@
         "x": 760,
         "y": 60,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": {
+          "profileId": "abstract",
+          "datatypeId": "text",
+          "params": {}
+        }
       },
       {
         "id": "ot_Phone",
@@ -46,7 +54,11 @@
         "x": 760,
         "y": 220,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": {
+          "profileId": "abstract",
+          "datatypeId": "text",
+          "params": {}
+        }
       },
       {
         "id": "ot_Student",
@@ -105,7 +117,11 @@
         "x": 1260,
         "y": 240,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": {
+          "profileId": "abstract",
+          "datatypeId": "text",
+          "params": {}
+        }
       },
       {
         "id": "ot_RoomNr",
@@ -114,7 +130,11 @@
         "x": 1100,
         "y": 480,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": {
+          "profileId": "abstract",
+          "datatypeId": "text",
+          "params": {}
+        }
       },
       {
         "id": "ot_Room",
@@ -133,7 +153,11 @@
         "x": 960,
         "y": 520,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": {
+          "profileId": "abstract",
+          "datatypeId": "text",
+          "params": {}
+        }
       },
       {
         "id": "ot_Course",
@@ -152,7 +176,11 @@
         "x": 780,
         "y": 270,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": {
+          "profileId": "abstract",
+          "datatypeId": "text",
+          "params": {}
+        }
       },
       {
         "id": "ot_CourseTitle",
@@ -161,7 +189,11 @@
         "x": 960,
         "y": 170,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": {
+          "profileId": "abstract",
+          "datatypeId": "text",
+          "params": {}
+        }
       },
       {
         "id": "ot_Credits",
@@ -170,7 +202,11 @@
         "x": 960,
         "y": 270,
         "valueRangeOffset": null,
-        "datatypeAssignment": null,
+        "datatypeAssignment": {
+          "profileId": "abstract",
+          "datatypeId": "integer",
+          "params": {}
+        },
         "valueRange": [
           {
             "type": "single",
@@ -189,7 +225,11 @@
         "x": 530,
         "y": 110,
         "valueRangeOffset": null,
-        "datatypeAssignment": null,
+        "datatypeAssignment": {
+          "profileId": "abstract",
+          "datatypeId": "integer",
+          "params": {}
+        },
         "valueRange": [
           {
             "type": "range",
@@ -199,11 +239,65 @@
         ]
       },
       {
-        "id": "ot_Semester",
+        "id": "n1792595515478_2",
         "kind": "value",
-        "name": "Semester",
-        "x": 640,
-        "y": 780,
+        "name": "Season",
+        "x": 680,
+        "y": 560,
+        "valueRangeOffset": {
+          "dx": 0,
+          "dy": 30
+        },
+        "datatypeAssignment": {
+          "profileId": "abstract",
+          "datatypeId": "text",
+          "params": {}
+        },
+        "valueRange": [
+          {
+            "type": "single",
+            "value": "Autumn"
+          },
+          {
+            "type": "single",
+            "value": "Spring"
+          },
+          {
+            "type": "single",
+            "value": "Summer"
+          },
+          {
+            "type": "single",
+            "value": "Winter"
+          }
+        ]
+      },
+      {
+        "id": "n1792595521927_4",
+        "kind": "value",
+        "name": "AcademicYear",
+        "x": 670,
+        "y": 630,
+        "valueRangeOffset": {
+          "dx": 0,
+          "dy": 30
+        },
+        "datatypeAssignment": null,
+        "valueRange": [
+          {
+            "type": "range",
+            "lower": "1970",
+            "upper": "2030"
+          }
+        ]
+      },
+      {
+        "id": "n1792595733805_10",
+        "kind": "entity",
+        "name": "Term",
+        "x": 840,
+        "y": 630,
+        "isPersonal": false,
         "valueRangeOffset": null,
         "datatypeAssignment": null
       }
@@ -1088,8 +1182,8 @@
                 "upper": "6"
               }
             ],
-            "x": 270,
-            "y": 240
+            "x": 254,
+            "y": 159
           }
         ],
         "orientation": "horizontal",
@@ -1126,7 +1220,7 @@
             "readingOffsetBelow": null,
             "readingAbove": false,
             "uniquenessBelow": false,
-            "preferredUniqueness": false,
+            "preferredUniqueness": [],
             "roleNames": [
               null,
               null
@@ -1160,7 +1254,7 @@
             "readingOffsetBelow": null,
             "readingAbove": false,
             "uniquenessBelow": false,
-            "preferredUniqueness": false,
+            "preferredUniqueness": [],
             "roleNames": [
               null,
               null
@@ -1371,7 +1465,7 @@
           },
           {
             "id": "x39",
-            "objectTypeId": "ot_Semester",
+            "objectTypeId": "n1792595733805_10",
             "roleName": "",
             "mandatory": false,
             "linkReadingParts": [
@@ -1449,6 +1543,114 @@
         "uniqueness": [
           [
             1
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "n1792595806796_12",
+        "kind": "fact",
+        "x": 590,
+        "y": 590,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "n1792595806796_13",
+            "objectTypeId": "n1792595733805_10",
+            "roleName": "",
+            "mandatory": true,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "n1792595806796_14",
+            "objectTypeId": "n1792595515478_2",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "is in",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "n1792595809976_16",
+        "kind": "fact",
+        "x": 580,
+        "y": 640,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "n1792595809976_17",
+            "objectTypeId": "n1792595733805_10",
+            "roleName": "",
+            "mandatory": true,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "n1792595809976_18",
+            "objectTypeId": "n1792595521927_4",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "is in",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0
           ]
         ],
         "preferredUniqueness": [],
@@ -2099,6 +2301,87 @@
         "exhaustive": true,
         "exclusive": false,
         "subtypeIds": []
+      },
+      {
+        "id": "n1792595873306_20",
+        "kind": "constraint",
+        "constraintType": "uniqueness",
+        "x": 680,
+        "y": 600,
+        "sequences": [
+          [
+            {
+              "kind": "role",
+              "factId": "n1792595806796_12",
+              "roleIndex": 1
+            },
+            {
+              "kind": "role",
+              "factId": "n1792595809976_16",
+              "roleIndex": 1
+            }
+          ]
+        ],
+        "queries": [
+          {
+            "atoms": [
+              {
+                "id": "n1792595877598_22",
+                "kind": "objectType",
+                "originalId": "n1792595733805_10",
+                "isOutput": true,
+                "dx": 16,
+                "dy": 16
+              },
+              {
+                "id": "n1792595877598_23",
+                "kind": "fact",
+                "originalId": "n1792595806796_12",
+                "isOutput": false,
+                "seededRoles": [
+                  {
+                    "roleIndex": 1,
+                    "seqPosition": 0
+                  }
+                ],
+                "dx": 48,
+                "dy": 48
+              },
+              {
+                "id": "n1792595877598_24",
+                "kind": "fact",
+                "originalId": "n1792595809976_16",
+                "isOutput": false,
+                "seededRoles": [
+                  {
+                    "roleIndex": 1,
+                    "seqPosition": 1
+                  }
+                ],
+                "dx": 64,
+                "dy": 64
+              }
+            ],
+            "links": [
+              {
+                "atomId": "n1792595877598_23",
+                "roleIndex": 0,
+                "variableId": "n1792595877598_22"
+              },
+              {
+                "atomId": "n1792595877598_24",
+                "roleIndex": 0,
+                "variableId": "n1792595877598_22"
+              }
+            ]
+          }
+        ],
+        "targetObjectTypeId": "n1792595733805_10",
+        "isPreferredIdentifier": true,
+        "frequency": null,
+        "exhaustive": true,
+        "exclusive": false,
+        "subtypeIds": []
       }
     ],
     "displaySettings": {
@@ -2117,8 +2400,8 @@
         {
           "id": "occ_n1792593665075_4",
           "schemaElementId": "ot_Person",
-          "x": 420,
-          "y": 140
+          "x": 250,
+          "y": 130
         },
         {
           "id": "occ_n1792593665083_16",
@@ -2142,34 +2425,40 @@
           "id": "occ_n1792593665083_19",
           "schemaElementId": "ot_PersonName",
           "x": 120,
-          "y": 140
+          "y": 40
         },
         {
           "id": "occ_n1792593665084_21",
           "schemaElementId": "ot_Email",
-          "x": 760,
+          "x": 580,
           "y": 60
         },
         {
           "id": "occ_n1792593665084_23",
           "schemaElementId": "ot_Phone",
-          "x": 760,
-          "y": 220
+          "x": 580,
+          "y": 180
         },
         {
           "id": "occ_n1792593665088_27",
           "schemaElementId": "f_hasName",
-          "x": 270,
-          "y": 140,
+          "x": 120,
+          "y": 120,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665075_4",
             "1": "occ_n1792593665083_19"
-          }
+          },
+          "orientation": "vertical",
+          "roleOrder": [
+            1,
+            0
+          ],
+          "readingDisplay": "reverse"
         },
         {
           "id": "occ_n1792593665090_31",
           "schemaElementId": "f_hasEmail",
-          "x": 600,
+          "x": 420,
           "y": 60,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665075_4",
@@ -2179,8 +2468,8 @@
         {
           "id": "occ_n1792593665094_35",
           "schemaElementId": "f_hasPhone",
-          "x": 600,
-          "y": 220,
+          "x": 420,
+          "y": 180,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665075_4",
             "1": "occ_n1792593665084_23"
@@ -2189,32 +2478,32 @@
         {
           "id": "occ_n1792593665103_42",
           "schemaElementId": "ot_Student",
-          "x": 260,
-          "y": 360
+          "x": 100,
+          "y": 300
         },
         {
           "id": "occ_n1792593665103_44",
           "schemaElementId": "ot_Staff",
-          "x": 580,
-          "y": 360
+          "x": 420,
+          "y": 300
         },
         {
           "id": "occ_n1792593665104_46",
           "schemaElementId": "ot_Professor",
-          "x": 380,
-          "y": 600
+          "x": 330,
+          "y": 460
         },
         {
           "id": "occ_n1792593665104_48",
           "schemaElementId": "ot_Lecturer",
-          "x": 640,
-          "y": 600
+          "x": 480,
+          "y": 460
         },
         {
           "id": "occ_n1792593665113_72",
           "schemaElementId": "f_supervises",
           "x": 200,
-          "y": 600,
+          "y": 390,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665103_42",
             "1": "occ_n1792593665104_46"
@@ -2223,8 +2512,8 @@
         {
           "id": "occ_n1792593665114_74",
           "schemaElementId": "ot_Building",
-          "x": 1100,
-          "y": 240
+          "x": 940,
+          "y": 180
         },
         {
           "id": "occ_n1792593665115_86",
@@ -2247,26 +2536,26 @@
         {
           "id": "occ_n1792593665115_89",
           "schemaElementId": "ot_RoomNr",
-          "x": 1100,
-          "y": 480
+          "x": 940,
+          "y": 420
         },
         {
           "id": "occ_n1792593665115_91",
           "schemaElementId": "ot_Room",
-          "x": 920,
-          "y": 360
+          "x": 760,
+          "y": 300
         },
         {
           "id": "occ_n1792593665116_93",
           "schemaElementId": "ot_Extension",
-          "x": 960,
-          "y": 520
+          "x": 750,
+          "y": 430
         },
         {
           "id": "occ_n1792593665116_97",
           "schemaElementId": "f_roomInBuilding",
-          "x": 1010,
-          "y": 300,
+          "x": 850,
+          "y": 240,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665115_91",
             "1": "occ_n1792593665114_74"
@@ -2275,8 +2564,8 @@
         {
           "id": "occ_n1792593665117_101",
           "schemaElementId": "f_roomHasNr",
-          "x": 1010,
-          "y": 420,
+          "x": 850,
+          "y": 360,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665115_91",
             "1": "occ_n1792593665115_89"
@@ -2285,8 +2574,8 @@
         {
           "id": "occ_n1792593665121_110",
           "schemaElementId": "f_hasOffice",
-          "x": 760,
-          "y": 360,
+          "x": 600,
+          "y": 300,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665103_44",
             "1": "occ_n1792593665115_91"
@@ -2295,8 +2584,8 @@
         {
           "id": "occ_n1792593665122_114",
           "schemaElementId": "f_hasExtension",
-          "x": 790,
-          "y": 520,
+          "x": 610,
+          "y": 430,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665103_44",
             "1": "occ_n1792593665116_93"
@@ -2307,46 +2596,46 @@
         {
           "id": "cocc_n1792593665095_37",
           "schemaConstraintId": "c_emailOrPhone",
-          "x": 520,
-          "y": 140,
+          "x": 400,
+          "y": 120,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
         },
         {
           "id": "cocc_n1792593665106_54",
           "schemaConstraintId": "c_personTotal",
-          "x": 420,
-          "y": 290,
+          "x": 250,
+          "y": 250,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
         },
         {
           "id": "cocc_n1792593665111_62",
           "schemaConstraintId": "c_staffPartition",
-          "x": 510,
-          "y": 500,
+          "x": 410,
+          "y": 410,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
         },
         {
           "id": "cocc_n1792593665118_103",
           "schemaConstraintId": "c_roomId",
-          "x": 1120,
-          "y": 360,
+          "x": 890,
+          "y": 300,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
         },
         {
           "id": "cocc_n1792593665123_116",
           "schemaConstraintId": "c_officeIffExt",
-          "x": 790,
-          "y": 440,
+          "x": 590,
+          "y": 370,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
         }
       ],
       "implicitLinkPositions": {},
-      "profileId": null,
+      "profileId": "abstract",
       "shownImplicitLinks": [],
       "notes": [],
       "expandedRefModes": [],
@@ -2391,8 +2680,8 @@
       "displaySettings": {
         "showMinimap": true,
         "minimapPos": {
-          "x": null,
-          "y": null
+          "x": 1225,
+          "y": 545
         }
       }
     },
@@ -2403,20 +2692,20 @@
         {
           "id": "occ_n1792593665127_120",
           "schemaElementId": "ot_Student",
-          "x": 120,
-          "y": 275
+          "x": 80,
+          "y": 180
         },
         {
           "id": "occ_n1792593665127_121",
           "schemaElementId": "ot_Staff",
-          "x": 120,
-          "y": 570
+          "x": 70,
+          "y": 370
         },
         {
           "id": "occ_n1792593665130_123",
           "schemaElementId": "ot_Course",
-          "x": 620,
-          "y": 270
+          "x": 510,
+          "y": 220
         },
         {
           "id": "occ_n1792593665131_135",
@@ -2439,32 +2728,26 @@
         {
           "id": "occ_n1792593665131_138",
           "schemaElementId": "ot_CourseTitle",
-          "x": 960,
-          "y": 170
+          "x": 850,
+          "y": 120
         },
         {
           "id": "occ_n1792593665131_140",
           "schemaElementId": "ot_Credits",
-          "x": 960,
-          "y": 270
+          "x": 850,
+          "y": 220
         },
         {
           "id": "occ_n1792593665132_142",
           "schemaElementId": "ot_Grade",
-          "x": 530,
-          "y": 110
-        },
-        {
-          "id": "occ_n1792593665135_144",
-          "schemaElementId": "ot_Semester",
-          "x": 640,
-          "y": 780
+          "x": 550,
+          "y": 90
         },
         {
           "id": "occ_n1792593665135_148",
           "schemaElementId": "f_hasTitle",
-          "x": 800,
-          "y": 170,
+          "x": 680,
+          "y": 120,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665130_123",
             "1": "occ_n1792593665131_138"
@@ -2473,8 +2756,8 @@
         {
           "id": "occ_n1792593665137_152",
           "schemaElementId": "f_hasCredits",
-          "x": 800,
-          "y": 270,
+          "x": 690,
+          "y": 220,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665130_123",
             "1": "occ_n1792593665131_140"
@@ -2483,8 +2766,8 @@
         {
           "id": "occ_n1792593665139_156",
           "schemaElementId": "f_prereq",
-          "x": 800,
-          "y": 390,
+          "x": 580,
+          "y": 330,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665130_123",
             "1": "occ_n1792593665130_123"
@@ -2493,8 +2776,8 @@
         {
           "id": "occ_n1792593665142_163",
           "schemaElementId": "f_enrols",
-          "x": 340,
-          "y": 205,
+          "x": 300,
+          "y": 110,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_120",
             "1": "occ_n1792593665130_123"
@@ -2503,8 +2786,8 @@
         {
           "id": "occ_n1792593665144_167",
           "schemaElementId": "f_earned",
-          "x": 340,
-          "y": 110,
+          "x": 430,
+          "y": 90,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665142_163",
             "1": "occ_n1792593665132_142"
@@ -2513,8 +2796,8 @@
         {
           "id": "occ_n1792593665146_171",
           "schemaElementId": "f_assists",
-          "x": 340,
-          "y": 345,
+          "x": 300,
+          "y": 250,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_120",
             "1": "occ_n1792593665130_123"
@@ -2523,8 +2806,8 @@
         {
           "id": "occ_n1792593665151_179",
           "schemaElementId": "f_qualified",
-          "x": 380,
-          "y": 570,
+          "x": 290,
+          "y": 390,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_121",
             "1": "occ_n1792593665130_123"
@@ -2533,22 +2816,72 @@
         {
           "id": "occ_n1792593665152_184",
           "schemaElementId": "f_teaches",
-          "x": 420,
-          "y": 690,
+          "x": 310,
+          "y": 490,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_121",
             "1": "occ_n1792593665130_123",
-            "2": "occ_n1792593665135_144"
+            "2": "occ_n1792595733805_11"
+          },
+          "readingOffsetBelow": {
+            "dx": 0,
+            "dy": 22
           }
         },
         {
           "id": "occ_n1792593665160_192",
           "schemaElementId": "f_coordinates",
-          "x": 380,
-          "y": 460,
+          "x": 290,
+          "y": 320,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_121",
             "1": "occ_n1792593665130_123"
+          }
+        },
+        {
+          "id": "occ_n1792595515478_3",
+          "schemaElementId": "n1792595515478_2",
+          "x": 690,
+          "y": 420
+        },
+        {
+          "id": "occ_n1792595521928_5",
+          "schemaElementId": "n1792595521927_4",
+          "x": 690,
+          "y": 550
+        },
+        {
+          "id": "occ_n1792595733805_11",
+          "schemaElementId": "n1792595733805_10",
+          "x": 450,
+          "y": 490
+        },
+        {
+          "id": "occ_n1792595806796_15",
+          "schemaElementId": "n1792595806796_12",
+          "x": 550,
+          "y": 470,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792595733805_11",
+            "1": "occ_n1792595515478_3"
+          },
+          "readingOffsetBelow": {
+            "dx": 0,
+            "dy": 22
+          }
+        },
+        {
+          "id": "occ_n1792595809976_19",
+          "schemaElementId": "n1792595809976_16",
+          "x": 540,
+          "y": 540,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792595733805_11",
+            "1": "occ_n1792595521928_5"
+          },
+          "readingOffsetBelow": {
+            "dx": 0,
+            "dy": 22
           }
         }
       ],
@@ -2556,30 +2889,38 @@
         {
           "id": "cocc_n1792593665140_158",
           "schemaConstraintId": "c_prereqRing",
-          "x": 920,
-          "y": 390,
+          "x": 590,
+          "y": 380,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
         },
         {
           "id": "cocc_n1792593665148_173",
           "schemaConstraintId": "c_notBoth",
-          "x": 340,
-          "y": 285,
+          "x": 300,
+          "y": 190,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
         },
         {
           "id": "cocc_n1792593665155_186",
           "schemaConstraintId": "c_teachQualified",
-          "x": 520,
-          "y": 630,
+          "x": 280,
+          "y": 440,
+          "roleOccurrenceRefs": {},
+          "queryOccurrenceRefs": {}
+        },
+        {
+          "id": "cocc_n1792595873307_21",
+          "schemaConstraintId": "n1792595873306_20",
+          "x": 610,
+          "y": 510,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
         }
       ],
       "implicitLinkPositions": {},
-      "profileId": null,
+      "profileId": "abstract",
       "shownImplicitLinks": [],
       "notes": [],
       "expandedRefModes": [],
@@ -2594,13 +2935,13 @@
       "displaySettings": {
         "showMinimap": true,
         "minimapPos": {
-          "x": null,
-          "y": null
+          "x": 1225,
+          "y": 545
         }
       }
     }
   ],
-  "activeDiagramId": "d_people",
+  "activeDiagramId": "d_teaching",
   "populations": {
     "ot_Person": [
       "P1",
@@ -2715,9 +3056,33 @@
       "81",
       "58"
     ],
-    "ot_Semester": [
-      "2026-Autumn",
-      "2027-Spring"
+    "n1792595733805_10": [
+      [
+        "\u0000Summer",
+        "\u00002025"
+      ],
+      [
+        "\u0000Spring",
+        "\u00002026"
+      ],
+      [
+        "\u0000Autumn",
+        "\u00002026"
+      ],
+      [
+        "\u0000Winter",
+        "\u00002026"
+      ]
+    ],
+    "n1792595515478_2": [
+      "\u0000Summer",
+      "\u0000Spring",
+      "\u0000Autumn",
+      "\u0000Winter"
+    ],
+    "n1792595521927_4": [
+      "\u00002025",
+      "\u00002026"
     ]
   },
   "factPopulations": {
@@ -2975,22 +3340,34 @@
       [
         "P3",
         "DB1",
-        "2026-Autumn"
+        [
+          "\u0000Summer",
+          "\u00002025"
+        ]
       ],
       [
         "P6",
         "LOG1",
-        "2026-Autumn"
+        [
+          "\u0000Spring",
+          "\u00002026"
+        ]
       ],
       [
         "P5",
         "DB2",
-        "2027-Spring"
+        [
+          "\u0000Autumn",
+          "\u00002026"
+        ]
       ],
       [
         "P5",
         "KR3",
-        "2027-Spring"
+        [
+          "\u0000Winter",
+          "\u00002026"
+        ]
       ]
     ]
   },
