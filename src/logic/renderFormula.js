@@ -111,7 +111,7 @@ export function renderFormula(formula, ctx) {
           push('∃', 'op'); push(`${f.op}${f.n}`, 'op', { sup: true }); push(' ')
           f.vars.forEach((v, i) => { if (i) push(', '); bind(v); pushVar(v) })
         } else {
-          f.vars.forEach((v, i) => { if (i) push(' '); push(f.t === 'forall' ? '∀' : '∃', 'op'); bind(v); pushVar(v) })
+          f.vars.forEach((v, i) => { if (i) push(' '); push(f.t === 'forall' ? '∀' : '∃', 'op'); push(' '); bind(v); pushVar(v) })
         }
         push(' ')
         const b = f.body
