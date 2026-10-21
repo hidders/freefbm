@@ -424,7 +424,7 @@ function subtypeEntry(st, ctx) {
 // ── Implicit constraints ─────────────────────────────────────────────────────
 //
 // Two kinds of constraint that no shape on the diagram shows, listed only on
-// request: the roots of the subtype hierarchies are pairwise disjoint, and an
+// request: the entity-type roots of the subtype hierarchies are pairwise disjoint, and an
 // instance of a type that is not independent plays at least one role (other
 // than being identified by its preferred identifier).
 
@@ -479,9 +479,12 @@ export function implicitEntries(state, ctx, typeIds) {
     return seen
   }
 
-  // Disjointness: every pair of distinct roots that the scope touches.
+  // Disjointness: every pair of distinct entity-type roots that the scope
+  // touches. Value types are left out: their disjointness from each other and
+  // from entity types does not depend on the schema.
   const rootIds = []
   for (const t of types) {
+    if (t.kind !== 'entity' && t.kind !== 'nested') continue
     if (supersOf(t.id).length) continue
     const inScope = [...typeIds].some(id => comp.has(id) && find(id) === find(t.id))
     if (inScope) rootIds.push(t.id)
