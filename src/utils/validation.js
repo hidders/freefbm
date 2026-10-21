@@ -277,7 +277,10 @@ function validateRangeSequence(range, ctx, errors) {
     }
   }
 
-  // (6) Out of ascending order — adjacent pairs in the user's original sequence
+  // (6) Out of ascending order — adjacent pairs in the user's original sequence.
+  // Skipped for text: there a value range is usually an enumeration, which
+  // should be writable in its natural order (e.g. 'summer', 'autumn', ...).
+  if (ctx.typeKind === 'text') return
   for (let i = 1; i < ivs.length; i++) {
     if (cmpVals(ivs[i].lo, ivs[i - 1].lo) < 0) {
       errors.push({
