@@ -274,22 +274,13 @@
       },
       {
         "id": "n1792595521927_4",
-        "kind": "value",
+        "kind": "entity",
         "name": "AcademicYear",
         "x": 670,
         "y": 630,
-        "valueRangeOffset": {
-          "dx": 0,
-          "dy": 30
-        },
+        "valueRangeOffset": null,
         "datatypeAssignment": null,
-        "valueRange": [
-          {
-            "type": "range",
-            "lower": "1970",
-            "upper": "2030"
-          }
-        ]
+        "isPersonal": false
       },
       {
         "id": "n1792595733805_10",
@@ -298,6 +289,15 @@
         "x": 840,
         "y": 630,
         "isPersonal": false,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "n1792600091986_2",
+        "kind": "value",
+        "name": "Year",
+        "x": 830,
+        "y": 630,
         "valueRangeOffset": null,
         "datatypeAssignment": null
       }
@@ -1661,6 +1661,71 @@
         "readingAbove": false,
         "uniquenessBelow": false,
         "implicitLinks": []
+      },
+      {
+        "id": "n1792600091986_8",
+        "kind": "fact",
+        "x": 750,
+        "y": 630,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "n1792600091986_11",
+            "objectTypeId": "n1792595521927_4",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "n1792600091986_12",
+            "objectTypeId": "n1792600091986_2",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null,
+            "valueRange": [
+              {
+                "type": "range",
+                "lower": "1970",
+                "upper": "2030"
+              }
+            ]
+          }
+        ],
+        "readingParts": [
+          "",
+          "starts in",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            1
+          ]
+        ],
+        "preferredUniqueness": [
+          [
+            1
+          ]
+        ],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
       }
     ],
     "subtypes": [
@@ -2883,6 +2948,24 @@
             "dx": 0,
             "dy": 22
           }
+        },
+        {
+          "id": "occ_n1792600091986_13",
+          "schemaElementId": "n1792600091986_2",
+          "x": 950,
+          "y": 550,
+          "refModeOwnerOccId": "occ_n1792595521928_5"
+        },
+        {
+          "id": "occ_n1792600091986_14",
+          "schemaElementId": "n1792600091986_8",
+          "x": 820,
+          "y": 550,
+          "refModeOwnerOccId": "occ_n1792595521928_5",
+          "roleOccurrenceMap": {
+            "0": "occ_n1792595521928_5",
+            "1": "occ_n1792600091986_13"
+          }
         }
       ],
       "constraintOccurrences": [
@@ -2924,7 +3007,9 @@
       "shownImplicitLinks": [],
       "notes": [],
       "expandedRefModes": [],
-      "expandedRefModeOccs": [],
+      "expandedRefModeOccs": [
+        "occ_n1792595521928_5"
+      ],
       "subtypeOccurrences": [],
       "subtypeEndpointOccs": {},
       "pan": {
@@ -3058,31 +3143,35 @@
     ],
     "n1792595733805_10": [
       [
-        "\u0000Summer",
-        "\u00002025"
+        "Summer",
+        "2025"
       ],
       [
-        "\u0000Spring",
-        "\u00002026"
+        "Spring",
+        "2026"
       ],
       [
-        "\u0000Autumn",
-        "\u00002026"
+        "Autumn",
+        "2026"
       ],
       [
-        "\u0000Winter",
-        "\u00002026"
+        "Winter",
+        "2026"
       ]
     ],
     "n1792595515478_2": [
-      "\u0000Summer",
-      "\u0000Spring",
-      "\u0000Autumn",
-      "\u0000Winter"
+      "Summer",
+      "Spring",
+      "Autumn",
+      "Winter"
     ],
     "n1792595521927_4": [
-      "\u00002025",
-      "\u00002026"
+      "2025",
+      "2026"
+    ],
+    "n1792600091986_2": [
+      "2025",
+      "2026"
     ]
   },
   "factPopulations": {
@@ -3341,32 +3430,32 @@
         "P3",
         "DB1",
         [
-          "\u0000Summer",
-          "\u00002025"
+          "Summer",
+          "2025"
         ]
       ],
       [
         "P6",
         "LOG1",
         [
-          "\u0000Spring",
-          "\u00002026"
+          "Spring",
+          "2026"
         ]
       ],
       [
         "P5",
         "DB2",
         [
-          "\u0000Autumn",
-          "\u00002026"
+          "Autumn",
+          "2026"
         ]
       ],
       [
         "P5",
         "KR3",
         [
-          "\u0000Winter",
-          "\u00002026"
+          "Winter",
+          "2026"
         ]
       ]
     ]
