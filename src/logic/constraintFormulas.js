@@ -1,15 +1,15 @@
 // Translates FreeFBM constraints into formulas of the ORM2 logic.
 //
-// Stage 1 of the logic only: first-order formulas with counting quantifiers
-// ∃^{≤n}, ∃^{≥n}, ∃^{=n} for uniqueness and frequency. Constraints that need
-// data terms (value and cardinality ranges) or transitive closure (acyclic,
-// strongly intransitive) are listed with a note instead of a formula.
+// First-order formulas with counting quantifiers ∃^{≤n}, ∃^{≥n}, ∃^{=n} for
+// uniqueness and frequency, plus transitive closure [TC_{v,w} φ](s, t) for the
+// acyclic and strongly intransitive rings. Constraints that need data terms
+// (value and cardinality ranges) are listed with a note instead of a formula.
 //
 // Atoms use the fact type's primary reading (readingParts), whose slots follow
 // roles[] order, so fact atom arguments are always in roles[] order.
 
 import {
-  mkVar, forall, exists, count, not, implies, iff, and, or,
+  mkVar, forall, exists, count, not, implies, iff, and, or, tc,
   factAtom, typeAtom, cmp,
 } from './formula.js'
 
@@ -386,6 +386,11 @@ function ringEntries(c, q, entry) {
   if (types.length === 0) return [{ ...entry, note: 'No ring properties are selected yet.' }]
   const T = q.outTypes[0]
   const R = (a, b) => q.build({ outVars: [a, b] })
+  // [TC_{v,w} R(v, w)](s, t), with fresh bound variables v, w.
+  const closure = (s, t) => {
+    const [v, w] = [mkVar(T), mkVar(T)]
+    return tc([v, w], R(v, w), [s, t])
+  }
   return types.map(rt => {
     const e = { ...entry, key: `${c.id}:${rt}`, kind: `Ring (${RING_LABELS[rt] ?? rt})` }
     const [x, y, z] = [mkVar(T), mkVar(T), mkVar(T)]
@@ -398,7 +403,10 @@ function ringEntries(c, q, entry) {
       case 'antisymmetric':    return { ...e, formula: forall([x, y], implies(and(R(x, y), cmp('≠', x, y)), not(R(y, x)))) }
       case 'transitive':       return { ...e, formula: forall([x, y, z], implies(and(R(x, y), R(y, z)), R(x, z))) }
       case 'intransitive':     return { ...e, formula: forall([x, y, z], implies(and(R(x, y), R(y, z)), not(R(x, z)))) }
-      default:                 return { ...e, note: 'Needs transitive closure, which a later stage of the logic adds.' }
+      case 'acyclic':          return { ...e, formula: forall([x], not(closure(x, x))) }
+      case 'strongly-intransitive':
+        return { ...e, formula: forall([x, y, z], implies(and(R(x, y), closure(y, z)), not(R(x, z)))) }
+      default:                 return { ...e, note: 'This ring property has no formula yet.' }
     }
   })
 }
