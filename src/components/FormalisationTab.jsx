@@ -14,6 +14,7 @@ const TOKEN_STYLE = {
   type:    { color: 'var(--formula-type)', fontWeight: 600 },
   op:      { color: 'var(--formula-op)' },
   punct:   { color: 'var(--ink-3)' },
+  qgap:    { display: 'inline-block', width: '0.4em', overflow: 'hidden', verticalAlign: 'bottom' },
 }
 
 export default function FormalisationTab() {
