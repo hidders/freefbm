@@ -250,6 +250,7 @@ function factEntries(fact, ctx) {
     const xs = roleVars()
     const ys = xs.filter((_, i) => !u.includes(i))
     out.push({ ...base, formula: forall(xs.filter((_, i) => u.includes(i)), count('≤', 1, ys, factAtom(fact.id, xs))) })
+    if (isPreferred) out.push(...preferredIdentifierEntries(fact, u, reading))
   }
 
   fact.roles.forEach((r, i) => {
@@ -269,6 +270,34 @@ function factEntries(fact, ctx) {
           () => factAtom(fact.id, xs), specs)
       : null
     out.push(formula ? { ...base, formula } : { ...base, note: 'No frequency range is set yet.' })
+  }
+  return out
+}
+
+// A preferred identifier also says that every instance of the identified type
+// has exactly one identifying value (combination): at most one, and at least
+// one. For an internal one, the identified type plays the one role outside u;
+// for a nested entity type the identification comes from the nesting itself.
+// An explicit uniqueness or mandatory constraint that says the same is not
+// repeated.
+function preferredIdentifierEntries(fact, u, reading) {
+  const others = fact.roles.map((_, i) => i).filter(i => !u.includes(i))
+  if (others.length !== 1 || (fact.objectified && fact.objectifiedKind !== 'value')) return []
+  const e = others[0]
+  const out = []
+  const base = { elementId: fact.id, subject: reading }
+  const hasUnique = (fact.uniqueness ?? []).some(v => v.length === 1 && v[0] === e)
+  if (!hasUnique) {
+    const xs = fact.roles.map(r => mkVar(r.objectTypeId))
+    out.push({ ...base, key: `${fact.id}:pi:${u.join(',')}:atMostOne`,
+      kind: 'Preferred identifier (at most one identifier)',
+      formula: forall([xs[e]], count('≤', 1, xs.filter((_, i) => i !== e), factAtom(fact.id, xs))) })
+  }
+  if (!fact.roles[e].mandatory) {
+    const xs = fact.roles.map(r => mkVar(r.objectTypeId))
+    out.push({ ...base, key: `${fact.id}:pi:${u.join(',')}:atLeastOne`,
+      kind: 'Preferred identifier (at least one identifier)',
+      formula: forall([xs[e]], exists(xs.filter((_, i) => i !== e), factAtom(fact.id, xs))) })
   }
   return out
 }
@@ -329,7 +358,14 @@ function constraintEntry(c, ctx) {
       const phi = () => q.build({ outVars: xs, targetVar: t })
       if (c.constraintType === 'uniqueness') {
         const kind = c.isPreferredIdentifier ? 'External uniqueness (preferred identifier)' : entry.kind
-        return { ...entry, kind, formula: forall(xs, count('≤', 1, [t], phi())) }
+        const main = { ...entry, kind, formula: forall(xs, count('≤', 1, [t], phi())) }
+        if (!c.isPreferredIdentifier) return main
+        // Every instance of the target has exactly one identifying combination.
+        return [main,
+          { ...entry, key: `${c.id}:atMostOne`, kind: 'Preferred identifier (at most one identifying combination)',
+            formula: forall([t], count('≤', 1, xs, phi())) },
+          { ...entry, key: `${c.id}:atLeastOne`, kind: 'Preferred identifier (at least one identifying combination)',
+            formula: forall([t], exists(xs, phi())) }]
       }
       const specs = frequencySpecs(c.frequency)
       const formula = specs.length ? frequencyFormula(xs, [t], phi, specs) : null
