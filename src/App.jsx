@@ -20,7 +20,22 @@ function useKeyboardShortcuts() {
   useEffect(() => {
     const handler = (e) => {
       const tag = document.activeElement?.tagName
-      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+      // Read-only text panels (e.g. Formalisation) behave like a document:
+      // Cmd/Ctrl+A selects their text, Cmd/Ctrl+C does a native copy, and
+      // single-key canvas shortcuts are suppressed while they have focus.
+      const textPanel = document.activeElement?.closest?.('[data-text-panel]')
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!textPanel
+      const mod = e.ctrlKey || e.metaKey
+      if (mod && textPanel && (e.key === 'a' || e.key === 'A')) {
+        e.preventDefault()
+        const range = document.createRange()
+        range.selectNodeContents(textPanel)
+        const sel = window.getSelection()
+        sel.removeAllRanges()
+        sel.addRange(range)
+        return
+      }
+      if (mod && textPanel && (e.key === 'c' || e.key === 'C')) return  // native copy
 
       if (e.key === 'Escape') {
         if (store.roleReconnectDraft) { store.cancelRoleReconnect(); return }

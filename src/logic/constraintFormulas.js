@@ -250,6 +250,7 @@ function factEntries(fact, ctx) {
     const xs = roleVars()
     const ys = xs.filter((_, i) => !u.includes(i))
     out.push({ ...base, formula: forall(xs.filter((_, i) => u.includes(i)), count('≤', 1, ys, factAtom(fact.id, xs))) })
+    if (isPreferred) out.push(...preferredIdentifierEntries(fact, u, reading))
   }
 
   fact.roles.forEach((r, i) => {
@@ -269,6 +270,34 @@ function factEntries(fact, ctx) {
           () => factAtom(fact.id, xs), specs)
       : null
     out.push(formula ? { ...base, formula } : { ...base, note: 'No frequency range is set yet.' })
+  }
+  return out
+}
+
+// A preferred identifier also says that every instance of the identified type
+// has exactly one identifying value (combination): at most one, and at least
+// one. For an internal one, the identified type plays the one role outside u;
+// for a nested entity type the identification comes from the nesting itself.
+// An explicit uniqueness or mandatory constraint that says the same is not
+// repeated.
+function preferredIdentifierEntries(fact, u, reading) {
+  const others = fact.roles.map((_, i) => i).filter(i => !u.includes(i))
+  if (others.length !== 1 || (fact.objectified && fact.objectifiedKind !== 'value')) return []
+  const e = others[0]
+  const out = []
+  const base = { elementId: fact.id, subject: reading }
+  const hasUnique = (fact.uniqueness ?? []).some(v => v.length === 1 && v[0] === e)
+  if (!hasUnique) {
+    const xs = fact.roles.map(r => mkVar(r.objectTypeId))
+    out.push({ ...base, key: `${fact.id}:pi:${u.join(',')}:atMostOne`,
+      kind: 'Preferred identifier (at most one identifier)',
+      formula: forall([xs[e]], count('≤', 1, xs.filter((_, i) => i !== e), factAtom(fact.id, xs))) })
+  }
+  if (!fact.roles[e].mandatory) {
+    const xs = fact.roles.map(r => mkVar(r.objectTypeId))
+    out.push({ ...base, key: `${fact.id}:pi:${u.join(',')}:atLeastOne`,
+      kind: 'Preferred identifier (at least one identifier)',
+      formula: forall([xs[e]], exists(xs.filter((_, i) => i !== e), factAtom(fact.id, xs))) })
   }
   return out
 }
@@ -329,7 +358,14 @@ function constraintEntry(c, ctx) {
       const phi = () => q.build({ outVars: xs, targetVar: t })
       if (c.constraintType === 'uniqueness') {
         const kind = c.isPreferredIdentifier ? 'External uniqueness (preferred identifier)' : entry.kind
-        return { ...entry, kind, formula: forall(xs, count('≤', 1, [t], phi())) }
+        const main = { ...entry, kind, formula: forall(xs, count('≤', 1, [t], phi())) }
+        if (!c.isPreferredIdentifier) return main
+        // Every instance of the target has exactly one identifying combination.
+        return [main,
+          { ...entry, key: `${c.id}:atMostOne`, kind: 'Preferred identifier (at most one identifying combination)',
+            formula: forall([t], count('≤', 1, xs, phi())) },
+          { ...entry, key: `${c.id}:atLeastOne`, kind: 'Preferred identifier (at least one identifying combination)',
+            formula: forall([t], exists(xs, phi())) }]
       }
       const specs = frequencySpecs(c.frequency)
       const formula = specs.length ? frequencyFormula(xs, [t], phi, specs) : null
@@ -383,6 +419,106 @@ function subtypeEntry(st, ctx) {
   return { key: st.id, elementId: st.id, kind: 'Subtype',
     subject: `${ctx.typeName(st.subId)} is a ${ctx.typeName(st.superId)}`,
     formula: forall([x], typeAtom(st.superId, x)) }
+}
+
+// ── Implicit constraints ─────────────────────────────────────────────────────
+//
+// Two kinds of constraint that no shape on the diagram shows, listed only on
+// request: the roots of the subtype hierarchies are pairwise disjoint, and an
+// instance of a type that is not independent plays at least one role (other
+// than being identified by its preferred identifier).
+
+// Every type: object types and nested entity types (objectified fact types).
+function allTypes(state) {
+  return [
+    ...(state.objectTypes ?? []).map(o => ({ id: o.id, kind: o.kind, independent: !!o.isIndependent })),
+    ...(state.facts ?? []).filter(f => f.objectified).map(f => ({
+      id: f.id, kind: f.objectifiedKind === 'value' ? 'nestedValue' : 'nested', independent: !!f.isIndependent })),
+  ]
+}
+
+// Roles in which the player is the type identified by a preferred identifier:
+// the one role outside an internal preferred uniqueness, and the roles outside
+// the sequence of an external preferred uniqueness. Returns "factId:roleIndex".
+function identifiedRoles(state) {
+  const out = new Set()
+  for (const f of (state.facts ?? [])) {
+    if (f.objectified && f.objectifiedKind !== 'value') continue
+    for (const u of (f.preferredUniqueness ?? [])) {
+      const others = f.roles.map((_, i) => i).filter(i => !u.includes(i))
+      if (others.length === 1) out.add(`${f.id}:${others[0]}`)
+    }
+  }
+  const factById = new Map((state.facts ?? []).map(f => [f.id, f]))
+  for (const c of (state.constraints ?? [])) {
+    if (c.constraintType !== 'uniqueness' || !c.isPreferredIdentifier) continue
+    const inSeq = new Set()
+    for (const seq of (c.sequences ?? []))
+      for (const m of seq) if (m.kind === 'role' && m.factId) inSeq.add(`${m.factId.split('_il_')[0]}:${m.roleIndex}`)
+    for (const key of inSeq) {
+      const fact = factById.get(key.split(':')[0])
+      fact?.roles.forEach((_, i) => { if (!inSeq.has(`${fact.id}:${i}`)) out.add(`${fact.id}:${i}`) })
+    }
+  }
+  return out
+}
+
+export function implicitEntries(state, ctx, typeIds) {
+  const types = allTypes(state)
+  const subtypes = state.subtypes ?? []
+  const supersOf = (id) => subtypes.filter(st => st.subId === id).map(st => st.superId)
+
+  // Subtype hierarchies: connected components of the subtype graph.
+  const comp = new Map()
+  const find = (n) => { while (comp.get(n) !== n) n = comp.get(n); return n }
+  for (const t of types) comp.set(t.id, t.id)
+  for (const st of subtypes) if (comp.has(st.subId) && comp.has(st.superId)) comp.set(find(st.subId), find(st.superId))
+  const ancestors = (id) => {
+    const seen = new Set(), todo = [id]
+    while (todo.length) for (const s of supersOf(todo.pop())) if (!seen.has(s)) { seen.add(s); todo.push(s) }
+    return seen
+  }
+
+  // Disjointness: every pair of distinct roots that the scope touches.
+  const rootIds = []
+  for (const t of types) {
+    if (supersOf(t.id).length) continue
+    const inScope = [...typeIds].some(id => comp.has(id) && find(id) === find(t.id))
+    if (inScope) rootIds.push(t.id)
+  }
+  const disjointness = []
+  for (let i = 0; i < rootIds.length; i++)
+    for (let j = i + 1; j < rootIds.length; j++) {
+      const [a, b] = [rootIds[i], rootIds[j]]
+      const x = mkVar(a)
+      disjointness.push({ key: `disj:${a}:${b}`, elementId: a, kind: 'Disjoint roots',
+        subject: `${ctx.typeName(a)} and ${ctx.typeName(b)}`, formula: forall([x], not(typeAtom(b, x))) })
+    }
+
+  // Participation: one disjunct for every role an instance of T can play.
+  const identified = identifiedRoles(state)
+  const participation = []
+  for (const t of types) {
+    if (!typeIds.has(t.id) || t.independent || t.kind === 'nestedValue') continue
+    const up = ancestors(t.id)
+    const x = mkVar(t.id)
+    const disjuncts = []
+    for (const f of (state.facts ?? [])) {
+      f.roles.forEach((r, i) => {
+        const p = r.objectTypeId
+        if (!p || !comp.has(p) || find(p) !== find(t.id) || identified.has(`${f.id}:${i}`)) return
+        const xs = f.roles.map((ro, j) => (j === i ? x : mkVar(ro.objectTypeId)))
+        const atom = factAtom(f.id, xs)
+        const body = p === t.id || up.has(p) ? atom : and(typeAtom(p, x), atom)
+        disjuncts.push(exists(xs.filter((_, j) => j !== i), body))
+      })
+    }
+    const base = { key: `part:${t.id}`, elementId: t.id, kind: 'Participation (not independent)', subject: ctx.typeName(t.id) }
+    participation.push(disjuncts.length
+      ? { ...base, formula: forall([x], or(disjuncts)) }
+      : { ...base, note: 'It plays no role outside its preferred identifier, so its population must be empty.' })
+  }
+  return { disjointness, participation }
 }
 
 // ── Scope: which constraints belong to the current selection ─────────────────
@@ -449,6 +585,20 @@ export function formalise(state) {
     }).map(c => c.id))
   }
 
+  // Types in scope for the implicit constraints: those on the diagram, or the
+  // selected ones and the players of the selected fact types.
+  const typeIds = new Set(otIds)
+  if (selected.size === 0) {
+    const diagram = (state.diagrams ?? []).find(d => d.id === state.activeDiagramId)
+    for (const o of (diagram?.occurrences ?? []))
+      if (ctx.otById.has(o.schemaElementId) || ctx.factById.get(o.schemaElementId)?.objectified) typeIds.add(o.schemaElementId)
+  }
+  for (const id of factIds) {
+    const f = ctx.factById.get(id)
+    if (f.objectified) typeIds.add(id)
+    for (const r of f.roles) if (r.objectTypeId) typeIds.add(r.objectTypeId)
+  }
+
   const entries = subtypes.filter(st => subtypeIds.has(st.id)).map(st => subtypeEntry(st, ctx))
   for (const fact of (state.facts ?? [])) {
     if (factIds.has(fact.id)) { entries.push(...factEntries(fact, ctx)); continue }
@@ -461,5 +611,6 @@ export function formalise(state) {
     const e = constraintEntry(c, ctx)
     entries.push(...(Array.isArray(e) ? e : [e]))
   }
-  return { entries, ctx, scope: selected.size === 0 ? 'diagram' : 'selection' }
+  return { entries, implicit: implicitEntries(state, ctx, typeIds), ctx,
+    scope: selected.size === 0 ? 'diagram' : 'selection' }
 }
