@@ -1,6 +1,6 @@
 import { findRefMode } from '../../utils/refMode.js'
 import {
-  uid, occOf, inDiag, patchOcc,
+  uid, occOf, inDiag, cInDiag, patchOcc,
   computeConnectedIds,
 } from '../storeHelpers'
 
@@ -135,11 +135,15 @@ export function createSelectionSlice(set, get) {
       const ids = [
         ...objectTypes.filter(o  => visible(o.id)).map(o  => o.id),
         ...facts       .filter(f  => visible(f.id)).map(f  => f.id),
-        ...constraints .filter(c  => visible(c.id)).map(c  => c.id),
+        // Constraint positions live in constraintOccurrences, not occurrences
+        ...constraints .filter(c  => activeDiagram && cInDiag(activeDiagram, c.id)).map(c  => c.id),
         ...subtypes    .filter(st => visible(st.id)).map(st => st.id),
         ...impliedLinkIds,
       ]
-      set({ multiSelectedIds: ids, selectedId: null, selectedKind: null,
+      // Clear occurrence IDs left by an earlier band selection; otherwise moves would
+      // act on that stale subset instead of on everything selected here.
+      set({ multiSelectedIds: ids, multiSelectedOccurrenceIds: [],
+            selectedId: null, selectedKind: null, selectedOccurrenceId: null,
             selectedRole: null, selectedUniqueness: null })
     },
 
