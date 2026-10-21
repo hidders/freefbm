@@ -13,6 +13,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { useElectronMenu } from './hooks/useElectronMenu'
 import { useUndoRedo } from './hooks/useUndoRedo'
 import { useOrmStore } from './store/ormStore'
+import { getDiagramElements } from './hooks/useDiagramElements'
 
 function useKeyboardShortcuts() {
   const store = useOrmStore()
@@ -189,37 +190,54 @@ function useKeyboardShortcuts() {
         const step = e.shiftKey ? 50 : 10
         const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
         const dy = e.key === 'ArrowUp'   ? -step : e.key === 'ArrowDown'  ? step : 0
-        const activeDiag = useOrmStore.getState().diagrams
-          ?.find(d => d.id === store.activeDiagramId)
+        const st = useOrmStore.getState()
+        const activeDiag = st.diagrams?.find(d => d.id === st.activeDiagramId)
+        const occurrences  = activeDiag?.occurrences ?? []
+        const cOccurrences = activeDiag?.constraintOccurrences ?? []
+
+        // Constraint positions live in constraintOccurrences, separate from the
+        // object type and fact type occurrences, so both lists are checked.
+        const moveOccById = (occId) => {
+          const occ = occurrences.find(o => o.id === occId)
+          if (occ) { st.moveOccurrence(occId, occ.x + dx, occ.y + dy); return }
+          const cocc = cOccurrences.find(co => co.id === occId)
+          if (cocc) st.moveConstraintOccurrence(occId, cocc.x + dx, cocc.y + dy)
+        }
+        const moveImplicitLink = (synthId) => {
+          const [factId, roleIndex] = synthId.split('_il_').map((v, i) => i === 0 ? v : Number(v))
+          const { objectTypes: visibleOts, facts: visibleFacts } = getDiagramElements(st)
+          const parentFact = visibleFacts.find(f => f.id === factId)
+          const il = parentFact?.implicitLinks?.find(l => l.roleIndex === roleIndex)
+          if (!parentFact || !il) return
+          const ilPos = activeDiag?.implicitLinkPositions?.[`${factId}:il:${roleIndex}`]
+          const associatedId = parentFact.roles[roleIndex]?.objectTypeId
+          const assoc = visibleOts.find(o => o.id === associatedId)
+                     ?? visibleFacts.find(f => f.id === associatedId && f.objectified)
+          const x = ilPos?.x ?? il.x ?? (assoc ? Math.round((parentFact.x + assoc.x) / 2) : parentFact.x)
+          const y = ilPos?.y ?? il.y ?? (assoc ? Math.round((parentFact.y + assoc.y) / 2) : parentFact.y)
+          st.updateImplicitLink(factId, roleIndex, { x: x + dx, y: y + dy }, { x, y })
+        }
 
         // When occurrence IDs are tracked, use them for precise positioning
-        const multiOccIds = store.multiSelectedOccurrenceIds
-        const singleOccId = store.selectedOccurrenceId
+        const multiOccIds = st.multiSelectedOccurrenceIds
+        const singleOccId = st.selectedOccurrenceId
         if (multiOccIds.length > 0) {
-          const occurrences = activeDiag?.occurrences ?? []
-          for (const occId of multiOccIds) {
-            const occ = occurrences.find(o => o.id === occId)
-            if (occ) store.moveOccurrence(occId, occ.x + dx, occ.y + dy)
-          }
+          for (const occId of multiOccIds) moveOccById(occId)
+          // Implicit links have no occurrence and are only tracked in multiSelectedIds
+          for (const id of ids) if (id.includes('_il_')) moveImplicitLink(id)
           return
         }
-        if (singleOccId && store.multiSelectedIds.length === 0) {
-          const occ = (activeDiag?.occurrences ?? []).find(o => o.id === singleOccId)
-          if (occ) { store.moveOccurrence(singleOccId, occ.x + dx, occ.y + dy); return }
+        if (singleOccId && st.multiSelectedIds.length === 0) {
+          moveOccById(singleOccId)
+          return
         }
 
-        const occMap = Object.fromEntries(
-          (activeDiag?.occurrences ?? []).map(o => [o.schemaElementId, o])
-        )
-        for (const id of ids) {
-          const occ = occMap[id]
-          const ot = store.objectTypes.find(o => o.id === id)
-          if (ot) { const p = occ ?? ot; store.moveObjectType(id, p.x + dx, p.y + dy); continue }
-          const f  = store.facts.find(f => f.id === id)
-          if (f)  { const p = occ ?? f;  store.moveFact(id, p.x + dx, p.y + dy); continue }
-          const c  = store.constraints.find(c => c.id === id)
-          if (c)  { const p = occ ?? c;  store.moveConstraint(id, p.x + dx, p.y + dy) }
-        }
+        // Schema-ID selection (e.g. Cmd+A): move every occurrence of each selected element
+        // by its own position, so multiple occurrences keep their relative layout.
+        const idSet = new Set(ids)
+        for (const o  of occurrences)  if (idSet.has(o.schemaElementId))      st.moveOccurrence(o.id, o.x + dx, o.y + dy)
+        for (const co of cOccurrences) if (idSet.has(co.schemaConstraintId)) st.moveConstraintOccurrence(co.id, co.x + dx, co.y + dy)
+        for (const id of ids) if (id.includes('_il_')) moveImplicitLink(id)
         return
       }
 

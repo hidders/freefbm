@@ -1016,7 +1016,7 @@ export default function Canvas() {
         if (dragState.occurrenceId) store.moveConstraintOccurrence(dragState.occurrenceId, wx, wy)
         else store.moveConstraint(dragState.id, wx, wy)
       }
-      else if (dragState.kind === 'implicitLink') store.updateImplicitLink(dragState.implicitFactId, dragState.implicitRoleIndex, { x: snapEnabled ? snap(wx) : wx, y: snapEnabled ? snap(wy) : wy })
+      else if (dragState.kind === 'implicitLink') store.updateImplicitLink(dragState.implicitFactId, dragState.implicitRoleIndex, { x: snapEnabled ? snap(wx) : wx, y: snapEnabled ? snap(wy) : wy }, { x: dragState.origX, y: dragState.origY })
       else if (dragState.kind === 'note')       store.updateNote(dragState.id, { x: snapEnabled ? snap(wx) : wx, y: snapEnabled ? snap(wy) : wy })
       else {
         if (dragState.occurrenceId) store.moveOccurrence(dragState.occurrenceId, wx, wy)
@@ -1038,7 +1038,7 @@ export default function Canvas() {
         else if (el.constraintOccurrenceId) store.moveConstraintOccurrence(el.constraintOccurrenceId, wx, wy)
         else if (el.kind === 'fact') store.moveFact(el.id, wx, wy)
         else if (el.kind === 'constraint') store.moveConstraint(el.id, wx, wy)
-        else if (el.kind === 'implicitLink') store.updateImplicitLink(el.implicitFactId, el.implicitRoleIndex, { x: snapEnabled ? snap(wx) : wx, y: snapEnabled ? snap(wy) : wy })
+        else if (el.kind === 'implicitLink') store.updateImplicitLink(el.implicitFactId, el.implicitRoleIndex, { x: snapEnabled ? snap(wx) : wx, y: snapEnabled ? snap(wy) : wy }, { x: el.origX, y: el.origY })
         else store.moveObjectType(el.id, wx, wy)
       }
     } else if (dragState.type === 'band') {

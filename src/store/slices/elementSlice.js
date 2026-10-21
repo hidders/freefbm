@@ -244,10 +244,28 @@ export function createElementSlice(set, get) {
 
     // Move an occurrence by its own occurrence ID (for multi-occurrence elements)
     moveOccurrence(occId, x, y) {
-      set(s => ({
-        diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : patchOccById(d, occId, { x: Math.round(x), y: Math.round(y) })),
-        isDirty: true,
-      }))
+      set(s => {
+        x = Math.round(x); y = Math.round(y)
+        const diag = s.diagrams.find(d => d.id === s.activeDiagramId)
+        const occ  = (diag?.occurrences ?? []).find(o => o.id === occId)
+        const diagrams = s.diagrams.map(d => d.id !== s.activeDiagramId ? d : patchOccById(d, occId, { x, y }))
+        // Internal frequency markers store absolute (schema-level) positions, so shift them
+        // with the fact. Only the fact's first occurrence carries them, so moving several
+        // occurrences of one fact together does not shift the markers more than once.
+        const fact = occ && s.facts.find(f => f.id === occ.schemaElementId)
+        if (!fact?.internalFrequency?.length || occOf(diag, fact.id)?.id !== occId) {
+          return { diagrams, isDirty: true }
+        }
+        const dx = x - occ.x, dy = y - occ.y
+        return {
+          diagrams,
+          facts: s.facts.map(f => f.id !== fact.id ? f : {
+            ...f,
+            internalFrequency: f.internalFrequency.map(if_ => ({ ...if_, x: if_.x + dx, y: if_.y + dy })),
+          }),
+          isDirty: true,
+        }
+      })
     },
 
     // ── occurrence-level role reconnect ──────────────────────────────────────
@@ -1258,7 +1276,9 @@ export function createElementSlice(set, get) {
       })
     },
 
-    updateImplicitLink(factId, roleIndex, patch) {
+    // prevPos: where the link was drawn before this update, for links still at their
+    // computed default position (no stored x/y yet).
+    updateImplicitLink(factId, roleIndex, patch, prevPos = null) {
       const positionKeys = ['x', 'y', 'roleOrder', 'readingOrder', 'orientation', 'readingDisplay', 'readingAbove', 'readingOffset', 'readingOffsetAbove', 'readingOffsetBelow']
       const schemaPatch = {}
       const positionPatch = {}
@@ -1286,6 +1306,18 @@ export function createElementSlice(set, get) {
           const key = `${factId}:il:${roleIndex}`
           const diag = s.diagrams.find(d => d.id === s.activeDiagramId)
           const ilp = { ...(diag?.implicitLinkPositions ?? {}) }
+          // Frequency markers dragged off their default spot are stored as absolute
+          // positions under `${key}:if:<id>`; move them along with the link.
+          const il = s.facts.find(f => f.id === factId)?.implicitLinks?.find(l => l.roleIndex === roleIndex)
+          const oldX = ilp[key]?.x ?? il?.x ?? prevPos?.x, oldY = ilp[key]?.y ?? il?.y ?? prevPos?.y
+          if ('x' in positionPatch && 'y' in positionPatch && oldX != null && oldY != null) {
+            const dx = positionPatch.x - oldX, dy = positionPatch.y - oldY
+            for (const k of Object.keys(ilp)) {
+              if (k.startsWith(`${key}:if:`) && ilp[k].x != null && ilp[k].y != null) {
+                ilp[k] = { ...ilp[k], x: ilp[k].x + dx, y: ilp[k].y + dy }
+              }
+            }
+          }
           ilp[key] = { ...(ilp[key] ?? {}), ...positionPatch }
           changes.diagrams = s.diagrams.map(d =>
             d.id === s.activeDiagramId ? { ...d, implicitLinkPositions: ilp } : d
