@@ -84,7 +84,7 @@ export default function WelcomeScreen({ onClose }) {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 22 }}>
-          <ActionBtn icon="✦" label="Load sample" sub="Employment schema"
+          <ActionBtn icon="✦" label="Load sample" sub="University schema"
             onClick={() => store.loadModel(SAMPLE_RAW)} />
           <ActionBtn icon={<EntityTypeIcon active={false} />} label="Add Entity Type" sub="Press E"
             onClick={() => store.setTool('addEntity')} />
