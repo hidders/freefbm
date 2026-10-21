@@ -1,6 +1,7 @@
 // Renders a formula tree (see formula.js) as a flat list of styled tokens:
 //   { text, cls }   cls: 'var' | 'reading' | 'type' | 'op' | 'punct'
-//   { text, cls: 'op', sup: true }   the bound of a counting quantifier
+//   { text, cls: 'op', sup: true }   the bound of a counting quantifier, or TC's *
+//   { text, cls, sub: true }         the variables bound by TC
 //   { text: QGAP, cls: 'qgap' }      the narrow gap between a quantifier and its variable
 //
 // Variables are named after their type. A subscript is added only when two
@@ -15,16 +16,19 @@ const subscript = (n) => String(n).split('').map(d => SUBSCRIPTS[d]).join('')
 export const QGAP = '\u2009'
 
 const QUANTIFIERS = new Set(['forall', 'exists', 'count'])
+const BINDERS = new Set([...QUANTIFIERS, 'tc'])
+// Rendered without parentheses as the body of a quantifier or after ¬.
+const ATOMIC = new Set(['fact', 'type', 'not', 'tc'])
 const BINARY = new Set(['and', 'or', 'implies', 'iff'])
 const OP = { and: ' ∧ ', or: ' ∨ ', implies: ' → ', iff: ' ↔ ' }
 
 function boundVars(f) {
-  return QUANTIFIERS.has(f.t) ? f.vars : []
+  return BINDERS.has(f.t) ? f.vars : []
 }
 
 function children(f) {
   switch (f.t) {
-    case 'forall': case 'exists': case 'count': return [f.body]
+    case 'forall': case 'exists': case 'count': case 'tc': return [f.body]
     case 'and': case 'or': return f.args
     case 'implies': case 'iff': return [f.left, f.right]
     case 'not': return [f.arg]
@@ -96,7 +100,7 @@ export function renderFormula(formula, ctx) {
         return
       case 'not':
         push('¬', 'op')
-        if (f.arg.t === 'fact' || f.arg.t === 'type' || f.arg.t === 'not') render(f.arg)
+        if (ATOMIC.has(f.arg.t)) render(f.arg)
         else wrapped(f.arg)
         return
       case 'and': case 'or':
@@ -120,9 +124,22 @@ export function renderFormula(formula, ctx) {
         }
         push(' ')
         const b = f.body
-        if (b.t === 'fact' || b.t === 'type' || QUANTIFIERS.has(b.t) || b.t === 'not') render(b)
+        if (ATOMIC.has(b.t) || QUANTIFIERS.has(b.t)) render(b)
         else wrapped(b)
         unbind(f.vars.length)
+        return
+      }
+      case 'tc': {
+        // [TC_{v,w} φ](s, t): v and w are bound inside the brackets only.
+        push('['); push('TC', 'op')
+        if (f.star) push('*', 'op', { sup: true })
+        f.vars.forEach((v, i) => { if (i) push(',', 'punct', { sub: true }); bind(v); push(nameOf(v), 'var', { sub: true }) })
+        push(' ')
+        const b = f.body
+        if (ATOMIC.has(b.t) || QUANTIFIERS.has(b.t)) render(b)
+        else wrapped(b)
+        unbind(f.vars.length)
+        push(']('); pushVar(f.args[0]); push(', '); pushVar(f.args[1]); push(')')
         return
       }
       default:
@@ -135,5 +152,15 @@ export function renderFormula(formula, ctx) {
 }
 
 export function formulaToString(formula, ctx) {
-  return renderFormula(formula, ctx).map(t => t.sup ? `^{${t.text}}` : t.text).join('')
+  const tokens = renderFormula(formula, ctx)
+  let s = ''
+  tokens.forEach((t, i) => {
+    if (t.sup) s += `^{${t.text}}`
+    else if (t.sub) {
+      if (!tokens[i - 1]?.sub) s += '_{'
+      s += t.text
+      if (!tokens[i + 1]?.sub) s += '}'
+    } else s += t.text
+  })
+  return s
 }

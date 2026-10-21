@@ -13,6 +13,9 @@
 //   { t: 'fact', factId, args: [Var] }      fact type atom, args in roles[] order
 //   { t: 'type', typeId, arg: Var }          object type membership, e.g. Student(Person)
 //   { t: 'cmp', op, left: Var, right: Var }  =, ≠, <, ≤, >, ≥
+//   { t: 'tc', star, vars: [Var, Var], body, args: [Var, Var] }
+//       transitive closure [TC_{v,w} φ](s, t), or with star the
+//       reflexive-transitive closure [TC*_{v,w} φ](s, t); binds vars in body only
 
 // A variable ranges over the population of its type (an object type id, or
 // the id of an objectified fact type).
@@ -27,6 +30,7 @@ export const iff     = (left, right) => ({ t: 'iff', left, right })
 export const factAtom = (factId, args) => ({ t: 'fact', factId, args })
 export const typeAtom = (typeId, arg) => ({ t: 'type', typeId, arg })
 export const cmp = (op, left, right) => ({ t: 'cmp', op, left, right })
+export const tc  = (vars, body, args, star = false) => ({ t: 'tc', star, vars, body, args })
 
 function nary(t, args) {
   const flat = []
