@@ -43,7 +43,7 @@ export default function FormalisationTab() {
   const { entries, implicit, ctx, scope } = useMemo(() => formalise(state), [state])
   const sections = [
     showDisjoint && { title: 'Implicit disjointness constraints', items: implicit.disjointness,
-      empty: 'There is only one subtype hierarchy, so there is nothing to keep disjoint.' },
+      empty: 'There is only one entity-type hierarchy, so there is nothing to keep disjoint.' },
     showParticipation && { title: 'Implicit participation constraints', items: implicit.participation,
       empty: 'Every type here is independent.' },
   ].filter(Boolean)
@@ -62,7 +62,7 @@ export default function FormalisationTab() {
         <span style={{ flex: 1 }}/>
         <span style={{ display: 'inline-flex', gap: 6 }}>
           <ToggleButton on={showDisjoint} onClick={toggleDisjoint}
-            title="Show that the roots of different subtype hierarchies are disjoint">Implicit disjointness</ToggleButton>
+            title="Show that the roots of different entity-type hierarchies are disjoint">Implicit disjointness</ToggleButton>
           <ToggleButton on={showParticipation} onClick={toggleParticipation}
             title="Show that instances of non-independent types play some role">Implicit participation</ToggleButton>
         </span>
