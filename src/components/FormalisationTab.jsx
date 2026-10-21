@@ -14,6 +14,7 @@ const TOKEN_STYLE = {
   reading: { color: 'var(--formula-reading)' },
   type:    { color: 'var(--formula-type)', fontWeight: 600 },
   op:      { color: 'var(--formula-op)' },
+  const:   { color: 'var(--formula-const)' },
   punct:   { color: 'var(--ink-3)' },
   qgap:    { display: 'inline-block', width: '0.4em', overflow: 'hidden', verticalAlign: 'bottom' },
 }
@@ -152,6 +153,7 @@ function Legend() {
       {item('reading', 'reading')}
       {item('type', 'object type')}
       {item('op', 'logic')}
+      {item('const', 'value')}
     </span>
   )
 }

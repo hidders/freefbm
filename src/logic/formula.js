@@ -12,7 +12,12 @@
 //   { t: 'not', arg }
 //   { t: 'fact', factId, args: [Var] }      fact type atom, args in roles[] order
 //   { t: 'type', typeId, arg: Var }          object type membership, e.g. Student(Person)
-//   { t: 'cmp', op, left: Var, right: Var }  =, ≠, <, ≤, >, ≥
+//   { t: 'cmp', op, left: Var, right: Var }  object equality =, ≠
+//   { t: 'vcmp', op, left: Var, right: Var | Const }
+//       value comparison ≈, ≉, <, ≤, >, ≥ on the data values of the
+//       objects. The left side is always a variable, whose datatype says how
+//       the constant on the right is read and compared.
+//   { t: 'const', text, quoted }             the string representation of a value
 //   { t: 'tc', star, vars: [Var, Var], body, args: [Var, Var] }
 //       transitive closure [TC_{v,w} φ](s, t), or with star the
 //       reflexive-transitive closure [TC*_{v,w} φ](s, t); binds vars in body only
@@ -30,6 +35,8 @@ export const iff     = (left, right) => ({ t: 'iff', left, right })
 export const factAtom = (factId, args) => ({ t: 'fact', factId, args })
 export const typeAtom = (typeId, arg) => ({ t: 'type', typeId, arg })
 export const cmp = (op, left, right) => ({ t: 'cmp', op, left, right })
+export const vcmp = (op, left, right) => ({ t: 'vcmp', op, left, right })
+export const constant = (text, quoted = true) => ({ t: 'const', text, quoted })
 export const tc  = (vars, body, args, star = false) => ({ t: 'tc', star, vars, body, args })
 
 function nary(t, args) {
