@@ -43,6 +43,7 @@ export default function FormalisationTab() {
         display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap',
         fontSize: 11, color: 'var(--ink-2)', marginBottom: 8,
         paddingBottom: 4, borderBottom: '1px solid var(--border-soft)',
+        userSelect: 'none',
       }}>
         <span>
           {scope === 'diagram' ? 'Constraints on this diagram' : 'Constraints in the selection'} ({entries.length})
@@ -50,16 +51,19 @@ export default function FormalisationTab() {
         <span style={{ flex: 1 }}/>
         <Legend />
       </div>
-      {entries.map(e => (
-        <div key={e.key} style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.04em', marginBottom: 2 }}>
-            {e.kind}{e.subject ? ` · ${e.subject}` : ''}
+      {/* Focusable so Cmd/Ctrl+A selects just these formulas (see App.jsx) */}
+      <div data-text-panel tabIndex={0} className="text-panel">
+        {entries.map(e => (
+          <div key={e.key} style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.04em', marginBottom: 2 }}>
+              {e.kind}{e.subject ? ` · ${e.subject}` : ''}
+            </div>
+            {e.formula
+              ? <Formula formula={e.formula} ctx={ctx} />
+              : <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>{e.note}</div>}
           </div>
-          {e.formula
-            ? <Formula formula={e.formula} ctx={ctx} />
-            : <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>{e.note}</div>}
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   )
 }

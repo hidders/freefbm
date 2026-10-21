@@ -46,6 +46,7 @@
   --formula-reading: #3d3529;  /* ink — reading fragments */
   --formula-type:    #0e7490;  /* teal — object type predicates */
   --formula-op:      #7c4dbd;  /* violet — connectives and quantifiers */
+  --bg-text-panel:   #fdfcf9;  /* near-white — selectable, copyable text */
 
   --accent:       #b45309;
   --accent-light: #d97706;
@@ -150,3 +151,16 @@ input.cell-issue:-webkit-autofill:focus {
 .query-edit .qe-selectable:hover:not(:has(.role-box-group.role-interior:hover)) > .hover-ring {
   stroke: rgba(64, 120, 200, 0.55);
 }
+
+/* Read-only text panels (Formalisation tab): a near-white "page" whose text
+   can be selected with Cmd/Ctrl+A and copied with Cmd/Ctrl+C. */
+.text-panel {
+  background: var(--bg-text-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  padding: 8px 12px 0;
+  user-select: text;
+  cursor: text;
+  outline: none;
+}
+.text-panel:focus-visible { border-color: var(--border-dark); }
