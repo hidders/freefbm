@@ -7,7 +7,7 @@ import { renderFormula } from '../logic/renderFormula.js'
 // ── Formalisation tab ───────────────────────────────────────────────────────
 // Lists the logic formula behind every constraint in the selected part of the
 // diagram (or the whole diagram when nothing is selected), optionally followed
-// by the implicit disjointness and participation constraints.
+// by the implicit disjointness, participation and implied-link constraints.
 
 const TOKEN_STYLE = {
   var:     { color: 'var(--formula-var)', fontWeight: 600 },
@@ -39,6 +39,7 @@ export default function FormalisationTab() {
   })))
   const [showDisjoint, toggleDisjoint] = useToggle('freefbm.formalisation.disjointness')
   const [showParticipation, toggleParticipation] = useToggle('freefbm.formalisation.participation')
+  const [showLinks, toggleLinks] = useToggle('freefbm.formalisation.impliedLinks')
 
   const { entries, implicit, ctx, scope } = useMemo(() => formalise(state), [state])
   const sections = [
@@ -46,6 +47,8 @@ export default function FormalisationTab() {
       empty: 'There is only one entity-type hierarchy, so there is nothing to keep disjoint.' },
     showParticipation && { title: 'Implicit participation constraints', items: implicit.participation,
       empty: 'Every type here is independent.' },
+    showLinks && { title: 'Implied link constraints', items: implicit.impliedLinks,
+      empty: 'There are no nested fact types here.' },
   ].filter(Boolean)
 
   return (
@@ -65,6 +68,8 @@ export default function FormalisationTab() {
             title="Show that the roots of different entity-type hierarchies are disjoint">Implicit disjointness</ToggleButton>
           <ToggleButton on={showParticipation} onClick={toggleParticipation}
             title="Show that instances of non-independent types play some role">Implicit participation</ToggleButton>
+          <ToggleButton on={showLinks} onClick={toggleLinks}
+            title="Show how a nested fact type relates to its implied link fact types">Implied links</ToggleButton>
         </span>
         <Legend />
       </div>

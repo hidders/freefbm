@@ -75,7 +75,7 @@ export function renderFormula(formula, ctx) {
   const render = (f) => {
     switch (f.t) {
       case 'fact': {
-        const fact = ctx.factById.get(f.factId)
+        const fact = ctx.factById.get(f.factId) ?? ctx.linkById?.get(f.factId)
         const parts = fact?.readingParts ?? []
         push('(')
         const words = []
