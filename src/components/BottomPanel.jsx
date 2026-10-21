@@ -2966,7 +2966,7 @@ function NestedCellEditor({
       : null
     return (
       <LeafCellInput
-        value={typeof value === 'string' ? value : ''}
+        value={typeof value === 'string' && value !== UNSET ? value : ''}
         onChange={onChange}
         onCommit={onCommit}
         listId={candidateValues === undefined ? meta.listId : undefined}
