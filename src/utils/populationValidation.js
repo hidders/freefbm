@@ -1544,10 +1544,12 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
   // links (the auto-generated binary links of objectified facts) are not stored as
   // separate fact entries, so all facts in the array naturally qualify as real facts.
   if ((objectTypes?.length || facts?.length) && factPopulations) {
-    // Build the raw participation set from fact tuple cells.
+    // Build the raw participation set from fact tuple cells.  Identifying facts
+    // (ref-mode or composite PI, incl. external cross-fact PIs) have no stored
+    // tuples; their effective tuples are derived from the entity population.
     const participates = new Set()
     for (const fact of (facts || [])) {
-      const tuples = factPopulations[fact.id]
+      const tuples = effectiveFactTuples(fact)
       if (!tuples?.length) continue
       for (let ri = 0; ri < (fact.roles?.length ?? 0); ri++) {
         const otId = fact.roles[ri]?.objectTypeId
