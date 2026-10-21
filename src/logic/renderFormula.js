@@ -2,6 +2,7 @@
 //   { text, cls }   cls: 'var' | 'reading' | 'type' | 'op' | 'punct'
 //   { text, cls: 'op', sup: true }   the bound of a counting quantifier, or TC's *
 //   { text, cls, sub: true }         the variables bound by TC
+//   { text: QGAP, cls: 'qgap' }      the narrow gap between a quantifier and its variable
 //
 // Variables are named after their type. A subscript is added only when two
 // variables of the same type can be in scope at once somewhere in the
@@ -9,6 +10,10 @@
 
 const SUBSCRIPTS = '₀₁₂₃₄₅₆₇₈₉'
 const subscript = (n) => String(n).split('').map(d => SUBSCRIPTS[d]).join('')
+
+// Thin space: copies as a narrow space, and is drawn narrower than a full
+// monospace cell (see TOKEN_STYLE.qgap in FormalisationTab.jsx).
+export const QGAP = '\u2009'
 
 const QUANTIFIERS = new Set(['forall', 'exists', 'count'])
 const BINDERS = new Set([...QUANTIFIERS, 'tc'])
@@ -74,7 +79,7 @@ export function renderFormula(formula, ctx) {
   const render = (f) => {
     switch (f.t) {
       case 'fact': {
-        const fact = ctx.factById.get(f.factId)
+        const fact = ctx.factById.get(f.factId) ?? ctx.linkById?.get(f.factId)
         const parts = fact?.readingParts ?? []
         push('(')
         const words = []
@@ -112,10 +117,10 @@ export function renderFormula(formula, ctx) {
         return
       case 'forall': case 'exists': case 'count': {
         if (f.t === 'count') {
-          push('∃', 'op'); push(`${f.op}${f.n}`, 'op', { sup: true }); push(' ')
+          push('∃', 'op'); push(`${f.op}${f.n}`, 'op', { sup: true }); push(QGAP, 'qgap')
           f.vars.forEach((v, i) => { if (i) push(', '); bind(v); pushVar(v) })
         } else {
-          f.vars.forEach((v, i) => { if (i) push(' '); push(f.t === 'forall' ? '∀' : '∃', 'op'); bind(v); pushVar(v) })
+          f.vars.forEach((v, i) => { if (i) push(' '); push(f.t === 'forall' ? '∀' : '∃', 'op'); push(QGAP, 'qgap'); bind(v); pushVar(v) })
         }
         push(' ')
         const b = f.body
