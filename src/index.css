@@ -168,3 +168,30 @@ input.cell-issue:-webkit-autofill:focus {
   font-size: 11px; font-weight: 600; color: var(--ink-2);
   margin: 14px 0 6px; padding-top: 6px; border-top: 1px solid var(--border-soft);
 }
+
+/* Draggable panel dividers (Splitter.jsx): a strip between two lines with
+   centred grip dots, accent-coloured on hover and while dragging. */
+.splitter {
+  flex-shrink: 0;
+  position: relative;
+  background: var(--bg-surface);
+  border: 0 solid var(--border-soft);
+  transition: background 0.12s, border-color 0.12s;
+}
+.splitter-v { width: 8px; cursor: ew-resize; border-left-width: 1px; border-right-width: 1px; }
+.splitter-h { height: 8px; cursor: ns-resize; border-top-width: 1px; border-bottom-width: 1px; }
+.splitter::after {
+  content: '';
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  background-image: radial-gradient(circle, var(--border-dark) 1.2px, transparent 1.6px);
+}
+.splitter-v::after { width: 4px; height: 36px; background-size: 4px 5px; }
+.splitter-h::after { width: 36px; height: 4px; background-size: 5px 4px; }
+.splitter:hover, .splitter.dragging {
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-surface));
+  border-color: var(--accent);
+}
+.splitter:hover::after, .splitter.dragging::after {
+  background-image: radial-gradient(circle, var(--accent) 1.2px, transparent 1.6px);
+}

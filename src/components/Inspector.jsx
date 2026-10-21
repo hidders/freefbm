@@ -3,6 +3,7 @@ import { useOrmStore } from '../store/ormStore'
 import { findRefMode, refModeLabel, findCompositePI, canBeExternalUniquenessPI } from '../utils/refMode'
 import { getDisplayReading, makeImplicitLinkFact } from './FactTypeNode'
 import { RingMiniSymbol } from './ConstraintNodes'
+import Splitter from './Splitter'
 import { NoteConnectorIcon } from './ToolPanel'
 import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
 import { constraintMaxSequences, suppressRolePosition } from '../utils/constraintRules.js'
@@ -3607,11 +3608,14 @@ export default function Inspector() {
           selectedValueRange, selectedCardinalityRange } = store
 
   const [width, setWidth] = useState(240)
+  const [resizing, setResizing] = useState(false)
   const resizeRef = useRef(null)
 
   const onResizeMouseDown = useCallback((e) => {
     e.preventDefault()
     resizeRef.current = { startX: e.clientX, startWidth: width }
+    setResizing(true)
+    document.body.style.cursor = 'ew-resize'
   }, [width])
 
   useEffect(() => {
@@ -3620,7 +3624,12 @@ export default function Inspector() {
       const dx = resizeRef.current.startX - e.clientX   // drag left → wider
       setWidth(Math.max(180, resizeRef.current.startWidth + dx))
     }
-    const onUp = () => { resizeRef.current = null }
+    const onUp = () => {
+      if (!resizeRef.current) return
+      resizeRef.current = null
+      setResizing(false)
+      document.body.style.cursor = ''
+    }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     return () => {
@@ -3738,17 +3747,10 @@ export default function Inspector() {
   }
 
   return (
-    <div style={{ width, flexShrink: 0, position: 'relative', background: 'var(--bg-surface)',
-      borderLeft: '1px solid var(--border-soft)', overflowY: 'auto', padding: 14 }}>
-
-      {/* Resize handle */}
-      <div
-        onMouseDown={onResizeMouseDown}
-        style={{
-          position: 'absolute', left: 0, top: 0, bottom: 0, width: 5,
-          cursor: 'ew-resize', zIndex: 10,
-        }}
-      />
+    <div style={{ width, flexShrink: 0, display: 'flex', background: 'var(--bg-surface)' }}>
+    {/* Resize handle — outside the scroller so it spans the full height */}
+    <Splitter orientation="v" dragging={resizing} onMouseDown={onResizeMouseDown} />
+    <div style={{ flex: 1, minWidth: 0, position: 'relative', overflowY: 'auto', padding: 14 }}>
 
       {note && <NoteInspector note={note} />}
       {ot   && <ObjectTypeInspector ot={ot} />}
@@ -4037,6 +4039,7 @@ export default function Inspector() {
           </div>
         )}
       </div>
+    </div>
     </div>
   )
 }
