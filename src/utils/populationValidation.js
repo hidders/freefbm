@@ -3,7 +3,7 @@
 // is inconsistent with it.
 
 import { validateValueAgainstDatatype } from './datatypeValidation.js'
-import { datatypeAssignmentToKind } from './datatypeMapping.js'
+import { VALUE_KINDS, valueKindOf, valueKindName, parseLiteral } from './datatypeValues.js'
 import { isIdentifyingFact, getVtEffectivePopulation, getEntityEffectivePopulation, getEntityIdentifierShape, findRefMode, findCompositePI, findInheritedPI, findRolePlayer, getNestedCellShape, isCompleteValue, UNSET } from './refMode.js'
 
 // Walk `cell` against the nested `shape` (from getNestedCellShape), trimming
@@ -42,6 +42,86 @@ function effectiveLeafAssignment(playerOtId, facts, objectTypes, subtypes, visit
   return effectiveLeafAssignment(shape.columns[0].playerOtId, facts, objectTypes, subtypes, v)
 }
 
+// Name of the value kind of a player's leaf datatype (see datatypeValues.js),
+// or null when unknown.
+function leafKindName(playerOtId, facts, objectTypes, subtypes) {
+  return valueKindName(effectiveLeafAssignment(playerOtId, facts, objectTypes, subtypes))
+}
+
+// ── Value canonicalisation ──────────────────────────────────────────────────
+// The population checks compare cells by their strings (===, JSON keys). To
+// make them compare data values instead, every leaf is replaced by one
+// representative spelling of its value: the first spelling met for the same
+// value of the same datatype. E.g. with 'PT24H' met first, a later 'P1D' cell
+// of an xs:dayTimeDuration becomes 'PT24H', and 'en-gb' becomes 'en-GB'.
+// String-typed, untyped and unparseable leaves are left alone. Returns `data`
+// itself when nothing changes; the result is deterministic for the same data,
+// so separately computed issues and tables agree on the spelling.
+export function canonicalizePopulationData(data) {
+  const facts = data.facts || [], objectTypes = data.objectTypes || []
+  const subtypes = data.subtypes || [], constraints = data.constraints
+  const reps = new Map()       // kind name + value key → representative spelling
+  const kindCache = new Map()  // leaf player id → kind name | null
+  const shapeCache = new Map() // player id → nested cell shape
+  let changed = false
+
+  const leafKind = (playerOtId) => {
+    if (!kindCache.has(playerOtId)) {
+      const name = leafKindName(playerOtId, facts, objectTypes, subtypes)
+      kindCache.set(playerOtId, name && name !== 'string' ? name : null)
+    }
+    return kindCache.get(playerOtId)
+  }
+  const shapeOf = (playerId) => {
+    if (!shapeCache.has(playerId)) {
+      const player = findRolePlayer(playerId, objectTypes, facts)
+      shapeCache.set(playerId, player ? getNestedCellShape(player, facts, objectTypes, subtypes, constraints) : null)
+    }
+    return shapeCache.get(playerId)
+  }
+  const canonLeaf = (v, playerOtId) => {
+    if (typeof v !== 'string') return v
+    const name = leafKind(playerOtId)
+    if (!name) return v
+    const p = parseLiteral(v, VALUE_KINDS[name])
+    if (!('value' in p)) return v
+    const key = `${name}\u0000${typeof p.value === 'object' ? JSON.stringify(p.value) : String(p.value)}`
+    const rep = reps.get(key)
+    if (rep === undefined) { reps.set(key, v); return v }
+    if (rep !== v) changed = true
+    return rep
+  }
+  const canonCell = (cell, shape) => {
+    if (!shape) return cell
+    if (shape.kind === 'single') return canonLeaf(cell, shape.playerOtId)
+    if (!Array.isArray(cell)) return cell
+    return cell.map((c, i) => canonCell(c, shape.columns?.[i]))
+  }
+  const mapRecord = (rec, fn) => rec && Object.fromEntries(
+    Object.entries(rec).map(([id, rows]) => [id, Array.isArray(rows) ? rows.map(r => fn(r, id)) : rows]))
+
+  const factById = new Map(facts.map(f => [f.id, f]))
+  const populations = mapRecord(data.populations, (inst, id) => canonCell(inst, shapeOf(id)))
+  const nestedEntityMappings = mapRecord(data.nestedEntityMappings, (inst, id) => canonCell(inst, shapeOf(id)))
+  const factPopulations = mapRecord(data.factPopulations, (tuple, id) => {
+    const roles = factById.get(id)?.roles
+    if (!roles || !Array.isArray(tuple)) return tuple
+    return tuple.map((c, ri) => canonCell(c, roles[ri]?.objectTypeId ? shapeOf(roles[ri].objectTypeId) : null))
+  })
+  const edgeById = new Map(subtypes.map(e => [e.id, e]))
+  const subtypeMappings = mapRecord(data.subtypeMappings, (row, id) => {
+    const shape = shapeOf(edgeById.get(id)?.superId)
+    if (!shape || !Array.isArray(row)) return row
+    // Rows hold the supertype's identifier columns; one column when single.
+    return shape.kind === 'single'
+      ? row.map((c, ci) => (ci === 0 ? canonCell(c, shape) : c))
+      : row.map((c, ci) => canonCell(c, shape.columns?.[ci]))
+  })
+
+  if (!changed) return data
+  return { ...data, populations, nestedEntityMappings, factPopulations, subtypeMappings }
+}
+
 // Walk a (possibly nested) cell value against its nested shape, returning one
 // entry per leaf whose value fails its leaf player's datatype.
 //   { value, assignment, pathLabel, err }
@@ -53,7 +133,7 @@ function collectLeafTypeErrors(value, shape, facts, objectTypes, subtypes, pathL
   if (shape.kind === 'single') {
     if (typeof value !== 'string' || value === '') return out
     const assignment = effectiveLeafAssignment(shape.playerOtId, facts, objectTypes, subtypes)
-    if (!datatypeAssignmentToKind(assignment)) return out
+    if (!valueKindOf(assignment)) return out
     const err = validateValueAgainstDatatype(value, assignment)
     if (!err) return out
     out.push({ value, assignment, pathLabel: pathLabel || '', err })
@@ -166,9 +246,29 @@ function formatFreqRangeShort(range) {
 //                                satisfy the declared operator relative to the value at
 //                                role-sequence 2 (same-fact single-role pairs only).
 
-// Returns true if v1 <op> v2 holds. Both strings; numeric comparison used when both parse.
-function cmpValues(v1, v2, op) {
+// Returns true if v1 <op> v2 holds. Both strings. With a value kind (see
+// datatypeValues.js) they are compared as values of that datatype; values
+// that don't parse, or an unordered datatype with <, ≤, >, ≥, are not judged
+// here. Without one, numeric comparison is used when both parse.
+function cmpValues(v1, v2, op, kind) {
   if (v1 === '' || v2 === '') return true
+  if (kind) {
+    const p1 = parseLiteral(v1, kind), p2 = parseLiteral(v2, kind)
+    if (!('value' in p1) || !('value' in p2)) return true
+    const eq = kind.equal(p1.value, p2.value)
+    if (op === '=') return eq
+    if (op === '≠') return !eq
+    if (kind.order === 'none') return true
+    const c = eq ? 0 : kind.compare(p1.value, p2.value)
+    if (Number.isNaN(c)) return false   // incomparable: no order relation holds
+    switch (op) {
+      case '<':  return c < 0
+      case '≤':  return c <= 0
+      case '>':  return c > 0
+      case '≥':  return c >= 0
+      default:   return true
+    }
+  }
   const n1 = Number(v1), n2 = Number(v2)
   const a = (!isNaN(n1) && !isNaN(n2)) ? n1 : v1
   const b = (!isNaN(n1) && !isNaN(n2)) ? n2 : v2
@@ -183,7 +283,20 @@ function cmpValues(v1, v2, op) {
   }
 }
 
-export function computePopulationIssues({ facts, factPopulations, objectTypes, populations, subtypes, subtypeMappings, nestedEntityMappings, constraints }) {
+// Value kind for comparing the two roles of a value-comparison constraint:
+// the shared kind of both role players' leaf datatypes, or null.
+function comparisonKind(r0, r1, facts, objectTypes, subtypes) {
+  const leaf = (m) => {
+    const fact = (facts || []).find(f => f.id === m.factId)
+    const id = fact?.roles?.[m.roleIndex]?.objectTypeId
+    return id ? leafKindName(id, facts || [], objectTypes || [], subtypes || []) : null
+  }
+  const k0 = leaf(r0), k1 = leaf(r1)
+  return k0 && k0 === k1 ? VALUE_KINDS[k0] : null
+}
+
+export function computePopulationIssues(rawData) {
+  const { facts, factPopulations, objectTypes, populations, subtypes, subtypeMappings, nestedEntityMappings, constraints } = canonicalizePopulationData(rawData)
   const otById = new Map((objectTypes || []).map(o => [o.id, o]))
   const issues = []
 
@@ -503,7 +616,7 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
       // Plain VT (or entity with its own datatypeAssignment): single-column check.
       if (ot.kind === 'value') {
         const assignment = ot.datatypeAssignment
-        if (!datatypeAssignmentToKind(assignment)) continue
+        if (!valueKindOf(assignment)) continue
         instances.forEach((v, idx) => {
           if (typeof v !== 'string') return
           const err = validateValueAgainstDatatype(v, assignment)
@@ -573,7 +686,7 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
       if (!vr?.length) continue
       const instances = populations[ot.id]
       if (!instances?.length) continue
-      const kind = datatypeAssignmentToKind(ot.datatypeAssignment)
+      const kind = valueKindOf(ot.datatypeAssignment)
       instances.forEach((v, idx) => {
         if (valueInRange(v, vr, kind)) return
         issues.push({
@@ -600,7 +713,7 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
         const vr = role?.valueRange
         if (!vr?.length) continue
         const playerOt = role?.objectTypeId ? otById.get(role.objectTypeId) : null
-        const kind = datatypeAssignmentToKind(playerOt?.datatypeAssignment)
+        const kind = valueKindOf(playerOt?.datatypeAssignment)
         tuples.forEach((tuple, ti) => {
           const v = typeof tuple?.[ri] === 'string' ? tuple[ri].trim() : ''
           if (v === '') return
@@ -1000,6 +1113,7 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
       const roleMembers = seq.filter(m => m.kind === 'role' && !m.factId?.includes('_il_'))
       if (roleMembers.length !== 2) continue
       const op = c.operator ?? '='
+      const cmpKind = comparisonKind(roleMembers[0], roleMembers[1], facts, objectTypes, subtypes)
       const query = (c.queries ?? [])[0] ?? null
       if (query) {
         const qResult = evaluateQuery(query, facts, populations, effectiveFactTuples)
@@ -1008,7 +1122,7 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
           if (!Array.isArray(rawVal) || rawVal.length < 2) return
           const v1 = typeof rawVal[0] === 'string' ? rawVal[0].trim() : String(rawVal[0] ?? '')
           const v2 = typeof rawVal[1] === 'string' ? rawVal[1].trim() : String(rawVal[1] ?? '')
-          if (cmpValues(v1, v2, op)) return
+          if (cmpValues(v1, v2, op, cmpKind)) return
           issues.push({
             kind: 'valueComparisonViolation',
             elementId: c.id,
@@ -1028,7 +1142,7 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
         tuples.forEach((tuple, ti) => {
           const v1 = typeof tuple?.[r0.roleIndex] === 'string' ? tuple[r0.roleIndex].trim() : ''
           const v2 = typeof tuple?.[r1.roleIndex] === 'string' ? tuple[r1.roleIndex].trim() : ''
-          if (cmpValues(v1, v2, op)) return
+          if (cmpValues(v1, v2, op, cmpKind)) return
           issues.push({
             kind: 'valueComparisonViolation',
             elementId: c.id,
@@ -2144,6 +2258,7 @@ function buildSubtypeDSU(data) {
  * } or null.
  */
 export function computeInclusiveOrTable(data, constraintId, selectedLcaId = null) {
+  data = canonicalizePopulationData(data)
   const { facts, factPopulations, objectTypes, populations, subtypes, subtypeMappings, nestedEntityMappings, constraints } = data
   const con = (constraints || []).find(c => c.id === constraintId)
   if (!con || con.constraintType !== 'inclusiveOr') return null
@@ -2266,6 +2381,7 @@ export function computeInclusiveOrTable(data, constraintId, selectedLcaId = null
  * Returns also: { isC1, piRoot, availableLCAs, lcaId }.
  */
 export function computeExclusiveOrTable(data, constraintId, selectedLcaId = null) {
+  data = canonicalizePopulationData(data)
   const { facts, factPopulations, objectTypes, populations, subtypes, subtypeMappings, nestedEntityMappings, constraints } = data
   const con = (constraints || []).find(c => c.id === constraintId)
   if (!con || con.constraintType !== 'exclusiveOr') return null
@@ -2484,6 +2600,7 @@ function _buildSetRows(data, constraintId, allowedTypes, selectedLcaIds = null) 
 
 /** Exclusion: violation when 2+ sequences have a result in the same equivalence class. */
 export function computeExclusionTable(data, constraintId, selectedLcaIds = null) {
+  data = canonicalizePopulationData(data)
   const base = _buildSetRows(data, constraintId, new Set(['exclusion']), selectedLcaIds)
   if (!base) return null
   return {
@@ -2499,6 +2616,7 @@ export function computeExclusionTable(data, constraintId, selectedLcaIds = null)
 
 /** Equality: violation when any sequence has no result in the equivalence class. */
 export function computeEqualityTable(data, constraintId, selectedLcaIds = null) {
+  data = canonicalizePopulationData(data)
   const base = _buildSetRows(data, constraintId, new Set(['equality']), selectedLcaIds)
   if (!base) return null
   return {
@@ -2519,6 +2637,7 @@ export function computeEqualityTable(data, constraintId, selectedLcaIds = null) 
 
 /** Subset: violation when sequence 1 has a result but sequence 2 does not. */
 export function computeSubsetTable(data, constraintId, selectedLcaIds = null) {
+  data = canonicalizePopulationData(data)
   const base = _buildSetRows(data, constraintId, new Set(['subset']), selectedLcaIds)
   if (!base) return null
   return {
@@ -2831,6 +2950,7 @@ function projectSequence(seq, facts, effectiveFactTuplesFn) {
  * the constraint cannot be evaluated.
  */
 export function computeSequenceProjections(data, constraintId) {
+  data = canonicalizePopulationData(data)
   const { facts, factPopulations, objectTypes, populations, subtypes, subtypeMappings, nestedEntityMappings, constraints } = data
   const con = (constraints || []).find(c => c.id === constraintId)
   if (!con || !['exclusion', 'equality', 'subset', 'inclusiveOr', 'exclusiveOr'].includes(con.constraintType)) return null
@@ -2861,6 +2981,7 @@ export function computeSequenceProjections(data, constraintId) {
  * mode is 'query' | 'same-fact' | 'unsupported'.
  */
 export function computeValueComparisonData(data, constraintId) {
+  data = canonicalizePopulationData(data)
   const { facts, factPopulations, objectTypes, populations, nestedEntityMappings, constraints } = data
   const con = (constraints || []).find(c => c.id === constraintId)
   if (!con || con.constraintType !== 'valueComparison') return null
@@ -2872,6 +2993,7 @@ export function computeValueComparisonData(data, constraintId) {
   if (roleMembers.length !== 2) return { operator: op, mode: 'unsupported', pairs: null }
   const r0 = roleMembers[0]
   const r1 = roleMembers[1]
+  const cmpKind = comparisonKind(r0, r1, facts, objectTypes, data.subtypes)
 
   const eft = (fact) =>
     computeEffectiveFactTuples(fact, facts || [], factPopulations || {}, objectTypes || [], populations || {}, nestedEntityMappings || {}, constraints)
@@ -2886,7 +3008,7 @@ export function computeValueComparisonData(data, constraintId) {
         if (!Array.isArray(rawVal) || rawVal.length < 2) continue
         const v1 = typeof rawVal[0] === 'string' ? rawVal[0].trim() : String(rawVal[0] ?? '')
         const v2 = typeof rawVal[1] === 'string' ? rawVal[1].trim() : String(rawVal[1] ?? '')
-        pairs.push({ v1, v2, violates: !cmpValues(v1, v2, op) })
+        pairs.push({ v1, v2, violates: !cmpValues(v1, v2, op, cmpKind) })
       }
       let label0 = 'Position 1', label1 = 'Position 2'
       if (r0.factId === r1.factId) {
@@ -2906,7 +3028,7 @@ export function computeValueComparisonData(data, constraintId) {
   const pairs = tuples.map((tuple, ti) => {
     const v1 = typeof tuple?.[r0.roleIndex] === 'string' ? tuple[r0.roleIndex].trim() : ''
     const v2 = typeof tuple?.[r1.roleIndex] === 'string' ? tuple[r1.roleIndex].trim() : ''
-    return { v1, v2, violates: !cmpValues(v1, v2, op), tupleIndex: ti }
+    return { v1, v2, violates: !cmpValues(v1, v2, op, cmpKind), tupleIndex: ti }
   })
   const label0 = fact.roles?.[r0.roleIndex]?.roleName?.trim() || `Role ${r0.roleIndex + 1}`
   const label1 = fact.roles?.[r1.roleIndex]?.roleName?.trim() || `Role ${r1.roleIndex + 1}`
@@ -2926,6 +3048,7 @@ export function computeValueComparisonData(data, constraintId) {
  * } or null.
  */
 export function computeRingConstraintRelation(data, constraintId, selectedLcaId = null) {
+  data = canonicalizePopulationData(data)
   const { facts, factPopulations, objectTypes, populations, subtypes, subtypeMappings, nestedEntityMappings, constraints } = data
   const con = (constraints || []).find(c => c.id === constraintId)
   if (!con || con.constraintType !== 'ring') return null
@@ -3014,6 +3137,7 @@ export function computeRingConstraintRelation(data, constraintId, selectedLcaId 
  * Violations are entries with count > 1.
  */
 export function computeUniquenessProjection(data, constraintId) {
+  data = canonicalizePopulationData(data)
   const { facts, factPopulations, objectTypes, populations, subtypes, subtypeMappings, nestedEntityMappings, constraints } = data
   const con = (constraints || []).find(c => c.id === constraintId)
   if (!con || (con.constraintType !== 'uniqueness' && con.constraintType !== 'frequency')) return null
@@ -3094,27 +3218,25 @@ export function computeUniquenessProjection(data, constraintId) {
 // ── Value range comparison helpers ─────────────────────────────────────────
 
 /**
- * Compare two values in a type-aware manner.
+ * Compare two literals as values of the given value kind (see datatypeValues.js),
+ * so the order is the order of the values, not of their strings.
  * Returns a negative number if a < b, positive if a > b, 0 if equal, or NaN
- * when comparison is impossible (non-comparable types, empty values, etc.).
+ * when comparison is impossible (unparseable, incomparable or unordered values,
+ * empty values, etc.). Equality is decided even for unordered kinds.
  */
-function compareValues(a, b, typeKind) {
+function compareValues(a, b, kind) {
   if (a === '' || b === '' || a == null || b == null) return NaN
 
-  if (typeKind === 'integer' || typeKind === 'decimal') {
-    const na = Number(a); const nb = Number(b)
-    return (Number.isFinite(na) && Number.isFinite(nb)) ? na - nb : NaN
+  if (kind) {
+    const pa = parseLiteral(a, kind), pb = parseLiteral(b, kind)
+    if (!('value' in pa) || !('value' in pb)) return NaN
+    if (kind.equal(pa.value, pb.value)) return 0
+    return kind.compare(pa.value, pb.value)
   }
 
-  if (typeKind === 'date' || typeKind === 'datetime') {
-    // ISO format sorts lexicographically correctly
-    return a.localeCompare(b)
-  }
-
-  // No declared type or text: try numeric first, then date, then lexicographic
+  // No declared type: try numeric first, then lexicographic
   const na = Number(a); const nb = Number(b)
   if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb
-  if (/^\d{4}-\d{2}-\d{2}$/.test(a) && /^\d{4}-\d{2}-\d{2}$/.test(b)) return a.localeCompare(b)
   return a.localeCompare(b)
 }
 
@@ -3122,33 +3244,33 @@ function compareValues(a, b, typeKind) {
 function boundOpen(v) { return v === '' || v == null }
 
 /** Check if a single range spec accepts the given value. */
-function specSatisfies(value, spec, typeKind) {
+function specSatisfies(value, spec, kind) {
   if (!spec) return false
   if (value === '' || value == null) return false
 
   if (spec.type === 'single') {
-    const cmp = compareValues(value, spec.value, typeKind)
+    const cmp = compareValues(value, spec.value, kind)
     return Number.isFinite(cmp) && cmp === 0
   }
   if (spec.type === 'lower') {
     return boundOpen(spec.lower) || (() => {
-      const cmp = compareValues(value, spec.lower, typeKind)
+      const cmp = compareValues(value, spec.lower, kind)
       return Number.isFinite(cmp) && cmp >= 0
     })()
   }
   if (spec.type === 'upper') {
     return boundOpen(spec.upper) || (() => {
-      const cmp = compareValues(value, spec.upper, typeKind)
+      const cmp = compareValues(value, spec.upper, kind)
       return Number.isFinite(cmp) && cmp <= 0
     })()
   }
   if (spec.type === 'range') {
     const lo = boundOpen(spec.lower) || (() => {
-      const cmp = compareValues(value, spec.lower, typeKind)
+      const cmp = compareValues(value, spec.lower, kind)
       return Number.isFinite(cmp) && cmp >= 0
     })()
     const hi = boundOpen(spec.upper) || (() => {
-      const cmp = compareValues(value, spec.upper, typeKind)
+      const cmp = compareValues(value, spec.upper, kind)
       return Number.isFinite(cmp) && cmp <= 0
     })()
     return lo && hi
@@ -3157,7 +3279,7 @@ function specSatisfies(value, spec, typeKind) {
 }
 
 /** True when `value` satisfies at least one spec in the value range (OR semantics). */
-function valueInRange(value, range, typeKind) {
+function valueInRange(value, range, kind) {
   if (!range || range.length === 0) return true
-  return range.some(spec => specSatisfies(value, spec, typeKind))
+  return range.some(spec => specSatisfies(value, spec, kind))
 }

@@ -1,5 +1,6 @@
-// Maps datatype IDs from any profile to the 6 abstract typeKinds used for
-// validation and input-type selection (text/integer/decimal/boolean/date/datetime).
+// Maps datatype IDs from any profile to the abstract typeKinds used for
+// input-type selection (text/integer/decimal/boolean/date/datetime/time).
+// Value equality and order live in datatypeValues.js.
 // Types without a mapping → null → treated as free-form text with no validation.
 
 const ABSTRACT = {
@@ -16,7 +17,7 @@ const SQL = {
   FLOAT: 'decimal', REAL: 'decimal', 'DOUBLE PRECISION': 'decimal', DECFLOAT: 'decimal',
   BOOLEAN: 'boolean',
   DATE: 'date',
-  TIME: 'datetime', TIMESTAMP: 'datetime',
+  TIME: 'time', TIMESTAMP: 'datetime',
   INTERVAL: 'text',
   JSON: 'text', XML: 'text',
 }
@@ -34,7 +35,7 @@ const XSD = {
   'xs:boolean': 'boolean',
   'xs:dateTime': 'datetime', 'xs:dateTimeStamp': 'datetime',
   'xs:date': 'date',
-  'xs:time': 'datetime',
+  'xs:time': 'time',
   'xs:duration': 'text', 'xs:dayTimeDuration': 'text', 'xs:yearMonthDuration': 'text',
   'xs:gYear': 'text', 'xs:gYearMonth': 'text', 'xs:gMonth': 'text',
   'xs:gMonthDay': 'text', 'xs:gDay': 'text',

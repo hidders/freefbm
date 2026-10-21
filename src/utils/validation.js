@@ -1,7 +1,7 @@
 // ORM2 schema validation rules, organised by category (matching NORMA's grouping).
 
 import { findIdentifierCycles, canBeExternalUniquenessPI, findCompositePI, findRefMode, findInheritedPI, findAllInheritedPIs } from './refMode.js'
-import { datatypeAssignmentToKind } from './datatypeMapping.js'
+import { VALUE_KINDS, valueKindOf, parseLiteral } from './datatypeValues.js'
 import { EXTERNAL_CONSTRAINT_TYPES } from '../constants.js'
 
 export const VALIDATION_CATEGORIES = {
@@ -55,239 +55,172 @@ const CONSTRAINT_LABELS = {
 const MULTI_SEQUENCE_TYPES = new Set(['exclusion', 'equality', 'subset', 'inclusiveOr', 'exclusiveOr'])
 
 // Sentinels for unbounded interval sides. Using Symbols (instead of ±Infinity)
-// lets the same comparator handle numeric, string, date, and boolean ranges.
+// lets the same comparator handle every value kind.
 const NEG_INF = Symbol('-∞')
 const POS_INF = Symbol('+∞')
 
-// Three-way compare for values returned by parseTypedValue (or for the ±∞
-// sentinels). Works for Number, String, and the sentinels — i.e. lexicographic
-// for strings, numeric for everything else.
-function cmpVals(a, b) {
+// Fallback for ranges whose datatype is unknown (e.g. a role played by an
+// entity type): values are read as numbers, and non-numeric ones are not
+// reported, since we can't tell whether they are wrong.
+const UNTYPED = {
+  order: 'total',
+  parse(str) {
+    const n = Number(str)
+    return Number.isNaN(n) ? { invalid: true } : { value: n }
+  },
+  compare: (a, b) => (a < b ? -1 : a > b ? 1 : 0),
+  equal: (a, b) => a === b,
+}
+
+// Three-way compare of parsed values (or the ±∞ sentinels) under `kind`.
+// NaN means the two values are incomparable (partial orders) or the kind has
+// no order at all.
+function cmpVals(kind, a, b) {
   if (a === NEG_INF) return b === NEG_INF ? 0 : -1
   if (a === POS_INF) return b === POS_INF ? 0 : 1
   if (b === NEG_INF) return 1
   if (b === POS_INF) return -1
-  if (a < b) return -1
-  if (a > b) return 1
-  return 0
-}
-
-// Parse a single literal value according to the datatype kind. Returns one of:
-//   { value: <comparable> }  — parsed successfully
-//   { empty: true }          — blank field
-//   { invalid: true }        — present but doesn't match the type
-//
-// "Comparable" means: integers/decimals → Number, date/datetime → timestamp ms,
-// boolean → 0/1 (false<true), text → the trimmed string. Unknown / missing
-// typeKind falls back to numeric parsing for backward compatibility with
-// cardinality/frequency ranges (which are always integer in practice).
-function parseTypedValue(raw, typeKind) {
-  const s = typeof raw === 'string' ? raw.trim() : raw
-  if (s === '' || s == null) return { empty: true }
-  const str = String(s)
-  switch (typeKind) {
-    case 'integer':
-      return /^-?\d+$/.test(str) ? { value: Number(str) } : { invalid: true }
-    case 'decimal':
-      return /^-?\d+(\.\d+)?$/.test(str) ? { value: Number(str) } : { invalid: true }
-    case 'boolean': {
-      const lo = str.toLowerCase()
-      if (lo === 'true')  return { value: 1 }
-      if (lo === 'false') return { value: 0 }
-      return { invalid: true }
-    }
-    case 'date': {
-      // Reuse the strict ISO date check (YYYY-MM-DD) via Date.parse + length test.
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) return { invalid: true }
-      const t = Date.parse(str)
-      return Number.isNaN(t) ? { invalid: true } : { value: t }
-    }
-    case 'datetime': {
-      const t = Date.parse(str)
-      return Number.isNaN(t) ? { invalid: true } : { value: t }
-    }
-    case 'text':
-      return { value: str }
-    default: {
-      const n = Number(str)
-      return Number.isNaN(n) ? { invalid: true } : { value: n }
-    }
-  }
+  return kind.compare(a, b)
 }
 
 // Parse a range spec into an interval { lo, hi, parseable, emptyFields,
 // invalidFields }, where lo/hi may be NEG_INF / POS_INF for unbounded sides.
 // `parseable` is true only when every required bound parsed cleanly.
-function specInterval(spec, typeKind) {
-  const p = (v) => parseTypedValue(v, typeKind)
-  if (spec.type === 'single') {
-    const v = p(spec.value)
-    return {
-      lo: v.value !== undefined ? v.value : null,
-      hi: v.value !== undefined ? v.value : null,
-      parseable: v.value !== undefined,
-      emptyFields:   v.empty   ? ['value'] : [],
-      invalidFields: v.invalid ? ['value'] : [],
-    }
+function specInterval(spec, kind) {
+  const fields = spec.type === 'single' ? ['value']
+    : spec.type === 'lower' ? ['lower']
+    : spec.type === 'upper' ? ['upper']
+    : spec.type === 'range' ? ['lower', 'upper']
+    : null
+  if (!fields) return { lo: null, hi: null, parseable: false, emptyFields: [], invalidFields: [] }
+  const parsed = Object.fromEntries(fields.map(f => [f, parseLiteral(spec[f], kind)]))
+  const val = (f) => parsed[f].value
+  const lo = spec.type === 'single' ? val('value') : spec.type === 'upper' ? NEG_INF : val('lower')
+  const hi = spec.type === 'single' ? val('value') : spec.type === 'lower' ? POS_INF : val('upper')
+  return {
+    lo, hi,
+    parseable: fields.every(f => 'value' in parsed[f]),
+    emptyFields:   fields.filter(f => parsed[f].empty),
+    invalidFields: fields.filter(f => parsed[f].invalid),
   }
-  if (spec.type === 'lower') {
-    const v = p(spec.lower)
-    return {
-      lo: v.value !== undefined ? v.value : null,
-      hi: POS_INF,
-      parseable: v.value !== undefined,
-      emptyFields:   v.empty   ? ['lower'] : [],
-      invalidFields: v.invalid ? ['lower'] : [],
-    }
-  }
-  if (spec.type === 'upper') {
-    const v = p(spec.upper)
-    return {
-      lo: NEG_INF,
-      hi: v.value !== undefined ? v.value : null,
-      parseable: v.value !== undefined,
-      emptyFields:   v.empty   ? ['upper'] : [],
-      invalidFields: v.invalid ? ['upper'] : [],
-    }
-  }
-  if (spec.type === 'range') {
-    const a = p(spec.lower)
-    const b = p(spec.upper)
-    const emptyFields = []
-    const invalidFields = []
-    if (a.empty)   emptyFields.push('lower')
-    if (b.empty)   emptyFields.push('upper')
-    if (a.invalid) invalidFields.push('lower')
-    if (b.invalid) invalidFields.push('upper')
-    return {
-      lo: a.value !== undefined ? a.value : null,
-      hi: b.value !== undefined ? b.value : null,
-      parseable: a.value !== undefined && b.value !== undefined,
-      emptyFields,
-      invalidFields,
-    }
-  }
-  return { lo: null, hi: null, parseable: false, emptyFields: [], invalidFields: [] }
 }
 
 // Push all Range Sequences errors for one (range, context) pair into `errors`.
-// ctx = { elementId, elementKind, label, idSuffix, typeKind, typeName }
-//   typeKind: 'integer' | 'decimal' | 'text' | 'date' | 'datetime' | 'boolean' | null
-//   typeName: human label for type-mismatch messages (e.g. "integer")
+// ctx = { elementId, elementKind, label, idSuffix, kind, typeName }
+//   kind:     a VALUE_KINDS entry (see datatypeValues.js), or null if unknown
+//   typeName: human label for type-mismatch messages (e.g. "xs:duration")
+// All comparisons are on values, not on the strings that represent them.
 function validateRangeSequence(range, ctx, errors) {
   const specs = range || []
   if (specs.length === 0) return
-  const ivs = specs.map(s => specInterval(s, ctx.typeKind))
+  const kind = ctx.kind || UNTYPED
+  const cmp = (a, b) => cmpVals(kind, a, b)
+  const ivs = specs.map(s => specInterval(s, kind))
+  const tn = ctx.typeName || 'the datatype'
+  const push = (id, message, severity) => errors.push({
+    id: `${id}-${ctx.idSuffix}`, category: 'rangeSequences',
+    elementId: ctx.elementId, elementKind: ctx.elementKind, message, severity,
+  })
 
   // (1) Empty bounds
   for (let i = 0; i < ivs.length; i++) {
     if (ivs[i].emptyFields.length > 0) {
-      errors.push({
-        id: `range-empty-${ctx.idSuffix}-${i}`,
-        category: 'rangeSequences',
-        elementId: ctx.elementId,
-        elementKind: ctx.elementKind,
-        message: `${ctx.label}: spec ${i + 1} has empty ${ivs[i].emptyFields.join(' and ')} field`,
-        severity: 'error',
-      })
+      push(`range-empty-${i}`, `${ctx.label}: spec ${i + 1} has empty ${ivs[i].emptyFields.join(' and ')} field`, 'error')
     }
   }
 
-  // (2) Type mismatch — value present but doesn't match the declared datatype.
-  // We only emit this when we actually know the type; otherwise parsing falls
+  // (2) Type mismatch — value present but doesn't denote a value of the
+  // declared datatype. Only when we know the type; otherwise parsing falls
   // back to numeric and any non-numeric string would falsely flag.
-  if (ctx.typeKind) {
+  if (ctx.kind) {
     for (let i = 0; i < ivs.length; i++) {
       if (ivs[i].invalidFields.length > 0) {
-        const tn = ctx.typeName || ctx.typeKind
-        errors.push({
-          id: `range-typemismatch-${ctx.idSuffix}-${i}`,
-          category: 'rangeSequences',
-          elementId: ctx.elementId,
-          elementKind: ctx.elementKind,
-          message: `${ctx.label}: spec ${i + 1} has ${ivs[i].invalidFields.join(' and ')} value that is not a valid ${tn}`,
-          severity: 'error',
-        })
+        const ex = ctx.kind.expect ? ` (expected ${ctx.kind.expect})` : ''
+        const what = specs[i].type === 'single' ? 'a value' : `${ivs[i].invalidFields.join(' and ')} bound`
+        push(`range-typemismatch-${i}`, `${ctx.label}: spec ${i + 1} has ${what} that is not a valid ${tn}${ex}`, 'error')
       }
     }
   }
 
-  // (3) Lower > upper inside a {type: 'range'} spec
-  for (let i = 0; i < ivs.length; i++) {
-    if (specs[i].type === 'range' && ivs[i].parseable && cmpVals(ivs[i].lo, ivs[i].hi) > 0) {
-      errors.push({
-        id: `range-lo-gt-hi-${ctx.idSuffix}-${i}`,
-        category: 'rangeSequences',
-        elementId: ctx.elementId,
-        elementKind: ctx.elementKind,
-        message: `${ctx.label}: spec ${i + 1} has lower bound greater than upper bound`,
-        severity: 'error',
-      })
+  // (3) Unordered datatype — only single values make sense.
+  if (kind.order === 'none') {
+    for (let i = 0; i < specs.length; i++) {
+      if (specs[i].type !== 'single') {
+        push(`range-unordered-${i}`, `${ctx.label}: spec ${i + 1} is an interval, but ${tn} has no ordering, so only single values are allowed`, 'error')
+      }
+    }
+  }
+
+  // (4) Lower > upper inside a {type: 'range'} spec. For a partial order the
+  // bounds may also be incomparable, which makes the interval suspect.
+  if (kind.order !== 'none') {
+    for (let i = 0; i < ivs.length; i++) {
+      if (specs[i].type !== 'range' || !ivs[i].parseable) continue
+      const c = cmp(ivs[i].lo, ivs[i].hi)
+      if (c > 0) {
+        push(`range-lo-gt-hi-${i}`, `${ctx.label}: spec ${i + 1} has lower bound greater than upper bound`, 'error')
+      } else if (Number.isNaN(c)) {
+        push(`range-incomparable-${i}`, `${ctx.label}: spec ${i + 1} has bounds that cannot be compared in ${tn}`, 'warning')
+      }
     }
   }
 
   // Sequence-level checks below only run if every spec parsed cleanly.
   if (!ivs.every(iv => iv.parseable)) return
 
-  // (4) Overlap — intervals [A.lo, A.hi] and [B.lo, B.hi] overlap iff
-  // max(A.lo, B.lo) <= min(A.hi, B.hi), using the type-aware comparator.
+  // (5) Duplicates and overlaps. Two single values are duplicates when they
+  // are the same value (e.g. 'en-GB' and 'en-gb'). Intervals overlap iff
+  // max(A.lo, B.lo) <= min(A.hi, B.hi). In a partial order that test needs
+  // the bounds to be comparable; when they aren't, we only report a single
+  // value that definitely lies inside the other interval.
+  const inside = (v, iv) => cmp(iv.lo, v) <= 0 && cmp(v, iv.hi) <= 0
   for (let i = 0; i < ivs.length; i++) {
     for (let j = i + 1; j < ivs.length; j++) {
       const A = ivs[i], B = ivs[j]
-      const maxLo = cmpVals(A.lo, B.lo) >= 0 ? A.lo : B.lo
-      const minHi = cmpVals(A.hi, B.hi) <= 0 ? A.hi : B.hi
-      if (cmpVals(maxLo, minHi) <= 0) {
-        errors.push({
-          id: `range-overlap-${ctx.idSuffix}-${i}-${j}`,
-          category: 'rangeSequences',
-          elementId: ctx.elementId,
-          elementKind: ctx.elementKind,
-          message: `${ctx.label}: spec ${i + 1} and spec ${j + 1} overlap`,
-          severity: 'warning',
-        })
+      const singleA = specs[i].type === 'single', singleB = specs[j].type === 'single'
+      if (singleA && singleB) {
+        if (kind.equal(A.lo, B.lo)) {
+          push(`range-duplicate-${i}-${j}`, `${ctx.label}: spec ${i + 1} and spec ${j + 1} are the same value`, 'warning')
+        }
+        continue
+      }
+      const cLo = cmp(A.lo, B.lo), cHi = cmp(A.hi, B.hi)
+      const overlap = !Number.isNaN(cLo) && !Number.isNaN(cHi)
+        ? cmp(cLo >= 0 ? A.lo : B.lo, cHi <= 0 ? A.hi : B.hi) <= 0
+        : (singleA && inside(A.lo, B)) || (singleB && inside(B.lo, A))
+      if (overlap) {
+        push(`range-overlap-${i}-${j}`, `${ctx.label}: spec ${i + 1} and spec ${j + 1} overlap`, 'warning')
       }
     }
   }
 
-  // (5) Adjacent/mergeable — only meaningful when there's a discrete successor.
-  // We enable it for integer-typed ranges (cardinality, frequency, and value
-  // ranges declared as integer). For text/decimal/date/datetime/boolean there's
-  // no natural "next" value, so we skip.
-  if (ctx.typeKind === 'integer') {
+  // (6) Adjacent/mergeable — only meaningful when there's a discrete successor,
+  // i.e. for integer ranges (cardinality, frequency, and integer value ranges).
+  if (kind === VALUE_KINDS.integer) {
     for (let i = 0; i < ivs.length; i++) {
       for (let j = i + 1; j < ivs.length; j++) {
         const A = ivs[i], B = ivs[j]
-        const maxLo = cmpVals(A.lo, B.lo) >= 0 ? A.lo : B.lo
-        const minHi = cmpVals(A.hi, B.hi) <= 0 ? A.hi : B.hi
+        const maxLo = cmp(A.lo, B.lo) >= 0 ? A.lo : B.lo
+        const minHi = cmp(A.hi, B.hi) <= 0 ? A.hi : B.hi
         // Already overlap → mergeable warning would be redundant
-        if (cmpVals(maxLo, minHi) <= 0) continue
+        if (cmp(maxLo, minHi) <= 0) continue
         // Both endpoints must be finite to talk about a "+1 gap"
         if (typeof minHi !== 'number' || typeof maxLo !== 'number') continue
         if (minHi + 1 === maxLo) {
-          errors.push({
-            id: `range-mergeable-${ctx.idSuffix}-${i}-${j}`,
-            category: 'rangeSequences',
-            elementId: ctx.elementId,
-            elementKind: ctx.elementKind,
-            message: `${ctx.label}: spec ${i + 1} and spec ${j + 1} are adjacent and could be merged`,
-            severity: 'warning',
-          })
+          push(`range-mergeable-${i}-${j}`, `${ctx.label}: spec ${i + 1} and spec ${j + 1} are adjacent and could be merged`, 'warning')
         }
       }
     }
   }
 
-  // (6) Out of ascending order — adjacent pairs in the user's original sequence
+  // (7) Out of ascending order — adjacent pairs in the user's original
+  // sequence; for a partial order only pairs that are comparable. Not for
+  // strings: a string value range is usually an enumeration, which should be
+  // writable in its natural order (e.g. 'summer', 'autumn', 'winter', 'spring').
+  if (kind.order === 'none' || kind === VALUE_KINDS.string) return
   for (let i = 1; i < ivs.length; i++) {
-    if (cmpVals(ivs[i].lo, ivs[i - 1].lo) < 0) {
-      errors.push({
-        id: `range-out-of-order-${ctx.idSuffix}-${i}`,
-        category: 'rangeSequences',
-        elementId: ctx.elementId,
-        elementKind: ctx.elementKind,
-        message: `${ctx.label}: spec ${i + 1} starts before spec ${i} (sequence is not in ascending order)`,
-        severity: 'warning',
-      })
+    if (cmp(ivs[i].lo, ivs[i - 1].lo) < 0) {
+      push(`range-out-of-order-${i}`, `${ctx.label}: spec ${i + 1} starts before spec ${i} (sequence is not in ascending order)`, 'warning')
     }
   }
 }
@@ -888,12 +821,12 @@ export function runValidation({ objectTypes, facts, constraints, subtypes = [] }
     const otMap = Object.fromEntries(objectTypes.map(o => [o.id, o]))
 
     const kindFromAssignment = (a) => {
-      const tk = datatypeAssignmentToKind(a)
-      if (!tk) return { typeKind: null, typeName: null }
-      return { typeKind: tk, typeName: a.datatypeId }
+      const kind = valueKindOf(a)
+      if (!kind) return { kind: null, typeName: null }
+      return { kind, typeName: a.datatypeId }
     }
 
-    const intCtx = { typeKind: 'integer', typeName: 'integer' }
+    const intCtx = { kind: VALUE_KINDS.integer, typeName: 'integer' }
 
     // Object types: value range (typed from the OT's own datatypeAssignment)
     // and cardinality range (always integer).
