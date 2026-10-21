@@ -1,408 +1,3026 @@
 {
-  "objectTypes": [
+  "version": 2,
+  "schema": {
+    "objectTypes": [
+      {
+        "id": "ot_Person",
+        "kind": "entity",
+        "name": "Person",
+        "x": 420,
+        "y": 140,
+        "isPersonal": false,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_PersonNr",
+        "kind": "value",
+        "name": "PersonNr",
+        "x": 580,
+        "y": 140,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_PersonName",
+        "kind": "value",
+        "name": "PersonName",
+        "x": 120,
+        "y": 140,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_Email",
+        "kind": "value",
+        "name": "Email",
+        "x": 760,
+        "y": 60,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_Phone",
+        "kind": "value",
+        "name": "Phone",
+        "x": 760,
+        "y": 220,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_Student",
+        "kind": "entity",
+        "name": "Student",
+        "x": 260,
+        "y": 360,
+        "isPersonal": false,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_Staff",
+        "kind": "entity",
+        "name": "Staff",
+        "x": 580,
+        "y": 360,
+        "isPersonal": false,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_Professor",
+        "kind": "entity",
+        "name": "Professor",
+        "x": 380,
+        "y": 600,
+        "isPersonal": false,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_Lecturer",
+        "kind": "entity",
+        "name": "Lecturer",
+        "x": 640,
+        "y": 600,
+        "isPersonal": false,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_Building",
+        "kind": "entity",
+        "name": "Building",
+        "x": 1100,
+        "y": 240,
+        "isPersonal": false,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_BuildingCode",
+        "kind": "value",
+        "name": "BuildingCode",
+        "x": 1260,
+        "y": 240,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_RoomNr",
+        "kind": "value",
+        "name": "RoomNr",
+        "x": 1100,
+        "y": 480,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_Room",
+        "kind": "entity",
+        "name": "Room",
+        "x": 920,
+        "y": 360,
+        "isPersonal": false,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_Extension",
+        "kind": "value",
+        "name": "Extension",
+        "x": 960,
+        "y": 520,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_Course",
+        "kind": "entity",
+        "name": "Course",
+        "x": 620,
+        "y": 270,
+        "isPersonal": false,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_CourseCode",
+        "kind": "value",
+        "name": "CourseCode",
+        "x": 780,
+        "y": 270,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_CourseTitle",
+        "kind": "value",
+        "name": "CourseTitle",
+        "x": 960,
+        "y": 170,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      },
+      {
+        "id": "ot_Credits",
+        "kind": "value",
+        "name": "Credits",
+        "x": 960,
+        "y": 270,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null,
+        "valueRange": [
+          {
+            "type": "single",
+            "value": "15"
+          },
+          {
+            "type": "single",
+            "value": "30"
+          }
+        ]
+      },
+      {
+        "id": "ot_Grade",
+        "kind": "value",
+        "name": "Grade",
+        "x": 530,
+        "y": 110,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null,
+        "valueRange": [
+          {
+            "type": "range",
+            "lower": "0",
+            "upper": "100"
+          }
+        ]
+      },
+      {
+        "id": "ot_Semester",
+        "kind": "value",
+        "name": "Semester",
+        "x": 640,
+        "y": 780,
+        "valueRangeOffset": null,
+        "datatypeAssignment": null
+      }
+    ],
+    "factTypes": [
+      {
+        "id": "f_Person_PersonNr",
+        "kind": "fact",
+        "x": 500,
+        "y": 140,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x1",
+            "objectTypeId": "ot_Person",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x2",
+            "objectTypeId": "ot_PersonNr",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "has",
+          ""
+        ],
+        "alternativeReadings": [
+          {
+            "roleOrder": [
+              1,
+              0
+            ],
+            "parts": [
+              "",
+              "refers to",
+              ""
+            ]
+          }
+        ],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            1
+          ]
+        ],
+        "preferredUniqueness": [
+          [
+            1
+          ]
+        ],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_hasName",
+        "kind": "fact",
+        "x": 270,
+        "y": 140,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x3",
+            "objectTypeId": "ot_Person",
+            "roleName": "",
+            "mandatory": true,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x4",
+            "objectTypeId": "ot_PersonName",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "has",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_hasEmail",
+        "kind": "fact",
+        "x": 600,
+        "y": 60,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x5",
+            "objectTypeId": "ot_Person",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x6",
+            "objectTypeId": "ot_Email",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "has",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0
+          ],
+          [
+            1
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_hasPhone",
+        "kind": "fact",
+        "x": 600,
+        "y": 220,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x7",
+            "objectTypeId": "ot_Person",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x8",
+            "objectTypeId": "ot_Phone",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "has",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_supervises",
+        "kind": "fact",
+        "x": 200,
+        "y": 600,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x9",
+            "objectTypeId": "ot_Student",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x10",
+            "objectTypeId": "ot_Professor",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "is supervised by",
+          ""
+        ],
+        "alternativeReadings": [
+          {
+            "roleOrder": [
+              1,
+              0
+            ],
+            "parts": [
+              "",
+              "supervises",
+              ""
+            ]
+          }
+        ],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_Building_BuildingCode",
+        "kind": "fact",
+        "x": 1180,
+        "y": 240,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x11",
+            "objectTypeId": "ot_Building",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x12",
+            "objectTypeId": "ot_BuildingCode",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "has",
+          ""
+        ],
+        "alternativeReadings": [
+          {
+            "roleOrder": [
+              1,
+              0
+            ],
+            "parts": [
+              "",
+              "refers to",
+              ""
+            ]
+          }
+        ],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            1
+          ]
+        ],
+        "preferredUniqueness": [
+          [
+            1
+          ]
+        ],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_roomInBuilding",
+        "kind": "fact",
+        "x": 1010,
+        "y": 300,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x13",
+            "objectTypeId": "ot_Room",
+            "roleName": "",
+            "mandatory": true,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x14",
+            "objectTypeId": "ot_Building",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "is in",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_roomHasNr",
+        "kind": "fact",
+        "x": 1010,
+        "y": 420,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x15",
+            "objectTypeId": "ot_Room",
+            "roleName": "",
+            "mandatory": true,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x16",
+            "objectTypeId": "ot_RoomNr",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "has",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_hasOffice",
+        "kind": "fact",
+        "x": 760,
+        "y": 360,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x17",
+            "objectTypeId": "ot_Staff",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x18",
+            "objectTypeId": "ot_Room",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "has office",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_hasExtension",
+        "kind": "fact",
+        "x": 790,
+        "y": 520,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x19",
+            "objectTypeId": "ot_Staff",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x20",
+            "objectTypeId": "ot_Extension",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "has",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_Course_CourseCode",
+        "kind": "fact",
+        "x": 700,
+        "y": 270,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x21",
+            "objectTypeId": "ot_Course",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x22",
+            "objectTypeId": "ot_CourseCode",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "has",
+          ""
+        ],
+        "alternativeReadings": [
+          {
+            "roleOrder": [
+              1,
+              0
+            ],
+            "parts": [
+              "",
+              "refers to",
+              ""
+            ]
+          }
+        ],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            1
+          ]
+        ],
+        "preferredUniqueness": [
+          [
+            1
+          ]
+        ],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_hasTitle",
+        "kind": "fact",
+        "x": 800,
+        "y": 170,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x23",
+            "objectTypeId": "ot_Course",
+            "roleName": "",
+            "mandatory": true,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x24",
+            "objectTypeId": "ot_CourseTitle",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "has",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_hasCredits",
+        "kind": "fact",
+        "x": 800,
+        "y": 270,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x25",
+            "objectTypeId": "ot_Course",
+            "roleName": "",
+            "mandatory": true,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x26",
+            "objectTypeId": "ot_Credits",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "is worth",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_prereq",
+        "kind": "fact",
+        "x": 800,
+        "y": 390,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x27",
+            "objectTypeId": "ot_Course",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x28",
+            "objectTypeId": "ot_Course",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "is a prerequisite for",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0,
+            1
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_enrols",
+        "kind": "fact",
+        "x": 340,
+        "y": 205,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x29",
+            "objectTypeId": "ot_Student",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "involves",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x30",
+            "objectTypeId": "ot_Course",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "involves",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "enrols in",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0,
+            1
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [
+          {
+            "id": "if_enrol",
+            "roles": [
+              0
+            ],
+            "range": [
+              {
+                "type": "upper",
+                "upper": "6"
+              }
+            ],
+            "x": 270,
+            "y": 240
+          }
+        ],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": [
+          {
+            "roleIndex": 0,
+            "x": null,
+            "y": null,
+            "readingParts": [
+              "",
+              "involves",
+              ""
+            ],
+            "alternativeReadings": [
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "is involved in",
+                  ""
+                ]
+              }
+            ],
+            "readingDisplay": "forward",
+            "orientation": "horizontal",
+            "readingOffsetAbove": null,
+            "readingOffsetBelow": null,
+            "readingAbove": false,
+            "uniquenessBelow": false,
+            "preferredUniqueness": false,
+            "roleNames": [
+              null,
+              null
+            ]
+          },
+          {
+            "roleIndex": 1,
+            "x": null,
+            "y": null,
+            "readingParts": [
+              "",
+              "involves",
+              ""
+            ],
+            "alternativeReadings": [
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "is involved in",
+                  ""
+                ]
+              }
+            ],
+            "readingDisplay": "forward",
+            "orientation": "horizontal",
+            "readingOffsetAbove": null,
+            "readingOffsetBelow": null,
+            "readingAbove": false,
+            "uniquenessBelow": false,
+            "preferredUniqueness": false,
+            "roleNames": [
+              null,
+              null
+            ]
+          }
+        ],
+        "objectified": true,
+        "objectifiedKind": "entity",
+        "nestedReading": false,
+        "datatypeAssignment": null,
+        "objectifiedName": "Enrolment",
+        "isIndependent": true
+      },
+      {
+        "id": "f_earned",
+        "kind": "fact",
+        "x": 340,
+        "y": 110,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x31",
+            "objectTypeId": "f_enrols",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x32",
+            "objectTypeId": "ot_Grade",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "earned",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_assists",
+        "kind": "fact",
+        "x": 340,
+        "y": 345,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x33",
+            "objectTypeId": "ot_Student",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x34",
+            "objectTypeId": "ot_Course",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "assists in",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0,
+            1
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_qualified",
+        "kind": "fact",
+        "x": 380,
+        "y": 570,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x35",
+            "objectTypeId": "ot_Staff",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x36",
+            "objectTypeId": "ot_Course",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "is qualified to teach",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0,
+            1
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_teaches",
+        "kind": "fact",
+        "x": 420,
+        "y": 690,
+        "arity": 3,
+        "roles": [
+          {
+            "id": "x37",
+            "objectTypeId": "ot_Staff",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x38",
+            "objectTypeId": "ot_Course",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x39",
+            "objectTypeId": "ot_Semester",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "teaches",
+          "in",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            1,
+            2
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      },
+      {
+        "id": "f_coordinates",
+        "kind": "fact",
+        "x": 380,
+        "y": 460,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "x40",
+            "objectTypeId": "ot_Staff",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "x41",
+            "objectTypeId": "ot_Course",
+            "roleName": "",
+            "mandatory": true,
+            "linkReadingParts": [
+              "",
+              "",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "coordinates",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            1
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": []
+      }
+    ],
+    "subtypes": [
+      {
+        "id": "st_Student",
+        "kind": "subtype",
+        "subId": "ot_Student",
+        "superId": "ot_Person",
+        "inheritsPreferredIdentifier": true
+      },
+      {
+        "id": "st_Staff",
+        "kind": "subtype",
+        "subId": "ot_Staff",
+        "superId": "ot_Person",
+        "inheritsPreferredIdentifier": true
+      },
+      {
+        "id": "st_Professor",
+        "kind": "subtype",
+        "subId": "ot_Professor",
+        "superId": "ot_Staff",
+        "inheritsPreferredIdentifier": true
+      },
+      {
+        "id": "st_Lecturer",
+        "kind": "subtype",
+        "subId": "ot_Lecturer",
+        "superId": "ot_Staff",
+        "inheritsPreferredIdentifier": true
+      }
+    ],
+    "externalConstraints": [
+      {
+        "id": "c_emailOrPhone",
+        "kind": "constraint",
+        "constraintType": "inclusiveOr",
+        "x": 520,
+        "y": 140,
+        "sequences": [
+          [
+            {
+              "kind": "role",
+              "factId": "f_hasEmail",
+              "roleIndex": 0
+            }
+          ],
+          [
+            {
+              "kind": "role",
+              "factId": "f_hasPhone",
+              "roleIndex": 0
+            }
+          ]
+        ],
+        "queries": [
+          {
+            "atoms": [
+              {
+                "id": "x42",
+                "kind": "fact",
+                "originalId": "f_hasEmail",
+                "isOutput": false,
+                "seededRoles": [
+                  {
+                    "roleIndex": 0,
+                    "seqPosition": 0
+                  }
+                ],
+                "dx": 16,
+                "dy": 16
+              }
+            ],
+            "links": []
+          },
+          {
+            "atoms": [
+              {
+                "id": "x43",
+                "kind": "fact",
+                "originalId": "f_hasPhone",
+                "isOutput": false,
+                "seededRoles": [
+                  {
+                    "roleIndex": 0,
+                    "seqPosition": 0
+                  }
+                ],
+                "dx": 16,
+                "dy": 16
+              }
+            ],
+            "links": []
+          }
+        ],
+        "targetObjectTypeId": "ot_Person",
+        "frequency": null,
+        "exhaustive": true,
+        "exclusive": false,
+        "subtypeIds": []
+      },
+      {
+        "id": "c_personTotal",
+        "kind": "constraint",
+        "constraintType": "inclusiveOr",
+        "x": 420,
+        "y": 290,
+        "sequences": [
+          [
+            {
+              "kind": "subtype",
+              "subtypeId": "st_Student"
+            }
+          ],
+          [
+            {
+              "kind": "subtype",
+              "subtypeId": "st_Staff"
+            }
+          ]
+        ],
+        "queries": [
+          {
+            "atoms": [
+              {
+                "id": "x44",
+                "kind": "objectType",
+                "originalId": "ot_Student",
+                "isOutput": false,
+                "dx": 16,
+                "dy": 16
+              },
+              {
+                "id": "x45",
+                "kind": "subtype",
+                "originalId": "st_Student",
+                "isOutput": true,
+                "isSeeded": true,
+                "dx": 24,
+                "dy": 24
+              }
+            ],
+            "links": [
+              {
+                "atomId": "x45",
+                "roleIndex": 0,
+                "variableId": "x44"
+              }
+            ]
+          },
+          {
+            "atoms": [
+              {
+                "id": "x46",
+                "kind": "objectType",
+                "originalId": "ot_Staff",
+                "isOutput": false,
+                "dx": 16,
+                "dy": 16
+              },
+              {
+                "id": "x47",
+                "kind": "subtype",
+                "originalId": "st_Staff",
+                "isOutput": true,
+                "isSeeded": true,
+                "dx": 24,
+                "dy": 24
+              }
+            ],
+            "links": [
+              {
+                "atomId": "x47",
+                "roleIndex": 0,
+                "variableId": "x46"
+              }
+            ]
+          }
+        ],
+        "targetObjectTypeId": "ot_Person",
+        "frequency": null,
+        "exhaustive": true,
+        "exclusive": false,
+        "subtypeIds": []
+      },
+      {
+        "id": "c_staffPartition",
+        "kind": "constraint",
+        "constraintType": "exclusiveOr",
+        "x": 510,
+        "y": 500,
+        "sequences": [
+          [
+            {
+              "kind": "subtype",
+              "subtypeId": "st_Professor"
+            }
+          ],
+          [
+            {
+              "kind": "subtype",
+              "subtypeId": "st_Lecturer"
+            }
+          ]
+        ],
+        "queries": [
+          {
+            "atoms": [
+              {
+                "id": "x48",
+                "kind": "objectType",
+                "originalId": "ot_Professor",
+                "isOutput": false,
+                "dx": 16,
+                "dy": 16
+              },
+              {
+                "id": "x49",
+                "kind": "subtype",
+                "originalId": "st_Professor",
+                "isOutput": true,
+                "isSeeded": true,
+                "dx": 24,
+                "dy": 24
+              }
+            ],
+            "links": [
+              {
+                "atomId": "x49",
+                "roleIndex": 0,
+                "variableId": "x48"
+              }
+            ]
+          },
+          {
+            "atoms": [
+              {
+                "id": "x50",
+                "kind": "objectType",
+                "originalId": "ot_Lecturer",
+                "isOutput": false,
+                "dx": 16,
+                "dy": 16
+              },
+              {
+                "id": "x51",
+                "kind": "subtype",
+                "originalId": "st_Lecturer",
+                "isOutput": true,
+                "isSeeded": true,
+                "dx": 24,
+                "dy": 24
+              }
+            ],
+            "links": [
+              {
+                "atomId": "x51",
+                "roleIndex": 0,
+                "variableId": "x50"
+              }
+            ]
+          }
+        ],
+        "targetObjectTypeId": "ot_Staff",
+        "frequency": null,
+        "exhaustive": true,
+        "exclusive": false,
+        "subtypeIds": []
+      },
+      {
+        "id": "c_roomId",
+        "kind": "constraint",
+        "constraintType": "uniqueness",
+        "x": 1120,
+        "y": 360,
+        "sequences": [
+          [
+            {
+              "kind": "role",
+              "factId": "f_roomInBuilding",
+              "roleIndex": 1
+            },
+            {
+              "kind": "role",
+              "factId": "f_roomHasNr",
+              "roleIndex": 1
+            }
+          ]
+        ],
+        "queries": [
+          {
+            "atoms": [
+              {
+                "id": "x52",
+                "kind": "objectType",
+                "originalId": "ot_Room",
+                "isOutput": true,
+                "dx": 16,
+                "dy": 16
+              },
+              {
+                "id": "x53",
+                "kind": "fact",
+                "originalId": "f_roomInBuilding",
+                "isOutput": false,
+                "seededRoles": [
+                  {
+                    "roleIndex": 1,
+                    "seqPosition": 0
+                  }
+                ],
+                "dx": 48,
+                "dy": 48
+              },
+              {
+                "id": "x54",
+                "kind": "fact",
+                "originalId": "f_roomHasNr",
+                "isOutput": false,
+                "seededRoles": [
+                  {
+                    "roleIndex": 1,
+                    "seqPosition": 1
+                  }
+                ],
+                "dx": 64,
+                "dy": 64
+              }
+            ],
+            "links": [
+              {
+                "atomId": "x53",
+                "roleIndex": 0,
+                "variableId": "x52"
+              },
+              {
+                "atomId": "x54",
+                "roleIndex": 0,
+                "variableId": "x52"
+              }
+            ]
+          }
+        ],
+        "targetObjectTypeId": "ot_Room",
+        "isPreferredIdentifier": true,
+        "frequency": null,
+        "exhaustive": true,
+        "exclusive": false,
+        "subtypeIds": []
+      },
+      {
+        "id": "c_officeIffExt",
+        "kind": "constraint",
+        "constraintType": "equality",
+        "x": 790,
+        "y": 440,
+        "sequences": [
+          [
+            {
+              "kind": "role",
+              "factId": "f_hasOffice",
+              "roleIndex": 0
+            }
+          ],
+          [
+            {
+              "kind": "role",
+              "factId": "f_hasExtension",
+              "roleIndex": 0
+            }
+          ]
+        ],
+        "queries": [
+          {
+            "atoms": [
+              {
+                "id": "x55",
+                "kind": "fact",
+                "originalId": "f_hasOffice",
+                "isOutput": false,
+                "seededRoles": [
+                  {
+                    "roleIndex": 0,
+                    "seqPosition": 0
+                  }
+                ],
+                "dx": 16,
+                "dy": 16
+              }
+            ],
+            "links": []
+          },
+          {
+            "atoms": [
+              {
+                "id": "x56",
+                "kind": "fact",
+                "originalId": "f_hasExtension",
+                "isOutput": false,
+                "seededRoles": [
+                  {
+                    "roleIndex": 0,
+                    "seqPosition": 0
+                  }
+                ],
+                "dx": 16,
+                "dy": 16
+              }
+            ],
+            "links": []
+          }
+        ],
+        "frequency": null,
+        "exhaustive": true,
+        "exclusive": false,
+        "subtypeIds": []
+      },
+      {
+        "id": "c_prereqRing",
+        "kind": "constraint",
+        "constraintType": "ring",
+        "x": 920,
+        "y": 390,
+        "sequences": [
+          [
+            {
+              "kind": "role",
+              "factId": "f_prereq",
+              "roleIndex": 0
+            },
+            {
+              "kind": "role",
+              "factId": "f_prereq",
+              "roleIndex": 1
+            }
+          ]
+        ],
+        "queries": [
+          {
+            "atoms": [
+              {
+                "id": "x57",
+                "kind": "fact",
+                "originalId": "f_prereq",
+                "isOutput": false,
+                "seededRoles": [
+                  {
+                    "roleIndex": 0,
+                    "seqPosition": 0
+                  },
+                  {
+                    "roleIndex": 1,
+                    "seqPosition": 1
+                  }
+                ],
+                "dx": 16,
+                "dy": 16
+              }
+            ],
+            "links": []
+          }
+        ],
+        "ringTypes": [
+          "acyclic",
+          "intransitive"
+        ],
+        "frequency": null,
+        "exhaustive": true,
+        "exclusive": false,
+        "subtypeIds": []
+      },
+      {
+        "id": "c_notBoth",
+        "kind": "constraint",
+        "constraintType": "exclusion",
+        "x": 340,
+        "y": 285,
+        "sequences": [
+          [
+            {
+              "kind": "role",
+              "factId": "f_enrols",
+              "roleIndex": 0
+            },
+            {
+              "kind": "role",
+              "factId": "f_enrols",
+              "roleIndex": 1
+            }
+          ],
+          [
+            {
+              "kind": "role",
+              "factId": "f_assists",
+              "roleIndex": 0
+            },
+            {
+              "kind": "role",
+              "factId": "f_assists",
+              "roleIndex": 1
+            }
+          ]
+        ],
+        "queries": [
+          {
+            "atoms": [
+              {
+                "id": "x58",
+                "kind": "fact",
+                "originalId": "f_enrols",
+                "isOutput": false,
+                "seededRoles": [
+                  {
+                    "roleIndex": 0,
+                    "seqPosition": 0
+                  },
+                  {
+                    "roleIndex": 1,
+                    "seqPosition": 1
+                  }
+                ],
+                "dx": 16,
+                "dy": 16
+              }
+            ],
+            "links": []
+          },
+          {
+            "atoms": [
+              {
+                "id": "x59",
+                "kind": "fact",
+                "originalId": "f_assists",
+                "isOutput": false,
+                "seededRoles": [
+                  {
+                    "roleIndex": 0,
+                    "seqPosition": 0
+                  },
+                  {
+                    "roleIndex": 1,
+                    "seqPosition": 1
+                  }
+                ],
+                "dx": 16,
+                "dy": 16
+              }
+            ],
+            "links": []
+          }
+        ],
+        "frequency": null,
+        "exhaustive": true,
+        "exclusive": false,
+        "subtypeIds": []
+      },
+      {
+        "id": "c_teachQualified",
+        "kind": "constraint",
+        "constraintType": "subset",
+        "x": 520,
+        "y": 630,
+        "sequences": [
+          [
+            {
+              "kind": "role",
+              "factId": "f_teaches",
+              "roleIndex": 0
+            },
+            {
+              "kind": "role",
+              "factId": "f_teaches",
+              "roleIndex": 1
+            }
+          ],
+          [
+            {
+              "kind": "role",
+              "factId": "f_qualified",
+              "roleIndex": 0
+            },
+            {
+              "kind": "role",
+              "factId": "f_qualified",
+              "roleIndex": 1
+            }
+          ]
+        ],
+        "queries": [
+          {
+            "atoms": [
+              {
+                "id": "x60",
+                "kind": "fact",
+                "originalId": "f_teaches",
+                "isOutput": false,
+                "seededRoles": [
+                  {
+                    "roleIndex": 0,
+                    "seqPosition": 0
+                  },
+                  {
+                    "roleIndex": 1,
+                    "seqPosition": 1
+                  }
+                ],
+                "dx": 16,
+                "dy": 16
+              }
+            ],
+            "links": []
+          },
+          {
+            "atoms": [
+              {
+                "id": "x61",
+                "kind": "fact",
+                "originalId": "f_qualified",
+                "isOutput": false,
+                "seededRoles": [
+                  {
+                    "roleIndex": 0,
+                    "seqPosition": 0
+                  },
+                  {
+                    "roleIndex": 1,
+                    "seqPosition": 1
+                  }
+                ],
+                "dx": 16,
+                "dy": 16
+              }
+            ],
+            "links": []
+          }
+        ],
+        "frequency": null,
+        "exhaustive": true,
+        "exclusive": false,
+        "subtypeIds": []
+      }
+    ],
+    "displaySettings": {
+      "mandatoryDotPosition": "role",
+      "showReferenceMode": true,
+      "showRoleNames": true,
+      "showSequenceMembership": true,
+      "showConstraintQueries": true
+    }
+  },
+  "diagrams": [
     {
-      "id": "ot1",
-      "kind": "entity",
-      "name": "Person",
-      "x": 160,
-      "y": 160
-    },
-    {
-      "id": "ot2",
-      "kind": "entity",
-      "name": "Company",
-      "x": 500,
-      "y": 160,
-      "isIndependent": true
-    },
-    {
-      "id": "ot3",
-      "kind": "entity",
-      "name": "Project",
-      "x": 500,
-      "y": 360
-    },
-    {
-      "id": "ot4",
-      "kind": "value",
-      "name": "PersonName",
-      "x": 160,
-      "y": 310
-    },
-    {
-      "id": "ot5",
-      "kind": "value",
-      "name": "Salary",
-      "x": 330,
-      "y": 80,
-      "datatypeAssignment": {
-        "profileId": "abstract",
-        "datatypeId": "integer",
-        "params": {}
+      "id": "d_people",
+      "name": "People",
+      "occurrences": [
+        {
+          "id": "occ_n1792593665075_4",
+          "schemaElementId": "ot_Person",
+          "x": 420,
+          "y": 140
+        },
+        {
+          "id": "occ_n1792593665083_16",
+          "schemaElementId": "ot_PersonNr",
+          "x": 580,
+          "y": 140,
+          "refModeOwnerOccId": "occ_n1792593665075_4"
+        },
+        {
+          "id": "occ_n1792593665083_17",
+          "schemaElementId": "f_Person_PersonNr",
+          "x": 500,
+          "y": 140,
+          "refModeOwnerOccId": "occ_n1792593665075_4",
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665075_4",
+            "1": "occ_n1792593665083_16"
+          }
+        },
+        {
+          "id": "occ_n1792593665083_19",
+          "schemaElementId": "ot_PersonName",
+          "x": 120,
+          "y": 140
+        },
+        {
+          "id": "occ_n1792593665084_21",
+          "schemaElementId": "ot_Email",
+          "x": 760,
+          "y": 60
+        },
+        {
+          "id": "occ_n1792593665084_23",
+          "schemaElementId": "ot_Phone",
+          "x": 760,
+          "y": 220
+        },
+        {
+          "id": "occ_n1792593665088_27",
+          "schemaElementId": "f_hasName",
+          "x": 270,
+          "y": 140,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665075_4",
+            "1": "occ_n1792593665083_19"
+          }
+        },
+        {
+          "id": "occ_n1792593665090_31",
+          "schemaElementId": "f_hasEmail",
+          "x": 600,
+          "y": 60,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665075_4",
+            "1": "occ_n1792593665084_21"
+          }
+        },
+        {
+          "id": "occ_n1792593665094_35",
+          "schemaElementId": "f_hasPhone",
+          "x": 600,
+          "y": 220,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665075_4",
+            "1": "occ_n1792593665084_23"
+          }
+        },
+        {
+          "id": "occ_n1792593665103_42",
+          "schemaElementId": "ot_Student",
+          "x": 260,
+          "y": 360
+        },
+        {
+          "id": "occ_n1792593665103_44",
+          "schemaElementId": "ot_Staff",
+          "x": 580,
+          "y": 360
+        },
+        {
+          "id": "occ_n1792593665104_46",
+          "schemaElementId": "ot_Professor",
+          "x": 380,
+          "y": 600
+        },
+        {
+          "id": "occ_n1792593665104_48",
+          "schemaElementId": "ot_Lecturer",
+          "x": 640,
+          "y": 600
+        },
+        {
+          "id": "occ_n1792593665113_72",
+          "schemaElementId": "f_supervises",
+          "x": 200,
+          "y": 600,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665103_42",
+            "1": "occ_n1792593665104_46"
+          }
+        },
+        {
+          "id": "occ_n1792593665114_74",
+          "schemaElementId": "ot_Building",
+          "x": 1100,
+          "y": 240
+        },
+        {
+          "id": "occ_n1792593665115_86",
+          "schemaElementId": "ot_BuildingCode",
+          "x": 1260,
+          "y": 240,
+          "refModeOwnerOccId": "occ_n1792593665114_74"
+        },
+        {
+          "id": "occ_n1792593665115_87",
+          "schemaElementId": "f_Building_BuildingCode",
+          "x": 1180,
+          "y": 240,
+          "refModeOwnerOccId": "occ_n1792593665114_74",
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665114_74",
+            "1": "occ_n1792593665115_86"
+          }
+        },
+        {
+          "id": "occ_n1792593665115_89",
+          "schemaElementId": "ot_RoomNr",
+          "x": 1100,
+          "y": 480
+        },
+        {
+          "id": "occ_n1792593665115_91",
+          "schemaElementId": "ot_Room",
+          "x": 920,
+          "y": 360
+        },
+        {
+          "id": "occ_n1792593665116_93",
+          "schemaElementId": "ot_Extension",
+          "x": 960,
+          "y": 520
+        },
+        {
+          "id": "occ_n1792593665116_97",
+          "schemaElementId": "f_roomInBuilding",
+          "x": 1010,
+          "y": 300,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665115_91",
+            "1": "occ_n1792593665114_74"
+          }
+        },
+        {
+          "id": "occ_n1792593665117_101",
+          "schemaElementId": "f_roomHasNr",
+          "x": 1010,
+          "y": 420,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665115_91",
+            "1": "occ_n1792593665115_89"
+          }
+        },
+        {
+          "id": "occ_n1792593665121_110",
+          "schemaElementId": "f_hasOffice",
+          "x": 760,
+          "y": 360,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665103_44",
+            "1": "occ_n1792593665115_91"
+          }
+        },
+        {
+          "id": "occ_n1792593665122_114",
+          "schemaElementId": "f_hasExtension",
+          "x": 790,
+          "y": 520,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665103_44",
+            "1": "occ_n1792593665116_93"
+          }
+        }
+      ],
+      "constraintOccurrences": [
+        {
+          "id": "cocc_n1792593665095_37",
+          "schemaConstraintId": "c_emailOrPhone",
+          "x": 520,
+          "y": 140,
+          "roleOccurrenceRefs": {},
+          "queryOccurrenceRefs": {}
+        },
+        {
+          "id": "cocc_n1792593665106_54",
+          "schemaConstraintId": "c_personTotal",
+          "x": 420,
+          "y": 290,
+          "roleOccurrenceRefs": {},
+          "queryOccurrenceRefs": {}
+        },
+        {
+          "id": "cocc_n1792593665111_62",
+          "schemaConstraintId": "c_staffPartition",
+          "x": 510,
+          "y": 500,
+          "roleOccurrenceRefs": {},
+          "queryOccurrenceRefs": {}
+        },
+        {
+          "id": "cocc_n1792593665118_103",
+          "schemaConstraintId": "c_roomId",
+          "x": 1120,
+          "y": 360,
+          "roleOccurrenceRefs": {},
+          "queryOccurrenceRefs": {}
+        },
+        {
+          "id": "cocc_n1792593665123_116",
+          "schemaConstraintId": "c_officeIffExt",
+          "x": 790,
+          "y": 440,
+          "roleOccurrenceRefs": {},
+          "queryOccurrenceRefs": {}
+        }
+      ],
+      "implicitLinkPositions": {},
+      "profileId": null,
+      "shownImplicitLinks": [],
+      "notes": [],
+      "expandedRefModes": [],
+      "expandedRefModeOccs": [],
+      "subtypeOccurrences": [
+        "st_Student",
+        "st_Staff",
+        "st_Professor",
+        "st_Lecturer"
+      ],
+      "subtypeEndpointOccs": {
+        "st_Student": [
+          {
+            "subOccId": "occ_n1792593665103_42",
+            "superOccId": "occ_n1792593665075_4"
+          }
+        ],
+        "st_Staff": [
+          {
+            "subOccId": "occ_n1792593665103_44",
+            "superOccId": "occ_n1792593665075_4"
+          }
+        ],
+        "st_Professor": [
+          {
+            "subOccId": "occ_n1792593665104_46",
+            "superOccId": "occ_n1792593665103_44"
+          }
+        ],
+        "st_Lecturer": [
+          {
+            "subOccId": "occ_n1792593665104_48",
+            "superOccId": "occ_n1792593665103_44"
+          }
+        ]
+      },
+      "pan": {
+        "x": 0,
+        "y": 0
+      },
+      "zoom": 1,
+      "displaySettings": {
+        "showMinimap": true,
+        "minimapPos": {
+          "x": null,
+          "y": null
+        }
       }
     },
     {
-      "id": "ot6",
-      "kind": "entity",
-      "name": "Manager",
-      "x": 160,
-      "y": 460,
-      "isIndependent": true
-    },
-    {
-      "id": "rv1",
-      "kind": "value",
-      "name": "PersonId",
-      "x": 240,
-      "y": 160
-    },
-    {
-      "id": "rv2",
-      "kind": "value",
-      "name": "CompanyName",
-      "x": 580,
-      "y": 160
-    },
-    {
-      "id": "rv3",
-      "kind": "value",
-      "name": "ProjectId",
-      "x": 580,
-      "y": 360
-    },
-    {
-      "id": "rv4",
-      "kind": "value",
-      "name": "ManagerId",
-      "x": 240,
-      "y": 460
-    }
-  ],
-  "facts": [
-    {
-      "id": "rf1",
-      "kind": "fact",
-      "x": 200,
-      "y": 160,
-      "arity": 2,
-      "readingParts": ["", "has", ""],
-      "alternativeReadings": [{"roleOrder": [1, 0], "parts": ["", "refers to", ""]}],
-      "roles": [
-        {"id": "rr1a", "objectTypeId": "ot1", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null},
-        {"id": "rr1b", "objectTypeId": "rv1", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null}
-      ],
-      "uniqueness": [[1]],
-      "preferredUniqueness": [[1]],
-      "readingDisplay": "forward",
-      "uniquenessBelow": false,
-      "readingAbove": false,
-      "internalFrequency": [],
-      "implicitLinks": [],
-      "shownReadingOrder": null,
-      "orientation": "horizontal"
-    },
-    {
-      "id": "rf2",
-      "kind": "fact",
-      "x": 540,
-      "y": 160,
-      "arity": 2,
-      "readingParts": ["", "has", ""],
-      "alternativeReadings": [{"roleOrder": [1, 0], "parts": ["", "refers to", ""]}],
-      "roles": [
-        {"id": "rr2a", "objectTypeId": "ot2", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null},
-        {"id": "rr2b", "objectTypeId": "rv2", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null}
-      ],
-      "uniqueness": [[1]],
-      "preferredUniqueness": [[1]],
-      "readingDisplay": "forward",
-      "uniquenessBelow": false,
-      "readingAbove": false,
-      "internalFrequency": [],
-      "implicitLinks": [],
-      "shownReadingOrder": null,
-      "orientation": "horizontal"
-    },
-    {
-      "id": "rf3",
-      "kind": "fact",
-      "x": 540,
-      "y": 360,
-      "arity": 2,
-      "readingParts": ["", "has", ""],
-      "alternativeReadings": [{"roleOrder": [1, 0], "parts": ["", "refers to", ""]}],
-      "roles": [
-        {"id": "rr3a", "objectTypeId": "ot3", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null},
-        {"id": "rr3b", "objectTypeId": "rv3", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null}
-      ],
-      "uniqueness": [[1]],
-      "preferredUniqueness": [[1]],
-      "readingDisplay": "forward",
-      "uniquenessBelow": false,
-      "readingAbove": false,
-      "internalFrequency": [],
-      "implicitLinks": [],
-      "shownReadingOrder": null,
-      "orientation": "horizontal"
-    },
-    {
-      "id": "rf4",
-      "kind": "fact",
-      "x": 200,
-      "y": 460,
-      "arity": 2,
-      "readingParts": ["", "has", ""],
-      "alternativeReadings": [{"roleOrder": [1, 0], "parts": ["", "refers to", ""]}],
-      "roles": [
-        {"id": "rr4a", "objectTypeId": "ot6", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null},
-        {"id": "rr4b", "objectTypeId": "rv4", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null}
-      ],
-      "uniqueness": [[1]],
-      "preferredUniqueness": [[1]],
-      "readingDisplay": "forward",
-      "uniquenessBelow": false,
-      "readingAbove": false,
-      "internalFrequency": [],
-      "implicitLinks": [],
-      "shownReadingOrder": null,
-      "orientation": "horizontal"
-    },
-    {
-      "id": "f1",
-      "kind": "fact",
-      "x": 330,
-      "y": 160,
-      "arity": 2,
-      "readingParts": ["", "is employed by", ""],
-      "alternativeReadings": [],
-      "roles": [
-        {"id": "r1a", "objectTypeId": "ot1", "roleName": "", "mandatory": true, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null},
-        {"id": "r1b", "objectTypeId": "ot2", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null}
-      ],
-      "uniqueness": [[0, 1]],
-      "preferredUniqueness": [],
-      "readingDisplay": "forward",
-      "uniquenessBelow": false,
-      "readingAbove": false,
-      "readingOffset": null,
-      "internalFrequency": [],
-      "implicitLinks": [],
-      "shownReadingOrder": null,
-      "orientation": "horizontal"
-    },
-    {
-      "id": "f2",
-      "kind": "fact",
-      "x": 330,
-      "y": 310,
-      "arity": 2,
-      "readingParts": ["", "has", ""],
-      "alternativeReadings": [],
-      "roles": [
-        {"id": "r2a", "objectTypeId": "ot1", "roleName": "", "mandatory": true, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null},
-        {"id": "r2b", "objectTypeId": "ot4", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null}
-      ],
-      "uniqueness": [[0]],
-      "preferredUniqueness": [],
-      "readingDisplay": "forward",
-      "uniquenessBelow": false,
-      "readingAbove": false,
-      "readingOffset": null,
-      "internalFrequency": [],
-      "implicitLinks": [],
-      "shownReadingOrder": null,
-      "orientation": "horizontal"
-    },
-    {
-      "id": "f3",
-      "kind": "fact",
-      "x": 330,
-      "y": 80,
-      "arity": 2,
-      "readingParts": ["", "earns", ""],
-      "alternativeReadings": [],
-      "roles": [
-        {"id": "r3a", "objectTypeId": "ot1", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null},
-        {"id": "r3b", "objectTypeId": "ot5", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null}
-      ],
-      "uniqueness": [[0]],
-      "preferredUniqueness": [],
-      "readingDisplay": "forward",
-      "uniquenessBelow": false,
-      "readingAbove": false,
-      "readingOffset": null,
-      "internalFrequency": [],
-      "implicitLinks": [],
-      "shownReadingOrder": null,
-      "orientation": "horizontal"
-    },
-    {
-      "id": "f4",
-      "kind": "fact",
-      "x": 500,
-      "y": 260,
-      "arity": 2,
-      "readingParts": ["", "sponsors", ""],
-      "alternativeReadings": [],
-      "roles": [
-        {"id": "r4a", "objectTypeId": "ot2", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null},
-        {"id": "r4b", "objectTypeId": "ot3", "roleName": "", "mandatory": true, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null}
-      ],
-      "uniqueness": [[1]],
-      "preferredUniqueness": [],
-      "readingDisplay": "forward",
-      "uniquenessBelow": false,
-      "readingAbove": false,
-      "readingOffset": null,
-      "internalFrequency": [],
-      "implicitLinks": [],
-      "shownReadingOrder": null,
-      "orientation": "horizontal"
-    },
-    {
-      "id": "f5",
-      "kind": "fact",
-      "x": 40,
-      "y": 160,
-      "arity": 2,
-      "readingParts": ["", "manages", ""],
-      "alternativeReadings": [{"roleOrder": [1, 0], "parts": ["", "is managed by", ""]}],
-      "roles": [
-        {"id": "r5a", "objectTypeId": "ot1", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null},
-        {"id": "r5b", "objectTypeId": "ot1", "roleName": "", "mandatory": false, "linkReadingParts": ["", "", ""], "linkReadingReverseParts": null}
-      ],
-      "uniqueness": [[0, 1]],
-      "preferredUniqueness": [],
-      "readingDisplay": "forward",
-      "uniquenessBelow": false,
-      "readingAbove": false,
-      "readingOffset": null,
-      "internalFrequency": [],
-      "implicitLinks": [],
-      "shownReadingOrder": null,
-      "orientation": "vertical"
-    }
-  ],
-  "subtypes": [
-    {
-      "id": "st1",
-      "kind": "subtype",
-      "subId": "ot6",
-      "superId": "ot1",
-      "exclusive": false,
-      "exhaustive": false,
-      "inheritsPreferredIdentifier": false
-    }
-  ],
-  "constraints": [
-    {
-      "id": "c1",
-      "kind": "constraint",
-      "constraintType": "ring",
-      "x": 40,
-      "y": 210,
-      "sequences": [
-        [
-          {"kind": "role", "factId": "f5", "roleIndex": 0},
-          {"kind": "role", "factId": "f5", "roleIndex": 1}
-        ]
-      ],
-      "ringTypes": ["strongly-intransitive", "acyclic"],
-      "queries": [
-        {
-          "copies": [
-            {
-              "id": "c1_f",
-              "kind": "fact",
-              "originalId": "f5",
-              "isOutput": false,
-              "seededRoles": [
-                {"roleIndex": 0, "seqPosition": 0},
-                {"roleIndex": 1, "seqPosition": 1}
-              ],
-              "dx": 0,
-              "dy": 0
-            }
-          ],
-          "links": []
-        }
-      ]
-    }
-  ],
-  "diagrams": [
-    {
-      "id": "sample_main",
-      "name": "Main",
+      "id": "d_teaching",
+      "name": "Teaching",
       "occurrences": [
-        {"id": "occ_ot1", "schemaElementId": "ot1", "x": 260, "y": 180, "roleOccurrenceMap": {}},
-        {"id": "occ_ot2", "schemaElementId": "ot2", "x": 600, "y": 180, "roleOccurrenceMap": {}},
-        {"id": "occ_ot3", "schemaElementId": "ot3", "x": 600, "y": 380, "roleOccurrenceMap": {}},
-        {"id": "occ_ot4", "schemaElementId": "ot4", "x": 190, "y": 380, "roleOccurrenceMap": {}},
-        {"id": "occ_ot5", "schemaElementId": "ot5", "x": 550, "y": 90,  "roleOccurrenceMap": {}},
-        {"id": "occ_ot6", "schemaElementId": "ot6", "x": 360, "y": 370, "roleOccurrenceMap": {}},
-        {"id": "occ_f1",  "schemaElementId": "f1",  "x": 430, "y": 180, "roleOccurrenceMap": {}},
-        {"id": "occ_f2",  "schemaElementId": "f2",  "x": 210, "y": 280, "roleOccurrenceMap": {}, "orientation": "vertical"},
-        {"id": "occ_f3",  "schemaElementId": "f3",  "x": 430, "y": 100, "roleOccurrenceMap": {}},
-        {"id": "occ_f4",  "schemaElementId": "f4",  "x": 600, "y": 280, "roleOccurrenceMap": {}, "orientation": "vertical"},
         {
-          "id": "occ_f5",
-          "schemaElementId": "f5",
-          "x": 140,
-          "y": 180,
-          "roleOccurrenceMap": {},
-          "orientation": "vertical",
-          "readingAbove": false,
-          "readingOffsetAbove": null,
-          "readingOffsetBelow": {"dx": -56.79638671875, "dy": 0},
-          "uniquenessBelow": true
+          "id": "occ_n1792593665127_120",
+          "schemaElementId": "ot_Student",
+          "x": 120,
+          "y": 275
         },
-        {"id": "occ_rv1", "schemaElementId": "rv1", "x": 240, "y": 160, "roleOccurrenceMap": {}, "refModeOwnerOccId": "occ_ot1"},
-        {"id": "occ_rf1", "schemaElementId": "rf1", "x": 200, "y": 160, "roleOccurrenceMap": {}, "refModeOwnerOccId": "occ_ot1"},
-        {"id": "occ_rv2", "schemaElementId": "rv2", "x": 580, "y": 160, "roleOccurrenceMap": {}, "refModeOwnerOccId": "occ_ot2"},
-        {"id": "occ_rf2", "schemaElementId": "rf2", "x": 540, "y": 160, "roleOccurrenceMap": {}, "refModeOwnerOccId": "occ_ot2"},
-        {"id": "occ_rv3", "schemaElementId": "rv3", "x": 580, "y": 360, "roleOccurrenceMap": {}, "refModeOwnerOccId": "occ_ot3"},
-        {"id": "occ_rf3", "schemaElementId": "rf3", "x": 540, "y": 360, "roleOccurrenceMap": {}, "refModeOwnerOccId": "occ_ot3"},
-        {"id": "occ_rv4", "schemaElementId": "rv4", "x": 240, "y": 460, "roleOccurrenceMap": {}, "refModeOwnerOccId": "occ_ot6"},
-        {"id": "occ_rf4", "schemaElementId": "rf4", "x": 200, "y": 460, "roleOccurrenceMap": {}, "refModeOwnerOccId": "occ_ot6"}
+        {
+          "id": "occ_n1792593665127_121",
+          "schemaElementId": "ot_Staff",
+          "x": 120,
+          "y": 570
+        },
+        {
+          "id": "occ_n1792593665130_123",
+          "schemaElementId": "ot_Course",
+          "x": 620,
+          "y": 270
+        },
+        {
+          "id": "occ_n1792593665131_135",
+          "schemaElementId": "ot_CourseCode",
+          "x": 780,
+          "y": 270,
+          "refModeOwnerOccId": "occ_n1792593665130_123"
+        },
+        {
+          "id": "occ_n1792593665131_136",
+          "schemaElementId": "f_Course_CourseCode",
+          "x": 700,
+          "y": 270,
+          "refModeOwnerOccId": "occ_n1792593665130_123",
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665130_123",
+            "1": "occ_n1792593665131_135"
+          }
+        },
+        {
+          "id": "occ_n1792593665131_138",
+          "schemaElementId": "ot_CourseTitle",
+          "x": 960,
+          "y": 170
+        },
+        {
+          "id": "occ_n1792593665131_140",
+          "schemaElementId": "ot_Credits",
+          "x": 960,
+          "y": 270
+        },
+        {
+          "id": "occ_n1792593665132_142",
+          "schemaElementId": "ot_Grade",
+          "x": 530,
+          "y": 110
+        },
+        {
+          "id": "occ_n1792593665135_144",
+          "schemaElementId": "ot_Semester",
+          "x": 640,
+          "y": 780
+        },
+        {
+          "id": "occ_n1792593665135_148",
+          "schemaElementId": "f_hasTitle",
+          "x": 800,
+          "y": 170,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665130_123",
+            "1": "occ_n1792593665131_138"
+          }
+        },
+        {
+          "id": "occ_n1792593665137_152",
+          "schemaElementId": "f_hasCredits",
+          "x": 800,
+          "y": 270,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665130_123",
+            "1": "occ_n1792593665131_140"
+          }
+        },
+        {
+          "id": "occ_n1792593665139_156",
+          "schemaElementId": "f_prereq",
+          "x": 800,
+          "y": 390,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665130_123",
+            "1": "occ_n1792593665130_123"
+          }
+        },
+        {
+          "id": "occ_n1792593665142_163",
+          "schemaElementId": "f_enrols",
+          "x": 340,
+          "y": 205,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665127_120",
+            "1": "occ_n1792593665130_123"
+          }
+        },
+        {
+          "id": "occ_n1792593665144_167",
+          "schemaElementId": "f_earned",
+          "x": 340,
+          "y": 110,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665142_163",
+            "1": "occ_n1792593665132_142"
+          }
+        },
+        {
+          "id": "occ_n1792593665146_171",
+          "schemaElementId": "f_assists",
+          "x": 340,
+          "y": 345,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665127_120",
+            "1": "occ_n1792593665130_123"
+          }
+        },
+        {
+          "id": "occ_n1792593665151_179",
+          "schemaElementId": "f_qualified",
+          "x": 380,
+          "y": 570,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665127_121",
+            "1": "occ_n1792593665130_123"
+          }
+        },
+        {
+          "id": "occ_n1792593665152_184",
+          "schemaElementId": "f_teaches",
+          "x": 420,
+          "y": 690,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665127_121",
+            "1": "occ_n1792593665130_123",
+            "2": "occ_n1792593665135_144"
+          }
+        },
+        {
+          "id": "occ_n1792593665160_192",
+          "schemaElementId": "f_coordinates",
+          "x": 380,
+          "y": 460,
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665127_121",
+            "1": "occ_n1792593665130_123"
+          }
+        }
       ],
       "constraintOccurrences": [
-        {"id": "cocc_c1", "schemaConstraintId": "c1", "x": 210, "y": 120, "roleOccurrenceRefs": []}
+        {
+          "id": "cocc_n1792593665140_158",
+          "schemaConstraintId": "c_prereqRing",
+          "x": 920,
+          "y": 390,
+          "roleOccurrenceRefs": {},
+          "queryOccurrenceRefs": {}
+        },
+        {
+          "id": "cocc_n1792593665148_173",
+          "schemaConstraintId": "c_notBoth",
+          "x": 340,
+          "y": 285,
+          "roleOccurrenceRefs": {},
+          "queryOccurrenceRefs": {}
+        },
+        {
+          "id": "cocc_n1792593665155_186",
+          "schemaConstraintId": "c_teachQualified",
+          "x": 520,
+          "y": 630,
+          "roleOccurrenceRefs": {},
+          "queryOccurrenceRefs": {}
+        }
       ],
-      "expandedRefModeOccs": [],
-      "expandedRefModes": [],
-      "subtypeOccurrences": ["st1"],
-      "subtypeEndpointOccs": { "st1": { "subOccId": "occ_ot6", "superOccId": "occ_ot1" } },
-      "multiSelectedIds": [],
       "implicitLinkPositions": {},
+      "profileId": null,
       "shownImplicitLinks": [],
       "notes": [],
-      "profileId": "abstract",
-      "pan": {"x": 0, "y": 0},
-      "zoom": 1
+      "expandedRefModes": [],
+      "expandedRefModeOccs": [],
+      "subtypeOccurrences": [],
+      "subtypeEndpointOccs": {},
+      "pan": {
+        "x": 0,
+        "y": 0
+      },
+      "zoom": 1,
+      "displaySettings": {
+        "showMinimap": true,
+        "minimapPos": {
+          "x": null,
+          "y": null
+        }
+      }
     }
   ],
-  "activeDiagramId": "sample_main",
+  "activeDiagramId": "d_people",
   "populations": {
-    "ot1": ["P001", "P002", "P003"],
-    "ot2": ["Acme", "BigCo", "Initech"],
-    "ot3": ["PRJ-1", "PRJ-2"],
-    "ot4": ["Alice", "Bob", "Carol"],
-    "ot5": ["50000", "60000", "75000"],
-    "ot6": ["M001"],
-    "rv1": ["P001", "P002", "P003"],
-    "rv2": ["Acme", "BigCo", "Initech"],
-    "rv3": ["PRJ-1", "PRJ-2"],
-    "rv4": ["M001"]
+    "ot_Person": [
+      "P1",
+      "P2",
+      "P3",
+      "P4",
+      "P5",
+      "P6"
+    ],
+    "ot_PersonNr": [
+      "P1",
+      "P2",
+      "P3",
+      "P4",
+      "P5",
+      "P6"
+    ],
+    "ot_PersonName": [
+      "Alice",
+      "Bob",
+      "Carol",
+      "Dan",
+      "Eve",
+      "Frank"
+    ],
+    "ot_Email": [
+      "alice@uni.ac.uk",
+      "bob@uni.ac.uk",
+      "carol@uni.ac.uk",
+      "eve@uni.ac.uk",
+      "frank@uni.ac.uk"
+    ],
+    "ot_Phone": [
+      "07700 900123",
+      "07700 900456",
+      "020 7631 6701"
+    ],
+    "ot_Student": [
+      "P1",
+      "P2",
+      "P3",
+      "P4"
+    ],
+    "ot_Staff": [
+      "P3",
+      "P5",
+      "P6"
+    ],
+    "ot_Professor": [
+      "P5"
+    ],
+    "ot_Lecturer": [
+      "P3",
+      "P6"
+    ],
+    "ot_Building": [
+      "MAL",
+      "CLO"
+    ],
+    "ot_BuildingCode": [
+      "MAL",
+      "CLO"
+    ],
+    "ot_RoomNr": [
+      "151",
+      "152",
+      "101"
+    ],
+    "ot_Room": [
+      [
+        "MAL",
+        "151"
+      ],
+      [
+        "MAL",
+        "152"
+      ],
+      [
+        "CLO",
+        "101"
+      ]
+    ],
+    "ot_Extension": [
+      "6701",
+      "6702"
+    ],
+    "ot_Course": [
+      "DB1",
+      "DB2",
+      "LOG1",
+      "KR3"
+    ],
+    "ot_CourseCode": [
+      "DB1",
+      "DB2",
+      "LOG1",
+      "KR3"
+    ],
+    "ot_CourseTitle": [
+      "Databases",
+      "Advanced Databases",
+      "Logic",
+      "Knowledge Representation"
+    ],
+    "ot_Credits": [
+      "15",
+      "30"
+    ],
+    "ot_Grade": [
+      "72",
+      "65",
+      "81",
+      "58"
+    ],
+    "ot_Semester": [
+      "2026-Autumn",
+      "2027-Spring"
+    ]
   },
   "factPopulations": {
-    "f1": [["P001", "Acme"], ["P002", "BigCo"], ["P003", "Acme"]],
-    "f2": [["P001", "Alice"], ["P002", "Bob"], ["P003", "Carol"]],
-    "f3": [["P001", "50000"], ["P002", "75000"], ["P003", "60000"]],
-    "f4": [["BigCo", "PRJ-1"], ["Acme", "PRJ-2"]],
-    "f5": [["P002", "P001"], ["P002", "P003"]]
+    "f_hasName": [
+      [
+        "P1",
+        "Alice"
+      ],
+      [
+        "P2",
+        "Bob"
+      ],
+      [
+        "P3",
+        "Carol"
+      ],
+      [
+        "P4",
+        "Dan"
+      ],
+      [
+        "P5",
+        "Eve"
+      ],
+      [
+        "P6",
+        "Frank"
+      ]
+    ],
+    "f_hasEmail": [
+      [
+        "P1",
+        "alice@uni.ac.uk"
+      ],
+      [
+        "P2",
+        "bob@uni.ac.uk"
+      ],
+      [
+        "P3",
+        "carol@uni.ac.uk"
+      ],
+      [
+        "P5",
+        "eve@uni.ac.uk"
+      ],
+      [
+        "P6",
+        "frank@uni.ac.uk"
+      ]
+    ],
+    "f_hasPhone": [
+      [
+        "P2",
+        "07700 900123"
+      ],
+      [
+        "P4",
+        "07700 900456"
+      ],
+      [
+        "P5",
+        "020 7631 6701"
+      ]
+    ],
+    "f_supervises": [
+      [
+        "P3",
+        "P5"
+      ]
+    ],
+    "f_hasOffice": [
+      [
+        "P5",
+        [
+          "MAL",
+          "151"
+        ]
+      ],
+      [
+        "P6",
+        [
+          "MAL",
+          "152"
+        ]
+      ]
+    ],
+    "f_hasExtension": [
+      [
+        "P5",
+        "6701"
+      ],
+      [
+        "P6",
+        "6702"
+      ]
+    ],
+    "f_hasTitle": [
+      [
+        "DB1",
+        "Databases"
+      ],
+      [
+        "DB2",
+        "Advanced Databases"
+      ],
+      [
+        "LOG1",
+        "Logic"
+      ],
+      [
+        "KR3",
+        "Knowledge Representation"
+      ]
+    ],
+    "f_hasCredits": [
+      [
+        "DB1",
+        "15"
+      ],
+      [
+        "DB2",
+        "15"
+      ],
+      [
+        "LOG1",
+        "15"
+      ],
+      [
+        "KR3",
+        "30"
+      ]
+    ],
+    "f_prereq": [
+      [
+        "DB1",
+        "DB2"
+      ],
+      [
+        "DB2",
+        "KR3"
+      ],
+      [
+        "LOG1",
+        "KR3"
+      ]
+    ],
+    "f_enrols": [
+      [
+        "P1",
+        "DB1"
+      ],
+      [
+        "P1",
+        "LOG1"
+      ],
+      [
+        "P2",
+        "DB1"
+      ],
+      [
+        "P2",
+        "DB2"
+      ],
+      [
+        "P4",
+        "LOG1"
+      ],
+      [
+        "P3",
+        "KR3"
+      ]
+    ],
+    "f_earned": [
+      [
+        [
+          "P1",
+          "DB1"
+        ],
+        "72"
+      ],
+      [
+        [
+          "P2",
+          "DB1"
+        ],
+        "65"
+      ],
+      [
+        [
+          "P2",
+          "DB2"
+        ],
+        "81"
+      ],
+      [
+        [
+          "P4",
+          "LOG1"
+        ],
+        "58"
+      ]
+    ],
+    "f_assists": [
+      [
+        "P3",
+        "DB1"
+      ]
+    ],
+    "f_qualified": [
+      [
+        "P3",
+        "DB1"
+      ],
+      [
+        "P5",
+        "DB1"
+      ],
+      [
+        "P5",
+        "DB2"
+      ],
+      [
+        "P5",
+        "KR3"
+      ],
+      [
+        "P6",
+        "DB1"
+      ],
+      [
+        "P6",
+        "LOG1"
+      ]
+    ],
+    "f_coordinates": [
+      [
+        "P5",
+        "DB1"
+      ],
+      [
+        "P5",
+        "DB2"
+      ],
+      [
+        "P6",
+        "LOG1"
+      ],
+      [
+        "P5",
+        "KR3"
+      ]
+    ],
+    "f_teaches": [
+      [
+        "P3",
+        "DB1",
+        "2026-Autumn"
+      ],
+      [
+        "P6",
+        "LOG1",
+        "2026-Autumn"
+      ],
+      [
+        "P5",
+        "DB2",
+        "2027-Spring"
+      ],
+      [
+        "P5",
+        "KR3",
+        "2027-Spring"
+      ]
+    ]
   },
-  "subtypeMappings": {
-    "st1": [["P002"]]
-  },
-  "nestedEntityMappings": {}
+  "subtypeMappings": {},
+  "nestedEntityMappings": {
+    "f_enrols": [
+      [
+        "P1",
+        "DB1"
+      ],
+      [
+        "P1",
+        "LOG1"
+      ],
+      [
+        "P2",
+        "DB1"
+      ],
+      [
+        "P2",
+        "DB2"
+      ],
+      [
+        "P4",
+        "LOG1"
+      ],
+      [
+        "P3",
+        "KR3"
+      ]
+    ]
+  }
 }
