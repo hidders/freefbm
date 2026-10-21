@@ -5,6 +5,7 @@ import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
 import { computeRingConstraintRelation, computeUniquenessProjection, computeSequenceProjections, computeValueComparisonData, computeInclusiveOrTable, computeExclusiveOrTable, computeExclusionTable, computeEqualityTable, computeSubsetTable, freqRangeSatisfies, projCellKey, findLCAsForTypes, checkC1ForTypes } from '../utils/populationValidation.js'
 import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 import FormalisationTab from './FormalisationTab.jsx'
+import Splitter from './Splitter.jsx'
 
 const MIN_HEIGHT = 80
 const MAX_HEIGHT_RATIO = 0.75   // panel can't exceed 75% of the viewport row
@@ -23,11 +24,13 @@ export default function BottomPanel() {
   const height    = collapsed ? BOTTOM_PANEL_TAB_STRIP_H : expandedH
   const containerRef = useRef(null)
   const resizeRef    = useRef(null)
+  const [resizing, setResizing] = useState(false)
 
   const onResizeMouseDown = useCallback((e) => {
     if (collapsed) return
     e.preventDefault()
     resizeRef.current = { startY: e.clientY, startHeight: expandedH }
+    setResizing(true)
     document.body.style.cursor = 'ns-resize'
   }, [expandedH, collapsed])
 
@@ -48,6 +51,7 @@ export default function BottomPanel() {
     const onUp = () => {
       if (!resizeRef.current) return
       resizeRef.current = null
+      setResizing(false)
       document.body.style.cursor = ''
     }
     window.addEventListener('mousemove', onMove)
@@ -62,7 +66,7 @@ export default function BottomPanel() {
     <div ref={containerRef} className="no-print" style={{
       height,
       flexShrink: 0,
-      borderTop: '1px solid var(--border-soft)',
+      borderTop: collapsed ? '1px solid var(--border-soft)' : 'none',
       background: 'var(--bg-surface)',
       display: 'flex', flexDirection: 'column',
       position: 'relative',
@@ -70,14 +74,7 @@ export default function BottomPanel() {
     }}>
       {/* Resize handle (top edge) — disabled while collapsed */}
       {!collapsed && (
-        <div
-          onMouseDown={onResizeMouseDown}
-          title="Drag to resize"
-          style={{
-            position: 'absolute', top: -2, left: 0, right: 0, height: 5,
-            cursor: 'ns-resize', zIndex: 3, background: 'transparent',
-          }}
-        />
+        <Splitter orientation="h" dragging={resizing} onMouseDown={onResizeMouseDown} />
       )}
 
       {/* Tab strip */}
