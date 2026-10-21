@@ -482,6 +482,21 @@ export function applyFreshRefMode(state, owner, targetVtName, existing, matchFac
 
 // ── query-generation helpers ──────────────────────────────────────────────────
 
+// Returns `c` with `sequences` installed and every query whose sequence gained or
+// lost members replaced by null (a query is built for one exact list of members,
+// so it no longer fits). Sequences are matched by index. `changed` tells the
+// caller to re-run query guessing (_tryAutoGenerateQuery) for this constraint.
+export function withSequences(c, sequences) {
+  const oldSequences = c.sequences || []
+  let changed = false
+  const queries = sequences.map((seq, i) => {
+    const q = c.queries?.[i] ?? null
+    if (q != null && (oldSequences[i]?.length ?? 0) !== seq.length) { changed = true; return null }
+    return q
+  })
+  return { constraint: { ...c, sequences, queries }, changed }
+}
+
 // Returns the unique minimal common ancestor of all `otIds` in the subtype DAG
 // (reflexive transitive closure), or null if none exists or it is not unique.
 // "Minimal" means no proper descendant of it is also a common ancestor.
