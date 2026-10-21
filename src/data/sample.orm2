@@ -2745,8 +2745,8 @@
       "displaySettings": {
         "showMinimap": true,
         "minimapPos": {
-          "x": 1225,
-          "y": 545
+          "x": null,
+          "y": null
         }
       }
     },
@@ -3020,8 +3020,8 @@
       "displaySettings": {
         "showMinimap": true,
         "minimapPos": {
-          "x": 1225,
-          "y": 545
+          "x": null,
+          "y": null
         }
       }
     }

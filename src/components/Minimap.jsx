@@ -3,7 +3,6 @@ import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds, computeOtSize } from './ObjectTypeNode'
 import { factBounds, nestedFactBounds, ROLE_W, ROLE_H, ROLE_GAP } from './FactTypeNode'
-import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 
 const MM_W  = 170
 const MM_H  = 110
@@ -17,44 +16,57 @@ export default function Minimap() {
   const [collapsed,  setCollapsed]  = useState(false)
   const [expandFrom, setExpandFrom] = useState(null)  // { x, y } pill coords held during expand start
   const [animating,  setAnimating]  = useState(false) // true while expand/collapse transition runs
-  const [winW, setWinW] = useState(window.innerWidth)
-  const [winH, setWinH] = useState(window.innerHeight)
   const animTimerRef = useRef(null)
 
   // ── drag-to-move state ────────────────────────────────────────────────────
   const dragRef  = useRef(null)
   const panelRef = useRef(null)
 
-  useEffect(() => {
-    const onResize = () => { setWinW(window.innerWidth); setWinH(window.innerHeight) }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
+  // ── canvas rect (viewport coords) ─────────────────────────────────────────
+  // The panel is position:fixed, so it is laid out against the window; it is
+  // kept inside the canvas container by measuring that container. A hidden
+  // anchor (rendered even when the diagram is empty) gives us its element.
+  const [canvasEl, setCanvasEl] = useState(null)
+  const anchorRef = useCallback((node) => setCanvasEl(node?.parentElement ?? null), [])
+  const [canvasRect, setCanvasRect] = useState(() => ({
+    left: 0, top: 0, right: window.innerWidth - 240, bottom: window.innerHeight - 26,
+  }))
 
-  const [parentSize, setParentSize] = useState({ w: 1200, h: 700 })
-
   useEffect(() => {
-    const el = panelRef.current?.parentElement
-    if (!el) return
-    const obs = new ResizeObserver(([e]) => {
-      setParentSize({ w: e.contentRect.width, h: e.contentRect.height })
-    })
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [])
+    if (!canvasEl) return
+    const measure = () => {
+      const r = canvasEl.getBoundingClientRect()
+      setCanvasRect(prev =>
+        prev.left === r.left && prev.top === r.top && prev.right === r.right && prev.bottom === r.bottom
+          ? prev : { left: r.left, top: r.top, right: r.right, bottom: r.bottom })
+    }
+    measure()
+    // Inspector / tool panel / bottom panel dividers all resize the canvas.
+    const obs = new ResizeObserver(measure)
+    obs.observe(canvasEl)
+    window.addEventListener('resize', measure)
+    return () => { obs.disconnect(); window.removeEventListener('resize', measure) }
+  }, [canvasEl])
+
+  const parentSize = { w: canvasRect.right - canvasRect.left, h: canvasRect.bottom - canvasRect.top }
 
   useEffect(() => {
     return () => { if (animTimerRef.current) clearTimeout(animTimerRef.current) }
   }, [])
 
-  const bottomPanelH = store.bottomPanelCollapsed ? BOTTOM_PANEL_TAB_STRIP_H : store.bottomPanelHeight
-  const defaultX = winW - MM_W - 250   // leave room for inspector (240px) + gap
-  // Sit above the pill row (status bar 26px + bottom panel + gap 8px + pill HDR_H) with an 8px gap
-  const pillRowTop = winH - 26 - bottomPanelH - 8 - HDR_H
+  const FULL_W = MM_W + 2
+  const FULL_H = MM_H + HDR_H + 2
+  // Default: bottom-right of the canvas, above the pill row (gap 8px + pill HDR_H) with an 8px gap
+  const pillRowTop = canvasRect.bottom - 8 - HDR_H
+  const defaultX = canvasRect.right - MM_W - 10
   const defaultY = pillRowTop - MM_H - HDR_H - 8
 
-  const posX = store.minimapPos.x ?? defaultX
-  const posY = store.minimapPos.y ?? defaultY
+  // A stored position (window px, possibly saved on a larger screen or with a
+  // narrower inspector) is clamped so the panel always stays inside the canvas.
+  const clampX = (x) => Math.max(canvasRect.left, Math.min(canvasRect.right  - FULL_W, x))
+  const clampY = (y) => Math.max(canvasRect.top,  Math.min(canvasRect.bottom - FULL_H, y))
+  const posX = clampX(store.minimapPos.x ?? defaultX)
+  const posY = clampY(store.minimapPos.y ?? defaultY)
 
   const handleHeaderMouseDown = useCallback((e) => {
     if (e.button !== 0) return
@@ -70,9 +82,7 @@ export default function Minimap() {
     const onMove = (me) => {
       if (!dragRef.current) return
       const { startMouseX, startMouseY, startPosX, startPosY } = dragRef.current
-      const newX = Math.max(0, Math.min(window.innerWidth  - MM_W - 2,  startPosX + me.clientX - startMouseX))
-      const newY = Math.max(0, Math.min(window.innerHeight - MM_H - HDR_H - 2, startPosY + me.clientY - startMouseY))
-      store.setMinimapPos(newX, newY)
+      store.setMinimapPos(clampX(startPosX + me.clientX - startMouseX), clampY(startPosY + me.clientY - startMouseY))
     }
 
     const onUp = () => {
@@ -83,7 +93,7 @@ export default function Minimap() {
 
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
-  }, [posX, posY, store])
+  }, [posX, posY, store, canvasRect])
 
   const handleCollapse = useCallback(() => {
     setCollapsed(true)
@@ -93,18 +103,13 @@ export default function Minimap() {
   }, [])
 
   const handleExpand = useCallback(() => {
-    const pw = 114
-    const s   = useOrmStore.getState()
-    const bph = s.bottomPanelCollapsed ? BOTTOM_PANEL_TAB_STRIP_H : s.bottomPanelHeight
-    const px = window.innerWidth  - 258 - pw
-    const py = window.innerHeight - 26 - bph - 8 - HDR_H
-    setExpandFrom({ x: px, y: py })
+    setExpandFrom({ x: canvasRect.right - 6 - 114, y: canvasRect.bottom - 8 - HDR_H })
     setCollapsed(false)
     setAnimating(true)
     if (animTimerRef.current) clearTimeout(animTimerRef.current)
     animTimerRef.current = setTimeout(() => setAnimating(false), 350)
     requestAnimationFrame(() => requestAnimationFrame(() => setExpandFrom(null)))
-  }, [])
+  }, [canvasRect])
 
   // ── diagram bounds ────────────────────────────────────────────────────────
   const bounds = useMemo(() => {
@@ -157,21 +162,22 @@ export default function Minimap() {
 
   // ── visibility guard ──────────────────────────────────────────────────────
   const isEmpty = visOts.length === 0 && visFacts.length === 0
-  if (isEmpty) return null
+  const anchor = <span ref={anchorRef} style={{ display: 'none' }}/>
+  if (isEmpty) return anchor
 
   const PILL_W = 114
-  const panelW = collapsed ? PILL_W    : MM_W + 2
-  const panelH = collapsed ? HDR_H     : MM_H + HDR_H + 2
+  const panelW = collapsed ? PILL_W    : FULL_W
+  const panelH = collapsed ? HDR_H     : FULL_H
   const panelR = collapsed ? HDR_H / 2 : 6
 
-  const inspectorWidth = store.inspectorWidth
-  const pillLeft = winW - inspectorWidth - 6 - PILL_W
-  const pillTop  = winH - 26 - bottomPanelH - 8 - HDR_H
+  const pillLeft = canvasRect.right - 6 - PILL_W
+  const pillTop  = pillRowTop
   const displayLeft = expandFrom?.x ?? (collapsed ? pillLeft : posX)
   const displayTop  = expandFrom?.y ?? (collapsed ? pillTop  : posY)
 
   return (
     <>
+      {anchor}
       {/* ── Single morphing panel ── */}
       <div
         ref={panelRef}
