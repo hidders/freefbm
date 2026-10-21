@@ -255,7 +255,7 @@ export function makeImplicitLinkFact(parentFact, implicitLink) {
     .map(ifc => {
       const synthIfId = `${parentFact.id}_il_${implicitLink.roleIndex}_if_${ifc.id}`
       const ifKey = `${parentFact.id}:il:${implicitLink.roleIndex}:if:${ifc.id}`
-      const ifPos = positions[ifKey] ?? {}
+      const ifPos = diag?.implicitLinkPositions?.[ifKey] ?? {}
       if (ifPos.x != null && ifPos.y != null) {
         return { ...ifc, id: synthIfId, roles: [1], x: ifPos.x, y: ifPos.y, _origIfId: ifc.id }
       }
