@@ -517,6 +517,38 @@ export function implicitEntries(state, ctx, typeIds) {
   return { disjointness, participation }
 }
 
+// The semantics of nesting fact type f(A, B, C) as entity type D with implied
+// links g1(D, A), g2(D, B), g3(D, C):
+//   every f fact is represented by exactly one D,
+//   every D combination of linked values is an f fact,
+//   every D links exactly one combination of values.
+export function impliedLinkEntries(fact, ctx) {
+  const reading = readingText(fact, ctx)
+  const base = { elementId: fact.id, subject: `${ctx.typeName(fact.id)} nests ${reading}` }
+  const links = fact.roles.map((_, i) => ctx.linkById.get(`${fact.id}_il_${i}`))
+  if (links.some(l => !l) || fact.roles.some(r => !r.objectTypeId))
+    return [{ ...base, key: `${fact.id}:il`, kind: 'Implied links', note: 'Not every role has a player and an implied link yet.' }]
+  const xs = () => fact.roles.map(r => mkVar(r.objectTypeId))
+  const linked = (d, vs) => and(links.map((l, i) => factAtom(l.id, [d, vs[i]])))
+  const out = []
+  {
+    const vs = xs(), d = mkVar(fact.id)
+    out.push({ ...base, key: `${fact.id}:il:represented`, kind: 'Implied links (each fact has exactly one nesting instance)',
+      formula: forall(vs, implies(factAtom(fact.id, vs), count('=', 1, [d], linked(d, vs)))) })
+  }
+  {
+    const vs = xs(), d = mkVar(fact.id)
+    out.push({ ...base, key: `${fact.id}:il:sound`, kind: 'Implied links (linked values form a fact)',
+      formula: forall(vs, implies(exists([d], linked(d, vs)), factAtom(fact.id, vs))) })
+  }
+  {
+    const vs = xs(), d = mkVar(fact.id)
+    out.push({ ...base, key: `${fact.id}:il:combination`, kind: 'Implied links (each nesting instance links exactly one combination)',
+      formula: forall([d], count('=', 1, vs, linked(d, vs))) })
+  }
+  return out
+}
+
 // ── Scope: which constraints belong to the current selection ─────────────────
 
 export function makeContext(state) {
@@ -529,8 +561,19 @@ export function makeContext(state) {
     const name = (p?.name || p?.objectifiedName || '').replace(/\s+/g, '')
     return name || 'Thing'
   }
+  // The implied link fact types of nested fact types, as fact-like objects:
+  // roles [nested entity type, player of the base role], read "D involves A".
+  const linkById = new Map()
+  for (const f of facts) {
+    if (!f.objectified) continue
+    for (const il of (f.implicitLinks ?? [])) {
+      const id = `${f.id}_il_${il.roleIndex}`
+      linkById.set(id, { id, roles: [{ objectTypeId: f.id }, { objectTypeId: f.roles[il.roleIndex]?.objectTypeId }],
+        readingParts: il.readingParts ?? ['', 'involves', ''] })
+    }
+  }
   return {
-    otById, factById, typeName,
+    otById, factById, linkById, typeName,
     subtypeById: new Map((state.subtypes ?? []).map(s => [s.id, s])),
   }
 }
@@ -607,6 +650,10 @@ export function formalise(state) {
     const e = constraintEntry(c, ctx)
     entries.push(...(Array.isArray(e) ? e : [e]))
   }
-  return { entries, implicit: implicitEntries(state, ctx, typeIds), ctx,
+  const implicit = implicitEntries(state, ctx, typeIds)
+  implicit.impliedLinks = (state.facts ?? [])
+    .filter(f => factIds.has(f.id) && f.objectified && f.objectifiedKind !== 'value')
+    .flatMap(f => impliedLinkEntries(f, ctx))
+  return { entries, implicit, ctx,
     scope: selected.size === 0 ? 'diagram' : 'selection' }
 }
