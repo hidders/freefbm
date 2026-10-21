@@ -607,6 +607,7 @@ export function ValueRangeEditor({ range, onChange, naturalNumbers = false, posi
     : typeKind === 'decimal'    ? { type: 'number', step: 'any' }
     : typeKind === 'date'       ? { type: 'date' }
     : typeKind === 'datetime'   ? { type: 'datetime-local' }
+    : typeKind === 'time'       ? { type: 'time', step: 1 }
     : {}
 
   return (

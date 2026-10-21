@@ -1716,7 +1716,8 @@ function ObjectTypePopulation({ ot }) {
                   {...(typeKind === 'integer'  ? { type: 'number', step: 1 } : {})}
                   {...(typeKind === 'decimal'  ? { type: 'number', step: 'any' } : {})}
                   {...(typeKind === 'date'     ? { type: 'date' } : {})}
-                  {...(typeKind === 'datetime' ? { type: 'datetime-local' } : {})}/>
+                  {...(typeKind === 'datetime' ? { type: 'datetime-local' } : {})}
+                  {...(typeKind === 'time'     ? { type: 'time', step: 1 } : {})}/>
               )}
               <button onClick={() => store.removePopulationInstance(ot.id, i)}
                 {...removeBtnHandlers}
@@ -2882,6 +2883,7 @@ function LeafCellInput({ value, onChange, onCommit, listId, values, typeKind, ti
     : typeKind === 'decimal'  ? { type: 'number', step: 'any' }
     : typeKind === 'date'     ? { type: 'date' }
     : typeKind === 'datetime' ? { type: 'datetime-local' }
+    : typeKind === 'time'     ? { type: 'time', step: 1 }
     : {}
 
   const inlineListId = values !== undefined ? `pop-leaf-${generatedId}` : null

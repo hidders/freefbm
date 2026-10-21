@@ -3,7 +3,7 @@
 // is inconsistent with it.
 
 import { validateValueAgainstDatatype } from './datatypeValidation.js'
-import { datatypeAssignmentToKind } from './datatypeMapping.js'
+import { valueKindOf, parseLiteral } from './datatypeValues.js'
 import { isIdentifyingFact, getVtEffectivePopulation, getEntityEffectivePopulation, getEntityIdentifierShape, findRefMode, findCompositePI, findInheritedPI, findRolePlayer, getNestedCellShape, isCompleteValue, UNSET } from './refMode.js'
 
 // Walk `cell` against the nested `shape` (from getNestedCellShape), trimming
@@ -53,7 +53,7 @@ function collectLeafTypeErrors(value, shape, facts, objectTypes, subtypes, pathL
   if (shape.kind === 'single') {
     if (typeof value !== 'string' || value === '') return out
     const assignment = effectiveLeafAssignment(shape.playerOtId, facts, objectTypes, subtypes)
-    if (!datatypeAssignmentToKind(assignment)) return out
+    if (!valueKindOf(assignment)) return out
     const err = validateValueAgainstDatatype(value, assignment)
     if (!err) return out
     out.push({ value, assignment, pathLabel: pathLabel || '', err })
@@ -503,7 +503,7 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
       // Plain VT (or entity with its own datatypeAssignment): single-column check.
       if (ot.kind === 'value') {
         const assignment = ot.datatypeAssignment
-        if (!datatypeAssignmentToKind(assignment)) continue
+        if (!valueKindOf(assignment)) continue
         instances.forEach((v, idx) => {
           if (typeof v !== 'string') return
           const err = validateValueAgainstDatatype(v, assignment)
@@ -573,7 +573,7 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
       if (!vr?.length) continue
       const instances = populations[ot.id]
       if (!instances?.length) continue
-      const kind = datatypeAssignmentToKind(ot.datatypeAssignment)
+      const kind = valueKindOf(ot.datatypeAssignment)
       instances.forEach((v, idx) => {
         if (valueInRange(v, vr, kind)) return
         issues.push({
@@ -600,7 +600,7 @@ export function computePopulationIssues({ facts, factPopulations, objectTypes, p
         const vr = role?.valueRange
         if (!vr?.length) continue
         const playerOt = role?.objectTypeId ? otById.get(role.objectTypeId) : null
-        const kind = datatypeAssignmentToKind(playerOt?.datatypeAssignment)
+        const kind = valueKindOf(playerOt?.datatypeAssignment)
         tuples.forEach((tuple, ti) => {
           const v = typeof tuple?.[ri] === 'string' ? tuple[ri].trim() : ''
           if (v === '') return
@@ -3094,27 +3094,25 @@ export function computeUniquenessProjection(data, constraintId) {
 // ── Value range comparison helpers ─────────────────────────────────────────
 
 /**
- * Compare two values in a type-aware manner.
+ * Compare two literals as values of the given value kind (see datatypeValues.js),
+ * so the order is the order of the values, not of their strings.
  * Returns a negative number if a < b, positive if a > b, 0 if equal, or NaN
- * when comparison is impossible (non-comparable types, empty values, etc.).
+ * when comparison is impossible (unparseable, incomparable or unordered values,
+ * empty values, etc.). Equality is decided even for unordered kinds.
  */
-function compareValues(a, b, typeKind) {
+function compareValues(a, b, kind) {
   if (a === '' || b === '' || a == null || b == null) return NaN
 
-  if (typeKind === 'integer' || typeKind === 'decimal') {
-    const na = Number(a); const nb = Number(b)
-    return (Number.isFinite(na) && Number.isFinite(nb)) ? na - nb : NaN
+  if (kind) {
+    const pa = parseLiteral(a, kind), pb = parseLiteral(b, kind)
+    if (!('value' in pa) || !('value' in pb)) return NaN
+    if (kind.equal(pa.value, pb.value)) return 0
+    return kind.compare(pa.value, pb.value)
   }
 
-  if (typeKind === 'date' || typeKind === 'datetime') {
-    // ISO format sorts lexicographically correctly
-    return a.localeCompare(b)
-  }
-
-  // No declared type or text: try numeric first, then date, then lexicographic
+  // No declared type: try numeric first, then lexicographic
   const na = Number(a); const nb = Number(b)
   if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb
-  if (/^\d{4}-\d{2}-\d{2}$/.test(a) && /^\d{4}-\d{2}-\d{2}$/.test(b)) return a.localeCompare(b)
   return a.localeCompare(b)
 }
 
@@ -3122,33 +3120,33 @@ function compareValues(a, b, typeKind) {
 function boundOpen(v) { return v === '' || v == null }
 
 /** Check if a single range spec accepts the given value. */
-function specSatisfies(value, spec, typeKind) {
+function specSatisfies(value, spec, kind) {
   if (!spec) return false
   if (value === '' || value == null) return false
 
   if (spec.type === 'single') {
-    const cmp = compareValues(value, spec.value, typeKind)
+    const cmp = compareValues(value, spec.value, kind)
     return Number.isFinite(cmp) && cmp === 0
   }
   if (spec.type === 'lower') {
     return boundOpen(spec.lower) || (() => {
-      const cmp = compareValues(value, spec.lower, typeKind)
+      const cmp = compareValues(value, spec.lower, kind)
       return Number.isFinite(cmp) && cmp >= 0
     })()
   }
   if (spec.type === 'upper') {
     return boundOpen(spec.upper) || (() => {
-      const cmp = compareValues(value, spec.upper, typeKind)
+      const cmp = compareValues(value, spec.upper, kind)
       return Number.isFinite(cmp) && cmp <= 0
     })()
   }
   if (spec.type === 'range') {
     const lo = boundOpen(spec.lower) || (() => {
-      const cmp = compareValues(value, spec.lower, typeKind)
+      const cmp = compareValues(value, spec.lower, kind)
       return Number.isFinite(cmp) && cmp >= 0
     })()
     const hi = boundOpen(spec.upper) || (() => {
-      const cmp = compareValues(value, spec.upper, typeKind)
+      const cmp = compareValues(value, spec.upper, kind)
       return Number.isFinite(cmp) && cmp <= 0
     })()
     return lo && hi
@@ -3157,7 +3155,7 @@ function specSatisfies(value, spec, typeKind) {
 }
 
 /** True when `value` satisfies at least one spec in the value range (OR semantics). */
-function valueInRange(value, range, typeKind) {
+function valueInRange(value, range, kind) {
   if (!range || range.length === 0) return true
-  return range.some(spec => specSatisfies(value, spec, typeKind))
+  return range.some(spec => specSatisfies(value, spec, kind))
 }
