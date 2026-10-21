@@ -1552,7 +1552,7 @@ function CompositePIEntityPopulation({ ot, cp, inheritedFrom }) {
       <div style={{ ...colHeaderStyle, flex: shape.columns.length, minWidth: 60 * shape.columns.length }}>
         <div>{label}</div>
         <div style={{ display: 'flex', gap: 4, fontWeight: 400, opacity: 0.7, marginTop: 2 }}>
-          {shape.columns.map((c, ci) => renderHeader(c, c.label))}
+          {shape.columns.map((c, ci) => <React.Fragment key={ci}>{renderHeader(c, c.label)}</React.Fragment>)}
         </div>
       </div>
     )
@@ -1949,7 +1949,7 @@ function SubtypeMappingPopulation({ edge }) {
       <div style={{ ...colHeaderStyle, flex: shape.columns.length, minWidth: 60 * shape.columns.length }}>
         <div>{label}</div>
         <div style={{ display: 'flex', gap: 4, fontWeight: 400, opacity: 0.7, marginTop: 2 }}>
-          {shape.columns.map((c, ci) => renderHeader(c, c.label))}
+          {shape.columns.map((c, ci) => <React.Fragment key={ci}>{renderHeader(c, c.label)}</React.Fragment>)}
         </div>
       </div>
     )
@@ -2186,7 +2186,7 @@ function renderNestedHeader(shape, label) {
     <div style={{ ...colHeaderStyle, flex: shape.columns.length, minWidth: 60 * shape.columns.length }}>
       <div>{label}</div>
       <div style={{ display: 'flex', gap: 4, fontWeight: 400, opacity: 0.7, marginTop: 2 }}>
-        {shape.columns.map((c, ci) => renderNestedHeader(c, c.label))}
+        {shape.columns.map((c, ci) => <React.Fragment key={ci}>{renderNestedHeader(c, c.label)}</React.Fragment>)}
       </div>
     </div>
   )
@@ -2733,7 +2733,7 @@ function FactTypePopulation({ fact }) {
       <div style={{ ...colHeaderStyle, flex: shape.columns.length, minWidth: 60 * shape.columns.length }}>
         <div>{label}</div>
         <div style={{ display: 'flex', gap: 4, fontWeight: 400, opacity: 0.7, marginTop: 2 }}>
-          {shape.columns.map((c, ci) => renderHeader(c, c.label))}
+          {shape.columns.map((c, ci) => <React.Fragment key={ci}>{renderHeader(c, c.label)}</React.Fragment>)}
         </div>
       </div>
     )
