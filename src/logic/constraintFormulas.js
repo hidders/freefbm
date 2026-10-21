@@ -2,16 +2,19 @@
 //
 // First-order formulas with counting quantifiers ∃^{≤n}, ∃^{≥n}, ∃^{=n} for
 // uniqueness and frequency, plus transitive closure [TC_{v,w} φ](s, t) for the
-// acyclic and strongly intransitive rings. Constraints that need data terms
-// (value and cardinality ranges) are listed with a note instead of a formula.
+// acyclic and strongly intransitive rings. Value ranges and value comparisons
+// use value atoms x ≈ c, x < y, … that compare data values under the
+// variable's datatype. Cardinality ranges are not formalised yet.
 //
 // Atoms use the fact type's primary reading (readingParts), whose slots follow
 // roles[] order, so fact atom arguments are always in roles[] order.
 
 import {
   mkVar, forall, exists, count, not, implies, iff, and, or, tc,
-  factAtom, typeAtom, cmp,
+  factAtom, typeAtom, cmp, vcmp, constant,
 } from './formula.js'
+import { VALUE_KINDS, valueKindName, parseLiteral } from '../utils/datatypeValues.js'
+import { findRefMode, findInheritedPI } from '../utils/refMode.js'
 
 const SEQUENCE_TYPES = new Set([
   'inclusiveOr', 'exclusiveOr', 'exclusion', 'equality', 'subset',
@@ -29,6 +32,10 @@ const CONSTRAINT_LABELS = {
   ring:            'Ring',
   valueComparison: 'Value comparison',
 }
+
+// Value comparison operators: the stored = and ≠ compare values, so they
+// become ≈ and ≉ to keep them apart from equality of objects.
+const VALUE_OP = { '=': '≈', '≠': '≉' }
 
 const RING_LABELS = {
   'irreflexive':           'irreflexive',
@@ -230,6 +237,101 @@ export function readingText(fact, ctx) {
   return words.join(' ')
 }
 
+// ── Data values ──────────────────────────────────────────────────────────────
+//
+// Value atoms compare the data values of objects. An instance of a value type
+// is its value; an entity type with a reference mode,
+// possibly inherited, has the value it is identified by, reached through the
+// reference mode fact: ∃PersonNr (Person has PersonNr ∧ PersonNr ≈ 5).
+
+// How to reach the data value of an instance of `typeId`:
+//   { kindName, via? }   via = { factId, valueIndex, valueTypeId }
+// or null when the type has no single value (no reference mode).
+function valueAccess(typeId, ctx) {
+  const ot = ctx.otById.get(typeId)
+  const f = ctx.factById.get(typeId)
+  if (ot?.kind === 'value') return { kindName: valueKindName(ot.datatypeAssignment) }
+  const entity = ot ?? f
+  if (!entity) return null
+  const { facts, objectTypes, subtypes, constraints } = ctx.schema
+  let rm = findRefMode(entity, facts, objectTypes)
+  if (!rm) {
+    const inh = findInheritedPI(entity, facts, objectTypes, subtypes, constraints)
+    if (inh?.kind === 'refMode') rm = inh.refMode
+  }
+  if (!rm) return null
+  return { kindName: valueKindName(ctx.otById.get(rm.vtId)?.datatypeAssignment),
+    via: { factId: rm.factId, valueIndex: rm.vtRoleIndex, valueTypeId: rm.vtId } }
+}
+
+// cond applied to the value variables of the given objects:
+//   items = [{ x: Var, access }]   (access from valueAccess)
+function withValues(items, cond) {
+  const vars = [], atoms = []
+  const vs = items.map(({ x, access }) => {
+    if (!access.via) return x
+    const v = mkVar(access.via.valueTypeId)
+    vars.push(v)
+    atoms.push(factAtom(access.via.factId, access.via.valueIndex === 0 ? [v, x] : [x, v]))
+    return v
+  })
+  return exists(vars, and(...atoms, cond(...vs)))
+}
+
+// Numbers and booleans are shown as they are; other constants are quoted.
+const UNQUOTED_KINDS = new Set(['integer', 'decimal', 'float', 'boolean'])
+const NUMBER_RE = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/
+
+const BOUND_FIELDS = { single: ['value'], lower: ['lower'], upper: ['upper'], range: ['lower', 'upper'] }
+
+// The condition a value range puts on a value variable, as v => formula, or
+// { error } when the range can't be read under the datatype.
+function rangeCondition(range, kindName) {
+  const kind = kindName ? VALUE_KINDS[kindName] : null
+  for (const [i, spec] of range.entries()) {
+    const fields = BOUND_FIELDS[spec.type]
+    if (!fields) return { error: `range ${i + 1} has an unknown form` }
+    for (const f of fields) {
+      const p = parseLiteral(spec[f], kind ?? VALUE_KINDS.string)
+      if (p.empty) return { error: `range ${i + 1} has an empty ${f === 'value' ? 'value' : `${f} bound`}` }
+      if (p.invalid) return { error: `${String(spec[f]).trim()} is not a valid ${kind.expect}` }
+    }
+    if (kind?.order === 'none' && spec.type !== 'single')
+      return { error: `${kindName} values have no order, so only single values are allowed` }
+  }
+  const c = (raw) => {
+    const text = String(raw).trim()
+    return constant(text, kindName ? !UNQUOTED_KINDS.has(kindName) : !NUMBER_RE.test(text))
+  }
+  return {
+    cond: (v) => or(range.map(spec => {
+      switch (spec.type) {
+        case 'single': return vcmp('≈', v, c(spec.value))
+        case 'lower':  return vcmp('≥', v, c(spec.lower))
+        case 'upper':  return vcmp('≤', v, c(spec.upper))
+        default:       return and(vcmp('≥', v, c(spec.lower)), vcmp('≤', v, c(spec.upper)))
+      }
+    })),
+  }
+}
+
+// ∀x̄ (… → the value of x is in the range), or a note. `x` is the variable
+// whose value is restricted, `wrap` builds the formula around the condition.
+function valueRangeEntry(base, range, typeId, ctx, wrap) {
+  const access = valueAccess(typeId, ctx)
+  if (!access) return { ...base, note: `No formula yet: ${ctx.typeName(typeId)} has no reference mode, so it has no value to restrict.` }
+  const rc = rangeCondition(range, access.kindName)
+  if (rc.error) return { ...base, note: `No formula yet: ${rc.error}.` }
+  return { ...base, formula: wrap((x) => withValues([{ x, access }], rc.cond)) }
+}
+
+function typeValueRangeEntry(type, ctx) {
+  const x = mkVar(type.id)
+  return valueRangeEntry(
+    { key: `${type.id}:vr`, elementId: type.id, kind: 'Value range', subject: ctx.typeName(type.id) },
+    type.valueRange, type.id, ctx, (cond) => forall([x], cond(x)))
+}
+
 // ── Internal constraints of one fact type ────────────────────────────────────
 
 function factEntries(fact, ctx) {
@@ -252,6 +354,16 @@ function factEntries(fact, ctx) {
     out.push({ ...base, formula: forall(xs.filter((_, i) => u.includes(i)), count('≤', 1, ys, factAtom(fact.id, xs))) })
     if (isPreferred) out.push(...preferredIdentifierEntries(fact, u, reading))
   }
+
+  fact.roles.forEach((r, i) => {
+    if (!r.valueRange?.length) return
+    const base = { key: `${fact.id}:vr:${i}`, elementId: fact.id,
+      kind: `Value range (role ${i + 1})`, subject: reading }
+    if (!r.objectTypeId) { out.push({ ...base, note: 'The role has no player yet.' }); return }
+    const xs = roleVars()
+    out.push(valueRangeEntry(base, r.valueRange, r.objectTypeId, ctx, (cond) =>
+      forall([xs[i]], implies(exists(xs.filter((_, j) => j !== i), factAtom(fact.id, xs)), cond(xs[i])))))
+  })
 
   fact.roles.forEach((r, i) => {
     if (!r.mandatory) return
@@ -369,11 +481,23 @@ function constraintEntry(c, ctx) {
     case 'valueComparison': {
       const q = compiled[0]
       if (q.arity !== 2) return { ...entry, note: 'A value comparison needs two roles.' }
+      const op = VALUE_OP[c.operator ?? '='] ?? c.operator
+      const e = { ...entry, kind: `${entry.kind} (${op})` }
+      const access = q.outTypes.map(t => valueAccess(t, ctx))
+      const noValue = q.outTypes.find((t, i) => !access[i])
+      if (noValue !== undefined)
+        return { ...e, note: `No formula yet: ${ctx.typeName(noValue)} has no reference mode, so it has no value to compare.` }
+      const [k0, k1] = access.map(a => a.kindName)
+      if (k0 && k1 && k0 !== k1)
+        return { ...e, note: `No formula yet: the values have different datatypes (${k0} and ${k1}).` }
+      const kind = VALUE_KINDS[k0 ?? k1]
+      if (kind?.order === 'none' && op !== '≈' && op !== '≉')
+        return { ...e, note: `No formula yet: ${k0 ?? k1} values have no order, so only ≈ and ≉ apply.` }
       const vs = shared(q)
       const t = q.targetType ? mkVar(q.targetType) : null
-      const op = c.operator ?? '='
-      return { ...entry, kind: `${entry.kind} (${op})`,
-        formula: forall([...(t ? [t] : []), ...vs], implies(q.build({ outVars: vs, targetVar: t }), cmp(op, vs[0], vs[1]))) }
+      return { ...e,
+        formula: forall([...(t ? [t] : []), ...vs], implies(q.build({ outVars: vs, targetVar: t }),
+          withValues(vs.map((x, i) => ({ x, access: access[i] })), (v0, v1) => vcmp(op, v0, v1)))) }
     }
     default:
       return { ...entry, note: 'This constraint type has no formula yet.' }
@@ -582,6 +706,7 @@ export function makeContext(state) {
   }
   return {
     otById, factById, linkById, typeName,
+    schema: { facts, objectTypes, subtypes: state.subtypes ?? [], constraints: state.constraints ?? [] },
     subtypeById: new Map((state.subtypes ?? []).map(s => [s.id, s])),
   }
 }
@@ -647,6 +772,11 @@ export function formalise(state) {
   }
 
   const entries = subtypes.filter(st => subtypeIds.has(st.id)).map(st => subtypeEntry(st, ctx))
+  // Value ranges of the value types on the diagram, or of the selected ones.
+  for (const ot of (state.objectTypes ?? [])) {
+    if (ot.kind !== 'value' || !ot.valueRange?.length) continue
+    if (selected.size ? otIds.has(ot.id) : typeIds.has(ot.id)) entries.push(typeValueRangeEntry(ot, ctx))
+  }
   for (const fact of (state.facts ?? [])) {
     if (factIds.has(fact.id)) { entries.push(...factEntries(fact, ctx)); continue }
     // A selected object type brings the mandatory roles it plays.

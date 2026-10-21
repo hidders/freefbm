@@ -1,5 +1,5 @@
 // Renders a formula tree (see formula.js) as a flat list of styled tokens:
-//   { text, cls }   cls: 'var' | 'reading' | 'type' | 'op' | 'punct'
+//   { text, cls }   cls: 'var' | 'reading' | 'type' | 'op' | 'const' | 'punct'
 //   { text, cls: 'op', sup: true }   the bound of a counting quantifier, or TC's *
 //   { text, cls, sub: true }         the variables bound by TC
 //   { text: QGAP, cls: 'qgap' }      the narrow gap between a quantifier and its variable
@@ -97,6 +97,11 @@ export function renderFormula(formula, ctx) {
         return
       case 'cmp':
         pushVar(f.left); push(` ${f.op} `, 'op'); pushVar(f.right)
+        return
+      case 'vcmp':
+        pushVar(f.left); push(` ${f.op} `, 'op')
+        if (f.right.t === 'const') push(f.right.quoted ? `'${f.right.text.replace(/['\\]/g, '\\$&')}'` : f.right.text, 'const')
+        else pushVar(f.right)
         return
       case 'not':
         push('¬', 'op')
