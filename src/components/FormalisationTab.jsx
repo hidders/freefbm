@@ -36,7 +36,7 @@ export default function FormalisationTab() {
     diagrams: s.diagrams, activeDiagramId: s.activeDiagramId,
     selectedId: s.selectedId, multiSelectedIds: s.multiSelectedIds,
     selectedMandatoryDot: s.selectedMandatoryDot, selectedUniqueness: s.selectedUniqueness,
-    selectedInternalFrequency: s.selectedInternalFrequency,
+    selectedInternalFrequency: s.selectedInternalFrequency, selectedValueRange: s.selectedValueRange,
   })))
   const [showDisjoint, toggleDisjoint] = useToggle('freefbm.formalisation.disjointness')
   const [showParticipation, toggleParticipation] = useToggle('freefbm.formalisation.participation')

@@ -332,6 +332,18 @@ function typeValueRangeEntry(type, ctx) {
     type.valueRange, type.id, ctx, (cond) => forall([x], cond(x)))
 }
 
+// ∀x (∃ȳ (… x …) → the value of x is in the range), for the value range on
+// role i of the fact type.
+function roleValueRangeEntry(fact, i, ctx, reading = readingText(fact, ctx)) {
+  const r = fact.roles[i]
+  const base = { key: `${fact.id}:vr:${i}`, elementId: fact.id,
+    kind: `Value range (role ${i + 1})`, subject: reading }
+  if (!r.objectTypeId) return { ...base, note: 'The role has no player yet.' }
+  const xs = fact.roles.map(p => mkVar(p.objectTypeId))
+  return valueRangeEntry(base, r.valueRange, r.objectTypeId, ctx, (cond) =>
+    forall([xs[i]], implies(exists(xs.filter((_, j) => j !== i), factAtom(fact.id, xs)), cond(xs[i]))))
+}
+
 // ── Internal constraints of one fact type ────────────────────────────────────
 
 function factEntries(fact, ctx) {
@@ -355,15 +367,7 @@ function factEntries(fact, ctx) {
     if (isPreferred) out.push(...preferredIdentifierEntries(fact, u, reading))
   }
 
-  fact.roles.forEach((r, i) => {
-    if (!r.valueRange?.length) return
-    const base = { key: `${fact.id}:vr:${i}`, elementId: fact.id,
-      kind: `Value range (role ${i + 1})`, subject: reading }
-    if (!r.objectTypeId) { out.push({ ...base, note: 'The role has no player yet.' }); return }
-    const xs = roleVars()
-    out.push(valueRangeEntry(base, r.valueRange, r.objectTypeId, ctx, (cond) =>
-      forall([xs[i]], implies(exists(xs.filter((_, j) => j !== i), factAtom(fact.id, xs)), cond(xs[i])))))
-  })
+  fact.roles.forEach((r, i) => { if (r.valueRange?.length) out.push(roleValueRangeEntry(fact, i, ctx, reading)) })
 
   fact.roles.forEach((r, i) => {
     if (!r.mandatory) return
@@ -723,6 +727,20 @@ function constraintFactIds(c) {
 //   { key, elementId, kind, subject, formula? , note? }
 export function formalise(state) {
   const ctx = makeContext(state)
+
+  // A selected value range shows just its own formula.
+  const vr = state.selectedValueRange
+  if (vr) {
+    const ot = vr.otId ? ctx.otById.get(vr.otId) : null
+    const fact = vr.factId != null ? ctx.factById.get(vr.factId) : null
+    const entry = ot?.valueRange?.length ? typeValueRangeEntry(ot, ctx)
+      : fact?.roles[vr.roleIndex]?.valueRange?.length ? roleValueRangeEntry(fact, vr.roleIndex, ctx)
+      : null
+    const typeId = ot?.id ?? fact?.roles[vr.roleIndex]?.objectTypeId
+    const implicit = implicitEntries(state, ctx, new Set(typeId ? [typeId] : []))
+    implicit.impliedLinks = []
+    return { entries: entry ? [entry] : [], implicit, ctx, scope: 'selection' }
+  }
   const constraints = (state.constraints ?? []).filter(c => SEQUENCE_TYPES.has(c.constraintType))
 
   const selected = new Set(state.multiSelectedIds ?? [])
