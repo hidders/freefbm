@@ -1,7 +1,7 @@
 import { findRefMode } from '../../utils/refMode.js'
 import {
   uid, occOf, inDiag, cInDiag, patchOcc,
-  computeConnectedIds,
+  computeConnectedIds, withSequences,
 } from '../storeHelpers'
 
 export function createSelectionSlice(set, get) {
@@ -290,6 +290,7 @@ export function createSelectionSlice(set, get) {
       }
       const ilKeysToRemove = new Set(implicitLinksToDelete.map(il => `${il.factId}:${il.roleIndex}`))
       const ilPosKeysToRemove = new Set(implicitLinksToDelete.map(il => `${il.factId}:il:${il.roleIndex}`))
+      const requery = []
       set(s => {
         const otIds   = new Set(s.objectTypes.filter(o => idSet.has(o.id)).map(o => o.id))
         const factIds = new Set(s.facts.filter(f => idSet.has(f.id) &&
@@ -328,7 +329,9 @@ export function createSelectionSlice(set, get) {
                   if (m.kind === 'subtype' && allStIds.has(m.subtypeId)) positionsToRemove.add(i)
                 }))
                 if (positionsToRemove.size > 0) {
-                  updated = { ...updated, sequences: updated.sequences.map(g => g.filter((_, i) => !positionsToRemove.has(i))) }
+                  const { constraint, changed } = withSequences(updated, updated.sequences.map(g => g.filter((_, i) => !positionsToRemove.has(i))))
+                  if (changed) requery.push(c.id)
+                  updated = constraint
                 }
                 updated = { ...updated, subtypeIds: (updated.subtypeIds || []).filter(sid => !allStIds.has(sid)) }
               } else {
@@ -363,6 +366,7 @@ export function createSelectionSlice(set, get) {
           isDirty: true,
         }
       })
+      requery.forEach(id => get()._tryAutoGenerateQuery(id))
     },
 
     selectConnected() {

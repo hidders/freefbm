@@ -9,7 +9,7 @@ import {
   clearRefModePI, applyFreshRefMode,
   findUniqueLCA, findPathDown, migrateRefModeExpansion, migrateSubtypeOccurrences,
   migrateOldDiagram, nextRelationNumber, defaultReadingParts, subtypeKindOf,
-  factTypeLabel, getConstraintDeps, getConstraintQueryDeps, eligibleConstraints,
+  factTypeLabel, getConstraintDeps, getConstraintQueryDeps, eligibleConstraints, withSequences,
   syncConstraints, computeConnectedIds, hasNoConnectors, runFactMergePass,
 } from '../storeHelpers'
 
@@ -675,6 +675,7 @@ export function createElementSlice(set, get) {
     // Change the arity of an existing fact type.
     setFactArity(factId, newArity) {
       if (newArity < 1) return
+      const requery = []
       set(s => {
         const facts = s.facts.map(f => {
           if (f.id !== factId) return f
@@ -720,15 +721,19 @@ export function createElementSlice(set, get) {
           }
           return { ...f, arity: newArity, roles, uniqueness, internalFrequency, readingParts, alternativeReadings, shownReadingOrder: null, implicitLinks }
         })
-        const constraints = s.constraints.map(c => ({
-          ...c,
-          roleSequences: c.roleSequences
-            ? c.roleSequences.map(g => g.filter(r => !(r.factId === factId && r.roleIndex >= newArity)))
-            : undefined,
-          sequences: c.sequences
-            ? c.sequences.map(g => g.filter(m => !(m.kind === 'role' && m.factId === factId && m.roleIndex >= newArity)))
-            : undefined,
-        }))
+        const constraints = s.constraints.map(c => {
+          const updated = {
+            ...c,
+            roleSequences: c.roleSequences
+              ? c.roleSequences.map(g => g.filter(r => !(r.factId === factId && r.roleIndex >= newArity)))
+              : undefined,
+          }
+          if (!c.sequences) return { ...updated, sequences: undefined }
+          const { constraint, changed } = withSequences(updated,
+            c.sequences.map(g => g.filter(m => !(m.kind === 'role' && m.factId === factId && m.roleIndex >= newArity))))
+          if (changed) requery.push(c.id)
+          return constraint
+        })
         // Resize each tuple in the fact's population to match the new arity
         const existingTuples = s.factPopulations?.[factId]
         let factPopulations = s.factPopulations
@@ -751,6 +756,7 @@ export function createElementSlice(set, get) {
           }),
         }
       })
+      requery.forEach(id => get()._tryAutoGenerateQuery(id))
     },
 
     // Move a role from fromIndex to toIndex, shifting others accordingly.
@@ -970,6 +976,7 @@ export function createElementSlice(set, get) {
     },
 
     deleteRole(factId, roleIndex) {
+      const requery = []
       set(s => {
         const facts = s.facts.map(f => {
           if (f.id !== factId) return f
@@ -999,20 +1006,21 @@ export function createElementSlice(set, get) {
                 g.filter(r => !(r.factId === factId && r.roleIndex === roleIndex))
                  .map(r => r.factId === factId && r.roleIndex > roleIndex ? { ...r, roleIndex: r.roleIndex - 1 } : r))
             : undefined,
-          sequences: c.sequences
-            ? (() => {
-                const positionsToRemove = new Set()
-                c.sequences.forEach(g => g.forEach((m, i) => {
-                  if (m.kind === 'role' && m.factId === factId && m.roleIndex === roleIndex) positionsToRemove.add(i)
-                }))
-                return c.sequences
-                  .map(g => g
-                    .filter((_, i) => !positionsToRemove.has(i))
-                    .map(m => m.kind === 'role' && m.factId === factId && m.roleIndex > roleIndex ? { ...m, roleIndex: m.roleIndex - 1 } : m)
-                  )
-              })()
-            : undefined,
         }))
+          .map(c => {
+            if (!c.sequences) return { ...c, sequences: undefined }
+            const positionsToRemove = new Set()
+            c.sequences.forEach(g => g.forEach((m, i) => {
+              if (m.kind === 'role' && m.factId === factId && m.roleIndex === roleIndex) positionsToRemove.add(i)
+            }))
+            const { constraint, changed } = withSequences(c, c.sequences
+              .map(g => g
+                .filter((_, i) => !positionsToRemove.has(i))
+                .map(m => m.kind === 'role' && m.factId === factId && m.roleIndex > roleIndex ? { ...m, roleIndex: m.roleIndex - 1 } : m)
+              ))
+            if (changed) requery.push(c.id)
+            return constraint
+          })
         return { facts, constraints, isDirty: true,
           diagrams: s.diagrams.map(d => {
             const ilp = { ...(d.implicitLinkPositions ?? {}) }
@@ -1055,6 +1063,7 @@ export function createElementSlice(set, get) {
           }),
         }
       })
+      requery.forEach(id => get()._tryAutoGenerateQuery(id))
     },
 
     updateRole(factId, roleIndex, patch) {
@@ -1446,6 +1455,7 @@ export function createElementSlice(set, get) {
     },
 
     deleteSubtype(id) {
+      const requery = []
       set(s => ({
         subtypes: s.subtypes.filter(st => st.id !== id),
         diagrams: s.diagrams.map(d => {
@@ -1463,14 +1473,16 @@ export function createElementSlice(set, get) {
             c.sequences.forEach(g => g.forEach((m, i) => {
               if (m.kind === 'subtype' && m.subtypeId === id) positionsToRemove.add(i)
             }))
-            const sequences = c.sequences.map(g => g.filter((_, i) => !positionsToRemove.has(i)))
-            return { ...c, sequences }
+            const { constraint, changed } = withSequences(c, c.sequences.map(g => g.filter((_, i) => !positionsToRemove.has(i))))
+            if (changed) requery.push(c.id)
+            return constraint
           }
           return { ...c, subtypeIds: (c.subtypeIds || []).filter(sid => sid !== id) }
         }),
         selectedId: s.selectedId === id ? null : s.selectedId,
         isDirty: true,
       }))
+      requery.forEach(cid => get()._tryAutoGenerateQuery(cid))
     },
 
     // Add an already-existing subtype schema element to a specific diagram with pinned occurrence endpoints.

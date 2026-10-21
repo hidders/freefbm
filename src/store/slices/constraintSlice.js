@@ -3,7 +3,7 @@ import {
   uid, mkConstraint, mkConstraintOcc, mkOcc,
   addOccIfAbsent, addCOccIfAbsent, patchCOcc, patchCOccById, rmCOcc,
   roleOccRefsKey, syncConstraints, getConstraintDeps, getConstraintQueryDeps,
-  findUniqueLCA, findPathDown, demoteOtherPIsFor, runFactMergePass,
+  findUniqueLCA, findPathDown, demoteOtherPIsFor, runFactMergePass, withSequences,
 } from '../storeHelpers'
 
 export function createConstraintSlice(set, get) {
@@ -260,10 +260,8 @@ export function createConstraintSlice(set, get) {
             i < originalLength ||
             !existingSeqs.some(ex => ex.length === seq.length && ex.every((m, j) => seqMemberEq(m, seq[j])))
           )
-          // Pad queries array to match sequences length (new sequences get null query)
-          const queries = [...(c.queries || [])]
-          while (queries.length < sequences.length) queries.push(null)
-          return { ...c, sequences, queries }
+          // New sequences get a null query; an extended sequence loses its old one
+          return withSequences(c, sequences).constraint
         })
         return {
           constraints: newConstraints,
@@ -620,10 +618,12 @@ export function createConstraintSlice(set, get) {
       set(s => {
         const newConstraints = s.constraints.map(c => {
           if (c.id !== constraintId) return c
-          const sequences = (c.sequences || [])
-            .map(g => g.filter((_, i) => i !== position))
-            .filter(g => g.length > 0)
-          return { ...c, sequences }
+          // Every sequence that loses a member loses its query; drop emptied sequences with theirs
+          const { constraint } = withSequences(c, (c.sequences || []).map(g => g.filter((_, i) => i !== position)))
+          const keep = constraint.sequences.map(g => g.length > 0)
+          return { ...constraint,
+            sequences: constraint.sequences.filter((_, i) => keep[i]),
+            queries:   constraint.queries.filter((_, i) => keep[i]) }
         })
         return {
           constraints: newConstraints,
@@ -631,6 +631,7 @@ export function createConstraintSlice(set, get) {
           isDirty: true,
         }
       })
+      get()._tryAutoGenerateQuery(constraintId)
     },
 
     removeConstraintSequence(constraintId, sequenceIndex) {
