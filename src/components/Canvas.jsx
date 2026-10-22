@@ -393,6 +393,11 @@ function FrequencyRangePopup({ range, onChange, x, y, onDone, onAbort }) {
 function ValueRangePopup({ title, initialRange, onCommit, x, y, onClose, naturalNumbers }) {
   const ref = useRef(null)
   const [range, setRange] = React.useState(initialRange)
+  // Enter in a field blurs it (applying its value via onChange) and then bubbles
+  // up to the popup's own Enter handler in the same event, before React has
+  // re-rendered. Commit from a ref so that last edit is not lost.
+  const rangeRef = useRef(initialRange)
+  const updateRange = (r) => { rangeRef.current = r; setRange(r) }
   const { dragOffset, onDragMouseDown } = usePopupDrag()
 
   useEffect(() => {
@@ -401,7 +406,7 @@ function ValueRangePopup({ title, initialRange, onCommit, x, y, onClose, natural
     return () => document.removeEventListener('mousedown', onDown, true)
   }, [onClose])
 
-  const commit = () => { onCommit(range); onClose() }
+  const commit = () => { onCommit(rangeRef.current); onClose() }
 
   const POP_W = 280
   const pos = popupPos(x, y, POP_W)
@@ -432,7 +437,7 @@ function ValueRangePopup({ title, initialRange, onCommit, x, y, onClose, natural
           cursor: 'move', userSelect: 'none' }}>
         {title}
       </div>
-      <ValueRangeEditor range={range} onChange={setRange} naturalNumbers={naturalNumbers}/>
+      <ValueRangeEditor range={range} onChange={updateRange} naturalNumbers={naturalNumbers}/>
       <button
         onClick={commit}
         style={{
