@@ -1,4 +1,4 @@
-import { findRefMode, vtNameFromLabel } from '../../utils/refMode.js'
+import { findRefMode, vtNameFromLabel, refModeCollapseBlockers } from '../../utils/refMode.js'
 import {
   uid, mkEntity, mkValue, mkFact, mkRole, mkSubtype, mkConstraint, mkDiagram, mkNote, mkImplicitLink,
   mkOcc, occOf, inDiag, patchOcc, rmOcc, patchOccById, buildRoleOccurrenceMap,
@@ -425,6 +425,23 @@ export function createElementSlice(set, get) {
     },
 
     // Per-diagram display toggle: show the ref mode's VT + FT as ordinary diagram elements.
+    // Expand every collapsed reference mode that constraints on the entity's own ref-fact
+    // role keep from being collapsed (e.g. in a loaded file, or a newly added occurrence).
+    expandBlockedRefModes() {
+      const { objectTypes, facts, constraints, diagrams } = get()
+      const blocked = new Set(
+        [...objectTypes.filter(o => o.kind === 'entity'), ...facts.filter(f => f.objectified && f.objectifiedKind !== 'value')]
+          .filter(ent => refModeCollapseBlockers(ent, facts, objectTypes, constraints).length > 0)
+          .map(ent => ent.id))
+      if (blocked.size === 0) return
+      for (const d of diagrams) {
+        const expanded = new Set(d.expandedRefModeOccs ?? [])
+        for (const occ of (d.occurrences ?? [])) {
+          if (blocked.has(occ.schemaElementId) && !expanded.has(occ.id)) get().expandRefMode(occ.id, d.id)
+        }
+      }
+    },
+
     expandRefMode(otOccurrenceId, diagramId = null) {
       const { objectTypes, facts, activeDiagramId, diagrams } = get()
       const targetDiagramId = diagramId ?? activeDiagramId
@@ -470,8 +487,13 @@ export function createElementSlice(set, get) {
     },
 
     collapseRefMode(otOccurrenceId, diagramId = null) {
-      const { activeDiagramId, facts, objectTypes } = get()
+      const { activeDiagramId, facts, objectTypes, constraints, diagrams } = get()
       const targetDiagramId = diagramId ?? activeDiagramId
+      {
+        const occ = diagrams.find(d => d.id === targetDiagramId)?.occurrences?.find(o => o.id === otOccurrenceId)
+        const ent = occ && (objectTypes.find(o => o.id === occ.schemaElementId) ?? facts.find(f => f.id === occ.schemaElementId))
+        if (ent && refModeCollapseBlockers(ent, facts, objectTypes, constraints).length > 0) return
+      }
       set(s => ({
         diagrams: s.diagrams.map(d => {
           if (d.id !== targetDiagramId) return d

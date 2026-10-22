@@ -396,6 +396,7 @@ export function createDiagramSlice(set, get) {
           isDirty: true,
         }
       })
+      get().expandBlockedRefModes()
     },
 
     removeElementFromDiagram(elementId, diagramId) {

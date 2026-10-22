@@ -22,20 +22,26 @@ function getEntityRefLabel(ot) {
 
 // For an entity occurrence whose reference mode is collapsed in the active diagram,
 // returns the value role of its ref-mode fact as a constraint member
-// ({ kind: 'role', factId, roleIndex }), or null. Clicking such an entity while
-// building a value comparison stands for that role.
-export function collapsedRefValueType(ot) {
-  if (!getEntityRefLabel(ot)) return null
-  const s = useOrmStore.getState()
-  const rm = findRefMode(ot, s.facts, s.objectTypes)
-  return rm ? (s.objectTypes.find(o => o.id === rm.vtId) ?? null) : null
-}
-
+// ({ kind: 'role', factId, roleIndex }), or null. While collapsed, the entity stands
+// for that role: constraint connectors and value ranges on the entity go to it.
 export function collapsedRefValueRole(ot) {
   if (!getEntityRefLabel(ot)) return null
   const s = useOrmStore.getState()
   const rm = findRefMode(ot, s.facts, s.objectTypes)
   return rm ? { kind: 'role', factId: rm.factId, roleIndex: rm.vtRoleIndex } : null
+}
+
+// The value range shown next to an object type, as { range, desc } where desc is the
+// selectValueRange descriptor ({ otId } or { factId, roleIndex }), or null.
+function valueRangeTarget(ot, refValueRole) {
+  if (ot.kind === 'value') return ot.valueRange?.length ? { range: ot.valueRange, desc: { otId: ot.id } } : null
+  if (!refValueRole) return null
+  const s = useOrmStore.getState()
+  const fact = s.facts.find(f => f.id === refValueRole.factId)
+  const role = fact?.roles?.[refValueRole.roleIndex]
+  if (role?.valueRange?.length) return { range: role.valueRange, desc: { factId: fact.id, roleIndex: refValueRole.roleIndex } }
+  const vt = s.objectTypes.find(o => o.id === role?.objectTypeId)
+  return vt?.valueRange?.length ? { range: vt.valueRange, desc: { otId: vt.id } } : null
 }
 
 const OT_FONT       = "'Segoe UI', Helvetica, Arial, sans-serif"
@@ -119,7 +125,7 @@ export function entityBounds(ot) {
            cx: ot.x, cy: ot.y }
 }
 
-export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragStart, mousePos, onContextMenu, onDoubleClickValueRange, onValueRangeClick, onCardinalityRangeClick, onValueRangeContextMenu, onCardinalityRangeContextMenu, isShared, dimInternalConstraints }) {
+export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragStart, mousePos, onContextMenu, onDoubleClickValueRange, onValueRangeClick, onCardinalityRangeClick, onRefRoleValueRangeClick, onValueRangeContextMenu, onCardinalityRangeContextMenu, isShared, dimInternalConstraints }) {
   const store = useOrmStore()
   const isSelected = occurrenceId
     ? ((store.selectedOccurrenceId !== null
@@ -133,7 +139,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
   const isReconnectTarget = !!store.roleReconnectDraft
   const isVcConstruction = !!store.sequenceConstruction &&
     store.constraints.find(c => c.id === store.sequenceConstruction.constraintId)?.constraintType === 'valueComparison'
-  const vcRefRole = isVcConstruction ? collapsedRefValueRole(ot) : null
+  const refValueRole = collapsedRefValueRole(ot)
   const isConstraintTarget = !store.queryEditDraft && !store.queryIndexHighlight && store.selectedKind === 'constraint' &&
     store.constraints.find(c => c.id === store.selectedId)?.targetObjectTypeId === ot.id
 
@@ -350,6 +356,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     if (store.tool === 'toggleMandatory' || store.tool === 'addInternalUniqueness' || store.tool === 'addInternalFrequency') { store.setTool('select'); return }
     if (store.tool === 'addConstraint:valueRange') {
       if (ot.kind === 'value') { onValueRangeClick?.(e.clientX, e.clientY) }
+      else if (refValueRole) { onRefRoleValueRangeClick?.(refValueRole, e.clientX, e.clientY) }
       else { store.setTool('select') }
       return
     }
@@ -374,10 +381,8 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     }
 
     if (store.sequenceConstruction) {
-      if (isVcConstruction) {
-        if (vcRefRole) store.collectSequenceMember(vcRefRole)
-        return
-      }
+      if (refValueRole) { store.collectSequenceMember(refValueRole); return }
+      if (isVcConstruction) return
       store.select(ot.id, ot.kind, occurrenceId ?? null)
       return
     }
@@ -387,10 +392,10 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     }
     store.select(ot.id, ot.kind, occurrenceId ?? null)
     onDragStart(ot.id, ot.kind, e, occurrenceId)
-  }, [store, ot, onDragStart, isSubtypeTool, isAssignTool, editing, editingRef, occurrenceId, isVcConstruction, vcRefRole])
+  }, [store, ot, onDragStart, isSubtypeTool, isAssignTool, editing, editingRef, occurrenceId, isVcConstruction, refValueRole])
 
   const isVrTool      = store.tool === 'addConstraint:valueRange'
-  const isVrCandidate = isVrTool && ot.kind === 'value'
+  const isVrCandidate = isVrTool && (ot.kind === 'value' || !!refValueRole)
   const isCrTool      = store.tool === 'addConstraint:cardinality'
 
   const stroke = isSelected          ? 'var(--accent)'
@@ -445,7 +450,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
           if (store.tool === 'assignRole') return store.linkDraft?.factId != null ? 'pointer' : 'not-allowed'
           if (store.tool === 'addConstraint:valueRange') return isVrCandidate ? 'pointer' : 'not-allowed'
           if (isCrTool) return 'pointer'
-          if (isVcConstruction) return vcRefRole ? 'pointer' : 'not-allowed'
+          if (store.sequenceConstruction) return refValueRole ? 'pointer' : 'not-allowed'
           return 'not-allowed'
         }
         if (isSubtypeTool || isAssignTool) return 'cell'
@@ -545,11 +550,11 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     </g>
 
     {(() => {
-        // A collapsed reference mode hides its value type, so show that value type's
-        // range next to the entity instead. The offset is the entity's own.
-        const vrOt = ot.kind === 'value' ? ot : collapsedRefValueType(ot)
-        if (!vrOt) return null
-        const vr = formatValueRange(vrOt.valueRange)
+        // While a reference mode is collapsed the entity shows the range of its ref fact's
+        // value role, or else the (hidden) value type's range. The offset is the entity's own.
+        const vrTarget = valueRangeTarget(ot, refValueRole)
+        if (!vrTarget) return null
+        const vr = formatValueRange(vrTarget.range)
         if (!vr) return null
         const _dimOpacity = dimInternalConstraints ? 0.15 : 1
         const AUTO_DX = 0
@@ -584,8 +589,11 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
               stroke="var(--col-constraint)" strokeWidth={1.5}
               strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
             {(() => {
-              const otVrDesc = { otId: vrOt.id }
-              const isVrSel = store.selectedValueRange?.otId === vrOt.id
+              const otVrDesc = vrTarget.desc
+              const sel = store.selectedValueRange
+              const isVrSel = !!sel && (otVrDesc.otId
+                ? sel.otId === otVrDesc.otId
+                : sel.factId === otVrDesc.factId && sel.roleIndex === otVrDesc.roleIndex)
               const vrFill = isVrSel ? 'var(--accent)' : 'var(--col-constraint)'
               return (
                 <text x={tx} y={ty}
@@ -608,7 +616,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
                   onContextMenu={e => {
                     e.preventDefault(); e.stopPropagation()
                     store.selectValueRange(otVrDesc)
-                    onValueRangeContextMenu?.(e, vrOt)
+                    onValueRangeContextMenu?.(e, otVrDesc)
                   }}>
                   {vr}
                 </text>
