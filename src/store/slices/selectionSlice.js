@@ -1,6 +1,6 @@
 import { findRefMode } from '../../utils/refMode.js'
 import {
-  uid, occOf, inDiag, cInDiag, patchOcc,
+  uid, occOf, inDiag, cInDiag,
   computeConnectedIds, withSequences,
 } from '../storeHelpers'
 
@@ -224,57 +224,77 @@ export function createSelectionSlice(set, get) {
     },
 
     alignMultiSelection(axis) {
-      const { multiSelectedIds, activeDiagramId, diagrams, objectTypes, facts, constraints } = get()
+      const { multiSelectedIds, multiSelectedOccurrenceIds, activeDiagramId, diagrams, objectTypes, facts } = get()
       if (multiSelectedIds.length < 2) return
       const idSet   = new Set(multiSelectedIds)
       const diagram = diagrams.find(d => d.id === activeDiagramId)
+      if (!diagram) return
 
       // Collect ref-mode fact/VT IDs whose parent entity has a collapsed ref-mode
       // in this diagram — these are rendered as part of the entity node and must
       // not participate in alignment as independent elements.
-      const expOccsAlign = new Set(diagram?.expandedRefModeOccs ?? [])
+      const expOccsAlign = new Set(diagram.expandedRefModeOccs ?? [])
       const impliedCollapsed = new Set()
       for (const id of multiSelectedIds) {
         const ot = objectTypes.find(o => o.id === id)
                ?? facts.find(f => f.id === id && f.objectified)
         if (!ot) continue
         const rm = findRefMode(ot, facts, objectTypes)
-        const anyExpandedAlign = (diagram?.occurrences ?? []).some(o => o.schemaElementId === id && expOccsAlign.has(o.id))
+        const anyExpandedAlign = (diagram.occurrences ?? []).some(o => o.schemaElementId === id && expOccsAlign.has(o.id))
         if (!rm || anyExpandedAlign) continue
         impliedCollapsed.add(rm.factId)
         impliedCollapsed.add(rm.vtId)
       }
 
-      const getAxis = (id) => {
-        const occ = occOf(diagram, id)
-        if (occ) return occ[axis]
-        const ot = objectTypes.find(o => o.id === id); if (ot) return ot[axis]
-        const f  = facts.find(f => f.id === id);       if (f)  return f[axis]
-        const c  = constraints.find(c => c.id === id); if (c)  return c[axis]
-        return 0
-      }
-
-      const ids = [...idSet].filter(id =>
-        !impliedCollapsed.has(id) && (
-          objectTypes.some(o => o.id === id) ||
-          facts.some(f => f.id === id) ||
-          constraints.some(c => c.id === id)
-        )
+      // Constraint positions live in constraintOccurrences, separate from the
+      // object type and fact type occurrences, so both lists are aligned.
+      // Occurrences tracked by the selection (band select, clicks) are used as
+      // they are; a selected element without a tracked occurrence (Cmd+A) takes
+      // part with every one of its occurrences in this diagram.
+      const occs  = diagram.occurrences ?? []
+      const coccs = diagram.constraintOccurrences ?? []
+      const occIdSet = new Set(multiSelectedOccurrenceIds)
+      const tracked  = new Set([
+        ...occs.filter(o => occIdSet.has(o.id)).map(o => o.schemaElementId),
+        ...coccs.filter(co => occIdSet.has(co.id)).map(co => co.schemaConstraintId),
+      ])
+      const selOccs = occs.filter(o =>
+        !impliedCollapsed.has(o.schemaElementId) &&
+        (occIdSet.has(o.id) || (idSet.has(o.schemaElementId) && !tracked.has(o.schemaElementId)))
       )
-      if (ids.length < 2) return
-      const target = Math.round(ids.reduce((s, id) => s + getAxis(id), 0) / ids.length)
+      const selCoccs = coccs.filter(co =>
+        occIdSet.has(co.id) || (idSet.has(co.schemaConstraintId) && !tracked.has(co.schemaConstraintId))
+      )
+      const all = [...selOccs, ...selCoccs]
+      if (all.length < 2) return
+      const target = Math.round(all.reduce((sum, o) => sum + o[axis], 0) / all.length)
 
-      set(s => ({
-        diagrams: s.diagrams.map(d => {
-          if (d.id !== activeDiagramId) return d
-          let nd = d
-          for (const id of ids) {
-            nd = patchOcc(nd, id, { [axis]: target })
-          }
-          return nd
-        }),
-        isDirty: true,
-      }))
+      const movedOccIds  = new Set(selOccs.map(o => o.id))
+      const movedCoccIds = new Set(selCoccs.map(co => co.id))
+      set(s => {
+        // Internal frequency markers store absolute (schema-level) positions and
+        // follow the fact's first occurrence (see moveOccurrence).
+        const freqShift = {}
+        for (const f of s.facts) {
+          if (!f.internalFrequency?.length) continue
+          const first = occOf(diagram, f.id)
+          if (first && movedOccIds.has(first.id)) freqShift[f.id] = target - first[axis]
+        }
+        return {
+          diagrams: s.diagrams.map(d => d.id !== activeDiagramId ? d : {
+            ...d,
+            occurrences: (d.occurrences ?? []).map(o =>
+              movedOccIds.has(o.id) ? { ...o, [axis]: target } : o),
+            constraintOccurrences: (d.constraintOccurrences ?? []).map(co =>
+              movedCoccIds.has(co.id) ? { ...co, [axis]: target } : co),
+          }),
+          facts: Object.keys(freqShift).length === 0 ? s.facts : s.facts.map(f => !freqShift[f.id] ? f : {
+            ...f,
+            internalFrequency: f.internalFrequency.map(if_ => ({ ...if_, [axis]: if_[axis] + freqShift[f.id] })),
+          }),
+          isDirty: true,
+        }
+      })
     },
 
     deleteMultiSelection() {
