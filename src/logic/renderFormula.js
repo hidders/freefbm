@@ -18,7 +18,7 @@ export const QGAP = '\u2009'
 const QUANTIFIERS = new Set(['forall', 'exists', 'count'])
 const BINDERS = new Set([...QUANTIFIERS, 'tc'])
 // Rendered without parentheses as the body of a quantifier or after ¬.
-const ATOMIC = new Set(['fact', 'type', 'not', 'tc'])
+const ATOMIC = new Set(['fact', 'type', 'true', 'not', 'tc'])
 const BINARY = new Set(['and', 'or', 'implies', 'iff'])
 const OP = { and: ' ∧ ', or: ' ∨ ', implies: ' → ', iff: ' ↔ ' }
 
@@ -94,6 +94,9 @@ export function renderFormula(formula, ctx) {
       }
       case 'type':
         push(ctx.typeName(f.typeId), 'type'); push('('); pushVar(f.arg); push(')')
+        return
+      case 'true':
+        push('⊤', 'op')
         return
       case 'cmp':
         pushVar(f.left); push(` ${f.op} `, 'op'); pushVar(f.right)
