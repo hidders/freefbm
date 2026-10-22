@@ -736,10 +736,11 @@ function constraintFactIds(c) {
   return ids
 }
 
-// Returns the formulas for the selected part of the active diagram (or for the
-// whole diagram when nothing is selected), as a list of entries:
+// Returns the formulas for the selected part of the active diagram (or, when
+// nothing is selected, for the whole diagram, or for the whole schema when
+// wholeSchema is set), as a list of entries:
 //   { key, elementId, kind, subject, formula? , note? }
-export function formalise(state) {
+export function formalise(state, { wholeSchema = false } = {}) {
   const ctx = makeContext(state)
 
   // A selected value range shows just its own formula.
@@ -764,7 +765,12 @@ export function formalise(state) {
 
   const subtypes = state.subtypes ?? []
   let factIds, otIds, constraintIds, subtypeIds
-  if (selected.size === 0) {
+  if (selected.size === 0 && wholeSchema) {
+    factIds = new Set(ctx.factById.keys())
+    otIds = new Set()
+    subtypeIds = new Set(subtypes.map(st => st.id))
+    constraintIds = new Set(constraints.map(c => c.id))
+  } else if (selected.size === 0) {
     const diagram = (state.diagrams ?? []).find(d => d.id === state.activeDiagramId)
     const onDiagram = new Set((diagram?.occurrences ?? []).map(o => o.schemaElementId))
     subtypeIds = new Set(diagram?.subtypeOccurrences
@@ -789,10 +795,12 @@ export function formalise(state) {
     }).map(c => c.id))
   }
 
-  // Types in scope for the implicit constraints: those on the diagram, or the
-  // selected ones and the players of the selected fact types.
+  // Types in scope for the implicit constraints: all of them, those on the
+  // diagram, or the selected ones and the players of the selected fact types.
   const typeIds = new Set(otIds)
-  if (selected.size === 0) {
+  if (selected.size === 0 && wholeSchema) {
+    for (const t of allTypes(state)) typeIds.add(t.id)
+  } else if (selected.size === 0) {
     const diagram = (state.diagrams ?? []).find(d => d.id === state.activeDiagramId)
     for (const o of (diagram?.occurrences ?? []))
       if (ctx.otById.has(o.schemaElementId) || ctx.factById.get(o.schemaElementId)?.objectified) typeIds.add(o.schemaElementId)
@@ -804,7 +812,7 @@ export function formalise(state) {
   }
 
   const entries = subtypes.filter(st => subtypeIds.has(st.id)).map(st => subtypeEntry(st, ctx))
-  // Value ranges of the value types on the diagram, or of the selected ones.
+  // Value ranges of the value types in scope, or of the selected ones.
   for (const ot of (state.objectTypes ?? [])) {
     if (ot.kind !== 'value' || !ot.valueRange?.length) continue
     if (selected.size ? otIds.has(ot.id) : typeIds.has(ot.id)) entries.push(typeValueRangeEntry(ot, ctx))
@@ -825,5 +833,5 @@ export function formalise(state) {
     .filter(f => factIds.has(f.id) && f.objectified && f.objectifiedKind !== 'value')
     .flatMap(f => impliedLinkEntries(f, ctx))
   return { entries, implicit, ctx,
-    scope: selected.size === 0 ? 'diagram' : 'selection' }
+    scope: selected.size ? 'selection' : wholeSchema ? 'schema' : 'diagram' }
 }
