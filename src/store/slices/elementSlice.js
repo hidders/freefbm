@@ -465,6 +465,26 @@ export function createElementSlice(set, get) {
           const ownerOcc2 = (d.occurrences ?? []).find(o => o.id === otOccurrenceId)
           const alreadyOwned = (d.occurrences ?? []).some(o => o.refModeOwnerOccId === otOccurrenceId)
           let newOccs = []
+          let occsOut = d.occurrences ?? []
+          if (alreadyOwned) {
+            // The owned FT may point at a VT occurrence that another, collapsed entity owns
+            // (a VT shared by two ref modes), which would keep the VT hidden after this
+            // expansion. Take ownership of it, or recreate it if it is gone.
+            const expanded = new Set(d.expandedRefModeOccs ?? [])
+            const ftOcc = occsOut.find(o => o.schemaElementId === rm.factId && o.refModeOwnerOccId === otOccurrenceId)
+            const vtOccId = ftOcc?.roleOccurrenceMap?.[String(rm.vtRoleIndex)]
+            const vtOcc = vtOccId ? occsOut.find(o => o.id === vtOccId) : null
+            if (ftOcc && !vtOcc && ownerOcc2) {
+              const fresh = mkOcc(rm.vtId, ownerOcc2.x + 160, ownerOcc2.y, { refModeOwnerOccId: otOccurrenceId })
+              newOccs = [fresh]
+              occsOut = occsOut.map(o => o.id === ftOcc.id
+                ? { ...o, roleOccurrenceMap: { ...(o.roleOccurrenceMap ?? {}), [String(rm.vtRoleIndex)]: fresh.id } }
+                : o)
+            } else if (vtOcc?.refModeOwnerOccId && vtOcc.refModeOwnerOccId !== otOccurrenceId &&
+                       !expanded.has(vtOcc.refModeOwnerOccId)) {
+              occsOut = occsOut.map(o => o.id === vtOcc.id ? { ...o, refModeOwnerOccId: otOccurrenceId } : o)
+            }
+          }
           if (!alreadyOwned && ownerOcc2) {
             const vtOcc = mkOcc(rm.vtId, ownerOcc2.x + 160, ownerOcc2.y, { refModeOwnerOccId: otOccurrenceId })
             const ftOcc = mkOcc(rm.factId, ownerOcc2.x + 80, ownerOcc2.y, {
@@ -478,7 +498,7 @@ export function createElementSlice(set, get) {
           }
           return {
             ...d,
-            occurrences: [...(d.occurrences ?? []), ...newOccs],
+            occurrences: [...occsOut, ...newOccs],
             expandedRefModeOccs: [...(d.expandedRefModeOccs ?? []), otOccurrenceId],
           }
         }),
