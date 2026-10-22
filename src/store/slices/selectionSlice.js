@@ -3,6 +3,7 @@ import {
   uid, occOf, inDiag, cInDiag,
   computeConnectedIds, withSequences,
 } from '../storeHelpers'
+import { factAsDrawn, defaultFrequencyPos } from '../../utils/frequencyPlacement.js'
 
 export function createSelectionSlice(set, get) {
   return {
@@ -497,11 +498,12 @@ export function createSelectionSlice(set, get) {
       const fact = get().facts.find(f => f.id === factId)
       if (!fact) return
       const ifId = uid()
+      const pos = defaultFrequencyPos(factAsDrawn(get(), factId))
       set(s => ({
         facts: s.facts.map(f => f.id !== factId ? f : {
           ...f,
           internalFrequency: [...(f.internalFrequency || []), {
-            id: ifId, roles: [], range: [], x: f.x + 40, y: f.y - 30,
+            id: ifId, roles: [], range: [], ...pos,
           }],
         }),
         isDirty: true,
@@ -527,21 +529,22 @@ export function createSelectionSlice(set, get) {
       if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
       const fact = get().facts.find(f => f.id === factId)
       if (!fact) return
-      set({ frequencyConstruction: { stage: 2, factId, x: fact.x + 40, y: fact.y - 30, roleIndices: [], ifId: null } })
+      const pos = defaultFrequencyPos(factAsDrawn(get(), factId))
+      set({ frequencyConstruction: { stage: 2, factId, ...pos, roleIndices: [], ifId: null, moved: false } })
     },
     moveFrequencyConstructionCircle(x, y) {
       set(s => s.frequencyConstruction
-        ? { frequencyConstruction: { ...s.frequencyConstruction, x, y } } : {})
+        ? { frequencyConstruction: { ...s.frequencyConstruction, x, y, moved: true } } : {})
     },
     toggleFrequencyConstructionRole(roleIndex) {
       set(s => {
         const fc = s.frequencyConstruction
         if (!fc || fc.stage !== 2) return {}
         const has = fc.roleIndices.includes(roleIndex)
-        return { frequencyConstruction: {
-          ...fc,
-          roleIndices: has ? fc.roleIndices.filter(i => i !== roleIndex) : [...fc.roleIndices, roleIndex],
-        }}
+        const roleIndices = has ? fc.roleIndices.filter(i => i !== roleIndex) : [...fc.roleIndices, roleIndex]
+        // A new marker follows the chosen roles until the user drags it
+        const pos = fc.ifId == null && !fc.moved ? defaultFrequencyPos(factAsDrawn(s, fc.factId), roleIndices) : {}
+        return { frequencyConstruction: { ...fc, roleIndices, ...pos } }
       })
     },
     advanceFrequencyToRange() {
@@ -701,9 +704,7 @@ export function createSelectionSlice(set, get) {
       if (!fact) return
       const ifId = uid()
       const key = JSON.stringify([...uRoles].sort((a, b) => a - b))
-      const activeDiagram = get().diagrams.find(d => d.id === get().activeDiagramId)
-      const factOcc = occOf(activeDiagram, factId)
-      const factPos = factOcc ? { x: factOcc.x, y: factOcc.y } : { x: fact.x, y: fact.y }
+      const pos = defaultFrequencyPos(factAsDrawn(get(), factId), uRoles)
       set(s => ({
         facts: s.facts.map(f => {
           if (f.id !== factId) return f
@@ -716,7 +717,7 @@ export function createSelectionSlice(set, get) {
             uniqueness,
             preferredUniqueness: preferredUniqueness.length > 0 ? preferredUniqueness : [],
             internalFrequency: [...(f.internalFrequency || []), {
-              id: ifId, roles: [...uRoles], range: [{ type: 'upper', upper: 1 }], x: factPos.x + 40, y: factPos.y - 30,
+              id: ifId, roles: [...uRoles], range: [{ type: 'upper', upper: 1 }], ...pos,
             }],
           }
         }),
