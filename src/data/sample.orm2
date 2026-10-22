@@ -245,8 +245,8 @@
         "x": 680,
         "y": 560,
         "valueRangeOffset": {
-          "dx": 0,
-          "dy": 30
+          "dx": 9,
+          "dy": -32
         },
         "datatypeAssignment": {
           "profileId": "abstract",
@@ -256,15 +256,15 @@
         "valueRange": [
           {
             "type": "single",
-            "value": "Autumn"
-          },
-          {
-            "type": "single",
             "value": "Spring"
           },
           {
             "type": "single",
             "value": "Summer"
+          },
+          {
+            "type": "single",
+            "value": "Autumn"
           },
           {
             "type": "single",
@@ -1003,6 +1003,9 @@
         "uniqueness": [
           [
             0
+          ],
+          [
+            1
           ]
         ],
         "preferredUniqueness": [],
@@ -1182,7 +1185,7 @@
                 "upper": "6"
               }
             ],
-            "x": 254,
+            "x": 240,
             "y": 159
           }
         ],
@@ -1437,7 +1440,7 @@
         "kind": "fact",
         "x": 420,
         "y": 690,
-        "arity": 3,
+        "arity": 2,
         "roles": [
           {
             "id": "x37",
@@ -1452,20 +1455,8 @@
             "linkReadingReverseParts": null
           },
           {
-            "id": "x38",
-            "objectTypeId": "ot_Course",
-            "roleName": "",
-            "mandatory": false,
-            "linkReadingParts": [
-              "",
-              "",
-              ""
-            ],
-            "linkReadingReverseParts": null
-          },
-          {
             "id": "x39",
-            "objectTypeId": "n1792595733805_10",
+            "objectTypeId": "n1792654764379_4",
             "roleName": "",
             "mandatory": false,
             "linkReadingParts": [
@@ -1479,7 +1470,6 @@
         "readingParts": [
           "",
           "teaches",
-          "in",
           ""
         ],
         "alternativeReadings": [],
@@ -1487,8 +1477,8 @@
         "shownReadingOrder": null,
         "uniqueness": [
           [
-            1,
-            2
+            0,
+            1
           ]
         ],
         "preferredUniqueness": [],
@@ -1726,6 +1716,136 @@
         "readingAbove": false,
         "uniquenessBelow": false,
         "implicitLinks": []
+      },
+      {
+        "id": "n1792654764379_4",
+        "kind": "fact",
+        "x": 300,
+        "y": 580,
+        "arity": 2,
+        "roles": [
+          {
+            "id": "n1792654764379_5",
+            "objectTypeId": "ot_Course",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "involves",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          },
+          {
+            "id": "n1792654764379_6",
+            "objectTypeId": "n1792595733805_10",
+            "roleName": "",
+            "mandatory": false,
+            "linkReadingParts": [
+              "",
+              "involves",
+              ""
+            ],
+            "linkReadingReverseParts": null
+          }
+        ],
+        "readingParts": [
+          "",
+          "is offered in",
+          ""
+        ],
+        "alternativeReadings": [],
+        "readingDisplay": "forward",
+        "shownReadingOrder": null,
+        "uniqueness": [
+          [
+            0,
+            1
+          ]
+        ],
+        "preferredUniqueness": [],
+        "internalFrequency": [],
+        "orientation": "horizontal",
+        "readingOffsetAbove": null,
+        "readingOffsetBelow": null,
+        "readingAbove": false,
+        "uniquenessBelow": false,
+        "implicitLinks": [
+          {
+            "roleIndex": 0,
+            "x": null,
+            "y": null,
+            "readingParts": [
+              "",
+              "involves",
+              ""
+            ],
+            "alternativeReadings": [
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "is involved in",
+                  ""
+                ]
+              }
+            ],
+            "readingDisplay": "forward",
+            "orientation": "horizontal",
+            "readingOffsetAbove": null,
+            "readingOffsetBelow": null,
+            "readingAbove": false,
+            "uniquenessBelow": false,
+            "preferredUniqueness": [],
+            "roleNames": [
+              null,
+              null
+            ]
+          },
+          {
+            "roleIndex": 1,
+            "x": null,
+            "y": null,
+            "readingParts": [
+              "",
+              "involves",
+              ""
+            ],
+            "alternativeReadings": [
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "is involved in",
+                  ""
+                ]
+              }
+            ],
+            "readingDisplay": "forward",
+            "orientation": "horizontal",
+            "readingOffsetAbove": null,
+            "readingOffsetBelow": null,
+            "readingAbove": false,
+            "uniquenessBelow": false,
+            "preferredUniqueness": [],
+            "roleNames": [
+              null,
+              null
+            ]
+          }
+        ],
+        "objectified": true,
+        "objectifiedKind": "entity",
+        "nestedReading": false,
+        "datatypeAssignment": null,
+        "objectifiedName": "Offering",
+        "isIndependent": true
       }
     ],
     "subtypes": [
@@ -2297,8 +2417,8 @@
             },
             {
               "kind": "role",
-              "factId": "f_teaches",
-              "roleIndex": 1
+              "factId": "n1792654764379_4",
+              "roleIndex": 0
             }
           ],
           [
@@ -2318,7 +2438,7 @@
           {
             "atoms": [
               {
-                "id": "x60",
+                "id": "n1792655015051_11",
                 "kind": "fact",
                 "originalId": "f_teaches",
                 "isOutput": false,
@@ -2326,9 +2446,19 @@
                   {
                     "roleIndex": 0,
                     "seqPosition": 0
-                  },
+                  }
+                ],
+                "dx": 16,
+                "dy": 16
+              },
+              {
+                "id": "n1792655015051_12",
+                "kind": "fact",
+                "originalId": "n1792654764379_4",
+                "isOutput": false,
+                "seededRoles": [
                   {
-                    "roleIndex": 1,
+                    "roleIndex": 0,
                     "seqPosition": 1
                   }
                 ],
@@ -2336,12 +2466,18 @@
                 "dy": 16
               }
             ],
-            "links": []
+            "links": [
+              {
+                "atomId": "n1792655015051_11",
+                "roleIndex": 1,
+                "variableId": "n1792655015051_12"
+              }
+            ]
           },
           {
             "atoms": [
               {
-                "id": "x61",
+                "id": "n1792654991029_10",
                 "kind": "fact",
                 "originalId": "f_qualified",
                 "isOutput": false,
@@ -2841,7 +2977,7 @@
         {
           "id": "occ_n1792593665142_163",
           "schemaElementId": "f_enrols",
-          "x": 300,
+          "x": 286,
           "y": 110,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_120",
@@ -2861,7 +2997,7 @@
         {
           "id": "occ_n1792593665146_171",
           "schemaElementId": "f_assists",
-          "x": 300,
+          "x": 286,
           "y": 250,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_120",
@@ -2871,22 +3007,26 @@
         {
           "id": "occ_n1792593665151_179",
           "schemaElementId": "f_qualified",
-          "x": 290,
+          "x": 286,
           "y": 390,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_121",
             "1": "occ_n1792593665130_123"
+          },
+          "readingOffsetBelow": {
+            "dx": 0,
+            "dy": 22
           }
         },
         {
           "id": "occ_n1792593665152_184",
           "schemaElementId": "f_teaches",
-          "x": 310,
+          "x": 286,
           "y": 490,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_121",
-            "1": "occ_n1792593665130_123",
-            "2": "occ_n1792595733805_11"
+            "1": "occ_n1792654764379_7",
+            "2": "occ_n1792654764379_7"
           },
           "readingOffsetBelow": {
             "dx": 0,
@@ -2896,7 +3036,7 @@
         {
           "id": "occ_n1792593665160_192",
           "schemaElementId": "f_coordinates",
-          "x": 290,
+          "x": 286,
           "y": 320,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_121",
@@ -2906,14 +3046,14 @@
         {
           "id": "occ_n1792595515478_3",
           "schemaElementId": "n1792595515478_2",
-          "x": 690,
-          "y": 420
+          "x": 680,
+          "y": 470
         },
         {
           "id": "occ_n1792595521928_5",
           "schemaElementId": "n1792595521927_4",
           "x": 690,
-          "y": 550
+          "y": 548
         },
         {
           "id": "occ_n1792595733805_11",
@@ -2939,7 +3079,7 @@
           "id": "occ_n1792595809976_19",
           "schemaElementId": "n1792595809976_16",
           "x": 540,
-          "y": 540,
+          "y": 548,
           "roleOccurrenceMap": {
             "0": "occ_n1792595733805_11",
             "1": "occ_n1792595521928_5"
@@ -2953,18 +3093,36 @@
           "id": "occ_n1792600091986_13",
           "schemaElementId": "n1792600091986_2",
           "x": 950,
-          "y": 550,
+          "y": 548,
           "refModeOwnerOccId": "occ_n1792595521928_5"
         },
         {
           "id": "occ_n1792600091986_14",
           "schemaElementId": "n1792600091986_8",
           "x": 820,
-          "y": 550,
+          "y": 548,
           "refModeOwnerOccId": "occ_n1792595521928_5",
           "roleOccurrenceMap": {
             "0": "occ_n1792595521928_5",
             "1": "occ_n1792600091986_13"
+          }
+        },
+        {
+          "id": "occ_n1792654764379_7",
+          "schemaElementId": "n1792654764379_4",
+          "x": 460,
+          "y": 390,
+          "readingOffsetBelow": {
+            "dx": 0,
+            "dy": 32
+          },
+          "nameOffset": {
+            "dx": 0,
+            "dy": 0
+          },
+          "roleOccurrenceMap": {
+            "0": "occ_n1792593665130_123",
+            "1": "occ_n1792595733805_11"
           }
         }
       ],
@@ -2980,7 +3138,7 @@
         {
           "id": "cocc_n1792593665148_173",
           "schemaConstraintId": "c_notBoth",
-          "x": 300,
+          "x": 286,
           "y": 190,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
@@ -2988,7 +3146,7 @@
         {
           "id": "cocc_n1792593665155_186",
           "schemaConstraintId": "c_teachQualified",
-          "x": 280,
+          "x": 286,
           "y": 440,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
@@ -3013,8 +3171,8 @@
       "subtypeOccurrences": [],
       "subtypeEndpointOccs": {},
       "pan": {
-        "x": 0,
-        "y": 0
+        "x": -17,
+        "y": -54
       },
       "zoom": 1,
       "displaySettings": {
@@ -3156,6 +3314,18 @@
       ],
       [
         "Winter",
+        "2026"
+      ],
+      [
+        "Autumn",
+        "2025"
+      ],
+      [
+        "Winter",
+        "2025"
+      ],
+      [
+        "Summer",
         "2026"
       ]
     ],
@@ -3405,6 +3575,18 @@
       [
         "P6",
         "LOG1"
+      ],
+      [
+        "P3",
+        "DB2"
+      ],
+      [
+        "P6",
+        "DB2"
+      ],
+      [
+        "P5",
+        "LOG1"
       ]
     ],
     "f_coordinates": [
@@ -3428,6 +3610,47 @@
     "f_teaches": [
       [
         "P3",
+        [
+          "DB1",
+          [
+            "Spring",
+            "2026"
+          ]
+        ]
+      ],
+      [
+        "P6",
+        [
+          "DB2",
+          [
+            "Autumn",
+            "2025"
+          ]
+        ]
+      ],
+      [
+        "P5",
+        [
+          "KR3",
+          [
+            "Winter",
+            "2025"
+          ]
+        ]
+      ],
+      [
+        "P5",
+        [
+          "LOG1",
+          [
+            "Winter",
+            "2026"
+          ]
+        ]
+      ]
+    ],
+    "n1792654764379_4": [
+      [
         "DB1",
         [
           "Summer",
@@ -3435,26 +3658,51 @@
         ]
       ],
       [
-        "P6",
+        "DB2",
+        [
+          "Autumn",
+          "2025"
+        ]
+      ],
+      [
         "LOG1",
+        [
+          "Winter",
+          "2025"
+        ]
+      ],
+      [
+        "KR3",
+        [
+          "Winter",
+          "2025"
+        ]
+      ],
+      [
+        "DB1",
         [
           "Spring",
           "2026"
         ]
       ],
       [
-        "P5",
         "DB2",
         [
-          "Autumn",
+          "Summer",
           "2026"
         ]
       ],
       [
-        "P5",
-        "KR3",
+        "LOG1",
         [
           "Winter",
+          "2026"
+        ]
+      ],
+      [
+        "KR3",
+        [
+          "Autumn",
           "2026"
         ]
       ]
