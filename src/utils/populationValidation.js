@@ -296,7 +296,8 @@ function comparisonKind(r0, r1, facts, objectTypes, subtypes) {
 }
 
 export function computePopulationIssues(rawData) {
-  const { facts, factPopulations, objectTypes, populations, subtypes, subtypeMappings, nestedEntityMappings, constraints } = canonicalizePopulationData(rawData)
+  const data = canonicalizePopulationData(rawData)
+  const { facts, factPopulations, objectTypes, populations, subtypes, subtypeMappings, nestedEntityMappings, constraints } = data
   const otById = new Map((objectTypes || []).map(o => [o.id, o]))
   const issues = []
 
@@ -367,8 +368,7 @@ export function computePopulationIssues(rawData) {
   }
 
   // Wrapper for module-level computeEffectiveFactTuples with local state.
-  const effectiveFactTuples = (fact) =>
-    computeEffectiveFactTuples(fact, facts || [], factPopulations || {}, objectTypes || [], populations || {}, nestedEntityMappings || {}, constraints)
+  const effectiveFactTuples = factTupleSource(data)
 
   // ── 1. Dangling references in fact-tuple cells ──────────────────────────
   // For each fact-tuple cell, validate against its role player's nested shape:
@@ -386,6 +386,7 @@ export function computePopulationIssues(rawData) {
         if (!Array.isArray(tuple)) return
         tuple.forEach((cell, ri) => {
           const role = fact.roles?.[ri]
+          if (!role) return  // a stray cell past the fact's arity
           const player = role?.objectTypeId
             ? findRolePlayer(role.objectTypeId, objectTypes || [], facts || [])
             : null
@@ -2289,8 +2290,7 @@ export function computeInclusiveOrTable(data, constraintId, selectedLcaId = null
 
   const { dsuFind, nodeKey, translateToLCA } = buildSubtypeDSU(data)
 
-  const eft = (fact) =>
-    computeEffectiveFactTuples(fact, facts || [], factPopulations || {}, objectTypes || [], populations || {}, nestedEntityMappings || {}, constraints)
+  const eft = factTupleSource(data)
 
   const otById = new Map((objectTypes || []).map(o => [o.id, o]))
   const playerPop = (id) => {
@@ -2411,8 +2411,7 @@ export function computeExclusiveOrTable(data, constraintId, selectedLcaId = null
 
   const { dsuFind, nodeKey, translateToLCA } = buildSubtypeDSU(data)
 
-  const eft = (fact) =>
-    computeEffectiveFactTuples(fact, facts || [], factPopulations || {}, objectTypes || [], populations || {}, nestedEntityMappings || {}, constraints)
+  const eft = factTupleSource(data)
 
   const otById = new Map((objectTypes || []).map(o => [o.id, o]))
   const playerPop = (id) => {
@@ -2511,8 +2510,7 @@ function _buildSetRows(data, constraintId, allowedTypes, selectedLcaIds = null) 
   if (seqs.length < 2) return null
 
   const { dsuFind, nodeKey, translateToLCA } = buildSubtypeDSU(data)
-  const eft = (fact) =>
-    computeEffectiveFactTuples(fact, facts || [], factPopulations || {}, objectTypes || [], populations || {}, nestedEntityMappings || {}, constraints)
+  const eft = factTupleSource(data)
 
   const projections = seqs.map((seq, i) => {
     const qResult = evaluateQuery(queries[i] ?? null, facts, populations, eft)
@@ -2770,6 +2768,30 @@ function computeEffectiveFactTuples(fact, facts, factPopulations, objectTypes, p
   return []
 }
 
+// The tuples of each fact type (see computeEffectiveFactTuples) as a function
+// of the fact, for evaluateQuery. Its nestingInstance(fact, row, rowIndex)
+// gives the instance of an objectified fact type that nests a row: the PI
+// value stored in nestedEntityMappings when the nested entity type has an
+// explicit identifier, otherwise the fact tuple itself. That is the value
+// that cells of the roles it plays hold.
+function factTupleSource(data) {
+  const { facts = [], factPopulations, objectTypes = [], populations, subtypes = [], nestedEntityMappings, constraints } = data
+  const tuples = (fact) =>
+    computeEffectiveFactTuples(fact, facts, factPopulations || {}, objectTypes, populations || {}, nestedEntityMappings || {}, constraints)
+  const hasPI = new Map()
+  tuples.nestingInstance = (fact, row, rowIndex) => {
+    if (!fact?.objectified || !Array.isArray(row)) return null
+    if (!hasPI.has(fact.id)) {
+      hasPI.set(fact.id, !!(findRefMode(fact, facts, objectTypes)
+        || findCompositePI(fact, facts, objectTypes, constraints)
+        || findInheritedPI(fact, facts, objectTypes, subtypes, constraints)))
+    }
+    if (hasPI.get(fact.id)) return nestedEntityMappings?.[fact.id]?.[rowIndex] ?? null
+    return row.slice(0, fact.roles?.length ?? row.length)
+  }
+  return tuples
+}
+
 function evaluateQuery(query, facts, populations, effectiveFactTuplesFn, onResult) {
   if (!query) return null
   const { atoms, links } = query
@@ -2816,11 +2838,18 @@ function evaluateQuery(query, facts, populations, effectiveFactTuplesFn, onResul
     }
 
     const fcRows = new Map()
+    const fcFacts = new Map()
     for (const fc of factAtoms) {
       const fact = (facts || []).find(f => f.id === fc.originalId)
       if (!fact) return null
       fcRows.set(fc.id, effectiveFactTuplesFn(fact) ?? [])
+      fcFacts.set(fc.id, fact)
     }
+    // A link to a fact atom of an objectified fact type binds the role to the
+    // nesting instance of that atom's row, so such an atom is also a variable.
+    const nestingVars = new Set(links
+      .filter(lk => fcFacts.get(lk.variableId)?.objectified)
+      .map(lk => lk.variableId))
 
     const results = new Map()
     const resultCounts = new Map()
@@ -2843,18 +2872,23 @@ function evaluateQuery(query, facts, populations, effectiveFactTuplesFn, onResul
       }
       const fc = factAtoms[fcIdx]
       const myLinks = fcLinks.get(fc.id) ?? []
-      for (const row of (fcRows.get(fc.id) ?? [])) {
+      const rows = fcRows.get(fc.id) ?? []
+      for (let ri = 0; ri < rows.length; ri++) {
+        const row = rows[ri]
         if (!Array.isArray(row)) continue
         let ok = true
         const newVar = new Map(varAssign)
-        for (const lk of myLinks) {
-          const v = row[lk.roleIndex]; const norm = projCellKey(v)
+        const bindings = myLinks.map(lk => [lk.variableId, row[lk.roleIndex]])
+        if (nestingVars.has(fc.id))
+          bindings.push([fc.id, effectiveFactTuplesFn.nestingInstance?.(fcFacts.get(fc.id), row, ri) ?? null])
+        for (const [variableId, v] of bindings) {
+          const norm = projCellKey(v)
           if (norm === null) { ok = false; break }
           const nk = JSON.stringify(norm)
-          if (newVar.has(lk.variableId)) {
-            if (newVar.get(lk.variableId) !== nk) { ok = false; break }
+          if (newVar.has(variableId)) {
+            if (newVar.get(variableId) !== nk) { ok = false; break }
           } else {
-            newVar.set(lk.variableId, nk)
+            newVar.set(variableId, nk)
           }
         }
         if (!ok) continue
@@ -2957,8 +2991,7 @@ export function computeSequenceProjections(data, constraintId) {
   const seqs = con.sequences ?? []
   if (seqs.length < 2) return null
 
-  const eft = (fact) =>
-    computeEffectiveFactTuples(fact, facts || [], factPopulations || {}, objectTypes || [], populations || [], nestedEntityMappings || {}, constraints)
+  const eft = factTupleSource(data)
   const queries = con.queries ?? []
 
   const projections = seqs.map((seq, i) => {
@@ -2995,8 +3028,7 @@ export function computeValueComparisonData(data, constraintId) {
   const r1 = roleMembers[1]
   const cmpKind = comparisonKind(r0, r1, facts, objectTypes, data.subtypes)
 
-  const eft = (fact) =>
-    computeEffectiveFactTuples(fact, facts || [], factPopulations || {}, objectTypes || [], populations || {}, nestedEntityMappings || {}, constraints)
+  const eft = factTupleSource(data)
 
   // Query-based evaluation: the query defines the binary relation to check.
   const query = (con.queries ?? [])[0] ?? null
@@ -3078,8 +3110,7 @@ export function computeRingConstraintRelation(data, constraintId, selectedLcaId 
 
   const { translateToLCA } = buildSubtypeDSU(data)
 
-  const eft = (fact) =>
-    computeEffectiveFactTuples(fact, facts || [], factPopulations || {}, objectTypes || [], populations || {}, nestedEntityMappings || {}, constraints)
+  const eft = factTupleSource(data)
 
   const relMap = new Map()
   const query = (con.queries ?? [])[0] ?? null
@@ -3148,8 +3179,7 @@ export function computeUniquenessProjection(data, constraintId) {
   const roleMembers = seq.filter(m => m.kind === 'role' && !m.factId?.includes('_il_'))
   if (roleMembers.length === 0) return null
 
-  const eft = (fact) =>
-    computeEffectiveFactTuples(fact, facts || [], factPopulations || {}, objectTypes || [], populations || {}, nestedEntityMappings || {}, constraints)
+  const eft = factTupleSource(data)
 
   // Try query-based evaluation first (handles cross-fact joins via the target OT)
   const query = (con.queries ?? [])[0] ?? null

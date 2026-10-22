@@ -936,6 +936,11 @@ export function createElementSlice(set, get) {
 
           return { ...f, arity, roles, uniqueness, internalFrequency, readingParts: rp, alternativeReadings: [], implicitLinks }
         })
+        // The new role has no player yet, so each tuple gets an empty cell there
+        const tuples = s.factPopulations?.[factId]
+        const factPopulations = tuples?.length
+          ? { ...s.factPopulations, [factId]: tuples.map(t => [...t.slice(0, atIndex), '', ...t.slice(atIndex)]) }
+          : s.factPopulations
         const constraints = s.constraints.map(c => ({
           ...c,
           roleSequences: c.roleSequences
@@ -945,7 +950,7 @@ export function createElementSlice(set, get) {
             ? c.sequences.map(g => g.map(m => m.kind === 'role' && m.factId === factId && m.roleIndex >= atIndex ? { ...m, roleIndex: m.roleIndex + 1 } : m))
             : undefined,
         }))
-        return { facts, constraints, isDirty: true,
+        return { facts, constraints, factPopulations, isDirty: true,
           diagrams: s.diagrams.map(d => {
             const ilp = { ...(d.implicitLinkPositions ?? {}) }
             const ilKeys = Object.keys(ilp).filter(k => k.startsWith(`${factId}:il:`)).sort((a, b) => Number(b.split(':')[2]) - Number(a.split(':')[2]))
@@ -1021,7 +1026,12 @@ export function createElementSlice(set, get) {
             if (changed) requery.push(c.id)
             return constraint
           })
-        return { facts, constraints, isDirty: true,
+        // Drop the deleted role's cell from each tuple
+        const tuples = s.factPopulations?.[factId]
+        const factPopulations = tuples?.length && s.facts.find(f => f.id === factId)?.arity > 1
+          ? { ...s.factPopulations, [factId]: tuples.map(t => t.filter((_, i) => i !== roleIndex)) }
+          : s.factPopulations
+        return { facts, constraints, factPopulations, isDirty: true,
           diagrams: s.diagrams.map(d => {
             const ilp = { ...(d.implicitLinkPositions ?? {}) }
             const ilKey = `${factId}:il:${roleIndex}`
