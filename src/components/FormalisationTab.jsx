@@ -6,7 +6,8 @@ import { renderFormula } from '../logic/renderFormula.js'
 
 // ── Formalisation tab ───────────────────────────────────────────────────────
 // Lists the logic formula behind every constraint in the selected part of the
-// diagram (or the whole diagram when nothing is selected), optionally followed
+// diagram (or, when nothing is selected, the whole diagram or the whole schema,
+// as the scope switch says), optionally followed
 // by the implicit disjointness, participation and implied-link constraints.
 
 const TOKEN_STYLE = {
@@ -41,8 +42,9 @@ export default function FormalisationTab() {
   const [showDisjoint, toggleDisjoint] = useToggle('freefbm.formalisation.disjointness')
   const [showParticipation, toggleParticipation] = useToggle('freefbm.formalisation.participation')
   const [showLinks, toggleLinks] = useToggle('freefbm.formalisation.impliedLinks')
+  const [wholeSchema, toggleWholeSchema] = useToggle('freefbm.formalisation.wholeSchema')
 
-  const { entries, implicit, ctx, scope } = useMemo(() => formalise(state), [state])
+  const { entries, implicit, ctx, scope } = useMemo(() => formalise(state, { wholeSchema }), [state, wholeSchema])
   const sections = [
     showDisjoint && { title: 'Implicit disjointness constraints', items: implicit.disjointness,
       empty: 'There is only one entity-type hierarchy, so there is nothing to keep disjoint.' },
@@ -61,8 +63,11 @@ export default function FormalisationTab() {
         userSelect: 'none',
       }}>
         <span>
-          {scope === 'diagram' ? 'Constraints on this diagram' : 'Constraints in the selection'} ({entries.length})
+          {scope === 'selection' ? 'Constraints in the selection'
+            : scope === 'schema' ? 'Constraints in the whole schema' : 'Constraints on this diagram'} ({entries.length})
         </span>
+        <ToggleButton on={wholeSchema} onClick={toggleWholeSchema}
+          title="With nothing selected, list the constraints of the whole schema instead of only this diagram">Whole schema</ToggleButton>
         <span style={{ flex: 1 }}/>
         <span style={{ display: 'inline-flex', gap: 6 }}>
           <ToggleButton on={showDisjoint} onClick={toggleDisjoint}
@@ -76,8 +81,8 @@ export default function FormalisationTab() {
       </div>
       {entries.length === 0 && sections.length === 0
         ? <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>
-            {scope === 'diagram'
-              ? 'This diagram has no constraints yet.'
+            {scope === 'diagram' ? 'This diagram has no constraints yet.'
+              : scope === 'schema' ? 'The schema has no constraints yet.'
               : 'The selection has no constraints. Select fact types or constraints to see their formulas.'}
           </div>
         : (
