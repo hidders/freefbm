@@ -370,9 +370,34 @@ export function runValidation({ objectTypes, facts, constraints, subtypes = [] }
     const ARITY_SENSITIVE = new Set(['equality', 'subset', 'exclusion', 'inclusiveOr', 'exclusiveOr'])
     const factById = new Map(facts.map(f => [f.id, f]))
     const otById   = new Map(objectTypes.map(o => [o.id, o]))
+    // Ref-mode fact id → { entity, entityRoleIndex }, for the entity-role check below.
+    const refModeByFact = new Map()
+    for (const ent of [...objectTypes, ...facts.filter(f => f.objectified)]) {
+      const rm = findRefMode(ent, facts, objectTypes)
+      if (rm) refModeByFact.set(rm.factId, { entity: ent, entityRoleIndex: 1 - rm.vtRoleIndex })
+    }
     for (const c of constraints) {
       const sequences = c.sequences || []
       const label = CONSTRAINT_LABELS[c.constraintType] ?? c.constraintType
+
+      // A member on the entity's own role of a ref-mode fact is drawn to the entity while the
+      // reference mode is collapsed, exactly like a member on the value role, so flag it.
+      const entityRoleRefs = new Set()
+      for (const seq of sequences) for (const m of (seq || [])) {
+        const rm = m?.kind === 'role' ? refModeByFact.get(m.factId) : null
+        if (rm && m.roleIndex === rm.entityRoleIndex) entityRoleRefs.add(m.factId)
+      }
+      for (const factId of entityRoleRefs) {
+        const { entity } = refModeByFact.get(factId)
+        const entityName = entity.name || entity.objectifiedName || 'entity type'
+        errors.push({
+          id: `ref-mode-entity-role-${c.id}-${factId}`,
+          category: 'constraintStructure',
+          elementId: c.id, elementKind: 'constraint',
+          message: `${label} constraint uses ${entityName}'s own role in its reference mode fact. With the reference mode collapsed this is drawn to ${entityName}, like a role on the reference value; expand the reference mode to tell them apart`,
+          severity: 'warning',
+        })
+      }
 
       // TooFewRoleSequencesError: multi-sequence constraints need ≥ 2 sequences
       if (MULTI_SEQUENCE_TYPES.has(c.constraintType) && sequences.length < 2) {

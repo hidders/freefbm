@@ -2,7 +2,7 @@ import React from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { roleCenter, makeImplicitLinkFact } from './FactTypeNode'
-import { entityBounds } from './ObjectTypeNode'
+import { borderPoint } from './ConstraintNodes'
 
 // Constraint types for which sequence-membership labels are shown on the canvas
 const LABELED_CONSTRAINT_TYPES = new Set(['exclusiveOr', 'exclusion', 'inclusiveOr', 'equality', 'subset', 'uniqueness', 'ring', 'valueComparison', 'frequency'])
@@ -11,22 +11,10 @@ const CHAR_W       = 5.5   // approximate mono char width at FONT_SIZE
 const PAD_X        = 5
 const PAD_Y        = 3
 
-function borderPoint(ot, tx, ty) {
-  const b  = entityBounds(ot)
-  const cx = b.cx, cy = b.cy
-  const dx = tx - cx, dy = ty - cy
-  if (dx === 0 && dy === 0) return { x: cx, y: cy }
-  const hw = (b.right - b.left) / 2, hh = (b.bottom - b.top) / 2
-  const t  = Math.abs(dx) * hh > Math.abs(dy) * hw
-    ? hw / Math.abs(dx)
-    : hh / Math.abs(dy)
-  return { x: cx + dx * t, y: cy + dy * t }
-}
-
 export default function ConstraintMemberLabels() {
   const store = useOrmStore()
   const { selectedId, selectedKind } = store
-  const { facts: visibleFacts, objectTypes, subtypes } = useDiagramElements()
+  const { facts: visibleFacts, objectTypes, subtypes, collapsedRefFacts, collapsedRefFactOccs } = useDiagramElements()
 
   if (!store.showSequenceMembership) return null
   if (store.queryEditDraft || store.queryIndexHighlight) return null
@@ -133,11 +121,21 @@ export default function ConstraintMemberLabels() {
         let x, y, isVertical = false, posKey
         if (m.kind === 'role') {
           const fact = factMap[m.factId]
-          if (!fact) continue
-          const rc = roleCenter(fact, m.roleIndex)
-          x = rc.x; y = rc.y
-          isVertical = fact.orientation === 'vertical'
-          posKey = `role:${fact.occurrenceId ?? m.factId}:${m.roleIndex}`
+          if (fact) {
+            const rc = roleCenter(fact, m.roleIndex)
+            x = rc.x; y = rc.y
+            isVertical = fact.orientation === 'vertical'
+            posKey = `role:${fact.occurrenceId ?? m.factId}:${m.roleIndex}`
+          } else {
+            // Role of a collapsed ref-mode fact: label sits where the arc meets the entity.
+            const refs = cocc.roleOccurrenceRefs
+            const occId = refs && !Array.isArray(refs) ? refs[`${gi}:${pi}`] : null
+            const owner = (occId && collapsedRefFactOccs[occId]?.owner) || collapsedRefFacts[m.factId]?.owner
+            if (!owner) continue
+            const bp = borderPoint(owner, cocc.x ?? owner.x, cocc.y ?? owner.y)
+            x = bp.x; y = bp.y
+            posKey = `ref:${owner.occurrenceId ?? owner.id}:${m.factId}:${m.roleIndex}`
+          }
         } else {
           const st    = subtypeMap[m.subtypeId]
           if (!st) continue

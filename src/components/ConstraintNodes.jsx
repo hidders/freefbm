@@ -605,9 +605,10 @@ const CONSTRAINT_COLOR = {
 
 const HIGHLIGHT_ARC_COLOR = '#e67e22'   // orange — used when table row/col/cell is pressed
 
-function borderPoint(ot, tx, ty) {
-  const b = entityBounds(ot)
-  const cx = b.cx, cy = b.cy
+// `ot` may also be an objectified fact (nested entity), e.g. the owner of a collapsed ref mode.
+export function borderPoint(ot, tx, ty) {
+  const b = ot.kind === 'fact' ? nestedFactBounds(ot) : entityBounds(ot)
+  const cx = b.cx ?? (b.left + b.right) / 2, cy = b.cy ?? (b.top + b.bottom) / 2
   const dx = tx - cx, dy = ty - cy
   if (dx === 0 && dy === 0) return { x: cx, y: cy }
   const hw = (b.right - b.left) / 2, hh = (b.bottom - b.top) / 2
@@ -619,7 +620,7 @@ function borderPoint(ot, tx, ty) {
 
 export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, noteSubjectIds }) {
   const store = useOrmStore()
-  const { objectTypes, facts, constraints: visibleConstraints, subtypes } = useDiagramElements()
+  const { objectTypes, facts, constraints: visibleConstraints, subtypes, collapsedRefFacts, collapsedRefFactOccs } = useDiagramElements()
   // factMap: schema ID → first (oldest) occurrence, so adding a second occurrence of a fact
   // doesn't move existing constraint connectors that have no explicit roleOccurrenceRefs.
   const factMap = {}
@@ -639,6 +640,15 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
   const subtypeMap = Object.fromEntries(subtypes.map(st => [st.id, st]))
   const otMap      = Object.fromEntries(objectTypes.map(o => [o.id, o]))
   const nestedMap  = Object.fromEntries(facts.filter(f => f.objectified).map(f => [f.id, f]))
+
+  // Entity drawn in place of a role of a collapsed ref-mode fact, or null. A role reference
+  // pinned to a hidden fact occurrence follows that occurrence's owning entity.
+  function collapsedOwner(c, si, mi, member) {
+    if (member?.kind !== 'role') return null
+    const refs = c.roleOccurrenceRefs
+    const occId = refs && !Array.isArray(refs) ? refs[`${si}:${mi}`] : null
+    return (occId && collapsedRefFactOccs[occId]?.owner) || collapsedRefFacts[member.factId]?.owner || null
+  }
 
   // Build a per-constraint fact map that respects roleOccurrenceRefs for occurrence-aware rendering.
   function buildLocalFactMap(c) {
@@ -810,13 +820,14 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
   }
 
   // Geometry helper: line from constraint centre to a member (role or subtype midpoint)
-  function memberArcLine(member, key, cx, cy, r0, color, selected, markerEnd, fMap = factMap) {
+  function memberArcLine(member, key, cx, cy, r0, color, selected, markerEnd, fMap = factMap, refOwner = null) {
     const sw = selected ? 2.2 : 1.2
     const op = selected ? 1   : 0.75
     if (member.kind === 'role') {
       const fact = fMap[member.factId]
-      if (!fact) return null
-      const anchor = roleAnchor(fact, member.roleIndex, cx, cy)
+      const owner = fact ? null : (refOwner ?? collapsedRefFacts[member.factId]?.owner)
+      if (!fact && !owner) return null
+      const anchor = fact ? roleAnchor(fact, member.roleIndex, cx, cy) : borderPoint(owner, cx, cy)
       const dx = anchor.x - cx, dy = anchor.y - cy
       const len = Math.sqrt(dx * dx + dy * dy) || 1
       return (
@@ -978,7 +989,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
               return seq.map((member, mi) => {
                 const lit = isArcHighlighted(gi, mi)
                 return memberArcLine(member, `${c.id}-g${gi}-m${mi}`, c.x, c.y, r0,
-                  lit ? HIGHLIGHT_ARC_COLOR : color, lit, markerEnd, localFactMap)
+                  lit ? HIGHLIGHT_ARC_COLOR : color, lit, markerEnd, localFactMap, collapsedOwner(c, gi, mi, member))
               }).filter(Boolean)
             })
           : (c.roleSequences || []).flatMap((seq, gi) => {
@@ -1023,8 +1034,9 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
               }
               return seq.map((ref, ri) => {
                 const fact = localFactMap[ref.factId]
-                if (!fact) return null
-                const rc = roleCenter(fact, ref.roleIndex)
+                const owner = fact ? null : collapsedRefFacts[ref.factId]?.owner
+                if (!fact && !owner) return null
+                const rc = fact ? roleCenter(fact, ref.roleIndex) : borderPoint(owner, c.x, c.y)
                 const dx = rc.x - c.x, dy = rc.y - c.y
                 const len = Math.sqrt(dx * dx + dy * dy) || 1
                 const key = `${c.id}-g${gi}-r${ri}`

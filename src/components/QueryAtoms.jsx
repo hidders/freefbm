@@ -429,7 +429,7 @@ function LinkLine({ link, atoms, factMap, subtypeMap, otMap }) {
 
 export default function QueryAtoms({ onAtomClick, onAtomContextMenu, mousePos }) {
   const store = useOrmStore()
-  const { objectTypes, facts } = useDiagramElements()
+  const { objectTypes, facts, collapsedRefFacts, collapsedRefFactOccs } = useDiagramElements()
   const qd = store.queryEditDraft
 
   // Preview mode: show a saved query while the inspector button is held
@@ -503,6 +503,24 @@ export default function QueryAtoms({ onAtomClick, onAtomContextMenu, mousePos })
     if (anchoredFact) { factMap[schemaId] = anchoredFact; continue }
     const anchoredOt = objectTypes.find(o => o.occurrenceId === occId)
     if (anchoredOt) otMap[schemaId] = anchoredOt
+  }
+  // A ref-mode fact hidden behind its entity's collapsed reference mode has no position of
+  // its own that follows the entity, so lay it out just right of the entity, with the
+  // entity's role nearest to it.
+  for (const [schemaId, entry] of Object.entries(collapsedRefFacts)) {
+    const schemaFact = store.facts.find(f => f.id === schemaId)
+    const owner = collapsedRefFactOccs[effectiveQor[schemaId]]?.owner ?? entry.owner
+    if (!schemaFact || !owner) continue
+    const ownerRight = owner.kind === 'fact'
+      ? nestedFactBounds(owner).right
+      : owner.x + computeOtSize(owner).w / 2
+    factMap[schemaId] = {
+      ...schemaFact,
+      x: ownerRight + 24 + ROLE_W + ROLE_GAP / 2,
+      y: owner.y,
+      orientation: 'horizontal',
+      roleOrder: entry.entityRoleIndex === 0 ? [0, 1] : [1, 0],
+    }
   }
   const subtypeMap = Object.fromEntries(store.subtypes.map(s => [s.id, s]))
 
