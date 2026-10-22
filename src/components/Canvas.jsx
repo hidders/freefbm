@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useOrmStore, subtypeKindOf } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { useContextMenuHandlers } from '../hooks/useContextMenuHandlers'
-import ObjectTypeNode, { computeOtSize, entityBounds } from './ObjectTypeNode'
+import ObjectTypeNode, { computeOtSize, entityBounds, collapsedRefValueRole } from './ObjectTypeNode'
 import FactTypeNode, { factBounds, nestedFactBounds, makeImplicitLinkFact, ROLE_W, ROLE_H, ROLE_GAP } from './FactTypeNode'
 import SubtypeArrows, { rectBorderPoint, playerBounds } from './SubtypeArrows'
 import { EXTERNAL_CONSTRAINT_TYPES } from '../constants'
@@ -544,7 +544,9 @@ export default function Canvas() {
             f.roles.some(r => store.objectTypes.find(o => o.id === r.objectTypeId)?.kind === 'value')
           ).map(f => f.id)
         )
-        return { factIds: vcFactIds, otIds: ALL, subtypesDim: true, constraintsDim: true, connectorsDim: true }
+        // Entities with a collapsed value-type ref mode stand for their ref fact's value role.
+        const vcOtIds = new Set(visibleOts.filter(ot => collapsedRefValueRole(ot)).map(ot => ot.id))
+        return { factIds: vcFactIds, otIds: vcOtIds, subtypesDim: true, constraintsDim: true, connectorsDim: true }
       }
       return { factIds: NONE, otIds: ALL, subtypesDim: false, constraintsDim: true, connectorsDim: true }
     }
@@ -1444,7 +1446,7 @@ export default function Canvas() {
               onDoubleClickValueRange={(cx, cy) => handleOtValueRangeClick(ot, cx, cy)}
               onValueRangeClick={(cx, cy) => handleOtValueRangeClick(ot, cx, cy)}
               onCardinalityRangeClick={(cx, cy) => handleOtCardinalityRangeClick(ot, cx, cy)}
-              onValueRangeContextMenu={(e) => handleOtValueRangeContextMenu(ot, e)}
+              onValueRangeContextMenu={(e, vrOt) => handleOtValueRangeContextMenu(vrOt ?? ot, e)}
               onCardinalityRangeContextMenu={(e) => handleOtCardinalityRangeContextMenu(ot, e)}/>
             </g>
             )

@@ -212,6 +212,47 @@ export function getDiagramElements(store) {
       }))
     })
 
+  // Collapsed reference modes: a ref-mode fact that has no visible occurrence while its
+  // entity does is drawn as the entity's "(.ref)" shorthand. Constraint members and query
+  // atoms on such a fact are drawn against the entity instead (see refModeOwners).
+  //   collapsedRefFacts:    ref-mode factId    → { owner, entityId, vtRoleIndex, entityRoleIndex }
+  //   collapsedRefFactOccs: hidden fact occ id → same entry, for occurrence-specific refs
+  // `owner` is the visible entity occurrence (an OT, or an objectified fact for a nested entity).
+  const collapsedRefFacts = {}
+  const collapsedRefFactOccs = {}
+  {
+    const ownerByOccId = {}
+    const firstOwnerById = {}
+    for (const o of visibleObjectTypes) {
+      if (o.occurrenceId) ownerByOccId[o.occurrenceId] = o
+      if (!(o.id in firstOwnerById)) firstOwnerById[o.id] = o
+    }
+    for (const f of visibleFacts) {
+      if (!f.objectified) continue
+      if (f.occurrenceId) ownerByOccId[f.occurrenceId] = f
+      if (!(f.id in firstOwnerById)) firstOwnerById[f.id] = f
+    }
+    const candidates = [
+      ...objectTypes.filter(o => o.kind === 'entity'),
+      ...facts.filter(f => f.objectified && f.objectifiedKind !== 'value'),
+    ]
+    for (const ent of candidates) {
+      if (!(ent.id in firstOwnerById)) continue
+      const rm = findRefMode(ent, facts, objectTypes)
+      if (!rm || visibleFactIds.has(rm.factId)) continue
+      const base = { entityId: ent.id, vtRoleIndex: rm.vtRoleIndex, entityRoleIndex: 1 - rm.vtRoleIndex }
+      const hiddenOccs = occurrencesList.filter(o => o.schemaElementId === rm.factId)
+      for (const occ of hiddenOccs) {
+        const owner = ownerByOccId[occ.refModeOwnerOccId]
+        if (owner) collapsedRefFactOccs[occ.id] = { ...base, owner }
+      }
+      const firstHidden = hiddenOccs.find(o => collapsedRefFactOccs[o.id])
+      collapsedRefFacts[rm.factId] = firstHidden
+        ? collapsedRefFactOccs[firstHidden.id]
+        : { ...base, owner: firstOwnerById[ent.id] }
+    }
+  }
+
   return {
     objectTypes:        visibleObjectTypes,
     facts:              visibleFacts,
@@ -220,5 +261,7 @@ export function getDiagramElements(store) {
     diagram,
     elementIds,
     occurrenceElementIds,
+    collapsedRefFacts,
+    collapsedRefFactOccs,
   }
 }
