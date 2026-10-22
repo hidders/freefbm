@@ -1,0 +1,666 @@
+\documentclass[11pt]{amsart}
+\usepackage{geometry}                % See geometry.pdf to learn the layout options. There are lots.
+\geometry{letterpaper}                   % ... or a4paper or a5paper or ... 
+%\geometry{landscape}                % Activate for for rotated page geometry
+%\usepackage[parfill]{parskip}    % Activate to begin paragraphs with an empty line rather than an indent
+\usepackage{graphicx}
+\usepackage{amssymb}
+\usepackage{epstopdf}
+\DeclareGraphicsRule{.tif}{png}{.png}{`convert #1 `dirname #1`/`basename #1 .tif`.png}
+
+\usepackage[dvipsnames]{xcolor}
+
+\usepackage[colorinlistoftodos,prependcaption]{todonotes}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{example}{Example}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\newcommand{\DataTypes}{\mathcal{T}}
+\newcommand{\DataValues}{\mathcal{V}}
+% \newcommand{\ObjectIDs}{\mathcal{O}}
+\newcommand{\DomObjects}{\mathcal{O}}
+\newcommand{\DomValues}{\mathcal{O}^{\mathsf{val}}}
+\newcommand{\DomEnts}{\mathcal{O}^{\mathsf{ent}}}
+
+\newcommand{\Preds}{\mathcal{P}}
+\newcommand{\EntPreds}{\Preds^{\textsf{ent}}}
+\newcommand{\ValPreds}{\Preds^{\textsf{val}}}
+\newcommand{\FactPreds}{\Preds^{\textsf{fact}}}
+
+\newcommand{\RefSchemes}{\mathcal{R}}
+
+\newcommand{\sem}[1]{[\![{#1}]\!]}
+\newcommand{\pr}[1]{\mathsf{\textcolor{RoyalBlue}{#1}}}
+\newcommand{\var}[1]{\mathsf{\textcolor{Plum}{#1}}}
+\newcommand{\tp}[1]{\texttt{\textsc{#1}}}
+
+% Data operators and functions: no type subscript, just coloured green.
+% Data equality uses \doteq to distinguish from domain-object equality =.
+\newcommand{\dataOp}[1]{\mathbin{\textcolor{ForestGreen}{#1}}}
+\newcommand{\dataFun}[1]{\textcolor{ForestGreen}{\textsc{#1}}}
+\newcommand{\dataVal}[1]{\textcolor{ForestGreen}{#1}}
+\newcommand{\dataEq}{\mathrel{\textcolor{ForestGreen}{\doteq}}}
+\newcommand{\dt}[1]{\mathsf{\textcolor{ForestGreen}{\textsc{#1}}}}
+\newcommand{\TC}{\mathsf{TC}}
+\newcommand{\dvar}[1]{\var{#1}^{\textcolor{Magenta}{*}}}
+
+
+
+\title{An intermediate sorted logic for ORM2}
+\author{Jan Hidders}
+\date{June 2026}                                           % Activate to display a given date or no date
+
+
+\begin{document}
+\maketitle
+
+\setcounter{tocdepth}{1}
+\tableofcontents
+
+\section{Goal}
+
+The purpose of this document is to attempt a formal definition of a sorted logic with aggregation that describes a logic for ORM2 that sits between the formal logic describing the formal semantics and the verbalisation.
+
+\section{Preliminaries}
+\label{sec:prelim}
+
+We start with a first-order logic setting that is a simplified version of ORM2. We assume the following sets and functions, independent of any vocabulary or schema:
+\begin{enumerate}
+  \item There is a set $\DataTypes$ of \emph{data types} that is global and not part of the vocabulary.
+  \item There is a set $\DataValues$ of \emph{data values}, and for each data type $\tau$ a set $\sem{\tau} \subseteq \DataValues$ that contains the data values of data type $\tau$.
+  \item There is a countably infinite set $\DomObjects$ of domain objects which is disjoint with $\DataValues$ and partitioned into $\DomValues$ (domain values) and $\DomEnts$ (domain entities).
+  \item There is a function $\rho : \DomValues \to \DataValues$ that gives the data value represented by a domain value. We assume that for each data value $d \in \DataValues$ the set $\{ o \in \DomValues \mid \rho(o) = d \}$ is infinite.
+\end{enumerate}
+We then define a vocabulary as a tuple $(\Preds, \delta, \sigma, \RefSchemes)$ where
+    \begin{enumerate} 
+      \item $\Preds$ is a finite set of \emph{predicates} and is partitioned into $\FactPreds$ (predicates for fact types), $\EntPreds$ (predicates for entity types), and $\ValPreds$ (predicates for value types),
+      \item $\delta : \ValPreds \to \DataTypes$ gives the data type of value types,
+      \item for all predicates $p \in \FactPreds$ there is a signature $\sigma(p) = (q_1, \ldots, q_n)$ where each $q_i$ is in $\EntPreds \cup \ValPreds$, and
+      \item $\RefSchemes : \EntPreds \rightharpoonup \FactPreds \times \ValPreds$ is a partial function assigning to certain entity types a \emph{reference scheme}, where $\RefSchemes(p) = (r, q)$ requires $\sigma(r) = (p, q)$. We further require that $\RefSchemes$ is injective on its value type component: if $\RefSchemes(p_1) = (r_1, q)$ and $\RefSchemes(p_2) = (r_2, q)$ then $p_1 = p_2$. That is, no two distinct entity types share the same reference scheme value type.
+    \end{enumerate}
+When $\RefSchemes(p) = (r, q)$, we say that entity type $p$ is \emph{identified by} value type $q$ via the binary fact type $r$. We call $q$ the \emph{reference value type} of $p$; by the injectivity condition, each reference value type belongs to exactly one entity type. The intended reading of $r(e, v)$ is that entity $e$ of type $p$ is identified by value $v$ of type $q$.
+
+We define the \emph{interpretation} of a vocabulary as a function $\iota$ that maps all the predicates in $\Preds$ such that:
+\begin{enumerate}
+  \item for $p \in \EntPreds$, $\iota(p)$ is a finite subset of $\DomEnts$,
+  \item for $p \in \ValPreds$, $\iota(p)$ is a finite subset of $\DomValues$ such that (1) for each $v \in \iota(p)$ it holds that $\rho(v) \in \sem{\delta(p)}$ and (2) $\rho$ restricted to $\iota(p)$ is an injective function,
+  \item for $p \in \FactPreds$, $\iota(p) \subseteq \iota(q_1) \times \ldots \times \iota(q_n)$ if $\sigma(p) = (q_1, \ldots, q_n)$, and
+  \item for $p \in \EntPreds$ with $\RefSchemes(p) = (r, q)$, the relation $\iota(r)$ defines a total injective function from $\iota(p)$ to $\iota(q)$: every entity in $\iota(p)$ is identified by exactly one value in $\iota(q)$, and no two distinct entities share the same identifying value.
+\end{enumerate}
+
+\begin{remark}
+Since $\rho$ is injective on $\iota(p)$ for each value type $p$, data
+equality $\dataEq$ between two variables of the same value type $p$
+coincides with domain-object equality $=$: we have
+$\var{p}_1 \dataEq \var{p}_2$ if and only if $\var{p}_1 = \var{p}_2$.
+The distinction between the two equalities therefore only matters when at
+least one side is a data term that is not simply a value-type variable,
+such as an arithmetic expression or a data constant.
+\end{remark}
+
+\section{A simple sorted logic}
+
+We start with a simple logic that is directly based on first-order logic. However we make the logic \emph{sorted} by assuming that each variable has an associated value type or entity type that restricts what it can be bound to. We will write these variables with type $p$ simply as $p$, $p_1$, $p_2$, et cetera, so that we can tell their type directly from their name. We have the usual constructs for first-order logic formulas, including equality, which expresses here that two domain objects are equal.
+
+\begin{example}
+For a vocabulary with $\FactPreds = \{ \pr{livesIn}  \}$, $\EntPreds = \{ \pr{Person}, \pr{City} \}$, $\ValPreds = \emptyset$, $\RefSchemes = \emptyset$ and $\sigma(\pr{livesIn}) = (\pr{Person}, \pr{City})$, we can then write formulas such as
+\begin{itemize}
+  \item $\begin{aligned}[t]
+    & \forall \, \var{Person} \, ( \\
+    & \quad \exists \, \var{City} \, (\pr{livesIn}(\var{Person}, \var{City}))
+    \end{aligned}$
+  \item $\begin{aligned}[t] 
+    & \forall \, \var{City} \, ( \\
+    & \quad \exists \, \var{Person}_1, \var{Person}_2 \, ( \\
+    & \quad \quad \pr{livesIn}(\var{Person}_1, \var{City}) \wedge \pr{livesIn}(\var{Person}_2, \var{City})) \wedge \var{Person}_1 \neq \var{Person}_2))
+    \end{aligned}$
+\end{itemize}
+\end{example}
+
+\begin{remark}
+The equality is here the equality between domain objects only. So we do not yet consider expressions that compare data values.
+\end{remark}
+
+\begin{remark}
+We could at this point introduce a typing regime that restricts in what predicate position we can use which variable. However, for defining the semantics this is not really necessary, so we omit it for simplicity. If we would add it then it probably would require the following three things: (1) If in a predicate position an entity of a certain entity type is expected then any variable of any entity type (so not just the expected one) is allowed in that position but not a value type variable. (2) If in a predicate position a domain value of a certain value type is expected then a variable of that value type can be used in that position but no other variables. (3) In an equality either both sides are entity type variables (possible of different entity types) or value type variables of the same value type.
+\end{remark}
+
+\begin{remark}
+Note that since the quantified variables range over domain objects in the interpretation, the naive evaluation of each formula is finite and even tractable in the size of the interpretation. 
+\end{remark}
+
+\section{Adding typed terms}
+\label{sec:terms}
+
+We can add terms and predicates for data values. We would do this in a typed fashion, so for the data type \tp{Int} we might for example have
+\begin{itemize}
+  \item data constants like $\dataVal{12}$ and $\dataVal{113}$,
+  \item data functions $\dataOp{+}$ and $\dataOp{*}$, each with signature $\tp{Int} \times \tp{Int} \to \tp{Int}$, and
+  \item data predicates like $\dataEq$ and $\dataOp{\leq}$ with signatures $\tp{Int} \times \tp{Int}$.
+\end{itemize} 
+For these there would be vocabulary-independent definitions of their semantics. For example, we would have $\sem{\dataVal{12}}, \sem{\dataVal{113}}  \in \sem{\tp{Int}}$, $\sem{\dataOp{+}} : \sem{\tp{Int}} \times \sem{\tp{Int}} \to \sem{\tp{Int}}$, $\sem{\dataEq} \subseteq \sem{\tp{Int}} \times \sem{\tp{Int}}$, et cetera.
+
+There would then be the following rules defining what a well-typed term is and what its data type is:
+\begin{enumerate}
+  \item any value-type variable $p$ or $p_i$ (so where $p, p_i \in \ValPreds$) is a well-typed term of data type $\delta(p)$;
+  \item any entity-type variable $\var{p}$ where $p \in \EntPreds$ and $\RefSchemes(p) = (r, q)$ is a well-typed term of data type $\delta(q)$, denoting the unique identifying value of $\var{p}$ under the reference scheme;
+  \item any data constant $c$ is a well-typed term of data type $\tau$ if $c$ has type $\tau$;
+  \item if there is a data function $f$ with signature $\tau_1 \times \ldots \times \tau_n \to \tau_{n+1}$ and $t_1, \ldots, t_n$ are all well-typed terms of types $\tau_1, \ldots, \tau_n$, 
+    then $f(t_1, \ldots, t_n)$ is a well-typed term of type $\tau_{n+1}$.
+\end{enumerate}
+The coercion in rule~2 is \emph{implicit}: when an entity-type variable $\var{p}$ appears in a data-term position (i.e.\ as an argument to a data function or data predicate), it is automatically interpreted as its identifying value. Formally, the semantics of $\var{p}$ used as a data term under interpretation $\iota$ and binding $\beta$ is the unique $v \in \iota(q)$ such that $(\beta(\var{p}), v) \in \iota(r)$, which is well-defined by condition~4 on interpretations. This implicit coercion is resolved by the type checker from the syntactic position of the variable: the same variable name serves as a domain entity in predicate argument positions and as a data value in arithmetic or comparison positions.
+
+\begin{remark}
+Observe we could introduce typing rules for data predicates, but they are not needed at this stage for defining the semantics: data predicates are simply false if their arguments are not of the expected type.
+\end{remark}
+
+We then extend the logic by (1) allowing these typed terms in any position in the predicates and (2) allowing the use of data predicates as predicates. We explicitly do not allow terms to be used in normal equalities. Instead, we use the dedicated data equality symbol $\dataEq$ to compare data values, so we write $\var{Age} \dataEq \dataVal{51}$ rather than $\var{Age} = \dataVal{51}$. This ensures that the meaning of formulas like $\var{ShoeSize} = \var{Age}$ (same domain object) and $\var{ShoeSize} \dataEq \var{Age}$ (same data value) is clear and distinct. Data type subscripts are omitted throughout since the type of every term can be inferred from context; the sole exception is $\dataEq$, which retains its dedicated symbol to maintain the distinction from domain-object equality $=$.
+
+\begin{example}
+For a vocabulary with predicate sets $\FactPreds = \{ \pr{hasLength} \}$, $\EntPreds = \{ \pr{Person} \}$, $\ValPreds = \{ \pr{LengthInCm} \}$, $\sigma(\pr{hasLength}) = (\pr{Person}, \pr{LengthInCm})$, $\delta(\pr{LengthInCm}) = \tp{Int}$, $\RefSchemes = \emptyset$, we can then write formulas such as
+\begin{itemize}
+  \item $\begin{aligned}[t]
+    &\exists \, \var{Person}_1 \, ( \\
+    &\quad \forall \, \var{Person}_2, \var{LengthInCm}_1, \var{LengthInCm}_2 \, ( \\
+    &\quad \quad \pr{hasLength}(\var{Person}_1, \var{LengthInCm}_1) \wedge \pr{hasLength}(\var{Person}_2, \var{LengthInCm}_2) \\
+    &\quad \quad \to \var{LengthInCm}_1 \dataOp{\leq} \var{LengthInCm}_2 ))
+    \end{aligned}$
+  \item $\begin{aligned}[t]
+    &\forall \, \var{Person}_1, \var{Person}_2, \var{LengthInCm}_1, \var{LengthInCm}_2 \, ( \\
+    &\quad \pr{hasLength}(\var{Person}_1, \var{LengthInCm}_1) \wedge \pr{hasLength}(\var{Person}_2, \var{LengthInCm}_2) \\
+    &\quad \to (\var{LengthInCm}_1 \dataOp{+} \var{LengthInCm}_2) \dataOp{\leq} \dataVal{400})
+    \end{aligned}$
+\end{itemize}
+\end{example}
+
+
+\begin{remark}
+It is still true that the quantified variables range over domain objects in the interpretation, and so still have pleasant computational properties. 
+\end{remark}
+
+
+\section{Adding typed aggregation}
+
+Aggregation terms are inspired by the well-known big-$\Sigma$ notation from mathematics. Recall that one can write
+$$\sum_{\substack{i \in S}} f(i)$$
+to denote the sum of $f(i)$ over all $i$ in some set $S$. This is sometimes generalised to a form where one can have multiple variables and conditions over these variables such as in
+$$\sum_{\substack{i, j \in S : 1 \leq i < j \leq m}} f(i, j)$$
+where we sum over all combinations of $i$ and $j$ such that $1 \leq i < j \leq m$.
+Moreover, in this notation the part ``$\in S$'' is often omitted if the $S$ is fixed or obvious, for example because it is in a paper about number theory. So below the $\Sigma$ it might simply say $i, j : 1 \leq i < j \leq m$ to  indicate we sum over all natural numbers $i$ and $j$ that satisfy the specified condtion.
+Our aggregation terms generalise this idea by allowing arbitrary aggregation functions $\mathcal{F}$ in place of $\Sigma$. Since in our setting the set $S$ is always the set of domain objects in the interpretation, we do not explicitly specify it in the term.
+Concretely, we introduce terms of the form $\mathcal{F}\{ t \mid v_1, \ldots, v_n : \varphi \}$, which should be read as: collect the values of term $t$ into a multiset, ranging over all bindings of $v_1, \ldots, v_n$ that satisfy $\varphi$, then apply $\mathcal{F}$ to that multiset. Any variables in $t$ and $\varphi$ that are not among $v_1, \ldots, v_n$ are free and act as parameters, so are presumed to be fixed when the aggregation is computed, similar to how for example the variable $m$ is treated in the preceding summation formula. 
+\begin{example}
+Consider the term
+$$\dataFun{Sum}\{ \var{Amount} \mid \var{Amount}, \var{Price} : \pr{sold}(\var{Article}, \var{Amount}, \var{Price}) \}$$
+Here $\var{Amount}$ and $\var{Price}$ are the bound variables ranging over all tuples satisfying the formula $\pr{sold}(\var{Article}, \var{Amount}, \var{Price})$, while $\var{Article}$ is a free variable acting as a parameter. The term computes the sum of all amounts for which some price exists such that a sale of that article at that amount and price is recorded. This is analogous to writing $\sum_{m, p\, :\, \pr{sold}(a, m, p)} m$ in mathematical notation.
+\end{example}
+
+We now give the formal definition. For aggregation we assume an additional set of aggregation functions that have types of the form $\{\!\{ \tau_1 \}\!\} \to \tau_2$ where $\tau_1$ and $\tau_2$ are data types. This indicates that it expects a multiset with elements of type $\tau_1$ and returns a data value of type $\tau_2$.
+
+We then define aggregation terms as terms of the form $\mathcal{F} \{ t \mid v_1, \ldots, v_n : \varphi \}$ where (1) $\mathcal{F}$ is the aggregation function of type $\{\!\{ \tau_1 \}\!\} \to \tau_2$, (2) the sequence $v_1, \ldots, v_n$ consists of distinct typed variables such as those used with quantifiers, (3) $t$ is a well-typed term of type $\tau_1$, and (4) $\varphi$ a formula from our logic. The result type of such a term would be $\tau_2$. The result of the term given an interpretation $\iota$ and a variable binding $\beta$ (which must be defined for all variables that are free in $t$ or in $\varphi$ and not in the set $\{ v_1, \ldots, v_n \}$) can be computed as $\mathcal{F}(B)$ where $B$ is the multiset constructed as follows. We iterate over all possible variable bindings $\beta'$ for $v_1, \ldots, v_n$ such that for interpretation $\iota$ and binding $\beta + \beta'$ (where $\beta'$ overrides $\beta$ if both bind the same variable) the formula $\varphi$ has truth value \textbf{true}. For each such binding $\beta'$ we add to $B$ the result of evaluating $t$ for binding $\beta + \beta'$ and interpretation $\iota$.
+
+\begin{example}
+For a vocabulary with $\FactPreds = \{ \pr{sold} \}$, $\EntPreds = \{ \pr{Article} \}$, $\ValPreds = \{ \pr{Amount}, \pr{Price} \}$, $\sigma(\pr{sold}) = (\pr{Article}, \pr{Amount}, \pr{Price})$, 
+$\delta(\pr{Amount}) = \tp{Int}$, $\delta(\pr{Price}) = \tp{Int}$, $\RefSchemes = \emptyset$, we can then write formulas such as
+
+\begin{itemize}
+
+  \item $\begin{aligned}[t]
+    & \exists \, \var{Article} \, ( \\
+     & \quad \dataFun{Sum} \{ \var{Amount} \dataOp{*} \var{Price} \mid \var{Amount}, \var{Price} : \pr{sold}(\var{Article}, \var{Amount}, \var{Price}) \} \\
+    & \quad \dataOp{\geq} \dataVal{1{,}000} )
+    \end{aligned}$
+
+  \item $\begin{aligned}[t]
+    &\exists \, \var{Article} \, ( \\ 
+    & \quad \dataFun{Sum} \{ \var{Amount} \mid \var{Amount}, \var{Price} : \pr{sold}(\var{Article}, \var{Amount}, \var{Price}) \} \\
+    & \quad \dataOp{\geq} \dataVal{100} )
+    \end{aligned}$
+    
+  \item $\begin{aligned}[t]
+    &\exists \, \var{Article} \, ( \\
+     & \quad \dataFun{Sum} \{ \dataVal{1} \mid \var{Amount}, \var{Price} : \pr{sold}(\var{Article}, \var{Amount}, \var{Price}) \} \\
+    &\quad \dataOp{\geq} \dataVal{10} )
+    \end{aligned}$
+    
+ \end{itemize}
+
+These could be verbalised as follows:
+\begin{itemize}
+  \item \emph{``There is an article such that the sum of amount times price over all amounts and prices for which that article was sold at that amount and price is at least 1000.''}
+  \item \emph{``There is an article such that the sum of amount over all amounts and prices for which that article was sold at that amount and price is at least 100.''}
+  \item \emph{``There is an article such that the sum of 1 over all amounts and prices for which that article was sold at that amount and price is at least 10.''}
+ \end{itemize} 
+\end{example}
+
+\begin{remark}
+It will be clear that the last formula is actually counting, so there would be a short-hand introduced that says that $\dataFun{Count}\{ \var{v}_1, \ldots, \var{v}_n : \varphi \}$ is a short-hand for $\dataFun{Sum}\{ \dataVal{1} \mid  \var{v}_1, \ldots, \var{v}_n : \varphi \}$, and it would have a more direct verbalisation rule.
+\end{remark}
+
+\begin{remark}
+It remains true that the quantified variables range over domain objects in the interpretation, and so still have pleasant computational properties. 
+\end{remark}
+
+\begin{remark}
+Note that the aggregation operators explicitly operate on bags and do not eliminate duplicates. This could either be assumed to be present in the set of aggregation functions, so that every aggregation function has a variant that first eliminates duplicates, or we could introduce a special annotation in the aggregation to indicate that duplicates are eliminated. For example, we could follow the convention that  $\mathcal{F}\{ t \mid ... \}$ eliminates duplicates before applying $\mathcal{F}$ where $\mathcal{F}\{\!\{ t \mid ... \}\!\}$ does not. Either way it would be important to find practical verbalisation rules for this, and this is equally difficult under both extensions.
+\end{remark}
+
+
+\section{Derivation Rules}
+\label{sec:derivation}
+
+The logic as defined so far can express constraints over the schema, but
+ORM2 also supports \emph{derivation rules} — rules that define the
+extension of a fact type in terms of other fact types. This section
+establishes how derivation rules are expressed and how they are translated
+into the base logic.
+
+\subsection*{The problem: computed values}
+
+A derivation rule may compute values that do not yet exist as domain
+objects in the current interpretation. This creates a difficulty for a
+direct translation into the base logic. Consider the following example,
+which follows Halpin's original formulation.
+
+\begin{example}
+\label{ex:markup}
+Consider a vocabulary where $\pr{MoneyAmount} \in \EntPreds$ is an entity
+type with reference scheme $\RefSchemes(\pr{MoneyAmount}) = (\pr{hasValue},
+\pr{USD})$, where $\pr{USD} \in \ValPreds$ with $\delta(\pr{USD}) =
+\dt{Decimal}$ and $\pr{hasValue} \in \FactPreds$ with
+$\sigma(\pr{hasValue}) = (\pr{MoneyAmount}, \pr{USD})$. We further have
+$\pr{Article} \in \EntPreds$ and fact types $\pr{retailsFor}$,
+$\pr{wholesalesFor}$, $\pr{hasMarkup} \in \FactPreds$, each with signature
+$(\pr{Article}, \pr{MoneyAmount})$. We wish to express the derivation rule
+$$\begin{aligned}[t]
+  & \pr{hasMarkup}(\var{Article}, \dvar{MoneyAmount}) \;\Leftarrow\; \\
+  & \quad \pr{retailsFor}(\var{Article}, \var{MoneyAmount}_1) \wedge
+    \pr{wholesalesFor}(\var{Article}, \var{MoneyAmount}_2) \wedge \\
+  & \quad \var{MoneyAmount} \dataEq \var{MoneyAmount}_1 \dataOp{-} \var{MoneyAmount}_2.
+\end{aligned}$$
+Using implicit coercion (Section~\ref{sec:terms}), a variable of type
+$\pr{MoneyAmount}$ used in a data-term position automatically denotes its
+identifying USD value. A natural attempt at translating this derivation
+rule into the logic is the biconditional:
+$$\begin{aligned}[t]
+  &\forall\, \var{Article}, \var{MoneyAmount} \, ( \\
+  &\quad \pr{hasMarkup}(\var{Article}, \var{MoneyAmount}) \leftrightarrow \\
+  &\quad \exists\, \var{MoneyAmount}_1, \var{MoneyAmount}_2 \, ( \\
+  &\quad\quad \pr{retailsFor}(\var{Article}, \var{MoneyAmount}_1) \wedge
+    \pr{wholesalesFor}(\var{Article}, \var{MoneyAmount}_2) \\
+  &\quad\quad \wedge\; \var{MoneyAmount} \dataEq
+    \var{MoneyAmount}_1 \dataOp{-} \var{MoneyAmount}_2 ) ).
+\end{aligned}$$
+However, this formula does not fully determine the derived relation. The
+universal quantifier $\forall\, \var{MoneyAmount}$ ranges only over
+$\iota(\pr{MoneyAmount})$, the entities currently in the interpretation.
+If the markup value computed by the subtraction has no pre-existing
+$\pr{MoneyAmount}$ entity with that identifying value, the formula says
+nothing about whether $\pr{hasMarkup}$ should hold for that value.
+For a concrete example, suppose
+\begin{align*}
+  \iota(\pr{retailsFor})   &= \{ (\mathit{widget}, \mathit{ma}_{10}) \}, \\
+  \iota(\pr{wholesalesFor}) &= \{ (\mathit{widget}, \mathit{ma}_{6}) \},
+\end{align*}
+where $\rho(\mathit{ma}_{10}) = 10$ and $\rho(\mathit{ma}_6) = 6$,
+so that the markup of $\mathit{widget}$ should be $10 - 6 = 4$.
+The population $\iota(\pr{MoneyAmount})$ must contain $\mathit{ma}_{10}$
+and $\mathit{ma}_6$ (since they appear as arguments of fact types), but
+it need not contain any entity $\mathit{ma}_4$ with $\rho(\mathit{ma}_4)
+= 4$. If no such entity exists, the formula is vacuously satisfied for the
+value~$4$: the universal quantifier never considers it, and so
+$\pr{hasMarkup}(\mathit{widget}, \mathit{ma}_4)$ is left undetermined.
+\end{example}
+
+\subsection*{Syntax of derivation rules}
+
+We adopt a restricted syntactic form for derivation rules that makes the
+structure of computed values explicit. A \emph{derivation rule} has the
+form
+$$p(\vec{x}, \vec{y}^{\,*}) \;\Leftarrow\;
+  \varphi(\vec{x}, \vec{z}) \;\wedge\;
+  \textstyle\bigwedge_i y_i \dataEq t_i(\vec{x}, \vec{z})$$
+where:
+\begin{itemize}
+  \item $p$ is the derived fact type predicate;
+  \item $\vec{x} = (x_1, \ldots, x_k)$ are the \emph{object variables}:
+    head variables that appear as arguments in positive fact atoms in
+    $\varphi$, so their values come directly from the existing population
+    of the relevant types;
+  \item $\vec{y}^{\,*} = (y_1^*, \ldots, y_m^*)$ are the \emph{derived
+    variables}, marked with a superscript $*$ in the head: head variables
+    whose values are \emph{computed} by the rule rather than drawn from
+    the existing population; the $*$ annotation appears only in the head
+    atom, not in the body;
+  \item $\vec{z} = (z_1, \ldots, z_l)$ are the \emph{body-only variables}:
+    variables appearing in $\varphi$ but not in the head, all of which must
+    appear as arguments in positive fact atoms in $\varphi$;
+  \item $\varphi(\vec{x}, \vec{z})$ is the \emph{base body}: a formula
+    involving only $\vec{x}$ and $\vec{z}$, containing no occurrences of
+    $\vec{y}$;
+  \item $\bigwedge_i y_i \dataEq t_i(\vec{x}, \vec{z})$ are the
+    \emph{value-defining equations}: for each derived variable $y_i$, a
+    data equality equating $y_i$ to a safe data term $t_i$ built from
+    $\vec{x}$ and $\vec{z}$ only.
+\end{itemize}
+
+\begin{remark}
+The separation between $\varphi(\vec{x}, \vec{z})$ and the value-defining
+equations $\bigwedge_i y_i \dataEq t_i(\vec{x}, \vec{z})$ is a syntactic
+requirement: the base body must not mention $\vec{y}$, and the defining
+terms $t_i$ must be safe over $\vec{x}$ and $\vec{z}$ only. This ensures
+that the values of $\vec{y}$ are uniquely determined by any binding of
+$\vec{x}$ and $\vec{z}$ satisfying $\varphi$: since $\rho$ is injective on
+the population of each value type (Section~\ref{sec:prelim}), the data value
+of each $t_i$ corresponds to at most one domain object of the relevant type.
+\end{remark}
+
+\begin{remark}
+The $*$ annotation on derived variables in the head corresponds to the
+notation used in ORM2 diagrams to mark derived fact types. It signals to
+the modelling tool that these argument positions of $p$ are not populated
+by direct assertion but by the application of the derivation rule.
+\end{remark}
+
+\subsection*{The translation schema}
+
+The derivation rule $p(\vec{x}, \vec{y}^{\,*}) \Leftarrow \varphi(\vec{x},
+\vec{z}) \wedge \bigwedge_i y_i \dataEq t_i(\vec{x}, \vec{z})$ is
+translated into the following two statements:
+\begin{align*}
+\text{S1:} \quad & \forall\, \vec{x}, \vec{y} \,
+  \Bigl( p(\vec{x}, \vec{y}) \;\to\;
+    \exists\, \vec{z} \,\bigl( \varphi(\vec{x}, \vec{z}) \wedge
+      \textstyle\bigwedge_i y_i \dataEq t_i(\vec{x}, \vec{z}) \bigr) \Bigr),
+      \\[6pt]
+\text{S2:} \quad & \forall\, \vec{x} \,
+  \Bigl( \exists\, \vec{z} \; \varphi(\vec{x}, \vec{z}) \;\to\;
+    \exists\, \vec{y} \; p(\vec{x}, \vec{y}) \Bigr).
+\end{align*}
+S1 states that every tuple in $p$ is witnessed by some binding of $\vec{z}$
+satisfying the full body. S2 states that whenever the base body
+$\varphi(\vec{x}, \vec{z})$ is satisfiable (for some $\vec{z}$), some
+corresponding tuple must exist in $p$. The parallel structure is
+deliberate: both statements have $\vec{x}$ universally quantified at the
+outermost level, with $\vec{z}$ existentially quantified — in the
+consequent of S1 and in the antecedent of S2.
+
+\begin{remark}
+S1 and S2 together fully determine $p$. For any binding of $\vec{x}$ and
+$\vec{z}$ satisfying $\varphi$, the terms $t_i(\vec{x}, \vec{z})$ evaluate
+to unique data values, and since $\rho$ is an injection when restricted to
+$\iota(q_i)$ where $q_i$ is the value type associated with $y_i$, each such value
+corresponds to a unique domain object. S2 forces the resulting tuple
+$(\vec{x}, \vec{y})$ into $p$ for every satisfying $\vec{z}$, covering
+all cases including those where different $\vec{z}$ bindings yield
+different $\vec{y}$ values. S1 excludes from $p$ any tuple not explained
+by the body. No freedom remains in the extension of $p$.
+\end{remark}
+
+\begin{remark}
+When there are no derived variables (i.e.\ $\vec{y}$ is empty), the
+translation reduces to the standard biconditional: S1 and S2 together are
+equivalent to $\forall\, \vec{x}\, (p(\vec{x}) \leftrightarrow \exists\,
+\vec{z}\, \varphi(\vec{x}, \vec{z}))$. The translation is therefore a
+conservative extension of the standard case.
+\end{remark}
+
+\begin{example}
+\label{ex:markup2}
+We apply the translation schema to the markup derivation rule of
+Example~\ref{ex:markup}. The rule is written in the new syntax as:
+$$\begin{aligned}[t]
+  & \pr{hasMarkup}(\var{Article}, \dvar{MoneyAmount}) \;\Leftarrow\; \\
+  & \quad \pr{retailsFor}(\var{Article}, \var{MoneyAmount}_1) \wedge
+    \pr{wholesalesFor}(\var{Article}, \var{MoneyAmount}_2) \wedge {} \\
+  & \quad \var{MoneyAmount} \dataEq
+    \var{MoneyAmount}_1 \dataOp{-} \var{MoneyAmount}_2.
+\end{aligned}$$
+Here $\vec{x} = (\var{Article})$, $\vec{y}^{\,*} = (\dvar{MoneyAmount})$,
+$\vec{z} = (\var{MoneyAmount}_1, \var{MoneyAmount}_2)$, and the base body
+$\varphi(\vec{x}, \vec{z})$ is
+$\pr{retailsFor}(\var{Article}, \var{MoneyAmount}_1) \wedge
+\pr{wholesalesFor}(\var{Article}, \var{MoneyAmount}_2)$.
+The translation gives:
+\begin{align*}
+\text{S1:} \quad
+  &\forall\, \var{Article}, \var{MoneyAmount} \, ( \\
+    & \quad \pr{hasMarkup}(\var{Article}, \var{MoneyAmount}) \;\to \\
+  &\quad \exists\, \var{MoneyAmount}_1, \var{MoneyAmount}_2 \, ( \\
+   & \qquad \pr{retailsFor}(\var{Article}, \var{MoneyAmount}_1) \wedge \pr{wholesalesFor}(\var{Article}, \var{MoneyAmount}_2) \wedge {} \\
+    & \qquad \var{MoneyAmount} \dataEq \var{MoneyAmount}_1 \dataOp{-}
+    \var{MoneyAmount}_2 ) ), \\[6pt]
+\text{S2:} \quad
+  &\forall\, \var{Article} \, ( \\
+  & \quad  \exists\, \var{MoneyAmount}_1, \var{MoneyAmount}_2 \, ( \\
+  & \qquad \pr{retailsFor}(\var{Article}, \var{MoneyAmount}_1) \wedge \pr{wholesalesFor}(\var{Article}, \var{MoneyAmount}_2) ) \;\to \\
+  & \quad  \exists\, \var{MoneyAmount} \;
+    \pr{hasMarkup}(\var{Article}, \var{MoneyAmount}) ).
+\end{align*}
+\end{example}
+
+\begin{remark}
+S1 and S2 together fully determine $\pr{hasMarkup}$. Since
+$\pr{hasMarkup}$, $\pr{retailsFor}$, and $\pr{wholesalesFor}$ all have
+signature $(\pr{Article}, \pr{MoneyAmount})$, their interpretations are
+subsets of $\iota(\pr{Article}) \times \iota(\pr{MoneyAmount})$, a finite
+set. For any pair $(\mathit{article}, \mathit{ma}) \in \iota(\pr{Article})
+\times \iota(\pr{MoneyAmount})$: if retail and wholesale prices exist for
+$\mathit{article}$, then $\rho(\mathit{ma}_1) - \rho(\mathit{ma}_2)$ is a
+specific data value, and since $\rho$ is injective on $\iota(\pr{USD})$ and
+the reference scheme is injective, there is at most one $\mathit{ma}$ with
+that value; S2 requires it to be in $\pr{hasMarkup}$,
+and S1 excludes all other pairs. If no such prices exist, S1 excludes any
+tuple for that article. No freedom remains.
+\end{remark}
+
+\begin{remark}
+Derivation rules compose naturally by allowing derived fact types to appear
+in the base body $\varphi$ of other rules. A derived fact type $p$ defined
+by one rule may be used as a predicate in the body of a rule defining
+another derived fact type $q$, without any need to inline $p$'s definition
+into $q$'s rule. The semantics of the full rule system is given by
+evaluating the rules in \emph{dependency order}: if $q$ depends on $p$
+then $p$ is evaluated first, and its extension is available when $q$ is
+evaluated. This corresponds to the minimal Herbrand model of the rule
+system, computed in topological order over the dependency graph of derived
+fact types.
+\end{remark}
+
+\begin{remark}
+We require the dependency graph of derived fact types to be \emph{acyclic}:
+no derived fact type may depend on itself, directly or indirectly. This
+rules out recursive derivation rules and ensures that the evaluation order
+is well-defined and that the semantics reduces to iterated substitution
+with no fixpoint computation. In particular, it avoids the well-known
+difficulties that arise from recursion through aggregation, where standard
+fixpoint semantics breaks down and stratification conditions become complex.
+
+We regard this restriction as appropriate for the current setting and for
+the ORM2 community, for whom recursion is not a common modelling pattern.
+In a future extension we plan to explore limited forms of recursion that
+are both practically useful and semantically well-behaved, such as a
+transitive closure operator or a mechanism based on regular path queries.
+These targeted additions are expected to cover the most important practical
+use cases while remaining easier to understand for modellers and easier to
+implement for tool builders than general recursive rules.
+\end{remark}
+
+\subsection*{Transitive closure}
+
+The acyclicity restriction on derivation rules rules out expressing
+recursively-defined ring constraints such as \emph{acyclic} and
+\emph{strongly intransitive}, both of which require quantifying over paths
+of arbitrary length in a binary relation. Rather than relaxing the
+restriction on derivation rules, we introduce transitive closure as a
+dedicated, non-recursive construct in the logic itself, with fixed
+built-in semantics. This keeps the acyclicity restriction on derivation
+rules fully general, with no exception. We use the notation of
+\emph{transitive closure logic} as it is commonly found in the finite model
+theory literature, so that it will be familiar to readers who know that
+work.
+
+\begin{definition}
+Let $v_1, v_2$ be distinct variables of the same type $T$, let $\varphi$
+be a formula, and let $t_1, t_2$ be terms of type $T$. Then
+$$[\TC_{v_1, v_2}\, \varphi](t_1, t_2)
+  \qquad\text{and}\qquad
+  [\TC^{*}_{v_1, v_2}\, \varphi](t_1, t_2)$$
+are formulas. The first is true under interpretation $\iota$ and binding
+$\beta$ iff there exist $n \geq 1$ and $a_0, \ldots, a_n \in \iota(T)$ with
+$a_0 = \beta(t_1)$ and $a_n = \beta(t_2)$, such that for each
+$i = 1, \ldots, n$, $\varphi$ holds under $\beta[v_1 \mapsto a_{i-1},
+v_2 \mapsto a_i]$. The second is defined in the same way, except that
+$n \geq 0$ is allowed, so that it is also true whenever $t_1$ and $t_2$
+denote the same domain object.
+\end{definition}
+
+\begin{remark}
+$\TC$ denotes the transitive closure and $\TC^{*}$ the
+reflexive-transitive closure of the finite binary relation on $\iota(T)$
+that $\varphi$ defines between $v_1$ and $v_2$. When $t_1$ and $t_2$ are
+variables, $[\TC^{*}_{v_1, v_2}\, \varphi](t_1, t_2)$ is equivalent to
+$t_1 = t_2 \vee [\TC_{v_1, v_2}\, \varphi](t_1, t_2)$. Note that the
+reflexive part ranges over all of $\iota(T)$, not only over the objects
+that occur in the relation defined by $\varphi$. Both closures are always
+well-defined and computable (e.g.\ by reachability search) in time
+polynomial in $|\iota(T)|$.
+\end{remark}
+
+\begin{remark}[Binding and scope]
+$\TC$ and $\TC^{*}$ bind $v_1$ and $v_2$, in the same way as $\forall$ and
+$\exists$ bind their variables: the scope of $v_1$ and $v_2$ is the formula
+$\varphi$ inside the square brackets, and they can be renamed consistently
+within that scope without changing the meaning. The free variables of
+$[\TC_{v_1, v_2}\, \varphi](t_1, t_2)$ are therefore the free variables of
+$\varphi$ other than $v_1$ and $v_2$, together with the variables of $t_1$
+and $t_2$. Free variables of $\varphi$ other than $v_1$ and $v_2$ act as
+parameters, exactly as in aggregation. Since the arguments $t_1, t_2$ are
+arbitrary terms, the construct can be applied to the same variable twice,
+as in $[\TC_{v_1, v_2}\, \varphi](x, x)$, and it can be negated, combined
+with other formulas by any connective, and nested inside quantifiers or
+inside further occurrences of $\TC$. The square brackets delimit the scope
+of the bound variables, which keeps such nested formulas easy to parse.
+Although bound variables may in principle reuse the names of variables
+used elsewhere in the formula, we recommend fresh names, as in the
+examples below, to keep formulas readable.
+\end{remark}
+
+\begin{remark}
+Unlike a recursive derivation rule, $\TC$ is not defined by
+solving a fixpoint equation supplied by the modeller; its semantics is
+fixed once and for all as reachability. This is what allows it to be
+added to the logic without reopening the question of recursive derivation
+rules, or the stratification difficulties that motivate keeping the
+dependency graph of derivation rules acyclic (see the remark above).
+\end{remark}
+
+\begin{remark}[Generalisation to tuples]
+The definition generalises directly from single variables to equal-length
+tuples of distinct variables: for tuples $\vec{v} = (v_1,\ldots,v_k)$ and
+$\vec{w} = (w_1,\ldots,w_k)$, matched component-wise by type, and tuples of
+terms $\vec{s}$ and $\vec{t}$ of the same types,
+$[\TC_{\vec{v}, \vec{w}}\, \varphi](\vec{s}, \vec{t})$ holds iff there is a
+chain of $k$-tuples from $\vec{s}$ to $\vec{t}$ with $\varphi$ holding
+between each consecutive pair, and similarly for $\TC^{*}$. This is the
+same generalisation from binary relations to relations between $k$-tuples
+familiar from transitive closure logic in finite model theory, and is
+directly useful for ORM2 given its native support for $n$-ary fact types:
+a closure that must track more than one role position jointly as a chain
+extends requires exactly this generalisation.
+
+We adopt the convention that a tuple of length $1$ is written as a bare
+variable or term rather than a singleton $(v)$. Under this convention
+$[\TC_{v, w}\, \varphi](s, t)$ is simply the $k=1$ case of
+$[\TC_{\vec{v}, \vec{w}}\, \varphi](\vec{s}, \vec{t})$, and every example in
+this document uses this case; the tuple notation is needed only when
+$k \geq 2$, and does not affect the notation used elsewhere.
+\end{remark}
+
+\begin{remark}[A continuum between schema and formula]
+The tuple-indexed generalisation of $\TC$ likely adds no expressive power
+beyond the $k=1$ case together with ORM2's existing \emph{objectification}
+(nesting) mechanism. Given $\varphi$ relating $\vec{v}$ and $\vec{w}$ with
+$k \geq 2$, the (finite, definable) set of tuples occurring as either
+endpoint of an edge of $\varphi$ can be introduced as an ordinary derived
+fact type and objectified into a new entity type $S$; $\varphi$ then
+re-expresses as an ordinary binary relation over $S$, to which the plain
+$k=1$ form of $\TC$ applies. We state this as a conjecture rather than a
+proven result, but it fits the same pattern as several other reducibility
+results in this document.
+
+This reducibility points to a more general design principle worth making
+explicit to modellers: whenever a constraint requires tracking a compound
+state as a chain of relationships extends, there is a genuine choice of
+where to place the resulting complexity. It can be placed \emph{in the
+schema}, by objectifying the compound state as a named, nested entity
+type — visible on the diagram, reusable elsewhere, and independently
+verbalisable — or it can be placed \emph{in the formula}, using the
+tuple-indexed form of $\TC$ directly, keeping the diagram minimal at the
+cost of a more elaborate formalisation. Neither option is uniformly
+preferable; the choice trades diagram complexity against formula
+complexity, and different modellers, or different constraints within the
+same schema, may reasonably be placed at different points along this
+continuum.
+\end{remark}
+
+\begin{example}
+\label{ex:ring}
+Let $p \in \FactPreds$ be a binary ring predicate with $\sigma(p) = (T, T)$
+for some type $T$. The \emph{acyclic} ring constraint is expressed as:
+$$\forall\, \var{T}_1\, \bigl(\neg\, [\TC_{\var{T}_4, \var{T}_5}\, p(\var{T}_4,\var{T}_5)](\var{T}_1, \var{T}_1)\bigr).$$
+The \emph{strongly intransitive} ring constraint is expressed as:
+$$\forall\, \var{T}_1, \var{T}_2, \var{T}_3\, \bigl(p(\var{T}_1,\var{T}_2) \wedge
+  [\TC_{\var{T}_4, \var{T}_5}\, p(\var{T}_4,\var{T}_5)](\var{T}_2, \var{T}_3) \to \neg\, p(\var{T}_1,\var{T}_3)\bigr).$$
+\end{example}
+
+\begin{remark}
+The verbalisation quality of a formula involving $\TC$ depends strongly on
+whether $\varphi$ is a single named predicate atom or a more complex
+formula. When $\varphi$ is $p(v_1, v_2)$ for a named predicate $p$,
+$[\TC_{v_1, v_2}\, p(v_1,v_2)](t_1, t_2)$ can be verbalised uniformly using
+$p$'s own reading, following the pattern already used by existing ORM2
+tools (e.g.\ ``$t_1$ is indirectly related to $t_2$ by one or more
+applications of $p$'', or ``zero or more'' for $\TC^{*}$), regardless of
+how complex $p$'s own definition is internally. When $\varphi$ is a
+compound formula (for example, a join of two other predicates), no such
+reading is available, and verbalisation must fall back to a more technical
+description of $\varphi$ itself. We therefore recommend, though do not
+require, that $\TC$ be applied to a named predicate — introduced, if
+necessary, via an ordinary non-recursive derivation rule — rather than to
+an inline compound formula.
+\end{remark}
+
+\begin{remark}
+More complex path-based conditions, corresponding to regular path queries
+over the schema, do not require any further extension of the logic: union
+and concatenation of binary predicates are already expressible as ordinary
+non-recursive derivation rules ($q(x,y) \Leftarrow p_1(x,y) \vee p_2(x,y)$
+and $q(x,z) \Leftarrow \exists\, y\, (p_1(x,y) \wedge p_2(y,z))$
+respectively), so the full expressive power of regular path queries can be
+reached by composing such rules with applications of $\TC$ and $\TC^{*}$ to
+named derived predicates.
+\end{remark}
+
+\begin{remark}
+A construct of the form ``$\psi$ \textbf{where} $p_1 := \varphi_1, \ldots,
+p_k := \varphi_k$'', allowing local predicate definitions to be introduced
+within a single formula and referenced in $\psi$, would improve readability
+when a formula requires several auxiliary named predicates that are not
+otherwise part of the schema. We leave the precise syntax and scoping rules
+of such a construct for future work. Note that, since $\TC$ already
+delimits its bound variables with square brackets and takes its arguments
+directly, such a construct is not needed merely to make closures readable;
+its value lies in naming auxiliary predicates that are used more than once
+or that a modeller would want to verbalise separately.
+\end{remark}
+
+
+\end{document}
