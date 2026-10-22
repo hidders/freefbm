@@ -10,7 +10,7 @@
 // roles[] order, so fact atom arguments are always in roles[] order.
 
 import {
-  mkVar, forall, exists, count, not, implies, iff, and, or, tc,
+  mkVar, forall, exists, count, not, truth, implies, iff, and, or, tc,
   factAtom, typeAtom, cmp, vcmp, constant,
 } from './formula.js'
 import { VALUE_KINDS, valueKindName, parseLiteral } from '../utils/datatypeValues.js'
@@ -238,6 +238,55 @@ function frequencyFormula(xs, ys, phi, specs) {
   return forall(xs, implies(exists(ys, phi()), or(bounds)))
 }
 
+// ── Cardinality ranges ───────────────────────────────────────────────────────
+
+// ⋁ (∃^{≥lo} x φ ∧ ∃^{≤hi} x φ) over the specs, with x and φ built fresh per
+// use by phi() → { x, body }; null when some spec holds for any population.
+function cardinalityFormula(phi, specs) {
+  const q = (op, n) => { const { x, body } = phi(); return count(op, n, [x], body) }
+  const bounds = specs.map(({ lo, hi }) => {
+    if (lo != null && lo === hi) return q('=', lo)
+    return and(lo != null && lo > 0 ? q('≥', lo) : null, hi != null ? q('≤', hi) : null)
+  })
+  if (!bounds.length || bounds.some(b => b === null)) return null
+  return or(bounds)
+}
+
+function cardinalityEntry(base, range, phi) {
+  const formula = cardinalityFormula(phi, frequencySpecs(range))
+  return formula ? { ...base, formula } : { ...base, note: 'Holds for any population, so it says nothing.' }
+}
+
+// The population of the type (an object type or an objectified fact type)
+// has a number of instances in the range.
+function typeCardinalityEntry(typeId, range, ctx) {
+  return cardinalityEntry({ key: `${typeId}:card`, elementId: typeId, kind: 'Cardinality', subject: ctx.typeName(typeId) },
+    range, () => ({ x: mkVar(typeId), body: truth() }))
+}
+
+// The number of distinct objects playing role i of the fact type is in the range.
+function roleCardinalityEntry(fact, i, ctx, reading = readingText(fact, ctx)) {
+  const r = fact.roles[i]
+  const base = { key: `${fact.id}:card:${i}`, elementId: fact.id, kind: `Cardinality (role ${i + 1})`, subject: reading }
+  if (!r.objectTypeId) return { ...base, note: 'The role has no player yet.' }
+  return cardinalityEntry(base, r.cardinalityRange, () => {
+    const xs = fact.roles.map(p => mkVar(p.objectTypeId))
+    return { x: xs[i], body: exists(xs.filter((_, j) => j !== i), factAtom(fact.id, xs)) }
+  })
+}
+
+// The entry for a selected cardinality range ({ otId } | { factId, roleIndex }
+// | { nestedFactId }), or null.
+function selectedCardinalityEntry(sel, ctx) {
+  const ot = sel.otId ? ctx.otById.get(sel.otId) : null
+  if (ot?.cardinalityRange?.length) return typeCardinalityEntry(ot.id, ot.cardinalityRange, ctx)
+  const nested = sel.nestedFactId ? ctx.factById.get(sel.nestedFactId) : null
+  if (nested?.cardinalityRange?.length) return typeCardinalityEntry(nested.id, nested.cardinalityRange, ctx)
+  const fact = sel.factId != null ? ctx.factById.get(sel.factId) : null
+  if (fact?.roles[sel.roleIndex]?.cardinalityRange?.length) return roleCardinalityEntry(fact, sel.roleIndex, ctx)
+  return null
+}
+
 // ── Readable labels ──────────────────────────────────────────────────────────
 
 export function readingText(fact, ctx) {
@@ -382,6 +431,7 @@ function factEntries(fact, ctx) {
   }
 
   fact.roles.forEach((r, i) => { if (r.valueRange?.length) out.push(roleValueRangeEntry(fact, i, ctx, reading)) })
+  fact.roles.forEach((r, i) => { if (r.cardinalityRange?.length) out.push(roleCardinalityEntry(fact, i, ctx, reading)) })
 
   fact.roles.forEach((r, i) => {
     if (!r.mandatory) return
@@ -756,6 +806,15 @@ export function formalise(state, { wholeSchema = false } = {}) {
     implicit.impliedLinks = []
     return { entries: entry ? [entry] : [], implicit, ctx, scope: 'selection' }
   }
+  // So does a selected cardinality range.
+  const cr = state.selectedCardinalityRange
+  if (cr) {
+    const entry = selectedCardinalityEntry(cr, ctx)
+    const typeId = cr.otId ?? cr.nestedFactId ?? ctx.factById.get(cr.factId)?.roles[cr.roleIndex]?.objectTypeId
+    const implicit = implicitEntries(state, ctx, new Set(typeId ? [typeId] : []))
+    implicit.impliedLinks = []
+    return { entries: entry ? [entry] : [], implicit, ctx, scope: 'selection' }
+  }
   const constraints = (state.constraints ?? []).filter(c => SEQUENCE_TYPES.has(c.constraintType))
 
   const selected = new Set(state.multiSelectedIds ?? [])
@@ -816,6 +875,12 @@ export function formalise(state, { wholeSchema = false } = {}) {
   for (const ot of (state.objectTypes ?? [])) {
     if (ot.kind !== 'value' || !ot.valueRange?.length) continue
     if (selected.size ? otIds.has(ot.id) : typeIds.has(ot.id)) entries.push(typeValueRangeEntry(ot, ctx))
+  }
+  // Cardinality ranges of the object types and nested entity types in scope.
+  for (const t of [...(state.objectTypes ?? []), ...(state.facts ?? []).filter(f => f.objectified)]) {
+    if (!t.cardinalityRange?.length) continue
+    const inScope = selected.size ? otIds.has(t.id) || factIds.has(t.id) : typeIds.has(t.id)
+    if (inScope) entries.push(typeCardinalityEntry(t.id, t.cardinalityRange, ctx))
   }
   for (const fact of (state.facts ?? [])) {
     if (factIds.has(fact.id)) { entries.push(...factEntries(fact, ctx)); continue }

@@ -10,6 +10,7 @@
 //   { t: 'and' | 'or', args: [F] }
 //   { t: 'implies' | 'iff', left, right }
 //   { t: 'not', arg }
+//   { t: 'true' }                            ⊤, the formula that always holds
 //   { t: 'fact', factId, args: [Var] }      fact type atom, args in roles[] order
 //   { t: 'type', typeId, arg: Var }          object type membership, e.g. Student(Person)
 //   { t: 'cmp', op, left: Var, right: Var }  object equality =, ≠
@@ -30,6 +31,7 @@ export const forall = (vars, body) => vars.length ? { t: 'forall', vars, body } 
 export const exists = (vars, body) => vars.length ? { t: 'exists', vars, body } : body
 export const count  = (op, n, vars, body) => ({ t: 'count', op, n, vars, body })
 export const not    = (arg) => ({ t: 'not', arg })
+export const truth  = () => ({ t: 'true' })
 export const implies = (left, right) => ({ t: 'implies', left, right })
 export const iff     = (left, right) => ({ t: 'iff', left, right })
 export const factAtom = (factId, args) => ({ t: 'fact', factId, args })
