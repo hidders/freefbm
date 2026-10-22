@@ -93,6 +93,12 @@ function compileSequence(seq, query, ctx) {
     links.find(l => l.atomId === atomId && l.roleIndex === roleIndex)?.variableId
 
   for (const a of atoms) if (a.kind === 'objectType') addNode(a.id, a.originalId)
+  // A link to a fact atom of an objectified fact type stands for the instance
+  // that nests the atom's fact, so that atom is a node of the nested type too.
+  for (const a of atoms) {
+    if (a.kind === 'fact' && ctx.factById.get(a.originalId)?.objectified && links.some(l => l.variableId === a.id))
+      addNode(a.id, a.originalId)
+  }
 
   const factParts = []   // { factId, nodes }
   const subtypeParts = [] // { subId, node }
@@ -108,7 +114,15 @@ function compileSequence(seq, query, ctx) {
         addNode(n, r.objectTypeId)
         return n
       })
-      factParts.push({ factId: fact.id, nodes })
+      if (parent.has(a.id)) {
+        // The nesting instance d of the fact, through the implied links:
+        // d involves A ∧ d involves B ∧ … (which entails the fact itself).
+        const ils = fact.roles.map((_, ri) => ctx.linkById.get(`${fact.id}_il_${ri}`))
+        if (ils.some(l => !l)) return { error: 'a role of its join path has no implied link yet' }
+        ils.forEach((l, ri) => factParts.push({ factId: l.id, nodes: [a.id, nodes[ri]] }))
+      } else {
+        factParts.push({ factId: fact.id, nodes })
+      }
       for (const s of (a.seededRoles ?? []).map(normalizeSeeded)) {
         if (s.seqPosition != null) outputs.push({ seqPosition: s.seqPosition, node: nodes[s.roleIndex] })
       }
