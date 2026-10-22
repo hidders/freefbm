@@ -553,14 +553,16 @@ export default function Canvas() {
         const vcOtIds = new Set(visibleOts.filter(ot => collapsedRefValueRole(ot)).map(ot => ot.id))
         return { factIds: vcFactIds, otIds: vcOtIds, subtypesDim: true, constraintsDim: true, connectorsDim: true }
       }
-      return { factIds: NONE, otIds: ALL, subtypesDim: false, constraintsDim: true, connectorsDim: true }
+      // Entities with a collapsed value-type ref mode stand for their ref fact's value role.
+      const refOtIds = new Set(visibleOts.filter(ot => collapsedRefValueRole(ot)).map(ot => ot.id))
+      return { factIds: NONE, otIds: refOtIds, subtypesDim: false, constraintsDim: true, connectorsDim: true }
     }
     if (tool === 'connectConstraint') {
       return { factIds: ALL, otIds: ALL, subtypesDim: true, constraintsDim: false, connectorsDim: true }
     }
     if (tool === 'addConstraint:valueRange') {
       const eligibleOtIds = new Set(
-        visibleOts.filter(ot => ot.kind === 'value').map(ot => ot.id)
+        visibleOts.filter(ot => ot.kind === 'value' || collapsedRefValueRole(ot)).map(ot => ot.id)
       )
       return { factIds: NONE, otIds: eligibleOtIds, subtypesDim: true, constraintsDim: true, connectorsDim: true, dimObjectification: true }
     }
@@ -1451,7 +1453,10 @@ export default function Canvas() {
               onDoubleClickValueRange={(cx, cy) => handleOtValueRangeClick(ot, cx, cy)}
               onValueRangeClick={(cx, cy) => handleOtValueRangeClick(ot, cx, cy)}
               onCardinalityRangeClick={(cx, cy) => handleOtCardinalityRangeClick(ot, cx, cy)}
-              onValueRangeContextMenu={(e, vrOt) => handleOtValueRangeContextMenu(vrOt ?? ot, e)}
+              onRefRoleValueRangeClick={(m, cx, cy) => handleRoleValueClick({ id: m.factId }, m.roleIndex, cx, cy)}
+              onValueRangeContextMenu={(e, desc) => desc?.factId
+                ? handleRoleValueContextMenu({ id: desc.factId }, desc.roleIndex, e)
+                : handleOtValueRangeContextMenu(desc?.otId ? { ...ot, id: desc.otId } : ot, e)}
               onCardinalityRangeContextMenu={(e) => handleOtCardinalityRangeContextMenu(ot, e)}/>
             </g>
             )

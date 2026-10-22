@@ -1,8 +1,16 @@
 import { useCallback } from 'react'
 import { constraintMaxSequences, hasTargetObjectType, suppressRolePosition, isSingletonSequence } from '../utils/constraintRules'
-import { findRefMode } from '../utils/refMode'
+import { findRefMode, refModeCollapseBlockers } from '../utils/refMode'
 
 export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
+
+  // Collapsing is refused while constraints link to the entity's own ref-fact role.
+  const collapseItem = (entity, occurrenceId) => {
+    const n = refModeCollapseBlockers(entity, store.facts, store.objectTypes, store.constraints).length
+    return n > 0
+      ? { label: `Collapse Reference Mode (blocked: ${n} constraint${n > 1 ? 's' : ''} on ${entity.name || entity.objectifiedName || 'its'}'s own role)`, disabled: true, action: () => {} }
+      : { label: 'Collapse Reference Mode', action: () => store.collapseRefMode(occurrenceId) }
+  }
 
   const handleMultiSelectionContextMenu = useCallback((e) => {
     e.preventDefault()
@@ -64,7 +72,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
       : (diagram?.expandedRefModes ?? []).includes(ot.id)
     const refExpansionItems = hasRefMode && occurrenceId
       ? ['---', isExpandedHere
-          ? { label: 'Collapse Reference Mode', action: () => store.collapseRefMode(occurrenceId) }
+          ? collapseItem(ot, occurrenceId)
           : { label: 'Expand Reference Mode',   action: () => store.expandRefMode(occurrenceId)   }]
       : []
     setContextMenu({
@@ -140,7 +148,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
       : (diagram?.expandedRefModes ?? []).includes(fact.id)
     const refExpansionItems = hasRefMode && occurrenceId
       ? [isExpandedHere
-          ? { label: 'Collapse Reference Mode', action: () => store.collapseRefMode(occurrenceId) }
+          ? collapseItem(fact, occurrenceId)
           : { label: 'Expand Reference Mode',   action: () => store.expandRefMode(occurrenceId)   },
          '---']
       : []

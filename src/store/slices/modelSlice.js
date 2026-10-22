@@ -746,6 +746,10 @@ export function createModelSlice(set, get) {
         ...(diagDS.showMinimap != null && { showMinimap: diagDS.showMinimap }),
         ...(diagDS.minimapPos  != null && { minimapPos:  diagDS.minimapPos }),
       })
+      // A file may hold a collapsed reference mode that constraints on its entity role
+      // forbid; open it expanded without marking the model dirty.
+      get().expandBlockedRefModes()
+      set({ isDirty: false })
     },
 
     serialize() {

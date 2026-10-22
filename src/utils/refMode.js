@@ -87,6 +87,17 @@ export function vtNameFromLabel(entityName, label) {
   return label
 }
 
+// External constraints with a member on the entity's own role in its ref-mode fact.
+// While there are any, the reference mode cannot be collapsed: collapsing draws
+// value-role members to the entity, so an entity-role member would be indistinguishable.
+export function refModeCollapseBlockers(entity, facts, objectTypes, constraints) {
+  const rm = findRefMode(entity, facts, objectTypes)
+  if (!rm) return []
+  const entityRoleIndex = 1 - rm.vtRoleIndex
+  return (constraints ?? []).filter(c => (c.sequences ?? []).some(seq => (seq ?? []).some(m =>
+    m?.kind === 'role' && m.factId === rm.factId && m.roleIndex === entityRoleIndex)))
+}
+
 // Returns the IDs of all entities that use this VT as their ref-mode VT.
 // (Shared VTs can be referenced by multiple entities — see CompanyName ↔ Employee
 //  + Customer in the design notes.)
