@@ -10,7 +10,7 @@ import { renderFormula } from '../logic/renderFormula.js'
 // as the scope switch says), optionally followed
 // by the implicit disjointness, participation and implied-link constraints.
 
-const TOKEN_STYLE = {
+export const TOKEN_STYLE = {
   var:     { color: 'var(--formula-var)', fontWeight: 600 },
   reading: { color: 'var(--formula-reading)' },
   type:    { color: 'var(--formula-type)', fontWeight: 600 },
@@ -128,7 +128,7 @@ function ToggleButton({ on, onClick, title, children }) {
   )
 }
 
-function Formula({ formula, ctx }) {
+export function Formula({ formula, ctx }) {
   const tokens = useMemo(() => renderFormula(formula, ctx), [formula, ctx])
   return (
     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap', userSelect: 'text' }}>

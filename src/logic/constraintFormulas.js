@@ -11,10 +11,11 @@
 
 import {
   mkVar, forall, exists, count, not, truth, implies, iff, and, or, tc,
-  factAtom, typeAtom, cmp, vcmp, constant,
+  factAtom, typeAtom, cmp, vcmp,
 } from './formula.js'
-import { VALUE_KINDS, valueKindName, parseLiteral } from '../utils/datatypeValues.js'
-import { findRefMode, findInheritedPI } from '../utils/refMode.js'
+import { VALUE_KINDS, parseLiteral } from '../utils/datatypeValues.js'
+import { valueAccess, withValues, valueConstant } from './values.js'
+import { isDerived, derivationEntry } from './derivationRule.js'
 
 const SEQUENCE_TYPES = new Set([
   'inclusiveOr', 'exclusiveOr', 'exclusion', 'equality', 'subset',
@@ -300,51 +301,6 @@ export function readingText(fact, ctx) {
   return words.join(' ')
 }
 
-// ── Data values ──────────────────────────────────────────────────────────────
-//
-// Value atoms compare the data values of objects. An instance of a value type
-// is its value; an entity type with a reference mode,
-// possibly inherited, has the value it is identified by, reached through the
-// reference mode fact: ∃PersonNr (Person has PersonNr ∧ PersonNr ≈ 5).
-
-// How to reach the data value of an instance of `typeId`:
-//   { kindName, via? }   via = { factId, valueIndex, valueTypeId }
-// or null when the type has no single value (no reference mode).
-function valueAccess(typeId, ctx) {
-  const ot = ctx.otById.get(typeId)
-  const f = ctx.factById.get(typeId)
-  if (ot?.kind === 'value') return { kindName: valueKindName(ot.datatypeAssignment) }
-  const entity = ot ?? f
-  if (!entity) return null
-  const { facts, objectTypes, subtypes, constraints } = ctx.schema
-  let rm = findRefMode(entity, facts, objectTypes)
-  if (!rm) {
-    const inh = findInheritedPI(entity, facts, objectTypes, subtypes, constraints)
-    if (inh?.kind === 'refMode') rm = inh.refMode
-  }
-  if (!rm) return null
-  return { kindName: valueKindName(ctx.otById.get(rm.vtId)?.datatypeAssignment),
-    via: { factId: rm.factId, valueIndex: rm.vtRoleIndex, valueTypeId: rm.vtId } }
-}
-
-// cond applied to the value variables of the given objects:
-//   items = [{ x: Var, access }]   (access from valueAccess)
-function withValues(items, cond) {
-  const vars = [], atoms = []
-  const vs = items.map(({ x, access }) => {
-    if (!access.via) return x
-    const v = mkVar(access.via.valueTypeId)
-    vars.push(v)
-    atoms.push(factAtom(access.via.factId, access.via.valueIndex === 0 ? [v, x] : [x, v]))
-    return v
-  })
-  return exists(vars, and(...atoms, cond(...vs)))
-}
-
-// Numbers and booleans are shown as they are; other constants are quoted.
-const UNQUOTED_KINDS = new Set(['integer', 'decimal', 'float', 'boolean'])
-const NUMBER_RE = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/
-
 const BOUND_FIELDS = { single: ['value'], lower: ['lower'], upper: ['upper'], range: ['lower', 'upper'] }
 
 // The condition a value range puts on a value variable, as v => formula, or
@@ -362,10 +318,7 @@ function rangeCondition(range, kindName) {
     if (kind?.order === 'none' && spec.type !== 'single')
       return { error: `${kindName} values have no order, so only single values are allowed` }
   }
-  const c = (raw) => {
-    const text = String(raw).trim()
-    return constant(text, kindName ? !UNQUOTED_KINDS.has(kindName) : !NUMBER_RE.test(text))
-  }
+  const c = (raw) => valueConstant(raw, kindName)
   return {
     cond: (v) => or(range.map(spec => {
       switch (spec.type) {
@@ -871,6 +824,10 @@ export function formalise(state, { wholeSchema = false } = {}) {
   }
 
   const entries = subtypes.filter(st => subtypeIds.has(st.id)).map(st => subtypeEntry(st, ctx))
+  // Derivation rules of the derived and semi-derived subtypes in scope.
+  for (const ot of (state.objectTypes ?? [])) {
+    if (isDerived(ot) && (selected.size ? otIds.has(ot.id) : typeIds.has(ot.id))) entries.push(derivationEntry(ot, state, ctx))
+  }
   // Value ranges of the value types in scope, or of the selected ones.
   for (const ot of (state.objectTypes ?? [])) {
     if (ot.kind !== 'value' || !ot.valueRange?.length) continue

@@ -26,6 +26,9 @@
 // A variable ranges over the population of its type (an object type id, or
 // the id of an objectified fact type).
 export const mkVar = (typeId) => ({ typeId })
+// A variable over the intersection of several types (the direct supertypes of
+// a derived subtype); typeId is the first of them.
+export const mkMeetVar = (typeIds) => (typeIds.length > 1 ? { typeId: typeIds[0], typeIds } : mkVar(typeIds[0]))
 
 export const forall = (vars, body) => vars.length ? { t: 'forall', vars, body } : body
 export const exists = (vars, body) => vars.length ? { t: 'exists', vars, body } : body

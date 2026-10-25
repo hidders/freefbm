@@ -3,6 +3,8 @@
 import { findIdentifierCycles, canBeExternalUniquenessPI, findCompositePI, findRefMode, findInheritedPI, findAllInheritedPIs } from './refMode.js'
 import { VALUE_KINDS, valueKindOf, parseLiteral } from './datatypeValues.js'
 import { EXTERNAL_CONSTRAINT_TYPES } from '../constants.js'
+import { derivationIssues } from '../logic/derivationRule.js'
+import { makeContext } from '../logic/constraintFormulas.js'
 
 export const VALIDATION_CATEGORIES = {
   factTypeDefinition: {
@@ -32,6 +34,10 @@ export const VALIDATION_CATEGORIES = {
   rangeSequences: {
     label: 'Range Sequences',
     description: 'Issues in value and frequency range specifications',
+  },
+  derivationRules: {
+    label: 'Derivation Rules',
+    description: 'Missing or ill-formed derivation rules of derived and semi-derived subtypes',
   },
 }
 
@@ -272,8 +278,21 @@ function readingSignature(parts, roleOrder, roles, otMap) {
   return sig.toLowerCase()
 }
 
-export function runValidation({ objectTypes, facts, constraints, subtypes = [] }, enabledCategories) {
+export function runValidation(state, enabledCategories) {
+  const { objectTypes, facts, constraints, subtypes = [] } = state
   const errors = []
+
+  // ── Derivation Rules ─────────────────────────────────────────────────────────
+  if (enabledCategories.has('derivationRules')) {
+    derivationIssues(state, makeContext(state)).forEach((i, n) => errors.push({
+      id: `derivation-${i.ot.id}-${n}`,
+      category: 'derivationRules',
+      elementId: i.ot.id,
+      elementKind: i.ot.kind,
+      message: `Derivation rule: ${i.message}`,
+      severity: i.severity,
+    }))
+  }
 
   // ── Fact Type Definition ─────────────────────────────────────────────────────
   if (enabledCategories.has('factTypeDefinition')) {

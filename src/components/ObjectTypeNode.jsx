@@ -2,6 +2,7 @@ import React, { useCallback, useState, useRef, useEffect } from 'react'
 import { useOrmStore, subtypeKindOf } from '../store/ormStore'
 import { findRefMode, refModeLabel } from '../utils/refMode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
+import { derivationMark } from '../logic/derivationRule.js'
 
 // Returns the ref-mode label (e.g. ".code") to display inside the entity rect,
 // or null when the entity has no ref mode or is expanded in the active diagram.
@@ -110,7 +111,7 @@ export function computeOtSize(ot, nameOverride) {
   const showRefMode = useOrmStore.getState().showReferenceMode
   const refLabel = showRefMode ? getEntityRefLabel(ot) : null
   const hasRef = !!refLabel
-  const displayName = (ot.name ?? '') + (ot.isIndependent ? ' !' : '')
+  const displayName = (ot.name ?? '') + derivationMark(ot) + (ot.isIndependent ? ' !' : '')
   const nameW  = measureText(nameOverride ?? displayName, OT_SIZE_NAME)
   const refW   = hasRef ? measureText(`(${refLabel})`, OT_SIZE_REF) : 0
   const w = Math.max(OT_MIN_W, Math.max(nameW, refW) + OT_PAD_X * 2)
@@ -498,7 +499,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
           fill={isConstraintTarget ? '#ffffff' : ot.kind === 'entity' ? 'var(--col-entity)' : 'var(--col-value)'}
           fontSize={OT_SIZE_NAME} fontFamily={OT_FONT}
           style={{ pointerEvents: 'none' }}>
-          {ot.name}{ot.isIndependent ? ' !' : ''}
+          {ot.name}{derivationMark(ot)}{ot.isIndependent ? ' !' : ''}
         </text>
       )}
 
