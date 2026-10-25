@@ -612,12 +612,25 @@ export function createDiagramSlice(set, get) {
     // Remove the current selection from the active diagram without touching the schema.
     // Handles single selection (all element kinds) and multi-selection.
     removeSelectedFromDiagram() {
-      const { selectedId, selectedKind, selectedOccurrenceId,
+      const { selectedId, selectedKind, selectedOccurrenceId, selectedUniqueness,
               multiSelectedIds, activeDiagramId } = get()
       if (!activeDiagramId) return
 
       if (multiSelectedIds.length > 0) {
         get().removeMultiSelectionFromDiagram(activeDiagramId)
+        return
+      }
+
+      // A selected internal uniqueness bar also carries its fact as selectedId,
+      // so handle it first: delete only the constraint, never the fact occurrence.
+      // Bars being edited and bars on implicit link facts are left to App.jsx.
+      if (selectedUniqueness) {
+        if (selectedUniqueness.implied || selectedUniqueness.roleIndex != null) return
+        if (get().uniquenessConstruction) return
+        const fact = get().facts.find(f => f.id === selectedUniqueness.factId)
+        const roles = fact?.uniqueness[selectedUniqueness.uIndex]
+        if (roles) get().removeUniqueness(fact.id, roles)
+        get().clearSelection()
         return
       }
 
@@ -644,7 +657,7 @@ export function createDiagramSlice(set, get) {
         else
           get().removeElementFromDiagram(selectedId, activeDiagramId)
       }
-      // selectedRole / selectedUniqueness: no-op (sub-element selections, not whole occurrences)
+      // selectedRole: no-op (sub-element selection, not a whole occurrence)
     },
 
     getSharedIds() {
