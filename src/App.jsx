@@ -162,7 +162,7 @@ function useKeyboardShortcuts() {
           }
           const fact = store.facts.find(f => f.id === selectedUniqueness.factId)
           if (fact) {
-            store.toggleUniqueness(selectedUniqueness.factId, fact.uniqueness[selectedUniqueness.uIndex])
+            store.removeUniqueness(selectedUniqueness.factId, fact.uniqueness[selectedUniqueness.uIndex])
             store.clearSelection()
           }
           return

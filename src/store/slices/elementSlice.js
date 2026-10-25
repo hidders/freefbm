@@ -1180,6 +1180,16 @@ export function createElementSlice(set, get) {
       }))
     },
 
+    // Remove-only counterpart of toggleUniqueness: safe to call more than once
+    // for the same keystroke (Canvas and App both handle Backspace).
+    removeUniqueness(factId, roleIndices) {
+      const fact = get().facts.find(f => f.id === factId)
+      if (!fact || !roleIndices) return
+      const key = JSON.stringify([...roleIndices].sort())
+      if (!fact.uniqueness.some(u => JSON.stringify([...u].sort()) === key)) return
+      get().toggleUniqueness(factId, roleIndices)
+    },
+
     setPreferredUniqueness(factId, roleIndices) {
       const key = JSON.stringify([...roleIndices].sort())
       set(s => {
