@@ -5,6 +5,7 @@ import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
 import { computeRingConstraintRelation, computeUniquenessProjection, computeSequenceProjections, computeValueComparisonData, computeInclusiveOrTable, computeExclusiveOrTable, computeExclusionTable, computeEqualityTable, computeSubsetTable, freqRangeSatisfies, projCellKey, findLCAsForTypes, checkC1ForTypes } from '../utils/populationValidation.js'
 import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 import FormalisationTab from './FormalisationTab.jsx'
+import { makePopulationEvaluator, formatCell } from '../logic/derivedPopulation.js'
 import Splitter from './Splitter.jsx'
 
 const MIN_HEIGHT = 80
@@ -184,6 +185,11 @@ function PopulationTab() {
     }
   }
 
+  if (ot?.derivation === 'derived') return <DerivedSubtypePopulation ot={ot}/>
+  if (ot?.derivation === 'semiDerived') return <>
+    <ObjectTypePopulation ot={ot}/>
+    <DerivedSubtypePopulation ot={ot} semi/>
+  </>
   if (ot)   return <ObjectTypePopulation ot={ot}/>
   if (fact) {
     if (selectedKind === 'implicitLink' && store.selectedImplicitLink != null)
@@ -1746,6 +1752,67 @@ function ObjectTypePopulation({ ot }) {
           </div>
         )
       })()}
+    </div>
+  )
+}
+
+// Population of a derived subtype, computed by its derivation rule and shown
+// read-only. For a semi-derived subtype (semi) it is shown below the editable
+// population as what the rule requires, with the instances still missing
+// from the population marked and addable.
+function DerivedSubtypePopulation({ ot, semi = false }) {
+  const store = useOrmStore()
+  const ev = makePopulationEvaluator(store)
+  const result = ev.derived(ot.id)
+  const stored = semi ? ev.population(ot.id) : null
+  const missing = semi && !result.error ? result.instances.filter(c => !stored.keys.has(ev.keyOf(c))) : []
+  const inh = findInheritedPI(ot, store.facts, store.objectTypes, store.subtypes, store.constraints)
+  const columnLabel = inh?.kind === 'refMode'
+    ? refModeLabel(inh.supertype.name, store.objectTypes.find(o => o.id === inh.refMode.vtId)?.name ?? '')
+    : 'identifier'
+  const pick = () => store.select(ot.id, 'entity')
+  return (
+    <div style={{ marginTop: semi ? 16 : 0 }}>
+      <Header>
+        {semi
+          ? <>Derived by the rule of <strong>{ot.name}</strong></>
+          : <>Population of <strong>{ot.name}</strong> (derived)</>}
+      </Header>
+      <div style={{ maxWidth: 480, fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8 }}>
+        {semi
+          ? 'Every instance that satisfies the derivation rule must be in the population above; it may hold others too.'
+          : 'Computed from the populations by the derivation rule, so it cannot be edited here.'}
+      </div>
+      {result.error ? (
+        <div style={{ maxWidth: 480, fontSize: 11, color: '#b91c1c' }}>
+          The population cannot be computed: {result.error}{' '}
+          <button onClick={pick} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            color: 'var(--accent)', fontSize: 11 }}>Edit the rule in the Inspector</button>
+        </div>
+      ) : (
+        <div style={{ maxWidth: 480 }}>
+          <div style={colHeaderStyle}>{columnLabel}</div>
+          {result.instances.length === 0 && (
+            <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic' }}>No instance satisfies the rule.</div>
+          )}
+          {result.instances.map((c, i) => {
+            const absent = semi && missing.includes(c)
+            return (
+              <div key={i} title={absent ? `Not in the population of ${ot.name}` : undefined} style={{
+                fontSize: 12, padding: '3px 6px', marginBottom: 4, borderRadius: 3,
+                border: `1px solid ${absent ? '#f5b400' : 'var(--border-soft)'}`,
+                background: absent ? '#fff8e0' : 'var(--bg-surface)', color: 'var(--ink-2)',
+              }}>
+                {Array.isArray(c) ? formatCell(c) : c}
+              </div>
+            )
+          })}
+          {semi && (
+            <PropagateButton label={`Add to ${ot.name}`} missing={missing} targetId={ot.id}
+              title={`Add the ${missing.length} derived instance${missing.length === 1 ? '' : 's'} missing from ${ot.name}`}/>
+          )}
+        </div>
+      )}
     </div>
   )
 }
