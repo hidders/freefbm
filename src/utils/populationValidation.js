@@ -2774,7 +2774,7 @@ function computeEffectiveFactTuples(fact, facts, factPopulations, objectTypes, p
 // value stored in nestedEntityMappings when the nested entity type has an
 // explicit identifier, otherwise the fact tuple itself. That is the value
 // that cells of the roles it plays hold.
-function factTupleSource(data) {
+export function factTupleSource(data) {
   const { facts = [], factPopulations, objectTypes = [], populations, subtypes = [], nestedEntityMappings, constraints } = data
   const tuples = (fact) =>
     computeEffectiveFactTuples(fact, facts, factPopulations || {}, objectTypes, populations || {}, nestedEntityMappings || {}, constraints)
