@@ -7,6 +7,8 @@
 // Variables are named after their type. A subscript is added only when two
 // variables of the same type can be in scope at once somewhere in the
 // formula; otherwise the bare type name is used, as in (Person lives in Country).
+// renderFormula takes an optional names map that it fills with each variable's
+// display name, so an editor can label the variables the same way.
 
 const SUBSCRIPTS = '₀₁₂₃₄₅₆₇₈₉'
 const subscript = (n) => String(n).split('').map(d => SUBSCRIPTS[d]).join('')
@@ -51,10 +53,11 @@ function maxInScope(f, baseOf, scope = new Map(), max = new Map()) {
   return max
 }
 
-export function renderFormula(formula, ctx) {
-  const baseOf = (v) => ctx.typeName(v.typeId)
+export function renderFormula(formula, ctx, names = new Map()) {
+  // A variable over the intersection of several types is named after all of
+  // them, joined by &: Student&Employee.
+  const baseOf = (v) => v.typeIds?.length > 1 ? v.typeIds.map(ctx.typeName).join('&') : ctx.typeName(v.typeId)
   const max = maxInScope(formula, baseOf)
-  const names = new Map()       // var → current display name
   const inScope = []            // [{ v, base, index }]
   const out = []
   const push = (text, cls = 'punct', extra) => out.push({ text, cls, ...extra })

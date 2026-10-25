@@ -10,6 +10,9 @@ import { constraintMaxSequences, suppressRolePosition } from '../utils/constrain
 import { PROFILES, PROFILE_MAP, getDatatypeById } from '../data/datatypeProfiles'
 import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
 import { VALIDATION_CATEGORIES } from '../utils/validation.js'
+import { DERIVATION_MODES, directSupertypes, isDerived, checkRule } from '../logic/derivationRule.js'
+import { makeContext } from '../logic/constraintFormulas.js'
+import DerivationRuleEditor from './DerivationRuleEditor'
 
 // ── Validation error components ───────────────────────────────────────────────
 
@@ -869,6 +872,8 @@ function ObjectTypeInspector({ ot }) {
           onChange={v => store.updateObjectType(ot.id, { isIndependent: v })}/>
       </Section>
 
+      {ot.kind === 'entity' && <DerivationSection ot={ot} store={store}/>}
+
       <Section title="Constraints">
         {ot.kind === 'value' && (
           <Row>
@@ -896,6 +901,53 @@ function ObjectTypeInspector({ ot }) {
 }
 
 
+
+// ── Derivation of a subtype ───────────────────────────────────────────────────
+// Not derived, derived or semi-derived; only a subtype can be derived. The
+// rule itself is edited in DerivationRuleEditor.
+function DerivationSection({ ot, store }) {
+  const [editing, setEditing] = useState(false)
+  const supers = directSupertypes(ot.id, store.subtypes)
+  const mode = ot.derivation ?? 'none'
+  const notSubtype = supers.length === 0
+  const issues = isDerived(ot) ? checkRule(ot.derivationRule, ot.id, store, makeContext(store)) : []
+  const nErrors = issues.filter(i => i.severity === 'error').length
+  return (
+    <Section title="Derivation">
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}
+        title={notSubtype ? 'Only a subtype can be derived' : undefined}>
+        <div>
+          {DERIVATION_MODES.map(m => (
+            <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, marginBottom: 3, whiteSpace: 'nowrap',
+              color: notSubtype ? 'var(--ink-muted)' : 'var(--ink-2)', opacity: notSubtype ? 0.5 : 1,
+              cursor: notSubtype ? 'not-allowed' : 'pointer' }}>
+              <input type="radio" name={`derivation-${ot.id}`} checked={mode === m.id} disabled={notSubtype}
+                onChange={() => store.updateObjectType(ot.id, { derivation: m.id })}
+                style={{ width: 'auto', padding: 0, border: 'none', cursor: 'inherit' }}/>
+              {m.label}
+            </label>
+          ))}
+        </div>
+        <button disabled={notSubtype || !isDerived(ot)} onClick={() => setEditing(true)}
+          style={{ fontSize: 11, padding: '2px 8px', borderRadius: 3, border: '1px solid var(--border)',
+            background: 'var(--bg-raised)', color: 'var(--ink-2)',
+            cursor: notSubtype || !isDerived(ot) ? 'not-allowed' : 'pointer',
+            opacity: notSubtype || !isDerived(ot) ? 0.5 : 1 }}>
+          Derivation rule…
+        </button>
+      </div>
+      {isDerived(ot) && (
+        <div style={{ fontSize: 11, marginTop: 4,
+          color: nErrors ? 'var(--danger)' : 'var(--ink-muted)' }}>
+          {!ot.derivationRule ? 'No rule yet'
+            : nErrors ? `The rule has ${nErrors} problem${nErrors > 1 ? 's' : ''}`
+            : 'The rule is valid'}
+        </div>
+      )}
+      {editing && <DerivationRuleEditor otId={ot.id} onClose={() => setEditing(false)}/>}
+    </Section>
+  )
+}
 
 // ── Range chip — brief clickable summary linking to dedicated inspector ────────
 function RangeChip({ range, onClick, format = formatValueRange }) {
