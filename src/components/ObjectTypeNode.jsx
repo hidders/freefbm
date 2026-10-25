@@ -499,7 +499,12 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
           fill={isConstraintTarget ? '#ffffff' : ot.kind === 'entity' ? 'var(--col-entity)' : 'var(--col-value)'}
           fontSize={OT_SIZE_NAME} fontFamily={OT_FONT}
           style={{ pointerEvents: 'none' }}>
-          {ot.name}{derivationMark(ot)}{ot.isIndependent ? ' !' : ''}
+          {ot.name}
+          {/* + sits on the baseline, so raise it to match the * of a derived type. */}
+          {derivationMark(ot) === '+'
+            ? <tspan baselineShift="super" fontSize={OT_SIZE_NAME * 0.75}>+</tspan>
+            : derivationMark(ot)}
+          {ot.isIndependent ? ' !' : ''}
         </text>
       )}
 
