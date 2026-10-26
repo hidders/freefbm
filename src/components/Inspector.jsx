@@ -11,6 +11,7 @@ import { PROFILES, PROFILE_MAP, getDatatypeById } from '../data/datatypeProfiles
 import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
 import { VALIDATION_CATEGORIES } from '../utils/validation.js'
 import { DERIVATION_MODES, directSupertypes, isDerived, checkRule } from '../logic/derivationRule.js'
+import { isDerivedFact, isComputedRole, checkFactRule, whyNotDerivable } from '../logic/factDerivation.js'
 import { makeContext } from '../logic/constraintFormulas.js'
 import DerivationRuleEditor from './DerivationRuleEditor'
 
@@ -945,6 +946,53 @@ function DerivationSection({ ot, store }) {
         </div>
       )}
       {editing && <DerivationRuleEditor otId={ot.id} onClose={() => setEditing(false)}/>}
+    </Section>
+  )
+}
+
+// ── Derivation of a fact type ─────────────────────────────────────────────────
+// Not derived, derived or semi-derived. The rule, with the roles it computes,
+// is edited in DerivationRuleEditor.
+function FactDerivationSection({ fact, store }) {
+  const [editing, setEditing] = useState(false)
+  const mode = fact.derivation ?? 'none'
+  const why = whyNotDerivable(fact, store)
+  const blocked = !!why && mode === 'none'
+  const issues = isDerivedFact(fact) ? checkFactRule(fact, store, makeContext(store)) : []
+  const nErrors = issues.filter(i => i.severity === 'error').length
+  const nComputed = fact.roles.filter(r => isComputedRole(fact, r)).length
+  return (
+    <Section title="Derivation">
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }} title={blocked ? why : undefined}>
+        <div>
+          {DERIVATION_MODES.map(m => (
+            <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, marginBottom: 3, whiteSpace: 'nowrap',
+              color: blocked ? 'var(--ink-muted)' : 'var(--ink-2)', opacity: blocked ? 0.5 : 1,
+              cursor: blocked ? 'not-allowed' : 'pointer' }}>
+              <input type="radio" name={`derivation-${fact.id}`} checked={mode === m.id} disabled={blocked}
+                onChange={() => store.updateFact(fact.id, { derivation: m.id })}
+                style={{ width: 'auto', padding: 0, border: 'none', cursor: 'inherit' }}/>
+              {m.label}
+            </label>
+          ))}
+        </div>
+        <button disabled={!isDerivedFact(fact)} onClick={() => setEditing(true)}
+          style={{ fontSize: 11, padding: '2px 8px', borderRadius: 3, border: '1px solid var(--border)',
+            background: 'var(--bg-raised)', color: 'var(--ink-2)',
+            cursor: !isDerivedFact(fact) ? 'not-allowed' : 'pointer',
+            opacity: !isDerivedFact(fact) ? 0.5 : 1 }}>
+          Derivation rule…
+        </button>
+      </div>
+      {isDerivedFact(fact) && (
+        <div style={{ fontSize: 11, marginTop: 4,
+          color: nErrors ? 'var(--danger)' : 'var(--ink-muted)' }}>
+          {!fact.derivationRule ? 'No rule yet'
+            : nErrors ? `The rule has ${nErrors} problem${nErrors > 1 ? 's' : ''}`
+            : `The rule is valid${nComputed ? `; it computes ${nComputed} role${nComputed > 1 ? 's' : ''}` : ''}`}
+        </div>
+      )}
+      {editing && <DerivationRuleEditor factId={fact.id} onClose={() => setEditing(false)}/>}
     </Section>
   )
 }
@@ -2221,6 +2269,8 @@ function FactInspector({ fact }) {
             onChange={v => store.updateFact(fact.id, { isIndependent: v })}/>
         </Section>
       )}
+
+      {!fact.objectified && <FactDerivationSection fact={fact} store={store}/>}
 
       <FactPresentationSubsection fact={fact} store={store} />
       <FactConstraintsSubsection fact={fact} store={store} />

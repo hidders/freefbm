@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { factDerivationMark } from '../logic/factDerivation.js'
 import { useOrmStore, subtypeKindOf } from '../store/ormStore'
 import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
@@ -1497,7 +1498,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       }
     }
 
-    if (!text && !editingReading) return null
+    // The mark of a derived (*) or semi-derived (+) fact type follows the reading.
+    const dmark = fact._implicit ? '' : factDerivationMark(fact)
+    if (!text && !dmark && !editingReading) return null
 
     // Distance from role-box edge to outermost element (bar or rake) on each side.
     // Uses effBarMargin (0 when rakes are present) and BAR_SIDE_COMFORT, matching
@@ -1671,6 +1674,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           setEditingReading(true)
         }}>
         {text}
+        {dmark && (text ? ' ' : '')}
+        {/* + sits on the baseline, so raise it to match the * of a derived fact type. */}
+        {dmark === '+' ? <tspan baselineShift="super" fontSize={14 * 0.75}>+</tspan> : dmark}
       </text>
     )
   }

@@ -16,6 +16,7 @@ import {
 import { VALUE_KINDS, parseLiteral } from '../utils/datatypeValues.js'
 import { valueAccess, withValues, valueConstant } from './values.js'
 import { isDerived, derivationEntry } from './derivationRule.js'
+import { isDerivedFact, factDerivationEntries } from './factDerivation.js'
 
 const SEQUENCE_TYPES = new Set([
   'inclusiveOr', 'exclusiveOr', 'exclusion', 'equality', 'subset',
@@ -840,7 +841,11 @@ export function formalise(state, { wholeSchema = false } = {}) {
     if (inScope) entries.push(typeCardinalityEntry(t.id, t.cardinalityRange, ctx))
   }
   for (const fact of (state.facts ?? [])) {
-    if (factIds.has(fact.id)) { entries.push(...factEntries(fact, ctx)); continue }
+    if (factIds.has(fact.id)) {
+      if (isDerivedFact(fact)) entries.push(...factDerivationEntries(fact, state, ctx))
+      entries.push(...factEntries(fact, ctx))
+      continue
+    }
     // A selected object type brings the mandatory roles it plays.
     if (otIds.size) entries.push(...factEntries(fact, ctx).filter(e =>
       e.kind === 'Mandatory role' && otIds.has(fact.roles[Number(e.key.split(':').pop())]?.objectTypeId)))

@@ -1,6 +1,6 @@
-// Populations of derived and semi-derived subtypes, computed by evaluating
-// their derivation rules (src/logic/derivationRule.js) over the sample
-// populations.
+// Populations of derived and semi-derived subtypes and fact types, computed
+// by evaluating their derivation rules (src/logic/derivationRule.js,
+// src/logic/factDerivation.js) over the sample populations.
 //
 // An instance is the cell that identifies it, as in the Population tab: a
 // string for a reference mode, an array for a composite identifier. Instances
@@ -10,16 +10,19 @@
 // the supertypes' identifiers.
 //
 // A quantified variable ranges over the population of its type; the
-// population of another derived type is itself computed. Rules that depend on
-// each other in a cycle get an error.
+// population of another derived type is itself computed. A derived fact type
+// with computed roles adds the objects it computes to the populations of
+// their types (and their supertypes, and the value type of their reference
+// mode). Rules that depend on each other in a cycle get an error.
 
 import { canonicalizePopulationData, factTupleSource, projCellKey } from '../utils/populationValidation.js'
-import { findRefMode, findCompositePI, findInheritedPI } from '../utils/refMode.js'
+import { findRefMode, findCompositePI, findInheritedPI, propagateValueToPlayer } from '../utils/refMode.js'
 import { VALUE_KINDS, parseLiteral } from '../utils/datatypeValues.js'
 import { makeContext } from './constraintFormulas.js'
 import { valueAccess } from './values.js'
-import { makeTermEvaluator } from './dataOperators.js'
-import { SUBJECT, directSupertypes, checkRule, upgradeRule } from './derivationRule.js'
+import { makeTermEvaluator, valueText } from './dataOperators.js'
+import { SUBJECT, directSupertypes, checkRule, upgradeRule, typeGraph } from './derivationRule.js'
+import { checkFactRule, factRuleParts } from './factDerivation.js'
 
 const keyOf = (cell) => {
   const k = projCellKey(cell)
@@ -27,17 +30,19 @@ const keyOf = (cell) => {
 }
 
 // Evaluator over one (canonicalised) data set. population(typeId) returns
-// { instances: [cell], keys: Set } or { error }.
+// { instances: [cell], keys: Set } or { error }; factTuples(factId) returns
+// { tuples: [[cell]], keys: Set } or { error }.
 export function makePopulationEvaluator(rawData) {
   const data = canonicalizePopulationData(rawData)
   const { objectTypes = [], facts = [], subtypes = [], constraints = [], populations = {}, factPopulations = {}, nestedEntityMappings = {} } = data
   const ctx = makeContext(data)
+  const graph = typeGraph(data)
   const tuplesOf = factTupleSource(data)
   const otById = new Map(objectTypes.map(o => [o.id, o]))
   const factById = new Map(facts.map(f => [f.id, f]))
   const cache = new Map()
   const visiting = new Set()
-  const factKeys = new Map()
+  const factCache = new Map()
 
   const fromCells = (cells) => {
     const instances = [], keys = new Set()
@@ -64,42 +69,35 @@ export function makePopulationEvaluator(rawData) {
     return { instances: [], keys: new Set() }
   }
 
-  const tupleKeys = (factId) => {
-    if (!factKeys.has(factId)) {
-      const fact = factById.get(factId)
-      const set = new Set()
-      for (const t of (fact ? tuplesOf(fact) ?? [] : [])) {
-        if (!Array.isArray(t)) continue
-        const ks = fact.roles.map((_, i) => keyOf(t[i]))
-        if (ks.every(k => k !== null)) set.add(JSON.stringify(ks))
-      }
-      factKeys.set(factId, set)
+  const storedTuples = (fact) => {
+    const tuples = [], keys = new Set()
+    for (const t of (tuplesOf(fact) ?? [])) {
+      if (!Array.isArray(t)) continue
+      const ks = fact.roles.map((_, i) => keyOf(t[i]))
+      if (ks.some(k => k === null)) continue
+      const k = JSON.stringify(ks)
+      if (keys.has(k)) continue
+      keys.add(k)
+      tuples.push(t.slice(0, fact.roles.length))
     }
-    return factKeys.get(factId)
+    return { tuples, keys }
   }
 
-  // The instances a derivation rule yields for derived type typeId.
-  const derive = (ot) => {
-    const typing = { sorts: new Map(), params: new Map() }
-    const errors = checkRule(ot.derivationRule, ot.id, data, ctx, typing).filter(i => i.severity === 'error')
-    if (errors.length) return { error: `${errors[0].message}.` }
-    const rule = upgradeRule(ot.derivationRule)
-    const supers = directSupertypes(ot.id, subtypes)
-    const superPops = supers.map(population)
-    const bad = superPops.find(p => p.error)
-    if (bad) return { error: bad.error }
-    // Candidates: instances in every direct supertype, in the first one's order.
-    const candidates = superPops[0].instances.filter(c => superPops.every(p => p.keys.has(keyOf(c))))
-
+  // ── Evaluating formulas ──
+  //
+  // env: varId → { cell, key, typeIds }. failure records the first error met
+  // while evaluating (a population that cannot be computed).
+  const makeEval = (typing) => {
+    const state = { failure: null }
+    const fail = (e) => { if (!state.failure) state.failure = e }
+    const domain = (typeId) => {
+      const p = population(typeId)
+      if (p.error) fail(p.error)
+      return p.instances ?? []
+    }
     const kindOf = (typeIds) => {
       const t = typeIds.find(id => valueAccess(id, ctx))
       return t ? valueAccess(t, ctx).kindName : null
-    }
-    let failure = null
-    const domain = (typeId) => {
-      const p = population(typeId)
-      if (p.error && !failure) failure = p.error
-      return p.instances ?? []
     }
     // The data value of a variable: { value, raw }, value parsed under the
     // datatype of the variable's type (raw when it has none).
@@ -117,8 +115,11 @@ export function makePopulationEvaluator(rawData) {
       varValue: (id) => varValue(env, id),
       holds: (f) => holds(f, env),
     })
-
-    // env: varId → { cell, key, typeIds }
+    const tupleKeys = (factId) => {
+      const r = factTuples(factId)
+      if (r.error) { fail(r.error); return new Set() }
+      return r.keys
+    }
     const holds = (n, env) => {
       switch (n.t) {
         case 'true': return true
@@ -144,7 +145,7 @@ export function makePopulationEvaluator(rawData) {
           return tupleKeys(n.factId).has(JSON.stringify(n.args.map(id => env.get(id).key)))
         case 'type': {
           const p = population(n.typeId)
-          if (p.error && !failure) failure = p.error
+          if (p.error) fail(p.error)
           return !!p.keys?.has(env.get(n.arg).key)
         }
         case 'cmp': {
@@ -157,33 +158,218 @@ export function makePopulationEvaluator(rawData) {
       }
     }
 
+    // Every binding of the variables vs ([{ id, typeIds }]) under which the
+    // formula holds. The positive fact atoms of a conjunction bind their
+    // variables from the fact type's tuples; other variables range over
+    // their type.
+    const solve = (formula, vs, env0 = new Map()) => {
+      const conjuncts = formula.t === 'and' ? formula.args : [formula]
+      const atoms = conjuncts.filter(c => c.t === 'fact' && factById.has(c.factId))
+      const out = []
+      const typeIdsOf = new Map(vs.map(v => [v.id, v.typeIds]))
+      const go = (env) => {
+        if (state.failure) return
+        const open = vs.filter(v => !env.has(v.id))
+        if (!open.length) { if (holds(formula, env)) out.push(env); return }
+        const atom = atoms.find(a => a.args.some(id => typeIdsOf.has(id) && !env.has(id)))
+        if (atom) {
+          const fact = factById.get(atom.factId)
+          const r = factTuples(atom.factId)
+          if (r.error) { fail(r.error); return }
+          for (const t of r.tuples) {
+            const inner = new Map(env)
+            let ok = true
+            atom.args.forEach((id, i) => {
+              if (!ok || id == null) return
+              const key = keyOf(t[i])
+              const had = inner.get(id)
+              if (had) { if (had.key !== key) ok = false; return }
+              const typeIds = typeIdsOf.get(id)
+              if (!typeIds) return
+              // The tuple holds a player of the role; the variable may be of
+              // another type in its hierarchy.
+              if (typeIds[0] !== fact.roles[i].objectTypeId && !population(typeIds[0]).keys?.has(key)) { ok = false; return }
+              inner.set(id, { cell: t[i], key, typeIds })
+            })
+            if (ok) go(inner)
+          }
+          return
+        }
+        const v = open[0]
+        for (const cell of domain(v.typeIds[0])) go(new Map(env).set(v.id, { cell, key: keyOf(cell), typeIds: v.typeIds }))
+      }
+      go(env0)
+      return out
+    }
+    return { holds, solve, terms, varValue, state }
+  }
+
+  // ── Derived subtypes ──
+
+  // The instances a derivation rule yields for derived type typeId.
+  const derive = (ot) => {
+    const typing = { sorts: new Map(), params: new Map() }
+    const errors = checkRule(ot.derivationRule, ot.id, data, ctx, typing).filter(i => i.severity === 'error')
+    if (errors.length) return { error: `${errors[0].message}.` }
+    const rule = upgradeRule(ot.derivationRule)
+    const supers = directSupertypes(ot.id, subtypes)
+    const superPops = supers.map(population)
+    const bad = superPops.find(p => p.error)
+    if (bad) return { error: bad.error }
+    // Candidates: instances in every direct supertype, in the first one's order.
+    const candidates = superPops[0].instances.filter(c => superPops.every(p => p.keys.has(keyOf(c))))
+    const ev = makeEval(typing)
     const instances = [], keys = new Set()
     for (const cell of candidates) {
       const key = keyOf(cell)
-      if (holds(rule, new Map([[SUBJECT, { cell, key, typeIds: supers }]]))) {
+      if (ev.holds(rule, new Map([[SUBJECT, { cell, key, typeIds: supers }]]))) {
         instances.push(cell)
         keys.add(key)
       }
-      if (failure) return { error: failure }
+      if (ev.state.failure) return { error: ev.state.failure }
     }
     return { instances, keys }
   }
 
+  // ── Derived fact types ──
+
+  // What the rule of a derived or semi-derived fact type yields:
+  //   { tuples, keys, computed: Map(typeId → [cell]), failures: [{ tuple, message }] }
+  // computed: the objects of computed roles that are not in the stored
+  // population of their type; failures: bindings whose term has no value.
+  const deriveFact = (fact) => {
+    const typing = { sorts: new Map(), params: new Map() }
+    const errors = checkFactRule(fact, data, ctx, typing).filter(i => i.severity === 'error')
+    if (errors.length) return { error: `${errors[0].message}.` }
+    const parts = factRuleParts(fact)
+    const ev = makeEval(typing)
+    const bindings = ev.solve(parts.body, [...parts.selected, ...parts.extra])
+    if (ev.state.failure) return { error: ev.state.failure }
+
+    // The cell of a computed value in the stored population of a type, or a
+    // new one.
+    const known = new Map()
+    const cellFor = (typeId, kindName, text) => {
+      if (!known.has(typeId)) known.set(typeId, storedPopulation(typeId).instances.filter(c => typeof c === 'string'))
+      const kind = kindName ? VALUE_KINDS[kindName] : null
+      const p = kind ? parseLiteral(text, kind) : null
+      const found = known.get(typeId).find(c => {
+        if (!kind || !('value' in p)) return c.trim() === text
+        const q = parseLiteral(c, kind)
+        return 'value' in q && kind.equal(q.value, p.value)
+      })
+      return { cell: found ?? text, isNew: found === undefined }
+    }
+
+    const tuples = [], keys = new Set(), computed = new Map(), failures = []
+    for (const env of bindings) {
+      const cells = new Map(parts.selected.map(v => [v.id, env.get(v.id).cell]))
+      let ok = true
+      for (const { varId, eq } of parts.eqs) {
+        const role = parts.roles.find(r => r.id === varId)
+        const typeId = role.typeIds[0]
+        const kindName = valueAccess(typeId, ctx)?.kindName ?? null
+        const ys = typing.sorts.get(eq.left), ts = typing.sorts.get(eq.right)
+        const t = ev.terms(env)
+        let text
+        if (ys == null || ts == null) text = eq.right.t === 'var' ? ev.varValue(env, eq.right.id)?.raw : undefined
+        else {
+          const v = t.value(eq.right)
+          text = v === undefined ? undefined : valueText(v, ys)
+        }
+        if (text === undefined) {
+          failures.push({ cells: parts.selected.map(v => env.get(v.id).cell), roleId: role.roleId,
+            message: `the term of ${ctx.typeName(typeId)} has no value` })
+          ok = false
+          break
+        }
+        const { cell, isNew } = cellFor(typeId, kindName, text)
+        cells.set(varId, cell)
+        if (isNew) {
+          if (!computed.has(typeId)) computed.set(typeId, [])
+          if (!computed.get(typeId).includes(cell)) computed.get(typeId).push(cell)
+        }
+      }
+      if (ev.state.failure) return { error: ev.state.failure }
+      if (!ok) continue
+      const tuple = parts.roles.map(r => cells.get(r.id))
+      const k = JSON.stringify(tuple.map(keyOf))
+      if (keys.has(k)) continue
+      keys.add(k)
+      tuples.push(tuple)
+    }
+    return { tuples, keys, computed, failures }
+  }
+
+  // The rule's result for a derived or semi-derived fact type, cached.
+  const derivedFact = (factId) => {
+    if (factCache.has(factId)) return factCache.get(factId)
+    const fact = factById.get(factId)
+    if (!fact) return { error: 'Unknown fact type.' }
+    const mark = `fact:${factId}`
+    if (visiting.has(mark))
+      return { error: `The derivation rules of ${factLabel(fact)} and the types it depends on refer to each other` }
+    visiting.add(mark)
+    const r = deriveFact(fact)
+    visiting.delete(mark)
+    factCache.set(factId, r)
+    return r
+  }
+
+  // The tuples of any fact type: computed for a (fully) derived one, stored
+  // otherwise.
+  function factTuples(factId) {
+    const fact = factById.get(factId)
+    if (!fact) return { tuples: [], keys: new Set() }
+    if (fact.derivation === 'derived') return derivedFact(factId)
+    return storedTuples(fact)
+  }
+
+  // The (fully) derived fact types that compute objects for typeId: the type
+  // of a computed role is typeId, a subtype of it, or an entity type
+  // identified by values of typeId.
+  const computingFacts = (typeId) => facts.filter(f => f.derivation === 'derived' && f.derivationRule?.terms
+    && f.roles.some(r => Object.prototype.hasOwnProperty.call(f.derivationRule.terms, r.id) && r.objectTypeId
+      && (graph.up(r.objectTypeId).has(typeId) || valueAccess(r.objectTypeId, ctx)?.via?.valueTypeId === typeId)))
+
+  // The objects derived fact types add to the population of typeId.
+  const computedObjects = (typeId) => {
+    const cells = []
+    for (const f of computingFacts(typeId)) {
+      const r = derivedFact(f.id)
+      if (r.error) return { error: r.error }
+      for (const [t, cs] of r.computed) {
+        if (graph.up(t).has(typeId) || valueAccess(t, ctx)?.via?.valueTypeId === typeId) cells.push(...cs)
+      }
+    }
+    return { cells }
+  }
+
+  const factLabel = (fact) => {
+    const parts = fact.readingParts ?? []
+    const words = []
+    fact.roles.forEach((r, i) => { if (parts[i]?.trim()) words.push(parts[i].trim()); words.push(ctx.typeName(r.objectTypeId)) })
+    if (parts[fact.roles.length]?.trim()) words.push(parts[fact.roles.length].trim())
+    return words.join(' ')
+  }
+
   // Population of any type: computed for a (fully) derived type, stored
-  // otherwise. A semi-derived type's population is the stored one.
+  // otherwise, plus the objects derived fact types compute for it. A
+  // semi-derived type's population is the stored one.
   function population(typeId) {
     if (cache.has(typeId)) return cache.get(typeId)
-    const ot = otById.get(typeId)
-    if (ot?.derivation !== 'derived') {
-      const p = storedPopulation(typeId)
-      cache.set(typeId, p)
-      return p
-    }
-    if (visiting.has(typeId))
+    const mark = `type:${typeId}`
+    if (visiting.has(mark))
       return { error: `The derivation rules of ${ctx.typeName(typeId)} and the types it depends on refer to each other` }
-    visiting.add(typeId)
-    const p = derive(ot)
-    visiting.delete(typeId)
+    visiting.add(mark)
+    const ot = otById.get(typeId)
+    let p = ot?.derivation === 'derived' ? derive(ot) : storedPopulation(typeId)
+    if (!p.error) {
+      const extra = computedObjects(typeId)
+      if (extra.error) p = { error: extra.error }
+      else if (extra.cells.length) p = fromCells([...p.instances, ...extra.cells])
+    }
+    visiting.delete(mark)
     cache.set(typeId, p)
     return p
   }
@@ -193,31 +379,46 @@ export function makePopulationEvaluator(rawData) {
     const ot = otById.get(typeId)
     if (!ot) return { error: 'Unknown type.' }
     if (ot.derivation === 'derived') return population(typeId)
-    if (visiting.has(typeId)) return { error: 'cycle' }
-    visiting.add(typeId)
+    const mark = `type:${typeId}`
+    if (visiting.has(mark)) return { error: 'cycle' }
+    visiting.add(mark)
     const p = derive(ot)
-    visiting.delete(typeId)
+    visiting.delete(mark)
     return p
   }
 
-  return { data, population, derived, keyOf }
+  return { data, population, derived, derivedFact, factTuples, storedTuples, keyOf, ctx }
 }
 
-// The data with the populations of derived types replaced by their computed
-// ones (left as stored when the rule can't be evaluated), for population
-// validation.
+// The data with the populations of derived types and fact types replaced by
+// their computed ones (left as stored when a rule can't be evaluated), and the
+// objects that derived fact types compute added to the populations of their
+// types, for population validation.
 export function withDerivedPopulations(data) {
   const derivedTypes = (data.objectTypes ?? []).filter(o => o.derivation === 'derived')
-  if (!derivedTypes.length) return data
+  const derivedFacts = (data.facts ?? []).filter(f => f.derivation === 'derived')
+  if (!derivedTypes.length && !derivedFacts.length) return data
   const ev = makePopulationEvaluator(data)
-  const populations = { ...(data.populations ?? {}) }
+  const populations = { ...(ev.data.populations ?? {}) }
+  const factPopulations = { ...(ev.data.factPopulations ?? {}) }
+  const pctx = { facts: data.facts ?? [], objectTypes: data.objectTypes ?? [], subtypes: data.subtypes ?? [], constraints: data.constraints ?? [] }
   for (const ot of derivedTypes) {
     const p = ev.population(ot.id)
     if (p.error) continue
     if (p.instances.length) populations[ot.id] = p.instances
     else delete populations[ot.id]
   }
-  return { ...data, populations }
+  for (const f of derivedFacts) {
+    const r = ev.derivedFact(f.id)
+    if (r.error) continue
+    if (r.tuples.length) factPopulations[f.id] = r.tuples
+    else delete factPopulations[f.id]
+    // A computed object joins its type, as an entered one would (with its
+    // supertypes and the value type of its reference mode).
+    for (const [typeId, cells] of r.computed)
+      for (const c of cells) propagateValueToPlayer(populations, factPopulations, typeId, c, pctx, true)
+  }
+  return { ...ev.data, populations, factPopulations }
 }
 
 // Population issues of semi-derived types: instances the rule derives that
@@ -236,6 +437,36 @@ export function semiDerivedPopulationIssues(data) {
       issues.push({
         kind: 'semiDerivedMissing', elementId: ot.id, otId: ot.id,
         message: `${formatCell(cell)} satisfies the derivation rule, so it must be a ${ot.name || 'instance'}`,
+      })
+    }
+  }
+  return issues
+}
+
+// Population issues of derived and semi-derived fact types: bindings for
+// which a term has no value, and, for semi-derived ones, derived facts that
+// the stored population lacks.
+export function derivedFactPopulationIssues(data) {
+  const ruled = (data.facts ?? []).filter(f => (f.derivation === 'derived' || f.derivation === 'semiDerived') && f.derivationRule)
+  if (!ruled.length) return []
+  const ev = makePopulationEvaluator(data)
+  const issues = []
+  for (const f of ruled) {
+    const r = ev.derivedFact(f.id)
+    if (r.error) continue
+    for (const x of r.failures) {
+      issues.push({
+        kind: 'derivedFactUndefined', elementId: f.id, factId: f.id,
+        message: `For ${x.cells.map(formatCell).join(', ')} the condition of the derivation rule holds, but ${x.message}`,
+      })
+    }
+    if (f.derivation !== 'semiDerived') continue
+    const stored = ev.storedTuples(f)
+    for (const t of r.tuples) {
+      if (stored.keys.has(JSON.stringify(t.map(ev.keyOf)))) continue
+      issues.push({
+        kind: 'semiDerivedMissing', elementId: f.id, factId: f.id,
+        message: `${formatCell(t)} is derived by the rule, so it must be in the population`,
       })
     }
   }
