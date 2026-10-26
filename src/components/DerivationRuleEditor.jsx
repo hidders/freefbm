@@ -5,8 +5,10 @@ import { useOrmStore } from '../store/ormStore'
 import { makeContext, readingText } from '../logic/constraintFormulas.js'
 import {
   SUBJECT, hole, getAt, setAt, directSupertypes, typeGraph, allTypeOptions,
-  ruleVariables, checkRule, derivationEntry, derivationHeading,
+  ruleVariables, checkRule, derivationEntry, derivationHeading, upgradeRule, isTermSlot,
 } from '../logic/derivationRule.js'
+import { OPS, PREDS, arity } from '../logic/dataOperators.js'
+import { valueAccess } from '../logic/values.js'
 import { QGAP } from '../logic/renderFormula.js'
 import { TOKEN_STYLE, Formula } from './FormalisationTab.jsx'
 
@@ -16,6 +18,9 @@ import { TOKEN_STYLE, Formula } from './FormalisationTab.jsx'
 // with holes (□) for the parts not filled in yet; clicking a part selects it,
 // and the panel below offers what can go there. Variables in atoms are picked
 // from the variables in scope, and the types and fact types from the schema.
+// Value comparisons and data predicates take data terms, built the same way
+// from variables, constants, operators (src/logic/dataOperators.js) and
+// if-then-else.
 
 const ATOMIC = new Set(['fact', 'type', 'true', 'not', 'hole'])
 const BINARY = new Set(['and', 'or', 'implies', 'iff'])
@@ -34,7 +39,7 @@ export default function DerivationRuleEditor({ otId, onClose }) {
   })))
   const updateObjectType = useOrmStore(s => s.updateObjectType)
   const ot = state.objectTypes.find(o => o.id === otId)
-  const [draft, setDraft] = useState(() => ot?.derivationRule ?? hole())
+  const [draft, setDraft] = useState(() => upgradeRule(ot?.derivationRule) ?? hole())
   const [sel, setSel] = useState([])
 
   const ctx = useMemo(() => makeContext(state), [state])
@@ -52,7 +57,7 @@ export default function DerivationRuleEditor({ otId, onClose }) {
     ? derivationEntry({ ...ot, derivationRule: draft }, state, ctx) : null), [ot, draft, state, ctx, errors.length])
 
   if (!ot) return null
-  const changed = JSON.stringify(draft) !== JSON.stringify(ot.derivationRule ?? hole())
+  const changed = JSON.stringify(draft) !== JSON.stringify(upgradeRule(ot.derivationRule) ?? hole())
 
   const replace = (path, node, nextSel = path) => { setDraft(d => setAt(d, path, node)); setSel(nextSel) }
   const save = () => { updateObjectType(otId, { derivationRule: draft }); onClose() }
@@ -81,9 +86,9 @@ export default function DerivationRuleEditor({ otId, onClose }) {
   }
 
   // ── Formula view ──
-  const varPicker = (path, value, scope, placeId, onChange) => (
+  const varPicker = (path, value, scope, placeId, onChange, valuesOnly = false) => (
     <VarSelect value={value} scope={scope} nameOf={nameOf} graph={graph} placeId={placeId}
-      ctx={ctx} onChange={onChange} onFocus={() => setSel(path)} />
+      ctx={ctx} onChange={onChange} onFocus={() => setSel(path)} valuesOnly={valuesOnly} />
   )
 
   const render = (n, path, scope) => {
@@ -172,12 +177,45 @@ export default function DerivationRuleEditor({ otId, onClose }) {
         break
       case 'vcmp':
         body = <>
-          {varPicker(path, n.left, scope, null, (id) => replace(path, { ...n, left: id }))}
+          {sub('left')}
           <OpSelect value={n.op} ops={VALUE_OPS} onChange={(op) => replace(path, { ...n, op })} />
-          {'const' in n.right
-            ? <ConstInput value={n.right.const} onFocus={() => setSel(path)}
-                onChange={(text) => replace(path, { ...n, right: { const: text } })} />
-            : varPicker(path, n.right.var, scope, null, (id) => replace(path, { ...n, right: { var: id } }))}
+          {sub('right')}
+        </>
+        break
+      case 'dpred': case 'op': {
+        const def = (n.t === 'dpred' ? PREDS : OPS)[n.op]
+        const fnTok = (text) => <span style={TOKEN_STYLE.fn}>{text}</span>
+        if (def?.style === 'infix') {
+          // Parentheses around an argument that binds less tightly.
+          const arg = (i) => {
+            const a = n.args[i]
+            const ad = a?.t === 'op' ? OPS[a.op] : null
+            const wrap = ad?.style === 'infix' && (ad.prec < def.prec || (ad.prec === def.prec && i === 1 && !(a.op === n.op && def.assoc)))
+            return sub(['args', i], wrap)
+          }
+          body = <>{arg(0)}{fnTok(` ${def.symbol} `)}{arg(1)}</>
+        } else if (def?.style === 'prefix') {
+          body = <>{fnTok(def.symbol)}{sub(['args', 0], n.args[0]?.t === 'op' && OPS[n.args[0].op]?.style === 'infix')}</>
+        } else {
+          body = <>{fnTok(def?.symbol ?? n.op)}{'('}{n.args.map((_, i) => (
+            <React.Fragment key={i}>{i > 0 && ', '}{sub(['args', i])}</React.Fragment>
+          ))}{')'}</>
+        }
+        break
+      }
+      case 'var':
+        body = varPicker(path, n.id, scope, null, (id) => replace(path, { t: 'var', id }), true)
+        break
+      case 'const':
+        body = <ConstInput value={n.text} onFocus={() => setSel(path)}
+          onChange={(text) => replace(path, { t: 'const', text })} />
+        break
+      case 'if':
+        body = <>
+          {'('}<span style={TOKEN_STYLE.op}>if</span>{' '}
+          {sub('cond', !(ATOMIC.has(n.cond?.t) || n.cond?.t === 'vcmp'))}
+          <span style={TOKEN_STYLE.op}> then </span>{sub('then')}
+          <span style={TOKEN_STYLE.op}> else </span>{sub('else')}{')'}
         </>
         break
       default:
@@ -215,8 +253,11 @@ export default function DerivationRuleEditor({ otId, onClose }) {
             {render(draft, [], [{ id: SUBJECT, typeIds: supers }])}
           </div>
 
-          <Palette node={selNode} path={sel} scope={selScope} draft={draft} state={state} ctx={ctx} supers={supers}
-            graph={graph} replace={replace} />
+          {isTermSlot(draft, sel)
+            ? <TermPalette node={selNode} path={sel} scope={selScope} draft={draft} ctx={ctx} nameOf={nameOf}
+                replace={replace} />
+            : <Palette node={selNode} path={sel} scope={selScope} draft={draft} state={state} ctx={ctx} supers={supers}
+                graph={graph} replace={replace} />}
 
           <div style={{ marginTop: 12 }}>
             {issues.length === 0
@@ -321,8 +362,15 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
         {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
       </select>
       <button style={btn()} onClick={() => replace(path, { t: 'cmp', op: '=', left: null, right: null })}>□ = □</button>
-      <button style={btn()} onClick={() => replace(path, { t: 'vcmp', op: '≈', left: null, right: { const: '' } })}>□ ≈ value</button>
-      <button style={btn()} onClick={() => replace(path, { t: 'vcmp', op: '<', left: null, right: { var: null } })}>□ &lt; □ (values)</button>
+      <button style={btn()} title="Compare data values, which can be computed"
+        onClick={() => replace(path, { t: 'vcmp', op: '≈', left: hole(), right: hole() }, [...path, 'left'])}>□ ≈ □ (values)</button>
+      <select value="" style={selectStyle} onChange={e => {
+        const op = e.target.value
+        if (op) replace(path, { t: 'dpred', op, args: Array.from({ length: arity(PREDS[op]) }, hole) }, [...path, 'args', 0])
+      }}>
+        <option value="">Text test…</option>
+        {Object.entries(PREDS).map(([id, d]) => <option key={id} value={id}>{d.symbol}(□, □): {d.label}</option>)}
+      </select>
     </>])
   } else {
     rows.push(['Wrap in', <>
@@ -377,9 +425,14 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
     }
     if (node.t === 'type') rows.push(['Type', typeSelect(node.typeId, (typeId) => replace(path, { ...node, typeId }))])
     if (node.t === 'vcmp') {
-      rows.push(['Right side', 'const' in node.right
-        ? <button style={btn()} onClick={() => replace(path, { ...node, right: { var: null } })}>Compare with a variable</button>
-        : <button style={btn()} onClick={() => replace(path, { ...node, right: { const: '' } })}>Compare with a constant</button>])
+      rows.push(['Sides', <button style={btn()} onClick={() => replace(path, { ...node, left: node.right, right: node.left })}>Swap sides</button>])
+    }
+    if (node.t === 'dpred') {
+      rows.push(['Test', (
+        <select value={node.op} style={selectStyle} onChange={e => replace(path, { ...node, op: e.target.value })}>
+          {Object.entries(PREDS).map(([id, d]) => <option key={id} value={id}>{d.symbol}: {d.label}</option>)}
+        </select>
+      )])
     }
     rows.push(['Remove', <>
       <button style={btn()} onClick={() => replace(path, hole())}>Clear</button>
@@ -407,6 +460,96 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
   )
 }
 
+// ── Term palette: what can go in, or be done with, a data term ─────────────
+
+const OP_GROUPS = [...new Set(Object.values(OPS).map(d => d.group))]
+const opPattern = (d, first = '□') => {
+  const rest = Array.from({ length: arity(d) - 1 }, () => '□')
+  if (d.style === 'infix') return `${first} ${d.symbol} ${rest[0]}`
+  if (d.style === 'prefix') return `${d.symbol}${first}`
+  return `${d.symbol}(${[first, ...rest].join(', ')})`
+}
+
+function OpMenu({ value = '', placeholder, first, onPick }) {
+  return (
+    <select value={value} style={{ ...selectStyle, maxWidth: 320 }} onChange={e => e.target.value && onPick(e.target.value)}>
+      {placeholder && <option value="">{placeholder}</option>}
+      {OP_GROUPS.map(g => (
+        <optgroup key={g} label={g}>
+          {Object.entries(OPS).filter(([, d]) => d.group === g).map(([id, d]) => (
+            <option key={id} value={id}>{opPattern(d, first)}   {d.label}</option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  )
+}
+
+function TermPalette({ node, path, scope, draft, ctx, nameOf, replace }) {
+  const holes = (n) => Array.from({ length: n }, hole)
+  const hasValue = (v) => v.typeIds.some(t => valueAccess(t, ctx))
+  const last = path[path.length - 1]
+  const parentPath = path.slice(0, typeof last === 'number' ? -2 : -1)
+  const parent = getAt(draft, parentPath)
+  const rows = []
+  if (!node || node.t === 'hole') {
+    rows.push(['Value of', (
+      <select value="" style={selectStyle} onChange={e => e.target.value && replace(path, { t: 'var', id: e.target.value })}>
+        <option value="">Choose a variable…</option>
+        {scope.map(v => (
+          <option key={v.id} value={v.id} disabled={!hasValue(v)}>
+            {nameOf.get(v.id)}{hasValue(v) ? '' : ' (no value: not a value type and no reference mode)'}
+          </option>
+        ))}
+      </select>
+    )])
+    rows.push(['Constant', <button style={btn()} onClick={() => replace(path, { t: 'const', text: '' })}>Type a value</button>])
+    rows.push(['Operator', <OpMenu placeholder="Choose an operator…" onPick={(op) =>
+      replace(path, { t: 'op', op, args: holes(arity(OPS[op])) }, [...path, 'args', 0])} />])
+    rows.push(['Condition', <button style={btn()}
+      onClick={() => replace(path, { t: 'if', cond: hole(), then: hole(), else: hole() }, [...path, 'cond'])}>(if □ then □ else □)</button>])
+  } else {
+    rows.push(['Wrap in', <>
+      <OpMenu placeholder="An operator…" first="…" onPick={(op) => {
+        const n = arity(OPS[op])
+        replace(path, { t: 'op', op, args: [node, ...holes(n - 1)] }, n > 1 ? [...path, 'args', 1] : path)
+      }} />
+      <button style={btn()} onClick={() => replace(path, { t: 'if', cond: hole(), then: node, else: hole() }, [...path, 'cond'])}>(if □ then … else □)</button>
+    </>])
+    if (node.t === 'op') {
+      rows.push(['Operator', <OpMenu value={node.op} onPick={(op) => {
+        const n = arity(OPS[op])
+        replace(path, { ...node, op, args: [...node.args.slice(0, n), ...holes(Math.max(0, n - node.args.length))] })
+      }} />])
+    }
+    if (node.t === 'if') {
+      rows.push(['Branches', <button style={btn()} onClick={() => replace(path, { ...node, then: node.else, else: node.then })}>Swap then and else</button>])
+    }
+    rows.push(['Remove', <>
+      <button style={btn()} onClick={() => replace(path, hole())}>Clear</button>
+      {(parent?.t === 'op' || parent?.t === 'if') && (
+        <button style={btn()} title="Replace the enclosing term by this part"
+          onClick={() => replace(parentPath, node, parentPath)}>Lift out of {parent.t === 'if' ? 'if' : OPS[parent.op]?.symbol}</button>
+      )}
+    </>])
+  }
+  return (
+    <div style={{ marginTop: 12, padding: 10, background: 'var(--bg-raised)', borderRadius: 'var(--radius-sm)',
+      border: '1px solid var(--border-soft)' }}>
+      <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, letterSpacing: '0.08em',
+        textTransform: 'uppercase', marginBottom: 6 }}>
+        {!node || node.t === 'hole' ? 'Fill in the selected value □' : 'Selected value'}
+      </div>
+      {rows.map(([label, content]) => (
+        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 5 }}>
+          <span style={{ width: 84, fontSize: 11, color: 'var(--ink-3)' }}>{label}</span>
+          {content}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 const liftLabel = (n) => ({
   and: '∧', or: '∨', implies: '→', iff: '↔', not: '¬', forall: '∀', exists: '∃', count: '∃ⁿ',
 }[n.t])
@@ -415,8 +558,9 @@ const liftLabel = (n) => ({
 
 // A variable slot: the variables in scope, those from another type hierarchy
 // disabled, and those that fit only partly marked.
-function VarSelect({ value, scope, nameOf, graph, placeId, ctx, onChange, onFocus }) {
-  const fits = (v) => (placeId ? graph.fit(v.typeIds, placeId) : 'ok')
+function VarSelect({ value, scope, nameOf, graph, placeId, ctx, onChange, onFocus, valuesOnly }) {
+  const fits = (v) => (valuesOnly ? (v.typeIds.some(t => valueAccess(t, ctx)) ? 'ok' : 'novalue')
+    : placeId ? graph.fit(v.typeIds, placeId) : 'ok')
   const known = scope.some(v => v.id === value)
   return (
     <select value={known ? value : ''} onChange={e => onChange(e.target.value || null)} onFocus={onFocus}
@@ -431,8 +575,8 @@ function VarSelect({ value, scope, nameOf, graph, placeId, ctx, onChange, onFocu
       <option value="">□</option>
       {scope.map(v => {
         const f = fits(v)
-        return <option key={v.id} value={v.id} disabled={f === 'none'}>
-          {nameOf.get(v.id)}{f === 'none' ? ' (other hierarchy)' : ''}
+        return <option key={v.id} value={v.id} disabled={f === 'none' || f === 'novalue'}>
+          {nameOf.get(v.id)}{f === 'none' ? ' (other hierarchy)' : f === 'novalue' ? ' (no value)' : ''}
         </option>
       })}
     </select>

@@ -1,5 +1,6 @@
 // Renders a formula tree (see formula.js) as a flat list of styled tokens:
-//   { text, cls }   cls: 'var' | 'reading' | 'type' | 'op' | 'const' | 'punct'
+//   { text, cls }   cls: 'var' | 'reading' | 'type' | 'op' | 'fn' | 'const' | 'punct'
+//                   ('fn': data operators and predicates)
 //   { text, cls: 'op', sup: true }   the bound of a counting quantifier, or TC's *
 //   { text, cls, sub: true }         the variables bound by TC
 //   { text: QGAP, cls: 'qgap' }      the narrow gap between a quantifier and its variable
@@ -9,6 +10,8 @@
 // formula; otherwise the bare type name is used, as in (Person lives in Country).
 // renderFormula takes an optional names map that it fills with each variable's
 // display name, so an editor can label the variables the same way.
+
+import { OPS, PREDS } from './dataOperators.js'
 
 const SUBSCRIPTS = '₀₁₂₃₄₅₆₇₈₉'
 const subscript = (n) => String(n).split('').map(d => SUBSCRIPTS[d]).join('')
@@ -20,7 +23,7 @@ export const QGAP = '\u2009'
 const QUANTIFIERS = new Set(['forall', 'exists', 'count'])
 const BINDERS = new Set([...QUANTIFIERS, 'tc'])
 // Rendered without parentheses as the body of a quantifier or after ¬.
-const ATOMIC = new Set(['fact', 'type', 'true', 'not', 'tc'])
+const ATOMIC = new Set(['fact', 'type', 'true', 'not', 'tc', 'dpred'])
 const BINARY = new Set(['and', 'or', 'implies', 'iff'])
 const OP = { and: ' ∧ ', or: ' ∨ ', implies: ' → ', iff: ' ↔ ' }
 
@@ -34,6 +37,18 @@ function children(f) {
     case 'and': case 'or': return f.args
     case 'implies': case 'iff': return [f.left, f.right]
     case 'not': return [f.arg]
+    case 'vcmp': return [...termConds(f.left), ...termConds(f.right)]
+    case 'dpred': return f.args.flatMap(termConds)
+    default: return []
+  }
+}
+
+// The conditions of the if-terms in a data term (formulas with their own
+// quantifiers).
+function termConds(x) {
+  switch (x?.t) {
+    case 'fn': return x.args.flatMap(termConds)
+    case 'ite': return [x.cond, ...termConds(x.then), ...termConds(x.else)]
     default: return []
   }
 }
@@ -79,6 +94,51 @@ export function renderFormula(formula, ctx, names = new Map()) {
 
   const wrapped = (f) => { push('('); render(f); push(')') }
 
+  // A data term. Infix operators get parentheses inside a tighter operator,
+  // and on the right of an equally tight one unless it is the same
+  // associative operator.
+  const renderTerm = (x, parent = null, right = false) => {
+    switch (x?.t) {
+      case undefined:
+        pushVar(x)
+        return
+      case 'const':
+        push(x.quoted ? `'${x.text.replace(/['\\]/g, '\\$&')}'` : x.text, 'const')
+        return
+      case 'fn': {
+        const def = OPS[x.op]
+        if (!def) { push('?'); return }
+        if (def.style === 'infix') {
+          const p = parent?.style === 'prefix' ? 3 : parent?.style === 'infix' ? parent.prec : 0
+          const paren = def.prec < p || (def.prec === p && right && !(parent === def && def.assoc))
+          if (paren) push('(')
+          renderTerm(x.args[0], def, false)
+          push(` ${def.symbol} `, 'fn')
+          renderTerm(x.args[1], def, true)
+          if (paren) push(')')
+        } else if (def.style === 'prefix') {
+          push(def.symbol, 'fn')
+          renderTerm(x.args[0], def, true)
+        } else renderCall(def, x.args)
+        return
+      }
+      case 'ite':
+        push('('); push('if', 'op'); push(' ')
+        if (BINARY.has(x.cond.t) || QUANTIFIERS.has(x.cond.t)) wrapped(x.cond); else render(x.cond)
+        push(' then ', 'op'); renderTerm(x.then)
+        push(' else ', 'op'); renderTerm(x.else)
+        push(')')
+        return
+      default:
+        push('?')
+    }
+  }
+  const renderCall = (def, args) => {
+    push(def.symbol, 'fn'); push('(')
+    args.forEach((a, i) => { if (i) push(', '); renderTerm(a) })
+    push(')')
+  }
+
   const render = (f) => {
     switch (f.t) {
       case 'fact': {
@@ -105,9 +165,10 @@ export function renderFormula(formula, ctx, names = new Map()) {
         pushVar(f.left); push(` ${f.op} `, 'op'); pushVar(f.right)
         return
       case 'vcmp':
-        pushVar(f.left); push(` ${f.op} `, 'op')
-        if (f.right.t === 'const') push(f.right.quoted ? `'${f.right.text.replace(/['\\]/g, '\\$&')}'` : f.right.text, 'const')
-        else pushVar(f.right)
+        renderTerm(f.left); push(` ${f.op} `, 'op'); renderTerm(f.right)
+        return
+      case 'dpred':
+        renderCall(PREDS[f.op] ?? { symbol: f.op }, f.args)
         return
       case 'not':
         push('¬', 'op')

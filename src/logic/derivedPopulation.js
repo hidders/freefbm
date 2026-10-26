@@ -18,37 +18,12 @@ import { findRefMode, findCompositePI, findInheritedPI } from '../utils/refMode.
 import { VALUE_KINDS, parseLiteral } from '../utils/datatypeValues.js'
 import { makeContext } from './constraintFormulas.js'
 import { valueAccess } from './values.js'
-import { SUBJECT, directSupertypes, checkRule } from './derivationRule.js'
+import { makeTermEvaluator } from './dataOperators.js'
+import { SUBJECT, directSupertypes, checkRule, upgradeRule } from './derivationRule.js'
 
 const keyOf = (cell) => {
   const k = projCellKey(cell)
   return k === null ? null : JSON.stringify(k)
-}
-
-// Compares two data values under an operator of the logic (≈ ≉ < ≤ > ≥).
-function compareValues(a, b, op, kindName) {
-  const kind = kindName ? VALUE_KINDS[kindName] : null
-  let x = a, y = b, eq, c
-  if (kind) {
-    const pa = parseLiteral(a, kind), pb = parseLiteral(b, kind)
-    if (!('value' in pa) || !('value' in pb)) return false
-    eq = kind.equal(pa.value, pb.value)
-    c = eq ? 0 : kind.compare(pa.value, pb.value)
-  } else {
-    const na = Number(a), nb = Number(b)
-    if (a !== '' && b !== '' && Number.isFinite(na) && Number.isFinite(nb)) { x = na; y = nb }
-    eq = x === y
-    c = eq ? 0 : x < y ? -1 : 1
-  }
-  switch (op) {
-    case '≈': return eq
-    case '≉': return !eq
-    case '<': return c < 0
-    case '≤': return c <= 0
-    case '>': return c > 0
-    case '≥': return c >= 0
-    default:  return false
-  }
 }
 
 // Evaluator over one (canonicalised) data set. population(typeId) returns
@@ -105,8 +80,10 @@ export function makePopulationEvaluator(rawData) {
 
   // The instances a derivation rule yields for derived type typeId.
   const derive = (ot) => {
-    const errors = checkRule(ot.derivationRule, ot.id, data, ctx).filter(i => i.severity === 'error')
+    const typing = { sorts: new Map(), params: new Map() }
+    const errors = checkRule(ot.derivationRule, ot.id, data, ctx, typing).filter(i => i.severity === 'error')
     if (errors.length) return { error: `${errors[0].message}.` }
+    const rule = upgradeRule(ot.derivationRule)
     const supers = directSupertypes(ot.id, subtypes)
     const superPops = supers.map(population)
     const bad = superPops.find(p => p.error)
@@ -124,6 +101,23 @@ export function makePopulationEvaluator(rawData) {
       if (p.error && !failure) failure = p.error
       return p.instances ?? []
     }
+    // The data value of a variable: { value, raw }, value parsed under the
+    // datatype of the variable's type (raw when it has none).
+    const varValue = (env, id) => {
+      const a = env.get(id)
+      if (!a || typeof a.cell !== 'string') return undefined
+      const raw = a.cell.trim()
+      const kindName = kindOf(a.typeIds)
+      if (!kindName) return { raw }
+      const p = parseLiteral(raw, VALUE_KINDS[kindName])
+      return 'value' in p ? { value: p.value, raw } : undefined
+    }
+    const terms = (env) => makeTermEvaluator({
+      sorts: typing.sorts, params: typing.params,
+      varValue: (id) => varValue(env, id),
+      holds: (f) => holds(f, env),
+    })
+
     // env: varId → { cell, key, typeIds }
     const holds = (n, env) => {
       switch (n.t) {
@@ -157,15 +151,8 @@ export function makePopulationEvaluator(rawData) {
           const eq = env.get(n.left).key === env.get(n.right).key
           return n.op === '=' ? eq : !eq
         }
-        case 'vcmp': {
-          const a = env.get(n.left)
-          const kind = kindOf(a.typeIds)
-          const left = typeof a.cell === 'string' ? a.cell.trim() : null
-          const rightCell = 'const' in n.right ? String(n.right.const).trim() : env.get(n.right.var).cell
-          const right = typeof rightCell === 'string' ? rightCell.trim() : null
-          if (left === null || right === null) return false
-          return compareValues(left, right, n.op, kind)
-        }
+        case 'vcmp': return terms(env).compare(n)
+        case 'dpred': return terms(env).predicate(n)
         default: return false
       }
     }
@@ -173,7 +160,7 @@ export function makePopulationEvaluator(rawData) {
     const instances = [], keys = new Set()
     for (const cell of candidates) {
       const key = keyOf(cell)
-      if (holds(ot.derivationRule, new Map([[SUBJECT, { cell, key, typeIds: supers }]]))) {
+      if (holds(rule, new Map([[SUBJECT, { cell, key, typeIds: supers }]]))) {
         instances.push(cell)
         keys.add(key)
       }
