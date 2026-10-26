@@ -5,7 +5,7 @@ import { useOrmStore } from '../store/ormStore'
 import { makeContext, readingText } from '../logic/constraintFormulas.js'
 import {
   SUBJECT, hole, getAt, setAt, directSupertypes, typeGraph, allTypeOptions,
-  ruleVariables, checkRule, derivationEntry, derivationHeading, upgradeRule, isTermSlot,
+  ruleVariables, checkRule, derivationEntry, derivationHeading, upgradeRule, isTermSlot, atomFact,
 } from '../logic/derivationRule.js'
 import {
   factRuleParts, factRuleVariables, checkFactRule, factDerivationEntries, factLabel,
@@ -180,7 +180,7 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
         break
       }
       case 'fact': {
-        const fact = ctx.factById.get(n.factId)
+        const fact = atomFact(ctx, n.factId)
         const parts = fact?.readingParts ?? []
         const words = []
         fact?.roles.forEach((r, i) => {
@@ -428,7 +428,8 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
 
 function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace }) {
   const types = useMemo(() => allTypeOptions(state), [state])
-  const facts = useMemo(() => (state.facts ?? [])
+  // The fact types, and the implied links of the nested ones.
+  const facts = useMemo(() => [...(state.facts ?? []), ...ctx.linkById.values()]
     .map(f => ({ id: f.id, label: readingText(f, ctx) || 'Unnamed fact type' }))
     .sort((a, b) => a.label.localeCompare(b.label)), [state.facts, ctx])
   const [qType, setQType] = useState(() => supers[0] ?? types[0]?.id ?? '')
@@ -474,7 +475,7 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
     rows.push(['Quantifier', quantButtons((q) => replace(path, q, [...path, 'body']))])
     rows.push(['Fact type', (
       <select value="" style={{ ...selectStyle, maxWidth: 420 }} onChange={e => {
-        const f = ctx.factById.get(e.target.value)
+        const f = atomFact(ctx, e.target.value)
         if (f) replace(path, { t: 'fact', factId: f.id, args: f.roles.map(r => fitting(r.objectTypeId)) })
       }}>
         <option value="">Choose a fact type…</option>
@@ -543,7 +544,7 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
     if (node.t === 'fact') {
       rows.push(['Fact type', (
         <select value={node.factId} style={{ ...selectStyle, maxWidth: 420 }} onChange={e => {
-          const f = ctx.factById.get(e.target.value)
+          const f = atomFact(ctx, e.target.value)
           if (f) replace(path, { t: 'fact', factId: f.id, args: f.roles.map(r => fitting(r.objectTypeId)) })
         }}>
           {facts.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}

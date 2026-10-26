@@ -18,7 +18,10 @@
 //   { t: 'implies' | 'iff', left, right }
 //   { t: 'forall' | 'exists', v: { id, typeId }, body }
 //   { t: 'count', op: '≤' | '≥' | '=', n, v: { id, typeId }, body }
-//   { t: 'fact', factId, args: [varId | null] }     args in roles[] order
+//   { t: 'fact', factId, args: [varId | null] }     args in roles[] order; factId
+//                                                   can also be an implied link of a
+//                                                   nested fact type, '<factId>_il_<i>'
+//                                                   (roles: nested type, player)
 //   { t: 'type', typeId, arg: varId | null }
 //   { t: 'cmp', op: '=' | '≠', left: varId | null, right: varId | null }
 //   { t: 'vcmp', op: '≈' | '≉' | '<' | '≤' | '>' | '≥', left: T, right: T }
@@ -50,6 +53,10 @@ export const DERIVATION_MODES = [
 ]
 
 export const hole = () => ({ t: 'hole' })
+
+// The fact type a fact atom uses: a fact type of the schema, or an implied
+// link of a nested fact type (ctx.linkById, from makeContext).
+export const atomFact = (ctx, factId) => ctx.factById.get(factId) ?? ctx.linkById?.get(factId)
 
 // The direct supertypes of a type, in subtype-link order.
 export function directSupertypes(typeId, subtypes) {
@@ -330,7 +337,7 @@ export function checkFormula(rule, roots, opts, state, ctx, typing = { sorts: ne
         walk(n.body, [...path, 'body'], [...scope, { id: n.v.id, typeIds: [n.v.typeId] }])
         return
       case 'fact': {
-        const fact = ctx.factById.get(n.factId)
+        const fact = atomFact(ctx, n.factId)
         if (!fact) { err(path, 'The fact type no longer exists'); return }
         if (fact.id === opts.selfFactId) err(path, 'The rule uses the fact type it derives, so it defines it in terms of itself')
         fact.roles.forEach((r, i) => {
