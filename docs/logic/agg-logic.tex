@@ -380,28 +380,49 @@ translated into the following two statements:
     \exists\, \vec{z} \,\bigl( \varphi(\vec{x}, \vec{z}) \wedge
       \textstyle\bigwedge_i y_i \dataEq t_i(\vec{x}, \vec{z}) \bigr) \Bigr),
       \\[6pt]
-\text{S2:} \quad & \forall\, \vec{x} \,
-  \Bigl( \exists\, \vec{z} \; \varphi(\vec{x}, \vec{z}) \;\to\;
-    \exists\, \vec{y} \; p(\vec{x}, \vec{y}) \Bigr).
+\text{S2:} \quad & \forall\, \vec{x}, \vec{z} \,
+  \Bigl( \varphi(\vec{x}, \vec{z}) \;\to\;
+    \exists\, \vec{y} \,\bigl( p(\vec{x}, \vec{y}) \wedge
+      \textstyle\bigwedge_i y_i \dataEq t_i(\vec{x}, \vec{z}) \bigr) \Bigr).
 \end{align*}
 S1 states that every tuple in $p$ is witnessed by some binding of $\vec{z}$
-satisfying the full body. S2 states that whenever the base body
-$\varphi(\vec{x}, \vec{z})$ is satisfiable (for some $\vec{z}$), some
-corresponding tuple must exist in $p$. The parallel structure is
-deliberate: both statements have $\vec{x}$ universally quantified at the
-outermost level, with $\vec{z}$ existentially quantified — in the
-consequent of S1 and in the antecedent of S2.
+satisfying the full body. S2 states that for every binding of $\vec{x}$ and
+$\vec{z}$ satisfying the base body $\varphi(\vec{x}, \vec{z})$, the tuple
+with the computed values $t_i(\vec{x}, \vec{z})$ must exist in $p$. Both
+statements contain the value-defining equations: in S1 they constrain the
+tuples that are in $p$, in S2 they say which tuples must be.
+
+\begin{remark}
+S2 must quantify $\vec{z}$ universally and contain the value-defining
+equations. The weaker form $\forall\, \vec{x}\, (\exists\, \vec{z}\;
+\varphi(\vec{x}, \vec{z}) \to \exists\, \vec{y}\; p(\vec{x}, \vec{y}))$
+only requires \emph{some} tuple for each $\vec{x}$. If two bindings of
+$\vec{z}$ for the same $\vec{x}$ give different values, for example an
+article with retail prices 10 and 12 and wholesale price 6, then a
+population with only the markup 4 satisfies S1 and the weaker form, while
+the rule also derives the markup 6.
+\end{remark}
 
 \begin{remark}
 S1 and S2 together fully determine $p$. For any binding of $\vec{x}$ and
 $\vec{z}$ satisfying $\varphi$, the terms $t_i(\vec{x}, \vec{z})$ evaluate
 to unique data values, and since $\rho$ is an injection when restricted to
 $\iota(q_i)$ where $q_i$ is the value type associated with $y_i$, each such value
-corresponds to a unique domain object. S2 forces the resulting tuple
+corresponds to at most one domain object. S2 forces the resulting tuple
 $(\vec{x}, \vec{y})$ into $p$ for every satisfying $\vec{z}$, covering
 all cases including those where different $\vec{z}$ bindings yield
 different $\vec{y}$ values. S1 excludes from $p$ any tuple not explained
 by the body. No freedom remains in the extension of $p$.
+\end{remark}
+
+\begin{remark}
+S2 can only hold if, for every binding satisfying $\varphi$, each term
+$t_i(\vec{x}, \vec{z})$ is defined and the population of the type of $y_i$
+contains an object with that value. With strict partiality an atom with an
+undefined term is false, so an undefined term makes S2 fail for that
+binding. A modelling tool computing derived populations therefore adds
+missing computed objects to the populations, and reports a validation error
+where a term is undefined.
 \end{remark}
 
 \begin{remark}
@@ -438,11 +459,12 @@ The translation gives:
     & \qquad \var{MoneyAmount} \dataEq \var{MoneyAmount}_1 \dataOp{-}
     \var{MoneyAmount}_2 ) ), \\[6pt]
 \text{S2:} \quad
-  &\forall\, \var{Article} \, ( \\
-  & \quad  \exists\, \var{MoneyAmount}_1, \var{MoneyAmount}_2 \, ( \\
-  & \qquad \pr{retailsFor}(\var{Article}, \var{MoneyAmount}_1) \wedge \pr{wholesalesFor}(\var{Article}, \var{MoneyAmount}_2) ) \;\to \\
-  & \quad  \exists\, \var{MoneyAmount} \;
-    \pr{hasMarkup}(\var{Article}, \var{MoneyAmount}) ).
+  &\forall\, \var{Article}, \var{MoneyAmount}_1, \var{MoneyAmount}_2 \, ( \\
+  & \quad \pr{retailsFor}(\var{Article}, \var{MoneyAmount}_1) \wedge \pr{wholesalesFor}(\var{Article}, \var{MoneyAmount}_2) \;\to \\
+  & \quad  \exists\, \var{MoneyAmount} \, ( \\
+  & \qquad \pr{hasMarkup}(\var{Article}, \var{MoneyAmount}) \wedge
+    \var{MoneyAmount} \dataEq \var{MoneyAmount}_1 \dataOp{-}
+    \var{MoneyAmount}_2 ) ).
 \end{align*}
 \end{example}
 
@@ -454,10 +476,11 @@ subsets of $\iota(\pr{Article}) \times \iota(\pr{MoneyAmount})$, a finite
 set. For any pair $(\mathit{article}, \mathit{ma}) \in \iota(\pr{Article})
 \times \iota(\pr{MoneyAmount})$: if retail and wholesale prices exist for
 $\mathit{article}$, then $\rho(\mathit{ma}_1) - \rho(\mathit{ma}_2)$ is a
-specific data value, and since $\rho$ is injective on $\iota(\pr{USD})$ and
-the reference scheme is injective, there is at most one $\mathit{ma}$ with
-that value; S2 requires it to be in $\pr{hasMarkup}$,
-and S1 excludes all other pairs. If no such prices exist, S1 excludes any
+specific data value for each combination of a retail and a wholesale
+price, and since $\rho$ is injective on $\iota(\pr{USD})$ and the reference
+scheme is injective, there is at most one $\mathit{ma}$ with that value;
+S2 requires it to exist and to be in $\pr{hasMarkup}$, and S1 excludes all
+other pairs. If no such prices exist, S1 excludes any
 tuple for that article. No freedom remains.
 \end{remark}
 
