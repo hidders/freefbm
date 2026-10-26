@@ -13,7 +13,7 @@
 // or of an entity type identified by its values), since those objects are in
 // its population. The graph over the rules must have no cycles.
 
-import { upgradeRule, childPaths, isDerived, directSupertypes, typeGraph } from './derivationRule.js'
+import { upgradeRule, childPaths, isDerived, directSupertypes, typeGraph, atomFact } from './derivationRule.js'
 import { isDerivedFact, factRuleParts } from './factDerivation.js'
 import { valueAccess } from './values.js'
 
@@ -26,7 +26,7 @@ function boundByAtoms(cond, vs, ctx) {
   const conjuncts = cond?.t === 'and' ? cond.args : [cond]
   for (const c of conjuncts) {
     if (c?.t !== 'fact') continue
-    const fact = ctx.factById.get(c.factId)
+    const fact = atomFact(ctx, c.factId)
     ;(c.args ?? []).forEach((id, i) => {
       const v = vs.find(x => x.id === id)
       if (v && fact?.roles[i]?.objectTypeId === v.typeIds[0]) bound.add(id)

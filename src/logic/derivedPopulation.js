@@ -21,7 +21,7 @@ import { VALUE_KINDS, parseLiteral } from '../utils/datatypeValues.js'
 import { makeContext } from './constraintFormulas.js'
 import { valueAccess } from './values.js'
 import { makeTermEvaluator, valueText } from './dataOperators.js'
-import { SUBJECT, directSupertypes, checkRule, upgradeRule, typeGraph } from './derivationRule.js'
+import { SUBJECT, directSupertypes, checkRule, upgradeRule, typeGraph, atomFact } from './derivationRule.js'
 import { checkFactRule, factRuleParts } from './factDerivation.js'
 
 const keyOf = (cell) => {
@@ -169,7 +169,7 @@ export function makePopulationEvaluator(rawData) {
     // their type.
     const solve = (formula, vs, env0 = new Map()) => {
       const conjuncts = formula.t === 'and' ? formula.args : [formula]
-      const atoms = conjuncts.filter(c => c.t === 'fact' && factById.has(c.factId))
+      const atoms = conjuncts.filter(c => c.t === 'fact' && atomFact(ctx, c.factId))
       const out = []
       const typeIdsOf = new Map(vs.map(v => [v.id, v.typeIds]))
       const go = (env) => {
@@ -178,7 +178,7 @@ export function makePopulationEvaluator(rawData) {
         if (!open.length) { if (holds(formula, env)) out.push(env); return }
         const atom = atoms.find(a => a.args.some(id => typeIdsOf.has(id) && !env.has(id)))
         if (atom) {
-          const fact = factById.get(atom.factId)
+          const fact = atomFact(ctx, atom.factId)
           const r = factTuples(atom.factId)
           if (r.error) { fail(r.error); return }
           for (const t of r.tuples) {
@@ -321,11 +321,33 @@ export function makePopulationEvaluator(rawData) {
     return r
   }
 
+  // The tuples of an implied link '<factId>_il_<i>' of a nested fact type:
+  // (nesting instance, player of role i) for every fact of the nested fact type.
+  const linkTuples = (link) => {
+    const [factId, i] = link.id.split('_il_')
+    const fact = factById.get(factId)
+    const tuples = [], keys = new Set()
+    ;(tuplesOf(fact) ?? []).forEach((row, rowIndex) => {
+      if (!Array.isArray(row)) return
+      const pair = [tuplesOf.nestingInstance(fact, row, rowIndex), row[Number(i)]]
+      const ks = pair.map(c => (c == null ? null : keyOf(c)))
+      if (ks.some(k => k === null)) return
+      const k = JSON.stringify(ks)
+      if (keys.has(k)) return
+      keys.add(k)
+      tuples.push(pair)
+    })
+    return { tuples, keys }
+  }
+
   // The tuples of any fact type: computed for a (fully) derived one, stored
   // otherwise.
   function factTuples(factId) {
     const fact = factById.get(factId)
-    if (!fact) return { tuples: [], keys: new Set() }
+    if (!fact) {
+      const link = ctx.linkById.get(factId)
+      return link ? linkTuples(link) : { tuples: [], keys: new Set() }
+    }
     if (fact.derivation === 'derived') return derivedFact(factId)
     return storedTuples(fact)
   }
