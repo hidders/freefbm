@@ -25,7 +25,9 @@
 //   { t: 'dpred', op, args: [T, …] }                data predicate
 // where T is a data term (see src/logic/dataOperators.js): a hole, a
 // variable's data value { t: 'var', id }, a constant { t: 'const', text }, an
-// operator { t: 'op', op, args }, or { t: 'if', cond: R, then: T, else: T }.
+// operator { t: 'op', op, args }, { t: 'if', cond: R, then: T, else: T }, or
+// an aggregate { t: 'agg', fn, distinct, vars: [{ id, typeId }], cond: R, term: T }
+// whose variables are in scope in cond and term.
 // Older rules stored vcmp as left: varId, right: { var } | { const };
 // upgradeRule turns them into terms.
 //
@@ -33,11 +35,11 @@
 
 import {
   mkVar, mkMeetVar, forall, exists, count, not, truth, implies, iff, and, or,
-  factAtom, typeAtom, cmp, vcmp, dpred, fn, ite,
+  factAtom, typeAtom, cmp, vcmp, dpred, fn, ite, agg,
 } from './formula.js'
 import { renderFormula } from './renderFormula.js'
 import { valueAccess, withValues, valueConstant } from './values.js'
-import { sortOf, typeComparison, typePredicate, termVarIds, termConditions, FAIL } from './dataOperators.js'
+import { sortOf, typeComparison, typePredicate, termVarIds, FAIL } from './dataOperators.js'
 
 export const SUBJECT = 'subject'
 
@@ -121,6 +123,7 @@ export function childPaths(n) {
     case 'vcmp': return [['left'], ['right']]
     case 'dpred': case 'op': return n.args.map((_, i) => ['args', i])
     case 'if': return [['cond'], ['then'], ['else']]
+    case 'agg': return n.fn === 'count' ? [['cond']] : [['cond'], ['term']]
     default: return []
   }
 }
@@ -133,7 +136,7 @@ export function isTermSlot(rule, path) {
   const parent = getAt(rule, parentPath)
   switch (parent?.t) {
     case 'vcmp': case 'op': case 'dpred': return true
-    case 'if': return last !== 'cond'
+    case 'if': case 'agg': return last !== 'cond'
     default: return false
   }
 }
@@ -141,12 +144,14 @@ export function isTermSlot(rule, path) {
 const QUANT = new Set(['forall', 'exists', 'count'])
 
 // The variables in scope at a path, outermost first: the subject, then the
-// variable of every quantifier above the path.
+// variable of every quantifier and aggregate above the path.
 export function varsInScope(rule, path, subjectTypeIds) {
   const out = [{ id: SUBJECT, typeIds: subjectTypeIds }]
   let n = rule
   for (let i = 0; i < path.length; i++) {
     if (QUANT.has(n?.t) && path[i] === 'body') out.push({ id: n.v.id, typeIds: [n.v.typeId] })
+    if (n?.t === 'agg' && (path[i] === 'cond' || path[i] === 'term'))
+      for (const v of (n.vars ?? [])) out.push({ id: v.id, typeIds: [v.typeId] })
     n = n?.[path[i]]
   }
   return out
@@ -214,10 +219,22 @@ export function formulaVariables(rule, roots, ctx) {
         return { t: n.t === 'count' ? 'exists' : n.t, vars: [v], body: skeleton(n.body) }
       }
       case 'vcmp': case 'dpred': {
-        const conds = termConditions(n).map(skeleton)
-        return conds.length ? { t: 'and', args: [truth(), ...conds] } : truth()
+        const parts = childPaths(n).flatMap(p => termSkeleton(getAt(n, p)))
+        return parts.length ? { t: 'and', args: [truth(), ...parts] } : truth()
       }
       default: return truth()
+    }
+  }
+  // The binding structure inside a term: if-conditions and aggregates.
+  const termSkeleton = (x) => {
+    switch (x?.t) {
+      case 'if': return [skeleton(x.cond), ...termSkeleton(x.then), ...termSkeleton(x.else)]
+      case 'op': return (x.args ?? []).flatMap(termSkeleton)
+      case 'agg': {
+        const vs = (x.vars ?? []).map(w => { const fv = mkVar(w.typeId); vars.set(w.id, fv); return fv })
+        return [{ t: 'exists', vars: vs, body: { t: 'and', args: [skeleton(x.cond), ...termSkeleton(x.term)] } }]
+      }
+      default: return []
     }
   }
   const names = new Map()
@@ -273,6 +290,24 @@ export function checkFormula(rule, roots, opts, state, ctx, typing = { sorts: ne
     return valueAccess(t, ctx)
   }
 
+  // The typing context of the data terms of an atom (dataOperators.js).
+  const termTyping = (scope) => ({
+    sorts: typing.sorts, params: typing.params, err,
+    varSort(id, p) {
+      const v = use(p, id, scope, 'The variable')
+      const a = v && valueOf(p, v)
+      return a ? sortOf(a.kindName) : FAIL
+    },
+    formula: (cond, p) => walk(cond, p, scope),
+    bind(vars, p) {
+      vars.forEach((w, i) => {
+        if (!w?.typeId || !(ctx.otById.has(w.typeId) || ctx.factById.get(w.typeId)?.objectified))
+          err([...p, 'vars', i], 'The variable has no type')
+      })
+      return termTyping([...scope, ...vars.map(w => ({ id: w.id, typeIds: [w.typeId] }))])
+    },
+  })
+
   const walk = (n, path, scope) => {
     switch (n?.t) {
       case undefined: case 'hole':
@@ -324,15 +359,7 @@ export function checkFormula(rule, roots, opts, state, ctx, typing = { sorts: ne
         return
       }
       case 'vcmp': case 'dpred': {
-        const tc = {
-          sorts: typing.sorts, params: typing.params, err,
-          varSort(id, p) {
-            const v = use(p, id, scope, 'The variable')
-            const a = v && valueOf(p, v)
-            return a ? sortOf(a.kindName) : FAIL
-          },
-          formula: (cond, p) => walk(cond, p, scope),
-        }
+        const tc = termTyping(scope)
         if (n.t === 'vcmp') typeComparison(n, path, tc)
         else typePredicate(n, path, tc)
         return
@@ -407,20 +434,45 @@ export function ruleFormula(rule, vars, ctx, typing) {
         // reference modes where needed.
         const ids = termVarIds(n)
         return withValues(ids.map(id => ({ x: v(id), access: value(v(id)) })), (...vs) => {
-          const valueOf = new Map(ids.map((id, i) => [id, vs[i]]))
-          const term = (x) => {
-            switch (x.t) {
-              case 'var': return valueOf.get(x.id)
-              case 'const': return valueConstant(x.text, typing.sorts.get(x))
-              case 'op': return fn(x.op, x.args.map(term))
-              case 'if': return ite(tr(x.cond), term(x.then), term(x.else))
-              default: return null
-            }
-          }
+          const term = termIn(new Map(ids.map((id, i) => [id, vs[i]])))
           return n.t === 'vcmp' ? vcmp(n.op, term(n.left), term(n.right)) : dpred(n.op, n.args.map(term))
         })
       }
       default: return truth()
+    }
+  }
+  // Data terms, with valueOf mapping the ids of the variables they use to the
+  // variables that hold their data values.
+  const termIn = (valueOf) => (x) => {
+    const term = termIn(valueOf)
+    switch (x.t) {
+      case 'var': return valueOf.get(x.id)
+      case 'const': return valueConstant(x.text, typing.sorts.get(x))
+      case 'op': return fn(x.op, x.args.map(term))
+      case 'if': return ite(tr(x.cond), term(x.then), term(x.else))
+      case 'agg': {
+        // The aggregate's own variables whose data values the term uses
+        // through a reference mode get a value variable of the aggregate, as
+        // in Sum{CourseCode | Course, CourseCode : … ∧ Course has CourseCode}.
+        // A reference mode is one-to-one, so the bag stays the same.
+        const own = x.vars.map(w => v(w.id))
+        const extra = [], atoms = [], inner = new Map(valueOf)
+        if (x.fn !== 'count') {
+          const ownIds = new Set(x.vars.map(w => w.id))
+          for (const id of termVarIds(x.term)) {
+            if (!ownIds.has(id)) continue
+            const access = value(v(id))
+            if (!access.via) { inner.set(id, v(id)); continue }
+            const w = mkVar(access.via.valueTypeId)
+            extra.push(w)
+            atoms.push(factAtom(access.via.factId, access.via.valueIndex === 0 ? [w, v(id)] : [v(id), w]))
+            inner.set(id, w)
+          }
+        }
+        return agg(x.fn, !!x.distinct, [...own, ...extra], and(...atoms, tr(x.cond)),
+          x.fn === 'count' ? null : termIn(inner)(x.term))
+      }
+      default: return null
     }
   }
   return tr(rule)

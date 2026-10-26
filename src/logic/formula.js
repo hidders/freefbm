@@ -24,6 +24,9 @@
 //   { t: 'const', text, quoted }             the string representation of a value
 //   { t: 'fn', op, args: [Term] }            data operator (dataOperators.js OPS)
 //   { t: 'ite', cond: F, then: Term, else: Term }   if cond then … else …
+//   { t: 'agg', fn, distinct, vars: [Var], cond: F, term: Term | null }
+//       aggregate F{t | v₁, …, vₙ : φ} (dataOperators.js AGGS); binds vars in
+//       cond and term; count has no term: Count{v₁, …, vₙ : φ}
 //   { t: 'tc', star, vars: [Var, Var], body, args: [Var, Var] }
 //       transitive closure [TC_{v,w} φ](s, t), or with star the
 //       reflexive-transitive closure [TC*_{v,w} φ](s, t); binds vars in body only
@@ -50,6 +53,7 @@ export const dpred = (op, args) => ({ t: 'dpred', op, args })
 export const constant = (text, quoted = true) => ({ t: 'const', text, quoted })
 export const fn = (op, args) => ({ t: 'fn', op, args })
 export const ite = (cond, then, otherwise) => ({ t: 'ite', cond, then, else: otherwise })
+export const agg = (fn, distinct, vars, cond, term) => ({ t: 'agg', fn, distinct, vars, cond, term })
 export const tc  = (vars, body, args, star = false) => ({ t: 'tc', star, vars, body, args })
 
 function nary(t, args) {

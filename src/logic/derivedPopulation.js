@@ -114,6 +114,11 @@ export function makePopulationEvaluator(rawData) {
       sorts: typing.sorts, params: typing.params,
       varValue: (id) => varValue(env, id),
       holds: (f) => holds(f, env),
+      aggregate: (n) => {
+        const bindings = solve(n.cond, n.vars.map(v => ({ id: v.id, typeIds: [v.typeId] })), env)
+        if (state.failure) return undefined
+        return bindings.map(e => (n.term ? terms(e).value(n.term) : null))
+      },
     })
     const tupleKeys = (factId) => {
       const r = factTuples(factId)
