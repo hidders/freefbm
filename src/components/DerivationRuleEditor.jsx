@@ -10,7 +10,7 @@ import {
 import {
   factRuleParts, factRuleVariables, checkFactRule, factDerivationEntries, factLabel,
 } from '../logic/factDerivation.js'
-import { OPS, PREDS, arity } from '../logic/dataOperators.js'
+import { OPS, PREDS, AGGS, arity } from '../logic/dataOperators.js'
 import { valueAccess } from '../logic/values.js'
 import { QGAP } from '../logic/renderFormula.js'
 import { TOKEN_STYLE, Formula } from './FormalisationTab.jsx'
@@ -25,8 +25,8 @@ import { TOKEN_STYLE, Formula } from './FormalisationTab.jsx'
 // and the panel below offers what can go there. Variables in atoms are picked
 // from the variables in scope, and the types and fact types from the schema.
 // Value comparisons and data predicates take data terms, built the same way
-// from variables, constants, operators (src/logic/dataOperators.js) and
-// if-then-else.
+// from variables, constants, operators (src/logic/dataOperators.js),
+// if-then-else and aggregates (Sum{t | v₁, … : φ}).
 
 const ATOMIC = new Set(['fact', 'type', 'true', 'not', 'hole'])
 const BINARY = new Set(['and', 'or', 'implies', 'iff'])
@@ -103,13 +103,14 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
   }
 
   // Scope at a path, for the variable pickers: the subject (or the free
-  // variables of a fact type's rule), then the variable of every quantifier
-  // above it.
+  // variables of a fact type's rule), then the variables of every quantifier
+  // and aggregate above it.
   const scopeAt = (path) => {
     const out = [...roots]
     let n = draft
     for (const k of path) {
       if (QUANT.has(n?.t) && k === 'body') out.push({ id: n.v.id, typeIds: [n.v.typeId] })
+      if (n?.t === 'agg' && (k === 'cond' || k === 'term')) out.push(...aggScope(n))
       n = n?.[k]
     }
     return out
@@ -132,10 +133,10 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
       textUnderlineOffset: 3,
     }
     const click = (e) => { e.stopPropagation(); setSel(path) }
-    const sub = (key, wrap) => {
+    const sub = (key, wrap, inScope = scope) => {
       const p = [...path, ...(Array.isArray(key) ? key : [key])]
       const child = getAt(draft, p)
-      const inner = render(child, p, scope)
+      const inner = render(child, p, inScope)
       return wrap ? <>{'('}{inner}{')'}</> : inner
     }
     let body
@@ -248,6 +249,23 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
           <span style={TOKEN_STYLE.op}> else </span>{sub('else')}{')'}
         </>
         break
+      case 'agg': {
+        // Sum{t | v₁, v₂ : φ}, Count{v₁, v₂ : φ}
+        const inner = [...scope, ...aggScope(n)]
+        body = <>
+          <span style={TOKEN_STYLE.fn}>{AGGS[n.fn]?.symbol ?? n.fn}</span>
+          {n.distinct && <sub style={{ ...TOKEN_STYLE.fn, fontSize: '0.75em' }}>distinct</sub>}
+          {'{'}
+          {n.fn !== 'count' && <>{sub('term', false, inner)}{' | '}</>}
+          {(n.vars ?? []).map((v, i) => (
+            <React.Fragment key={v.id}>{i > 0 && ', '}
+              <span style={TOKEN_STYLE.var} title={`ranges over ${ctx.typeName(v.typeId)}`}>{nameOf.get(v.id)}</span>
+            </React.Fragment>
+          ))}
+          {' : '}{sub('cond', false, inner)}{'}'}
+        </>
+        break
+      }
       default:
         body = '?'
     }
@@ -361,7 +379,7 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
 
           {termSelected
             ? <TermPalette node={selNode} path={sel} scope={selScope} draft={draft} ctx={ctx} nameOf={nameOf}
-                replace={replace} />
+                types={types} replace={replace} />
             : <Palette node={selNode} path={sel} scope={selScope} draft={draft} state={state} ctx={ctx}
                 supers={forFact ? roots.map(r => r.typeIds[0]) : supers}
                 graph={graph} replace={replace} />}
@@ -594,8 +612,21 @@ function OpMenu({ value = '', placeholder, first, onPick }) {
   )
 }
 
-function TermPalette({ node, path, scope, draft, ctx, nameOf, replace }) {
+function TermPalette({ node, path, scope, draft, ctx, nameOf, types, replace }) {
+  const [aggFn, setAggFn] = useState('sum')
+  const [aggType, setAggType] = useState(() => types[0]?.id ?? '')
+  const [newAggVarType, setNewAggVarType] = useState(() => types[0]?.id ?? '')
   const holes = (n) => Array.from({ length: n }, hole)
+  const typeSelect = (value, onChange) => (
+    <select value={value} onChange={e => onChange(e.target.value)} style={selectStyle}>
+      {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+    </select>
+  )
+  const fnSelect = (value, onChange) => (
+    <select value={value} onChange={e => onChange(e.target.value)} style={selectStyle}>
+      {Object.entries(AGGS).map(([id, d]) => <option key={id} value={id}>{d.symbol}: {d.label}</option>)}
+    </select>
+  )
   const hasValue = (v) => v.typeIds.some(t => valueAccess(t, ctx))
   const last = path[path.length - 1]
   const parentPath = path.slice(0, typeof last === 'number' ? -2 : -1)
@@ -617,6 +648,20 @@ function TermPalette({ node, path, scope, draft, ctx, nameOf, replace }) {
       replace(path, { t: 'op', op, args: holes(arity(OPS[op])) }, [...path, 'args', 0])} />])
     rows.push(['Condition', <button style={btn()}
       onClick={() => replace(path, { t: 'if', cond: hole(), then: hole(), else: hole() }, [...path, 'cond'])}>(if □ then □ else □)</button>])
+    rows.push(['Aggregate', <>
+      {fnSelect(aggFn, setAggFn)}
+      <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>over</span>
+      {typeSelect(aggType, setAggType)}
+      <button style={btn()} disabled={!aggType} title="A value computed from every binding of the variables for which the condition holds"
+        onClick={() => {
+          const v = { id: newVarId(), typeId: aggType }
+          const count = aggFn === 'count'
+          replace(path, { t: 'agg', fn: aggFn, distinct: false, vars: [v], cond: hole(), ...(count ? {} : { term: hole() }) },
+            [...path, count ? 'cond' : 'term'])
+        }}>
+        {AGGS[aggFn].symbol}{aggFn === 'count' ? '{… : □}' : '{□ | … : □}'}
+      </button>
+    </>])
   } else {
     rows.push(['Wrap in', <>
       <OpMenu placeholder="An operator…" first="…" onPick={(op) => {
@@ -630,6 +675,37 @@ function TermPalette({ node, path, scope, draft, ctx, nameOf, replace }) {
         const n = arity(OPS[op])
         replace(path, { ...node, op, args: [...node.args.slice(0, n), ...holes(Math.max(0, n - node.args.length))] })
       }} />])
+    }
+    if (node.t === 'agg') {
+      rows.push(['Aggregate', <>
+        {fnSelect(node.fn, (fn) => {
+          const { term, ...rest } = node
+          replace(path, fn === 'count' ? { ...rest, fn, distinct: false } : { ...rest, fn, term: term ?? hole() })
+        })}
+        {node.fn !== 'count' && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--ink-2)', cursor: 'pointer' }}
+            title="Count each value once">
+            <input type="checkbox" checked={!!node.distinct} style={{ width: 'auto', padding: 0, border: 'none' }}
+              onChange={e => replace(path, { ...node, distinct: e.target.checked })} />
+            distinct values
+          </label>
+        )}
+      </>])
+      rows.push(['Variables', <>
+        {node.vars.map((v, i) => (
+          <span key={v.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <span style={{ ...TOKEN_STYLE.var, fontFamily: 'var(--font-mono)', fontSize: 12 }}>{nameOf.get(v.id)}</span>
+            {typeSelect(v.typeId, (typeId) => replace(path, { ...node, vars: node.vars.map((x, j) => (j === i ? { ...x, typeId } : x)) }))}
+            {node.vars.length > 1 && (
+              <button style={btn()} title="Remove this variable"
+                onClick={() => replace(path, { ...node, vars: node.vars.filter((_, j) => j !== i) })}>×</button>
+            )}
+          </span>
+        ))}
+        {typeSelect(newAggVarType, setNewAggVarType)}
+        <button style={btn()} disabled={!newAggVarType}
+          onClick={() => replace(path, { ...node, vars: [...node.vars, { id: newVarId(), typeId: newAggVarType }] })}>Add a variable</button>
+      </>])
     }
     if (node.t === 'if') {
       rows.push(['Branches', <button style={btn()} onClick={() => replace(path, { ...node, then: node.else, else: node.then })}>Swap then and else</button>])
@@ -658,6 +734,9 @@ function TermPalette({ node, path, scope, draft, ctx, nameOf, replace }) {
     </div>
   )
 }
+
+// The variables an aggregate binds, as scope entries.
+const aggScope = (n) => (n.vars ?? []).map(v => ({ id: v.id, typeIds: [v.typeId] }))
 
 const liftLabel = (n) => ({
   and: '∧', or: '∨', implies: '→', iff: '↔', not: '¬', forall: '∀', exists: '∃', count: '∃ⁿ',

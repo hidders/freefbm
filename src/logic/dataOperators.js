@@ -16,6 +16,10 @@
 //   { t: 'const', text }                     read under the sort its place needs
 //   { t: 'op', op, args: [T] }               an operator from OPS
 //   { t: 'if', cond: R, then: T, else: T }   conditional term; cond is a formula
+//   { t: 'agg', fn, distinct, vars: [{ id, typeId }], cond: R, term: T }
+//       aggregate F{t | v₁, …, vₙ : φ} over the bag of values of t, one per
+//       binding of the variables under which φ holds (a set with distinct);
+//       fn from AGGS, and count has no term: Count{v₁, …, vₙ : φ}
 // and the atoms that use them:
 //   { t: 'vcmp', op: '≈' | '≉' | '<' | '≤' | '>' | '≥', left: T, right: T }
 //   { t: 'dpred', op, args: [T] }            a data predicate from PREDS
@@ -396,6 +400,23 @@ for (const def of Object.values(PREDS)) def.style = 'func'
 
 export const arity = (def) => def.sigs[0][0].length
 
+// Aggregation functions (decisions, Jan 2026-10-26):
+//   - Count gives an integer, Sum keeps the numeric sort of its elements,
+//     Avg gives a decimal for integers and decimals and a float for floats,
+//     and Min and Max work on every ordered sort (without a value when two
+//     elements cannot be compared, like NaN or dates with and without a
+//     timezone);
+//   - on an empty bag Count and Sum give 0, and Avg, Min and Max have no value;
+//   - strict: when t has no value for one of the bindings, the aggregate has
+//     none (with distinct too).
+export const AGGS = {
+  count: { label: 'number of', symbol: 'Count' },
+  sum:   { label: 'sum', symbol: 'Sum' },
+  avg:   { label: 'average', symbol: 'Avg' },
+  min:   { label: 'least', symbol: 'Min' },
+  max:   { label: 'greatest', symbol: 'Max' },
+}
+
 // ── Typing ───────────────────────────────────────────────────────────────────
 //
 // typeComparison / typePredicate check an atom's terms and record, in
@@ -405,7 +426,9 @@ export const arity = (def) => def.sigs[0][0].length
 //   { sorts: Map, params: Map,
 //     err(path, message),
 //     varSort(id, path) → sort | null | FAIL   (reports its own errors)
-//     formula(cond, path) }                    checks the condition of an if
+//     formula(cond, path)                      checks the condition of an if
+//     bind(vars, path) → tc }                  the same, with an aggregate's
+//                                              variables in scope
 // A rule is only evaluated or formalised when it typed without errors.
 
 export const FAIL = Symbol('fail')
@@ -459,10 +482,39 @@ function typeTerm(n, path, tc, expected) {
       tc.sorts.set(n, s)
       return s
     }
+    case 'agg':
+      return typeAgg(n, path, tc)
     default:
       tc.err(path, 'Unknown kind of term')
       return FAIL
   }
+}
+
+function typeAgg(n, path, tc) {
+  const def = AGGS[n.fn]
+  if (!def) { tc.err(path, `Unknown aggregation function ${n.fn}`); return FAIL }
+  if (!n.vars?.length) { tc.err(path, `${def.symbol} needs at least one variable`); return FAIL }
+  const inner = tc.bind(n.vars, path)
+  inner.formula(n.cond, [...path, 'cond'])
+  if (n.fn === 'count') { tc.sorts.set(n, 'integer'); return 'integer' }
+  let s = typeTerm(n.term, [...path, 'term'], inner)
+  if (s === FAIL) return FAIL
+  if (s === null) { tc.err(path, NO_DATATYPE); return FAIL }
+  if (s === DEFER) {
+    s = guessSort(n.term.text)
+    if (typeConst(n.term, [...path, 'term'], inner, s) === FAIL) return FAIL
+  }
+  let result = s
+  if (n.fn === 'sum' || n.fn === 'avg') {
+    if (!(s in RANK)) { tc.err(path, `${def.symbol} needs numbers, but the term gives ${s} values`); return FAIL }
+    if (n.fn === 'avg') result = s === 'float' ? 'float' : 'decimal'
+  } else if (!VALUE_KINDS[s] || VALUE_KINDS[s].order === 'none') {
+    tc.err(path, `${s} values have no order, so ${def.symbol} does not apply`)
+    return FAIL
+  }
+  tc.sorts.set(n, result)
+  tc.params.set(n, [s])
+  return result
 }
 
 function typeOp(def, n, path, tc) {
@@ -526,6 +578,10 @@ export function typePredicate(n, path, tc) {
 // For a rule that typed without errors (sorts and params from its typing):
 //   varValue(id)  → { value, raw } of the variable's data value, or undefined
 //   holds(cond)   → truth of a condition
+//   aggregate(n)  → for an aggregate, one entry per binding of its variables
+//                   under which its condition holds: the value of its term
+//                   (undefined: none), or null for count; undefined when the
+//                   bindings cannot be found
 // A term without a value (an undefined operator result, or a missing value)
 // makes the atom false.
 
@@ -555,7 +611,35 @@ function compareRaw(a, b, op) {
   return compareUnder('integer', c, 0, op)
 }
 
-export function makeTermEvaluator({ sorts, params, varValue, holds }) {
+function aggregateValue(n, xs, elementSort, sort) {
+  if (!xs) return undefined
+  if (n.fn === 'count') return xs.length
+  if (xs.some(v => v === undefined)) return undefined
+  const kind = VALUE_KINDS[elementSort]
+  let vals = xs
+  if (n.distinct) {
+    vals = []
+    for (const v of xs) if (!vals.some(w => kind.equal(v, w))) vals.push(v)
+  }
+  const total = () => vals.reduce((a, b) => a + b, 0)
+  switch (n.fn) {
+    case 'sum': return num(total(), sort)
+    case 'avg': return vals.length ? num(total() / vals.length, sort) : undefined
+    case 'min': case 'max': {
+      if (!vals.length) return undefined
+      let best = vals[0]
+      for (const v of vals.slice(1)) {
+        const c = kind.compare(v, best)
+        if (Number.isNaN(c)) return undefined
+        if (n.fn === 'min' ? c < 0 : c > 0) best = v
+      }
+      return best
+    }
+    default: return undefined
+  }
+}
+
+export function makeTermEvaluator({ sorts, params, varValue, holds, aggregate }) {
   const value = (n) => {
     switch (n.t) {
       case 'var': return varValue(n.id)?.value
@@ -569,6 +653,7 @@ export function makeTermEvaluator({ sorts, params, varValue, holds }) {
         return OPS[n.op].ev(vals, params.get(n), sorts.get(n))
       }
       case 'if': return value(holds(n.cond) ? n.then : n.else)
+      case 'agg': return aggregateValue(n, aggregate?.(n), params.get(n)?.[0], sorts.get(n))
       default: return undefined
     }
   }
@@ -599,24 +684,20 @@ export function termChildPaths(n) {
   switch (n?.t) {
     case 'op': case 'dpred': return (n.args ?? []).map((_, i) => ['args', i])
     case 'if': return [['then'], ['else']]
+    case 'agg': return n.fn === 'count' ? [] : [['term']]
     case 'vcmp': return [['left'], ['right']]
     default: return []
   }
 }
 
-// The ids of the variables whose data values a term uses, outside the
-// conditions of if-terms (which are formulas of their own).
+// The ids of the free variables whose data values a term uses, outside the
+// conditions of if-terms and aggregates (which are formulas of their own).
 export function termVarIds(n, out = []) {
   if (!n) return out
   if (n.t === 'var') { if (n.id != null && !out.includes(n.id)) out.push(n.id) }
-  else for (const p of termChildPaths(n)) termVarIds(p.reduce((x, k) => x?.[k], n), out)
-  return out
-}
-
-// The conditions of the if-terms in a term or atom, outermost first.
-export function termConditions(n, out = []) {
-  if (!n) return out
-  if (n.t === 'if') out.push(n.cond)
-  for (const p of termChildPaths(n)) termConditions(p.reduce((x, k) => x?.[k], n), out)
+  else if (n.t === 'agg') {
+    const own = new Set((n.vars ?? []).map(v => v.id))
+    for (const id of termVarIds(n.term)) if (!own.has(id) && !out.includes(id)) out.push(id)
+  } else for (const p of termChildPaths(n)) termVarIds(p.reduce((x, k) => x?.[k], n), out)
   return out
 }

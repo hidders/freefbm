@@ -4,8 +4,9 @@
 // The rule of a derived or semi-derived type or fact type depends on
 //   - every fact type its atoms use, and every type its type atoms use;
 //   - every type its variables range over: quantified variables, and the
-//     free variables of a fact type's rule that no positive fact atom of the
-//     condition binds (or that it binds through a role of another type);
+//     free variables of a fact type's rule and the variables of aggregates
+//     that no positive fact atom of the condition binds (or that it binds
+//     through a role of another type);
 //   - the supertypes of a derived subtype, whose instances are its candidates.
 // Depending on a type means depending on its rule when it is derived, and on
 // every derived fact type that computes objects of it (or of a subtype of it,
@@ -18,13 +19,34 @@ import { valueAccess } from './values.js'
 
 const QUANT = new Set(['forall', 'exists', 'count'])
 
+// The ids of the variables vs ([{ id, typeIds }]) that a positive fact atom
+// of the condition binds through a role of their own type.
+function boundByAtoms(cond, vs, ctx) {
+  const bound = new Set()
+  const conjuncts = cond?.t === 'and' ? cond.args : [cond]
+  for (const c of conjuncts) {
+    if (c?.t !== 'fact') continue
+    const fact = ctx.factById.get(c.factId)
+    ;(c.args ?? []).forEach((id, i) => {
+      const v = vs.find(x => x.id === id)
+      if (v && fact?.roles[i]?.objectTypeId === v.typeIds[0]) bound.add(id)
+    })
+  }
+  return bound
+}
+
 // The fact types and types a formula or term uses directly.
-function uses(n, out = { facts: new Set(), types: new Set() }) {
+function uses(n, ctx, out = { facts: new Set(), types: new Set() }) {
   if (!n || typeof n !== 'object') return out
   if (n.t === 'fact' && n.factId) out.facts.add(n.factId)
   if (n.t === 'type' && n.typeId) out.types.add(n.typeId)
   if (QUANT.has(n.t) && n.v?.typeId) out.types.add(n.v.typeId)
-  for (const p of childPaths(n)) uses(p.reduce((x, k) => x?.[k], n), out)
+  if (n.t === 'agg') {
+    const vs = (n.vars ?? []).map(v => ({ id: v.id, typeIds: [v.typeId] }))
+    const bound = boundByAtoms(n.cond, vs, ctx)
+    for (const v of vs) if (!bound.has(v.id) && v.typeIds[0]) out.types.add(v.typeIds[0])
+  }
+  for (const p of childPaths(n)) uses(p.reduce((x, k) => x?.[k], n), ctx, out)
   return out
 }
 
@@ -53,7 +75,7 @@ export function derivationGraph(state, ctx) {
 
   for (const ot of (state.objectTypes ?? [])) {
     if (!isDerived(ot) || !ot.derivationRule) continue
-    const u = uses(upgradeRule(ot.derivationRule))
+    const u = uses(upgradeRule(ot.derivationRule), ctx)
     for (const s of directSupertypes(ot.id, state.subtypes)) u.types.add(s)
     nodes.set(typeKey(ot.id), { key: typeKey(ot.id), kind: 'type', id: ot.id, name: ctx.typeName(ot.id),
       deps: [...[...u.facts].flatMap(viaFact), ...[...u.types].flatMap(viaType)] })
@@ -61,20 +83,9 @@ export function derivationGraph(state, ctx) {
   for (const f of facts) {
     if (!isDerivedFact(f) || !f.derivationRule) continue
     const parts = factRuleParts(f)
-    const u = uses(parts.body)
-    for (const { eq } of parts.eqs) uses(eq.right, u)
-    // Free variables bound by a positive fact atom of the condition, through
-    // a role of their own type.
-    const bound = new Set()
-    const conjuncts = parts.body.t === 'and' ? parts.body.args : [parts.body]
-    for (const c of conjuncts) {
-      if (c.t !== 'fact') continue
-      const fact = ctx.factById.get(c.factId)
-      ;(c.args ?? []).forEach((id, i) => {
-        const v = [...parts.selected, ...parts.extra].find(x => x.id === id)
-        if (v && fact?.roles[i]?.objectTypeId === v.typeIds[0]) bound.add(id)
-      })
-    }
+    const u = uses(parts.body, ctx)
+    for (const { eq } of parts.eqs) uses(eq.right, ctx, u)
+    const bound = boundByAtoms(parts.body, [...parts.selected, ...parts.extra], ctx)
     for (const v of [...parts.selected, ...parts.extra]) if (!bound.has(v.id)) u.types.add(v.typeIds[0])
     nodes.set(factKey(f.id), { key: factKey(f.id), kind: 'fact', id: f.id, name: null,
       deps: [...[...u.facts].flatMap(viaFact), ...[...u.types].flatMap(viaType)] })

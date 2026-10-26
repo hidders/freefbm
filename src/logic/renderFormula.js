@@ -2,7 +2,7 @@
 //   { text, cls }   cls: 'var' | 'reading' | 'type' | 'op' | 'fn' | 'const' | 'punct'
 //                   ('fn': data operators and predicates)
 //   { text, cls: 'op', sup: true }   the bound of a counting quantifier, or TC's *
-//   { text, cls, sub: true }         the variables bound by TC
+//   { text, cls, sub: true }         the variables bound by TC, an aggregate's 'distinct'
 //   { text: QGAP, cls: 'qgap' }      the narrow gap between a quantifier and its variable
 //
 // Variables are named after their type. A subscript is added only when two
@@ -11,7 +11,7 @@
 // renderFormula takes an optional names map that it fills with each variable's
 // display name, so an editor can label the variables the same way.
 
-import { OPS, PREDS } from './dataOperators.js'
+import { OPS, PREDS, AGGS } from './dataOperators.js'
 
 const SUBSCRIPTS = '₀₁₂₃₄₅₆₇₈₉'
 const subscript = (n) => String(n).split('').map(d => SUBSCRIPTS[d]).join('')
@@ -21,7 +21,7 @@ const subscript = (n) => String(n).split('').map(d => SUBSCRIPTS[d]).join('')
 export const QGAP = '\u2009'
 
 const QUANTIFIERS = new Set(['forall', 'exists', 'count'])
-const BINDERS = new Set([...QUANTIFIERS, 'tc'])
+const BINDERS = new Set([...QUANTIFIERS, 'tc', 'agg'])
 // Rendered without parentheses as the body of a quantifier or after ¬.
 const ATOMIC = new Set(['fact', 'type', 'true', 'not', 'tc', 'dpred'])
 const BINARY = new Set(['and', 'or', 'implies', 'iff'])
@@ -39,16 +39,18 @@ function children(f) {
     case 'not': return [f.arg]
     case 'vcmp': return [...termConds(f.left), ...termConds(f.right)]
     case 'dpred': return f.args.flatMap(termConds)
+    case 'agg': return [f.cond, ...termConds(f.term)]
     default: return []
   }
 }
 
 // The conditions of the if-terms in a data term (formulas with their own
-// quantifiers).
+// quantifiers), and its aggregates (which bind variables).
 function termConds(x) {
   switch (x?.t) {
     case 'fn': return x.args.flatMap(termConds)
     case 'ite': return [x.cond, ...termConds(x.then), ...termConds(x.else)]
+    case 'agg': return [x]
     default: return []
   }
 }
@@ -129,6 +131,20 @@ export function renderFormula(formula, ctx, names = new Map()) {
         push(' else ', 'op'); renderTerm(x.else)
         push(')')
         return
+      case 'agg': {
+        // Sum{t | v₁, v₂ : φ}, Sum_distinct{…}, Count{v₁, v₂ : φ}
+        push(AGGS[x.fn]?.symbol ?? '?', 'fn')
+        if (x.distinct) push('distinct', 'fn', { sub: true })
+        push('{')
+        x.vars.forEach(bind)
+        if (x.term) { renderTerm(x.term); push(' | ') }
+        x.vars.forEach((v, i) => { if (i) push(', '); pushVar(v) })
+        push(' : ')
+        render(x.cond)
+        push('}')
+        unbind(x.vars.length)
+        return
+      }
       default:
         push('?')
     }
