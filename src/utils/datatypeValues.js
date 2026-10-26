@@ -170,6 +170,17 @@ export const VALUE_KINDS = {
     },
     compare: cmpPrimitive, equal: eqPrimitive,
   },
+  // NORMA's Yes or No type: the same values as boolean, also written yes/no.
+  yesNo: {
+    order: 'total', expect: 'yes/no',
+    parse(str) {
+      const s = str.toLowerCase()
+      if (s === 'yes' || s === 'true' || s === '1') return { value: 1 }
+      if (s === 'no' || s === 'false' || s === '0') return { value: 0 }
+      return { invalid: true }
+    },
+    compare: cmpPrimitive, equal: eqPrimitive,
+  },
   date: momentKind(
     new RegExp(`^${YEAR}-(\\d{2})-(\\d{2})${TZ_RE}$`),
     m => ({ y: yr(m[1]), mo: +m[2], d: +m[3], tz: m[4] }),
@@ -248,6 +259,7 @@ export const VALUE_KINDS = {
 const ABSTRACT = {
   text: 'string', integer: 'integer', decimal: 'decimal',
   boolean: 'boolean', date: 'date', datetime: 'datetime',
+  duration: 'duration',
 }
 
 const SQL = {
@@ -294,12 +306,32 @@ const TYPESCRIPT = {
   boolean: 'boolean', null: 'unordered', Date: 'datetime', Uint8Array: 'hexBinary',
 }
 
+// NORMA raw data cannot be compared in NORMA, so it is unordered here.
+const NORMA = {
+  TextFixedLength: 'string', TextVariableLength: 'string', TextLargeLength: 'string',
+  NumericSignedInteger: 'integer', NumericSignedSmallInteger: 'integer',
+  NumericSignedLargeInteger: 'integer', NumericUnsignedInteger: 'integer',
+  NumericUnsignedTinyInteger: 'integer', NumericUnsignedSmallInteger: 'integer',
+  NumericUnsignedLargeInteger: 'integer', NumericAutoCounter: 'integer',
+  NumericFloatingPoint: 'float', NumericSinglePrecisionFloatingPoint: 'float',
+  NumericDoublePrecisionFloatingPoint: 'float',
+  NumericDecimal: 'decimal', NumericMoney: 'decimal',
+  NumericUUID: 'unordered',
+  RawDataFixedLength: 'hexBinary', RawDataVariableLength: 'hexBinary',
+  RawDataLargeLength: 'hexBinary', RawDataPicture: 'hexBinary', RawDataOleObject: 'hexBinary',
+  TemporalAutoTimestamp: 'datetime', TemporalTime: 'time',
+  TemporalDate: 'date', TemporalDateAndTime: 'datetime',
+  LogicalTrueOrFalse: 'boolean', LogicalYesOrNo: 'yesNo', LogicalTrue: 'boolean',
+  OtherRowId: 'unordered', OtherObjectId: 'unordered',
+}
+
 const MAPPING = {
   abstract: ABSTRACT,
   sql2016: SQL,
   xmlschema: XSD,
   json: JSON_PROFILE,
   typescript: TYPESCRIPT,
+  norma: NORMA,
 }
 
 // Name of the value kind for a datatype assignment, or null when the datatype

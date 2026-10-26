@@ -6,6 +6,7 @@
 const ABSTRACT = {
   text: 'text', integer: 'integer', decimal: 'decimal',
   boolean: 'boolean', date: 'date', datetime: 'datetime',
+  duration: 'text',
 }
 
 const SQL = {
@@ -52,12 +53,31 @@ const TYPESCRIPT = {
   boolean: 'boolean', null: 'text', Date: 'datetime', Uint8Array: 'text',
 }
 
+const NORMA = {
+  TextFixedLength: 'text', TextVariableLength: 'text', TextLargeLength: 'text',
+  NumericSignedInteger: 'integer', NumericSignedSmallInteger: 'integer',
+  NumericSignedLargeInteger: 'integer', NumericUnsignedInteger: 'integer',
+  NumericUnsignedTinyInteger: 'integer', NumericUnsignedSmallInteger: 'integer',
+  NumericUnsignedLargeInteger: 'integer', NumericAutoCounter: 'integer',
+  NumericFloatingPoint: 'decimal', NumericSinglePrecisionFloatingPoint: 'decimal',
+  NumericDoublePrecisionFloatingPoint: 'decimal',
+  NumericDecimal: 'decimal', NumericMoney: 'decimal',
+  NumericUUID: 'text',
+  RawDataFixedLength: 'text', RawDataVariableLength: 'text', RawDataLargeLength: 'text',
+  RawDataPicture: 'text', RawDataOleObject: 'text',
+  TemporalAutoTimestamp: 'datetime', TemporalTime: 'time',
+  TemporalDate: 'date', TemporalDateAndTime: 'datetime',
+  LogicalTrueOrFalse: 'boolean', LogicalYesOrNo: 'text', LogicalTrue: 'boolean',
+  OtherRowId: 'text', OtherObjectId: 'text',
+}
+
 const MAPPING = {
   abstract: ABSTRACT,
   sql2016: SQL,
   xmlschema: XSD,
   json: JSON_PROFILE,
   typescript: TYPESCRIPT,
+  norma: NORMA,
 }
 
 export function datatypeToKind(profileId, datatypeId) {
