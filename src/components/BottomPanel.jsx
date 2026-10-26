@@ -196,6 +196,11 @@ function PopulationTab() {
       return <ImpliedLinkPopulation parentFact={fact} roleIndex={store.selectedImplicitLink} />
     if (fact.objectified && fact.objectifiedKind !== 'value')
       return <NestedEntityObjectifiedPopulation fact={fact}/>
+    if (fact.derivation === 'derived') return <DerivedFactPopulation fact={fact}/>
+    if (fact.derivation === 'semiDerived') return <>
+      <FactTypePopulation fact={fact}/>
+      <DerivedFactPopulation fact={fact} semi/>
+    </>
     return <FactTypePopulation fact={fact}/>
   }
   if (subtypeEdge) return <SubtypeMappingPopulation edge={subtypeEdge}/>
@@ -1810,6 +1815,92 @@ function DerivedSubtypePopulation({ ot, semi = false }) {
           {semi && (
             <PropagateButton label={`Add to ${ot.name}`} missing={missing} targetId={ot.id}
               title={`Add the ${missing.length} derived instance${missing.length === 1 ? '' : 's'} missing from ${ot.name}`}/>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Population of a derived fact type, computed by its derivation rule and shown
+// read-only, with the computed roles marked and the values that are new to
+// their types highlighted. For a semi-derived fact type (semi) it is shown
+// below the editable population as what the rule requires, with the facts
+// still missing from the population marked and addable.
+function DerivedFactPopulation({ fact, semi = false }) {
+  const store = useOrmStore()
+  const ev = makePopulationEvaluator(store)
+  const result = ev.derivedFact(fact.id)
+  const stored = semi ? ev.storedTuples(fact) : null
+  const tupleKey = (t) => JSON.stringify(t.map(ev.keyOf))
+  const missing = semi && !result.error ? result.tuples.filter(t => !stored.keys.has(tupleKey(t))) : []
+  const computed = new Set(Object.keys(fact.derivationRule?.terms ?? {}))
+  const label = (role) => store.objectTypes.find(o => o.id === role.objectTypeId)?.name
+    ?? store.facts.find(f => f.id === role.objectTypeId)?.objectifiedName ?? '?'
+  const isNewValue = (role, cell) => (result.computed?.get(role.objectTypeId) ?? []).includes(cell)
+  const pick = () => store.select(fact.id, 'fact')
+  const violations = (store.populationIssues || []).filter(i => i.elementId === fact.id && i.kind !== 'derivedFactUndefined')
+  return (
+    <div style={{ marginTop: semi ? 16 : 0 }}>
+      <Header>
+        {semi ? <>Derived by the rule</> : <>Population (derived)</>}
+      </Header>
+      <div style={{ maxWidth: 560, fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8 }}>
+        {semi
+          ? 'Every fact the derivation rule derives must be in the population above; it may hold others too.'
+          : 'Computed from the populations by the derivation rule, so it cannot be edited here.'}
+        {computed.size > 0 && ' Values in italics are computed; those with a dashed border are new to their type.'}
+      </div>
+      {result.error ? (
+        <div style={{ maxWidth: 480, fontSize: 11, color: '#b91c1c' }}>
+          The population cannot be computed: {result.error}{' '}
+          <button onClick={pick} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            color: 'var(--accent)', fontSize: 11 }}>Edit the rule in the Inspector</button>
+        </div>
+      ) : (
+        <div style={{ maxWidth: 560 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${fact.roles.length}, minmax(80px, 1fr))`, gap: 4 }}>
+            {fact.roles.map((r, i) => (
+              <div key={i} style={colHeaderStyle}>{label(r)}{computed.has(r.id) ? ' (computed)' : ''}</div>
+            ))}
+            {result.tuples.map((t, ti) => {
+              const absent = semi && missing.includes(t)
+              return fact.roles.map((r, i) => {
+                const fresh = computed.has(r.id) && isNewValue(r, t[i])
+                return (
+                  <div key={`${ti}-${i}`} title={absent ? 'Not in the population above' : fresh ? `New ${label(r)}` : undefined} style={{
+                    fontSize: 12, padding: '3px 6px', borderRadius: 3,
+                    border: `1px ${fresh ? 'dashed' : 'solid'} ${absent ? '#f5b400' : 'var(--border-soft)'}`,
+                    background: absent ? '#fff8e0' : 'var(--bg-surface)', color: 'var(--ink-2)',
+                    fontStyle: computed.has(r.id) ? 'italic' : undefined,
+                  }}>
+                    {Array.isArray(t[i]) ? formatCell(t[i]) : t[i]}
+                  </div>
+                )
+              })
+            })}
+          </div>
+          {result.tuples.length === 0 && (
+            <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic', marginTop: 4 }}>The rule derives no facts.</div>
+          )}
+          {result.failures.length > 0 && (
+            <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 6 }}>
+              {result.failures.map((f, i) => (
+                <div key={i}>For {f.cells.map(formatCell).join(', ')} the condition holds, but {f.message}.</div>
+              ))}
+            </div>
+          )}
+          {/* Constraints the derived facts violate (the editable table shows them for a semi-derived one). */}
+          {!semi && violations.length > 0 && (
+            <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 6 }}>
+              <div style={{ marginBottom: 2 }}>Constraint violations ({violations.length}):</div>
+              {violations.map((v, i) => <div key={i}>• {v.message}</div>)}
+            </div>
+          )}
+          {semi && (
+            <PropagateButton label="Add to the population" missing={missing}
+              onPropagate={() => store.addFactTuples(fact.id, missing)} style={{ marginTop: 6 }}
+              title={`Add the ${missing.length} derived fact${missing.length === 1 ? '' : 's'} missing from the population`}/>
           )}
         </div>
       )}

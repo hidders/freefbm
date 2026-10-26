@@ -287,6 +287,25 @@ export function createPopulationSlice(set, get) {
       })
     },
 
+    // Add tuples (e.g. the ones a semi-derivation rule derives) to a fact
+    // type's population, with their cells added to the role players.
+    addFactTuples(factId, tuples) {
+      set(s => {
+        const fact = s.facts.find(f => f.id === factId)
+        if (!fact || !tuples?.length) return {}
+        const populations = { ...s.populations }
+        const factPopulations = { ...s.factPopulations, [factId]: [...(s.factPopulations?.[factId] ?? []), ...tuples] }
+        const ctx = { facts: s.facts, objectTypes: s.objectTypes, subtypes: s.subtypes, constraints: s.constraints }
+        for (const t of tuples) {
+          fact.roles.forEach((role, i) => {
+            if (role.objectTypeId && typeof t[i] === 'string')
+              propagateValueToPlayer(populations, factPopulations, role.objectTypeId, t[i], ctx, true)
+          })
+        }
+        return { populations, factPopulations, isDirty: true }
+      })
+    },
+
     updateFactTupleCell(factId, tupleIndex, roleIndex, value) {
       set(s => {
         const current = s.factPopulations?.[factId] ?? []

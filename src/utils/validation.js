@@ -4,6 +4,8 @@ import { findIdentifierCycles, canBeExternalUniquenessPI, findCompositePI, findR
 import { VALUE_KINDS, valueKindOf, parseLiteral } from './datatypeValues.js'
 import { EXTERNAL_CONSTRAINT_TYPES } from '../constants.js'
 import { derivationIssues } from '../logic/derivationRule.js'
+import { factDerivationIssues, factLabel } from '../logic/factDerivation.js'
+import { derivationGraph, derivationCycles } from '../logic/derivationDependencies.js'
 import { makeContext } from '../logic/constraintFormulas.js'
 
 export const VALIDATION_CATEGORIES = {
@@ -37,7 +39,7 @@ export const VALIDATION_CATEGORIES = {
   },
   derivationRules: {
     label: 'Derivation Rules',
-    description: 'Missing or ill-formed derivation rules of derived and semi-derived subtypes',
+    description: 'Missing, ill-formed or circular derivation rules of derived and semi-derived subtypes and fact types',
   },
 }
 
@@ -284,7 +286,8 @@ export function runValidation(state, enabledCategories) {
 
   // ── Derivation Rules ─────────────────────────────────────────────────────────
   if (enabledCategories.has('derivationRules')) {
-    derivationIssues(state, makeContext(state)).forEach((i, n) => errors.push({
+    const dctx = makeContext(state)
+    derivationIssues(state, dctx).forEach((i, n) => errors.push({
       id: `derivation-${i.ot.id}-${n}`,
       category: 'derivationRules',
       elementId: i.ot.id,
@@ -292,6 +295,36 @@ export function runValidation(state, enabledCategories) {
       message: `Derivation rule: ${i.message}`,
       severity: i.severity,
     }))
+    factDerivationIssues(state, dctx).forEach((i, n) => errors.push({
+      id: `derivation-${i.fact.id}-${n}`,
+      category: 'derivationRules',
+      elementId: i.fact.id,
+      elementKind: 'fact',
+      message: `Derivation rule: ${i.message}`,
+      severity: i.severity,
+    }))
+    // The rules must not depend on each other in a cycle.
+    const nodes = derivationGraph(state, dctx)
+    const label = (key) => {
+      const nd = nodes.get(key)
+      return nd.kind === 'type' ? nd.name : `"${factLabel(dctx.factById.get(nd.id), dctx)}"`
+    }
+    derivationCycles(nodes).forEach((cycle, n) => {
+      const path = cycle.map(label).join(' → ')
+      for (const key of new Set(cycle)) {
+        const nd = nodes.get(key)
+        errors.push({
+          id: `derivation-cycle-${n}-${nd.id}`,
+          category: 'derivationRules',
+          elementId: nd.id,
+          elementKind: nd.kind === 'fact' ? 'fact' : dctx.otById.get(nd.id)?.kind,
+          message: cycle.length === 2
+            ? `Derivation rule: ${label(key)} is derived from itself`
+            : `Derivation rule: the rules depend on each other in a cycle (${path})`,
+          severity: 'error',
+        })
+      }
+    })
   }
 
   // ── Fact Type Definition ─────────────────────────────────────────────────────

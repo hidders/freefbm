@@ -197,7 +197,12 @@ export function allTypeOptions(state) {
 // Builds formula variables for the subject and every quantifier, and their
 // display names, by rendering just the binding structure of the rule.
 export function ruleVariables(rule, subjectTypeIds, ctx) {
-  const vars = new Map([[SUBJECT, mkMeetVar(subjectTypeIds)]])
+  return formulaVariables(rule, [{ id: SUBJECT, typeIds: subjectTypeIds }], ctx)
+}
+
+// The same for a formula with free variables roots ([{ id, typeIds }]).
+export function formulaVariables(rule, roots, ctx) {
+  const vars = new Map(roots.map(r => [r.id, mkMeetVar(r.typeIds)]))
   const skeleton = (n) => {
     switch (n?.t) {
       case 'not': return not(skeleton(n.arg))
@@ -216,50 +221,43 @@ export function ruleVariables(rule, subjectTypeIds, ctx) {
     }
   }
   const names = new Map()
-  renderFormula(forall([vars.get(SUBJECT)], skeleton(rule)), ctx, names)
+  renderFormula(forall(roots.map(r => vars.get(r.id)), skeleton(rule)), ctx, names)
   const nameOf = new Map([...vars].map(([id, v]) => [id, names.get(v) ?? '?']))
   return { vars, nameOf }
 }
 
 // ── Checking ─────────────────────────────────────────────────────────────────
 
-// Issues with a rule for subtype `typeId`: [{ path, severity, message }],
-// severity 'error' (the rule is not a valid derivation rule) or 'warning'.
-// With `typing`, the sorts of the data terms are recorded in typing.sorts and
-// typing.params (see typeComparison in dataOperators.js); they are keyed by
-// the nodes of upgradeRule(rule).
-export function checkRule(rule, typeId, state, ctx, typing = { sorts: new Map(), params: new Map() }) {
-  rule = upgradeRule(rule)
+// Checks a formula whose free variables are `roots` ([{ id, typeIds }]), the
+// part shared by the rules of derived subtypes and derived fact types.
+// opts: nameOf (display names of the variables), selfAndBelow (types whose use
+// makes the rule circular, with selfName), selfFactId (the fact type a rule
+// derives), unavailable (Map varId → message for variables that may not be
+// used here), and extra ([{ node, path, scope }]: atoms checked on their own,
+// with their own scope). Returns { issues, used }, used = the ids of the
+// variables the formula and the extra atoms use.
+export function checkFormula(rule, roots, opts, state, ctx, typing = { sorts: new Map(), params: new Map() }) {
   const issues = []
-  const supers = directSupertypes(typeId, state.subtypes)
-  if (!supers.length) {
-    issues.push({ path: [], severity: 'error', message: `${ctx.typeName(typeId)} is not a subtype, so it cannot be derived` })
-    return issues
-  }
-  if (!rule) {
-    issues.push({ path: [], severity: 'error', message: 'There is no derivation rule yet' })
-    return issues
-  }
+  const nameOf = opts.nameOf
   const graph = typeGraph(state)
-  const { nameOf } = ruleVariables(rule, supers, ctx)
   const name = (id) => nameOf.get(id) ?? '?'
   const typeLabel = (typeIds) => typeIds.map(ctx.typeName).join('&')
   const err = (path, message) => issues.push({ path, severity: 'error', message })
   const warn = (path, message) => issues.push({ path, severity: 'warning', message })
-  let subjectUsed = false
-  const selfAndBelow = new Set([typeId])
-  for (let grew = true; grew;) {
-    grew = false
-    for (const st of (state.subtypes ?? [])) if (selfAndBelow.has(st.superId) && !selfAndBelow.has(st.subId)) { selfAndBelow.add(st.subId); grew = true }
-  }
+  const used = new Set()
+  const selfAndBelow = opts.selfAndBelow ?? new Set()
+  const selfName = opts.selfName ?? ''
 
   // The variable a reference names, or null with an error when it is missing
   // or no longer in scope.
   const use = (path, id, scope, what) => {
     if (id == null) { err(path, `${what} is not chosen yet`); return null }
     const v = scope.find(s => s.id === id)
-    if (!v) { err(path, `${what} refers to a variable that is no longer in scope`); return null }
-    if (id === SUBJECT) subjectUsed = true
+    if (!v) {
+      err(path, opts.unavailable?.get(id) ?? `${what} refers to a variable that is no longer in scope`)
+      return null
+    }
+    used.add(id)
     return v
   }
   const place = (path, v, placeId, where) => {
@@ -299,10 +297,11 @@ export function checkRule(rule, typeId, state, ctx, typing = { sorts: new Map(),
       case 'fact': {
         const fact = ctx.factById.get(n.factId)
         if (!fact) { err(path, 'The fact type no longer exists'); return }
+        if (fact.id === opts.selfFactId) err(path, 'The rule uses the fact type it derives, so it defines it in terms of itself')
         fact.roles.forEach((r, i) => {
           const v = use(path, n.args?.[i], scope, `Argument ${i + 1}`)
           if (selfAndBelow.has(r.objectTypeId))
-            warn(path, `The rule uses a role of ${ctx.typeName(r.objectTypeId)}, so it defines ${ctx.typeName(typeId)} in terms of itself`)
+            warn(path, `The rule uses a role of ${ctx.typeName(r.objectTypeId)}, so it defines ${selfName} in terms of itself`)
           else if (v) place(path, v, r.objectTypeId, `in a ${ctx.typeName(r.objectTypeId)} role`)
         })
         return
@@ -314,7 +313,7 @@ export function checkRule(rule, typeId, state, ctx, typing = { sorts: new Map(),
         if (graph.fit(v.typeIds, n.typeId) === 'none')
           err(path, `${name(v.id)} can never be a ${ctx.typeName(n.typeId)}: they are in different type hierarchies`)
         if (selfAndBelow.has(n.typeId))
-          warn(path, `The rule refers to ${ctx.typeName(n.typeId)}, so it defines ${ctx.typeName(typeId)} in terms of itself`)
+          warn(path, `The rule refers to ${ctx.typeName(n.typeId)}, so it defines ${selfName} in terms of itself`)
         return
       }
       case 'cmp': {
@@ -342,9 +341,39 @@ export function checkRule(rule, typeId, state, ctx, typing = { sorts: new Map(),
         err(path, 'Unknown kind of formula')
     }
   }
-  walk(rule, [], [{ id: SUBJECT, typeIds: supers }])
-  if (!subjectUsed && !issues.some(i => i.severity === 'error'))
-    warn([], `The rule does not mention ${typeLabel(supers)}, so it holds for all of them or for none`)
+  if (rule !== undefined) walk(rule, [], roots)
+  for (const x of (opts.extra ?? [])) walk(x.node, x.path, x.scope)
+  return { issues, used }
+}
+
+// The subtype and the types below it, whose use makes its rule circular.
+function selfAndBelowOf(typeId, subtypes) {
+  const out = new Set([typeId])
+  for (let grew = true; grew;) {
+    grew = false
+    for (const st of (subtypes ?? [])) if (out.has(st.superId) && !out.has(st.subId)) { out.add(st.subId); grew = true }
+  }
+  return out
+}
+
+// Issues with a rule for subtype `typeId`: [{ path, severity, message }],
+// severity 'error' (the rule is not a valid derivation rule) or 'warning'.
+// With `typing`, the sorts of the data terms are recorded in typing.sorts and
+// typing.params (see typeComparison in dataOperators.js); they are keyed by
+// the nodes of upgradeRule(rule).
+export function checkRule(rule, typeId, state, ctx, typing = { sorts: new Map(), params: new Map() }) {
+  rule = upgradeRule(rule)
+  const supers = directSupertypes(typeId, state.subtypes)
+  if (!supers.length)
+    return [{ path: [], severity: 'error', message: `${ctx.typeName(typeId)} is not a subtype, so it cannot be derived` }]
+  if (!rule) return [{ path: [], severity: 'error', message: 'There is no derivation rule yet' }]
+  const { nameOf } = ruleVariables(rule, supers, ctx)
+  const { issues, used } = checkFormula(rule, [{ id: SUBJECT, typeIds: supers }], {
+    nameOf, selfAndBelow: selfAndBelowOf(typeId, state.subtypes), selfName: ctx.typeName(typeId),
+  }, state, ctx, typing)
+  if (!used.has(SUBJECT) && !issues.some(i => i.severity === 'error'))
+    issues.push({ path: [], severity: 'warning',
+      message: `The rule does not mention ${supers.map(ctx.typeName).join('&')}, so it holds for all of them or for none` })
   return issues
 }
 

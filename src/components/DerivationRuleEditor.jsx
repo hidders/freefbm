@@ -7,6 +7,9 @@ import {
   SUBJECT, hole, getAt, setAt, directSupertypes, typeGraph, allTypeOptions,
   ruleVariables, checkRule, derivationEntry, derivationHeading, upgradeRule, isTermSlot,
 } from '../logic/derivationRule.js'
+import {
+  factRuleParts, factRuleVariables, checkFactRule, factDerivationEntries, factLabel,
+} from '../logic/factDerivation.js'
 import { OPS, PREDS, arity } from '../logic/dataOperators.js'
 import { valueAccess } from '../logic/values.js'
 import { QGAP } from '../logic/renderFormula.js'
@@ -14,7 +17,10 @@ import { TOKEN_STYLE, Formula } from './FormalisationTab.jsx'
 
 // ── Derivation rule editor ──────────────────────────────────────────────────
 // A syntax-directed editor for the derivation rule of a derived or
-// semi-derived subtype (see src/logic/derivationRule.js). The formula is shown
+// semi-derived subtype (see src/logic/derivationRule.js), or of a fact type
+// (otId or factId; see src/logic/factDerivation.js). For a fact type the
+// roles' variables are marked selected or computed, extra variables can be
+// added, and each computed role gets a term. The formula is shown
 // with holes (□) for the parts not filled in yet; clicking a part selects it,
 // and the panel below offers what can go there. Variables in atoms are picked
 // from the variables in scope, and the types and fact types from the schema.
@@ -33,34 +39,57 @@ const newVarId = () => `v${Date.now().toString(36)}${Math.random().toString(36).
 const keyOf = (path) => path.join('.')
 const samePath = (a, b) => keyOf(a) === keyOf(b)
 
-export default function DerivationRuleEditor({ otId, onClose }) {
+// The rule of a fact type as the editor works on it.
+const factDraft = (r) => ({ body: upgradeRule(r?.body) ?? hole(), extraVars: r?.extraVars ?? [], terms: r?.terms ?? {} })
+
+export default function DerivationRuleEditor({ otId, factId, onClose }) {
   const state = useOrmStore(useShallow(s => ({
     objectTypes: s.objectTypes, facts: s.facts, subtypes: s.subtypes, constraints: s.constraints,
   })))
   const updateObjectType = useOrmStore(s => s.updateObjectType)
-  const ot = state.objectTypes.find(o => o.id === otId)
-  const [draft, setDraft] = useState(() => upgradeRule(ot?.derivationRule) ?? hole())
-  const [sel, setSel] = useState([])
+  const updateFact = useOrmStore(s => s.updateFact)
+  const forFact = factId != null
+  const ot = forFact ? null : state.objectTypes.find(o => o.id === otId)
+  const fact = forFact ? state.facts.find(f => f.id === factId) : null
+  const stored = forFact ? factDraft(fact?.derivationRule) : upgradeRule(ot?.derivationRule) ?? hole()
+  const [draft, setDraft] = useState(stored)
+  const [sel, setSel] = useState(forFact ? ['body'] : [])
+  const [newVarType, setNewVarType] = useState('')
 
   const ctx = useMemo(() => makeContext(state), [state])
   const graph = useMemo(() => typeGraph(state), [state])
-  const supers = useMemo(() => directSupertypes(otId, state.subtypes), [otId, state.subtypes])
-  const { nameOf } = useMemo(() => ruleVariables(draft, supers, ctx), [draft, supers, ctx])
-  const issues = useMemo(() => checkRule(draft, otId, state, ctx), [draft, otId, state, ctx])
+  const supers = useMemo(() => (forFact ? [] : directSupertypes(otId, state.subtypes)), [forFact, otId, state.subtypes])
+  const parts = useMemo(() => (forFact && fact ? factRuleParts(fact, draft) : null), [forFact, fact, draft])
+  // The free variables of the condition (and of the terms).
+  const roots = useMemo(() => (forFact ? (parts ? [...parts.selected, ...parts.extra] : [])
+    : [{ id: SUBJECT, typeIds: supers }]), [forFact, parts, supers])
+  const { nameOf } = useMemo(() => (forFact ? (fact ? factRuleVariables(fact, ctx, draft) : { nameOf: new Map() })
+    : ruleVariables(draft, supers, ctx)), [forFact, fact, draft, supers, ctx])
+  const issues = useMemo(() => (forFact ? (fact ? checkFactRule(fact, state, ctx, undefined, draft) : [])
+    : checkRule(draft, otId, state, ctx)), [forFact, fact, draft, otId, state, ctx])
   const severityAt = useMemo(() => {
     const m = new Map()
     for (const i of issues) if (m.get(keyOf(i.path)) !== 'error') m.set(keyOf(i.path), i.severity)
     return m
   }, [issues])
   const errors = issues.filter(i => i.severity === 'error')
-  const preview = useMemo(() => (ot && !errors.length
-    ? derivationEntry({ ...ot, derivationRule: draft }, state, ctx) : null), [ot, draft, state, ctx, errors.length])
+  const preview = useMemo(() => {
+    if (errors.length) return []
+    if (forFact) return fact ? factDerivationEntries(fact, state, ctx, draft) : []
+    return ot ? [derivationEntry({ ...ot, derivationRule: draft }, state, ctx)] : []
+  }, [forFact, fact, ot, draft, state, ctx, errors.length])
+  const types = useMemo(() => allTypeOptions(state), [state])
 
-  if (!ot) return null
-  const changed = JSON.stringify(draft) !== JSON.stringify(upgradeRule(ot.derivationRule) ?? hole())
+  if (forFact ? !fact : !ot) return null
+  const changed = JSON.stringify(draft) !== JSON.stringify(stored)
+  const semi = (forFact ? fact : ot).derivation === 'semiDerived'
 
   const replace = (path, node, nextSel = path) => { setDraft(d => setAt(d, path, node)); setSel(nextSel) }
-  const save = () => { updateObjectType(otId, { derivationRule: draft }); onClose() }
+  const save = () => {
+    if (forFact) updateFact(factId, { derivationRule: draft })
+    else updateObjectType(otId, { derivationRule: draft })
+    onClose()
+  }
 
   const onKeyDown = (e) => {
     // Keep the canvas shortcuts (delete, tools, arrows) out of the dialog.
@@ -69,14 +98,15 @@ export default function DerivationRuleEditor({ otId, onClose }) {
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)
     if (!typing && (e.key === 'Delete' || e.key === 'Backspace')) {
       e.preventDefault()
-      if (getAt(draft, sel)?.t !== 'hole') replace(sel, hole())
+      if (sel.length && getAt(draft, sel) && getAt(draft, sel).t !== 'hole') replace(sel, hole())
     }
   }
 
-  // Scope at a path, for the variable pickers: the subject, then the
-  // variable of every quantifier above it.
+  // Scope at a path, for the variable pickers: the subject (or the free
+  // variables of a fact type's rule), then the variable of every quantifier
+  // above it.
   const scopeAt = (path) => {
-    const out = [{ id: SUBJECT, typeIds: supers }]
+    const out = [...roots]
     let n = draft
     for (const k of path) {
       if (QUANT.has(n?.t) && k === 'body') out.push({ id: n.v.id, typeIds: [n.v.typeId] })
@@ -226,6 +256,64 @@ export default function DerivationRuleEditor({ otId, onClose }) {
 
   const selNode = getAt(draft, sel)
   const selScope = scopeAt(sel)
+  const termSelected = forFact && sel[0] === 'terms' ? (sel.length === 2 || isTermSlot(draft, sel)) : isTermSlot(draft, sel)
+
+  // ── Variables of a fact type's rule ──
+  const setComputed = (roleId, on) => setDraft(d => {
+    const terms = { ...d.terms }
+    if (on) terms[roleId] = hole()
+    else delete terms[roleId]
+    return { ...d, terms }
+  })
+  const addVar = () => {
+    const typeId = newVarType || types[0]?.id
+    if (!typeId) return
+    setDraft(d => ({ ...d, extraVars: [...d.extraVars, { id: newVarId(), typeId }] }))
+  }
+  const factVariables = forFact && (
+    <div style={{ marginBottom: 10 }}>
+      <div style={sectionLabel}>Variables</div>
+      {parts.roles.map((r, i) => (
+        <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, marginBottom: 3 }}>
+          <span style={{ width: 52, color: 'var(--ink-3)', fontSize: 11 }}>Role {i + 1}</span>
+          <span style={{ ...TOKEN_STYLE.var, fontFamily: 'var(--font-mono)', minWidth: 110 }}>{nameOf.get(r.id)}</span>
+          {['selected', 'computed'].map(m => (
+            <label key={m} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: 'var(--ink-2)' }}
+              title={m === 'selected' ? 'Bound to an object of the current population' : 'The object whose value its term gives'}>
+              <input type="radio" name={`role-${r.roleId}`} checked={(m === 'computed') === r.computed}
+                onChange={() => setComputed(r.roleId, m === 'computed')}
+                style={{ width: 'auto', padding: 0, border: 'none' }} />
+              {m}
+            </label>
+          ))}
+        </div>
+      ))}
+      {parts.extra.map((v, i) => {
+        const sev = severityAt.get(keyOf(['extraVars', i]))
+        return (
+          <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, marginBottom: 3 }}>
+            <span style={{ width: 52, color: 'var(--ink-3)', fontSize: 11 }}>Extra</span>
+            <span style={{ ...TOKEN_STYLE.var, fontFamily: 'var(--font-mono)', minWidth: 110,
+              textDecoration: sev ? `underline wavy ${sev === 'error' ? 'var(--danger)' : '#d97706'}` : undefined }}>{nameOf.get(v.id)}</span>
+            <select value={v.typeIds[0]} style={selectStyle} onChange={e => setDraft(d => ({
+              ...d, extraVars: d.extraVars.map(x => (x.id === v.id ? { ...x, typeId: e.target.value } : x)) }))}>
+              {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            <button style={btn()} title="Remove this variable"
+              onClick={() => setDraft(d => ({ ...d, extraVars: d.extraVars.filter(x => x.id !== v.id) }))}>Remove</button>
+          </div>
+        )
+      })}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, marginTop: 4 }}>
+        <span style={{ width: 52 }} />
+        <select value={newVarType || types[0]?.id || ''} style={selectStyle} onChange={e => setNewVarType(e.target.value)}>
+          {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <button style={btn()} onClick={addVar}
+          title="A variable of the condition that is not a role of the fact type">Add a variable</button>
+      </div>
+    </div>
+  )
 
   return createPortal(
     <div onKeyDown={onKeyDown} onMouseDown={e => e.stopPropagation()} style={{
@@ -239,24 +327,43 @@ export default function DerivationRuleEditor({ otId, onClose }) {
       }}>
         <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-soft)' }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
-            {ot.derivation === 'semiDerived' ? 'Semi-derivation rule' : 'Derivation rule'} of {ot.name || 'Unnamed'}
+            {semi ? 'Semi-derivation rule' : 'Derivation rule'} of {forFact ? factLabel(fact, ctx) : ot.name || 'Unnamed'}
           </div>
           <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 2 }}>
-            {supers.length ? derivationHeading(ot, supers, ctx) : `${ot.name} has no supertype, so it cannot be derived.`}
+            {forFact
+              ? semi
+                ? 'Each combination for which the condition holds, with the values of the computed roles, must be a fact.'
+                : 'The facts are exactly the combinations for which the condition holds, with the values of the computed roles.'
+              : supers.length ? derivationHeading(ot, supers, ctx) : `${ot.name} has no supertype, so it cannot be derived.`}
           </div>
         </div>
 
         <div style={{ padding: 14, overflow: 'auto', flex: 1 }}>
-          <div tabIndex={0} onClick={() => setSel([])} className="text-panel" style={{
+          {factVariables}
+          {forFact && <div style={sectionLabel}>Condition</div>}
+          <div tabIndex={0} onClick={() => setSel(forFact ? ['body'] : [])} className="text-panel" style={{
             fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 2, minHeight: 44, outline: 'none',
           }}>
-            {render(draft, [], [{ id: SUBJECT, typeIds: supers }])}
+            {forFact ? render(draft.body, ['body'], roots) : render(draft, [], roots)}
           </div>
+          {forFact && parts.computed.length > 0 && <>
+            <div style={{ ...sectionLabel, marginTop: 10 }}>Computed values</div>
+            <div className="text-panel" style={{ fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 2 }}>
+              {parts.computed.map(c => (
+                <div key={c.id}>
+                  <span style={TOKEN_STYLE.var}>{nameOf.get(c.id)}</span>
+                  <span style={TOKEN_STYLE.op}> ≈ </span>
+                  {render(getAt(draft, ['terms', c.roleId]) ?? hole(), ['terms', c.roleId], roots)}
+                </div>
+              ))}
+            </div>
+          </>}
 
-          {isTermSlot(draft, sel)
+          {termSelected
             ? <TermPalette node={selNode} path={sel} scope={selScope} draft={draft} ctx={ctx} nameOf={nameOf}
                 replace={replace} />
-            : <Palette node={selNode} path={sel} scope={selScope} draft={draft} state={state} ctx={ctx} supers={supers}
+            : <Palette node={selNode} path={sel} scope={selScope} draft={draft} state={state} ctx={ctx}
+                supers={forFact ? roots.map(r => r.typeIds[0]) : supers}
                 graph={graph} replace={replace} />}
 
           <div style={{ marginTop: 12 }}>
@@ -273,12 +380,14 @@ export default function DerivationRuleEditor({ otId, onClose }) {
               ))}
           </div>
 
-          {preview?.formula && (
+          {preview.some(e => e.formula) && (
             <div style={{ marginTop: 12 }}>
               <div style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.04em', marginBottom: 2 }}>
                 As shown in the Formalisation panel
               </div>
-              <div className="text-panel"><Formula formula={preview.formula} ctx={ctx} /></div>
+              {preview.filter(e => e.formula).map(e => (
+                <div key={e.key} className="text-panel" style={{ marginBottom: 4 }}><Formula formula={e.formula} ctx={ctx} /></div>
+              ))}
             </div>
           )}
         </div>
@@ -608,6 +717,8 @@ function ConstInput({ value, onChange, onFocus }) {
 }
 
 const selectStyle = { fontSize: 12, width: 'auto', maxWidth: 220 }
+const sectionLabel = { fontSize: 10, color: 'var(--accent)', fontWeight: 700, letterSpacing: '0.08em',
+  textTransform: 'uppercase', marginBottom: 4 }
 
 function btn(primary = false, disabled = false) {
   return {
