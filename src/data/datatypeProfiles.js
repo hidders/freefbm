@@ -12,6 +12,7 @@ export const PROFILES = [
       { id: 'boolean',  name: 'boolean',  params: [] },
       { id: 'date',     name: 'date',     params: [] },
       { id: 'datetime', name: 'datetime', params: [] },
+      { id: 'duration', name: 'duration', params: [] },
     ],
   },
   {
@@ -132,6 +133,57 @@ export const PROFILES = [
       { id: 'null',        name: 'null',        params: [] },
       { id: 'Date',        name: 'Date',        params: [] },
       { id: 'Uint8Array',  name: 'Uint8Array',  params: [] },
+    ],
+  },
+  {
+    // NORMA's portable data types, so that NORMA schemas can be imported.
+    // Ids are NORMA's PortableDataType names; names follow NORMA's own labels.
+    id: 'norma',
+    name: 'NORMA',
+    datatypes: [
+      // Text
+      { id: 'TextFixedLength',                     name: 'Text: Fixed Length',                     params: [{ name: 'length',    type: 'integer', optional: true }] },
+      { id: 'TextVariableLength',                  name: 'Text: Variable Length',                  params: [{ name: 'length',    type: 'integer', optional: true }] },
+      { id: 'TextLargeLength',                     name: 'Text: Large Length',                     params: [] },
+      // Numeric
+      { id: 'NumericSignedInteger',                name: 'Numeric: Signed Integer',                params: [] },
+      { id: 'NumericSignedSmallInteger',           name: 'Numeric: Signed Small Integer',          params: [] },
+      { id: 'NumericSignedLargeInteger',           name: 'Numeric: Signed Large Integer',          params: [] },
+      { id: 'NumericUnsignedInteger',              name: 'Numeric: Unsigned Integer',              params: [] },
+      { id: 'NumericUnsignedTinyInteger',          name: 'Numeric: Unsigned Tiny Integer',         params: [] },
+      { id: 'NumericUnsignedSmallInteger',         name: 'Numeric: Unsigned Small Integer',        params: [] },
+      { id: 'NumericUnsignedLargeInteger',         name: 'Numeric: Unsigned Large Integer',        params: [] },
+      { id: 'NumericAutoCounter',                  name: 'Numeric: Auto Counter',                  params: [] },
+      { id: 'NumericFloatingPoint',                name: 'Numeric: Floating Point',                params: [{ name: 'precision', type: 'integer', optional: true }] },
+      { id: 'NumericSinglePrecisionFloatingPoint', name: 'Numeric: Single Precision Floating Point', params: [] },
+      { id: 'NumericDoublePrecisionFloatingPoint', name: 'Numeric: Double Precision Floating Point', params: [] },
+      { id: 'NumericDecimal',                      name: 'Numeric: Decimal',                       params: [
+          { name: 'precision', type: 'integer', optional: true },
+          { name: 'scale',     type: 'integer', optional: true },
+        ] },
+      { id: 'NumericMoney',                        name: 'Numeric: Money',                         params: [
+          { name: 'precision', type: 'integer', optional: true },
+          { name: 'scale',     type: 'integer', optional: true },
+        ] },
+      { id: 'NumericUUID',                         name: 'Numeric: UUID',                          params: [] },
+      // Raw data
+      { id: 'RawDataFixedLength',                  name: 'Raw Data: Fixed Length',                 params: [{ name: 'length',    type: 'integer', optional: true }] },
+      { id: 'RawDataVariableLength',               name: 'Raw Data: Variable Length',              params: [{ name: 'length',    type: 'integer', optional: true }] },
+      { id: 'RawDataLargeLength',                  name: 'Raw Data: Large Length',                 params: [] },
+      { id: 'RawDataPicture',                      name: 'Raw Data: Picture',                      params: [] },
+      { id: 'RawDataOleObject',                    name: 'Raw Data: OLE Object',                   params: [] },
+      // Temporal
+      { id: 'TemporalAutoTimestamp',               name: 'Temporal: Auto Timestamp',               params: [] },
+      { id: 'TemporalTime',                        name: 'Temporal: Time',                         params: [] },
+      { id: 'TemporalDate',                        name: 'Temporal: Date',                         params: [] },
+      { id: 'TemporalDateAndTime',                 name: 'Temporal: Date & Time',                  params: [] },
+      // Logical
+      { id: 'LogicalTrueOrFalse',                  name: 'Logical: True or False',                 params: [] },
+      { id: 'LogicalYesOrNo',                      name: 'Logical: Yes or No',                     params: [] },
+      { id: 'LogicalTrue',                         name: 'Logical: True',                          params: [] },
+      // Other
+      { id: 'OtherRowId',                          name: 'Other: Row ID',                          params: [] },
+      { id: 'OtherObjectId',                       name: 'Other: Object ID',                       params: [] },
     ],
   },
 ]
