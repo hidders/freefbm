@@ -21,18 +21,23 @@
 //   { t: 'fact', factId, args: [varId | null] }     args in roles[] order
 //   { t: 'type', typeId, arg: varId | null }
 //   { t: 'cmp', op: '=' | '≠', left: varId | null, right: varId | null }
-//   { t: 'vcmp', op: '≈' | '≉' | '<' | '≤' | '>' | '≥', left: varId | null,
-//     right: { var: varId | null } | { const: text } }
+//   { t: 'vcmp', op: '≈' | '≉' | '<' | '≤' | '>' | '≥', left: T, right: T }
+//   { t: 'dpred', op, args: [T, …] }                data predicate
+// where T is a data term (see src/logic/dataOperators.js): a hole, a
+// variable's data value { t: 'var', id }, a constant { t: 'const', text }, an
+// operator { t: 'op', op, args }, or { t: 'if', cond: R, then: T, else: T }.
+// Older rules stored vcmp as left: varId, right: { var } | { const };
+// upgradeRule turns them into terms.
 //
 // The subject's variable id is SUBJECT.
 
 import {
   mkVar, mkMeetVar, forall, exists, count, not, truth, implies, iff, and, or,
-  factAtom, typeAtom, cmp, vcmp,
+  factAtom, typeAtom, cmp, vcmp, dpred, fn, ite,
 } from './formula.js'
 import { renderFormula } from './renderFormula.js'
 import { valueAccess, withValues, valueConstant } from './values.js'
-import { VALUE_KINDS, parseLiteral } from '../utils/datatypeValues.js'
+import { sortOf, typeComparison, typePredicate, termVarIds, termConditions, FAIL } from './dataOperators.js'
 
 export const SUBJECT = 'subject'
 
@@ -58,6 +63,38 @@ export function isDerived(ot) {
 // The ORM2 mark after the name of a derived (*) or semi-derived (+) type.
 export const derivationMark = (ot) => (ot?.derivation === 'derived' ? '*' : ot?.derivation === 'semiDerived' ? '+' : '')
 
+// ── Upgrading older rules ────────────────────────────────────────────────────
+
+const upgraded = new WeakMap()
+
+// The rule with value comparisons in the older form (variable ids and
+// { var } / { const } sides) turned into terms. The same rule object always
+// gives the same result, so typing information keyed by its nodes stays valid.
+export function upgradeRule(rule) {
+  if (!rule || typeof rule !== 'object') return rule
+  if (upgraded.has(rule)) return upgraded.get(rule)
+  const side = (x) => (x && typeof x === 'object' && 't' in x ? x
+    : x && typeof x === 'object' && 'const' in x ? { t: 'const', text: String(x.const ?? '') }
+    : x && typeof x === 'object' ? (x.var != null ? { t: 'var', id: x.var } : hole())
+    : x != null ? { t: 'var', id: x } : hole())
+  const up = (n) => {
+    switch (n?.t) {
+      case 'not': return { ...n, arg: up(n.arg) }
+      case 'and': case 'or': return { ...n, args: n.args.map(up) }
+      case 'implies': case 'iff': return { ...n, left: up(n.left), right: up(n.right) }
+      case 'forall': case 'exists': case 'count': return { ...n, body: up(n.body) }
+      case 'vcmp': {
+        if (n.left && typeof n.left === 'object' && 't' in n.left && n.right && 't' in n.right) return n
+        return { t: 'vcmp', op: n.op, left: side(n.left), right: side(n.right) }
+      }
+      default: return n
+    }
+  }
+  const out = JSON.stringify(rule).includes('"vcmp"') ? up(rule) : rule
+  upgraded.set(rule, out)
+  return out
+}
+
 // ── Tree access ──────────────────────────────────────────────────────────────
 //
 // A path is a list of keys from the root, e.g. ['body', 'args', 1].
@@ -81,7 +118,23 @@ export function childPaths(n) {
     case 'and': case 'or': return n.args.map((_, i) => ['args', i])
     case 'implies': case 'iff': return [['left'], ['right']]
     case 'forall': case 'exists': case 'count': return [['body']]
+    case 'vcmp': return [['left'], ['right']]
+    case 'dpred': case 'op': return n.args.map((_, i) => ['args', i])
+    case 'if': return [['cond'], ['then'], ['else']]
     default: return []
+  }
+}
+
+// Whether the slot at a path holds a data term (rather than a formula).
+export function isTermSlot(rule, path) {
+  if (!path.length) return false
+  const last = path[path.length - 1]
+  const parentPath = path.slice(0, typeof last === 'number' ? -2 : -1)
+  const parent = getAt(rule, parentPath)
+  switch (parent?.t) {
+    case 'vcmp': case 'op': case 'dpred': return true
+    case 'if': return last !== 'cond'
+    default: return false
   }
 }
 
@@ -155,6 +208,10 @@ export function ruleVariables(rule, subjectTypeIds, ctx) {
         vars.set(n.v.id, v)
         return { t: n.t === 'count' ? 'exists' : n.t, vars: [v], body: skeleton(n.body) }
       }
+      case 'vcmp': case 'dpred': {
+        const conds = termConditions(n).map(skeleton)
+        return conds.length ? { t: 'and', args: [truth(), ...conds] } : truth()
+      }
       default: return truth()
     }
   }
@@ -168,7 +225,11 @@ export function ruleVariables(rule, subjectTypeIds, ctx) {
 
 // Issues with a rule for subtype `typeId`: [{ path, severity, message }],
 // severity 'error' (the rule is not a valid derivation rule) or 'warning'.
-export function checkRule(rule, typeId, state, ctx) {
+// With `typing`, the sorts of the data terms are recorded in typing.sorts and
+// typing.params (see typeComparison in dataOperators.js); they are keyed by
+// the nodes of upgradeRule(rule).
+export function checkRule(rule, typeId, state, ctx, typing = { sorts: new Map(), params: new Map() }) {
+  rule = upgradeRule(rule)
   const issues = []
   const supers = directSupertypes(typeId, state.subtypes)
   if (!supers.length) {
@@ -263,23 +324,18 @@ export function checkRule(rule, typeId, state, ctx) {
           err(path, `${name(a.id)} and ${name(b.id)} can never be the same object: they are in different type hierarchies`)
         return
       }
-      case 'vcmp': {
-        const a = use(path, n.left, scope, 'The left side')
-        const ka = a && valueOf(path, a)
-        let kind = ka ? VALUE_KINDS[ka.kindName] ?? null : null
-        if (n.right && 'const' in n.right) {
-          const p = parseLiteral(n.right.const, kind ?? VALUE_KINDS.string)
-          if (p.empty) err(path, 'The constant is empty')
-          else if (p.invalid) err(path, `${String(n.right.const).trim()} is not a valid ${kind.expect}`)
-        } else {
-          const b = use(path, n.right?.var, scope, 'The right side')
-          const kb = b && valueOf(path, b)
-          if (ka && kb && ka.kindName && kb.kindName && ka.kindName !== kb.kindName)
-            err(path, `The values have different datatypes (${ka.kindName} and ${kb.kindName})`)
-          kind ??= kb ? VALUE_KINDS[kb.kindName] ?? null : null
+      case 'vcmp': case 'dpred': {
+        const tc = {
+          sorts: typing.sorts, params: typing.params, err,
+          varSort(id, p) {
+            const v = use(p, id, scope, 'The variable')
+            const a = v && valueOf(p, v)
+            return a ? sortOf(a.kindName) : FAIL
+          },
+          formula: (cond, p) => walk(cond, p, scope),
         }
-        if (kind?.order === 'none' && n.op !== '≈' && n.op !== '≉')
-          err(path, `${ka?.kindName ?? 'These'} values have no order, so only ≈ and ≉ apply`)
+        if (n.t === 'vcmp') typeComparison(n, path, tc)
+        else typePredicate(n, path, tc)
         return
       }
       default:
@@ -295,8 +351,9 @@ export function checkRule(rule, typeId, state, ctx) {
 // ── Formalisation ────────────────────────────────────────────────────────────
 
 // The formula of a rule that checkRule accepts, for the given variables (from
-// ruleVariables).
-export function ruleFormula(rule, vars, ctx) {
+// ruleVariables) and the typing that checkRule recorded.
+export function ruleFormula(rule, vars, ctx, typing) {
+  rule = upgradeRule(rule)
   const v = (id) => vars.get(id)
   const value = (x) => {
     const t = (x.typeIds ?? [x.typeId]).find(id => valueAccess(id, ctx))
@@ -316,11 +373,23 @@ export function ruleFormula(rule, vars, ctx) {
       case 'fact': return factAtom(n.factId, n.args.map(v))
       case 'type': return typeAtom(n.typeId, v(n.arg))
       case 'cmp': return cmp(n.op, v(n.left), v(n.right))
-      case 'vcmp': {
-        const x = v(n.left), ax = value(x)
-        if ('const' in n.right) return withValues([{ x, access: ax }], (vx) => vcmp(n.op, vx, valueConstant(n.right.const, ax.kindName)))
-        const y = v(n.right.var)
-        return withValues([{ x, access: ax }, { x: y, access: value(y) }], (vx, vy) => vcmp(n.op, vx, vy))
+      case 'vcmp': case 'dpred': {
+        // The data values of the variables the terms use, through their
+        // reference modes where needed.
+        const ids = termVarIds(n)
+        return withValues(ids.map(id => ({ x: v(id), access: value(v(id)) })), (...vs) => {
+          const valueOf = new Map(ids.map((id, i) => [id, vs[i]]))
+          const term = (x) => {
+            switch (x.t) {
+              case 'var': return valueOf.get(x.id)
+              case 'const': return valueConstant(x.text, typing.sorts.get(x))
+              case 'op': return fn(x.op, x.args.map(term))
+              case 'if': return ite(tr(x.cond), term(x.then), term(x.else))
+              default: return null
+            }
+          }
+          return n.t === 'vcmp' ? vcmp(n.op, term(n.left), term(n.right)) : dpred(n.op, n.args.map(term))
+        })
       }
       default: return truth()
     }
@@ -347,11 +416,13 @@ export function derivationEntry(ot, state, ctx) {
   const base = { key: `${ot.id}:derivation`, elementId: ot.id,
     kind: semi ? 'Semi-derivation rule' : 'Derivation rule',
     subject: supers.length ? derivationHeading(ot, supers, ctx) : ctx.typeName(ot.id) }
-  const errors = checkRule(ot.derivationRule, ot.id, state, ctx).filter(i => i.severity === 'error')
+  const typing = { sorts: new Map(), params: new Map() }
+  const errors = checkRule(ot.derivationRule, ot.id, state, ctx, typing).filter(i => i.severity === 'error')
   if (errors.length) return { ...base, note: `No formula yet. ${errors[0].message}.` }
-  const { vars } = ruleVariables(ot.derivationRule, supers, ctx)
+  const rule = upgradeRule(ot.derivationRule)
+  const { vars } = ruleVariables(rule, supers, ctx)
   const x = vars.get(SUBJECT)
-  const phi = ruleFormula(ot.derivationRule, vars, ctx)
+  const phi = ruleFormula(rule, vars, ctx, typing)
   const s = typeAtom(ot.id, x)
   return { ...base, formula: forall([x], semi ? implies(phi, s) : iff(s, phi)) }
 }

@@ -46,6 +46,7 @@
   --formula-reading: #3d3529;  /* ink — reading fragments */
   --formula-type:    #0e7490;  /* teal — object type predicates */
   --formula-op:      #7c4dbd;  /* violet — connectives and quantifiers */
+  --formula-fn:      #2e7d32;  /* green — data operators and predicates */
   --formula-const:   #a8551a;  /* amber — value constants */
   --bg-text-panel:   #fdfcf9;  /* near-white — selectable, copyable text */
 
