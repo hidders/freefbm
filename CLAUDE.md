@@ -19,7 +19,7 @@ This is an **Electron desktop application** for editing ORM2 (Object-Role Modeli
 
 ### Process split
 
-- **Electron main** (`electron/main.cjs`) — window lifecycle, native menus, file dialogs (`.orm2` JSON files)
+- **Electron main** (`electron/main.cjs`) — window lifecycle, native menus, file dialogs (`.ffbm` JSON files; `.orm2`/`.json` still open)
 - **Preload** (`electron/preload.cjs`) — exposes `window.electronAPI` (openFile, saveFile, onMenuEvent) via context bridge
 - **Renderer** — React 18 SPA served by Vite; communicates with main only through `window.electronAPI`
 
@@ -56,7 +56,7 @@ The active `selectedTool` in the store determines how canvas clicks are interpre
 
 ### File format
 
-Files are saved as `.orm2` (JSON). The store's `exportModel()` / `importModel()` functions serialise/deserialise all four element collections.
+Files are saved as `.ffbm` (JSON; the legacy `.orm2` and `.json` extensions still open). The store's `exportModel()` / `importModel()` functions serialise/deserialise all four element collections.
 
 ### Styling
 

@@ -1,7 +1,7 @@
 import React from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { EntityTypeIcon, FactTypeIcon } from './ToolPanel'
-import SAMPLE_RAW from '../data/sample.orm2?raw'
+import SAMPLE_RAW from '../data/sample.ffbm?raw'
 
 export default function WelcomeScreen({ onClose }) {
   const store = useOrmStore()
