@@ -14,6 +14,7 @@ import { DERIVATION_MODES, directSupertypes, isDerived, checkRule } from '../log
 import { isDerivedFact, isComputedRole, checkFactRule, whyNotDerivable } from '../logic/factDerivation.js'
 import { makeContext } from '../logic/constraintFormulas.js'
 import DerivationRuleEditor from './DerivationRuleEditor'
+import { hasTextSelection } from '../utils/textPanel.js'
 
 // ── Validation error components ───────────────────────────────────────────────
 
@@ -34,10 +35,10 @@ function ValidationErrorList({ errors, store }) {
     byCategory[e.category].push(e)
   }
 
-  const selectElement = (e) => store.navigateToElement(e.elementId, e.elementKind)
+  const selectElement = (e) => { if (!hasTextSelection()) store.navigateToElement(e.elementId, e.elementKind) }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+    <div data-text-panel tabIndex={0} className="copyable" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
       {Object.entries(byCategory).map(([cat, errs]) => (
         <div key={cat}>
           <div style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.06em',
@@ -77,7 +78,7 @@ export function ValidationErrorStrip({ elementId, store }) {
   const errors = (store.validationErrors || []).filter(e => e.elementId === elementId)
   if (errors.length === 0) return null
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+    <div data-text-panel tabIndex={0} className="copyable" style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
       {errors.map(e => (
         <div key={e.id} style={{
           display: 'flex', alignItems: 'flex-start', gap: 6,
@@ -3514,7 +3515,7 @@ function ExternalConstraintInspector({ c }) {
                   {atomCount} atom{atomCount !== 1 ? 's' : ''}, {linkCount} link{linkCount !== 1 ? 's' : ''}
                   {qd.pendingClick ? ' — waiting for second click' : ''}
                 </div>
-                <div style={{ fontWeight: 600, marginBottom: 6,
+                <div data-text-panel tabIndex={0} className="copyable" style={{ fontWeight: 600, marginBottom: 6,
                   color: validation.valid ? '#a7f3d0' : '#fca5a5' }}>
                   {validation.valid ? '✓ Pattern is valid' : `✗ ${validation.reason || 'Invalid pattern'}`}
                 </div>

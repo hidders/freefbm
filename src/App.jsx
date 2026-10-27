@@ -12,6 +12,7 @@ import ValidationPanel from './components/ValidationPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useElectronMenu } from './hooks/useElectronMenu'
 import { useUndoRedo } from './hooks/useUndoRedo'
+import { textPanelOf, handleTextPanelKey } from './utils/textPanel'
 import { useOrmStore } from './store/ormStore'
 import { getDiagramElements } from './hooks/useDiagramElements'
 
@@ -21,22 +22,12 @@ function useKeyboardShortcuts() {
   useEffect(() => {
     const handler = (e) => {
       const tag = document.activeElement?.tagName
-      // Read-only text panels (e.g. Formalisation) behave like a document:
-      // Cmd/Ctrl+A selects their text, Cmd/Ctrl+C does a native copy, and
-      // single-key canvas shortcuts are suppressed while they have focus.
-      const textPanel = document.activeElement?.closest?.('[data-text-panel]')
+      // Read-only text panels (Formalisation, validation messages) behave
+      // like a document (see utils/textPanel.js), and single-key canvas
+      // shortcuts are suppressed while they have focus.
+      const textPanel = textPanelOf(document.activeElement)
       const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!textPanel
-      const mod = e.ctrlKey || e.metaKey
-      if (mod && textPanel && (e.key === 'a' || e.key === 'A')) {
-        e.preventDefault()
-        const range = document.createRange()
-        range.selectNodeContents(textPanel)
-        const sel = window.getSelection()
-        sel.removeAllRanges()
-        sel.addRange(range)
-        return
-      }
-      if (mod && textPanel && (e.key === 'c' || e.key === 'C')) return  // native copy
+      if (handleTextPanelKey(e)) return
 
       if (e.key === 'Escape') {
         if (store.roleReconnectDraft) { store.cancelRoleReconnect(); return }

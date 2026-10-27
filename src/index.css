@@ -172,6 +172,10 @@ input.cell-issue:-webkit-autofill:focus {
 /* Text that is copied with a selection but not drawn, e.g. the _{ } around
    a subscript. */
 .copy-only { font-size: 0; }
+/* Validation and population messages: selectable and copyable like a
+   text panel, but drawn as they are. Rows that navigate on click keep their
+   pointer cursor. */
+.copyable { user-select: text; cursor: text; outline: none; }
 .text-panel-section {
   font-size: 11px; font-weight: 600; color: var(--ink-2);
   margin: 14px 0 6px; padding-top: 6px; border-top: 1px solid var(--border-soft);

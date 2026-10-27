@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { VALIDATION_CATEGORIES } from '../utils/validation.js'
 import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
+import { hasTextSelection } from '../utils/textPanel.js'
 
 const FONT   = "'Segoe UI', Helvetica, Arial, sans-serif"
 const HDR_H  = 24
@@ -157,7 +158,8 @@ export default function ValidationPanel() {
     if (!byCategory[e.category]) byCategory[e.category] = []
     byCategory[e.category].push(e)
   }
-  const navigate = (e) => store.navigateToElement(e.elementId, e.elementKind)
+  // A click that ends a text selection only selects; see utils/textPanel.js.
+  const navigate = (e) => { if (!hasTextSelection()) store.navigateToElement(e.elementId, e.elementKind) }
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
@@ -250,8 +252,8 @@ export default function ValidationPanel() {
           </div>
         </div>
 
-        {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* Body — focusable so the messages can be selected and copied (see App.jsx) */}
+        <div data-text-panel tabIndex={0} className="copyable" style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
           {errorCount === 0 ? (
             <div style={{ fontSize: 11, color: 'var(--ink-muted)', textAlign: 'center', marginTop: 12 }}>
               No validation errors
