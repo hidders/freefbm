@@ -260,6 +260,11 @@ export const OPS = {
     sigs: [[['decimal', 'integer'], 'decimal'], [['float', 'integer'], 'float']],
     ev: ([a, n], [p], r) => (n < 0 || n > 15 ? undefined : num(roundHalfAway(a, n), r)),
   },
+  roundInt: {
+    label: 'round to a whole number', symbol: 'roundInt', style: 'func', group: 'Numbers',
+    sigs: [[['integer'], 'integer'], [['decimal'], 'integer'], [['float'], 'integer']],
+    ev: ([a]) => num(roundHalfAway(a), 'integer'),
+  },
   floor: {
     label: 'floor', symbol: 'floor', style: 'func', group: 'Numbers',
     sigs: [[['integer'], 'integer'], [['decimal'], 'integer'], [['float'], 'float']],
