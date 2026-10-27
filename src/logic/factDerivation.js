@@ -170,14 +170,16 @@ export function checkFactRule(fact, state, ctx, typing = { sorts: new Map(), par
       err(at, `The term gives ${ts} values, but ${name(varId)} has ${ys} values`)
   }
 
-  // Every selected variable must occur in the condition; an extra one should.
+  // A variable the condition does not mention ranges over its whole type.
+  // That is often a forgotten atom, so warn, unless a computed role's term
+  // uses the variable (e.g. every Student has total credits Sum{…}).
   if (!issues.some(i => i.severity === 'error')) {
-    for (const v of parts.selected) if (!inBody.used.has(v.id))
-      err(['body'], `${name(v.id)} does not occur in the condition, so it would range over every ${ctx.typeName(v.typeIds[0])}`)
-    parts.extra.forEach((v, i) => {
-      if (!inBody.used.has(v.id))
-        warn(['extraVars', i], `${name(v.id)} does not occur in the condition, so it ranges over every ${ctx.typeName(v.typeIds[0])}`)
-    })
+    const inTerms = new Set()
+    for (const { eq } of parts.eqs) varRefs(eq.right, inTerms)
+    const unmentioned = (v) => !inBody.used.has(v.id) && !inTerms.has(v.id)
+    const message = (v) => `${name(v.id)} does not occur in the condition or a term, so it ranges over every ${ctx.typeName(v.typeIds[0])}`
+    for (const v of parts.selected) if (unmentioned(v)) warn(['body'], message(v))
+    parts.extra.forEach((v, i) => { if (unmentioned(v)) warn(['extraVars', i], message(v)) })
   }
   return issues
 }
@@ -212,9 +214,12 @@ export function factRuleFormulas(fact, state, ctx, rule = fact.derivationRule) {
       ? { f1: forall([...x, ...z], implies(phi, p)) }
       : { iff: forall(x, iff(p, exists(z, phi))) }
   }
+  // A condition ⊤ (every combination of the selected roles) is left out.
+  const top = phi.t === 'true'
+  const derived = exists(y, and(p, ...eqs))
   return {
-    f1: forall([...x, ...z], implies(phi, exists(y, and(p, ...eqs)))),
-    f2: semi ? null : forall([...x, ...y], implies(p, exists(z, and(phi, ...eqs)))),
+    f1: forall([...x, ...z], top ? derived : implies(phi, derived)),
+    f2: semi ? null : forall([...x, ...y], implies(p, exists(z, top ? and(...eqs) : and(phi, ...eqs)))),
   }
 }
 
