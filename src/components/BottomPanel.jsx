@@ -373,7 +373,7 @@ function RingConstraintPopulation({ con }) {
       )}
 
       {populationIssues.length > 0 && (
-        <div style={{ marginTop: 12 }}>
+        <div data-text-panel tabIndex={0} className="copyable" style={{ marginTop: 12 }}>
           <div style={{ fontSize: 11, color: '#b91c1c', marginBottom: 4 }}>Violations ({populationIssues.length}):</div>
           {populationIssues.map((issue, i) => (
             <div key={i} style={{ fontSize: 11, color: '#b91c1c', marginBottom: 2, lineHeight: 1.3 }}>
@@ -474,7 +474,7 @@ function ExternalUniquenessPopulation({ con }) {
       )}
 
       {populationIssues.length > 0 && (
-        <div style={{ marginTop: 12 }}>
+        <div data-text-panel tabIndex={0} className="copyable" style={{ marginTop: 12 }}>
           <div style={{ fontSize: 11, color: '#b91c1c', marginBottom: 4 }}>Schema violations ({populationIssues.length}):</div>
           {populationIssues.map((issue, i) => (
             <div key={i} style={{ fontSize: 11, color: '#b91c1c', marginBottom: 2, lineHeight: 1.3 }}>
@@ -583,7 +583,7 @@ function ExternalFrequencyPopulation({ con }) {
       )}
 
       {populationIssues.length > 0 && (
-        <div style={{ marginTop: 12 }}>
+        <div data-text-panel tabIndex={0} className="copyable" style={{ marginTop: 12 }}>
           <div style={{ fontSize: 11, color: '#b91c1c', marginBottom: 4 }}>Schema violations ({populationIssues.length}):</div>
           {populationIssues.map((issue, i) => (
             <div key={i} style={{ fontSize: 11, color: '#b91c1c', marginBottom: 2, lineHeight: 1.3 }}>
@@ -1234,7 +1234,7 @@ function ExternalBinaryConstraintPopulation({ con }) {
       )}
 
       {populationIssues.length > 0 && (
-        <div style={{ marginTop: 12 }}>
+        <div data-text-panel tabIndex={0} className="copyable" style={{ marginTop: 12 }}>
           <div style={{ fontSize: 11, color: '#b91c1c', marginBottom: 4 }}>Schema violations ({populationIssues.length}):</div>
           {populationIssues.map((issue, i) => (
             <div key={i} style={{ fontSize: 11, color: '#b91c1c', marginBottom: 2, lineHeight: 1.3 }}>
@@ -1268,7 +1268,7 @@ function ValueComparisonPopulation({ con }) {
         <Header>Value Comparison <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
         <EmptyState>Validation is supported when the query of the role sequence defines a binary relation. Define a query above to enable population checking.</EmptyState>
         {populationIssues.length > 0 && (
-          <div style={{ marginTop: 12 }}>
+          <div data-text-panel tabIndex={0} className="copyable" style={{ marginTop: 12 }}>
             <div style={{ fontSize: 11, color: '#b91c1c', marginBottom: 4 }}>Violations ({populationIssues.length}):</div>
             {populationIssues.map((issue, i) => (
               <div key={i} style={{ fontSize: 11, color: '#b91c1c', marginBottom: 2, lineHeight: 1.3 }}>• {issue.message}</div>
@@ -1747,7 +1747,7 @@ function ObjectTypePopulation({ ot }) {
         )
         if (!indepViolations.length) return null
         return (
-          <div style={{ marginTop: 12 }}>
+          <div data-text-panel tabIndex={0} className="copyable" style={{ marginTop: 12 }}>
             <div style={{ fontSize: 11, color: '#b91c1c', marginBottom: 4 }}>Constraint violations ({indepViolations.length}):</div>
             {indepViolations.map((issue, i) => (
               <div key={i} style={{ fontSize: 11, color: '#b91c1c', marginBottom: 2, lineHeight: 1.3 }}>
@@ -1789,7 +1789,7 @@ function DerivedSubtypePopulation({ ot, semi = false }) {
           : 'Computed from the populations by the derivation rule, so it cannot be edited here.'}
       </div>
       {result.error ? (
-        <div style={{ maxWidth: 480, fontSize: 11, color: '#b91c1c' }}>
+        <div data-text-panel tabIndex={0} className="copyable" style={{ maxWidth: 480, fontSize: 11, color: '#b91c1c' }}>
           The population cannot be computed: {result.error}{' '}
           <button onClick={pick} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
             color: 'var(--accent)', fontSize: 11 }}>Edit the rule in the Inspector</button>
@@ -1852,7 +1852,7 @@ function DerivedFactPopulation({ fact, semi = false }) {
         {computed.size > 0 && ' Values in italics are computed; those with a dashed border are new to their type.'}
       </div>
       {result.error ? (
-        <div style={{ maxWidth: 480, fontSize: 11, color: '#b91c1c' }}>
+        <div data-text-panel tabIndex={0} className="copyable" style={{ maxWidth: 480, fontSize: 11, color: '#b91c1c' }}>
           The population cannot be computed: {result.error}{' '}
           <button onClick={pick} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
             color: 'var(--accent)', fontSize: 11 }}>Edit the rule in the Inspector</button>
@@ -1884,7 +1884,7 @@ function DerivedFactPopulation({ fact, semi = false }) {
             <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic', marginTop: 4 }}>The rule derives no facts.</div>
           )}
           {result.failures.length > 0 && (
-            <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 6 }}>
+            <div data-text-panel tabIndex={0} className="copyable" style={{ fontSize: 11, color: '#b91c1c', marginTop: 6 }}>
               {result.failures.map((f, i) => (
                 <div key={i}>For {f.cells.map(formatCell).join(', ')} the condition holds, but {f.message}.</div>
               ))}
@@ -1892,7 +1892,7 @@ function DerivedFactPopulation({ fact, semi = false }) {
           )}
           {/* Constraints the derived facts violate (the editable table shows them for a semi-derived one). */}
           {!semi && violations.length > 0 && (
-            <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 6 }}>
+            <div data-text-panel tabIndex={0} className="copyable" style={{ fontSize: 11, color: '#b91c1c', marginTop: 6 }}>
               <div style={{ marginBottom: 2 }}>Constraint violations ({violations.length}):</div>
               {violations.map((v, i) => <div key={i}>• {v.message}</div>)}
             </div>
@@ -2990,7 +2990,7 @@ function FactTypePopulation({ fact }) {
         })}
       </div>
       {constraintViolations.length > 0 && (
-        <div style={{ marginTop: 12 }}>
+        <div data-text-panel tabIndex={0} className="copyable" style={{ marginTop: 12 }}>
           <div style={{ fontSize: 11, color: '#b91c1c', marginBottom: 4 }}>Constraint violations ({constraintViolations.length}):</div>
           {constraintViolations.map((issue, i) => (
             <div key={i} style={{ fontSize: 11, color: '#b91c1c', marginBottom: 2, lineHeight: 1.3 }}>

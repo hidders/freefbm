@@ -14,6 +14,7 @@ import { OPS, PREDS, AGGS, arity } from '../logic/dataOperators.js'
 import { valueAccess } from '../logic/values.js'
 import { QGAP } from '../logic/renderFormula.js'
 import { TOKEN_STYLE, Formula } from './FormalisationTab.jsx'
+import { handleTextPanelKey, hasTextSelection } from '../utils/textPanel.js'
 
 // ── Derivation rule editor ──────────────────────────────────────────────────
 // A syntax-directed editor for the derivation rule of a derived or
@@ -95,6 +96,7 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
     // Keep the canvas shortcuts (delete, tools, arrows) out of the dialog.
     e.stopPropagation()
     if (e.key === 'Escape') { e.preventDefault(); onClose(); return }
+    if (handleTextPanelKey(e)) return
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)
     if (!typing && (e.key === 'Delete' || e.key === 'Backspace')) {
       e.preventDefault()
@@ -384,11 +386,12 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
                 supers={forFact ? roots.map(r => r.typeIds[0]) : supers}
                 graph={graph} replace={replace} />}
 
-          <div style={{ marginTop: 12 }}>
+          {/* Focusable so the messages can be selected and copied */}
+          <div data-text-panel tabIndex={0} className="copyable" style={{ marginTop: 12 }}>
             {issues.length === 0
               ? <div style={{ fontSize: 12, color: 'var(--col-candidate)' }}>✓ This is a valid derivation rule.</div>
               : issues.map((i, k) => (
-                <div key={k} onClick={() => setSel(i.path)} style={{
+                <div key={k} onClick={() => { if (!hasTextSelection()) setSel(i.path) }} style={{
                   display: 'flex', gap: 6, fontSize: 12, cursor: 'pointer', marginBottom: 2,
                   color: i.severity === 'error' ? 'var(--danger)' : '#b45309',
                 }}>
