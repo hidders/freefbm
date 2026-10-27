@@ -669,31 +669,6 @@ function TermPalette({ node, path, scope, draft, ctx, nameOf, types, replace }) 
   const last = path[path.length - 1]
   const parentPath = path.slice(0, typeof last === 'number' ? -2 : -1)
   const parent = getAt(draft, parentPath)
-  // The fact type menu: by default only the relevant fact types (and the one
-  // already chosen); with "show all" the others follow in their own group.
-  // With no variables in scope at all, every fact type is listed.
-  const filtering = scope.length > 0
-  const factOptions = (current) => {
-    const opt = (f) => <option key={f.id} value={f.id}>{f.label}</option>
-    if (!filtering) return facts.map(opt)
-    const near = facts.filter(f => relevant.has(f.id) || f.id === current)
-    const rest = facts.filter(f => !relevant.has(f.id) && f.id !== current)
-    if (!showAll || rest.length === 0) return near.map(opt)
-    return <>
-      <optgroup label="Using a variable in scope">{near.map(opt)}</optgroup>
-      <optgroup label="Other fact types">{rest.map(opt)}</optgroup>
-    </>
-  }
-  const hidden = filtering ? facts.filter(f => !relevant.has(f.id)).length : 0
-  const showAllToggle = hidden > 0 && (
-    <label title="Also list the fact types that no variable in scope can fill a role of"
-      style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--ink-muted)', cursor: 'pointer' }}>
-      <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)}
-        style={{ width: 'auto', padding: 0, border: 'none', margin: 0 }} />
-      show all{showAll ? '' : ` (${hidden} more)`}
-    </label>
-  )
-
   const rows = []
   if (!node || node.t === 'hole') {
     rows.push(['Value of', (
