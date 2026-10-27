@@ -3,10 +3,14 @@
 //
 // The rule of a derived or semi-derived type or fact type depends on
 //   - every fact type its atoms use, and every type its type atoms use;
-//   - every type its variables range over: quantified variables, and the
-//     free variables of a fact type's rule and the variables of aggregates
-//     that no positive fact atom of the condition binds (or that it binds
-//     through a role of another type);
+//   - every type its variables range over: the variables of quantifiers,
+//     aggregates and a fact type's rule (its free variables) that no positive
+//     fact atom binds through a role of their own type. An atom binds a
+//     variable when it is a conjunct of the formula that restricts it, looking
+//     through nested existentials: the body of ∃ or ∃^{≥n}, the antecedent of
+//     ∀'s implication, an aggregate's condition, the rule's body. A variable
+//     so bound only takes values from that fact type, so the formula does not
+//     depend on the rest of its type's population;
 //   - the supertypes of a derived subtype, whose instances are its candidates.
 // Depending on a type means depending on its rule when it is derived, and on
 // every derived fact type that computes objects of it (or of a subtype of it,
@@ -19,12 +23,20 @@ import { valueAccess } from './values.js'
 
 const QUANT = new Set(['forall', 'exists', 'count'])
 
+// The conjuncts of a formula, looking through nested conjunctions and
+// existentials.
+function conjuncts(n, out = []) {
+  if (n?.t === 'and') n.args.forEach(a => conjuncts(a, out))
+  else if (n?.t === 'exists') conjuncts(n.body, out)
+  else if (n) out.push(n)
+  return out
+}
+
 // The ids of the variables vs ([{ id, typeIds }]) that a positive fact atom
 // of the condition binds through a role of their own type.
 function boundByAtoms(cond, vs, ctx) {
   const bound = new Set()
-  const conjuncts = cond?.t === 'and' ? cond.args : [cond]
-  for (const c of conjuncts) {
+  for (const c of conjuncts(cond)) {
     if (c?.t !== 'fact') continue
     const fact = atomFact(ctx, c.factId)
     ;(c.args ?? []).forEach((id, i) => {
@@ -40,7 +52,13 @@ function uses(n, ctx, out = { facts: new Set(), types: new Set() }) {
   if (!n || typeof n !== 'object') return out
   if (n.t === 'fact' && n.factId) out.facts.add(n.factId)
   if (n.t === 'type' && n.typeId) out.types.add(n.typeId)
-  if (QUANT.has(n.t) && n.v?.typeId) out.types.add(n.v.typeId)
+  if (QUANT.has(n.t) && n.v?.typeId) {
+    // The formula restricting the variable: ∀x (φ → ψ) ranges over φ, while
+    // ∃^{≤n} and ∃^{=n} also count the instances outside the body.
+    const guard = n.t === 'forall' ? (n.body?.t === 'implies' ? n.body.left : null)
+      : n.t === 'exists' || (n.op === '≥' && n.n >= 1) ? n.body : null
+    if (!boundByAtoms(guard, [{ id: n.v.id, typeIds: [n.v.typeId] }], ctx).has(n.v.id)) out.types.add(n.v.typeId)
+  }
   if (n.t === 'agg') {
     const vs = (n.vars ?? []).map(v => ({ id: v.id, typeIds: [v.typeId] }))
     const bound = boundByAtoms(n.cond, vs, ctx)
