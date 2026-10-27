@@ -49,6 +49,9 @@
   --formula-fn:      #2e7d32;  /* green — data operators and predicates */
   --formula-const:   #a8551a;  /* amber — value constants */
   --bg-text-panel:   #fdfcf9;  /* near-white — selectable, copyable text */
+  --formula-sel:     #475569;  /* slate — selected part in the rule editor */
+  --formula-sel-bg:  rgba(71,85,105,0.13);
+  --formula-hole:    #6b5f4e;  /* ink — unfilled □ (validation flags it) */
 
   --accent:       #b45309;
   --accent-light: #d97706;
