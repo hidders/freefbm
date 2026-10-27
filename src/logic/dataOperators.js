@@ -498,9 +498,12 @@ function typeTerm(n, path, tc, expected) {
 function typeAgg(n, path, tc) {
   const def = AGGS[n.fn]
   if (!def) { tc.err(path, `Unknown aggregation function ${n.fn}`); return FAIL }
-  if (!n.vars?.length) { tc.err(path, `${def.symbol} needs at least one variable`); return FAIL }
-  const inner = tc.bind(n.vars, path)
+  const inner = tc.bind(n.vars ?? [], path)
   inner.formula(n.cond, [...path, 'cond'])
+  if (!n.vars?.length) {
+    tc.err(path, `${def.symbol} needs at least one variable: choose + new in a variable slot of its condition`)
+    return FAIL
+  }
   if (n.fn === 'count') { tc.sorts.set(n, 'integer'); return 'integer' }
   let s = typeTerm(n.term, [...path, 'term'], inner)
   if (s === FAIL) return FAIL

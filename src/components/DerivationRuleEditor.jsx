@@ -118,11 +118,32 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
     return out
   }
 
+  // The path of the innermost aggregate whose condition contains path, or null.
+  const aggAbove = (path) => {
+    let found = null, n = draft
+    path.forEach((k, i) => {
+      if (n?.t === 'agg' && k === 'cond') found = path.slice(0, i)
+      n = n?.[k]
+    })
+    return found
+  }
+
   // ── Formula view ──
-  const varPicker = (path, value, scope, placeId, onChange, valuesOnly = false) => (
-    <VarSelect value={value} scope={scope} nameOf={nameOf} graph={graph} placeId={placeId}
-      ctx={ctx} onChange={onChange} onFocus={() => setSel(path)} valuesOnly={valuesOnly} />
-  )
+  // A variable slot. In the condition of an aggregate, newOf(id) builds the
+  // atom with a new variable of the aggregate in the slot, offered as
+  // "+ new T" for the slot's type T.
+  const varPicker = (path, value, scope, placeId, onChange, valuesOnly = false, newOf = null) => {
+    const aggPath = newOf && placeId ? aggAbove(path) : null
+    const onNew = aggPath && (() => {
+      const v = { id: newVarId(), typeId: placeId }
+      setDraft(d => setAt(setAt(d, [...aggPath, 'vars'], [...(getAt(d, [...aggPath, 'vars']) ?? []), v]), path, newOf(v.id)))
+      setSel(path)
+    })
+    return (
+      <VarSelect value={value} scope={scope} nameOf={nameOf} graph={graph} placeId={placeId}
+        ctx={ctx} onChange={onChange} onFocus={() => setSel(path)} valuesOnly={valuesOnly} onNew={onNew} />
+    )
+  }
 
   const render = (n, path, scope) => {
     const selected = samePath(path, sel)
@@ -187,8 +208,9 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
         const words = []
         fact?.roles.forEach((r, i) => {
           if (parts[i]?.trim()) words.push(<span key={`p${i}`} style={TOKEN_STYLE.reading}>{parts[i].trim()}</span>)
+          const withArg = (id) => ({ ...n, args: n.args.map((a, j) => (j === i ? id : a)) })
           words.push(<React.Fragment key={`v${i}`}>{varPicker(path, n.args[i], scope, r.objectTypeId,
-            (id) => replace(path, { ...n, args: n.args.map((a, j) => (j === i ? id : a)) }))}</React.Fragment>)
+            (id) => replace(path, withArg(id)), false, withArg)}</React.Fragment>)
         })
         const last = fact?.roles.length ?? 0
         if (parts[last]?.trim()) words.push(<span key="end" style={TOKEN_STYLE.reading}>{parts[last].trim()}</span>)
@@ -198,7 +220,7 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
       case 'type':
         body = <>
           <span style={TOKEN_STYLE.type}>{ctx.typeName(n.typeId)}</span>{'('}
-          {varPicker(path, n.arg, scope, null, (id) => replace(path, { ...n, arg: id }))}{')'}
+          {varPicker(path, n.arg, scope, n.typeId, (id) => replace(path, { ...n, arg: id }), false, (id) => ({ ...n, arg: id }))}{')'}
         </>
         break
       case 'cmp':
@@ -655,7 +677,6 @@ function OpMenu({ value = '', placeholder, first, onPick }) {
 
 function TermPalette({ node, path, scope, draft, ctx, nameOf, types, replace }) {
   const [aggFn, setAggFn] = useState('sum')
-  const [aggType, setAggType] = useState(() => types[0]?.id ?? '')
   const [newAggVarType, setNewAggVarType] = useState(() => types[0]?.id ?? '')
   const holes = (n) => Array.from({ length: n }, hole)
   const typeSelect = (value, onChange) => (
@@ -691,14 +712,12 @@ function TermPalette({ node, path, scope, draft, ctx, nameOf, types, replace }) 
       onClick={() => replace(path, { t: 'if', cond: hole(), then: hole(), else: hole() }, [...path, 'cond'])}>(if □ then □ else □)</button>])
     rows.push(['Aggregate', <>
       {fnSelect(aggFn, setAggFn)}
-      <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>over</span>
-      {typeSelect(aggType, setAggType)}
-      <button style={btn()} disabled={!aggType} title="A value computed from every binding of the variables for which the condition holds"
+      <button style={btn()}
+        title="A value computed from every binding of its variables for which the condition holds. Its variables are made in the condition: choose + new in a slot"
         onClick={() => {
-          const v = { id: newVarId(), typeId: aggType }
           const count = aggFn === 'count'
-          replace(path, { t: 'agg', fn: aggFn, distinct: false, vars: [v], cond: hole(), ...(count ? {} : { term: hole() }) },
-            [...path, count ? 'cond' : 'term'])
+          replace(path, { t: 'agg', fn: aggFn, distinct: false, vars: [], cond: hole(), ...(count ? {} : { term: hole() }) },
+            [...path, 'cond'])
         }}>
         {AGGS[aggFn].symbol}{aggFn === 'count' ? '{… : □}' : '{□ | … : □}'}
       </button>
@@ -785,14 +804,17 @@ const liftLabel = (n) => ({
 
 // ── Inline pickers ──────────────────────────────────────────────────────────
 
+const NEW_VAR = '\u0000new'
+
 // A variable slot: the variables in scope, those from another type hierarchy
 // disabled, and those that fit only partly marked.
-function VarSelect({ value, scope, nameOf, graph, placeId, ctx, onChange, onFocus, valuesOnly }) {
+function VarSelect({ value, scope, nameOf, graph, placeId, ctx, onChange, onFocus, valuesOnly, onNew }) {
   const fits = (v) => (valuesOnly ? (v.typeIds.some(t => valueAccess(t, ctx)) ? 'ok' : 'novalue')
     : placeId ? graph.fit(v.typeIds, placeId) : 'ok')
   const known = scope.some(v => v.id === value)
   return (
-    <select value={known ? value : ''} onChange={e => onChange(e.target.value || null)} onFocus={onFocus}
+    <select value={known ? value : ''} onFocus={onFocus}
+      onChange={e => (e.target.value === NEW_VAR ? onNew() : onChange(e.target.value || null))}
       onClick={e => e.stopPropagation()}
       title={placeId ? `A ${ctx.typeName(placeId)}` : 'A variable'}
       style={{
@@ -808,6 +830,7 @@ function VarSelect({ value, scope, nameOf, graph, placeId, ctx, onChange, onFocu
           {nameOf.get(v.id)}{f === 'none' ? ' (other hierarchy)' : f === 'novalue' ? ' (no value)' : ''}
         </option>
       })}
+      {onNew && <option value={NEW_VAR}>+ new {ctx.typeName(placeId)}</option>}
     </select>
   )
 }
