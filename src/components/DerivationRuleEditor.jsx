@@ -430,8 +430,16 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
   const types = useMemo(() => allTypeOptions(state), [state])
   // The fact types, and the implied links of the nested ones.
   const facts = useMemo(() => [...(state.facts ?? []), ...ctx.linkById.values()]
-    .map(f => ({ id: f.id, label: readingText(f, ctx) || 'Unnamed fact type' }))
+    .map(f => ({ id: f.id, roles: f.roles, label: readingText(f, ctx) || 'Unnamed fact type' }))
     .sort((a, b) => a.label.localeCompare(b.label)), [state.facts, ctx])
+  // A fact type is relevant here when a variable in scope can fill one of its
+  // roles: its type is the player, a subtype of it or a supertype of it.
+  const relevant = useMemo(() => {
+    const canFill = (v, placeId) => !placeId || graph.fit(v.typeIds, placeId) === 'ok'
+      || v.typeIds.every(t => graph.up(placeId).has(t))
+    return new Set(facts.filter(f => f.roles.some(r => scope.some(v => canFill(v, r.objectTypeId)))).map(f => f.id))
+  }, [facts, scope, graph])
+  const [showAll, setShowAll] = useState(false)
   const [qType, setQType] = useState(() => supers[0] ?? types[0]?.id ?? '')
   const [qN, setQN] = useState(1)
 
@@ -462,6 +470,31 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
     </>
   )
 
+  // The fact type menu: by default only the relevant fact types (and the one
+  // already chosen); with "show all" the others follow in their own group.
+  // With no variables in scope at all, every fact type is listed.
+  const filtering = scope.length > 0
+  const factOptions = (current) => {
+    const opt = (f) => <option key={f.id} value={f.id}>{f.label}</option>
+    if (!filtering) return facts.map(opt)
+    const near = facts.filter(f => relevant.has(f.id) || f.id === current)
+    const rest = facts.filter(f => !relevant.has(f.id) && f.id !== current)
+    if (!showAll || rest.length === 0) return near.map(opt)
+    return <>
+      <optgroup label="Using a variable in scope">{near.map(opt)}</optgroup>
+      <optgroup label="Other fact types">{rest.map(opt)}</optgroup>
+    </>
+  }
+  const hidden = filtering ? facts.filter(f => !relevant.has(f.id)).length : 0
+  const showAllToggle = hidden > 0 && (
+    <label title="Also list the fact types that no variable in scope can fill a role of"
+      style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--ink-muted)', cursor: 'pointer' }}>
+      <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)}
+        style={{ width: 'auto', padding: 0, border: 'none', margin: 0 }} />
+      show all{showAll ? '' : ` (${hidden} more)`}
+    </label>
+  )
+
   const rows = []
   if (!node || node.t === 'hole') {
     rows.push(['Connective', <>
@@ -474,13 +507,16 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
     </>])
     rows.push(['Quantifier', quantButtons((q) => replace(path, q, [...path, 'body']))])
     rows.push(['Fact type', (
-      <select value="" style={{ ...selectStyle, maxWidth: 420 }} onChange={e => {
-        const f = atomFact(ctx, e.target.value)
-        if (f) replace(path, { t: 'fact', factId: f.id, args: f.roles.map(r => fitting(r.objectTypeId)) })
-      }}>
-        <option value="">Choose a fact type…</option>
-        {facts.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
-      </select>
+      <>
+        <select value="" style={{ ...selectStyle, maxWidth: 420 }} onChange={e => {
+          const f = atomFact(ctx, e.target.value)
+          if (f) replace(path, { t: 'fact', factId: f.id, args: f.roles.map(r => fitting(r.objectTypeId)) })
+        }}>
+          <option value="">Choose a fact type…</option>
+          {factOptions()}
+        </select>
+        {showAllToggle}
+      </>
     )])
     rows.push(['Other atoms', <>
       <select value="" style={selectStyle} onChange={e => {
@@ -542,14 +578,15 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
       </>])
     }
     if (node.t === 'fact') {
-      rows.push(['Fact type', (
+      rows.push(['Fact type', (<>
         <select value={node.factId} style={{ ...selectStyle, maxWidth: 420 }} onChange={e => {
           const f = atomFact(ctx, e.target.value)
           if (f) replace(path, { t: 'fact', factId: f.id, args: f.roles.map(r => fitting(r.objectTypeId)) })
         }}>
-          {facts.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+          {factOptions(node.factId)}
         </select>
-      )])
+        {showAllToggle}
+      </>)])
     }
     if (node.t === 'type') rows.push(['Type', typeSelect(node.typeId, (typeId) => replace(path, { ...node, typeId }))])
     if (node.t === 'vcmp') {
