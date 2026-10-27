@@ -127,8 +127,8 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
     const sev = severityAt.get(keyOf(path))
     const wrapStyle = {
       borderRadius: 3, cursor: 'pointer', padding: '0 1px',
-      background: selected ? 'var(--selection)' : undefined,
-      outline: selected ? '1px solid var(--accent)' : undefined,
+      background: selected ? 'var(--formula-sel-bg)' : undefined,
+      outline: selected ? '1px solid var(--formula-sel)' : undefined,
       textDecoration: sev && n.t !== 'hole' ? `underline wavy ${sev === 'error' ? 'var(--danger)' : '#d97706'}` : undefined,
       textUnderlineOffset: 3,
     }
@@ -142,7 +142,7 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
     let body
     switch (n?.t) {
       case 'hole': case undefined:
-        body = <span style={{ color: 'var(--danger)', fontWeight: 600 }} title="Not filled in yet">□</span>
+        body = <span style={{ color: 'var(--formula-hole)', fontWeight: 600 }} title="Not filled in yet">□</span>
         break
       case 'true':
         body = <span style={TOKEN_STYLE.op}>⊤</span>
@@ -759,7 +759,7 @@ function VarSelect({ value, scope, nameOf, graph, placeId, ctx, onChange, onFocu
         ...TOKEN_STYLE.var, font: 'inherit', fontWeight: 600, appearance: 'none', WebkitAppearance: 'none',
         background: 'transparent', border: 'none', borderBottom: '1px dashed var(--formula-var)',
         padding: '0 1px', cursor: 'pointer', width: 'auto', fieldSizing: 'content',
-        color: known ? 'var(--formula-var)' : 'var(--danger)',
+        color: known ? 'var(--formula-var)' : 'var(--formula-hole)',
       }}>
       <option value="">□</option>
       {scope.map(v => {
