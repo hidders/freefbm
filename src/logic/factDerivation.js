@@ -16,7 +16,9 @@
 //   F1  ∀x, z (φ → ∃y (p(x, y) ∧ ⋀ yᵢ ≈ tᵢ))
 //   F2  ∀x, y (p(x, y) → ∃z (φ ∧ ⋀ yᵢ ≈ tᵢ))
 // A derived fact type has both, a semi-derived one only F1. Without computed
-// roles, F1 and F2 together are shown as ∀x (p(x) ↔ ∃z φ).
+// roles, F1 and F2 together are shown as ∀x (p(x) ↔ ∃z φ). A derived fact
+// type without extra variables shows F1 as ∀x (φ → ∃y p(x, y)): F2 then
+// gives yᵢ ≈ tᵢ(x) for every fact, so the equations add nothing to F1.
 
 import { forall, exists, implies, iff, and, factAtom } from './formula.js'
 import { hole, upgradeRule, checkFormula, formulaVariables, ruleFormula, childPaths, isDerived } from './derivationRule.js'
@@ -216,7 +218,7 @@ export function factRuleFormulas(fact, state, ctx, rule = fact.derivationRule) {
   }
   // A condition ⊤ (every combination of the selected roles) is left out.
   const top = phi.t === 'true'
-  const derived = exists(y, and(p, ...eqs))
+  const derived = exists(y, !semi && !z.length ? p : and(p, ...eqs))
   return {
     f1: forall([...x, ...z], top ? derived : implies(phi, derived)),
     f2: semi ? null : forall([...x, ...y], implies(p, exists(z, top ? and(...eqs) : and(phi, ...eqs)))),
