@@ -36,14 +36,14 @@ export function useElectronMenu() {
     on('menu:save', async () => {
       const store = storeRef.current
       const content = store.serialize()
-      const fp = await api.saveFile({ defaultPath: store.filePath || 'model.orm2', content })
+      const fp = await api.saveFile({ defaultPath: store.filePath || 'model.ffbm', content })
       if (fp) { store.setFilePath(fp); store.markClean() }
     })
 
     on('menu:saveAs', async () => {
       const store = storeRef.current
       const content = store.serialize()
-      const fp = await api.saveFile({ defaultPath: 'model.orm2', content })
+      const fp = await api.saveFile({ defaultPath: 'model.ffbm', content })
       if (fp) { store.setFilePath(fp); store.markClean() }
     })
 

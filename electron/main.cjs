@@ -100,7 +100,8 @@ ipcMain.handle('dialog:exportPdf', async (event, htmlContent) => {
 
 ipcMain.handle('dialog:openFile', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
-    filters: [{ name: 'ORM2 Model', extensions: ['orm2', 'json'] }],
+    // .orm2 and .json are the legacy extensions; they still open
+    filters: [{ name: 'FreeFBM Model', extensions: ['ffbm', 'orm2', 'json'] }],
     properties: ['openFile'],
   })
   if (canceled || !filePaths.length) return null
@@ -109,8 +110,9 @@ ipcMain.handle('dialog:openFile', async () => {
 
 ipcMain.handle('dialog:saveFile', async (_, { defaultPath, content }) => {
   const { canceled, filePath } = await dialog.showSaveDialog({
-    defaultPath: defaultPath || 'model.orm2',
-    filters: [{ name: 'ORM2 Model', extensions: ['orm2', 'json'] }],
+    // Offer .ffbm even when the model was opened from a legacy .orm2/.json file
+    defaultPath: (defaultPath || 'model.ffbm').replace(/\.(orm2|json)$/i, '.ffbm'),
+    filters: [{ name: 'FreeFBM Model', extensions: ['ffbm'] }],
   })
   if (canceled || !filePath) return null
   fs.writeFileSync(filePath, content, 'utf-8')

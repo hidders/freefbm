@@ -55,7 +55,7 @@ export default function Toolbar() {
     try {
       const s = store()
       const content = s.serialize()
-      const fp = await window.electronAPI.saveFile({ defaultPath: s.filePath || 'model.orm2', content })
+      const fp = await window.electronAPI.saveFile({ defaultPath: s.filePath || 'model.ffbm', content })
       if (fp) { store().setFilePath(fp); store().markClean() }
     } catch (err) {
       alert(`Save failed: ${err.message}`)
