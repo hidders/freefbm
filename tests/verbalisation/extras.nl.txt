@@ -36,11 +36,11 @@ Er zijn hoogstens 100 Vakken.
 
 # Cardinality (role 2) · Student enrols in Course
 ∃^{≤50} Course ∃ Student (Student enrols in Course)
-Er zijn hoogstens 50 Vakken die die een Student volgt.
+Er zijn hoogstens 50 Vakken die een Student volgt.
 
 # Cardinality (role 1) · Staff coordinates Course
 ∃^{≥5} Staff ∃ Course (Staff coordinates Course)
-Er zijn minstens 5 Medewerkers die die een Vak coördineren.
+Er zijn minstens 5 Medewerkers die een Vak coördineren.
 
 # Derivation rule · Student studies with Staff
 ∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))

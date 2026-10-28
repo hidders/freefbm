@@ -42,7 +42,7 @@
 //
 // Calls go to the built-ins below, then to the language's library, whose
 // functions take the phrase helpers h first: lib.f(h, a, b, { key: value }).
-// Built-ins: name(v), typeName(T), ref(v), clause(F), sentence(F),
+// Built-ins: name(v), typeName(T), ref(v, case: c), clause(F), sentence(F),
 // vp(F, v, key: value), term(t), reading(A, subject: v), kw(text),
 // punct(text), len(list), any(list, pred), all(list, pred).
 //
@@ -321,7 +321,7 @@ const PUNCT = { comma: ',', colon: ':', semicolon: ';' }
 const BUILTINS = {
   name: (h, [v]) => tok(h.name(v), 'type'),
   typeName: (h, [T]) => tok(h.ctx.typeName(T), 'type'),
-  ref: (h, [v]) => h.ref(v),
+  ref: (h, [v], named) => h.ref(v, named.case),
   clause: (h, [f], named) => h.clause(f, named),
   sentence: (h, [f]) => h.sentence(f),
   vp: (h, [f, v], named) => h.vp(f, v, named),

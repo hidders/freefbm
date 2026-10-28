@@ -2,7 +2,8 @@
 // sample model (the whole schema plus the implicit constraints) and compares
 // the result with tests/verbalisation/sample.en.txt; then does the same for
 // the constructs tests/verbalisation/extras.mjs adds to the sample, against
-// tests/verbalisation/extras.en.txt; and both again in Dutch (*.nl.txt).
+// tests/verbalisation/extras.en.txt; and both again in the other languages
+// (*.nl.txt, *.fr.txt, …).
 //
 //   node scripts/verbalisation-golden.mjs            check, exit 1 on a difference
 //   node scripts/verbalisation-golden.mjs --update   rewrite the expected files
@@ -15,6 +16,10 @@ import { formulaToString } from '../src/logic/renderFormula.js'
 import { verbalise } from '../src/verbalisation/engine.js'
 import { englishLibrary } from '../src/verbalisation/languages/english.js'
 import { dutchLibrary } from '../src/verbalisation/languages/dutch.js'
+import { frenchLibrary } from '../src/verbalisation/languages/french.js'
+import { italianLibrary } from '../src/verbalisation/languages/italian.js'
+import { spanishLibrary } from '../src/verbalisation/languages/spanish.js'
+import { polishLibrary } from '../src/verbalisation/languages/polish.js'
 import { compileLanguage } from '../src/verbalisation/rules.js'
 import { extend, isExtra } from '../tests/verbalisation/extras.mjs'
 
@@ -22,7 +27,10 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 // The rules as the app loads them (languages/index.js, which uses Vite's ?raw import).
 const load = (file, lib) => compileLanguage(fs.readFileSync(path.join(root, 'src/verbalisation/languages', file), 'utf8'), lib)
-const languages = { en: load('english.vr', englishLibrary), nl: load('dutch.vr', dutchLibrary) }
+const languages = {
+  en: load('english.vr', englishLibrary), nl: load('dutch.vr', dutchLibrary), fr: load('french.vr', frenchLibrary),
+  it: load('italian.vr', italianLibrary), es: load('spanish.vr', spanishLibrary), pl: load('polish.vr', polishLibrary),
+}
 
 const d = JSON.parse(fs.readFileSync(path.join(root, 'src/data/sample.ffbm'), 'utf8'))
 const sample = {
@@ -48,12 +56,11 @@ function verbaliseAll(state, language, keep, withNotes = false) {
 }
 
 let failed = false
-for (const [file, blocks] of [
-  ['sample.en.txt', verbaliseAll(sample, languages.en, () => true)],
-  ['extras.en.txt', verbaliseAll(extend(sample), languages.en, isExtra, true)],
-  ['sample.nl.txt', verbaliseAll(sample, languages.nl, () => true)],
-  ['extras.nl.txt', verbaliseAll(extend(sample), languages.nl, isExtra, true)],
-]) {
+const only = process.argv.find(a => a.startsWith('--lang='))?.slice(7)
+for (const [file, blocks] of Object.entries(languages).filter(([id]) => !only || id === only).flatMap(([id, language]) => [
+  [`sample.${id}.txt`, verbaliseAll(sample, language, () => true)],
+  [`extras.${id}.txt`, verbaliseAll(extend(sample), language, isExtra, true)],
+])) {
   const expectedFile = path.join(root, 'tests/verbalisation', file)
   const actual = blocks.join('\n')
   if (process.argv.includes('--update')) {

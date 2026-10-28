@@ -167,7 +167,7 @@ clause rule there-are-n-that {
   # "er zijn hoogstens 50 Courses die een Student volgt"
   match:    ?q @ Count(?op, ?n, [?y], ?body)
   guard:    not singular(?q)
-  template: thereIs(true, (quantNP(?q, ?y) relPron(?y, true) relativeBody(?body, ?y, verb: "plural")))
+  template: thereIs(true, (quantNP(?q, ?y) relativeBody(?body, ?y, verb: "plural")))
 }
 
 clause rule quantified-object {

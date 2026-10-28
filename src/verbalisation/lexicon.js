@@ -2,15 +2,21 @@
 //
 // Object types and nested entity types may carry
 //   lexicon: { [lang]: { name?, plural?, gender? } }
-// where gender is the language's own word class ('de' or 'het' in Dutch).
+// where gender is the language's own word class ('de' or 'het' in Dutch, 'm'
+// or 'f' in French, Italian and Spanish, 'mp', 'ma', 'mi', 'f' or 'n' in
+// Polish), and in a language with cases (Polish)
+//   forms: { gen, dat, acc, ins, loc, genPl, datPl, accPl, insPl, locPl }
+// the name in the other cases (the nominative is name and plural).
 // English uses the element's own name; its lexicon entry only adds a plural
 // ("Staff", not "Staffs").
 //
 // Fact types may carry
-//   lexicon: { [lang]: { readings: [{ roleOrder, parts, subParts?, pluralParts? }] } }
+//   lexicon: { [lang]: { readings: [{ roleOrder, parts, subParts?, pluralParts?, cases? }] } }
 // with parts as in readingParts (parts[k] precedes the role roleOrder[k]),
-// subParts the subordinate-clause word order (Dutch: "… Course volgt"), and
-// pluralParts the reading with a plural subject ("are prerequisites for").
+// subParts the subordinate-clause word order (Dutch: "… Course volgt"),
+// pluralParts the reading with a plural subject ("are prerequisites for"),
+// and cases the grammatical case of each slot in reading order (Polish:
+// ['nom', 'acc']).
 // For English, entries add subParts or pluralParts to the reading with the
 // same roleOrder; for other languages they are the language's readings, and
 // without any the English readings are used.
@@ -40,6 +46,7 @@ export function typeLexicon(ctx, typeId, langId) {
     name: (langId !== 'en' && lex.name?.trim()) || ctx.typeName(typeId),
     plural: lex.plural?.trim() || null,
     gender: lex.gender || null,
+    forms: lex.forms ?? {},
   }
 }
 

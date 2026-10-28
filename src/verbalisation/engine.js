@@ -44,7 +44,7 @@ export function verbalise(formula, ctx, language) {
   const phrase = makePhraser(ctx, language, names, trace)
   const out = phrase('sentence', normalise(formula), {})
   if (!out) throw new Error('no rule applies')
-  return { ...linearise(out), trace }
+  return { ...linearise(out, language), trace }
 }
 
 function makePhraser(ctx, lang, names, trace) {
@@ -90,11 +90,18 @@ function makePhraser(ctx, lang, names, trace) {
       // The same for a type given by its id.
       typeLabel: (typeId) => lex(typeId).name,
       typePlural: (typeId) => pluralOf(typeId),
+      // The subscript of a variable's name ('₂', or '').
+      subscript,
+      // The lexicon entry of a variable's type, or of a type given by its id,
+      // in the language: { name, plural, gender, forms } (forms: case forms,
+      // as in Polish; {} if none).
+      entry: (vOrTypeId) => lex(typeof vOrTypeId === 'string' ? vOrTypeId : vOrTypeId.typeId),
       // The grammatical gender the lexicon gives the type (null if none).
       gender: (vOrTypeId) => lex(typeof vOrTypeId === 'string' ? vOrTypeId : vOrTypeId.typeId).gender,
       objectType: (v) => ctx.otById.get(v.typeId),
-      // A reference to a variable already introduced, or a wildcard.
-      ref: (v) => (v?.t === 'wild' ? lang.wildNP(h, v) : lang.refNP(h, v)),
+      // A reference to a variable already introduced, or a wildcard; c is
+      // the grammatical case of its slot, for languages with cases.
+      ref: (v, c) => (v?.t === 'wild' ? lang.wildNP(h, v, c) : lang.refNP(h, v, c)),
       reading: (atom, subject, overrides) => reading(h, atom, subject, overrides),
       term: (t) => lang.term(h, t),
     }
@@ -111,8 +118,10 @@ function makePhraser(ctx, lang, names, trace) {
   // variable already introduced is preferred (as in "that Course has some
   // CourseTitle"), else the primary reading. The language shapes the
   // reading's parts for the environment (lang.shapeReading: verb forms, word
-  // order; null fails the reading). overrides maps variables to the phrases
-  // that fill their slots.
+  // order; null fails the reading, and it may return { parts, cases } to
+  // change the cases too). overrides maps variables to the phrases that fill
+  // their slots, or to functions from the slot's case to such a phrase.
+  // A reading may give each slot a grammatical case (cases[k], Polish).
   function reading(h, atom, subject, overrides = new Map()) {
     const fact = factOf(atom)
     if (!fact) return null
@@ -128,8 +137,10 @@ function makePhraser(ctx, lang, names, trace) {
       pick = all.find(r => { const a = atom.args[r.roleOrder[0]]; return isVar(a) && !overrides.has(a) && empty0(r) }) ?? all[0]
     }
     if (!pick) return null
-    const parts = (lang.shapeReading ?? shapeReading)(h, pick, subject !== undefined)
-    if (!parts) return null
+    const shaped = (lang.shapeReading ?? shapeReading)(h, pick, subject !== undefined)
+    if (!shaped) return null
+    const parts = Array.isArray(shaped) ? shaped : shaped.parts
+    const cases = (Array.isArray(shaped) ? null : shaped.cases) ?? pick.cases ?? []
     const out = []
     let subjectSeen = false
     for (let k = 0; k <= n; k++) {
@@ -137,11 +148,16 @@ function makePhraser(ctx, lang, names, trace) {
       if (part) out.push(tok(part, 'reading'))
       if (k === n) break
       const arg = atom.args[pick.roleOrder[k]]
+      const c = cases[k] || undefined
       if (subject !== undefined && arg === subject) {
-        if (subjectSeen) out.push(lang.reflexive(h, arg))
+        if (subjectSeen) out.push(lang.reflexive(h, arg, c))
         subjectSeen = true
-      } else if (overrides.has(arg)) out.push(overrides.get(arg))
-      else out.push(h.ref(arg))
+      } else if (overrides.has(arg)) {
+        const o = overrides.get(arg)
+        const filled = typeof o === 'function' ? o(c) : o
+        if (filled === null) return null
+        out.push(filled)
+      } else out.push(h.ref(arg, c))
     }
     return out
   }
@@ -161,9 +177,11 @@ function makePhraser(ctx, lang, names, trace) {
 
 const NO_SPACE_BEFORE = new Set([',', ';', ':', '.', ')'])
 
-// Flattens a phrase into tokens, sets their spacing, capitalises the first
-// word and adds the full stop.
-export function linearise(phrase) {
+// Flattens a phrase into tokens, lets the language contract neighbouring
+// words (lang.contract: French "que il" → "qu'il"; a token with glue gets no
+// space before it), sets the spacing, capitalises the first word and adds the
+// full stop.
+export function linearise(phrase, lang) {
   const flat = []
   const walk = (p) => {
     if (!p) return
@@ -171,9 +189,14 @@ export function linearise(phrase) {
     else if (p.text) flat.push({ ...p })
   }
   walk(phrase)
+  if (lang?.contract) {
+    const contracted = lang.contract(flat).filter(t => t.text)
+    flat.length = 0
+    flat.push(...contracted)
+  }
   flat.push(tok('.', 'punct'))
   flat.forEach((t, i) => {
-    t.space = i > 0 && !(t.cls === 'punct' && NO_SPACE_BEFORE.has(t.text)) && flat[i - 1].text !== '('
+    t.space = i > 0 && !t.glue && !(t.cls === 'punct' && NO_SPACE_BEFORE.has(t.text)) && flat[i - 1].text !== '('
   })
   if (flat.length) flat[0] = { ...flat[0], text: flat[0].text[0].toUpperCase() + flat[0].text.slice(1) }
   const text = flat.map(t => (t.space ? ' ' : '') + t.text).join('')

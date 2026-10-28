@@ -1,0 +1,439 @@
+# Subtype · Student is a Person
+∀ Student Person(Student)
+Każdy Student jest Osobą.
+
+# Subtype · Staff is a Person
+∀ Staff Person(Staff)
+Każdy Pracownik jest Osobą.
+
+# Subtype · Professor is a Staff
+∀ Professor Staff(Professor)
+Każdy Profesor jest Pracownikiem.
+
+# Subtype · Lecturer is a Staff
+∀ Lecturer Staff(Lecturer)
+Każdy Wykładowca jest Pracownikiem.
+
+# Value range · Credits
+∀ Credits (Credits ≈ 15 ∨ Credits ≈ 30)
+Możliwe wartości Punktacji to 15, 30.
+
+# Value range · Grade
+∀ Grade (Grade ≥ 0 ∧ Grade ≤ 100)
+Możliwe wartości Oceny to od 0 do 100.
+
+# Value range · Season
+∀ Season (Season ≈ 'Spring' ∨ Season ≈ 'Summer' ∨ Season ≈ 'Autumn' ∨ Season ≈ 'Winter')
+Możliwe wartości Pory roku to 'Spring', 'Summer', 'Autumn', 'Winter'.
+
+# Uniqueness (preferred identifier) · Person has PersonNr
+∀ PersonNr ∃^{≤1} Person (Person has PersonNr)
+Każdy Numer osobowy identyfikuje co najwyżej jedną Osobę.
+
+# Preferred identifier (exactly one identifier) · Person has PersonNr
+∀ Person ∃^{=1} PersonNr (Person has PersonNr)
+Każda Osoba ma dokładnie jeden Numer osobowy.
+
+# Uniqueness · Person has PersonName
+∀ Person ∃^{≤1} PersonName (Person has PersonName)
+Każda Osoba ma co najwyżej jedno Nazwisko.
+
+# Mandatory role · Person has PersonName
+∀ Person ∃ PersonName (Person has PersonName)
+Każda Osoba ma jakieś Nazwisko.
+
+# Uniqueness · Person has Email
+∀ Person ∃^{≤1} Email (Person has Email)
+Każda Osoba ma co najwyżej jeden Adres e-mail.
+
+# Uniqueness · Person has Email
+∀ Email ∃^{≤1} Person (Person has Email)
+Dla każdego Adresu e-mail co najwyżej jedna Osoba ma ten Adres e-mail.
+
+# Uniqueness · Person has Phone
+∀ Person ∃^{≤1} Phone (Person has Phone)
+Każda Osoba ma co najwyżej jeden Telefon.
+
+# Uniqueness · Student is supervised by Professor
+∀ Student ∃^{≤1} Professor (Student is supervised by Professor)
+Każdy Student jest nadzorowany przez co najwyżej jednego Profesora.
+
+# Uniqueness (preferred identifier) · Building has BuildingCode
+∀ BuildingCode ∃^{≤1} Building (Building has BuildingCode)
+Każdy Kod budynku identyfikuje co najwyżej jeden Budynek.
+
+# Preferred identifier (exactly one identifier) · Building has BuildingCode
+∀ Building ∃^{=1} BuildingCode (Building has BuildingCode)
+Każdy Budynek ma dokładnie jeden Kod budynku.
+
+# Uniqueness · Room is in Building
+∀ Room ∃^{≤1} Building (Room is in Building)
+Każda Sala znajduje się w co najwyżej jednym Budynku.
+
+# Mandatory role · Room is in Building
+∀ Room ∃ Building (Room is in Building)
+Każda Sala znajduje się w jakimś Budynku.
+
+# Uniqueness · Room has RoomNr
+∀ Room ∃^{≤1} RoomNr (Room has RoomNr)
+Każda Sala ma co najwyżej jeden Numer sali.
+
+# Mandatory role · Room has RoomNr
+∀ Room ∃ RoomNr (Room has RoomNr)
+Każda Sala ma jakiś Numer sali.
+
+# Uniqueness · Staff has office Room
+∀ Staff ∃^{≤1} Room (Staff has office Room)
+Każdy Pracownik ma co najwyżej jedną Salę jako gabinet.
+
+# Uniqueness · Staff has Extension
+∀ Staff ∃^{≤1} Extension (Staff has Extension)
+Każdy Pracownik ma co najwyżej jeden Numer wewnętrzny.
+
+# Uniqueness (preferred identifier) · Course has CourseCode
+∀ CourseCode ∃^{≤1} Course (Course has CourseCode)
+Każdy Kod przedmiotu identyfikuje co najwyżej jeden Przedmiot.
+
+# Preferred identifier (exactly one identifier) · Course has CourseCode
+∀ Course ∃^{=1} CourseCode (Course has CourseCode)
+Każdy Przedmiot ma dokładnie jeden Kod przedmiotu.
+
+# Uniqueness · Course has CourseTitle
+∀ Course ∃^{≤1} CourseTitle (Course has CourseTitle)
+Każdy Przedmiot ma co najwyżej jeden Tytuł przedmiotu.
+
+# Uniqueness · Course has CourseTitle
+∀ CourseTitle ∃^{≤1} Course (Course has CourseTitle)
+Dla każdego Tytułu przedmiotu co najwyżej jeden Przedmiot ma ten Tytuł przedmiotu.
+
+# Mandatory role · Course has CourseTitle
+∀ Course ∃ CourseTitle (Course has CourseTitle)
+Każdy Przedmiot ma jakiś Tytuł przedmiotu.
+
+# Uniqueness · Course is worth Credits
+∀ Course ∃^{≤1} Credits (Course is worth Credits)
+Każdy Przedmiot ma co najwyżej jedną Punktację.
+
+# Mandatory role · Course is worth Credits
+∀ Course ∃ Credits (Course is worth Credits)
+Każdy Przedmiot ma jakąś Punktację.
+
+# Frequency · Student enrols in Course
+∀ Student ((∃ Course (Student enrols in Course)) → ∃^{≤6} Course (Student enrols in Course))
+Każdy Student studiuje co najwyżej 6 Przedmiotów.
+
+# Uniqueness · Enrolment earned Grade
+∀ Enrolment ∃^{≤1} Grade (Enrolment earned Grade)
+Każdy Zapis otrzymał co najwyżej jedną Ocenę.
+
+# Uniqueness · Staff coordinates Course
+∀ Course ∃^{≤1} Staff (Staff coordinates Course)
+Dla każdego Przedmiotu co najwyżej jeden Pracownik koordynuje ten Przedmiot.
+
+# Mandatory role · Staff coordinates Course
+∀ Course ∃ Staff (Staff coordinates Course)
+Dla każdego Przedmiotu jakiś Pracownik koordynuje ten Przedmiot.
+
+# Uniqueness · Term is in Season
+∀ Term ∃^{≤1} Season (Term is in Season)
+Każdy Semestr przypada na co najwyżej jedną Porę roku.
+
+# Mandatory role · Term is in Season
+∀ Term ∃ Season (Term is in Season)
+Każdy Semestr przypada na jakąś Porę roku.
+
+# Uniqueness · Term is in AcademicYear
+∀ Term ∃^{≤1} AcademicYear (Term is in AcademicYear)
+Każdy Semestr należy do co najwyżej jednego Roku akademickiego.
+
+# Mandatory role · Term is in AcademicYear
+∀ Term ∃ AcademicYear (Term is in AcademicYear)
+Każdy Semestr należy do jakiegoś Roku akademickiego.
+
+# Uniqueness (preferred identifier) · AcademicYear starts in Year
+∀ Year ∃^{≤1} AcademicYear (AcademicYear starts in Year)
+Dla każdego Roku co najwyżej jeden Rok akademicki zaczyna się w tym Roku.
+
+# Preferred identifier (exactly one identifier) · AcademicYear starts in Year
+∀ AcademicYear ∃^{=1} Year (AcademicYear starts in Year)
+Każdy Rok akademicki zaczyna się w dokładnie jednym Roku.
+
+# Value range (role 2) · AcademicYear starts in Year
+∀ Year ((∃ AcademicYear (AcademicYear starts in Year)) → (Year ≥ 1970 ∧ Year ≤ 2030))
+Każdy Rok, w którym jakiś Rok akademicki zaczyna się, wynosi co najmniej 1970 i wynosi co najwyżej 2030.
+
+# Inclusive-or
+∀ Person ((∃ Email (Person has Email)) ∨ ∃ Phone (Person has Phone))
+Każda Osoba ma jakiś Adres e-mail lub ma jakiś Telefon.
+
+# Inclusive-or
+∀ Person (Student(Person) ∨ Staff(Person))
+Każda Osoba jest Studentem lub jest Pracownikiem.
+
+# Exclusive-or
+∀ Staff ((Professor(Staff) ∨ Lecturer(Staff)) ∧ ¬(Professor(Staff) ∧ Lecturer(Staff)))
+Dla każdego Pracownika zachodzi dokładnie jedno z poniższych: ten Pracownik jest Profesorem; ten Pracownik jest Wykładowcą.
+
+# External uniqueness (preferred identifier)
+∀ Building ∀ RoomNr ∃^{≤1} Room ((Room is in Building) ∧ (Room has RoomNr))
+Dla każdego Budynku i każdego Numeru sali co najwyżej jedna Sala znajduje się w tym Budynku i ma ten Numer sali.
+
+# Preferred identifier (exactly one identifying combination)
+∀ Room ∃^{=1} Building, RoomNr ((Room is in Building) ∧ (Room has RoomNr))
+Każda Sala znajduje się w dokładnie jednym Budynku i ma dokładnie jeden Numer sali.
+
+# Equality
+∀ Staff ((∃ Room (Staff has office Room)) ↔ ∃ Extension (Staff has Extension))
+Dla każdego Pracownika ten Pracownik ma jakąś Salę jako gabinet wtedy i tylko wtedy, gdy ten Pracownik ma jakiś Numer wewnętrzny.
+
+# Ring (acyclic)
+∀ Course₁ ¬[TC_{Course₂,Course₃} (Course₂ is a prerequisite for Course₃)](Course₁, Course₁)
+Żaden Przedmiot₁ nie jest prerekwizytem dla siebie, bezpośrednio lub pośrednio.
+
+# Ring (intransitive)
+∀ Course₁ ∀ Course₂ ∀ Course₃ (((Course₁ is a prerequisite for Course₂) ∧ (Course₂ is a prerequisite for Course₃)) → ¬(Course₁ is a prerequisite for Course₃))
+Jeśli Przedmiot₁ jest prerekwizytem dla Przedmiotu₂ i Przedmiot₂ jest prerekwizytem dla Przedmiotu₃, to Przedmiot₁ nie jest prerekwizytem dla Przedmiotu₃.
+
+# Exclusion
+∀ Student ∀ Course ¬((Student enrols in Course) ∧ (Student assists in Course))
+Dla każdego Studenta i każdego Przedmiotu zachodzi co najwyżej jedno z poniższych: ten Student studiuje ten Przedmiot; ten Student asystuje przy tym Przedmiocie.
+
+# Subset
+∀ Staff ∀ Course ((∃ Offering ∃ Term ((Staff teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) → (Staff is qualified to teach Course))
+Jeśli Pracownik prowadzi jakąś Ofertę, która dotyczy Przedmiotu i która dotyczy jakiegoś Semestru, to Pracownik ma uprawnienia do nauczania Przedmiotu.
+
+# External uniqueness (preferred identifier)
+∀ Season ∀ AcademicYear ∃^{≤1} Term ((Term is in Season) ∧ (Term is in AcademicYear))
+Dla każdej Pory roku i każdego Roku akademickiego co najwyżej jeden Semestr przypada na tę Porę roku i należy do tego Roku akademickiego.
+
+# Preferred identifier (exactly one identifying combination)
+∀ Term ∃^{=1} Season, AcademicYear ((Term is in Season) ∧ (Term is in AcademicYear))
+Każdy Semestr przypada na dokładnie jedną Porę roku i należy do dokładnie jednego Roku akademickiego.
+
+# Disjoint roots · Person and Building
+∀ Person ¬Building(Person)
+Żadna Osoba nie jest Budynkiem.
+
+# Disjoint roots · Person and Room
+∀ Person ¬Room(Person)
+Żadna Osoba nie jest Salą.
+
+# Disjoint roots · Person and Course
+∀ Person ¬Course(Person)
+Żadna Osoba nie jest Przedmiotem.
+
+# Disjoint roots · Person and AcademicYear
+∀ Person ¬AcademicYear(Person)
+Żadna Osoba nie jest Rokiem akademickim.
+
+# Disjoint roots · Person and Term
+∀ Person ¬Term(Person)
+Żadna Osoba nie jest Semestrem.
+
+# Disjoint roots · Person and Enrolment
+∀ Person ¬Enrolment(Person)
+Żadna Osoba nie jest Zapisem.
+
+# Disjoint roots · Person and Offering
+∀ Person ¬Offering(Person)
+Żadna Osoba nie jest Ofertą.
+
+# Disjoint roots · Building and Room
+∀ Building ¬Room(Building)
+Żaden Budynek nie jest Salą.
+
+# Disjoint roots · Building and Course
+∀ Building ¬Course(Building)
+Żaden Budynek nie jest Przedmiotem.
+
+# Disjoint roots · Building and AcademicYear
+∀ Building ¬AcademicYear(Building)
+Żaden Budynek nie jest Rokiem akademickim.
+
+# Disjoint roots · Building and Term
+∀ Building ¬Term(Building)
+Żaden Budynek nie jest Semestrem.
+
+# Disjoint roots · Building and Enrolment
+∀ Building ¬Enrolment(Building)
+Żaden Budynek nie jest Zapisem.
+
+# Disjoint roots · Building and Offering
+∀ Building ¬Offering(Building)
+Żaden Budynek nie jest Ofertą.
+
+# Disjoint roots · Room and Course
+∀ Room ¬Course(Room)
+Żadna Sala nie jest Przedmiotem.
+
+# Disjoint roots · Room and AcademicYear
+∀ Room ¬AcademicYear(Room)
+Żadna Sala nie jest Rokiem akademickim.
+
+# Disjoint roots · Room and Term
+∀ Room ¬Term(Room)
+Żadna Sala nie jest Semestrem.
+
+# Disjoint roots · Room and Enrolment
+∀ Room ¬Enrolment(Room)
+Żadna Sala nie jest Zapisem.
+
+# Disjoint roots · Room and Offering
+∀ Room ¬Offering(Room)
+Żadna Sala nie jest Ofertą.
+
+# Disjoint roots · Course and AcademicYear
+∀ Course ¬AcademicYear(Course)
+Żaden Przedmiot nie jest Rokiem akademickim.
+
+# Disjoint roots · Course and Term
+∀ Course ¬Term(Course)
+Żaden Przedmiot nie jest Semestrem.
+
+# Disjoint roots · Course and Enrolment
+∀ Course ¬Enrolment(Course)
+Żaden Przedmiot nie jest Zapisem.
+
+# Disjoint roots · Course and Offering
+∀ Course ¬Offering(Course)
+Żaden Przedmiot nie jest Ofertą.
+
+# Disjoint roots · AcademicYear and Term
+∀ AcademicYear ¬Term(AcademicYear)
+Żaden Rok akademicki nie jest Semestrem.
+
+# Disjoint roots · AcademicYear and Enrolment
+∀ AcademicYear ¬Enrolment(AcademicYear)
+Żaden Rok akademicki nie jest Zapisem.
+
+# Disjoint roots · AcademicYear and Offering
+∀ AcademicYear ¬Offering(AcademicYear)
+Żaden Rok akademicki nie jest Ofertą.
+
+# Disjoint roots · Term and Enrolment
+∀ Term ¬Enrolment(Term)
+Żaden Semestr nie jest Zapisem.
+
+# Disjoint roots · Term and Offering
+∀ Term ¬Offering(Term)
+Żaden Semestr nie jest Ofertą.
+
+# Disjoint roots · Enrolment and Offering
+∀ Enrolment ¬Offering(Enrolment)
+Żaden Zapis nie jest Ofertą.
+
+# Participation (not independent) · Person
+∀ Person ((∃ PersonName (Person has PersonName)) ∨ (∃ Email (Person has Email)) ∨ (∃ Phone (Person has Phone)) ∨ (∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∨ (∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∨ (∃ Room (Staff(Person) ∧ (Person has office Room))) ∨ (∃ Extension (Staff(Person) ∧ (Person has Extension))) ∨ (∃ Course (Student(Person) ∧ (Person enrols in Course))) ∨ (∃ Course (Student(Person) ∧ (Person assists in Course))) ∨ (∃ Course (Staff(Person) ∧ (Person is qualified to teach Course))) ∨ (∃ Offering (Staff(Person) ∧ (Person teaches Offering))) ∨ ∃ Course (Staff(Person) ∧ (Person coordinates Course)))
+Dla każdej Osoby zachodzi co najmniej jedno z poniższych: ta Osoba ma jakieś Nazwisko; ta Osoba ma jakiś Adres e-mail; ta Osoba ma jakiś Telefon; ta Osoba jest Studentem i ta Osoba jest nadzorowany przez jakiegoś Profesora; ta Osoba jest Profesorem i ta Osoba nadzoruje jakiegoś Studenta; ta Osoba jest Pracownikiem i ta Osoba ma jakąś Salę jako gabinet; ta Osoba jest Pracownikiem i ta Osoba ma jakiś Numer wewnętrzny; ta Osoba jest Studentem i ta Osoba studiuje jakiś Przedmiot; ta Osoba jest Studentem i ta Osoba asystuje przy jakimś Przedmiocie; ta Osoba jest Pracownikiem i ta Osoba ma uprawnienia do nauczania jakiegoś Przedmiotu; ta Osoba jest Pracownikiem i ta Osoba prowadzi jakąś Ofertę; ta Osoba jest Pracownikiem i ta Osoba koordynuje jakiś Przedmiot.
+
+# Participation (not independent) · PersonNr
+∀ PersonNr ∃ Person (Person has PersonNr)
+Każdy Numer osobowy identyfikuje jakąś Osobę.
+
+# Participation (not independent) · PersonName
+∀ PersonName ∃ Person (Person has PersonName)
+Dla każdego Nazwiska jakaś Osoba ma to Nazwisko.
+
+# Participation (not independent) · Email
+∀ Email ∃ Person (Person has Email)
+Dla każdego Adresu e-mail jakaś Osoba ma ten Adres e-mail.
+
+# Participation (not independent) · Phone
+∀ Phone ∃ Person (Person has Phone)
+Dla każdego Telefonu jakaś Osoba ma ten Telefon.
+
+# Participation (not independent) · Student
+∀ Student₁ ((∃ PersonName (Student₁ has PersonName)) ∨ (∃ Email (Student₁ has Email)) ∨ (∃ Phone (Student₁ has Phone)) ∨ (∃ Professor (Student₁ is supervised by Professor)) ∨ (∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∨ (∃ Room (Staff(Student₁) ∧ (Student₁ has office Room))) ∨ (∃ Extension (Staff(Student₁) ∧ (Student₁ has Extension))) ∨ (∃ Course (Student₁ enrols in Course)) ∨ (∃ Course (Student₁ assists in Course)) ∨ (∃ Course (Staff(Student₁) ∧ (Student₁ is qualified to teach Course))) ∨ (∃ Offering (Staff(Student₁) ∧ (Student₁ teaches Offering))) ∨ ∃ Course (Staff(Student₁) ∧ (Student₁ coordinates Course)))
+Dla każdego Studenta₁ zachodzi co najmniej jedno z poniższych: ten Student₁ ma jakieś Nazwisko; ten Student₁ ma jakiś Adres e-mail; ten Student₁ ma jakiś Telefon; ten Student₁ jest nadzorowany przez jakiegoś Profesora; ten Student₁ jest Profesorem i ten Student₁ nadzoruje jakiegoś Studenta; ten Student₁ jest Pracownikiem i ten Student₁ ma jakąś Salę jako gabinet; ten Student₁ jest Pracownikiem i ten Student₁ ma jakiś Numer wewnętrzny; ten Student₁ studiuje jakiś Przedmiot; ten Student₁ asystuje przy jakimś Przedmiocie; ten Student₁ jest Pracownikiem i ten Student₁ ma uprawnienia do nauczania jakiegoś Przedmiotu; ten Student₁ jest Pracownikiem i ten Student₁ prowadzi jakąś Ofertę; ten Student₁ jest Pracownikiem i ten Student₁ koordynuje jakiś Przedmiot.
+
+# Participation (not independent) · Staff
+∀ Staff ((∃ PersonName (Staff has PersonName)) ∨ (∃ Email (Staff has Email)) ∨ (∃ Phone (Staff has Phone)) ∨ (∃ Professor (Student(Staff) ∧ (Staff is supervised by Professor))) ∨ (∃ Student (Professor(Staff) ∧ (Student is supervised by Staff))) ∨ (∃ Room (Staff has office Room)) ∨ (∃ Extension (Staff has Extension)) ∨ (∃ Course (Student(Staff) ∧ (Staff enrols in Course))) ∨ (∃ Course (Student(Staff) ∧ (Staff assists in Course))) ∨ (∃ Course (Staff is qualified to teach Course)) ∨ (∃ Offering (Staff teaches Offering)) ∨ ∃ Course (Staff coordinates Course))
+Dla każdego Pracownika zachodzi co najmniej jedno z poniższych: ten Pracownik ma jakieś Nazwisko; ten Pracownik ma jakiś Adres e-mail; ten Pracownik ma jakiś Telefon; ten Pracownik jest Studentem i ten Pracownik jest nadzorowany przez jakiegoś Profesora; ten Pracownik jest Profesorem i ten Pracownik nadzoruje jakiegoś Studenta; ten Pracownik ma jakąś Salę jako gabinet; ten Pracownik ma jakiś Numer wewnętrzny; ten Pracownik jest Studentem i ten Pracownik studiuje jakiś Przedmiot; ten Pracownik jest Studentem i ten Pracownik asystuje przy jakimś Przedmiocie; ten Pracownik ma uprawnienia do nauczania jakiegoś Przedmiotu; ten Pracownik prowadzi jakąś Ofertę; ten Pracownik koordynuje jakiś Przedmiot.
+
+# Participation (not independent) · Professor
+∀ Professor₁ ((∃ PersonName (Professor₁ has PersonName)) ∨ (∃ Email (Professor₁ has Email)) ∨ (∃ Phone (Professor₁ has Phone)) ∨ (∃ Professor₂ (Student(Professor₁) ∧ (Professor₁ is supervised by Professor₂))) ∨ (∃ Student (Student is supervised by Professor₁)) ∨ (∃ Room (Professor₁ has office Room)) ∨ (∃ Extension (Professor₁ has Extension)) ∨ (∃ Course (Student(Professor₁) ∧ (Professor₁ enrols in Course))) ∨ (∃ Course (Student(Professor₁) ∧ (Professor₁ assists in Course))) ∨ (∃ Course (Professor₁ is qualified to teach Course)) ∨ (∃ Offering (Professor₁ teaches Offering)) ∨ ∃ Course (Professor₁ coordinates Course))
+Dla każdego Profesora₁ zachodzi co najmniej jedno z poniższych: ten Profesor₁ ma jakieś Nazwisko; ten Profesor₁ ma jakiś Adres e-mail; ten Profesor₁ ma jakiś Telefon; ten Profesor₁ jest Studentem i ten Profesor₁ jest nadzorowany przez jakiegoś Profesora; ten Profesor₁ nadzoruje jakiegoś Studenta; ten Profesor₁ ma jakąś Salę jako gabinet; ten Profesor₁ ma jakiś Numer wewnętrzny; ten Profesor₁ jest Studentem i ten Profesor₁ studiuje jakiś Przedmiot; ten Profesor₁ jest Studentem i ten Profesor₁ asystuje przy jakimś Przedmiocie; ten Profesor₁ ma uprawnienia do nauczania jakiegoś Przedmiotu; ten Profesor₁ prowadzi jakąś Ofertę; ten Profesor₁ koordynuje jakiś Przedmiot.
+
+# Participation (not independent) · Lecturer
+∀ Lecturer ((∃ PersonName (Lecturer has PersonName)) ∨ (∃ Email (Lecturer has Email)) ∨ (∃ Phone (Lecturer has Phone)) ∨ (∃ Professor (Student(Lecturer) ∧ (Lecturer is supervised by Professor))) ∨ (∃ Student (Professor(Lecturer) ∧ (Student is supervised by Lecturer))) ∨ (∃ Room (Lecturer has office Room)) ∨ (∃ Extension (Lecturer has Extension)) ∨ (∃ Course (Student(Lecturer) ∧ (Lecturer enrols in Course))) ∨ (∃ Course (Student(Lecturer) ∧ (Lecturer assists in Course))) ∨ (∃ Course (Lecturer is qualified to teach Course)) ∨ (∃ Offering (Lecturer teaches Offering)) ∨ ∃ Course (Lecturer coordinates Course))
+Dla każdego Wykładowcy zachodzi co najmniej jedno z poniższych: ten Wykładowca ma jakieś Nazwisko; ten Wykładowca ma jakiś Adres e-mail; ten Wykładowca ma jakiś Telefon; ten Wykładowca jest Studentem i ten Wykładowca jest nadzorowany przez jakiegoś Profesora; ten Wykładowca jest Profesorem i ten Wykładowca nadzoruje jakiegoś Studenta; ten Wykładowca ma jakąś Salę jako gabinet; ten Wykładowca ma jakiś Numer wewnętrzny; ten Wykładowca jest Studentem i ten Wykładowca studiuje jakiś Przedmiot; ten Wykładowca jest Studentem i ten Wykładowca asystuje przy jakimś Przedmiocie; ten Wykładowca ma uprawnienia do nauczania jakiegoś Przedmiotu; ten Wykładowca prowadzi jakąś Ofertę; ten Wykładowca koordynuje jakiś Przedmiot.
+
+# Participation (not independent) · Building
+∀ Building ∃ Room (Room is in Building)
+Dla każdego Budynku jakaś Sala znajduje się w tym Budynku.
+
+# Participation (not independent) · BuildingCode
+∀ BuildingCode ∃ Building (Building has BuildingCode)
+Każdy Kod budynku identyfikuje jakiś Budynek.
+
+# Participation (not independent) · RoomNr
+∀ RoomNr ∃ Room (Room has RoomNr)
+Dla każdego Numeru sali jakaś Sala ma ten Numer sali.
+
+# Participation (not independent) · Room
+∀ Room ∃ Staff (Staff has office Room)
+Dla każdej Sali jakiś Pracownik ma tę Salę jako gabinet.
+
+# Participation (not independent) · Extension
+∀ Extension ∃ Staff (Staff has Extension)
+Dla każdego Numeru wewnętrznego jakiś Pracownik ma ten Numer wewnętrzny.
+
+# Participation (not independent) · Course
+∀ Course₁ ((∃ CourseTitle (Course₁ has CourseTitle)) ∨ (∃ Credits (Course₁ is worth Credits)) ∨ (∃ Course₂ (Course₁ is a prerequisite for Course₂)) ∨ (∃ Course₂ (Course₂ is a prerequisite for Course₁)) ∨ (∃ Student (Student enrols in Course₁)) ∨ (∃ Student (Student assists in Course₁)) ∨ (∃ Staff (Staff is qualified to teach Course₁)) ∨ (∃ Staff (Staff coordinates Course₁)) ∨ ∃ Term (Course₁ is offered in Term))
+Dla każdego Przedmiotu₁ zachodzi co najmniej jedno z poniższych: ten Przedmiot₁ ma jakiś Tytuł przedmiotu; ten Przedmiot₁ ma jakąś Punktację; ten Przedmiot₁ jest prerekwizytem dla jakiegoś Przedmiotu; jakiś Przedmiot jest prerekwizytem dla tego Przedmiotu₁; jakiś Student studiuje ten Przedmiot₁; jakiś Student asystuje przy tym Przedmiocie₁; jakiś Pracownik ma uprawnienia do nauczania tego Przedmiotu₁; jakiś Pracownik koordynuje ten Przedmiot₁; ten Przedmiot₁ jest oferowany w jakimś Semestrze.
+
+# Participation (not independent) · CourseCode
+∀ CourseCode ∃ Course (Course has CourseCode)
+Każdy Kod przedmiotu identyfikuje jakiś Przedmiot.
+
+# Participation (not independent) · CourseTitle
+∀ CourseTitle ∃ Course (Course has CourseTitle)
+Dla każdego Tytułu przedmiotu jakiś Przedmiot ma ten Tytuł przedmiotu.
+
+# Participation (not independent) · Credits
+∀ Credits ∃ Course (Course is worth Credits)
+Dla każdej Punktacji jakiś Przedmiot ma tę Punktację.
+
+# Participation (not independent) · Grade
+∀ Grade ∃ Enrolment (Enrolment earned Grade)
+Dla każdej Oceny jakiś Zapis otrzymał tę Ocenę.
+
+# Participation (not independent) · Season
+∀ Season ∃ Term (Term is in Season)
+Dla każdej Pory roku jakiś Semestr przypada na tę Porę roku.
+
+# Participation (not independent) · AcademicYear
+∀ AcademicYear ∃ Term (Term is in AcademicYear)
+Dla każdego Roku akademickiego jakiś Semestr należy do tego Roku akademickiego.
+
+# Participation (not independent) · Term
+∀ Term ∃ Course (Course is offered in Term)
+Dla każdego Semestru jakiś Przedmiot jest oferowany w tym Semestrze.
+
+# Participation (not independent) · Year
+∀ Year ∃ AcademicYear (AcademicYear starts in Year)
+Dla każdego Roku jakiś Rok akademicki zaczyna się w tym Roku.
+
+# Implied links (each fact has exactly one nesting instance) · Enrolment nests Student enrols in Course
+∀ Student ∀ Course ((Student enrols in Course) → ∃^{=1} Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course)))
+Jeśli Student studiuje Przedmiot, to dokładnie jeden Zapis dotyczy Studenta i dotyczy Przedmiotu.
+
+# Implied links (linked values form a fact) · Enrolment nests Student enrols in Course
+∀ Student ∀ Course ((∃ Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course))) → (Student enrols in Course))
+Jeśli jakiś Zapis dotyczy Studenta i dotyczy Przedmiotu, to Student studiuje Przedmiot.
+
+# Implied links (each nesting instance links exactly one combination) · Enrolment nests Student enrols in Course
+∀ Enrolment ∃^{=1} Student, Course ((Enrolment involves Student) ∧ (Enrolment involves Course))
+Każdy Zapis dotyczy dokładnie jednego Studenta i dotyczy dokładnie jednego Przedmiotu.
+
+# Implied links (each fact has exactly one nesting instance) · Offering nests Course is offered in Term
+∀ Course ∀ Term ((Course is offered in Term) → ∃^{=1} Offering ((Offering involves Course) ∧ (Offering involves Term)))
+Jeśli Przedmiot jest oferowany w Semestrze, to dokładnie jedna Oferta dotyczy Przedmiotu i dotyczy Semestru.
+
+# Implied links (linked values form a fact) · Offering nests Course is offered in Term
+∀ Course ∀ Term ((∃ Offering ((Offering involves Course) ∧ (Offering involves Term))) → (Course is offered in Term))
+Jeśli jakaś Oferta dotyczy Przedmiotu i dotyczy Semestru, to Przedmiot jest oferowany w Semestrze.
+
+# Implied links (each nesting instance links exactly one combination) · Offering nests Course is offered in Term
+∀ Offering ∃^{=1} Course, Term ((Offering involves Course) ∧ (Offering involves Term))
+Każda Oferta dotyczy dokładnie jednego Przedmiotu i dotyczy dokładnie jednego Semestru.

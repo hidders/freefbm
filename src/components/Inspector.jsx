@@ -17,6 +17,10 @@ import DerivationRuleEditor from './DerivationRuleEditor'
 import { hasTextSelection } from '../utils/textPanel.js'
 import { plural as englishPlural } from '../verbalisation/languages/english.js'
 import { pluralise as dutchPlural } from '../verbalisation/languages/dutch.js'
+import { pluralise as frenchPlural } from '../verbalisation/languages/french.js'
+import { pluralise as italianPlural } from '../verbalisation/languages/italian.js'
+import { pluralise as spanishPlural } from '../verbalisation/languages/spanish.js'
+import { pluralise as polishPlural } from '../verbalisation/languages/polish.js'
 
 // ── Validation error components ───────────────────────────────────────────────
 
@@ -1718,52 +1722,108 @@ const lexWithout = (lexicon, lang, entry) => {
   return Object.keys(next).length ? next : undefined
 }
 
-// Plural (English), and name, plural and gender (Dutch) of a type.
+// The languages of the lexicon: how a type is named in each (plural rule for
+// the placeholder, genders, and for Polish the case forms) and which forms of
+// a reading each has.
+const ROMANCE_GENDERS = [['m', 'masculine (default)'], ['f', 'feminine']]
+const LEXICON_LANGS = [
+  { id: 'en', label: 'English', ownName: false, pluralise: englishPlural, forms: [
+    { key: 'pluralParts', label: 'Plural form', hint: 'With a plural subject: Courses are prerequisites for Course. Empty: the verb is made plural.' },
+  ] },
+  { id: 'nl', label: 'Dutch', pluralise: dutchPlural,
+    genders: [['de', 'de (default)'], ['het', 'het']], genderHint: 'de-words take elke and die, het-words elk and dat', forms: [
+      { key: 'parts', label: 'Reading', hint: 'Main clause order: Student volgt Course. Empty: the English reading is used.' },
+      { key: 'subParts', label: 'Subordinate form', hint: 'Verb last: … dat Student Course volgt. Empty: the first verb moves to the end.' },
+      { key: 'pluralParts', label: 'Plural form', hint: 'With a plural subject: Studenten volgen Course. Empty: the verb is made plural.' },
+    ] },
+  ...[['fr', 'French', frenchPlural, 'Étudiant suit Cours', 'Étudiants suivent Cours', 'chaque, un/une, ce/cette'],
+    ['it', 'Italian', italianPlural, 'Studente frequenta Corso', 'Studenti frequentano Corso', 'un/una, quel/quella'],
+    ['es', 'Spanish', spanishPlural, 'Estudiante cursa Curso', 'Estudiantes cursan Curso', 'un/una, ese/esa'],
+  ].map(([id, label, pluralise, example, plural, genderHint]) => ({ id, label, pluralise, genders: ROMANCE_GENDERS, genderHint, forms: [
+    { key: 'parts', label: 'Reading', hint: `${example}. Empty: the English reading is used.` },
+    { key: 'pluralParts', label: 'Plural form', hint: `With a plural subject: ${plural}. Empty: the verb is made plural.` },
+  ] })),
+  { id: 'pl', label: 'Polish', pluralise: polishPlural, cases: true,
+    genders: [['mi', 'masc. inanimate (default)'], ['ma', 'masc. animate'], ['mp', 'masc. personal'], ['f', 'feminine'], ['n', 'neuter']],
+    genderHint: 'Chooses każdy/każda/każde, ten/ta/to and the numeral forms', forms: [
+      { key: 'parts', label: 'Reading', hint: 'Student studiuje Przedmiot. Empty: the English reading is used.' },
+      { key: 'pluralParts', label: 'Plural form', hint: 'With a plural subject: Studenci studiują Przedmiot. Empty: the verb is made plural.' },
+    ] },
+]
+const CASE_LABELS = { nom: 'Nominative', gen: 'Genitive', dat: 'Dative', acc: 'Accusative', ins: 'Instrumental', loc: 'Locative' }
+const CASE_SHORT = { gen: 'Gen.', dat: 'Dat.', acc: 'Acc.', ins: 'Ins.', loc: 'Loc.' }
+
+function LexiconTabs({ value, onChange }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+      {LEXICON_LANGS.map(t => (
+        <button key={t.id} type="button" onClick={() => onChange(t.id)} style={{
+          fontSize: 10, padding: '1px 8px', borderRadius: 10, cursor: 'pointer',
+          border: `1px solid ${t.id === value ? 'var(--accent)' : 'var(--border-soft)'}`,
+          background: 'transparent', color: t.id === value ? 'var(--accent)' : 'var(--ink-muted)',
+        }}>{t.label}</button>
+      ))}
+    </div>
+  )
+}
+
+// The name of a type in each language: name, plural and gender, and in
+// Polish the other cases.
 function TypeLexiconSection({ name, lexicon, onChange }) {
+  const [tab, setTab] = useState('nl')
+  const lang = LEXICON_LANGS.find(l => l.id === tab)
   const lex = lexicon ?? {}
-  const set = (lang, key, value) => onChange(lexWithout(lexicon, lang, { ...(lex[lang] ?? {}), [key]: value.trim() ? value : undefined }))
-  const nlName = lex.nl?.name?.trim() || name
+  const entry = lex[tab] ?? {}
+  const setEntry = (next) => onChange(lexWithout(lexicon, tab, next))
+  const set = (key, value) => setEntry({ ...entry, [key]: value.trim() ? value : undefined })
+  const setForm = (key, value) => {
+    const forms = { ...(entry.forms ?? {}), [key]: value.trim() ? value : undefined }
+    Object.keys(forms).forEach(k => forms[k] === undefined && delete forms[k])
+    setEntry({ ...entry, forms: Object.keys(forms).length ? forms : undefined })
+  }
+  const ownName = (lang.ownName !== false && entry.name?.trim()) || name
+  const plural = entry.plural?.trim() || (ownName ? lang.pluralise(ownName, entry.gender) : '')
   return (
     <Section title="Languages">
+      <LexiconTabs value={tab} onChange={setTab}/>
+      {lang.ownName !== false && (
+        <Row>
+          <Label>Name</Label>
+          <TInput value={entry.name ?? ''} placeholder={name} onChange={v => set('name', v)}/>
+        </Row>
+      )}
       <Row>
-        <Label>English plural</Label>
-        <TInput value={lex.en?.plural ?? ''} placeholder={name ? englishPlural(name) : ''} onChange={v => set('en', 'plural', v)}/>
+        <Label>Plural</Label>
+        <TInput value={entry.plural ?? ''} placeholder={ownName ? lang.pluralise(ownName, entry.gender) : ''} onChange={v => set('plural', v)}/>
       </Row>
-      <Row>
-        <Label>Dutch name</Label>
-        <TInput value={lex.nl?.name ?? ''} placeholder={name} onChange={v => set('nl', 'name', v)}/>
-      </Row>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <div style={{ flex: 1 }}>
-          <Label>Dutch plural</Label>
-          <TInput value={lex.nl?.plural ?? ''} placeholder={nlName ? dutchPlural(nlName) : ''} onChange={v => set('nl', 'plural', v)}/>
-        </div>
-        <div>
+      {lang.genders && (
+        <Row>
           <Label>Gender</Label>
-          <select value={lex.nl?.gender ?? ''} onChange={e => set('nl', 'gender', e.target.value)}
-            title="de-words take elke and die, het-words elk and dat">
-            <option value="">de (default)</option>
-            <option value="de">de</option>
-            <option value="het">het</option>
+          <select value={entry.gender ?? ''} onChange={e => set('gender', e.target.value)} title={lang.genderHint} style={{ width: '100%' }}>
+            <option value="">{lang.genders[0][1]}</option>
+            {lang.genders.map(([v, label]) => <option key={v} value={v}>{label.replace(' (default)', '')}</option>)}
           </select>
+        </Row>
+      )}
+      {lang.cases && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) minmax(0, 1fr)', gap: 4, alignItems: 'center' }}
+          title="Empty: the accusative follows the gender, other cases use the nominative">
+          <span/><Label>Singular</Label><Label>Plural</Label>
+          {['gen', 'dat', 'acc', 'ins', 'loc'].map(c => (
+            <React.Fragment key={c}>
+              <span style={{ fontSize: 10, color: 'var(--ink-muted)' }} title={CASE_LABELS[c]}>{CASE_SHORT[c]}</span>
+              <TInput value={entry.forms?.[c] ?? ''} placeholder={ownName} onChange={v => setForm(c, v)}/>
+              <TInput value={entry.forms?.[`${c}Pl`] ?? ''} placeholder={plural} onChange={v => setForm(`${c}Pl`, v)}/>
+            </React.Fragment>
+          ))}
         </div>
-      </div>
+      )}
     </Section>
   )
 }
 
-const LEXICON_TABS = [
-  { id: 'nl', label: 'Dutch', forms: [
-    { key: 'parts', label: 'Reading', hint: 'Main clause order: Student volgt Course. Empty: the English reading is used.' },
-    { key: 'subParts', label: 'Subordinate form', hint: 'Verb last: … dat Student Course volgt. Empty: the first verb moves to the end.' },
-    { key: 'pluralParts', label: 'Plural form', hint: 'With a plural subject: Studenten volgen Course. Empty: the verb is made plural.' },
-  ] },
-  { id: 'en', label: 'English', forms: [
-    { key: 'pluralParts', label: 'Plural form', hint: 'With a plural subject: Courses are prerequisites for Course. Empty: the verb is made plural.' },
-  ] },
-]
-
-// Readings of a fact type in other languages, one per English reading order.
+// Readings of a fact type in other languages, one per English reading order;
+// in Polish with the case of each slot.
 function FactLexiconSection({ fact, store }) {
   const [tab, setTab] = useState('nl')
   const n = fact.arity
@@ -1774,28 +1834,29 @@ function FactLexiconSection({ fact, store }) {
   ].filter(o => o?.length === n)
   if (!orders.length) return null
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
-  const lang = LEXICON_TABS.find(t => t.id === tab)
+  const lang = LEXICON_LANGS.find(t => t.id === tab)
   const readings = fact.lexicon?.[tab]?.readings ?? []
-  const update = (roleOrder, key, i, val) => {
+  const save = (roleOrder, key, list) => {
     const old = readings.find(r => same(r.roleOrder, roleOrder)) ?? { roleOrder }
-    const parts = [...(old[key] ?? Array(n + 1).fill(''))]
-    parts[i] = val
-    const entry = { ...old, [key]: parts.some(p => p?.trim()) ? parts : undefined }
+    const entry = { ...old, [key]: list.some(p => p?.trim()) ? list : undefined }
     const keep = Object.keys(entry).some(k => k !== 'roleOrder' && entry[k])
     const next = [...readings.filter(r => !same(r.roleOrder, roleOrder)), ...(keep ? [entry] : [])]
     store.updateFact(fact.id, { lexicon: lexWithout(fact.lexicon, tab, { ...(fact.lexicon?.[tab] ?? {}), readings: next }) })
   }
+  const update = (roleOrder, key, i, val) => {
+    const old = readings.find(r => same(r.roleOrder, roleOrder)) ?? {}
+    const list = [...(old[key] ?? Array(key === 'cases' ? n : n + 1).fill(''))]
+    list[i] = val
+    save(roleOrder, key, list)
+  }
+  const playerName = (ri) => {
+    const id = fact.roles?.[ri]?.objectTypeId
+    const p = store.objectTypes.find(o => o.id === id) ?? store.facts.find(f => f.id === id)
+    return p?.name || p?.objectifiedName || '?'
+  }
   return (
     <Section title="Readings in other languages">
-      <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-        {LEXICON_TABS.map(t => (
-          <button key={t.id} type="button" onClick={() => setTab(t.id)} style={{
-            fontSize: 10, padding: '1px 8px', borderRadius: 10, cursor: 'pointer',
-            border: `1px solid ${t.id === tab ? 'var(--accent)' : 'var(--border-soft)'}`,
-            background: 'transparent', color: t.id === tab ? 'var(--accent)' : 'var(--ink-muted)',
-          }}>{t.label}</button>
-        ))}
-      </div>
+      <LexiconTabs value={tab} onChange={setTab}/>
       {orders.map(order => {
         const r = readings.find(x => same(x.roleOrder, order)) ?? {}
         return (
@@ -1809,6 +1870,22 @@ function FactLexiconSection({ fact, store }) {
                   onUpdatePart={(i, val) => update(order, f.key, i, val)}/>
               </div>
             ))}
+            {lang.cases && (
+              <div title="The case each object type takes in this reading; empty: nominative for the first, accusative for the others">
+                <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginBottom: 2 }}>Cases</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 4, alignItems: 'center' }}>
+                  {order.map((ri, k) => (
+                    <React.Fragment key={k}>
+                      <span style={{ fontSize: 11 }}>{playerName(ri)}</span>
+                      <select value={r.cases?.[k] ?? ''} onChange={e => update(order, 'cases', k, e.target.value)} style={{ width: '100%' }}>
+                        <option value="">{k ? 'accusative' : 'nominative'} (default)</option>
+                        {Object.entries(CASE_LABELS).map(([c, label]) => <option key={c} value={c}>{label.toLowerCase()}</option>)}
+                      </select>
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )
       })}

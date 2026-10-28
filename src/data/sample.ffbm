@@ -15,6 +15,38 @@
           "nl": {
             "name": "Persoon",
             "gender": "de"
+          },
+          "fr": {
+            "name": "Personne",
+            "gender": "f",
+            "plural": "Personnes"
+          },
+          "it": {
+            "name": "Persona",
+            "gender": "f",
+            "plural": "Persone"
+          },
+          "es": {
+            "name": "Persona",
+            "gender": "f",
+            "plural": "Personas"
+          },
+          "pl": {
+            "name": "Osoba",
+            "plural": "Osoby",
+            "gender": "f",
+            "forms": {
+              "gen": "Osoby",
+              "dat": "Osobie",
+              "acc": "Osobę",
+              "ins": "Osobą",
+              "loc": "Osobie",
+              "genPl": "Osób",
+              "datPl": "Osobom",
+              "accPl": "Osoby",
+              "insPl": "Osobami",
+              "locPl": "Osobach"
+            }
           }
         }
       },
@@ -30,6 +62,38 @@
           "nl": {
             "name": "Persoonsnummer",
             "gender": "het"
+          },
+          "fr": {
+            "name": "Numéro de personne",
+            "gender": "m",
+            "plural": "Numéros de personne"
+          },
+          "it": {
+            "name": "Numero personale",
+            "gender": "m",
+            "plural": "Numeri personali"
+          },
+          "es": {
+            "name": "Número de persona",
+            "gender": "m",
+            "plural": "Números de persona"
+          },
+          "pl": {
+            "name": "Numer osobowy",
+            "plural": "Numery osobowe",
+            "gender": "mi",
+            "forms": {
+              "gen": "Numeru osobowego",
+              "dat": "Numerowi osobowemu",
+              "acc": "Numer osobowy",
+              "ins": "Numerem osobowym",
+              "loc": "Numerze osobowym",
+              "genPl": "Numerów osobowych",
+              "datPl": "Numerom osobowym",
+              "accPl": "Numery osobowe",
+              "insPl": "Numerami osobowymi",
+              "locPl": "Numerach osobowych"
+            }
           }
         }
       },
@@ -49,6 +113,38 @@
           "nl": {
             "name": "Naam",
             "gender": "de"
+          },
+          "fr": {
+            "name": "Nom",
+            "gender": "m",
+            "plural": "Noms"
+          },
+          "it": {
+            "name": "Nome",
+            "gender": "m",
+            "plural": "Nomi"
+          },
+          "es": {
+            "name": "Nombre",
+            "gender": "m",
+            "plural": "Nombres"
+          },
+          "pl": {
+            "name": "Nazwisko",
+            "plural": "Nazwiska",
+            "gender": "n",
+            "forms": {
+              "gen": "Nazwiska",
+              "dat": "Nazwisku",
+              "acc": "Nazwisko",
+              "ins": "Nazwiskiem",
+              "loc": "Nazwisku",
+              "genPl": "Nazwisk",
+              "datPl": "Nazwiskom",
+              "accPl": "Nazwiska",
+              "insPl": "Nazwiskami",
+              "locPl": "Nazwiskach"
+            }
           }
         }
       },
@@ -68,6 +164,38 @@
           "nl": {
             "name": "E-mailadres",
             "gender": "het"
+          },
+          "fr": {
+            "name": "Adresse e-mail",
+            "gender": "f",
+            "plural": "Adresses e-mail"
+          },
+          "it": {
+            "name": "Indirizzo e-mail",
+            "gender": "m",
+            "plural": "Indirizzi e-mail"
+          },
+          "es": {
+            "name": "Correo electrónico",
+            "gender": "m",
+            "plural": "Correos electrónicos"
+          },
+          "pl": {
+            "name": "Adres e-mail",
+            "plural": "Adresy e-mail",
+            "gender": "mi",
+            "forms": {
+              "gen": "Adresu e-mail",
+              "dat": "Adresowi e-mail",
+              "acc": "Adres e-mail",
+              "ins": "Adresem e-mail",
+              "loc": "Adresie e-mail",
+              "genPl": "Adresów e-mail",
+              "datPl": "Adresom e-mail",
+              "accPl": "Adresy e-mail",
+              "insPl": "Adresami e-mail",
+              "locPl": "Adresach e-mail"
+            }
           }
         }
       },
@@ -87,6 +215,38 @@
           "nl": {
             "name": "Telefoonnummer",
             "gender": "het"
+          },
+          "fr": {
+            "name": "Numéro de téléphone",
+            "gender": "m",
+            "plural": "Numéros de téléphone"
+          },
+          "it": {
+            "name": "Numero di telefono",
+            "gender": "m",
+            "plural": "Numeri di telefono"
+          },
+          "es": {
+            "name": "Teléfono",
+            "gender": "m",
+            "plural": "Teléfonos"
+          },
+          "pl": {
+            "name": "Telefon",
+            "plural": "Telefony",
+            "gender": "mi",
+            "forms": {
+              "gen": "Telefonu",
+              "dat": "Telefonowi",
+              "acc": "Telefon",
+              "ins": "Telefonem",
+              "loc": "Telefonie",
+              "genPl": "Telefonów",
+              "datPl": "Telefonom",
+              "accPl": "Telefony",
+              "insPl": "Telefonami",
+              "locPl": "Telefonach"
+            }
           }
         }
       },
@@ -104,6 +264,38 @@
             "name": "Student",
             "gender": "de",
             "plural": "Studenten"
+          },
+          "fr": {
+            "name": "Étudiant",
+            "gender": "m",
+            "plural": "Étudiants"
+          },
+          "it": {
+            "name": "Studente",
+            "gender": "m",
+            "plural": "Studenti"
+          },
+          "es": {
+            "name": "Estudiante",
+            "gender": "m",
+            "plural": "Estudiantes"
+          },
+          "pl": {
+            "name": "Student",
+            "plural": "Studenci",
+            "gender": "mp",
+            "forms": {
+              "gen": "Studenta",
+              "dat": "Studentowi",
+              "acc": "Studenta",
+              "ins": "Studentem",
+              "loc": "Studencie",
+              "genPl": "Studentów",
+              "datPl": "Studentom",
+              "accPl": "Studentów",
+              "insPl": "Studentami",
+              "locPl": "Studentach"
+            }
           }
         }
       },
@@ -123,6 +315,38 @@
           },
           "en": {
             "plural": "Staff"
+          },
+          "fr": {
+            "name": "Membre du personnel",
+            "gender": "m",
+            "plural": "Membres du personnel"
+          },
+          "it": {
+            "name": "Dipendente",
+            "gender": "m",
+            "plural": "Dipendenti"
+          },
+          "es": {
+            "name": "Empleado",
+            "gender": "m",
+            "plural": "Empleados"
+          },
+          "pl": {
+            "name": "Pracownik",
+            "plural": "Pracownicy",
+            "gender": "mp",
+            "forms": {
+              "gen": "Pracownika",
+              "dat": "Pracownikowi",
+              "acc": "Pracownika",
+              "ins": "Pracownikiem",
+              "loc": "Pracowniku",
+              "genPl": "Pracowników",
+              "datPl": "Pracownikom",
+              "accPl": "Pracowników",
+              "insPl": "Pracownikami",
+              "locPl": "Pracownikach"
+            }
           }
         }
       },
@@ -140,6 +364,38 @@
             "name": "Hoogleraar",
             "gender": "de",
             "plural": "Hoogleraren"
+          },
+          "fr": {
+            "name": "Professeur",
+            "gender": "m",
+            "plural": "Professeurs"
+          },
+          "it": {
+            "name": "Professore",
+            "gender": "m",
+            "plural": "Professori"
+          },
+          "es": {
+            "name": "Profesor",
+            "gender": "m",
+            "plural": "Profesores"
+          },
+          "pl": {
+            "name": "Profesor",
+            "plural": "Profesorowie",
+            "gender": "mp",
+            "forms": {
+              "gen": "Profesora",
+              "dat": "Profesorowi",
+              "acc": "Profesora",
+              "ins": "Profesorem",
+              "loc": "Profesorze",
+              "genPl": "Profesorów",
+              "datPl": "Profesorom",
+              "accPl": "Profesorów",
+              "insPl": "Profesorami",
+              "locPl": "Profesorach"
+            }
           }
         }
       },
@@ -156,6 +412,38 @@
           "nl": {
             "name": "Docent",
             "gender": "de"
+          },
+          "fr": {
+            "name": "Maître de conférences",
+            "gender": "m",
+            "plural": "Maîtres de conférences"
+          },
+          "it": {
+            "name": "Docente",
+            "gender": "m",
+            "plural": "Docenti"
+          },
+          "es": {
+            "name": "Docente",
+            "gender": "m",
+            "plural": "Docentes"
+          },
+          "pl": {
+            "name": "Wykładowca",
+            "plural": "Wykładowcy",
+            "gender": "mp",
+            "forms": {
+              "gen": "Wykładowcy",
+              "dat": "Wykładowcy",
+              "acc": "Wykładowcę",
+              "ins": "Wykładowcą",
+              "loc": "Wykładowcy",
+              "genPl": "Wykładowców",
+              "datPl": "Wykładowcom",
+              "accPl": "Wykładowców",
+              "insPl": "Wykładowcami",
+              "locPl": "Wykładowcach"
+            }
           }
         }
       },
@@ -172,6 +460,38 @@
           "nl": {
             "name": "Gebouw",
             "gender": "het"
+          },
+          "fr": {
+            "name": "Bâtiment",
+            "gender": "m",
+            "plural": "Bâtiments"
+          },
+          "it": {
+            "name": "Edificio",
+            "gender": "m",
+            "plural": "Edifici"
+          },
+          "es": {
+            "name": "Edificio",
+            "gender": "m",
+            "plural": "Edificios"
+          },
+          "pl": {
+            "name": "Budynek",
+            "plural": "Budynki",
+            "gender": "mi",
+            "forms": {
+              "gen": "Budynku",
+              "dat": "Budynkowi",
+              "acc": "Budynek",
+              "ins": "Budynkiem",
+              "loc": "Budynku",
+              "genPl": "Budynków",
+              "datPl": "Budynkom",
+              "accPl": "Budynki",
+              "insPl": "Budynkami",
+              "locPl": "Budynkach"
+            }
           }
         }
       },
@@ -191,6 +511,38 @@
           "nl": {
             "name": "Gebouwcode",
             "gender": "de"
+          },
+          "fr": {
+            "name": "Code de bâtiment",
+            "gender": "m",
+            "plural": "Codes de bâtiment"
+          },
+          "it": {
+            "name": "Codice edificio",
+            "gender": "m",
+            "plural": "Codici edificio"
+          },
+          "es": {
+            "name": "Código de edificio",
+            "gender": "m",
+            "plural": "Códigos de edificio"
+          },
+          "pl": {
+            "name": "Kod budynku",
+            "plural": "Kody budynku",
+            "gender": "mi",
+            "forms": {
+              "gen": "Kodu budynku",
+              "dat": "Kodowi budynku",
+              "acc": "Kod budynku",
+              "ins": "Kodem budynku",
+              "loc": "Kodzie budynku",
+              "genPl": "Kodów budynku",
+              "datPl": "Kodom budynku",
+              "accPl": "Kody budynku",
+              "insPl": "Kodami budynku",
+              "locPl": "Kodach budynku"
+            }
           }
         }
       },
@@ -210,6 +562,38 @@
           "nl": {
             "name": "Kamernummer",
             "gender": "het"
+          },
+          "fr": {
+            "name": "Numéro de salle",
+            "gender": "m",
+            "plural": "Numéros de salle"
+          },
+          "it": {
+            "name": "Numero di stanza",
+            "gender": "m",
+            "plural": "Numeri di stanza"
+          },
+          "es": {
+            "name": "Número de sala",
+            "gender": "m",
+            "plural": "Números de sala"
+          },
+          "pl": {
+            "name": "Numer sali",
+            "plural": "Numery sali",
+            "gender": "mi",
+            "forms": {
+              "gen": "Numeru sali",
+              "dat": "Numerowi sali",
+              "acc": "Numer sali",
+              "ins": "Numerem sali",
+              "loc": "Numerze sali",
+              "genPl": "Numerów sali",
+              "datPl": "Numerom sali",
+              "accPl": "Numery sali",
+              "insPl": "Numerami sali",
+              "locPl": "Numerach sali"
+            }
           }
         }
       },
@@ -226,6 +610,38 @@
           "nl": {
             "name": "Kamer",
             "gender": "de"
+          },
+          "fr": {
+            "name": "Salle",
+            "gender": "f",
+            "plural": "Salles"
+          },
+          "it": {
+            "name": "Stanza",
+            "gender": "f",
+            "plural": "Stanze"
+          },
+          "es": {
+            "name": "Sala",
+            "gender": "f",
+            "plural": "Salas"
+          },
+          "pl": {
+            "name": "Sala",
+            "plural": "Sale",
+            "gender": "f",
+            "forms": {
+              "gen": "Sali",
+              "dat": "Sali",
+              "acc": "Salę",
+              "ins": "Salą",
+              "loc": "Sali",
+              "genPl": "Sal",
+              "datPl": "Salom",
+              "accPl": "Sale",
+              "insPl": "Salami",
+              "locPl": "Salach"
+            }
           }
         }
       },
@@ -245,6 +661,38 @@
           "nl": {
             "name": "Toestelnummer",
             "gender": "het"
+          },
+          "fr": {
+            "name": "Poste téléphonique",
+            "gender": "m",
+            "plural": "Postes téléphoniques"
+          },
+          "it": {
+            "name": "Interno",
+            "gender": "m",
+            "plural": "Interni"
+          },
+          "es": {
+            "name": "Extensión",
+            "gender": "f",
+            "plural": "Extensiones"
+          },
+          "pl": {
+            "name": "Numer wewnętrzny",
+            "plural": "Numery wewnętrzne",
+            "gender": "mi",
+            "forms": {
+              "gen": "Numeru wewnętrznego",
+              "dat": "Numerowi wewnętrznemu",
+              "acc": "Numer wewnętrzny",
+              "ins": "Numerem wewnętrznym",
+              "loc": "Numerze wewnętrznym",
+              "genPl": "Numerów wewnętrznych",
+              "datPl": "Numerom wewnętrznym",
+              "accPl": "Numery wewnętrzne",
+              "insPl": "Numerami wewnętrznymi",
+              "locPl": "Numerach wewnętrznych"
+            }
           }
         }
       },
@@ -262,6 +710,38 @@
             "name": "Vak",
             "gender": "het",
             "plural": "Vakken"
+          },
+          "fr": {
+            "name": "Cours",
+            "gender": "m",
+            "plural": "Cours"
+          },
+          "it": {
+            "name": "Corso",
+            "gender": "m",
+            "plural": "Corsi"
+          },
+          "es": {
+            "name": "Curso",
+            "gender": "m",
+            "plural": "Cursos"
+          },
+          "pl": {
+            "name": "Przedmiot",
+            "plural": "Przedmioty",
+            "gender": "mi",
+            "forms": {
+              "gen": "Przedmiotu",
+              "dat": "Przedmiotowi",
+              "acc": "Przedmiot",
+              "ins": "Przedmiotem",
+              "loc": "Przedmiocie",
+              "genPl": "Przedmiotów",
+              "datPl": "Przedmiotom",
+              "accPl": "Przedmioty",
+              "insPl": "Przedmiotami",
+              "locPl": "Przedmiotach"
+            }
           }
         }
       },
@@ -281,6 +761,38 @@
           "nl": {
             "name": "Vakcode",
             "gender": "de"
+          },
+          "fr": {
+            "name": "Code de cours",
+            "gender": "m",
+            "plural": "Codes de cours"
+          },
+          "it": {
+            "name": "Codice corso",
+            "gender": "m",
+            "plural": "Codici corso"
+          },
+          "es": {
+            "name": "Código de curso",
+            "gender": "m",
+            "plural": "Códigos de curso"
+          },
+          "pl": {
+            "name": "Kod przedmiotu",
+            "plural": "Kody przedmiotu",
+            "gender": "mi",
+            "forms": {
+              "gen": "Kodu przedmiotu",
+              "dat": "Kodowi przedmiotu",
+              "acc": "Kod przedmiotu",
+              "ins": "Kodem przedmiotu",
+              "loc": "Kodzie przedmiotu",
+              "genPl": "Kodów przedmiotu",
+              "datPl": "Kodom przedmiotu",
+              "accPl": "Kody przedmiotu",
+              "insPl": "Kodami przedmiotu",
+              "locPl": "Kodach przedmiotu"
+            }
           }
         }
       },
@@ -300,6 +812,38 @@
           "nl": {
             "name": "Vaktitel",
             "gender": "de"
+          },
+          "fr": {
+            "name": "Intitulé de cours",
+            "gender": "m",
+            "plural": "Intitulés de cours"
+          },
+          "it": {
+            "name": "Titolo del corso",
+            "gender": "m",
+            "plural": "Titoli del corso"
+          },
+          "es": {
+            "name": "Título de curso",
+            "gender": "m",
+            "plural": "Títulos de curso"
+          },
+          "pl": {
+            "name": "Tytuł przedmiotu",
+            "plural": "Tytuły przedmiotu",
+            "gender": "mi",
+            "forms": {
+              "gen": "Tytułu przedmiotu",
+              "dat": "Tytułowi przedmiotu",
+              "acc": "Tytuł przedmiotu",
+              "ins": "Tytułem przedmiotu",
+              "loc": "Tytule przedmiotu",
+              "genPl": "Tytułów przedmiotu",
+              "datPl": "Tytułom przedmiotu",
+              "accPl": "Tytuły przedmiotu",
+              "insPl": "Tytułami przedmiotu",
+              "locPl": "Tytułach przedmiotu"
+            }
           }
         }
       },
@@ -329,6 +873,38 @@
           "nl": {
             "name": "Studielast",
             "gender": "de"
+          },
+          "fr": {
+            "name": "Nombre de crédits",
+            "gender": "m",
+            "plural": "Nombres de crédits"
+          },
+          "it": {
+            "name": "Numero di crediti",
+            "gender": "m",
+            "plural": "Numeri di crediti"
+          },
+          "es": {
+            "name": "Número de créditos",
+            "gender": "m",
+            "plural": "Números de créditos"
+          },
+          "pl": {
+            "name": "Punktacja",
+            "plural": "Punktacje",
+            "gender": "f",
+            "forms": {
+              "gen": "Punktacji",
+              "dat": "Punktacji",
+              "acc": "Punktację",
+              "ins": "Punktacją",
+              "loc": "Punktacji",
+              "genPl": "Punktacji",
+              "datPl": "Punktacjom",
+              "accPl": "Punktacje",
+              "insPl": "Punktacjami",
+              "locPl": "Punktacjach"
+            }
           }
         }
       },
@@ -355,6 +931,38 @@
           "nl": {
             "name": "Cijfer",
             "gender": "het"
+          },
+          "fr": {
+            "name": "Note",
+            "gender": "f",
+            "plural": "Notes"
+          },
+          "it": {
+            "name": "Voto",
+            "gender": "m",
+            "plural": "Voti"
+          },
+          "es": {
+            "name": "Nota",
+            "gender": "f",
+            "plural": "Notas"
+          },
+          "pl": {
+            "name": "Ocena",
+            "plural": "Oceny",
+            "gender": "f",
+            "forms": {
+              "gen": "Oceny",
+              "dat": "Ocenie",
+              "acc": "Ocenę",
+              "ins": "Oceną",
+              "loc": "Ocenie",
+              "genPl": "Ocen",
+              "datPl": "Ocenom",
+              "accPl": "Oceny",
+              "insPl": "Ocenami",
+              "locPl": "Ocenach"
+            }
           }
         }
       },
@@ -395,6 +1003,38 @@
           "nl": {
             "name": "Seizoen",
             "gender": "het"
+          },
+          "fr": {
+            "name": "Saison",
+            "gender": "f",
+            "plural": "Saisons"
+          },
+          "it": {
+            "name": "Stagione",
+            "gender": "f",
+            "plural": "Stagioni"
+          },
+          "es": {
+            "name": "Estación",
+            "gender": "f",
+            "plural": "Estaciones"
+          },
+          "pl": {
+            "name": "Pora roku",
+            "plural": "Pory roku",
+            "gender": "f",
+            "forms": {
+              "gen": "Pory roku",
+              "dat": "Porze roku",
+              "acc": "Porę roku",
+              "ins": "Porą roku",
+              "loc": "Porze roku",
+              "genPl": "Pór roku",
+              "datPl": "Porom roku",
+              "accPl": "Pory roku",
+              "insPl": "Porami roku",
+              "locPl": "Porach roku"
+            }
           }
         }
       },
@@ -411,6 +1051,38 @@
           "nl": {
             "name": "Studiejaar",
             "gender": "het"
+          },
+          "fr": {
+            "name": "Année universitaire",
+            "gender": "f",
+            "plural": "Années universitaires"
+          },
+          "it": {
+            "name": "Anno accademico",
+            "gender": "m",
+            "plural": "Anni accademici"
+          },
+          "es": {
+            "name": "Año académico",
+            "gender": "m",
+            "plural": "Años académicos"
+          },
+          "pl": {
+            "name": "Rok akademicki",
+            "plural": "Lata akademickie",
+            "gender": "mi",
+            "forms": {
+              "gen": "Roku akademickiego",
+              "dat": "Rokowi akademickiemu",
+              "acc": "Rok akademicki",
+              "ins": "Rokiem akademickim",
+              "loc": "Roku akademickim",
+              "genPl": "Lat akademickich",
+              "datPl": "Latom akademickim",
+              "accPl": "Lata akademickie",
+              "insPl": "Latami akademickimi",
+              "locPl": "Latach akademickich"
+            }
           }
         }
       },
@@ -428,6 +1100,38 @@
             "name": "Periode",
             "gender": "de",
             "plural": "Periodes"
+          },
+          "fr": {
+            "name": "Période",
+            "gender": "f",
+            "plural": "Périodes"
+          },
+          "it": {
+            "name": "Periodo",
+            "gender": "m",
+            "plural": "Periodi"
+          },
+          "es": {
+            "name": "Periodo",
+            "gender": "m",
+            "plural": "Periodos"
+          },
+          "pl": {
+            "name": "Semestr",
+            "plural": "Semestry",
+            "gender": "mi",
+            "forms": {
+              "gen": "Semestru",
+              "dat": "Semestrowi",
+              "acc": "Semestr",
+              "ins": "Semestrem",
+              "loc": "Semestrze",
+              "genPl": "Semestrów",
+              "datPl": "Semestrom",
+              "accPl": "Semestry",
+              "insPl": "Semestrami",
+              "locPl": "Semestrach"
+            }
           }
         }
       },
@@ -444,6 +1148,38 @@
             "name": "Jaar",
             "gender": "het",
             "plural": "Jaren"
+          },
+          "fr": {
+            "name": "Année",
+            "gender": "f",
+            "plural": "Années"
+          },
+          "it": {
+            "name": "Anno",
+            "gender": "m",
+            "plural": "Anni"
+          },
+          "es": {
+            "name": "Año",
+            "gender": "m",
+            "plural": "Años"
+          },
+          "pl": {
+            "name": "Rok",
+            "plural": "Lata",
+            "gender": "mi",
+            "forms": {
+              "gen": "Roku",
+              "dat": "Rokowi",
+              "acc": "Rok",
+              "ins": "Rokiem",
+              "loc": "Roku",
+              "genPl": "Lat",
+              "datPl": "Latom",
+              "accPl": "Lata",
+              "insPl": "Latami",
+              "locPl": "Latach"
+            }
           }
         }
       }
@@ -544,6 +1280,118 @@
                 ]
               }
             ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "a",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "désigne",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ha",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "identifica",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "tiene",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "identifica",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ma",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "identyfikuje",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              }
+            ]
           }
         }
       },
@@ -612,6 +1460,70 @@
                   "",
                   "heeft",
                   ""
+                ]
+              }
+            ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "a",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ha",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "tiene",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ma",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
                 ]
               }
             ]
@@ -689,6 +1601,70 @@
                 ]
               }
             ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "a",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ha",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "tiene",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ma",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              }
+            ]
           }
         }
       },
@@ -757,6 +1733,70 @@
                   "",
                   "heeft",
                   ""
+                ]
+              }
+            ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "a",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ha",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "tiene",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ma",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
                 ]
               }
             ]
@@ -851,6 +1891,138 @@
                   "",
                   "begeleidt",
                   ""
+                ]
+              }
+            ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "est encadré par",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "sont encadrés par",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "encadre",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "è seguito da",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "sono seguiti da",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "segue",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "es supervisado por",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "son supervisados por",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "supervisa a",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "jest nadzorowany przez",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "są nadzorowani przez",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "nadzoruje",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
                 ]
               }
             ]
@@ -952,6 +2124,118 @@
                 ]
               }
             ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "a",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "désigne",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ha",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "identifica",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "tiene",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "identifica",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ma",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "identyfikuje",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              }
+            ]
           }
         }
       },
@@ -1020,6 +2304,80 @@
                   "",
                   "ligt in",
                   ""
+                ]
+              }
+            ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "est située dans",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "sont situées dans",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "si trova in",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "si trovano in",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "está en",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "znajduje się w",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "loc"
                 ]
               }
             ]
@@ -1094,6 +2452,70 @@
                 ]
               }
             ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "a",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ha",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "tiene",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ma",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              }
+            ]
           }
         }
       },
@@ -1165,6 +2587,70 @@
                 ]
               }
             ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "a",
+                  "comme bureau"
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ha",
+                  "come ufficio"
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "tiene",
+                  "como despacho"
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ma",
+                  "jako gabinet"
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              }
+            ]
           }
         }
       },
@@ -1233,6 +2719,70 @@
                   "",
                   "heeft",
                   ""
+                ]
+              }
+            ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "a",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ha",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "tiene",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ma",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
                 ]
               }
             ]
@@ -1334,6 +2884,118 @@
                 ]
               }
             ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "a",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "désigne",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ha",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "identifica",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "tiene",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "identifica",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ma",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "identyfikuje",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              }
+            ]
           }
         }
       },
@@ -1408,6 +3070,70 @@
                 ]
               }
             ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "a",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ha",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "tiene",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ma",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              }
+            ]
           }
         }
       },
@@ -1476,6 +3202,70 @@
                   "",
                   "heeft",
                   ""
+                ]
+              }
+            ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "a",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ha",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "tiene",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ma",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
                 ]
               }
             ]
@@ -1553,6 +3343,90 @@
                   "",
                   "zijn voorkennisvakken voor",
                   ""
+                ]
+              }
+            ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "est un prérequis pour",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "sont des prérequis pour",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "è un prerequisito per",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "sono prerequisiti per",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "es un requisito previo de",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "son requisitos previos de",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "jest prerekwizytem dla",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "są prerekwizytami dla",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "gen"
                 ]
               }
             ]
@@ -1687,6 +3561,118 @@
                     ]
                   }
                 ]
+              },
+              "fr": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "concerne",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "est concerné par",
+                      ""
+                    ]
+                  }
+                ]
+              },
+              "it": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "riguarda",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "è coinvolto in",
+                      ""
+                    ]
+                  }
+                ]
+              },
+              "es": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "concierne a",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "está implicado en",
+                      ""
+                    ]
+                  }
+                ]
+              },
+              "pl": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "dotyczy",
+                      ""
+                    ],
+                    "cases": [
+                      "nom",
+                      "gen"
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "uczestniczy w",
+                      ""
+                    ],
+                    "cases": [
+                      "nom",
+                      "loc"
+                    ]
+                  }
+                ]
               }
             }
           },
@@ -1749,6 +3735,118 @@
                     ]
                   }
                 ]
+              },
+              "fr": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "concerne",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "est concerné par",
+                      ""
+                    ]
+                  }
+                ]
+              },
+              "it": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "riguarda",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "è coinvolto in",
+                      ""
+                    ]
+                  }
+                ]
+              },
+              "es": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "concierne a",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "está implicado en",
+                      ""
+                    ]
+                  }
+                ]
+              },
+              "pl": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "dotyczy",
+                      ""
+                    ],
+                    "cases": [
+                      "nom",
+                      "gen"
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "uczestniczy w",
+                      ""
+                    ],
+                    "cases": [
+                      "nom",
+                      "loc"
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -1776,6 +3874,94 @@
             ],
             "name": "Inschrijving",
             "gender": "de"
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "suit",
+                  ""
+                ]
+              }
+            ],
+            "name": "Inscription",
+            "gender": "f",
+            "plural": "Inscriptions"
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "frequenta",
+                  ""
+                ]
+              }
+            ],
+            "name": "Iscrizione",
+            "gender": "f",
+            "plural": "Iscrizioni"
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "cursa",
+                  ""
+                ]
+              }
+            ],
+            "name": "Inscripción",
+            "gender": "f",
+            "plural": "Inscripciones"
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "studiuje",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              }
+            ],
+            "name": "Zapis",
+            "plural": "Zapisy",
+            "gender": "mi",
+            "forms": {
+              "gen": "Zapisu",
+              "dat": "Zapisowi",
+              "acc": "Zapis",
+              "ins": "Zapisem",
+              "loc": "Zapisie",
+              "genPl": "Zapisów",
+              "datPl": "Zapisom",
+              "accPl": "Zapisy",
+              "insPl": "Zapisami",
+              "locPl": "Zapisach"
+            }
           }
         }
       },
@@ -1852,6 +4038,90 @@
                 ]
               }
             ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "a obtenu",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "ont obtenu",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ha ottenuto",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "hanno ottenuto",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "obtuvo",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "obtuvieron",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "otrzymał",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "otrzymały",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              }
+            ]
           }
         }
       },
@@ -1921,6 +4191,75 @@
                   "",
                   "assisteert bij",
                   ""
+                ]
+              }
+            ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "assiste à",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "è assistente in",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "sono assistenti in",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "asiste en",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "asystuje przy",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "loc"
                 ]
               }
             ]
@@ -2001,6 +4340,90 @@
                 ]
               }
             ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "est qualifié pour enseigner",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "sont qualifiés pour enseigner",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "è abilitato a insegnare",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "sono abilitati a insegnare",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "está capacitado para impartir",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "están capacitados para impartir",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ma uprawnienia do nauczania",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "mają uprawnienia do nauczania",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "gen"
+                ]
+              }
+            ]
           }
         }
       },
@@ -2070,6 +4493,70 @@
                   "",
                   "doceert",
                   ""
+                ]
+              }
+            ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "enseigne",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "insegna",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "imparte",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "prowadzi",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
                 ]
               }
             ]
@@ -2144,6 +4631,70 @@
                 ]
               }
             ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "coordonne",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "coordina",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "coordina",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "koordynuje",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              }
+            ]
           }
         }
       },
@@ -2215,6 +4766,75 @@
                 ]
               }
             ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "a lieu en",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "ont lieu en",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "cade in",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "cae en",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "przypada na",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "acc"
+                ]
+              }
+            ]
           }
         }
       },
@@ -2283,6 +4903,80 @@
                   "",
                   "hoort bij",
                   ""
+                ]
+              }
+            ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "fait partie de",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "font partie de",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "fa parte di",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "fanno parte di",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "forma parte de",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "należy do",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "gen"
                 ]
               }
             ]
@@ -2365,6 +5059,80 @@
                   "",
                   "begint in",
                   ""
+                ]
+              }
+            ]
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "commence en",
+                  ""
+                ]
+              }
+            ]
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "inizia in",
+                  ""
+                ]
+              }
+            ]
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "empieza en",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "empiezan en",
+                  ""
+                ]
+              }
+            ]
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "zaczyna się w",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "zaczynają się w",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "loc"
                 ]
               }
             ]
@@ -2484,6 +5252,118 @@
                     ]
                   }
                 ]
+              },
+              "fr": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "concerne",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "est concerné par",
+                      ""
+                    ]
+                  }
+                ]
+              },
+              "it": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "riguarda",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "è coinvolto in",
+                      ""
+                    ]
+                  }
+                ]
+              },
+              "es": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "concierne a",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "está implicado en",
+                      ""
+                    ]
+                  }
+                ]
+              },
+              "pl": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "dotyczy",
+                      ""
+                    ],
+                    "cases": [
+                      "nom",
+                      "gen"
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "uczestniczy w",
+                      ""
+                    ],
+                    "cases": [
+                      "nom",
+                      "loc"
+                    ]
+                  }
+                ]
               }
             }
           },
@@ -2546,6 +5426,118 @@
                     ]
                   }
                 ]
+              },
+              "fr": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "concerne",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "est concerné par",
+                      ""
+                    ]
+                  }
+                ]
+              },
+              "it": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "riguarda",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "è coinvolto in",
+                      ""
+                    ]
+                  }
+                ]
+              },
+              "es": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "concierne a",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "está implicado en",
+                      ""
+                    ]
+                  }
+                ]
+              },
+              "pl": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "dotyczy",
+                      ""
+                    ],
+                    "cases": [
+                      "nom",
+                      "gen"
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "uczestniczy w",
+                      ""
+                    ],
+                    "cases": [
+                      "nom",
+                      "loc"
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -2578,6 +5570,114 @@
             ],
             "name": "Vakaanbieding",
             "gender": "de"
+          },
+          "fr": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "est proposé pendant",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "sont proposés pendant",
+                  ""
+                ]
+              }
+            ],
+            "name": "Offre de cours",
+            "gender": "f",
+            "plural": "Offres de cours"
+          },
+          "it": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "è offerto in",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "sono offerti in",
+                  ""
+                ]
+              }
+            ],
+            "name": "Offerta",
+            "gender": "f",
+            "plural": "Offerte"
+          },
+          "es": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "se ofrece en",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "se ofrecen en",
+                  ""
+                ]
+              }
+            ],
+            "name": "Oferta",
+            "gender": "f",
+            "plural": "Ofertas"
+          },
+          "pl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "jest oferowany w",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "są oferowane w",
+                  ""
+                ],
+                "cases": [
+                  "nom",
+                  "loc"
+                ]
+              }
+            ],
+            "name": "Oferta",
+            "plural": "Oferty",
+            "gender": "f",
+            "forms": {
+              "gen": "Oferty",
+              "dat": "Ofercie",
+              "acc": "Ofertę",
+              "ins": "Ofertą",
+              "loc": "Ofercie",
+              "genPl": "Ofert",
+              "datPl": "Ofertom",
+              "accPl": "Oferty",
+              "insPl": "Ofertami",
+              "locPl": "Ofertach"
+            }
           }
         }
       }
