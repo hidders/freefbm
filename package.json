@@ -23,7 +23,8 @@
     "build:linux": "vite build && electron-builder --linux",
     "dist": "vite build && electron-builder --mac --win --linux",
     "preview": "vite preview",
-    "test:verbalisation": "node --no-warnings scripts/verbalisation-golden.mjs"
+    "test:verbalisation": "node --no-warnings scripts/verbalisation-golden.mjs",
+    "verbalisation:coverage": "node --no-warnings scripts/verbalisation-golden.mjs --coverage"
   },
   "dependencies": {
     "react": "^18.3.1",

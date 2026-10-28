@@ -36,18 +36,21 @@ export function seq(...parts) {
 
 // Verbalises a formula. Returns { tokens, text, trace }: tokens carry a
 // space flag (whether a space precedes them) for rendering, trace lists the
-// rules that built the sentence, outermost first.
-export function verbalise(formula, ctx, language) {
+// rules that built the sentence, outermost first. With options.stats (a Map),
+// every rule tried counts there, under 'kind: name', how often its pattern
+// matched ({ matched }), its guard then failed ({ rejected }) and its
+// template failed ({ failed }); see analysis.js.
+export function verbalise(formula, ctx, language, options = {}) {
   const names = new Map()
   renderFormula(formula, ctx, names)
   const trace = []
-  const phrase = makePhraser(ctx, language, names, trace)
+  const phrase = makePhraser(ctx, language, names, trace, options.stats)
   const out = phrase('sentence', normalise(formula), {})
   if (!out) throw new Error('no rule applies')
   return { ...linearise(out, language), trace }
 }
 
-function makePhraser(ctx, lang, names, trace) {
+function makePhraser(ctx, lang, names, trace, stats) {
   // Names come from the language's lexicon; subscripts (Course₁) from the
   // names the formula shows.
   const lex = (typeId) => typeLexicon(ctx, typeId, lang.id)
@@ -61,12 +64,21 @@ function makePhraser(ctx, lang, names, trace) {
     for (const rule of lang.rules[as] ?? []) {
       const b = match(rule.match, node, seed)
       if (!b) continue
+      const key = `${as}: ${rule.name}`
+      const count = (field) => {
+        if (!stats) return
+        const s = stats.get(key) ?? { matched: 0, rejected: 0, failed: 0 }
+        s[field]++
+        stats.set(key, s)
+      }
+      count('matched')
       const h = helpers(env)
-      if (rule.guard && !rule.guard(b, h, node)) continue
+      if (rule.guard && !rule.guard(b, h, node)) { count('rejected'); continue }
       const mark = trace.length
-      trace.push(`${as}: ${rule.name}`)
+      trace.push(key)
       const out = rule.template(b, h, node)
       if (out) return out
+      count('failed')
       trace.length = mark
     }
     return null

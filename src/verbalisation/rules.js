@@ -345,11 +345,27 @@ export function compileRules(file, lib) {
       name: r.name,
       line: r.line,
       match: r.match,
+      // For analysis.js: the guard as text, to compare guards, and whether
+      // the template can fail (it calls a function or uses a binding).
+      guardKey: r.guard ? JSON.stringify(r.guard, (k, v) => (k === 'at' ? undefined : v)) : null,
+      fallible: fallible(r.template),
       ...(guard ? { guard: (b, h, node) => !!guard({ b, h, node }) } : {}),
       template: (b, h, node) => phrase(template({ b, h, node })),
     })
   }
   return rules
+}
+
+// Whether a template can fail: only one of fixed words, punctuation and
+// choices between such cannot.
+function fallible(n) {
+  switch (n?.e) {
+    case 'lit': case 'id': return false
+    case 'group': return n.xs.some(fallible)
+    case 'if': return fallible(n.then) || fallible(n.otherwise)
+    case 'with': return fallible(n.body)
+    default: return true
+  }
 }
 
 // A value as a phrase: words become kw tokens, a failed part fails the whole.
