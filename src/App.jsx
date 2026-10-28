@@ -11,6 +11,7 @@ import SchemaBrowser from './components/SchemaBrowser'
 import ValidationPanel from './components/ValidationPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useElectronMenu } from './hooks/useElectronMenu'
+import { useWorkbenchBridge } from './hooks/useWorkbenchBridge'
 import { useUndoRedo } from './hooks/useUndoRedo'
 import { textPanelOf, handleTextPanelKey } from './utils/textPanel'
 import { useOrmStore } from './store/ormStore'
@@ -284,6 +285,7 @@ export default function App() {
   const store = useOrmStore()
 
   useElectronMenu()
+  useWorkbenchBridge()
   useUndoRedo()
   useKeyboardShortcuts()
   useValidation()
