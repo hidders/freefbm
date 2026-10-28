@@ -807,12 +807,12 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     if (store.tool === 'connectConstraint') { return }  // wait for user to click a constraint circle first
     if (isUniquenessTool) {
       store.setTool('select')
-      store.startUniquenessConstruction(fact.id)
+      store.startUniquenessConstruction(fact.id, roleIndex)
       return
     }
     if (isFrequencyTool) {
       store.setTool('select')
-      store.startFrequencyConstruction(fact.id)
+      store.startFrequencyConstruction(fact.id, roleIndex)
       return
     }
     if (store.tool === 'toggleMandatory') {
