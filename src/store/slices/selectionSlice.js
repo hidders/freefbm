@@ -399,9 +399,9 @@ export function createSelectionSlice(set, get) {
             selectedRole: null, selectedUniqueness: null })
     },
 
-    startUniquenessConstruction(factId) {
+    startUniquenessConstruction(factId, roleIndex = null) {
       if (get().frequencyConstruction) get().abandonFrequencyConstruction()
-      set({ uniquenessConstruction: { factId, roleIndices: [] } })
+      set({ uniquenessConstruction: { factId, roleIndices: roleIndex == null ? [] : [roleIndex] } })
     },
     toggleUniquenessConstructionRole(roleIndex) {
       set(s => {
@@ -525,12 +525,14 @@ export function createSelectionSlice(set, get) {
     },
 
     // ── Internal frequency construction ──────────────────────────────────────
-    startFrequencyConstruction(factId) {
+    // roleIndex: the role clicked to start the construction (if any) is included straight away
+    startFrequencyConstruction(factId, roleIndex = null) {
       if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
       const fact = get().facts.find(f => f.id === factId)
       if (!fact) return
-      const pos = defaultFrequencyPos(factAsDrawn(get(), factId))
-      set({ frequencyConstruction: { stage: 2, factId, ...pos, roleIndices: [], ifId: null, moved: false } })
+      const roleIndices = roleIndex == null ? [] : [roleIndex]
+      const pos = defaultFrequencyPos(factAsDrawn(get(), factId), roleIndices)
+      set({ frequencyConstruction: { stage: 2, factId, ...pos, roleIndices, ifId: null, moved: false } })
     },
     moveFrequencyConstructionCircle(x, y) {
       set(s => s.frequencyConstruction
@@ -564,7 +566,8 @@ export function createSelectionSlice(set, get) {
           })
         }
       } else {
-        // New constraint: advance to range popup
+        // New constraint: needs at least one role before a range makes sense
+        if (fc.roleIndices.length === 0) return
         set({ frequencyConstruction: { ...fc, stage: 3, range: fc.range ?? [] } })
       }
     },
