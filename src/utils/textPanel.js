@@ -1,4 +1,4 @@
-// Read-only text panels ([data-text-panel]: Formalisation, validation
+// Read-only text panels ([data-text-panel]: Constraints, validation
 // messages) behave like a document: Cmd/Ctrl+A selects just the focused
 // panel's text and Cmd/Ctrl+C does a native copy.
 

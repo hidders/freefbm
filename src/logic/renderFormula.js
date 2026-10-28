@@ -17,7 +17,7 @@ const SUBSCRIPTS = '₀₁₂₃₄₅₆₇₈₉'
 const subscript = (n) => String(n).split('').map(d => SUBSCRIPTS[d]).join('')
 
 // Thin space: copies as a narrow space, and is drawn narrower than a full
-// monospace cell (see TOKEN_STYLE.qgap in FormalisationTab.jsx).
+// monospace cell (see TOKEN_STYLE.qgap in ConstraintsTab.jsx).
 export const QGAP = '\u2009'
 
 const QUANTIFIERS = new Set(['forall', 'exists', 'count'])
