@@ -54,9 +54,9 @@ function uses(n, ctx, out = { facts: new Set(), types: new Set() }) {
   if (n.t === 'type' && n.typeId) out.types.add(n.typeId)
   if (QUANT.has(n.t) && n.v?.typeId) {
     // The formula restricting the variable: ∀x (φ → ψ) ranges over φ, while
-    // ∃^{≤n} and ∃^{=n} also count the instances outside the body.
+    // ∃^{≤n}, ∃^{=n} and ∃^{0..m} also count the instances outside the body.
     const guard = n.t === 'forall' ? (n.body?.t === 'implies' ? n.body.left : null)
-      : n.t === 'exists' || (n.op === '≥' && n.n >= 1) ? n.body : null
+      : n.t === 'exists' || ((n.op === '≥' || n.op === '..') && n.n >= 1) ? n.body : null
     if (!boundByAtoms(guard, [{ id: n.v.id, typeIds: [n.v.typeId] }], ctx).has(n.v.id)) out.types.add(n.v.typeId)
   }
   if (n.t === 'agg') {

@@ -1,6 +1,6 @@
 // Translates FreeFBM constraints into formulas of the ORM2 logic.
 //
-// First-order formulas with counting quantifiers ∃^{≤n}, ∃^{≥n}, ∃^{=n} for
+// First-order formulas with counting quantifiers ∃^{≤n}, ∃^{≥n}, ∃^{=n}, ∃^{n..m} for
 // uniqueness and frequency, plus transitive closure [TC_{v,w} φ](s, t) for the
 // acyclic and strongly intransitive rings. Value ranges and value comparisons
 // use value atoms x ≈ c, x < y, … that compare data values under the
@@ -10,7 +10,7 @@
 // roles[] order, so fact atom arguments are always in roles[] order.
 
 import {
-  mkVar, forall, exists, count, not, truth, implies, iff, and, or, tc,
+  mkVar, forall, exists, count, countRange, not, truth, implies, iff, and, or, tc,
   factAtom, typeAtom, cmp, vcmp,
 } from './formula.js'
 import { VALUE_KINDS, parseLiteral } from '../utils/datatypeValues.js'
@@ -227,10 +227,12 @@ function frequencySpecs(range) {
   }).filter(s => s.lo != null || s.hi != null)
 }
 
-// ∀x̄ (∃ȳ φ → ⋁ (∃^{≥lo} ȳ φ ∧ ∃^{≤hi} ȳ φ)), with φ built fresh per use.
+// ∀x̄ (∃ȳ φ → ⋁ ∃^{lo..hi} ȳ φ), with φ built fresh per use. A lower bound of
+// 1 or less is implied by ∃ȳ φ, so it leaves ∃^{≤hi}; no upper bound gives ∃^{≥lo}.
 function frequencyFormula(xs, ys, phi, specs) {
   const bounds = specs.map(({ lo, hi }) => {
     if (lo != null && lo === hi) return count('=', lo, ys, phi())
+    if (lo != null && lo > 1 && hi != null) return countRange(lo, hi, ys, phi())
     return and(
       lo != null && lo > 1 ? count('≥', lo, ys, phi()) : null,
       hi != null ? count('≤', hi, ys, phi()) : null,
@@ -242,12 +244,14 @@ function frequencyFormula(xs, ys, phi, specs) {
 
 // ── Cardinality ranges ───────────────────────────────────────────────────────
 
-// ⋁ (∃^{≥lo} x φ ∧ ∃^{≤hi} x φ) over the specs, with x and φ built fresh per
-// use by phi() → { x, body }; null when some spec holds for any population.
+// ⋁ ∃^{lo..hi} x φ over the specs (∃^{≤hi} with no lower bound above 0,
+// ∃^{≥lo} with no upper bound), with x and φ built fresh per use by
+// phi() → { x, body }; null when some spec holds for any population.
 function cardinalityFormula(phi, specs) {
   const q = (op, n) => { const { x, body } = phi(); return count(op, n, [x], body) }
   const bounds = specs.map(({ lo, hi }) => {
     if (lo != null && lo === hi) return q('=', lo)
+    if (lo != null && lo > 0 && hi != null) { const { x, body } = phi(); return countRange(lo, hi, [x], body) }
     return and(lo != null && lo > 0 ? q('≥', lo) : null, hi != null ? q('≤', hi) : null)
   })
   if (!bounds.length || bounds.some(b => b === null)) return null

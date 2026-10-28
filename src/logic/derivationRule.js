@@ -18,6 +18,7 @@
 //   { t: 'implies' | 'iff', left, right }
 //   { t: 'forall' | 'exists', v: { id, typeId }, body }
 //   { t: 'count', op: '≤' | '≥' | '=', n, v: { id, typeId }, body }
+//   { t: 'count', op: '..', n, m, v: { id, typeId }, body }   ∃^{n..m}
 //   { t: 'fact', factId, args: [varId | null] }     args in roles[] order; factId
 //                                                   can also be an implied link of a
 //                                                   nested fact type, '<factId>_il_<i>'
@@ -37,7 +38,7 @@
 // The subject's variable id is SUBJECT.
 
 import {
-  mkVar, mkMeetVar, forall, exists, count, not, truth, implies, iff, and, or,
+  mkVar, mkMeetVar, forall, exists, count, countRange, not, truth, implies, iff, and, or,
   factAtom, typeAtom, cmp, vcmp, dpred, fn, ite, agg,
 } from './formula.js'
 import { renderFormula } from './renderFormula.js'
@@ -334,6 +335,12 @@ export function checkFormula(rule, roots, opts, state, ctx, typing = { sorts: ne
           err(path, 'The quantified variable has no type')
         if (n.t === 'count' && !(Number.isInteger(n.n) && n.n >= 0))
           err(path, 'The bound of a counting quantifier must be a whole number of 0 or more')
+        if (n.t === 'count' && n.op === '..' && Number.isInteger(n.n)) {
+          if (!(Number.isInteger(n.m) && n.m >= 0))
+            err(path, 'The upper bound of a counting quantifier must be a whole number of 0 or more')
+          else if (n.m < n.n)
+            err(path, 'The upper bound of a counting quantifier is below its lower bound')
+        }
         walk(n.body, [...path, 'body'], [...scope, { id: n.v.id, typeIds: [n.v.typeId] }])
         return
       case 'fact': {
@@ -432,7 +439,7 @@ export function ruleFormula(rule, vars, ctx, typing) {
       case 'iff': return iff(tr(n.left), tr(n.right))
       case 'forall': return forall([v(n.v.id)], tr(n.body))
       case 'exists': return exists([v(n.v.id)], tr(n.body))
-      case 'count': return count(n.op, n.n, [v(n.v.id)], tr(n.body))
+      case 'count': return n.op === '..' ? countRange(n.n, n.m, [v(n.v.id)], tr(n.body)) : count(n.op, n.n, [v(n.v.id)], tr(n.body))
       case 'fact': return factAtom(n.factId, n.args.map(v))
       case 'type': return typeAtom(n.typeId, v(n.arg))
       case 'cmp': return cmp(n.op, v(n.left), v(n.right))

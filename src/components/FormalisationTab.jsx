@@ -134,7 +134,14 @@ export function Formula({ formula, ctx }) {
   return (
     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap', userSelect: 'text' }}>
       {tokens.map((t, i) => t.sup
-        ? <sup key={i} style={{ ...TOKEN_STYLE.op, fontSize: '0.75em' }}>{t.text}</sup>
+        // A range bound n..m copies as ^{n..m}, so it stays readable as text.
+        ? (t.text.includes('..')
+          ? <React.Fragment key={i}>
+              <span className="copy-only">^{'{'}</span>
+              <sup style={{ ...TOKEN_STYLE.op, fontSize: '0.75em' }}>{t.text}</sup>
+              <span className="copy-only">{'}'}</span>
+            </React.Fragment>
+          : <sup key={i} style={{ ...TOKEN_STYLE.op, fontSize: '0.75em' }}>{t.text}</sup>)
         : t.sub
           // A run of subscript tokens (TC's bound variables) copies as _{…}.
           ? <React.Fragment key={i}>

@@ -7,6 +7,8 @@
 //
 //   { t: 'forall' | 'exists', vars: [Var], body }
 //   { t: 'count', op: '≤' | '≥' | '=', n, vars: [Var], body }   counting quantifier ∃^{op n}
+//   { t: 'count', op: '..', n, m, vars: [Var], body }           range quantifier ∃^{n..m}:
+//       at least n and at most m tuples of vars satisfy body
 //   { t: 'and' | 'or', args: [F] }
 //   { t: 'implies' | 'iff', left, right }
 //   { t: 'not', arg }
@@ -41,6 +43,7 @@ export const mkMeetVar = (typeIds) => (typeIds.length > 1 ? { typeId: typeIds[0]
 export const forall = (vars, body) => vars.length ? { t: 'forall', vars, body } : body
 export const exists = (vars, body) => vars.length ? { t: 'exists', vars, body } : body
 export const count  = (op, n, vars, body) => ({ t: 'count', op, n, vars, body })
+export const countRange = (n, m, vars, body) => ({ t: 'count', op: '..', n, m, vars, body })
 export const not    = (arg) => ({ t: 'not', arg })
 export const truth  = () => ({ t: 'true' })
 export const implies = (left, right) => ({ t: 'implies', left, right })

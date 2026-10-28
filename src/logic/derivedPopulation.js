@@ -144,7 +144,8 @@ export function makePopulationEvaluator(rawData) {
           }
           if (n.t === 'forall') return true
           if (n.t === 'exists') return false
-          return n.op === '≤' ? count <= n.n : n.op === '≥' ? count >= n.n : count === n.n
+          return n.op === '≤' ? count <= n.n : n.op === '≥' ? count >= n.n
+            : n.op === '..' ? count >= n.n && count <= n.m : count === n.n
         }
         case 'fact':
           return tupleKeys(n.factId).has(JSON.stringify(n.args.map(id => env.get(id).key)))
