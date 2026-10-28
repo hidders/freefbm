@@ -15,6 +15,13 @@ language en "English"
 
 # ── Sentences ────────────────────────────────────────────────────────────────
 
+sentence rule impossible {
+  # Negative verbalisation (negative.js): the situation the constraint rules
+  # out, as NORMA's negative mode says it.
+  match:    { t: "not", mode: "impossible", arg: ?x }
+  template: "it is impossible that" clause(?x)
+}
+
 sentence rule value-range {
   match:    ForAll([?x], ?body)
   guard:    rangeItems(?body, ?x)
@@ -84,6 +91,14 @@ sentence rule clause {
 
 # ── Clauses ──────────────────────────────────────────────────────────────────
 
+clause rule more-than-one-same {
+  # In negative sentences (negative.js), uniqueness over roles other than the
+  # subject's: "more than one Person has the same Email".
+  match:    Exists(?xs, ?q @ Count(>, ?n, [?y], ?body))
+  guard:    singular(?q)
+  template: with(same: ?xs) { quantNP(?q, ?y) vp(?body, ?y) }
+}
+
 clause rule at-most-one-of {
   match:    ?f
   guard:    exclusionItems(?f)
@@ -95,6 +110,13 @@ clause rule not-subject {
   match:    Not(?a)
   guard:    ?a.t in ["fact", "type", "exists"]
   template: negatedClause(?a)
+}
+
+clause rule none {
+  # ¬R(x, some Y) with Y first: "no Staff coordinates that Course"
+  match:    Not(?f @ Node("fact"))
+  guard:    wildCount(?f) == 1
+  template: with(none: true) { reading(?f) }
 }
 
 clause rule not {
@@ -281,4 +303,11 @@ vp rule some-object {
   match:    Exists([?y], ?body)
   guard:    env.verb != "negated"
   template: objectQuantified(?subj, ?y, ?body, (if env.negative { "any" } else { "some" } name(?y)))
+}
+
+vp rule not {
+  # In negative sentences (negative.js): the verb phrase negated.
+  match:    Not(?a)
+  guard:    not env.verb
+  template: vp(?a, ?subj, verb: "negated")
 }

@@ -79,6 +79,8 @@ const DETERMINERS = {
   none: (g, c) => adjective('żadn', g, c, false, { over: { 'm.nom': 'żaden', 'm.accI': 'żaden' } }),
   // jakiś, jakiegoś, …; jakaś, …; jakieś
   some: (g, c, pl) => adjective('jak', g, c, pl, { soft: true, suffix: 'ś', over: { 'pl.mp.nom': 'jacy' } }),
+  // sam, samego, …; sama, …; samo
+  same: (g, c) => adjective('sam', g, c, false, { over: { 'm.nom': 'sam', 'm.accI': 'sam', 'n.nom': 'samo', 'n.acc': 'samo' } }),
   // jeden, jednego, …; jedna, …; jedno
   one: (g, c) => adjective('jedn', g, c, false, { over: { 'm.nom': 'jeden', 'm.accI': 'jeden', 'n.nom': 'jedno', 'n.acc': 'jedno' } }),
   // który, którego, …; którzy, które
@@ -145,7 +147,7 @@ function numberClass(n, g) {
 // Kursy", "co najwyżej 6 Przedmiotów"; in an oblique case the noun takes that
 // case in the plural ("co najwyżej 6 Przedmiotom").
 function quantifier(q, g, c) {
-  const words = { '≤': 'co najwyżej', '≥': 'co najmniej', '=': 'dokładnie' }
+  const words = { '≤': 'co najwyżej', '≥': 'co najmniej', '=': 'dokładnie', '>': 'więcej niż' }
   const num = (n) => kw(n === 1 ? DETERMINERS.one(g, c) : String(n))
   if (q.op === '..') return [kw('co najmniej'), num(q.n), kw('i co najwyżej'), num(q.m)]
   return [kw(words[q.op] ?? q.op), num(q.n)]
@@ -499,7 +501,9 @@ export const polishLibrary = {
   functions,
   term: (h, t) => term(h, t),
   // "ten Przedmiot", "tego Przedmiotu", or bare in a Jeśli … to … sentence.
-  refNP: (h, v, c = 'nom') => (h.env.refStyle === 'bare' ? noun(h, v, c)
+  // "ten sam Adres e-mail" for the variables in env.same (negative.js).
+  refNP: (h, v, c = 'nom') => (h.env.same?.includes(v) ? [kw(DETERMINERS.that(gender(h, v), c, false)), kw(DETERMINERS.same(gender(h, v), c)), noun(h, v, c)]
+    : h.env.refStyle === 'bare' ? noun(h, v, c)
     : [kw(DETERMINERS.that(gender(h, v), c, false)), noun(h, v, c)]),
   // "jakiś Przedmiot", or "żaden Przedmiot" in a negated atom (env.none or
   // a negated verb).

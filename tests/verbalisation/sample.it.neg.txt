@@ -1,0 +1,439 @@
+# Subtype · Student is a Person
+¬(∃ Student ¬Person(Student))
+È impossibile che uno Studente non è una Persona.
+
+# Subtype · Staff is a Person
+¬(∃ Staff ¬Person(Staff))
+È impossibile che un Dipendente non è una Persona.
+
+# Subtype · Professor is a Staff
+¬(∃ Professor ¬Staff(Professor))
+È impossibile che un Professore non è un Dipendente.
+
+# Subtype · Lecturer is a Staff
+¬(∃ Lecturer ¬Staff(Lecturer))
+È impossibile che un Docente non è un Dipendente.
+
+# Value range · Credits
+¬(∃ Credits (Credits ≉ 15 ∧ Credits ≉ 30))
+È impossibile che un Numero di crediti è diverso da 15 ed è diverso da 30.
+
+# Value range · Grade
+¬(∃ Grade (Grade < 0 ∨ Grade > 100))
+È impossibile che un Voto è minore di 0 o è maggiore di 100.
+
+# Value range · Season
+¬(∃ Season (Season ≉ 'Spring' ∧ Season ≉ 'Summer' ∧ Season ≉ 'Autumn' ∧ Season ≉ 'Winter'))
+È impossibile che una Stagione è diverso da 'Spring' ed è diverso da 'Summer' ed è diverso da 'Autumn' ed è diverso da 'Winter'.
+
+# Uniqueness (preferred identifier) · Person has PersonNr
+¬(∃ PersonNr ∃^{>1} Person (Person has PersonNr))
+È impossibile che più di una Persona ha lo stesso Numero personale.
+
+# Preferred identifier (exactly one identifier) · Person has PersonNr
+¬(∃ Person (¬(∃ PersonNr (Person has PersonNr)) ∨ ∃^{>1} PersonNr (Person has PersonNr)))
+È impossibile che una Persona non ha nessun Numero personale o ha più di un Numero personale.
+
+# Uniqueness · Person has PersonName
+¬(∃ Person ∃^{>1} PersonName (Person has PersonName))
+È impossibile che una Persona ha più di un Nome.
+
+# Mandatory role · Person has PersonName
+¬(∃ Person ¬(∃ PersonName (Person has PersonName)))
+È impossibile che una Persona non ha nessun Nome.
+
+# Uniqueness · Person has Email
+¬(∃ Person ∃^{>1} Email (Person has Email))
+È impossibile che una Persona ha più di un Indirizzo e-mail.
+
+# Uniqueness · Person has Email
+¬(∃ Email ∃^{>1} Person (Person has Email))
+È impossibile che più di una Persona ha lo stesso Indirizzo e-mail.
+
+# Uniqueness · Person has Phone
+¬(∃ Person ∃^{>1} Phone (Person has Phone))
+È impossibile che una Persona ha più di un Numero di telefono.
+
+# Uniqueness · Student is supervised by Professor
+¬(∃ Student ∃^{>1} Professor (Student is supervised by Professor))
+È impossibile che più di un Professore segue lo stesso Studente.
+
+# Uniqueness (preferred identifier) · Building has BuildingCode
+¬(∃ BuildingCode ∃^{>1} Building (Building has BuildingCode))
+È impossibile che più di un Edificio ha lo stesso Codice edificio.
+
+# Preferred identifier (exactly one identifier) · Building has BuildingCode
+¬(∃ Building (¬(∃ BuildingCode (Building has BuildingCode)) ∨ ∃^{>1} BuildingCode (Building has BuildingCode)))
+È impossibile che un Edificio non ha nessun Codice edificio o ha più di un Codice edificio.
+
+# Uniqueness · Room is in Building
+¬(∃ Room ∃^{>1} Building (Room is in Building))
+È impossibile che una Stanza si trova in più di un Edificio.
+
+# Mandatory role · Room is in Building
+¬(∃ Room ¬(∃ Building (Room is in Building)))
+È impossibile che una Stanza non si trova in nessun Edificio.
+
+# Uniqueness · Room has RoomNr
+¬(∃ Room ∃^{>1} RoomNr (Room has RoomNr))
+È impossibile che una Stanza ha più di un Numero di stanza.
+
+# Mandatory role · Room has RoomNr
+¬(∃ Room ¬(∃ RoomNr (Room has RoomNr)))
+È impossibile che una Stanza non ha nessun Numero di stanza.
+
+# Uniqueness · Staff has office Room
+¬(∃ Staff ∃^{>1} Room (Staff has office Room))
+È impossibile che un Dipendente ha più di una Stanza come ufficio.
+
+# Uniqueness · Staff has Extension
+¬(∃ Staff ∃^{>1} Extension (Staff has Extension))
+È impossibile che un Dipendente ha più di un Interno.
+
+# Uniqueness (preferred identifier) · Course has CourseCode
+¬(∃ CourseCode ∃^{>1} Course (Course has CourseCode))
+È impossibile che più di un Corso ha lo stesso Codice corso.
+
+# Preferred identifier (exactly one identifier) · Course has CourseCode
+¬(∃ Course (¬(∃ CourseCode (Course has CourseCode)) ∨ ∃^{>1} CourseCode (Course has CourseCode)))
+È impossibile che un Corso non ha nessun Codice corso o ha più di un Codice corso.
+
+# Uniqueness · Course has CourseTitle
+¬(∃ Course ∃^{>1} CourseTitle (Course has CourseTitle))
+È impossibile che un Corso ha più di un Titolo del corso.
+
+# Uniqueness · Course has CourseTitle
+¬(∃ CourseTitle ∃^{>1} Course (Course has CourseTitle))
+È impossibile che più di un Corso ha lo stesso Titolo del corso.
+
+# Mandatory role · Course has CourseTitle
+¬(∃ Course ¬(∃ CourseTitle (Course has CourseTitle)))
+È impossibile che un Corso non ha nessun Titolo del corso.
+
+# Uniqueness · Course is worth Credits
+¬(∃ Course ∃^{>1} Credits (Course is worth Credits))
+È impossibile che un Corso ha più di un Numero di crediti.
+
+# Mandatory role · Course is worth Credits
+¬(∃ Course ¬(∃ Credits (Course is worth Credits)))
+È impossibile che un Corso non ha nessun Numero di crediti.
+
+# Frequency · Student enrols in Course
+¬(∃ Student ∃^{>6} Course (Student enrols in Course))
+È impossibile che uno Studente frequenta più di 6 Corsi.
+
+# Uniqueness · Enrolment earned Grade
+¬(∃ Enrolment ∃^{>1} Grade (Enrolment earned Grade))
+È impossibile che un'Iscrizione ha ottenuto più di un Voto.
+
+# Uniqueness · Staff coordinates Course
+¬(∃ Course ∃^{>1} Staff (Staff coordinates Course))
+È impossibile che più di un Dipendente coordina lo stesso Corso.
+
+# Mandatory role · Staff coordinates Course
+¬(∃ Course ¬(∃ Staff (Staff coordinates Course)))
+È impossibile che c'è un Corso tale che nessun Dipendente coordina quel Corso.
+
+# Uniqueness · Term is in Season
+¬(∃ Term ∃^{>1} Season (Term is in Season))
+È impossibile che un Periodo cade in più di una Stagione.
+
+# Mandatory role · Term is in Season
+¬(∃ Term ¬(∃ Season (Term is in Season)))
+È impossibile che un Periodo non cade in nessuna Stagione.
+
+# Uniqueness · Term is in AcademicYear
+¬(∃ Term ∃^{>1} AcademicYear (Term is in AcademicYear))
+È impossibile che un Periodo fa parte di più di un Anno accademico.
+
+# Mandatory role · Term is in AcademicYear
+¬(∃ Term ¬(∃ AcademicYear (Term is in AcademicYear)))
+È impossibile che un Periodo non fa parte di nessun Anno accademico.
+
+# Uniqueness (preferred identifier) · AcademicYear starts in Year
+¬(∃ Year ∃^{>1} AcademicYear (AcademicYear starts in Year))
+È impossibile che più di un Anno accademico inizia in lo stesso Anno.
+
+# Preferred identifier (exactly one identifier) · AcademicYear starts in Year
+¬(∃ AcademicYear (¬(∃ Year (AcademicYear starts in Year)) ∨ ∃^{>1} Year (AcademicYear starts in Year)))
+È impossibile che un Anno accademico non inizia in nessun Anno o inizia in più di un Anno.
+
+# Value range (role 2) · AcademicYear starts in Year
+¬(∃ Year ((∃ AcademicYear (AcademicYear starts in Year)) ∧ (Year < 1970 ∨ Year > 2030)))
+È impossibile che c'è un Anno tale che un Anno accademico inizia in quell'Anno e quell'Anno è minore di 1970 o quell'Anno è maggiore di 2030.
+
+# Inclusive-or
+¬(∃ Person (¬(∃ Email (Person has Email)) ∧ ¬(∃ Phone (Person has Phone))))
+È impossibile che una Persona non ha nessun Indirizzo e-mail e non ha nessun Numero di telefono.
+
+# Inclusive-or
+¬(∃ Person (¬Student(Person) ∧ ¬Staff(Person)))
+È impossibile che una Persona non è uno Studente e non è un Dipendente.
+
+# Exclusive-or
+¬(∃ Staff ((¬Professor(Staff) ∧ ¬Lecturer(Staff)) ∨ (Professor(Staff) ∧ Lecturer(Staff))))
+È impossibile che c'è un Dipendente tale che quel Dipendente non è un Professore e quel Dipendente non è un Docente o quel Dipendente è un Professore e quel Dipendente è un Docente.
+
+# External uniqueness (preferred identifier)
+¬(∃ Building ∃ RoomNr ∃^{>1} Room ((Room is in Building) ∧ (Room has RoomNr)))
+È impossibile che più di una Stanza si trova in lo stesso Edificio e ha lo stesso Numero di stanza.
+
+# Preferred identifier (exactly one identifying combination)
+¬(∃ Room ¬(∃^{=1} Building, RoomNr ((Room is in Building) ∧ (Room has RoomNr))))
+È impossibile che c'è una Stanza tale che non è vero che c'è esattamente una combinazione di Edificio e Numero di stanza tale che quella Stanza si trova in quell'Edificio e quella Stanza ha quel Numero di stanza.
+
+# Equality
+∀ Staff ((∃ Room (Staff has office Room)) ↔ ∃ Extension (Staff has Extension))
+Per ogni Dipendente, quel Dipendente ha una Stanza come ufficio se e solo se quel Dipendente ha un Interno.
+
+# Ring (acyclic)
+¬(∃ Course₁ [TC_{Course₂,Course₃} (Course₂ is a prerequisite for Course₃)](Course₁, Course₁))
+È impossibile che un Corso₁ è un prerequisito per se stesso, direttamente o indirettamente.
+
+# Ring (intransitive)
+¬(∃ Course₁ ∃ Course₂ ∃ Course₃ ((Course₁ is a prerequisite for Course₂) ∧ (Course₂ is a prerequisite for Course₃) ∧ (Course₁ is a prerequisite for Course₃)))
+È impossibile che ci sono un Corso₁, un Corso₂ e un Corso₃ tali che quel Corso₁ è un prerequisito per quel Corso₂ e quel Corso₂ è un prerequisito per quel Corso₃ e quel Corso₁ è un prerequisito per quel Corso₃.
+
+# Exclusion
+¬(∃ Student ∃ Course ((Student enrols in Course) ∧ (Student assists in Course)))
+È impossibile che ci sono uno Studente e un Corso tali che quello Studente frequenta quel Corso e quello Studente è assistente in quel Corso.
+
+# Subset
+¬(∃ Staff ∃ Course ((∃ Offering ∃ Term ((Staff teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) ∧ ¬(Staff is qualified to teach Course)))
+È impossibile che ci sono un Dipendente e un Corso tali che quel Dipendente insegna un'Offerta che riguarda quel Corso e riguarda un Periodo e quel Dipendente non è abilitato a insegnare quel Corso.
+
+# External uniqueness (preferred identifier)
+¬(∃ Season ∃ AcademicYear ∃^{>1} Term ((Term is in Season) ∧ (Term is in AcademicYear)))
+È impossibile che più di un Periodo cade in la stessa Stagione e fa parte di lo stesso Anno accademico.
+
+# Preferred identifier (exactly one identifying combination)
+¬(∃ Term ¬(∃^{=1} Season, AcademicYear ((Term is in Season) ∧ (Term is in AcademicYear))))
+È impossibile che c'è un Periodo tale che non è vero che c'è esattamente una combinazione di Stagione e Anno accademico tale che quel Periodo cade in quella Stagione e quel Periodo fa parte di quell'Anno accademico.
+
+# Disjoint roots · Person and Building
+¬(∃ Person Building(Person))
+È impossibile che una Persona è un Edificio.
+
+# Disjoint roots · Person and Room
+¬(∃ Person Room(Person))
+È impossibile che una Persona è una Stanza.
+
+# Disjoint roots · Person and Course
+¬(∃ Person Course(Person))
+È impossibile che una Persona è un Corso.
+
+# Disjoint roots · Person and AcademicYear
+¬(∃ Person AcademicYear(Person))
+È impossibile che una Persona è un Anno accademico.
+
+# Disjoint roots · Person and Term
+¬(∃ Person Term(Person))
+È impossibile che una Persona è un Periodo.
+
+# Disjoint roots · Person and Enrolment
+¬(∃ Person Enrolment(Person))
+È impossibile che una Persona è un'Iscrizione.
+
+# Disjoint roots · Person and Offering
+¬(∃ Person Offering(Person))
+È impossibile che una Persona è un'Offerta.
+
+# Disjoint roots · Building and Room
+¬(∃ Building Room(Building))
+È impossibile che un Edificio è una Stanza.
+
+# Disjoint roots · Building and Course
+¬(∃ Building Course(Building))
+È impossibile che un Edificio è un Corso.
+
+# Disjoint roots · Building and AcademicYear
+¬(∃ Building AcademicYear(Building))
+È impossibile che un Edificio è un Anno accademico.
+
+# Disjoint roots · Building and Term
+¬(∃ Building Term(Building))
+È impossibile che un Edificio è un Periodo.
+
+# Disjoint roots · Building and Enrolment
+¬(∃ Building Enrolment(Building))
+È impossibile che un Edificio è un'Iscrizione.
+
+# Disjoint roots · Building and Offering
+¬(∃ Building Offering(Building))
+È impossibile che un Edificio è un'Offerta.
+
+# Disjoint roots · Room and Course
+¬(∃ Room Course(Room))
+È impossibile che una Stanza è un Corso.
+
+# Disjoint roots · Room and AcademicYear
+¬(∃ Room AcademicYear(Room))
+È impossibile che una Stanza è un Anno accademico.
+
+# Disjoint roots · Room and Term
+¬(∃ Room Term(Room))
+È impossibile che una Stanza è un Periodo.
+
+# Disjoint roots · Room and Enrolment
+¬(∃ Room Enrolment(Room))
+È impossibile che una Stanza è un'Iscrizione.
+
+# Disjoint roots · Room and Offering
+¬(∃ Room Offering(Room))
+È impossibile che una Stanza è un'Offerta.
+
+# Disjoint roots · Course and AcademicYear
+¬(∃ Course AcademicYear(Course))
+È impossibile che un Corso è un Anno accademico.
+
+# Disjoint roots · Course and Term
+¬(∃ Course Term(Course))
+È impossibile che un Corso è un Periodo.
+
+# Disjoint roots · Course and Enrolment
+¬(∃ Course Enrolment(Course))
+È impossibile che un Corso è un'Iscrizione.
+
+# Disjoint roots · Course and Offering
+¬(∃ Course Offering(Course))
+È impossibile che un Corso è un'Offerta.
+
+# Disjoint roots · AcademicYear and Term
+¬(∃ AcademicYear Term(AcademicYear))
+È impossibile che un Anno accademico è un Periodo.
+
+# Disjoint roots · AcademicYear and Enrolment
+¬(∃ AcademicYear Enrolment(AcademicYear))
+È impossibile che un Anno accademico è un'Iscrizione.
+
+# Disjoint roots · AcademicYear and Offering
+¬(∃ AcademicYear Offering(AcademicYear))
+È impossibile che un Anno accademico è un'Offerta.
+
+# Disjoint roots · Term and Enrolment
+¬(∃ Term Enrolment(Term))
+È impossibile che un Periodo è un'Iscrizione.
+
+# Disjoint roots · Term and Offering
+¬(∃ Term Offering(Term))
+È impossibile che un Periodo è un'Offerta.
+
+# Disjoint roots · Enrolment and Offering
+¬(∃ Enrolment Offering(Enrolment))
+È impossibile che un'Iscrizione è un'Offerta.
+
+# Participation (not independent) · Person
+¬(∃ Person (¬(∃ PersonName (Person has PersonName)) ∧ ¬(∃ Email (Person has Email)) ∧ ¬(∃ Phone (Person has Phone)) ∧ ¬(∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∧ ¬(∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∧ ¬(∃ Room (Staff(Person) ∧ (Person has office Room))) ∧ ¬(∃ Extension (Staff(Person) ∧ (Person has Extension))) ∧ ¬(∃ Course (Student(Person) ∧ (Person enrols in Course))) ∧ ¬(∃ Course (Student(Person) ∧ (Person assists in Course))) ∧ ¬(∃ Course (Staff(Person) ∧ (Person is qualified to teach Course))) ∧ ¬(∃ Offering (Staff(Person) ∧ (Person teaches Offering))) ∧ ¬(∃ Course (Staff(Person) ∧ (Person coordinates Course)))))
+È impossibile che c'è una Persona tale che quella Persona non ha nessun Nome e quella Persona non ha nessun Indirizzo e-mail e quella Persona non ha nessun Numero di telefono e al massimo una delle seguenti affermazioni è vera: quella Persona è uno Studente; quella Persona è seguito da un Professore e al massimo una delle seguenti affermazioni è vera: quella Persona è un Professore; quella Persona segue uno Studente e al massimo una delle seguenti affermazioni è vera: quella Persona è un Dipendente; quella Persona ha una Stanza come ufficio e al massimo una delle seguenti affermazioni è vera: quella Persona è un Dipendente; quella Persona ha un Interno e al massimo una delle seguenti affermazioni è vera: quella Persona è uno Studente; quella Persona frequenta un Corso e al massimo una delle seguenti affermazioni è vera: quella Persona è uno Studente; quella Persona è assistente in un Corso e al massimo una delle seguenti affermazioni è vera: quella Persona è un Dipendente; quella Persona è abilitato a insegnare un Corso e al massimo una delle seguenti affermazioni è vera: quella Persona è un Dipendente; quella Persona insegna un'Offerta e al massimo una delle seguenti affermazioni è vera: quella Persona è un Dipendente; quella Persona coordina un Corso.
+
+# Participation (not independent) · PersonNr
+¬(∃ PersonNr ¬(∃ Person (Person has PersonNr)))
+È impossibile che un Numero personale non identifica nessuna Persona.
+
+# Participation (not independent) · PersonName
+¬(∃ PersonName ¬(∃ Person (Person has PersonName)))
+È impossibile che c'è un Nome tale che nessuna Persona ha quel Nome.
+
+# Participation (not independent) · Email
+¬(∃ Email ¬(∃ Person (Person has Email)))
+È impossibile che c'è un Indirizzo e-mail tale che nessuna Persona ha quell'Indirizzo e-mail.
+
+# Participation (not independent) · Phone
+¬(∃ Phone ¬(∃ Person (Person has Phone)))
+È impossibile che c'è un Numero di telefono tale che nessuna Persona ha quel Numero di telefono.
+
+# Participation (not independent) · Student
+¬(∃ Student₁ (¬(∃ PersonName (Student₁ has PersonName)) ∧ ¬(∃ Email (Student₁ has Email)) ∧ ¬(∃ Phone (Student₁ has Phone)) ∧ ¬(∃ Professor (Student₁ is supervised by Professor)) ∧ ¬(∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∧ ¬(∃ Room (Staff(Student₁) ∧ (Student₁ has office Room))) ∧ ¬(∃ Extension (Staff(Student₁) ∧ (Student₁ has Extension))) ∧ ¬(∃ Course (Student₁ enrols in Course)) ∧ ¬(∃ Course (Student₁ assists in Course)) ∧ ¬(∃ Course (Staff(Student₁) ∧ (Student₁ is qualified to teach Course))) ∧ ¬(∃ Offering (Staff(Student₁) ∧ (Student₁ teaches Offering))) ∧ ¬(∃ Course (Staff(Student₁) ∧ (Student₁ coordinates Course)))))
+È impossibile che c'è uno Studente₁ tale che quello Studente₁ non ha nessun Nome e quello Studente₁ non ha nessun Indirizzo e-mail e quello Studente₁ non ha nessun Numero di telefono e quello Studente₁ non è seguito da nessun Professore e al massimo una delle seguenti affermazioni è vera: quello Studente₁ è un Professore; quello Studente₁ segue uno Studente e al massimo una delle seguenti affermazioni è vera: quello Studente₁ è un Dipendente; quello Studente₁ ha una Stanza come ufficio e al massimo una delle seguenti affermazioni è vera: quello Studente₁ è un Dipendente; quello Studente₁ ha un Interno e quello Studente₁ non frequenta nessun Corso e quello Studente₁ non è assistente in nessun Corso e al massimo una delle seguenti affermazioni è vera: quello Studente₁ è un Dipendente; quello Studente₁ è abilitato a insegnare un Corso e al massimo una delle seguenti affermazioni è vera: quello Studente₁ è un Dipendente; quello Studente₁ insegna un'Offerta e al massimo una delle seguenti affermazioni è vera: quello Studente₁ è un Dipendente; quello Studente₁ coordina un Corso.
+
+# Participation (not independent) · Staff
+¬(∃ Staff (¬(∃ PersonName (Staff has PersonName)) ∧ ¬(∃ Email (Staff has Email)) ∧ ¬(∃ Phone (Staff has Phone)) ∧ ¬(∃ Professor (Student(Staff) ∧ (Staff is supervised by Professor))) ∧ ¬(∃ Student (Professor(Staff) ∧ (Student is supervised by Staff))) ∧ ¬(∃ Room (Staff has office Room)) ∧ ¬(∃ Extension (Staff has Extension)) ∧ ¬(∃ Course (Student(Staff) ∧ (Staff enrols in Course))) ∧ ¬(∃ Course (Student(Staff) ∧ (Staff assists in Course))) ∧ ¬(∃ Course (Staff is qualified to teach Course)) ∧ ¬(∃ Offering (Staff teaches Offering)) ∧ ¬(∃ Course (Staff coordinates Course))))
+È impossibile che c'è un Dipendente tale che quel Dipendente non ha nessun Nome e quel Dipendente non ha nessun Indirizzo e-mail e quel Dipendente non ha nessun Numero di telefono e al massimo una delle seguenti affermazioni è vera: quel Dipendente è uno Studente; quel Dipendente è seguito da un Professore e al massimo una delle seguenti affermazioni è vera: quel Dipendente è un Professore; quel Dipendente segue uno Studente e quel Dipendente non ha nessuna Stanza come ufficio e quel Dipendente non ha nessun Interno e al massimo una delle seguenti affermazioni è vera: quel Dipendente è uno Studente; quel Dipendente frequenta un Corso e al massimo una delle seguenti affermazioni è vera: quel Dipendente è uno Studente; quel Dipendente è assistente in un Corso e quel Dipendente non è abilitato a insegnare nessun Corso e quel Dipendente non insegna nessun'Offerta e quel Dipendente non coordina nessun Corso.
+
+# Participation (not independent) · Professor
+¬(∃ Professor₁ (¬(∃ PersonName (Professor₁ has PersonName)) ∧ ¬(∃ Email (Professor₁ has Email)) ∧ ¬(∃ Phone (Professor₁ has Phone)) ∧ ¬(∃ Professor₂ (Student(Professor₁) ∧ (Professor₁ is supervised by Professor₂))) ∧ ¬(∃ Student (Student is supervised by Professor₁)) ∧ ¬(∃ Room (Professor₁ has office Room)) ∧ ¬(∃ Extension (Professor₁ has Extension)) ∧ ¬(∃ Course (Student(Professor₁) ∧ (Professor₁ enrols in Course))) ∧ ¬(∃ Course (Student(Professor₁) ∧ (Professor₁ assists in Course))) ∧ ¬(∃ Course (Professor₁ is qualified to teach Course)) ∧ ¬(∃ Offering (Professor₁ teaches Offering)) ∧ ¬(∃ Course (Professor₁ coordinates Course))))
+È impossibile che c'è un Professore₁ tale che quel Professore₁ non ha nessun Nome e quel Professore₁ non ha nessun Indirizzo e-mail e quel Professore₁ non ha nessun Numero di telefono e al massimo una delle seguenti affermazioni è vera: quel Professore₁ è uno Studente; quel Professore₁ è seguito da un Professore e quel Professore₁ non segue nessuno Studente e quel Professore₁ non ha nessuna Stanza come ufficio e quel Professore₁ non ha nessun Interno e al massimo una delle seguenti affermazioni è vera: quel Professore₁ è uno Studente; quel Professore₁ frequenta un Corso e al massimo una delle seguenti affermazioni è vera: quel Professore₁ è uno Studente; quel Professore₁ è assistente in un Corso e quel Professore₁ non è abilitato a insegnare nessun Corso e quel Professore₁ non insegna nessun'Offerta e quel Professore₁ non coordina nessun Corso.
+
+# Participation (not independent) · Lecturer
+¬(∃ Lecturer (¬(∃ PersonName (Lecturer has PersonName)) ∧ ¬(∃ Email (Lecturer has Email)) ∧ ¬(∃ Phone (Lecturer has Phone)) ∧ ¬(∃ Professor (Student(Lecturer) ∧ (Lecturer is supervised by Professor))) ∧ ¬(∃ Student (Professor(Lecturer) ∧ (Student is supervised by Lecturer))) ∧ ¬(∃ Room (Lecturer has office Room)) ∧ ¬(∃ Extension (Lecturer has Extension)) ∧ ¬(∃ Course (Student(Lecturer) ∧ (Lecturer enrols in Course))) ∧ ¬(∃ Course (Student(Lecturer) ∧ (Lecturer assists in Course))) ∧ ¬(∃ Course (Lecturer is qualified to teach Course)) ∧ ¬(∃ Offering (Lecturer teaches Offering)) ∧ ¬(∃ Course (Lecturer coordinates Course))))
+È impossibile che c'è un Docente tale che quel Docente non ha nessun Nome e quel Docente non ha nessun Indirizzo e-mail e quel Docente non ha nessun Numero di telefono e al massimo una delle seguenti affermazioni è vera: quel Docente è uno Studente; quel Docente è seguito da un Professore e al massimo una delle seguenti affermazioni è vera: quel Docente è un Professore; quel Docente segue uno Studente e quel Docente non ha nessuna Stanza come ufficio e quel Docente non ha nessun Interno e al massimo una delle seguenti affermazioni è vera: quel Docente è uno Studente; quel Docente frequenta un Corso e al massimo una delle seguenti affermazioni è vera: quel Docente è uno Studente; quel Docente è assistente in un Corso e quel Docente non è abilitato a insegnare nessun Corso e quel Docente non insegna nessun'Offerta e quel Docente non coordina nessun Corso.
+
+# Participation (not independent) · Building
+¬(∃ Building ¬(∃ Room (Room is in Building)))
+È impossibile che c'è un Edificio tale che nessuna Stanza si trova in quell'Edificio.
+
+# Participation (not independent) · BuildingCode
+¬(∃ BuildingCode ¬(∃ Building (Building has BuildingCode)))
+È impossibile che un Codice edificio non identifica nessun Edificio.
+
+# Participation (not independent) · RoomNr
+¬(∃ RoomNr ¬(∃ Room (Room has RoomNr)))
+È impossibile che c'è un Numero di stanza tale che nessuna Stanza ha quel Numero di stanza.
+
+# Participation (not independent) · Room
+¬(∃ Room ¬(∃ Staff (Staff has office Room)))
+È impossibile che c'è una Stanza tale che nessun Dipendente ha quella Stanza come ufficio.
+
+# Participation (not independent) · Extension
+¬(∃ Extension ¬(∃ Staff (Staff has Extension)))
+È impossibile che c'è un Interno tale che nessun Dipendente ha quell'Interno.
+
+# Participation (not independent) · Course
+¬(∃ Course₁ (¬(∃ CourseTitle (Course₁ has CourseTitle)) ∧ ¬(∃ Credits (Course₁ is worth Credits)) ∧ ¬(∃ Course₂ (Course₁ is a prerequisite for Course₂)) ∧ ¬(∃ Course₂ (Course₂ is a prerequisite for Course₁)) ∧ ¬(∃ Student (Student enrols in Course₁)) ∧ ¬(∃ Student (Student assists in Course₁)) ∧ ¬(∃ Staff (Staff is qualified to teach Course₁)) ∧ ¬(∃ Staff (Staff coordinates Course₁)) ∧ ¬(∃ Term (Course₁ is offered in Term))))
+È impossibile che c'è un Corso₁ tale che quel Corso₁ non ha nessun Titolo del corso e quel Corso₁ non ha nessun Numero di crediti e quel Corso₁ non è un prerequisito per nessun Corso e nessun Corso è un prerequisito per quel Corso₁ e nessuno Studente frequenta quel Corso₁ e nessuno Studente è assistente in quel Corso₁ e nessun Dipendente è abilitato a insegnare quel Corso₁ e nessun Dipendente coordina quel Corso₁ e quel Corso₁ non è offerto in nessun Periodo.
+
+# Participation (not independent) · CourseCode
+¬(∃ CourseCode ¬(∃ Course (Course has CourseCode)))
+È impossibile che un Codice corso non identifica nessun Corso.
+
+# Participation (not independent) · CourseTitle
+¬(∃ CourseTitle ¬(∃ Course (Course has CourseTitle)))
+È impossibile che c'è un Titolo del corso tale che nessun Corso ha quel Titolo del corso.
+
+# Participation (not independent) · Credits
+¬(∃ Credits ¬(∃ Course (Course is worth Credits)))
+È impossibile che c'è un Numero di crediti tale che nessun Corso ha quel Numero di crediti.
+
+# Participation (not independent) · Grade
+¬(∃ Grade ¬(∃ Enrolment (Enrolment earned Grade)))
+È impossibile che c'è un Voto tale che nessun'Iscrizione ha ottenuto quel Voto.
+
+# Participation (not independent) · Season
+¬(∃ Season ¬(∃ Term (Term is in Season)))
+È impossibile che c'è una Stagione tale che nessun Periodo cade in quella Stagione.
+
+# Participation (not independent) · AcademicYear
+¬(∃ AcademicYear ¬(∃ Term (Term is in AcademicYear)))
+È impossibile che c'è un Anno accademico tale che nessun Periodo fa parte di quell'Anno accademico.
+
+# Participation (not independent) · Term
+¬(∃ Term ¬(∃ Course (Course is offered in Term)))
+È impossibile che c'è un Periodo tale che nessun Corso è offerto in quel Periodo.
+
+# Participation (not independent) · Year
+¬(∃ Year ¬(∃ AcademicYear (AcademicYear starts in Year)))
+È impossibile che c'è un Anno tale che nessun Anno accademico inizia in quell'Anno.
+
+# Implied links (each fact has exactly one nesting instance) · Enrolment nests Student enrols in Course
+¬(∃ Student ∃ Course ((Student enrols in Course) ∧ (¬(∃ Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course))) ∨ ∃^{>1} Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course)))))
+È impossibile che ci sono uno Studente e un Corso tali che quello Studente frequenta quel Corso e non è vero che un'Iscrizione riguarda quello Studente e riguarda quel Corso o più di un'Iscrizione riguarda quello Studente e riguarda quel Corso.
+
+# Implied links (linked values form a fact) · Enrolment nests Student enrols in Course
+¬(∃ Student ∃ Course ((∃ Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course))) ∧ ¬(Student enrols in Course)))
+È impossibile che ci sono uno Studente e un Corso tali che un'Iscrizione riguarda quello Studente e riguarda quel Corso e quello Studente non frequenta quel Corso.
+
+# Implied links (each nesting instance links exactly one combination) · Enrolment nests Student enrols in Course
+¬(∃ Enrolment ¬(∃^{=1} Student, Course ((Enrolment involves Student) ∧ (Enrolment involves Course))))
+È impossibile che c'è un'Iscrizione tale che non è vero che c'è esattamente una combinazione di Studente e Corso tale che quell'Iscrizione riguarda quello Studente e quell'Iscrizione riguarda quel Corso.
+
+# Implied links (each fact has exactly one nesting instance) · Offering nests Course is offered in Term
+¬(∃ Course ∃ Term ((Course is offered in Term) ∧ (¬(∃ Offering ((Offering involves Course) ∧ (Offering involves Term))) ∨ ∃^{>1} Offering ((Offering involves Course) ∧ (Offering involves Term)))))
+È impossibile che ci sono un Corso e un Periodo tali che quel Corso è offerto in quel Periodo e non è vero che un'Offerta riguarda quel Corso e riguarda quel Periodo o più di un'Offerta riguarda quel Corso e riguarda quel Periodo.
+
+# Implied links (linked values form a fact) · Offering nests Course is offered in Term
+¬(∃ Course ∃ Term ((∃ Offering ((Offering involves Course) ∧ (Offering involves Term))) ∧ ¬(Course is offered in Term)))
+È impossibile che ci sono un Corso e un Periodo tali che un'Offerta riguarda quel Corso e riguarda quel Periodo e quel Corso non è offerto in quel Periodo.
+
+# Implied links (each nesting instance links exactly one combination) · Offering nests Course is offered in Term
+¬(∃ Offering ¬(∃^{=1} Course, Term ((Offering involves Course) ∧ (Offering involves Term))))
+È impossibile che c'è un'Offerta tale che non è vero che c'è esattamente una combinazione di Corso e Periodo tale che quell'Offerta riguarda quel Corso e quell'Offerta riguarda quel Periodo.

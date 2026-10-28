@@ -13,6 +13,13 @@ language fr "Français"
 
 # ── Sentences ────────────────────────────────────────────────────────────────
 
+sentence rule impossible {
+  # Negative verbalisation (negative.js): the situation the constraint rules
+  # out, as NORMA's negative mode says it.
+  match:    { t: "not", mode: "impossible", arg: ?x }
+  template: "il est impossible que" clause(?x)
+}
+
 sentence rule value-range {
   match:    ForAll([?x], ?body)
   guard:    rangeItems(?body, ?x)
@@ -79,6 +86,14 @@ sentence rule clause {
 }
 
 # ── Clauses ──────────────────────────────────────────────────────────────────
+
+clause rule more-than-one-same {
+  # In negative sentences (negative.js), uniqueness over roles other than the
+  # subject's: "more than one Person has the same Email".
+  match:    Exists(?xs, ?q @ Count(>, ?n, [?y], ?body))
+  guard:    singular(?q)
+  template: with(same: ?xs) { quantNP(?q, ?y) vp(?body, ?y) }
+}
 
 clause rule at-most-one-of {
   match:    ?f
@@ -290,4 +305,11 @@ vp rule some-object {
   match:    Exists([?y], ?body)
   guard:    env.verb != "negated"
   template: objectQuantified(?subj, ?y, ?body, (some(?y) name(?y)))
+}
+
+vp rule not {
+  # In negative sentences (negative.js): the verb phrase negated.
+  match:    Not(?a)
+  guard:    not env.verb
+  template: vp(?a, ?subj, verb: "negated")
 }

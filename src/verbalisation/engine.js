@@ -24,6 +24,7 @@
 
 import { renderFormula } from '../logic/renderFormula.js'
 import { normalise } from './normalise.js'
+import { negativeForm } from './negative.js'
 import { match, isVar } from './match.js'
 import { readingsFor, typeLexicon, hasText } from './lexicon.js'
 
@@ -39,15 +40,18 @@ export function seq(...parts) {
 // rules that built the sentence, outermost first. With options.stats (a Map),
 // every rule tried counts there, under 'kind: name', how often its pattern
 // matched ({ matched }), its guard then failed ({ rejected }) and its
-// template failed ({ failed }); see analysis.js.
-export function verbalise(formula, ctx, language, options = {}) {
+// template failed ({ failed }); see analysis.js. With options.negative the
+// sentence says what the formula rules out (negative.js), when it can; the
+// result's formula is then the rewritten one.
+export function verbalise(input, ctx, language, options = {}) {
+  const formula = (options.negative && negativeForm(input)) || input
   const names = new Map()
   renderFormula(formula, ctx, names)
   const trace = []
   const phrase = makePhraser(ctx, language, names, trace, options.stats)
   const out = phrase('sentence', normalise(formula), {})
   if (!out) throw new Error('no rule applies')
-  return { ...linearise(out, language), trace }
+  return { ...linearise(out, language), trace, formula }
 }
 
 function makePhraser(ctx, lang, names, trace, stats) {
@@ -129,8 +133,8 @@ function makePhraser(ctx, lang, names, trace, stats) {
   // is left out: the verb phrase. Without one, a reading that starts with a
   // variable already introduced is preferred (as in "that Course has some
   // CourseTitle"), else the primary reading. The language shapes the
-  // reading's parts for the environment (lang.shapeReading: verb forms, word
-  // order; null fails the reading, and it may return { parts, cases } to
+  // reading's parts for the environment (lang.shapeReading(h, reading,
+  // elided, atom): verb forms, word order; null fails the reading, and it may return { parts, cases } to
   // change the cases too). overrides maps variables to the phrases that fill
   // their slots, or to functions from the slot's case to such a phrase.
   // A reading may give each slot a grammatical case (cases[k], Polish).
@@ -149,7 +153,7 @@ function makePhraser(ctx, lang, names, trace, stats) {
       pick = all.find(r => { const a = atom.args[r.roleOrder[0]]; return isVar(a) && !overrides.has(a) && empty0(r) }) ?? all[0]
     }
     if (!pick) return null
-    const shaped = (lang.shapeReading ?? shapeReading)(h, pick, subject !== undefined)
+    const shaped = (lang.shapeReading ?? shapeReading)(h, pick, subject !== undefined, atom)
     if (!shaped) return null
     const parts = Array.isArray(shaped) ? shaped : shaped.parts
     const cases = (Array.isArray(shaped) ? null : shaped.cases) ?? pick.cases ?? []

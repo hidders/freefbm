@@ -59,7 +59,7 @@ const relPron = (h, v, plural) => kw(!plural && h.gender(v) === 'het' ? 'dat' : 
 
 function quantifier(op, n, m) {
   if (op === '..') return [kw('minstens'), number(n), kw('en hoogstens'), number(m)]
-  return [kw({ '≤': 'hoogstens', '≥': 'minstens', '=': 'precies' }[op] ?? op), number(n)]
+  return [kw({ '≤': 'hoogstens', '≥': 'minstens', '=': 'precies', '>': 'meer dan' }[op] ?? op), number(n)]
 }
 
 function quantifiedNP(h, op, n, m, v) {
@@ -287,6 +287,7 @@ const functions = {
   isA: (h, T) => (h.env.verb === 'plural'
     ? verbPhrase(h, 'is', tok(h.typePlural(T), 'type'))
     : verbPhrase(h, 'is', [article(), tok(h.typeLabel(T), 'type')])),
+  notA: (h, T) => verbPhrase(h, 'is', [kw('geen'), tok(h.typeLabel(T), 'type')]),
   valueVP: (h, op, r) => verbPhrase(h, 'is', [VALUE_OPS[op] ? kw(VALUE_OPS[op]) : [], h.term(r)]),
   valueClause: (h, op, l, r) => {
     const comp = [VALUE_OPS[op] ? kw(VALUE_OPS[op]) : [], h.term(r)]
@@ -373,7 +374,8 @@ export const dutchLibrary = {
   label: 'Nederlands',
   functions,
   term,
-  refNP: (h, v) => (h.env.refStyle === 'bare' ? tok(h.name(v), 'type') : [demonstrative(h, v), tok(h.name(v), 'type')]),
+  // "hetzelfde E-mailadres" for the variables in env.same (negative.js).
+  refNP: (h, v) => (h.env.same?.includes(v) ? [kw(h.gender(v) === 'het' ? 'hetzelfde' : 'dezelfde'), tok(h.name(v), 'type')] : h.env.refStyle === 'bare' ? tok(h.name(v), 'type') : [demonstrative(h, v), tok(h.name(v), 'type')]),
   // "een Vak", or "geen Vak" in a negated atom (env.none).
   wildNP: (h, w) => [kw(h.env.none ? 'geen' : 'een'), tok(h.name(w), 'type')],
   reflexive: () => kw('zichzelf'),

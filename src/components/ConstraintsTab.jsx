@@ -4,6 +4,7 @@ import { useOrmStore } from '../store/ormStore'
 import { formalise } from '../logic/constraintFormulas.js'
 import { renderFormula } from '../logic/renderFormula.js'
 import { verbalise } from '../verbalisation/engine.js'
+import { negativeForm } from '../verbalisation/negative.js'
 import { useVerbalisation, useLanguageChoice, openWorkbench, LANGUAGES } from '../verbalisation/workbench.js'
 
 // ── Constraints tab ─────────────────────────────────────────────────────────
@@ -40,19 +41,24 @@ const VIEWS = [
   { id: 'formulas',  label: 'Formulas',  title: 'Show each constraint as a formula of the logic' },
   { id: 'both',      label: 'Both',      title: 'Show each sentence with its formula underneath' },
 ]
-const VIEW_KEY = 'freefbm.constraints.view'
+// Positive sentences say what must hold; negative ones, as in NORMA, the
+// situation a constraint rules out (negative.js).
+const MODES = [
+  { id: 'positive', label: 'Positive', title: 'Say what each constraint requires: "Each Person has at most one Email"' },
+  { id: 'negative', label: 'Negative', title: 'Say what each constraint rules out: "It is impossible that some Person has more than one Email"' },
+]
 
-// The chosen view, remembered across sessions; sentences by default.
-function useView() {
+// A choice among options, remembered across sessions; the first by default.
+function useChoice(key, options) {
   const read = () => {
-    try { const v = localStorage.getItem(VIEW_KEY); return VIEWS.some(x => x.id === v) ? v : 'sentences' } catch { return 'sentences' }
+    try { const v = localStorage.getItem(key); return options.some(x => x.id === v) ? v : options[0].id } catch { return options[0].id }
   }
-  const [view, setView] = useState(read)
+  const [value, setValue] = useState(read)
   const choose = (v) => {
-    setView(v)
-    try { localStorage.setItem(VIEW_KEY, v) } catch { /* storage unavailable */ }
+    setValue(v)
+    try { localStorage.setItem(key, v) } catch { /* storage unavailable */ }
   }
-  return [view, choose]
+  return [value, choose]
 }
 
 // Sentence token colours: object types and readings as in the formulas,
@@ -78,7 +84,9 @@ export default function ConstraintsTab() {
   const [showParticipation, toggleParticipation] = useToggle('freefbm.formalisation.participation')
   const [showLinks, toggleLinks] = useToggle('freefbm.formalisation.impliedLinks')
   const [wholeSchema, toggleWholeSchema] = useToggle('freefbm.formalisation.wholeSchema')
-  const [view, setView] = useView()
+  const [view, setView] = useChoice('freefbm.constraints.view', VIEWS)
+  const [mode, setMode] = useChoice('freefbm.constraints.mode', MODES)
+  const negative = mode === 'negative'
   const [langId, setLangId] = useLanguageChoice()
   const verbaliser = useVerbalisation(langId)
 
@@ -104,7 +112,8 @@ export default function ConstraintsTab() {
           {scope === 'selection' ? 'Constraints in the selection'
             : scope === 'schema' ? 'Constraints in the whole schema' : 'Constraints on this diagram'} ({entries.length})
         </span>
-        <ViewSwitch view={view} onChange={setView} />
+        <Segmented options={VIEWS} value={view} onChange={setView} label="Show constraints as" />
+        {view !== 'formulas' && <Segmented options={MODES} value={mode} onChange={setMode} label="Sentences say" />}
         <ToggleButton on={wholeSchema} onClick={toggleWholeSchema}
           title="With nothing selected, list the constraints of the whole schema instead of only this diagram">Whole schema</ToggleButton>
         {view !== 'formulas' && (
@@ -144,12 +153,12 @@ export default function ConstraintsTab() {
         : (
           /* Focusable so Cmd/Ctrl+A selects just what is shown here (see App.jsx) */
           <div data-text-panel tabIndex={0} className="text-panel">
-            {entries.map(e => <Entry key={e.key} e={e} ctx={ctx} view={view} language={verbaliser.language} />)}
+            {entries.map(e => <Entry key={e.key} e={e} ctx={ctx} view={view} negative={negative} language={verbaliser.language} />)}
             {sections.map(sec => (
               <div key={sec.title}>
                 <div className="text-panel-section">{sec.title}</div>
                 {sec.items.length
-                  ? sec.items.map(e => <Entry key={e.key} e={e} ctx={ctx} view={view} language={verbaliser.language} />)
+                  ? sec.items.map(e => <Entry key={e.key} e={e} ctx={ctx} view={view} negative={negative} language={verbaliser.language} />)
                   : <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic', marginBottom: 10 }}>{sec.empty}</div>}
               </div>
             ))}
@@ -159,7 +168,10 @@ export default function ConstraintsTab() {
   )
 }
 
-function Entry({ e, ctx, view, language }) {
+function Entry({ e, ctx, view, negative, language }) {
+  // Under a negative sentence, the formula it says: ¬(counterexample).
+  const shown = useMemo(() => (view === 'both' && negative && e.formula && negativeForm(e.formula)) || e.formula,
+    [view, negative, e.formula])
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.04em', marginBottom: 2 }}>
@@ -167,20 +179,21 @@ function Entry({ e, ctx, view, language }) {
       </div>
       {e.formula
         ? <>
-            {view !== 'formulas' && <Sentence formula={e.formula} ctx={ctx} language={language} />}
+            {view !== 'formulas' && <Sentence formula={e.formula} ctx={ctx} language={language} negative={negative} />}
             {view === 'formulas' && <Formula formula={e.formula} ctx={ctx} />}
-            {view === 'both' && <div style={{ opacity: 0.75, fontSize: 11 }}><Formula formula={e.formula} ctx={ctx} /></div>}
+            {view === 'both' && <div style={{ opacity: 0.75, fontSize: 11 }}><Formula formula={shown} ctx={ctx} /></div>}
           </>
         : <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>{e.note}</div>}
     </div>
   )
 }
 
-// A formula's English verbalisation. Hovering shows the rules that built it.
-export function Sentence({ formula, ctx, language }) {
+// A formula's verbalisation, positive or negative. Hovering shows the rules
+// that built it.
+export function Sentence({ formula, ctx, language, negative = false }) {
   const result = useMemo(() => {
-    try { return verbalise(formula, ctx, language) } catch (err) { return { error: err.message } }
-  }, [formula, ctx, language])
+    try { return verbalise(formula, ctx, language, { negative }) } catch (err) { return { error: err.message } }
+  }, [formula, ctx, language, negative])
   if (result.error) {
     return <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>No verbalisation: {result.error}</div>
   }
@@ -194,14 +207,14 @@ export function Sentence({ formula, ctx, language }) {
   )
 }
 
-// Segmented Sentences | Formulas | Both switch.
-function ViewSwitch({ view, onChange }) {
+// A segmented switch: Sentences | Formulas | Both, Positive | Negative.
+function Segmented({ options, value, onChange, label }) {
   return (
-    <span role="radiogroup" aria-label="Show constraints as" style={{
+    <span role="radiogroup" aria-label={label} style={{
       display: 'inline-flex', border: '1px solid var(--border-soft)', borderRadius: 10, overflow: 'hidden',
     }}>
-      {VIEWS.map((v, i) => {
-        const on = v.id === view
+      {options.map((v, i) => {
+        const on = v.id === value
         return (
           <button key={v.id} type="button" role="radio" aria-checked={on} title={v.title} onClick={() => onChange(v.id)} style={{
             fontSize: 10, padding: '1px 9px', cursor: 'pointer', border: 'none',

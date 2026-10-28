@@ -1,0 +1,67 @@
+# Derivation rule · Student is a TeachingAssistant if and only if …
+∀ Student (TeachingAssistant(Student) ↔ ∃ Course (Student assists in Course))
+Student jest TeachingAssistant wtedy i tylko wtedy, gdy Student asystuje przy jakimś Przedmiocie.
+
+# Semi-derivation rule · Student is a BusyStudent if …
+¬(∃ Student ((∃^{≥4} Course (Student enrols in Course)) ∧ ¬BusyStudent(Student)))
+Niemożliwe jest, że jakiś Student studiuje co najmniej 4 Przedmioty i nie jest BusyStudent.
+
+# Derivation rule · Course is a HeavyCourse if and only if …
+∀ Course (HeavyCourse(Course) ↔ ∃ Credits ((Course is worth Credits) ∧ Credits ≥ 30))
+Przedmiot jest HeavyCourse wtedy i tylko wtedy, gdy Przedmiot ma jakąś Punktację, która wynosi co najmniej 30.
+
+# Derivation rule · Student is a FreeStudent if and only if …
+∀ Student (FreeStudent(Student) ↔ ¬(∃ Course (Student enrols in Course)))
+Student jest FreeStudent wtedy i tylko wtedy, gdy Student nie studiuje żadnego Przedmiotu.
+
+# Derivation rule · Course is an IntroCourse if and only if …
+∀ Course (IntroCourse(Course) ↔ ∃ CourseTitle ((Course has CourseTitle) ∧ startsWith(CourseTitle, 'Introduction')))
+Przedmiot jest IntroCourse wtedy i tylko wtedy, gdy Przedmiot ma jakiś Tytuł przedmiotu, który zaczyna się od 'Introduction'.
+
+# Semi-derivation rule · Course is a LongTitleCourse if …
+¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
+Niemożliwe jest, że jakiś Przedmiot ma jakiś Tytuł przedmiotu taki, że długość tego Tytułu przedmiotu wynosi więcej niż 40 i nie jest LongTitleCourse.
+
+# Cardinality · Professor
+¬((∃^{≤1} Professor ⊤) ∨ ∃^{>20} Professor ⊤)
+Niemożliwe jest, że istnieje co najwyżej jeden Profesor lub istnieje więcej niż 20 Profesorów.
+
+# Cardinality · Building
+¬((∃^{≤2} Building ⊤) ∨ ∃^{>3} Building ⊤)
+Niemożliwe jest, że istnieją co najwyżej 2 Budynki lub istnieją więcej niż 3 Budynki.
+
+# Cardinality · Course
+¬(∃^{>100} Course ⊤)
+Niemożliwe jest, że istnieje więcej niż 100 Przedmiotów.
+
+# Cardinality (role 2) · Student enrols in Course
+¬(∃^{>50} Course ∃ Student (Student enrols in Course))
+Niemożliwe jest, że istnieje więcej niż 50 Przedmiotów, które jakiś Student studiuje.
+
+# Cardinality (role 1) · Staff coordinates Course
+¬(∃^{≤4} Staff ∃ Course (Staff coordinates Course))
+Niemożliwe jest, że istnieje co najwyżej 4 Pracowników, którzy koordynują jakiś Przedmiot.
+
+# Derivation rule · Student studies with Staff
+∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))
+Student studies with Pracownika wtedy i tylko wtedy, gdy Student studiuje jakiś Przedmiot, który Pracownik koordynuje.
+
+# Derivation rule, every derived fact holds · Student has TotalCredits
+¬(∃ Student ¬(∃ TotalCredits (Student has TotalCredits)))
+Niemożliwe jest, że jakiś Student nie has żadnego TotalCredits.
+
+# Derivation rule, only derived facts hold · Student has TotalCredits
+¬(∃ Student ∃ TotalCredits ((Student has TotalCredits) ∧ TotalCredits ≉ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)}))
+Niemożliwe jest, że istnieją jakiś Student i jakiś TotalCredits takie, że ten Student has ten TotalCredits i ten TotalCredits nie wynosi suma Punktacji, które każdy Przedmiot, który ten Student studiuje ma.
+
+# Derivation rule, every derived fact holds · Course has EnrolmentCount
+¬(∃ Course ¬(∃ EnrolmentCount (Course has EnrolmentCount)))
+Niemożliwe jest, że jakiś Przedmiot nie has żadnego EnrolmentCount.
+
+# Derivation rule, only derived facts hold · Course has EnrolmentCount
+¬(∃ Course ∃ EnrolmentCount ((Course has EnrolmentCount) ∧ EnrolmentCount ≉ Count{Student : (Student enrols in Course)}))
+Niemożliwe jest, że istnieją jakiś Przedmiot i jakiś EnrolmentCount takie, że ten Przedmiot has ten EnrolmentCount i ten EnrolmentCount nie wynosi liczba Studentów, którzy studiują ten Przedmiot.
+
+# Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
+¬(∃ Student ∃ Course ∃ Credits ((Student assists in Course) ∧ (Course is worth Credits) ∧ ¬(∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))))
+Niemożliwe jest, że istnieją jakiś Student, jakiś Przedmiot i jakaś Punktacja takie, że ten Student asystuje przy tym Przedmiocie i ten Przedmiot ma tę Punktację i nieprawda, że ten Student has credit load jakiś TotalCredits, który wynosi (ta Punktacja plus 5) razy 2.

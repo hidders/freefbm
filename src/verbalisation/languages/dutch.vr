@@ -13,6 +13,13 @@ language nl "Nederlands"
 
 # ── Sentences ────────────────────────────────────────────────────────────────
 
+sentence rule impossible {
+  # Negative verbalisation (negative.js): the situation the constraint rules
+  # out, as NORMA's negative mode says it.
+  match:    { t: "not", mode: "impossible", arg: ?x }
+  template: "het is onmogelijk dat" clause(?x, form: "sub")
+}
+
 sentence rule value-range {
   match:    ForAll([?x], ?body)
   guard:    rangeItems(?body, ?x)
@@ -86,6 +93,14 @@ sentence rule clause {
 }
 
 # ── Clauses ──────────────────────────────────────────────────────────────────
+
+clause rule more-than-one-same {
+  # In negative sentences (negative.js), uniqueness over roles other than the
+  # subject's: "more than one Person has the same Email".
+  match:    Exists(?xs, ?q @ Count(>, ?n, [?y], ?body))
+  guard:    singular(?q)
+  template: with(same: ?xs) { quantNP(?q, ?y) vp(?body, ?y) }
+}
 
 clause rule at-most-one-of {
   match:    ?f
@@ -289,4 +304,17 @@ vp rule quantified-object {
 vp rule some-object {
   match:    Exists([?y], ?body)
   template: objectQuantified(?subj, ?y, ?body, ("een" name(?y)))
+}
+
+vp rule not-a {
+  # In negative sentences (negative.js): "geen Medewerker is"
+  match:    Not(Type(?T, ?subj))
+  template: notA(?T)
+}
+
+vp rule none {
+  # In negative sentences: "geen Naam heeft"
+  match:    Not(?f @ Fact(?P, {?subj}, ?rest*))
+  guard:    wildCount(?f) == 1
+  template: with(none: true) { reading(?f, subject: ?subj) }
 }
