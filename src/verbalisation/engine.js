@@ -69,9 +69,12 @@ function makePhraser(ctx, lang, names, trace) {
     const h = {
       env, ctx, lang,
       with: (extra) => helpers({ ...env, ...extra }),
-      sentence: (node) => phrase('sentence', node, { ...env, subject: undefined }),
-      clause: (node, extra) => phrase('clause', node, { ...env, ...extra, subject: undefined }),
-      vp: (node, subject, extra) => phrase('vp', node, { ...env, ...extra, subject }),
+      sentence: (node) => phrase('sentence', node, { ...env, subject: undefined, verb: undefined }),
+      clause: (node, extra) => phrase('clause', node, { ...env, verb: undefined, ...extra, subject: undefined }),
+      // env.verb (a verb form such as plural or negated, see lang.verbForm)
+      // carries over to verb phrases about the same subject only.
+      vp: (node, subject, extra) => phrase('vp', node,
+        { ...env, verb: subject === env.subject ? env.verb : undefined, ...extra, subject }),
       // The variable's name as the formula shows it (Course₁), and the bare
       // type name (Course), used for wildcards and plurals.
       name: (v) => (v.t === 'wild' ? baseName(v) : names.get(v) ?? baseName(v)),
@@ -90,7 +93,9 @@ function makePhraser(ctx, lang, names, trace) {
 
   // Renders a fact atom with one of its readings. With a subject, only a
   // reading that starts with the subject's role (with nothing before it) is
-  // used, and the subject's slot is left out: the verb phrase. Without one,
+  // used, and the subject's slot is left out: the verb phrase, whose first
+  // word the language inflects for env.verb (lang.verbForm, null when it
+  // cannot, which fails the reading). Without one,
   // a reading that starts with a variable already introduced is preferred
   // (as in "that Course has some CourseTitle"), else the primary reading.
   // overrides maps variables to the phrases that fill their slots.
@@ -113,7 +118,11 @@ function makePhraser(ctx, lang, names, trace) {
     const out = []
     let subjectSeen = false
     for (let k = 0; k <= n; k++) {
-      const part = pick.parts[k]?.trim()
+      let part = pick.parts[k]?.trim()
+      if (part && subject !== undefined && k === 1 && h.env.verb && lang.verbForm) {
+        part = lang.verbForm(h, part)
+        if (part === null) return null
+      }
       if (part) out.push(tok(part, 'reading'))
       if (k === n) break
       const arg = atom.args[pick.roleOrder[k]]

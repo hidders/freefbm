@@ -192,7 +192,7 @@ No Course₁ is a prerequisite for itself, directly or indirectly.
 
 # Ring (intransitive)
 ∀ Course₁ ∀ Course₂ ∀ Course₃ (((Course₁ is a prerequisite for Course₂) ∧ (Course₂ is a prerequisite for Course₃)) → ¬(Course₁ is a prerequisite for Course₃))
-If Course₁ is a prerequisite for Course₂ and Course₂ is a prerequisite for Course₃ then it is not true that Course₁ is a prerequisite for Course₃.
+If Course₁ is a prerequisite for Course₂ and Course₂ is a prerequisite for Course₃ then Course₁ is not a prerequisite for Course₃.
 
 # Exclusion
 ∀ Student ∀ Course ¬((Student enrols in Course) ∧ (Student assists in Course))
