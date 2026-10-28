@@ -13,10 +13,14 @@ import { fileURLToPath } from 'url'
 import { formalise } from '../src/logic/constraintFormulas.js'
 import { formulaToString } from '../src/logic/renderFormula.js'
 import { verbalise } from '../src/verbalisation/engine.js'
-import { english } from '../src/verbalisation/languages/english.js'
+import { englishLibrary } from '../src/verbalisation/languages/english.js'
+import { compileLanguage } from '../src/verbalisation/rules.js'
 import { extend, isExtra } from '../tests/verbalisation/extras.mjs'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+// The rules as the app loads them (languages/index.js, which uses Vite's ?raw import).
+const english = compileLanguage(fs.readFileSync(path.join(root, 'src/verbalisation/languages/english.vr'), 'utf8'), englishLibrary)
 
 const d = JSON.parse(fs.readFileSync(path.join(root, 'src/data/sample.ffbm'), 'utf8'))
 const sample = {

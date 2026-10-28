@@ -4,7 +4,7 @@ import { useOrmStore } from '../store/ormStore'
 import { formalise } from '../logic/constraintFormulas.js'
 import { renderFormula } from '../logic/renderFormula.js'
 import { verbalise } from '../verbalisation/engine.js'
-import { english } from '../verbalisation/languages/english.js'
+import { english } from '../verbalisation/languages/index.js'
 
 // ── Constraints tab ─────────────────────────────────────────────────────────
 // Lists every constraint in the selected part of the diagram (or, when

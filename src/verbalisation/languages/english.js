@@ -1,17 +1,10 @@
-// English verbalisation rules, following NORMA's wording where it has one
+// The English library: morphology, structural tests and phrase builders for
+// the rules in english.vr, which follow NORMA's wording where it has one
 // ("Each … at most one …", "For each …, …", "at most one of the following
-// holds"). Written as rule objects for now; a rule syntax and parser can
-// produce the same objects later.
-//
-// Each phrase kind lists idioms first and generic rules last:
-//   sentence  a whole formula; the engine adds the capital and full stop
-//   clause    a formula inside a sentence; introduced variables are referred
-//             to as "that X" (or by bare name in an "If … then …" sentence)
-//   vp        a verb phrase about the subject ?subj, e.g. "has some Email";
-//             null when the formula cannot be said that way, so the caller
-//             falls back to a clause
+// holds"). The language itself is english.vr compiled against this library
+// (see index.js and rules.js).
 
-import { P, alphaEq, isVar } from '../match.js'
+import { alphaEq, isVar } from '../match.js'
 import { tok, seq } from '../engine.js'
 import { OPS, PREDS, AGGS } from '../../logic/dataOperators.js'
 
@@ -261,214 +254,14 @@ function anchoredClause(h, y, body, np) {
   return null
 }
 
-// ── Rules ────────────────────────────────────────────────────────────────────
-
-const sentence = [
-  {
-    name: 'value-range',
-    match: P.forall(['?x'], '?body'),
-    guard: (b, h) => !!rangeItems(h, b['?body'], b['?x']),
-    template: (b, h) => [kw('the possible values of'), tok(h.name(b['?x']), 'type'), kw('are'),
-      rangeItems(h, b['?body'], b['?x']).flatMap((it, i) => (i ? [punct(','), it] : [it]))],
-  },
-  {
-    name: 'exactly-one-of',
-    match: P.forall(['?x'], '?body'),
-    guard: (b) => !!exclusiveOrItems(b['?body']),
-    template: (b, h) => seq([kw('for each'), tok(h.name(b['?x']), 'type'), punct(',')],
-      clauseList(h, 'exactly one of the following holds', exclusiveOrItems(b['?body']))),
-  },
-  {
-    name: 'no',
-    match: P.forall(['?x'], P.not('?a')),
-    template: (b, h) => seq([kw('no'), tok(h.name(b['?x']), 'type')], h.vp(b['?a'], b['?x'], { negative: true })),
-  },
-  {
-    // ∀x (∃ys R → ∃^{≤n} ys R) says no more than ∀x ∃^{≤n} ys R.
-    name: 'each-at-most',
-    match: P.forall(['?x'], P.implies('?a', P.count('≤', '?n', '?ys', '?c'))),
-    guard: (b) => sameUpToWild(b['?a'], b['?c'], b['?ys']),
-    template: (b, h, node) => seq([kw('each'), tok(h.name(b['?x']), 'type')], h.vp(node.body.right, b['?x'])),
-  },
-  {
-    name: 'each-that',
-    match: P.forall(['?x'], P.implies('?a', '?c')),
-    template: (b, h) => seq([kw('each'), tok(h.name(b['?x']), 'type')], relative(h, b['?a'], b['?x']), h.vp(b['?c'], b['?x'])),
-  },
-  {
-    name: 'at-least-one-of',
-    match: P.forall(['?x'], P.or('?args')),
-    guard: (b) => b['?args'].length > 2 || b['?args'].some(isComplex),
-    template: (b, h) => seq([kw('for each'), tok(h.name(b['?x']), 'type'), punct(',')],
-      clauseList(h, 'at least one of the following holds', b['?args'])),
-  },
-  {
-    name: 'each',
-    match: P.forall(['?x'], '?body'),
-    template: (b, h) => seq([kw('each'), tok(h.name(b['?x']), 'type')], h.vp(b['?body'], b['?x'])),
-  },
-  {
-    // Derivation rules: "Student is a TeachingAssistant if and only if
-    // Student assists in some Course", with the variables by bare name.
-    name: 'definition',
-    match: P.forall('?vs', P.iff('?a', '?c')),
-    guard: (b) => (b['?a'].t === 'type' || (b['?a'].t === 'fact' && b['?a'].args.every(isVar))) &&
-      b['?vs'].every(v => occurs(b['?a'], v)),
-    template: (b, h) => {
-      const hb = h.with({ refStyle: 'bare' })
-      return seq(hb.clause(b['?a']), kw('if and only if'), hb.clause(b['?c']))
-    },
-  },
-  {
-    // NORMA's style for rules over several variables, which are then
-    // referred to by their (subscripted) names.
-    name: 'if-then',
-    match: P.forall('?vs', P.implies('?a', '?c')),
-    guard: (b) => b['?vs'].length > 1 && b['?vs'].every(v => occurs(b['?a'], v)),
-    template: (b, h) => {
-      const hb = h.with({ refStyle: 'bare' })
-      return seq(kw('if'), hb.clause(b['?a']), kw('then'), hb.clause(b['?c']))
-    },
-  },
-  {
-    name: 'for-each',
-    match: P.forall('?vs', '?body'),
-    template: (b, h) => seq([kw('for each'), names(h, b['?vs']), punct(',')], h.clause(b['?body'])),
-  },
-  {
-    name: 'clause',
-    match: '?f',
-    template: (b, h) => h.clause(b['?f']),
-  },
-]
-
-const clause = [
-  {
-    name: 'at-most-one-of',
-    match: '?f',
-    guard: (b) => !!exclusionItems(b['?f']),
-    template: (b, h) => clauseList(h, 'at most one of the following holds', exclusionItems(b['?f'])),
-  },
-  {
-    // "Course₁ is not a prerequisite for Course₃", "Student enrols in no Course"
-    name: 'not-subject',
-    match: P.not('?a'),
-    guard: (b) => ['fact', 'type', 'exists'].includes(b['?a'].t),
-    template: (b, h) => {
-      const a = b['?a']
-      if (a.t === 'exists') {
-        const x = a.vars.length === 1 && a.body.t === 'fact' ? a.body.args.find(z => isVar(z) && z !== a.vars[0]) : null
-        return x ? seq(h.ref(x), h.vp(b['?a'], x, { verb: 'negated' })) : null
-      }
-      const x = a.t === 'type' ? a.arg : a.args.find(isVar)
-      return x ? seq(h.ref(x), h.vp(a, x, { verb: 'negated' })) : null
-    },
-  },
-  { name: 'not', match: P.not('?a'), template: (b, h) => seq(kw('it is not true that'), h.clause(b['?a'])) },
-  { name: 'and', match: P.and('?args'), template: (b, h) => joinPhrases(b['?args'].map(a => h.clause(a)), 'and') },
-  { name: 'or', match: P.or('?args'), template: (b, h) => joinPhrases(b['?args'].map(a => h.clause(a)), 'or') },
-  { name: 'implies', match: P.implies('?a', '?c'), template: (b, h) => seq(kw('if'), h.clause(b['?a']), kw('then'), h.clause(b['?c'])) },
-  { name: 'iff', match: P.iff('?a', '?c'), template: (b, h) => seq(h.clause(b['?a']), kw('if and only if'), h.clause(b['?c'])) },
-  {
-    name: 'for-each',
-    match: P.forall('?vs', '?body'),
-    template: (b, h) => seq([kw('for each'), names(h, b['?vs']), punct(',')], h.clause(b['?body'])),
-  },
-  {
-    name: 'some-subject',
-    match: P.exists(['?y'], '?body'),
-    template: (b, h) => seq([kw('some'), tok(h.name(b['?y']), 'type')], h.vp(b['?body'], b['?y'])),
-  },
-  {
-    name: 'some-object',
-    match: P.exists(['?y'], '?body'),
-    template: (b, h) => anchoredClause(h, b['?y'], b['?body'], [kw('some'), tok(h.name(b['?y']), 'type')]),
-  },
-  {
-    name: 'quantified-subject',
-    match: P.count('?op', '?n', ['?y'], '?body'),
-    guard: (b) => isSingular(b['?op'], b['?n']),
-    template: (b, h, node) => seq(quantifiedNP(h, node.op, node.n, node.m, b['?y']), h.vp(b['?body'], b['?y'])),
-  },
-  {
-    // Cardinality: "there are at most 100 Courses".
-    name: 'there-are-n-objects',
-    match: P.count('?op', '?n', ['?y'], P.node('true')),
-    template: (b, h, node) => [kw(isSingular(node.op, node.n) ? 'there is' : 'there are'), quantifiedNP(h, node.op, node.n, node.m, b['?y'])],
-  },
-  {
-    // "there are at least 5 Staffs that coordinate some Course",
-    // "there are at most 50 Courses that some Student enrols in"
-    name: 'there-are-n-that',
-    match: P.count('?op', '?n', ['?y'], '?body'),
-    guard: (b, h, node) => !isSingular(node.op, node.n),
-    template: (b, h, node) => {
-      const r = relativeBody(h, b['?body'], b['?y'], { verb: 'plural' })
-      return r && [kw('there are'), quantifiedNP(h, node.op, node.n, node.m, b['?y']), relPron(h, b['?y']), r]
-    },
-  },
-  {
-    name: 'quantified-object',
-    match: P.count('?op', '?n', ['?y'], '?body'),
-    guard: (b) => isSingular(b['?op'], b['?n']),
-    template: (b, h, node) => anchoredClause(h, b['?y'], b['?body'], quantifiedNP(h, node.op, node.n, node.m, b['?y'])),
-  },
-  {
-    name: 'there-is-some',
-    match: P.exists('?ys', '?body'),
-    template: (b, h) => seq([kw('there is'), joinList(b['?ys'].map(y => [kw('some'), tok(h.name(y), 'type')]), 'and'),
-      kw('such that')], h.clause(b['?body'])),
-  },
-  {
-    name: 'there-are-n',
-    match: P.count('?op', '?n', '?ys', '?body'),
-    template: (b, h, node) => {
-      const ys = b['?ys']
-      const one = isSingular(node.op, node.n)
-      const what = ys.length === 1
-        ? tok(one ? h.name(ys[0]) : plural(h.name(ys[0])), 'type')
-        : [kw(one ? 'combination of' : 'combinations of'), names(h, ys)]
-      return seq([kw(one ? 'there is' : 'there are'), quantifier(node.op, node.n, node.m), what, kw('such that')], h.clause(b['?body']))
-    },
-  },
-  { name: 'fact', match: P.node('fact'), template: (b, h, node) => h.reading(node) },
-  {
-    name: 'subject-vp',
-    match: { t: '_' },
-    guard: (b, h, node) => ['type', 'vcmp', 'cmp', 'dpred', 'tc'].includes(node.t) && subjectOf(node) !== null,
-    template: (b, h, node) => seq(h.ref(subjectOf(node)), h.vp(node, subjectOf(node))),
-  },
-  {
-    name: 'value-comparison',
-    match: P.vcmp('?op', '?l', '?r'),
-    template: (b, h) => seq(h.term(b['?l']), kw(VALUE_OPS[b['?op']] ?? b['?op']), h.term(b['?r'])),
-  },
-  {
-    name: 'data-predicate',
-    match: P.node('dpred'),
-    template: (b, h, node) => node.args.length === 2
-      ? [h.term(node.args[0]), kw(PREDS[node.op]?.label ?? node.op), h.term(node.args[1])]
-      : [kw(PREDS[node.op]?.label ?? node.op), punct('('), joinList(node.args.map(a => h.term(a)), 'and'), punct(')'), kw('holds')],
-  },
-  {
-    name: 'closure',
-    match: P.node('tc'),
-    template: (b, h, node) => seq(h.ref(node.args[0]), kw('is linked to'), h.ref(node.args[1]),
-      kw(node.star ? 'by zero or more steps, each from some' : 'by one or more steps, each from some'),
-      tok(h.name(node.vars[0]), 'type'), kw('to some'), tok(h.name(node.vars[1]), 'type'), kw('such that'),
-      h.clause(node.body)),
-  },
-  { name: 'true', match: P.node('true'), template: () => [kw('true')] },
-  {
-    name: 'unknown',
-    match: '_',
-    template: (b, h, node) => [kw(`(${node?.t ?? '?'})`)],
-  },
-]
+// ── Library ──────────────────────────────────────────────────────────────────
+//
+// The functions the rules in english.vr call: structural tests (guards) and
+// phrase builders (templates). Each takes the phrase helpers h first.
 
 // The variable an atom is about, when it can be the subject of a verb phrase.
 function subjectOf(f) {
-  switch (f.t) {
+  switch (f?.t) {
     case 'type': return f.arg
     case 'vcmp': case 'cmp': return isVar(f.left) ? f.left : null
     case 'dpred': return isVar(f.args[0]) ? f.args[0] : null
@@ -477,89 +270,84 @@ function subjectOf(f) {
   }
 }
 
-const vp = [
-  {
-    name: 'fact',
-    match: P.fact('?P', ['?subj'], '?rest*'),
-    template: (b, h, node) => h.reading(node, b['?subj']),
+const predicateLabel = (f) => PREDS[f.op]?.label ?? f.op
+
+const functions = {
+  // Guards
+  rangeItems: (h, body, x) => rangeItems(h, body, x),
+  exclusionItems: (h, f) => exclusionItems(f),
+  exclusiveOrItems: (h, f) => exclusiveOrItems(f),
+  sameUpToWild: (h, a, b, ys) => sameUpToWild(a, b, ys),
+  distributable: (h, ys, args, x) => distributable(ys, args, x),
+  isComplex: (h, f) => isComplex(f),
+  isVar: (h, x) => isVar(x),
+  // Every variable of vs occurs in f.
+  occursAll: (h, f, vs) => vs.every(v => occurs(f, v)),
+  singular: (h, q) => isSingular(q.op, q.n),
+  subjectOf: (h, f) => subjectOf(f),
+
+  // Phrases
+  names: (h, vs) => names(h, vs),
+  relPron: (h, v) => relPron(h, v),
+  relative: (h, a, x, extra) => relative(h, a, x, extra),
+  relativeBody: (h, a, x, extra) => relativeBody(h, a, x, extra),
+  clauseList: (h, intro, items) => clauseList(h, intro, items),
+  objectQuantified: (h, x, y, body, np) => objectQuantified(h, x, y, body, np),
+  anchoredClause: (h, y, body, np) => anchoredClause(h, y, body, np),
+  quantNP: (h, q, y) => quantifiedNP(h, q.op, q.n, q.m, y),
+  quantifier: (h, q) => quantifier(q.op, q.n, q.m),
+  verb: (h, text) => verb(h, text),
+  // a, b, c
+  commaList: (h, items) => items.flatMap((it, i) => (i ? [punct(','), it] : [it])),
+  // The phrases of the formulas, joined by a connective.
+  clauses: (h, fs, conj) => joinPhrases(fs.map(f => h.clause(f)), conj),
+  vps: (h, fs, x, conj) => joinPhrases(fs.map(f => h.vp(f, x)), conj),
+  // some A and some B
+  someList: (h, ys) => joinList(ys.map(y => [kw('some'), tok(h.name(y), 'type')]), 'and'),
+  // Course, Courses, combination of A and B, combinations of A and B
+  countedNP: (h, q, ys) => {
+    const one = isSingular(q.op, q.n)
+    return ys.length === 1
+      ? tok(one ? h.name(ys[0]) : plural(h.name(ys[0])), 'type')
+      : [kw(one ? 'combination of' : 'combinations of'), names(h, ys)]
   },
-  {
-    name: 'is-a',
-    match: P.type('?T', '?subj'),
-    template: (b, h) => {
-      const name = h.ctx.typeName(b['?T'])
-      if (h.env.verb === 'plural') return [kw('are'), tok(plural(name), 'type')]
-      return seq(verb(h, 'is'), kw(article(name)), tok(name, 'type'))
-    },
+  // "Course₁ is not a prerequisite for Course₃": ¬A as its subject and the
+  // negated verb phrase; null when A has no subject.
+  negatedClause: (h, a) => {
+    let x
+    if (a.t === 'exists') x = a.vars.length === 1 && a.body.t === 'fact' ? a.body.args.find(z => isVar(z) && z !== a.vars[0]) : null
+    else x = a.t === 'type' ? a.arg : a.args.find(isVar)
+    return x ? seq(h.ref(x), h.vp(a, x, { verb: 'negated' })) : null
   },
-  {
-    name: 'value-comparison',
-    match: P.vcmp('?op', '?subj', '?r'),
-    template: (b, h) => seq(VALUE_OPS[b['?op']] ? verb(h, VALUE_OPS[b['?op']]) : kw(b['?op']), h.term(b['?r'])),
+  // is a Professor, is not a Professor, are Professors
+  isA: (h, T) => {
+    const name = h.ctx.typeName(T)
+    if (h.env.verb === 'plural') return [kw('are'), tok(plural(name), 'type')]
+    return seq(verb(h, 'is'), kw(article(name)), tok(name, 'type'))
   },
-  {
-    name: 'same-object',
-    match: P.cmp('?op', '?subj', '?r'),
-    template: (b, h) => seq(verb(h, b['?op'] === '=' ? 'is' : 'is not'), h.ref(b['?r'])),
+  // The words of a value comparison, inflected in a verb phrase.
+  valueOp: (h, op, inVP) => (VALUE_OPS[op] ? (inVP ? verb(h, VALUE_OPS[op]) : kw(VALUE_OPS[op])) : kw(op)),
+  predicateLabel: (h, f) => kw(predicateLabel(f)),
+  dataPredicate: (h, f) => f.args.length === 2
+    ? [h.term(f.args[0]), kw(predicateLabel(f)), h.term(f.args[1])]
+    : [kw(predicateLabel(f)), punct('('), joinList(f.args.map(a => h.term(a)), 'and'), punct(')'), kw('holds')],
+  closure: (h, f) => seq(h.ref(f.args[0]), kw('is linked to'), h.ref(f.args[1]),
+    kw(f.star ? 'by zero or more steps, each from some' : 'by one or more steps, each from some'),
+    tok(h.name(f.vars[0]), 'type'), kw('to some'), tok(h.name(f.vars[1]), 'type'), kw('such that'),
+    h.clause(f.body)),
+  // [TC_{v,w} R(v, w)](x, t): "is a prerequisite for t, directly or indirectly"
+  directlyOrIndirectly: (h, f, x, t) => {
+    const [v, w] = f.vars
+    const sub = (a) => (a === v ? x : a === w ? t : a)
+    const r = h.reading({ ...f.body, args: f.body.args.map(sub) }, x)
+    return seq(r, punct(','), kw('directly or indirectly'),
+      f.star ? [kw('or is'), t === x ? kw('itself') : h.ref(t)] : [])
   },
-  {
-    name: 'data-predicate',
-    match: { t: 'dpred', args: ['?subj', '?r'] },
-    guard: (b, h) => !h.env.verb,
-    template: (b, h, node) => seq(kw(PREDS[node.op]?.label ?? node.op), h.term(b['?r'])),
-  },
-  {
-    // [TC_{v,w} R(v, w)](x, t): "is a prerequisite for t, directly or indirectly"
-    name: 'directly-or-indirectly',
-    match: P.tc(['?v', '?w'], P.fact('?P', ['?v', '?w']), ['?subj', '?t']),
-    guard: (b, h) => b['?v'] !== b['?w'] && !h.env.verb,
-    template: (b, h, node) => {
-      const sub = (a) => (a === b['?v'] ? b['?subj'] : a === b['?w'] ? b['?t'] : a)
-      const r = h.reading({ ...node.body, args: node.body.args.map(sub) }, b['?subj'])
-      return seq(r, punct(','), kw('directly or indirectly'),
-        node.star ? [kw('or is'), b['?t'] === b['?subj'] ? kw('itself') : h.ref(b['?t'])] : [])
-    },
-  },
-  {
-    name: 'and',
-    match: P.and('?args'),
-    guard: (b, h) => h.env.verb !== 'negated',
-    template: (b, h) => joinPhrases(b['?args'].map(a => h.vp(a, b['?subj'])), 'and'),
-  },
-  {
-    name: 'or',
-    match: P.or('?args'),
-    guard: (b, h) => h.env.verb !== 'negated' && b['?args'].length <= 2 && !b['?args'].some(isComplex),
-    template: (b, h) => joinPhrases(b['?args'].map(a => h.vp(a, b['?subj'])), 'or'),
-  },
-  {
-    // "is in exactly one Building and has exactly one RoomNr"
-    name: 'exactly-one-each',
-    match: P.count('=', 1, '?ys', P.and('?args')),
-    guard: (b, h) => h.env.verb !== 'negated' && distributable(b['?ys'], b['?args'], b['?subj']),
-    template: (b, h) => joinPhrases(b['?ys'].map(y => h.vp({ t: 'count', op: '=', n: 1, vars: [y],
-      body: b['?args'].find(a => occurs(a, y)) }, b['?subj'])), 'and'),
-  },
-  {
-    name: 'quantified-object',
-    match: P.count('?op', '?n', ['?y'], '?body'),
-    guard: (b, h) => h.env.verb !== 'negated',
-    template: (b, h, node) => objectQuantified(h, b['?subj'], b['?y'], b['?body'], quantifiedNP(h, node.op, node.n, node.m, b['?y'])),
-  },
-  {
-    // Negated: "enrols in no Course"; the verb stays positive.
-    name: 'no-object',
-    match: P.exists(['?y'], '?body'),
-    guard: (b, h) => h.env.verb === 'negated',
-    template: (b, h) => objectQuantified(h.with({ verb: undefined }), b['?subj'], b['?y'], b['?body'], [kw('no'), tok(h.name(b['?y']), 'type')]),
-  },
-  {
-    name: 'some-object',
-    match: P.exists(['?y'], '?body'),
-    guard: (b, h) => h.env.verb !== 'negated',
-    template: (b, h) => objectQuantified(h, b['?subj'], b['?y'], b['?body'], [kw(h.env.negative ? 'any' : 'some'), tok(h.name(b['?y']), 'type')]),
-  },
-]
+  // "is in exactly one Building and has exactly one RoomNr"
+  exactlyOneEach: (h, ys, args, x) => joinPhrases(ys.map(y => h.vp({ t: 'count', op: '=', n: 1, vars: [y],
+    body: args.find(a => occurs(a, y)) }, x)), 'and'),
+  unknownNode: (h, f) => kw(`(${f?.t ?? '?'})`),
+}
 
 // ── Terms and noun phrases ───────────────────────────────────────────────────
 
@@ -655,10 +443,11 @@ function aggregate(h, t) {
   return seq(kw(`the ${label} of`), distinct, term(h, t.term), kw('over all'), what, kw('such that'), h.clause(t.cond))
 }
 
-export const english = {
+// The English library: everything but the rules, which are in english.vr.
+export const englishLibrary = {
   id: 'en',
   label: 'English',
-  rules: { sentence, clause, vp },
+  functions,
   term,
   // "that Course", or "Course" in an If … then … sentence.
   refNP: (h, v) => (h.env.refStyle === 'bare' ? tok(h.name(v), 'type') : [kw('that'), tok(h.name(v), 'type')]),
