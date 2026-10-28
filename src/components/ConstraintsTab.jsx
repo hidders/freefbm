@@ -26,8 +26,10 @@ export const TOKEN_STYLE = {
 }
 
 // Show/hide state of the optional sections, remembered across tab switches.
-function useToggle(key) {
-  const read = () => { try { return localStorage.getItem(key) === '1' } catch { return false } }
+function useToggle(key, byDefault = false) {
+  const read = () => {
+    try { const v = localStorage.getItem(key); return v === null ? byDefault : v === '1' } catch { return byDefault }
+  }
   const [on, setOn] = useState(read)
   const toggle = () => setOn(v => {
     try { localStorage.setItem(key, v ? '0' : '1') } catch { /* storage unavailable */ }
@@ -84,6 +86,7 @@ export default function ConstraintsTab() {
   const [showParticipation, toggleParticipation] = useToggle('freefbm.formalisation.participation')
   const [showLinks, toggleLinks] = useToggle('freefbm.formalisation.impliedLinks')
   const [wholeSchema, toggleWholeSchema] = useToggle('freefbm.formalisation.wholeSchema')
+  const [showPossible, togglePossible] = useToggle('freefbm.constraints.possible', true)
   const [view, setView] = useChoice('freefbm.constraints.view', VIEWS)
   const [mode, setMode] = useChoice('freefbm.constraints.mode', MODES)
   const negative = mode === 'negative'
@@ -98,6 +101,8 @@ export default function ConstraintsTab() {
       empty: 'Every type here is independent.' },
     showLinks && { title: 'Implied link constraints', items: implicit.impliedLinks,
       empty: 'There are no nested fact types here.' },
+    showPossible && { title: 'Possible: mandatory and uniqueness constraints that are not there', items: implicit.possible,
+      empty: 'Every role here is mandatory and every role is unique, so nothing more is left open.' },
   ].filter(Boolean)
 
   return (
@@ -141,6 +146,8 @@ export default function ConstraintsTab() {
             title="Show that instances of non-independent types play some role">Implicit participation</ToggleButton>
           <ToggleButton on={showLinks} onClick={toggleLinks}
             title="Show how a nested fact type relates to its implied link fact types">Implied links</ToggleButton>
+          <ToggleButton on={showPossible} onClick={togglePossible}
+            title="Say what the schema allows because a mandatory role or uniqueness constraint is missing: “It is possible that some Person does not have any Email”">Possible</ToggleButton>
         </span>
         {view === 'sentences' ? <SentenceLegend /> : <Legend />}
       </div>

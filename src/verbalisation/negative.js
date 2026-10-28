@@ -66,7 +66,8 @@ function neg(f) {
     case 'cmp':
     case 'vcmp': return FLIP[f.op] ? { ...f, op: FLIP[f.op] } : not(f)
     case 'iff':
-    case 'true': return null
+    case 'true':
+    case 'possible': return null
     default: return not(f)
   }
 }

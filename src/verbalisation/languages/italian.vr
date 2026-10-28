@@ -20,6 +20,13 @@ sentence rule impossible {
   template: "è impossibile che" clause(?x)
 }
 
+sentence rule possible {
+  # Default verbalisation: what a missing constraint allows (◇X, see
+  # possibleEntries in constraintFormulas.js).
+  match:    { t: "possible", arg: ?x }
+  template: "è possibile che" clause(?x)
+}
+
 sentence rule value-range {
   match:    ForAll([?x], ?body)
   guard:    rangeItems(?body, ?x)
