@@ -25,6 +25,7 @@
 import { renderFormula } from '../logic/renderFormula.js'
 import { normalise } from './normalise.js'
 import { match, isVar } from './match.js'
+import { readingsFor, typeLexicon, hasText } from './lexicon.js'
 
 export const tok = (text, cls = 'kw') => ({ text, cls })
 
@@ -43,11 +44,17 @@ export function verbalise(formula, ctx, language) {
   const phrase = makePhraser(ctx, language, names, trace)
   const out = phrase('sentence', normalise(formula), {})
   if (!out) throw new Error('no rule applies')
-  return { ...linearise(out), trace }
+  return { ...linearise(out, language), trace }
 }
 
 function makePhraser(ctx, lang, names, trace) {
-  const baseName = (v) => (v.typeIds?.length > 1 ? v.typeIds.map(ctx.typeName).join('&') : ctx.typeName(v.typeId))
+  // Names come from the language's lexicon; subscripts (Course₁) from the
+  // names the formula shows.
+  const lex = (typeId) => typeLexicon(ctx, typeId, lang.id)
+  const typeIdsOf = (v) => (v.typeIds?.length > 1 ? v.typeIds : [v.typeId])
+  const baseName = (v) => typeIdsOf(v).map(t => lex(t).name).join('&')
+  const subscript = (v) => (v.t === 'wild' ? '' : /[₀-₉]*$/u.exec(names.get(v) ?? '')[0])
+  const pluralOf = (typeId) => lex(typeId).plural ?? lang.pluralise?.(lex(typeId).name) ?? lex(typeId).name
 
   function phrase(as, node, env) {
     const seed = env.subject !== undefined ? { '?subj': env.subject } : {}
@@ -75,13 +82,26 @@ function makePhraser(ctx, lang, names, trace) {
       // carries over to verb phrases about the same subject only.
       vp: (node, subject, extra) => phrase('vp', node,
         { ...env, verb: subject === env.subject ? env.verb : undefined, ...extra, subject }),
-      // The variable's name as the formula shows it (Course₁), and the bare
-      // type name (Course), used for wildcards and plurals.
-      name: (v) => (v.t === 'wild' ? baseName(v) : names.get(v) ?? baseName(v)),
+      // The variable's name with its subscript (Course₁), the bare type name
+      // (Course), and the plural (Courses₁), all in the language.
+      name: (v) => baseName(v) + subscript(v),
       baseName,
+      plural: (v) => (typeIdsOf(v).length > 1 ? baseName(v) : pluralOf(v.typeId)) + subscript(v),
+      // The same for a type given by its id.
+      typeLabel: (typeId) => lex(typeId).name,
+      typePlural: (typeId) => pluralOf(typeId),
+      // The subscript of a variable's name ('₂', or '').
+      subscript,
+      // The lexicon entry of a variable's type, or of a type given by its id,
+      // in the language: { name, plural, gender, forms } (forms: case forms,
+      // as in Polish; {} if none).
+      entry: (vOrTypeId) => lex(typeof vOrTypeId === 'string' ? vOrTypeId : vOrTypeId.typeId),
+      // The grammatical gender the lexicon gives the type (null if none).
+      gender: (vOrTypeId) => lex(typeof vOrTypeId === 'string' ? vOrTypeId : vOrTypeId.typeId).gender,
       objectType: (v) => ctx.otById.get(v.typeId),
-      // A reference to a variable already introduced, or a wildcard.
-      ref: (v) => (v?.t === 'wild' ? lang.wildNP(h, v) : lang.refNP(h, v)),
+      // A reference to a variable already introduced, or a wildcard; c is
+      // the grammatical case of its slot, for languages with cases.
+      ref: (v, c) => (v?.t === 'wild' ? lang.wildNP(h, v, c) : lang.refNP(h, v, c)),
       reading: (atom, subject, overrides) => reading(h, atom, subject, overrides),
       term: (t) => lang.term(h, t),
     }
@@ -91,20 +111,22 @@ function makePhraser(ctx, lang, names, trace) {
   // The fact type (or implied link) of a fact atom.
   const factOf = (atom) => ctx.factById.get(atom.factId) ?? ctx.linkById?.get(atom.factId)
 
-  // Renders a fact atom with one of its readings. With a subject, only a
-  // reading that starts with the subject's role (with nothing before it) is
-  // used, and the subject's slot is left out: the verb phrase, whose first
-  // word the language inflects for env.verb (lang.verbForm, null when it
-  // cannot, which fails the reading). Without one,
-  // a reading that starts with a variable already introduced is preferred
-  // (as in "that Course has some CourseTitle"), else the primary reading.
-  // overrides maps variables to the phrases that fill their slots.
+  // Renders a fact atom with one of its readings in the language (see
+  // lexicon.js). With a subject, only a reading that starts with the
+  // subject's role (with nothing before it) is used, and the subject's slot
+  // is left out: the verb phrase. Without one, a reading that starts with a
+  // variable already introduced is preferred (as in "that Course has some
+  // CourseTitle"), else the primary reading. The language shapes the
+  // reading's parts for the environment (lang.shapeReading: verb forms, word
+  // order; null fails the reading, and it may return { parts, cases } to
+  // change the cases too). overrides maps variables to the phrases that fill
+  // their slots, or to functions from the slot's case to such a phrase.
+  // A reading may give each slot a grammatical case (cases[k], Polish).
   function reading(h, atom, subject, overrides = new Map()) {
     const fact = factOf(atom)
     if (!fact) return null
     const n = atom.args.length
-    const all = [{ roleOrder: [...Array(n).keys()], parts: fact.readingParts ?? [] },
-      ...(fact.alternativeReadings ?? [])].filter(r => r.roleOrder?.length === n && r.parts)
+    const all = readingsFor(fact, lang.id, n)
     const empty0 = (r) => !r.parts[0]?.trim()
     let pick
     if (subject !== undefined) {
@@ -115,24 +137,39 @@ function makePhraser(ctx, lang, names, trace) {
       pick = all.find(r => { const a = atom.args[r.roleOrder[0]]; return isVar(a) && !overrides.has(a) && empty0(r) }) ?? all[0]
     }
     if (!pick) return null
+    const shaped = (lang.shapeReading ?? shapeReading)(h, pick, subject !== undefined)
+    if (!shaped) return null
+    const parts = Array.isArray(shaped) ? shaped : shaped.parts
+    const cases = (Array.isArray(shaped) ? null : shaped.cases) ?? pick.cases ?? []
     const out = []
     let subjectSeen = false
     for (let k = 0; k <= n; k++) {
-      let part = pick.parts[k]?.trim()
-      if (part && subject !== undefined && k === 1 && h.env.verb && lang.verbForm) {
-        part = lang.verbForm(h, part)
-        if (part === null) return null
-      }
+      const part = parts[k]?.trim()
       if (part) out.push(tok(part, 'reading'))
       if (k === n) break
       const arg = atom.args[pick.roleOrder[k]]
+      const c = cases[k] || undefined
       if (subject !== undefined && arg === subject) {
-        if (subjectSeen) out.push(lang.reflexive(h, arg))
+        if (subjectSeen) out.push(lang.reflexive(h, arg, c))
         subjectSeen = true
-      } else if (overrides.has(arg)) out.push(overrides.get(arg))
-      else out.push(h.ref(arg))
+      } else if (overrides.has(arg)) {
+        const o = overrides.get(arg)
+        const filled = typeof o === 'function' ? o(c) : o
+        if (filled === null) return null
+        out.push(filled)
+      } else out.push(h.ref(arg, c))
     }
     return out
+  }
+
+  // The default shaping: with a plural subject the reading's plural form if
+  // it has one, else the first word of the verb phrase inflected by
+  // lang.verbForm for env.verb (null when it cannot be).
+  function shapeReading(h, pick, elided) {
+    if (h.env.verb === 'plural' && hasText(pick.pluralParts)) return pick.pluralParts
+    if (!elided || !h.env.verb || !lang.verbForm || !pick.parts[1]?.trim()) return pick.parts
+    const verb = lang.verbForm(h, pick.parts[1].trim())
+    return verb === null ? null : [pick.parts[0], verb, ...pick.parts.slice(2)]
   }
 
   return phrase
@@ -140,9 +177,11 @@ function makePhraser(ctx, lang, names, trace) {
 
 const NO_SPACE_BEFORE = new Set([',', ';', ':', '.', ')'])
 
-// Flattens a phrase into tokens, sets their spacing, capitalises the first
-// word and adds the full stop.
-export function linearise(phrase) {
+// Flattens a phrase into tokens, lets the language contract neighbouring
+// words (lang.contract: French "que il" → "qu'il"; a token with glue gets no
+// space before it), sets the spacing, capitalises the first word and adds the
+// full stop.
+export function linearise(phrase, lang) {
   const flat = []
   const walk = (p) => {
     if (!p) return
@@ -150,9 +189,14 @@ export function linearise(phrase) {
     else if (p.text) flat.push({ ...p })
   }
   walk(phrase)
+  if (lang?.contract) {
+    const contracted = lang.contract(flat).filter(t => t.text)
+    flat.length = 0
+    flat.push(...contracted)
+  }
   flat.push(tok('.', 'punct'))
   flat.forEach((t, i) => {
-    t.space = i > 0 && !(t.cls === 'punct' && NO_SPACE_BEFORE.has(t.text)) && flat[i - 1].text !== '('
+    t.space = i > 0 && !t.glue && !(t.cls === 'punct' && NO_SPACE_BEFORE.has(t.text)) && flat[i - 1].text !== '('
   })
   if (flat.length) flat[0] = { ...flat[0], text: flat[0].text[0].toUpperCase() + flat[0].text.slice(1) }
   const text = flat.map(t => (t.space ? ' ' : '') + t.text).join('')

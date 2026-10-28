@@ -40,7 +40,7 @@ There are at most 50 Courses that some Student enrols in.
 
 # Cardinality (role 1) · Staff coordinates Course
 ∃^{≥5} Staff ∃ Course (Staff coordinates Course)
-There are at least 5 Staffs that coordinate some Course.
+There are at least 5 Staff that coordinate some Course.
 
 # Derivation rule · Student studies with Staff
 ∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))

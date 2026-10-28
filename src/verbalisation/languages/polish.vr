@@ -1,0 +1,291 @@
+# Polish verbalisation rules.
+#
+# The phrase kinds are as in English. Nouns decline, so the rules build noun
+# phrases with np(?y, kind, case), where kind is "some" (jakiś), "none"
+# (żaden), "each" (każdy), "bare" or a counting quantifier, and the case one
+# of "nom", "gen", "dat", "acc", "ins", "loc" (the nominative by default).
+# Where a noun phrase fills a slot of a reading (objectQuantified,
+# anchoredClause), the rules pass only its kind, and it takes the case the
+# reading gives the slot. A negated verb takes "nie" and, unlike English,
+# keeps it next to "żaden": "nie studiuje żadnego Przedmiotu".
+#
+# The functions the rules call that are not built in are in polish.js.
+
+language pl "Polski"
+
+# ── Sentences ────────────────────────────────────────────────────────────────
+
+sentence rule value-range {
+  match:    ForAll([?x], ?body)
+  guard:    rangeItems(?body, ?x)
+  template: "możliwe wartości" np(?x, "bare", "gen") "to" commaList(rangeItems(?body, ?x))
+}
+
+sentence rule exactly-one-of {
+  match:    ForAll([?x], ?body)
+  guard:    exclusiveOrItems(?body)
+  template: "dla" np(?x, "each", "gen") clauseList("zachodzi dokładnie jedno z poniższych", exclusiveOrItems(?body))
+}
+
+sentence rule no {
+  # "Żaden Budynek nie jest Salą"
+  match:    ForAll([?x], Not(?a))
+  template: np(?x, "none") vp(?a, ?x, verb: "negated")
+}
+
+sentence rule each-at-most {
+  # ∀x (∃ys R → ∃^{≤n} ys R) says no more than ∀x ∃^{≤n} ys R.
+  match:    ForAll([?x], Implies(?a, ?q @ Count(<=, ?n, ?ys, ?c)))
+  guard:    sameUpToWild(?a, ?c, ?ys)
+  template: np(?x, "each") vp(?q, ?x)
+}
+
+sentence rule each-that {
+  # "Każdy Rok, w którym zaczyna się jakiś Rok akademicki, wynosi …"
+  match:    ForAll([?x], Implies(?a, ?c))
+  template: np(?x, "each") relative(?a, ?x) comma vp(?c, ?x)
+}
+
+sentence rule at-least-one-of {
+  match:    ForAll([?x], Or(?args))
+  guard:    len(?args) > 2 or any(?args, isComplex)
+  template: "dla" np(?x, "each", "gen") clauseList("zachodzi co najmniej jedno z poniższych", ?args)
+}
+
+sentence rule each {
+  match:    ForAll([?x], ?body)
+  template: np(?x, "each") vp(?body, ?x)
+}
+
+sentence rule definition {
+  # "Student jest Asystentem wtedy i tylko wtedy, gdy Student asystuje przy
+  # jakimś Przedmiocie"
+  match:    ForAll(?vs, Iff(?a, ?c))
+  guard:    (?a.t == "type" or (?a.t == "fact" and all(?a.args, isVar))) and occursAll(?a, ?vs)
+  template: with(refStyle: "bare") { clause(?a) "wtedy i tylko wtedy" comma "gdy" clause(?c) }
+}
+
+sentence rule if-then {
+  match:    ForAll(?vs, Implies(?a, ?c))
+  guard:    len(?vs) > 1 and occursAll(?a, ?vs)
+  template: with(refStyle: "bare") { "jeśli" clause(?a) comma "to" clause(?c) }
+}
+
+sentence rule for-each {
+  # "Dla każdego Przedmiotu co najwyżej jeden Pracownik koordynuje ten Przedmiot"
+  match:    ForAll(?vs, ?body)
+  template: "dla" eachList(?vs, "gen") clause(?body)
+}
+
+sentence rule clause {
+  match:    ?f
+  template: clause(?f)
+}
+
+# ── Clauses ──────────────────────────────────────────────────────────────────
+
+clause rule at-most-one-of {
+  match:    ?f
+  guard:    exclusionItems(?f)
+  template: clauseList("zachodzi co najwyżej jedno z poniższych", exclusionItems(?f))
+}
+
+clause rule not-subject {
+  # "Przedmiot₁ nie jest prerekwizytem dla Przedmiotu₃",
+  # "Student nie studiuje żadnego Przedmiotu"
+  match:    Not(?a)
+  guard:    ?a.t in ["fact", "type", "exists"]
+  template: negatedClause(?a)
+}
+
+clause rule none {
+  # ¬R(x, jakiś Y) with the subject not first: "żaden Y nie …"
+  match:    Not(?f @ Node("fact"))
+  guard:    wildCount(?f) > 0
+  template: with(none: true) { reading(?f) }
+}
+
+clause rule not {
+  match:    Not(?a)
+  template: "nieprawda" comma "że" clause(?a)
+}
+
+clause rule and {
+  match:    And(?args)
+  template: clauses(?args, "i")
+}
+
+clause rule or {
+  match:    Or(?args)
+  template: clauses(?args, "lub")
+}
+
+clause rule implies {
+  match:    Implies(?a, ?c)
+  template: "jeśli" clause(?a) comma "to" clause(?c)
+}
+
+clause rule iff {
+  match:    Iff(?a, ?c)
+  template: clause(?a) "wtedy i tylko wtedy" comma "gdy" clause(?c)
+}
+
+clause rule for-each {
+  match:    ForAll(?vs, ?body)
+  template: "dla" eachList(?vs, "gen") clause(?body)
+}
+
+clause rule some-subject {
+  match:    Exists([?y], ?body)
+  template: np(?y, "some") vp(?body, ?y)
+}
+
+clause rule some-object {
+  match:    Exists([?y], ?body)
+  template: anchoredClause(?y, ?body, "some")
+}
+
+clause rule quantified-subject {
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  guard:    singular(?q)
+  template: np(?y, ?q) vp(?body, ?y)
+}
+
+clause rule there-are-n-objects {
+  # Cardinality: "istnieje co najwyżej 100 Przedmiotów".
+  match:    ?q @ Count(?op, ?n, [?y], True)
+  template: exists(?q, ?y) np(?y, ?q)
+}
+
+clause rule there-are-n-that {
+  # "istnieje co najmniej 5 Pracowników, którzy koordynują jakiś Przedmiot",
+  # "istnieje co najwyżej 50 Przedmiotów, które studiuje jakiś Student"
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  guard:    not singular(?q)
+  template: exists(?q, ?y) np(?y, ?q) relativeBody(?body, ?y, ?q)
+}
+
+clause rule quantified-object {
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  guard:    singular(?q)
+  template: anchoredClause(?y, ?body, ?q)
+}
+
+clause rule there-is-some {
+  match:    Exists(?ys, ?body)
+  template: existSome(?ys) someList(?ys) suchThat(?ys) clause(?body)
+}
+
+clause rule there-are-n {
+  match:    ?q @ Count(?op, ?n, ?ys, ?body)
+  template: exists(?q, ?ys) countedNP(?q, ?ys) suchThat(?ys, ?q) clause(?body)
+}
+
+clause rule fact {
+  match:    ?f @ Node("fact")
+  template: reading(?f)
+}
+
+clause rule subject-vp {
+  match:    ?f
+  guard:    ?f.t in ["type", "cmp", "dpred", "tc"] and subjectOf(?f) != null
+  template: ref(subjectOf(?f)) vp(?f, subjectOf(?f))
+}
+
+clause rule value-comparison {
+  match:    VCmp(?op, ?l, ?r)
+  template: valueClause(?op, ?l, ?r)
+}
+
+clause rule data-predicate {
+  match:    ?f @ Node("dpred")
+  template: dataPredicate(?f)
+}
+
+clause rule closure {
+  match:    ?f @ Node("tc")
+  template: closure(?f)
+}
+
+clause rule true {
+  match:    True
+  template: "prawda"
+}
+
+clause rule unknown {
+  match:    ?f
+  template: unknownNode(?f)
+}
+
+# ── Verb phrases ─────────────────────────────────────────────────────────────
+
+vp rule fact {
+  match:    ?f @ Fact(?P, {?subj}, ?rest*)
+  template: reading(?f, subject: ?subj)
+}
+
+vp rule is-a {
+  match:    Type(?T, ?subj)
+  template: isA(?T)
+}
+
+vp rule value-comparison {
+  match:    VCmp(?op, ?subj, ?r)
+  template: valueVP(?op, ?r)
+}
+
+vp rule same-object {
+  match:    Cmp(?op, ?subj, ?r)
+  template: sameVP(?op, ?r)
+}
+
+vp rule data-predicate {
+  match:    ?f @ { t: "dpred", args: [?subj, ?r] }
+  guard:    not env.verb
+  template: predicateVP(?f)
+}
+
+vp rule directly-or-indirectly {
+  # [TC_{v,w} R(v, w)](x, t): "jest prerekwizytem dla t, bezpośrednio lub pośrednio"
+  match:    ?f @ TC([?v, ?w], Fact(?P, {?v, ?w}), [?subj, ?t])
+  guard:    ?v != ?w
+  template: directlyOrIndirectly(?f, ?subj, ?t)
+}
+
+vp rule and {
+  match:    And(?args)
+  guard:    env.verb != "negated"
+  template: vps(?args, ?subj, "i")
+}
+
+vp rule or {
+  match:    Or(?args)
+  guard:    env.verb != "negated" and len(?args) <= 2 and not any(?args, isComplex)
+  template: vps(?args, ?subj, "lub")
+}
+
+vp rule exactly-one-each {
+  # "znajduje się w dokładnie jednym Budynku i ma dokładnie jeden Numer sali"
+  match:    Count(=, 1, ?ys, And(?args))
+  guard:    env.verb != "negated" and distributable(?ys, ?args, ?subj)
+  template: exactlyOneEach(?ys, ?args, ?subj)
+}
+
+vp rule quantified-object {
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  guard:    env.verb != "negated"
+  template: objectQuantified(?subj, ?y, ?body, ?q)
+}
+
+vp rule no-object {
+  # Negated: "nie studiuje żadnego Przedmiotu"; the verb keeps its "nie".
+  match:    Exists([?y], ?body)
+  guard:    env.verb == "negated"
+  template: objectQuantified(?subj, ?y, ?body, "none")
+}
+
+vp rule some-object {
+  match:    Exists([?y], ?body)
+  guard:    env.verb != "negated"
+  template: objectQuantified(?subj, ?y, ?body, "some")
+}

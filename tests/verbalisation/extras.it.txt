@@ -1,0 +1,67 @@
+# Derivation rule · Student is a TeachingAssistant if and only if …
+∀ Student (TeachingAssistant(Student) ↔ ∃ Course (Student assists in Course))
+Studente è un TeachingAssistant se e solo se Studente è assistente in un Corso.
+
+# Semi-derivation rule · Student is a BusyStudent if …
+∀ Student ((∃^{≥4} Course (Student enrols in Course)) → BusyStudent(Student))
+Ogni Studente che frequenta almeno 4 Corsi è un BusyStudent.
+
+# Derivation rule · Course is a HeavyCourse if and only if …
+∀ Course (HeavyCourse(Course) ↔ ∃ Credits ((Course is worth Credits) ∧ Credits ≥ 30))
+Corso è un HeavyCourse se e solo se Corso ha un Numero di crediti che è almeno 30.
+
+# Derivation rule · Student is a FreeStudent if and only if …
+∀ Student (FreeStudent(Student) ↔ ¬(∃ Course (Student enrols in Course)))
+Studente è un FreeStudent se e solo se Studente non frequenta nessun Corso.
+
+# Derivation rule · Course is an IntroCourse if and only if …
+∀ Course (IntroCourse(Course) ↔ ∃ CourseTitle ((Course has CourseTitle) ∧ startsWith(CourseTitle, 'Introduction')))
+Corso è un IntroCourse se e solo se Corso ha un Titolo del corso che inizia con 'Introduction'.
+
+# Semi-derivation rule · Course is a LongTitleCourse if …
+∀ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) → LongTitleCourse(Course))
+Ogni Corso che ha un Titolo del corso tale che la lunghezza di quel Titolo del corso è maggiore di 40 è un LongTitleCourse.
+
+# Cardinality · Professor
+∃^{2..20} Professor ⊤
+Ci sono almeno 2 e al massimo 20 Professori.
+
+# Cardinality · Building
+∃^{=3} Building ⊤
+Ci sono esattamente 3 Edifici.
+
+# Cardinality · Course
+∃^{≤100} Course ⊤
+Ci sono al massimo 100 Corsi.
+
+# Cardinality (role 2) · Student enrols in Course
+∃^{≤50} Course ∃ Student (Student enrols in Course)
+Ci sono al massimo 50 Corsi che uno Studente frequenta.
+
+# Cardinality (role 1) · Staff coordinates Course
+∃^{≥5} Staff ∃ Course (Staff coordinates Course)
+Ci sono almeno 5 Dipendenti che coordinano un Corso.
+
+# Derivation rule · Student studies with Staff
+∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))
+Studente studies with Dipendente se e solo se Studente frequenta un Corso che Dipendente coordina.
+
+# Derivation rule, every derived fact holds · Student has TotalCredits
+∀ Student ∃ TotalCredits (Student has TotalCredits)
+Ogni Studente has un TotalCredits.
+
+# Derivation rule, only derived facts hold · Student has TotalCredits
+∀ Student ∀ TotalCredits ((Student has TotalCredits) → TotalCredits ≈ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)})
+Se Studente has TotalCredits, allora TotalCredits è la somma dei Numeri di crediti che ogni Corso che Studente frequenta ha.
+
+# Derivation rule, every derived fact holds · Course has EnrolmentCount
+∀ Course ∃ EnrolmentCount (Course has EnrolmentCount)
+Ogni Corso has un EnrolmentCount.
+
+# Derivation rule, only derived facts hold · Course has EnrolmentCount
+∀ Course ∀ EnrolmentCount ((Course has EnrolmentCount) → EnrolmentCount ≈ Count{Student : (Student enrols in Course)})
+Se Corso has EnrolmentCount, allora EnrolmentCount è il numero di Studenti che frequentano Corso.
+
+# Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
+∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
+Se Studente è assistente in Corso e Corso ha Numero di crediti, allora Studente has credit load un TotalCredits che è (Numero di crediti più 5) per 2.

@@ -1,0 +1,293 @@
+# French verbalisation rules.
+#
+# The phrase kinds are as in English, and so is the word order. Determiners
+# agree with the gender the lexicon gives a type (some, none, suchThat;
+# masculine by default). Verbs are negated with "ne … pas", or with "ne"
+# alone next to "aucun" (env.verb "ne"). Neighbouring words contract after
+# the sentence is built: "que un" → "qu'un", "ce Étudiant" → "cet Étudiant".
+#
+# The functions the rules call that are not built in are in romance.js
+# (shared by French, Italian and Spanish), with the French words in french.js.
+
+language fr "Français"
+
+# ── Sentences ────────────────────────────────────────────────────────────────
+
+sentence rule value-range {
+  match:    ForAll([?x], ?body)
+  guard:    rangeItems(?body, ?x)
+  template: "les valeurs possibles de" name(?x) "sont" commaList(rangeItems(?body, ?x))
+}
+
+sentence rule exactly-one-of {
+  match:    ForAll([?x], ?body)
+  guard:    exclusiveOrItems(?body)
+  template: "pour chaque" name(?x) comma
+            clauseList("exactement une des affirmations suivantes est vraie", exclusiveOrItems(?body))
+}
+
+sentence rule no {
+  # "Aucun Bâtiment n'est une Salle"
+  match:    ForAll([?x], Not(?a))
+  template: none(?x) name(?x) vp(?a, ?x, negative: true, verb: "ne")
+}
+
+sentence rule each-at-most {
+  # ∀x (∃ys R → ∃^{≤n} ys R) says no more than ∀x ∃^{≤n} ys R.
+  match:    ForAll([?x], Implies(?a, ?q @ Count(<=, ?n, ?ys, ?c)))
+  guard:    sameUpToWild(?a, ?c, ?ys)
+  template: "chaque" name(?x) vp(?q, ?x)
+}
+
+sentence rule each-that {
+  match:    ForAll([?x], Implies(?a, ?c))
+  template: "chaque" name(?x) relative(?a, ?x) vp(?c, ?x)
+}
+
+sentence rule at-least-one-of {
+  match:    ForAll([?x], Or(?args))
+  guard:    len(?args) > 2 or any(?args, isComplex)
+  template: "pour chaque" name(?x) comma clauseList("au moins une des affirmations suivantes est vraie", ?args)
+}
+
+sentence rule each {
+  match:    ForAll([?x], ?body)
+  template: "chaque" name(?x) vp(?body, ?x)
+}
+
+sentence rule definition {
+  # "Étudiant est un Assistant si et seulement si Étudiant assiste dans un Cours"
+  match:    ForAll(?vs, Iff(?a, ?c))
+  guard:    (?a.t == "type" or (?a.t == "fact" and all(?a.args, isVar))) and occursAll(?a, ?vs)
+  template: with(refStyle: "bare") { clause(?a) "si et seulement si" clause(?c) }
+}
+
+sentence rule if-then {
+  match:    ForAll(?vs, Implies(?a, ?c))
+  guard:    len(?vs) > 1 and occursAll(?a, ?vs)
+  template: with(refStyle: "bare") { "si" clause(?a) comma "alors" clause(?c) }
+}
+
+sentence rule for-each {
+  match:    ForAll(?vs, ?body)
+  template: "pour" everyList(?vs) comma clause(?body)
+}
+
+sentence rule clause {
+  match:    ?f
+  template: clause(?f)
+}
+
+# ── Clauses ──────────────────────────────────────────────────────────────────
+
+clause rule at-most-one-of {
+  match:    ?f
+  guard:    exclusionItems(?f)
+  template: clauseList("au plus une des affirmations suivantes est vraie", exclusionItems(?f))
+}
+
+clause rule not-subject {
+  # "Cours₁ n'est pas un prérequis pour Cours₃", "Étudiant ne suit aucun Cours"
+  match:    Not(?a)
+  guard:    ?a.t in ["fact", "type", "exists"]
+  template: negatedClause(?a)
+}
+
+clause rule none {
+  # ¬R(x, un Y) with the subject not first: "aucun Y …"
+  match:    Not(?f @ Node("fact"))
+  guard:    wildCount(?f) > 0
+  template: with(none: true) { reading(?f) }
+}
+
+clause rule not {
+  match:    Not(?a)
+  template: "il n'est pas vrai que" clause(?a)
+}
+
+clause rule and {
+  match:    And(?args)
+  template: clauses(?args, "et")
+}
+
+clause rule or {
+  match:    Or(?args)
+  template: clauses(?args, "ou")
+}
+
+clause rule implies {
+  match:    Implies(?a, ?c)
+  template: "si" clause(?a) comma "alors" clause(?c)
+}
+
+clause rule iff {
+  match:    Iff(?a, ?c)
+  template: clause(?a) "si et seulement si" clause(?c)
+}
+
+clause rule for-each {
+  match:    ForAll(?vs, ?body)
+  template: "pour" everyList(?vs) comma clause(?body)
+}
+
+clause rule some-subject {
+  match:    Exists([?y], ?body)
+  template: some(?y) name(?y) vp(?body, ?y)
+}
+
+clause rule some-object {
+  match:    Exists([?y], ?body)
+  template: anchoredClause(?y, ?body, (some(?y) name(?y)))
+}
+
+clause rule quantified-subject {
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  guard:    singular(?q)
+  template: quantNP(?q, ?y) vp(?body, ?y)
+}
+
+clause rule there-are-n-objects {
+  # Cardinality: "il existe au plus 100 Cours".
+  match:    ?q @ Count(?op, ?n, [?y], True)
+  template: "il existe" quantNP(?q, ?y)
+}
+
+clause rule there-are-n-that {
+  # "il existe au moins 5 Membres du personnel qui coordonnent un Cours",
+  # "il existe au plus 50 Cours qu'un Étudiant suit"
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  guard:    not singular(?q)
+  template: "il existe" quantNP(?q, ?y) relativeBody(?body, ?y, verb: "plural")
+}
+
+clause rule quantified-object {
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  guard:    singular(?q)
+  template: anchoredClause(?y, ?body, quantNP(?q, ?y))
+}
+
+clause rule there-is-some {
+  match:    Exists(?ys, ?body)
+  template: "il existe" someList(?ys) suchThat(?ys) clause(?body)
+}
+
+clause rule there-are-n {
+  match:    ?q @ Count(?op, ?n, ?ys, ?body)
+  template: "il existe" quantifier(?q, ?ys) countedNP(?q, ?ys) suchThat(?ys, ?q) clause(?body)
+}
+
+clause rule fact {
+  match:    ?f @ Node("fact")
+  template: reading(?f)
+}
+
+clause rule subject-vp {
+  match:    ?f
+  guard:    ?f.t in ["type", "vcmp", "cmp", "dpred", "tc"] and subjectOf(?f) != null
+  template: ref(subjectOf(?f)) vp(?f, subjectOf(?f))
+}
+
+clause rule value-comparison {
+  match:    VCmp(?op, ?l, ?r)
+  template: term(?l) valueOp(?op) term(?r)
+}
+
+clause rule data-predicate {
+  match:    ?f @ Node("dpred")
+  template: dataPredicate(?f)
+}
+
+clause rule closure {
+  match:    ?f @ Node("tc")
+  template: closure(?f)
+}
+
+clause rule true {
+  match:    True
+  template: "vrai"
+}
+
+clause rule unknown {
+  match:    ?f
+  template: unknownNode(?f)
+}
+
+# ── Verb phrases ─────────────────────────────────────────────────────────────
+
+vp rule fact-none {
+  # Negated with a wildcard: "ne suit aucun Cours".
+  match:    ?f @ Fact(?P, {?subj}, ?rest*)
+  guard:    env.verb == "negated" and wildCount(?f) > 0
+  template: with(verb: "ne", none: true) { reading(?f, subject: ?subj) }
+}
+
+vp rule fact {
+  match:    ?f @ Fact(?P, {?subj}, ?rest*)
+  template: reading(?f, subject: ?subj)
+}
+
+vp rule is-a {
+  match:    Type(?T, ?subj)
+  template: isA(?T)
+}
+
+vp rule value-comparison {
+  match:    VCmp(?op, ?subj, ?r)
+  template: valueOp(?op, true) term(?r)
+}
+
+vp rule same-object {
+  match:    Cmp(?op, ?subj, ?r)
+  template: sameVP(?op, ?r)
+}
+
+vp rule data-predicate {
+  match:    ?f @ { t: "dpred", args: [?subj, ?r] }
+  guard:    not env.verb
+  template: predicateLabel(?f) term(?r)
+}
+
+vp rule directly-or-indirectly {
+  # [TC_{v,w} R(v, w)](x, t): "est un prérequis pour t, directement ou indirectement"
+  match:    ?f @ TC([?v, ?w], Fact(?P, {?v, ?w}), [?subj, ?t])
+  guard:    ?v != ?w and env.verb != "negated"
+  template: directlyOrIndirectly(?f, ?subj, ?t)
+}
+
+vp rule and {
+  match:    And(?args)
+  guard:    env.verb != "negated"
+  template: vps(?args, ?subj, "et")
+}
+
+vp rule or {
+  match:    Or(?args)
+  guard:    env.verb != "negated" and len(?args) <= 2 and not any(?args, isComplex)
+  template: vps(?args, ?subj, "ou")
+}
+
+vp rule exactly-one-each {
+  # "est dans exactement un Bâtiment et a exactement un Numéro de salle"
+  match:    Count(=, 1, ?ys, And(?args))
+  guard:    env.verb != "negated" and distributable(?ys, ?args, ?subj)
+  template: exactlyOneEach(?ys, ?args, ?subj)
+}
+
+vp rule quantified-object {
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  guard:    env.verb != "negated"
+  template: objectQuantified(?subj, ?y, ?body, quantNP(?q, ?y))
+}
+
+vp rule no-object {
+  # Negated: "ne suit aucun Cours".
+  match:    Exists([?y], ?body)
+  guard:    env.verb == "negated"
+  template: with(verb: "ne") { objectQuantified(?subj, ?y, ?body, (none(?y) name(?y))) }
+}
+
+vp rule some-object {
+  match:    Exists([?y], ?body)
+  guard:    env.verb != "negated"
+  template: objectQuantified(?subj, ?y, ?body, (some(?y) name(?y)))
+}
