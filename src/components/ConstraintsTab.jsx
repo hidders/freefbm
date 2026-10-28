@@ -6,13 +6,12 @@ import { renderFormula } from '../logic/renderFormula.js'
 import { verbalise } from '../verbalisation/engine.js'
 import { english } from '../verbalisation/languages/english.js'
 
-// ── Formalisation and Verbalisation tabs ────────────────────────────────────
-// Lists the logic formula behind every constraint in the selected part of the
-// diagram (or, when nothing is selected, the whole diagram or the whole schema,
-// as the scope switch says), optionally followed
-// by the implicit disjointness, participation and implied-link constraints.
-// With verbalise set (the Verbalisation tab), each formula is shown under its
-// English sentence. Both tabs share the scope and section switches.
+// ── Constraints tab ─────────────────────────────────────────────────────────
+// Lists every constraint in the selected part of the diagram (or, when
+// nothing is selected, the whole diagram or the whole schema, as the scope
+// switch says), optionally followed by the implicit disjointness,
+// participation and implied-link constraints. The view switch shows each
+// constraint as an English sentence, as its logic formula, or both.
 
 export const TOKEN_STYLE = {
   var:     { color: 'var(--formula-var)', fontWeight: 600 },
@@ -36,6 +35,26 @@ function useToggle(key) {
   return [on, toggle]
 }
 
+const VIEWS = [
+  { id: 'sentences', label: 'Sentences', title: 'Show each constraint as an English sentence' },
+  { id: 'formulas',  label: 'Formulas',  title: 'Show each constraint as a formula of the logic' },
+  { id: 'both',      label: 'Both',      title: 'Show each sentence with its formula underneath' },
+]
+const VIEW_KEY = 'freefbm.constraints.view'
+
+// The chosen view, remembered across sessions; sentences by default.
+function useView() {
+  const read = () => {
+    try { const v = localStorage.getItem(VIEW_KEY); return VIEWS.some(x => x.id === v) ? v : 'sentences' } catch { return 'sentences' }
+  }
+  const [view, setView] = useState(read)
+  const choose = (v) => {
+    setView(v)
+    try { localStorage.setItem(VIEW_KEY, v) } catch { /* storage unavailable */ }
+  }
+  return [view, choose]
+}
+
 // Sentence token colours: object types and readings as in the formulas,
 // fixed words in the logic colour.
 const SENTENCE_STYLE = {
@@ -46,7 +65,7 @@ const SENTENCE_STYLE = {
   punct:   { color: 'var(--ink-2)' },
 }
 
-export default function FormalisationTab({ verbalise: withSentences = false }) {
+export default function ConstraintsTab() {
   const state = useOrmStore(useShallow(s => ({
     objectTypes: s.objectTypes, facts: s.facts, subtypes: s.subtypes, constraints: s.constraints,
     diagrams: s.diagrams, activeDiagramId: s.activeDiagramId,
@@ -59,6 +78,7 @@ export default function FormalisationTab({ verbalise: withSentences = false }) {
   const [showParticipation, toggleParticipation] = useToggle('freefbm.formalisation.participation')
   const [showLinks, toggleLinks] = useToggle('freefbm.formalisation.impliedLinks')
   const [wholeSchema, toggleWholeSchema] = useToggle('freefbm.formalisation.wholeSchema')
+  const [view, setView] = useView()
 
   const { entries, implicit, ctx, scope } = useMemo(() => formalise(state, { wholeSchema }), [state, wholeSchema])
   const sections = [
@@ -82,6 +102,7 @@ export default function FormalisationTab({ verbalise: withSentences = false }) {
           {scope === 'selection' ? 'Constraints in the selection'
             : scope === 'schema' ? 'Constraints in the whole schema' : 'Constraints on this diagram'} ({entries.length})
         </span>
+        <ViewSwitch view={view} onChange={setView} />
         <ToggleButton on={wholeSchema} onClick={toggleWholeSchema}
           title="With nothing selected, list the constraints of the whole schema instead of only this diagram">Whole schema</ToggleButton>
         <span style={{ flex: 1 }}/>
@@ -93,23 +114,23 @@ export default function FormalisationTab({ verbalise: withSentences = false }) {
           <ToggleButton on={showLinks} onClick={toggleLinks}
             title="Show how a nested fact type relates to its implied link fact types">Implied links</ToggleButton>
         </span>
-        {withSentences ? <SentenceLegend /> : <Legend />}
+        {view === 'sentences' ? <SentenceLegend /> : <Legend />}
       </div>
       {entries.length === 0 && sections.length === 0
         ? <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>
             {scope === 'diagram' ? 'This diagram has no constraints yet.'
               : scope === 'schema' ? 'The schema has no constraints yet.'
-              : 'The selection has no constraints. Select fact types or constraints to see their ' + (withSentences ? 'verbalisations.' : 'formulas.')}
+              : 'The selection has no constraints. Select fact types or constraints to see them.'}
           </div>
         : (
-          /* Focusable so Cmd/Ctrl+A selects just these formulas (see App.jsx) */
+          /* Focusable so Cmd/Ctrl+A selects just what is shown here (see App.jsx) */
           <div data-text-panel tabIndex={0} className="text-panel">
-            {entries.map(e => <Entry key={e.key} e={e} ctx={ctx} withSentence={withSentences} />)}
+            {entries.map(e => <Entry key={e.key} e={e} ctx={ctx} view={view} />)}
             {sections.map(sec => (
               <div key={sec.title}>
                 <div className="text-panel-section">{sec.title}</div>
                 {sec.items.length
-                  ? sec.items.map(e => <Entry key={e.key} e={e} ctx={ctx} withSentence={withSentences} />)
+                  ? sec.items.map(e => <Entry key={e.key} e={e} ctx={ctx} view={view} />)
                   : <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic', marginBottom: 10 }}>{sec.empty}</div>}
               </div>
             ))}
@@ -119,19 +140,18 @@ export default function FormalisationTab({ verbalise: withSentences = false }) {
   )
 }
 
-function Entry({ e, ctx, withSentence }) {
+function Entry({ e, ctx, view }) {
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.04em', marginBottom: 2 }}>
         {e.kind}{e.subject ? ` · ${e.subject}` : ''}
       </div>
       {e.formula
-        ? (withSentence
-          ? <>
-              <Sentence formula={e.formula} ctx={ctx} />
-              <div style={{ opacity: 0.75, fontSize: 11 }}><Formula formula={e.formula} ctx={ctx} /></div>
-            </>
-          : <Formula formula={e.formula} ctx={ctx} />)
+        ? <>
+            {view !== 'formulas' && <Sentence formula={e.formula} ctx={ctx} />}
+            {view === 'formulas' && <Formula formula={e.formula} ctx={ctx} />}
+            {view === 'both' && <div style={{ opacity: 0.75, fontSize: 11 }}><Formula formula={e.formula} ctx={ctx} /></div>}
+          </>
         : <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>{e.note}</div>}
     </div>
   )
@@ -152,6 +172,28 @@ function Sentence({ formula, ctx }) {
         <React.Fragment key={i}>{t.space ? ' ' : ''}<span style={SENTENCE_STYLE[t.cls]}>{t.text}</span></React.Fragment>
       ))}
     </div>
+  )
+}
+
+// Segmented Sentences | Formulas | Both switch.
+function ViewSwitch({ view, onChange }) {
+  return (
+    <span role="radiogroup" aria-label="Show constraints as" style={{
+      display: 'inline-flex', border: '1px solid var(--border-soft)', borderRadius: 10, overflow: 'hidden',
+    }}>
+      {VIEWS.map((v, i) => {
+        const on = v.id === view
+        return (
+          <button key={v.id} type="button" role="radio" aria-checked={on} title={v.title} onClick={() => onChange(v.id)} style={{
+            fontSize: 10, padding: '1px 9px', cursor: 'pointer', border: 'none',
+            borderLeft: i ? '1px solid var(--border-soft)' : 'none',
+            background: on ? 'var(--bg-text-panel)' : 'transparent',
+            color: on ? 'var(--accent)' : 'var(--ink-muted)',
+            fontWeight: on ? 600 : 400,
+          }}>{v.label}</button>
+        )
+      })}
+    </span>
   )
 }
 

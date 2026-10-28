@@ -22,7 +22,7 @@ function useKeyboardShortcuts() {
   useEffect(() => {
     const handler = (e) => {
       const tag = document.activeElement?.tagName
-      // Read-only text panels (Formalisation, validation messages) behave
+      // Read-only text panels (Constraints, validation messages) behave
       // like a document (see utils/textPanel.js), and single-key canvas
       // shortcuts are suppressed while they have focus.
       const textPanel = textPanelOf(document.activeElement)

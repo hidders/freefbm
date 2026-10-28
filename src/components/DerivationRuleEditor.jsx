@@ -13,7 +13,7 @@ import {
 import { OPS, PREDS, AGGS, arity } from '../logic/dataOperators.js'
 import { valueAccess } from '../logic/values.js'
 import { QGAP } from '../logic/renderFormula.js'
-import { TOKEN_STYLE, Formula } from './FormalisationTab.jsx'
+import { TOKEN_STYLE, Formula } from './ConstraintsTab.jsx'
 import { handleTextPanelKey, hasTextSelection } from '../utils/textPanel.js'
 
 // ── Derivation rule editor ──────────────────────────────────────────────────
@@ -426,7 +426,7 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
           {preview.some(e => e.formula) && (
             <div style={{ marginTop: 12 }}>
               <div style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.04em', marginBottom: 2 }}>
-                As shown in the Formalisation panel
+                As shown in the Constraints panel
               </div>
               {preview.filter(e => e.formula).map(e => (
                 <div key={e.key} className="text-panel" style={{ marginBottom: 4 }}><Formula formula={e.formula} ctx={ctx} /></div>
