@@ -7,6 +7,9 @@
 //
 //   node scripts/verbalisation-golden.mjs            check, exit 1 on a difference
 //   node scripts/verbalisation-golden.mjs --update   rewrite the expected files
+//   node scripts/verbalisation-golden.mjs --lang=nl  only one language
+//   node scripts/verbalisation-golden.mjs --coverage report, per language, the
+//        rules the sample and extras do not use and the overlapping rules
 
 import fs from 'fs'
 import path from 'path'
@@ -21,6 +24,7 @@ import { italianLibrary } from '../src/verbalisation/languages/italian.js'
 import { spanishLibrary } from '../src/verbalisation/languages/spanish.js'
 import { polishLibrary } from '../src/verbalisation/languages/polish.js'
 import { compileLanguage } from '../src/verbalisation/rules.js'
+import { coverage, overlaps, newStats } from '../src/verbalisation/analysis.js'
 import { extend, isExtra } from '../tests/verbalisation/extras.mjs'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -41,7 +45,7 @@ const sample = {
 
 // The blocks for the entries whose key passes keep; notes (an entry without a
 // formula, say a rule with an error) are listed when withNotes is set.
-function verbaliseAll(state, language, keep, withNotes = false) {
+function verbaliseAll(state, language, keep, withNotes = false, results = [], stats) {
   const { entries, implicit, ctx } = formalise(state, { wholeSchema: true })
   const all = [...entries.flat(), ...implicit.disjointness, ...implicit.participation, ...implicit.impliedLinks]
   const blocks = []
@@ -49,7 +53,9 @@ function verbaliseAll(state, language, keep, withNotes = false) {
     if (!keep(e.key)) continue
     if (!e.formula) { if (e.note && withNotes) blocks.push(`# ${e.kind} · ${e.subject}\nNOTE: ${e.note}\n`); continue }
     let sentence
-    try { sentence = verbalise(e.formula, ctx, language).text } catch (err) { sentence = `ERROR: ${err.message}` }
+    let r
+    try { r = verbalise(e.formula, ctx, language, { stats }); sentence = r.text } catch (err) { sentence = `ERROR: ${err.message}` }
+    results.push(r)
     blocks.push(`# ${e.kind}${e.subject ? ` · ${e.subject}` : ''}\n${formulaToString(e.formula, ctx)}\n${sentence}\n`)
   }
   return blocks
@@ -57,6 +63,22 @@ function verbaliseAll(state, language, keep, withNotes = false) {
 
 let failed = false
 const only = process.argv.find(a => a.startsWith('--lang='))?.slice(7)
+
+if (process.argv.includes('--coverage')) {
+  for (const [id, language] of Object.entries(languages).filter(([id]) => !only || id === only)) {
+    const results = [], stats = newStats()
+    verbaliseAll(sample, language, () => true, false, results, stats)
+    verbaliseAll(extend(sample), language, isExtra, false, results, stats)
+    const cover = coverage(language, results, stats)
+    console.log(`${id}: ${cover.rules.length - cover.unused.length} of ${cover.rules.length} rules used by ${results.length} sentences` +
+      (cover.fallbacks.length ? `, ${cover.fallbacks.length} without a fitting rule` : ''))
+    if (cover.unused.length) console.log(`  unused: ${cover.unused.map(r => `${r.key} (line ${r.line})`).join(', ')}`)
+    for (const o of overlaps(language)) {
+      console.log(`  ${o.never ? 'never fires' : 'fallback'}: ${o.kind} ${o.name} (line ${o.line}) after ${o.by} (line ${o.byLine})`)
+    }
+  }
+  process.exit(0)
+}
 for (const [file, blocks] of Object.entries(languages).filter(([id]) => !only || id === only).flatMap(([id, language]) => [
   [`sample.${id}.txt`, verbaliseAll(sample, language, () => true)],
   [`extras.${id}.txt`, verbaliseAll(extend(sample), language, isExtra, true)],
