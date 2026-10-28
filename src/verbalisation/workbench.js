@@ -1,8 +1,9 @@
 // Shared state between the main window and the verbalisation workbench.
 //
-// User rules: the workbench's applied English rules are kept in localStorage
-// (both windows share it); without them the built-in english.vr applies.
-// useEnglish() gives the language to verbalise with.
+// User rules: the rules applied in the workbench are kept in localStorage
+// per language (both windows share it); without them the built-in rule file
+// applies. useVerbalisation(id) gives the language to verbalise with, and
+// useLanguageChoice() the language the Constraints tab shows.
 //
 // Messages: in Electron through the main process (workbench:msg), in a plain
 // browser through a BroadcastChannel. The workbench sends hello when it opens
@@ -11,44 +12,67 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { compileLanguage } from './rules.js'
-import { english, englishRules, englishLibrary } from './languages/index.js'
+import { LANGUAGES } from './languages/index.js'
 
-const RULES_KEY = 'freefbm.verbalisation.rules.en'
+export { LANGUAGES }
+export const languageInfo = (id) => LANGUAGES.find(l => l.id === id) ?? LANGUAGES[0]
 
-export function readUserRules() {
-  try { return localStorage.getItem(RULES_KEY) } catch { return null }
+const rulesKey = (id) => `freefbm.verbalisation.rules.${id}`
+
+export function readUserRules(id) {
+  try { return localStorage.getItem(rulesKey(id)) } catch { return null }
 }
 
 const listeners = new Set()
 const notify = () => listeners.forEach(l => l())
 
-// Stores the rules (null: back to the built-in ones) and tells the windows.
-export function writeUserRules(text) {
+// Stores a language's rules (null: back to the built-in ones) and tells the windows.
+export function writeUserRules(id, text) {
   try {
-    if (text == null || text === englishRules) localStorage.removeItem(RULES_KEY)
-    else localStorage.setItem(RULES_KEY, text)
+    if (text == null || text === languageInfo(id).rules) localStorage.removeItem(rulesKey(id))
+    else localStorage.setItem(rulesKey(id), text)
   } catch { /* storage unavailable */ }
   notify()
-  channel().post({ type: 'rules' })
+  channel().post({ type: 'rules', lang: id })
 }
 
-// The English language to use: { language, custom, error }. User rules that
-// no longer compile fall back to the built-in ones, with the error.
-export function useEnglish() {
-  const [text, setText] = useState(readUserRules)
+// Calls update when the stored rules may have changed, in this window or another.
+function useRulesChanged(update) {
   useEffect(() => {
-    const update = () => setText(readUserRules())
-    const onStorage = (e) => { if (e.key === RULES_KEY) update() }
+    const onStorage = (e) => { if (e.key?.startsWith('freefbm.verbalisation.rules.')) update() }
     listeners.add(update)
     window.addEventListener('storage', onStorage)
     const off = channel().on(m => { if (m?.type === 'rules') update() })
     return () => { listeners.delete(update); window.removeEventListener('storage', onStorage); off() }
-  }, [])
+  }, [update])
+}
+
+// The language to verbalise with: { language, custom, error }. User rules
+// that no longer compile fall back to the built-in ones, with the error.
+export function useVerbalisation(id) {
+  const info = languageInfo(id)
+  const [version, setVersion] = useState(0)
+  const [update] = useState(() => () => setVersion(v => v + 1))
+  useRulesChanged(update)
+  const text = useMemo(() => readUserRules(info.id), [info.id, version])
   return useMemo(() => {
-    if (!text) return { language: english, custom: false }
-    try { return { language: compileLanguage(text, englishLibrary), custom: true } }
-    catch (err) { return { language: english, custom: true, error: err.message } }
-  }, [text])
+    if (!text) return { language: info.language, custom: false }
+    try { return { language: compileLanguage(text, info.library), custom: true } }
+    catch (err) { return { language: info.language, custom: true, error: err.message } }
+  }, [text, info])
+}
+
+const CHOICE_KEY = 'freefbm.verbalisation.language'
+
+// The chosen verbalisation language, remembered across sessions.
+export function useLanguageChoice() {
+  const read = () => { try { return languageInfo(localStorage.getItem(CHOICE_KEY)).id } catch { return 'en' } }
+  const [id, setId] = useState(read)
+  const choose = (v) => {
+    setId(v)
+    try { localStorage.setItem(CHOICE_KEY, v) } catch { /* storage unavailable */ }
+  }
+  return [id, choose]
 }
 
 let shared = null

@@ -1,0 +1,67 @@
+# Derivation rule · Student is a TeachingAssistant if and only if …
+∀ Student (TeachingAssistant(Student) ↔ ∃ Course (Student assists in Course))
+Student is een TeachingAssistant als en slechts als Student bij een Vak assisteert.
+
+# Semi-derivation rule · Student is a BusyStudent if …
+∀ Student ((∃^{≥4} Course (Student enrols in Course)) → BusyStudent(Student))
+Elke Student die minstens 4 Vakken volgt, is een BusyStudent.
+
+# Derivation rule · Course is a HeavyCourse if and only if …
+∀ Course (HeavyCourse(Course) ↔ ∃ Credits ((Course is worth Credits) ∧ Credits ≥ 30))
+Vak is een HeavyCourse als en slechts als Vak een Studielast die minstens 30 is heeft.
+
+# Derivation rule · Student is a FreeStudent if and only if …
+∀ Student (FreeStudent(Student) ↔ ¬(∃ Course (Student enrols in Course)))
+Student is een FreeStudent als en slechts als Student geen Vak volgt.
+
+# Derivation rule · Course is an IntroCourse if and only if …
+∀ Course (IntroCourse(Course) ↔ ∃ CourseTitle ((Course has CourseTitle) ∧ startsWith(CourseTitle, 'Introduction')))
+Vak is een IntroCourse als en slechts als Vak een Vaktitel die met 'Introduction' begint heeft.
+
+# Semi-derivation rule · Course is a LongTitleCourse if …
+∀ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) → LongTitleCourse(Course))
+Elk Vak dat een Vaktitel zodanig dat de lengte van die Vaktitel groter dan 40 is heeft, is een LongTitleCourse.
+
+# Cardinality · Professor
+∃^{2..20} Professor ⊤
+Er zijn minstens 2 en hoogstens 20 Hoogleraren.
+
+# Cardinality · Building
+∃^{=3} Building ⊤
+Er zijn precies 3 Gebouwen.
+
+# Cardinality · Course
+∃^{≤100} Course ⊤
+Er zijn hoogstens 100 Vakken.
+
+# Cardinality (role 2) · Student enrols in Course
+∃^{≤50} Course ∃ Student (Student enrols in Course)
+Er zijn hoogstens 50 Vakken die die een Student volgt.
+
+# Cardinality (role 1) · Staff coordinates Course
+∃^{≥5} Staff ∃ Course (Staff coordinates Course)
+Er zijn minstens 5 Medewerkers die die een Vak coördineren.
+
+# Derivation rule · Student studies with Staff
+∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))
+Student studies with Medewerker als en slechts als Student een Vak dat Medewerker coördineert volgt.
+
+# Derivation rule, every derived fact holds · Student has TotalCredits
+∀ Student ∃ TotalCredits (Student has TotalCredits)
+Elke Student has een TotalCredits.
+
+# Derivation rule, only derived facts hold · Student has TotalCredits
+∀ Student ∀ TotalCredits ((Student has TotalCredits) → TotalCredits ≈ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)})
+Als Student TotalCredits has, dan is TotalCredits de som van de Studielast die elk Vak dat Student volgt heeft.
+
+# Derivation rule, every derived fact holds · Course has EnrolmentCount
+∀ Course ∃ EnrolmentCount (Course has EnrolmentCount)
+Elk Vak has een EnrolmentCount.
+
+# Derivation rule, only derived facts hold · Course has EnrolmentCount
+∀ Course ∀ EnrolmentCount ((Course has EnrolmentCount) → EnrolmentCount ≈ Count{Student : (Student enrols in Course)})
+Als Vak EnrolmentCount has, dan is EnrolmentCount het aantal Studenten die Vak volgen.
+
+# Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
+∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
+Als Student bij Vak assisteert en Vak Studielast heeft, dan has Student credit load een TotalCredits die (Studielast plus 5) maal 2 is.

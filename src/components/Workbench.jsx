@@ -2,12 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { formalise } from '../logic/constraintFormulas.js'
 import { compileLanguage } from '../verbalisation/rules.js'
 import { verbalise } from '../verbalisation/engine.js'
-import { englishRules, englishLibrary } from '../verbalisation/languages/index.js'
-import { channel, readUserRules, writeUserRules } from '../verbalisation/workbench.js'
+import { channel, readUserRules, writeUserRules, languageInfo, useLanguageChoice, LANGUAGES } from '../verbalisation/workbench.js'
 import { Formula, SENTENCE_STYLE } from './ConstraintsTab.jsx'
 
 // ── Verbalisation workbench ─────────────────────────────────────────────────
-// A window of its own (#workbench) for editing the English rules: the rule
+// A window of its own (#workbench) for editing a language's rules: the rule
 // file on the left, and on the right every constraint of the open model with
 // its sentence under the edited rules, the rules that built it, and, where
 // the edit changes it, the sentence under the rules in use. Apply makes the
@@ -17,14 +16,29 @@ const LINE_HEIGHT = 18
 
 export default function Workbench() {
   const [model, setModel] = useState(null)
-  const [applied, setApplied] = useState(() => readUserRules() ?? englishRules)
-  const [draft, setDraft] = useState(applied)
-  const [compiled, setCompiled] = useState(() => compile(applied))
+  const [langId, setLangId] = useLanguageChoice()
+  const info = languageInfo(langId)
+  const appliedOf = (id) => readUserRules(id) ?? languageInfo(id).rules
+  const [applied, setApplied] = useState(() => appliedOf(langId))
+  const [draft, setDraftText] = useState(applied)
+  const [compiled, setCompiled] = useState(() => compile(applied, info))
+  // Unapplied edits per language, kept while switching languages.
+  const drafts = useRef({})
+  const setDraft = (text) => { drafts.current[langId] = text; setDraftText(text) }
+  const switchLanguage = (id) => {
+    setLangId(id)
+    const a = appliedOf(id)
+    setApplied(a)
+    setDraftText(drafts.current[id] ?? a)
+  }
   const [search, setSearch] = useState('')
   const [changedOnly, setChangedOnly] = useState(false)
   const editor = useRef(null)
 
   useEffect(() => { document.title = 'Verbalisation Workbench' }, [])
+
+  const appliedRef = useRef(null)
+  appliedRef.current = () => appliedOf(langId)
 
   // Ask the main window for the model, and follow its changes and the rules
   // applied from elsewhere.
@@ -32,7 +46,7 @@ export default function Workbench() {
     const ch = channel()
     const off = ch.on(m => {
       if (m?.type === 'model') setModel(m.state)
-      else if (m?.type === 'rules') setApplied(readUserRules() ?? englishRules)
+      else if (m?.type === 'rules') setApplied(appliedRef.current())
     })
     ch.post({ type: 'hello' })
     const bye = () => ch.post({ type: 'bye' })
@@ -42,11 +56,11 @@ export default function Workbench() {
 
   // Recompile shortly after typing stops.
   useEffect(() => {
-    const t = setTimeout(() => setCompiled(compile(draft)), 150)
+    const t = setTimeout(() => setCompiled(compile(draft, info)), 150)
     return () => clearTimeout(t)
-  }, [draft])
+  }, [draft, info])
 
-  const appliedLanguage = useMemo(() => compile(applied).language, [applied])
+  const appliedLanguage = useMemo(() => compile(applied, info).language, [applied, info])
 
   const all = useMemo(() => {
     if (!model) return null
@@ -68,7 +82,8 @@ export default function Workbench() {
   const shown = rows.filter(r => (!changedOnly || r.changed) &&
     (!q || `${r.e.kind} ${r.e.subject ?? ''} ${r.now.text ?? ''} ${r.now.trace?.join(' ') ?? ''}`.toLowerCase().includes(q)))
   const changedCount = rows.filter(r => r.changed).length
-  const isBuiltIn = applied === englishRules
+  const isBuiltIn = applied === info.rules
+  const fileName = info.file
 
   // Moves the editor to a line, selecting it.
   const goToLine = (line) => {
@@ -100,10 +115,10 @@ export default function Workbench() {
   }
   const exportRules = async () => {
     const api = window.electronAPI
-    if (api?.saveRules) { await api.saveRules({ defaultPath: 'english.vr', content: draft }); return }
+    if (api?.saveRules) { await api.saveRules({ defaultPath: fileName, content: draft }); return }
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([draft], { type: 'text/plain' }))
-    a.download = 'english.vr'
+    a.download = fileName
     a.click()
     URL.revokeObjectURL(a.href)
   }
@@ -115,18 +130,22 @@ export default function Workbench() {
         display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '8px 12px',
         borderBottom: '1px solid var(--border-soft)', background: 'var(--bg-surface)', fontSize: 12,
       }}>
-        <strong style={{ fontSize: 13 }}>English rules</strong>
+        <select value={langId} onChange={e => switchLanguage(e.target.value)} title="The language whose rules you edit"
+          style={{ fontSize: 12, fontWeight: 600 }}>
+          {LANGUAGES.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
+        </select>
+        <strong style={{ fontSize: 13 }}>rules</strong>
         <span style={{ color: 'var(--ink-muted)' }}>
           {isBuiltIn ? 'In use: the built-in rules' : 'In use: your rules'}
           {draft !== applied && ' · edited, not applied yet'}
         </span>
         <span style={{ flex: 1 }} />
-        <Button onClick={() => { writeUserRules(draft); setApplied(draft === englishRules ? englishRules : draft) }}
+        <Button onClick={() => { writeUserRules(langId, draft); setApplied(draft) }}
           disabled={!!error || draft === applied} primary
           title="Use these rules in the Constraints tab">Apply</Button>
         <Button onClick={() => setDraft(applied)} disabled={draft === applied}
           title="Go back to the rules in use">Revert</Button>
-        <Button onClick={() => setDraft(englishRules)} disabled={draft === englishRules}
+        <Button onClick={() => setDraft(info.rules)} disabled={draft === info.rules}
           title="Load the built-in rules into the editor (Apply to use them again)">Built-in rules</Button>
         <Button onClick={importRules} title="Load rules from a .vr file">Import…</Button>
         <Button onClick={exportRules} title="Save these rules as a .vr file">Export…</Button>
@@ -177,8 +196,8 @@ export default function Workbench() {
 }
 
 // { text, language, error: { reason, line, col } | null }
-function compile(text) {
-  try { return { text, language: compileLanguage(text, englishLibrary), error: null } }
+function compile(text, info) {
+  try { return { text, language: compileLanguage(text, info.library), error: null } }
   catch (err) { return { text, language: null, error: { reason: err.reason ?? err.message, line: err.line, col: err.col } } }
 }
 

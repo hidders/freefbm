@@ -435,14 +435,11 @@ function compileExpr(n, lib) {
   }
 }
 
-// A language from a rule file and its library: { id, label, rules, source,
-// …the library's language functions (term, refNP, wildNP, reflexive,
-// verbForm) }. Throws RuleSyntaxError.
+// A language from a rule file and its library: { id, label, rules, …the
+// library's language hooks (term, refNP, wildNP, reflexive, verbForm,
+// pluralise, shapeReading) }. Throws RuleSyntaxError.
 export function compileLanguage(src, lib) {
   const file = parseRules(src)
-  return {
-    id: file.id ?? lib.id, label: file.label ?? lib.label,
-    rules: compileRules(file, lib.functions),
-    term: lib.term, refNP: lib.refNP, wildNP: lib.wildNP, reflexive: lib.reflexive, verbForm: lib.verbForm,
-  }
+  const { functions, ...hooks } = lib
+  return { ...hooks, id: file.id ?? lib.id, label: file.label ?? lib.label, rules: compileRules(file, functions) }
 }

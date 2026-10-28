@@ -1,0 +1,292 @@
+# Dutch verbalisation rules.
+#
+# The phrase kinds are as in English. Dutch word order depends on the
+# clause, so clauses and verb phrases also look at env.form (see dutch.js):
+# none for a main clause ("Student volgt Course"), "sub" for a subordinate
+# one ("… dat Student Course volgt") and "inv" for the inverted order after
+# "dan" ("dan volgt Student Course"). Rules that cannot produce a form fail,
+# and a later rule takes over.
+#
+# The functions the rules call that are not built in are in dutch.js.
+
+language nl "Nederlands"
+
+# ── Sentences ────────────────────────────────────────────────────────────────
+
+sentence rule value-range {
+  match:    ForAll([?x], ?body)
+  guard:    rangeItems(?body, ?x)
+  template: "de mogelijke waarden van" name(?x) "zijn" commaList(rangeItems(?body, ?x))
+}
+
+sentence rule exactly-one-of {
+  match:    ForAll([?x], ?body)
+  guard:    exclusiveOrItems(?body)
+  template: "voor" every(?x) name(?x) "geldt" clauseList("precies één van de volgende", exclusiveOrItems(?body))
+}
+
+sentence rule no {
+  match:    ForAll([?x], Not(?a))
+  template: "geen" name(?x) vp(?a, ?x, negative: true)
+}
+
+sentence rule each-at-most {
+  # ∀x (∃ys R → ∃^{≤n} ys R) says no more than ∀x ∃^{≤n} ys R.
+  match:    ForAll([?x], Implies(?a, ?q @ Count(<=, ?n, ?ys, ?c)))
+  guard:    sameUpToWild(?a, ?c, ?ys)
+  template: every(?x) name(?x) vp(?q, ?x)
+}
+
+sentence rule each-that {
+  match:    ForAll([?x], Implies(?a, ?c))
+  template: every(?x) name(?x) relative(?a, ?x) comma vp(?c, ?x)
+}
+
+sentence rule at-least-one-of {
+  match:    ForAll([?x], Or(?args))
+  guard:    len(?args) > 2 or any(?args, isComplex)
+  template: "voor" every(?x) name(?x) "geldt" clauseList("minstens één van de volgende", ?args)
+}
+
+sentence rule each {
+  match:    ForAll([?x], ?body)
+  template: every(?x) name(?x) vp(?body, ?x)
+}
+
+sentence rule definition {
+  # "Student is een TeachingAssistant als en slechts als Student een Course
+  # assisteert"
+  match:    ForAll(?vs, Iff(?a, ?c))
+  guard:    (?a.t == "type" or (?a.t == "fact" and all(?a.args, isVar))) and occursAll(?a, ?vs)
+  template: with(refStyle: "bare") { clause(?a) "als en slechts als" clause(?c, form: "sub") }
+}
+
+sentence rule if-then {
+  # "Als Student Course volgt, dan volgt Student …"
+  match:    ForAll(?vs, Implies(?a, ?c))
+  guard:    len(?vs) > 1 and occursAll(?a, ?vs)
+  template: with(refStyle: "bare") { "als" clause(?a, form: "sub") comma "dan" clause(?c, form: "inv") }
+}
+
+sentence rule if-then-holds {
+  # The consequent has no inverted form: "…, dan geldt dat …"
+  match:    ForAll(?vs, Implies(?a, ?c))
+  guard:    len(?vs) > 1 and occursAll(?a, ?vs)
+  template: with(refStyle: "bare") { "als" clause(?a, form: "sub") comma "dan geldt dat" clause(?c, form: "sub") }
+}
+
+sentence rule for-each {
+  match:    ForAll(?vs, ?body)
+  template: "voor" everyList(?vs) "geldt" colon clause(?body)
+}
+
+sentence rule clause {
+  match:    ?f
+  template: clause(?f)
+}
+
+# ── Clauses ──────────────────────────────────────────────────────────────────
+
+clause rule at-most-one-of {
+  match:    ?f
+  guard:    not env.form and exclusionItems(?f)
+  template: clauseList("hoogstens één van de volgende geldt", exclusionItems(?f))
+}
+
+clause rule none {
+  # ¬R(x, some Y): "Student volgt geen Vak"
+  match:    Not(?f @ Node("fact"))
+  guard:    wildCount(?f) == 1
+  template: with(none: true) { reading(?f) }
+}
+
+clause rule not {
+  match:    Not(?a)
+  template: notTrue(clause(?a, form: "sub"))
+}
+
+clause rule and {
+  match:    And(?args)
+  template: clauses(?args, "en")
+}
+
+clause rule or {
+  match:    Or(?args)
+  template: clauses(?args, "of")
+}
+
+clause rule implies {
+  match:    Implies(?a, ?c)
+  guard:    not env.form
+  template: "als" clause(?a, form: "sub") comma "dan" clause(?c, form: "inv")
+}
+
+clause rule implies-holds {
+  match:    Implies(?a, ?c)
+  guard:    not env.form
+  template: "als" clause(?a, form: "sub") comma "dan geldt dat" clause(?c, form: "sub")
+}
+
+clause rule iff {
+  match:    Iff(?a, ?c)
+  guard:    env.form != "inv"
+  template: clause(?a) "als en slechts als" clause(?c, form: "sub")
+}
+
+clause rule for-each {
+  match:    ForAll(?vs, ?body)
+  guard:    not env.form
+  template: "voor" everyList(?vs) "geldt" colon clause(?body)
+}
+
+clause rule some-subject {
+  match:    Exists([?y], ?body)
+  guard:    env.form != "inv"
+  template: "een" name(?y) vp(?body, ?y)
+}
+
+clause rule some-object {
+  match:    Exists([?y], ?body)
+  template: anchoredClause(?y, ?body, ("een" name(?y)))
+}
+
+clause rule quantified-subject {
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  guard:    singular(?q) and env.form != "inv"
+  template: quantNP(?q, ?y) vp(?body, ?y)
+}
+
+clause rule there-are-n-objects {
+  # Cardinality: "er zijn hoogstens 100 Courses".
+  match:    ?q @ Count(?op, ?n, [?y], True)
+  template: thereIs(?q, quantNP(?q, ?y))
+}
+
+clause rule there-are-n-that {
+  # "er zijn minstens 5 Staffs die een Course coördineren",
+  # "er zijn hoogstens 50 Courses die een Student volgt"
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  guard:    not singular(?q)
+  template: thereIs(true, (quantNP(?q, ?y) relPron(?y, true) relativeBody(?body, ?y, verb: "plural")))
+}
+
+clause rule quantified-object {
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  guard:    singular(?q)
+  template: anchoredClause(?y, ?body, quantNP(?q, ?y))
+}
+
+clause rule there-is-some {
+  match:    Exists(?ys, ?body)
+  template: thereIs(false, someList(?ys)) "zodanig dat" clause(?body, form: "sub")
+}
+
+clause rule there-are-n {
+  match:    ?q @ Count(?op, ?n, ?ys, ?body)
+  template: thereIs(?q, (quantifier(?q) countedNP(?q, ?ys)))
+            "zodanig dat" clause(?body, form: "sub")
+}
+
+clause rule fact {
+  match:    ?f @ Node("fact")
+  template: reading(?f)
+}
+
+clause rule is-a {
+  match:    Type(?T, ?x)
+  template: isAClause(?T, ?x)
+}
+
+clause rule subject-vp {
+  match:    ?f
+  guard:    env.form != "inv" and ?f.t in ["cmp", "tc"] and subjectOf(?f) != null
+  template: ref(subjectOf(?f)) vp(?f, subjectOf(?f))
+}
+
+clause rule value-comparison {
+  match:    VCmp(?op, ?l, ?r)
+  template: valueClause(?op, ?l, ?r)
+}
+
+clause rule data-predicate {
+  match:    ?f @ { t: "dpred", args: [?a, ?b] }
+  template: predicateClause(?f)
+}
+
+clause rule closure {
+  match:    ?f @ Node("tc")
+  guard:    not env.form
+  template: closure(?f)
+}
+
+clause rule true {
+  match:    True
+  template: "waar"
+}
+
+clause rule unknown {
+  match:    ?f
+  template: unknownNode(?f)
+}
+
+# ── Verb phrases ─────────────────────────────────────────────────────────────
+
+vp rule fact {
+  match:    ?f @ Fact(?P, {?subj}, ?rest*)
+  template: reading(?f, subject: ?subj)
+}
+
+vp rule is-a {
+  match:    Type(?T, ?subj)
+  template: isA(?T)
+}
+
+vp rule value-comparison {
+  match:    VCmp(?op, ?subj, ?r)
+  template: valueVP(?op, ?r)
+}
+
+vp rule same-object {
+  match:    Cmp(?op, ?subj, ?r)
+  template: sameVP(?op, ?r)
+}
+
+vp rule data-predicate {
+  match:    ?f @ { t: "dpred", args: [?subj, ?r] }
+  template: predicateVP(?f)
+}
+
+vp rule directly-or-indirectly {
+  # [TC_{v,w} R(v, w)](x, t): "is een prerequisite van t, direct of indirect"
+  match:    ?f @ TC([?v, ?w], Fact(?P, {?v, ?w}), [?subj, ?t])
+  guard:    ?v != ?w
+  template: directlyOrIndirectly(?f, ?subj, ?t)
+}
+
+vp rule and {
+  match:    And(?args)
+  template: vps(?args, ?subj, "en")
+}
+
+vp rule or {
+  match:    Or(?args)
+  guard:    len(?args) <= 2 and not any(?args, isComplex)
+  template: vps(?args, ?subj, "of")
+}
+
+vp rule exactly-one-each {
+  # "ligt in precies één Building en heeft precies één RoomNr"
+  match:    Count(=, 1, ?ys, And(?args))
+  guard:    distributable(?ys, ?args, ?subj)
+  template: exactlyOneEach(?ys, ?args, ?subj)
+}
+
+vp rule quantified-object {
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  template: objectQuantified(?subj, ?y, ?body, quantNP(?q, ?y))
+}
+
+vp rule some-object {
+  match:    Exists([?y], ?body)
+  template: objectQuantified(?subj, ?y, ?body, ("een" name(?y)))
+}

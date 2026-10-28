@@ -4,7 +4,10 @@
 // holds"). The language itself is english.vr compiled against this library
 // (see index.js and rules.js).
 
-import { alphaEq, isVar } from '../match.js'
+import { isVar } from '../match.js'
+import {
+  occurs, rangeSpec, exclusionItems, exclusiveOrItems, sameUpToWild, distributable, isComplex, isSingular, subjectOf,
+} from '../structure.js'
 import { tok, seq } from '../engine.js'
 import { OPS, PREDS, AGGS } from '../../logic/dataOperators.js'
 
@@ -32,7 +35,7 @@ const article = (word) => (/^[aeiou]/i.test(word) ? 'an' : 'a')
 const relPron = (h, v) => kw(h.objectType(v)?.isPersonal ? 'who' : 'that')
 
 // A, B and C
-function joinList(items, conj) {
+export function joinList(items, conj) {
   const out = []
   items.forEach((it, i) => {
     if (i > 0) out.push(i === items.length - 1 ? kw(conj) : punct(','))
@@ -42,7 +45,7 @@ function joinList(items, conj) {
 }
 
 // Joins phrases with a connective; null if any is null.
-function joinPhrases(parts, conj) {
+export function joinPhrases(parts, conj) {
   if (parts.some(p => p === null)) return null
   return parts.flatMap((p, i) => (i ? [kw(conj), p] : [p]))
 }
@@ -54,12 +57,11 @@ function quantifier(op, n, m) {
   if (op === '..') return [kw('at least'), number(n), kw('and at most'), number(m)]
   return [kw({ '≤': 'at most', '≥': 'at least', '=': 'exactly' }[op] ?? op), number(n)]
 }
-const isSingular = (op, n) => op !== '..' && n === 1
 
 // "at most one Course", "at most 6 Courses"
 function quantifiedNP(h, op, n, m, v) {
   const name = h.name(v)
-  return [quantifier(op, n, m), tok(isSingular(op, n) ? name : plural(name), 'type')]
+  return [quantifier(op, n, m), tok(isSingular(op, n) ? name : h.plural(v), 'type')]
 }
 
 // Verb forms. Readings are written in the third person singular ("enrols
@@ -106,79 +108,12 @@ const VALUE_OPS = { '≈': 'is', '≉': 'is not', '<': 'is less than', '≤': 'i
 
 // ── Structural tests ─────────────────────────────────────────────────────────
 
-const occurs = (f, v) => f === v || (!!f && typeof f === 'object' && !isVar(f) &&
-  Object.entries(f).some(([k, x]) => k !== 'vars' && occurs(x, v)))
-
 // The value range ∀x (x ≈ c ∨ (x ≥ a ∧ x ≤ b) ∨ …) as its listed items, or null.
 function rangeItems(h, body, x) {
-  const isConst = (t) => t?.t === 'const'
-  const item = (f) => {
-    if (f.t === 'vcmp' && f.left === x && isConst(f.right)) {
-      if (f.op === '≈') return [h.term(f.right)]
-      if (f.op === '≥') return [kw('at least'), h.term(f.right)]
-      if (f.op === '≤') return [kw('at most'), h.term(f.right)]
-      return null
-    }
-    if (f.t === 'and' && f.args.length === 2) {
-      const [a, b] = f.args
-      if (a.t === 'vcmp' && b.t === 'vcmp' && a.left === x && b.left === x && a.op === '≥' && b.op === '≤' &&
-          isConst(a.right) && isConst(b.right))
-        return [h.term(a.right), kw('to'), h.term(b.right)]
-    }
-    return null
-  }
-  const items = (body.t === 'or' ? body.args : [body]).map(item)
-  return items.every(Boolean) ? items : null
+  const spec = rangeSpec(body, x)
+  return spec && spec.map(i => i.op === '..' ? [h.term(i.lo), kw('to'), h.term(i.hi)]
+    : i.op === '≈' ? [h.term(i.value)] : [kw(i.op === '≥' ? 'at least' : 'at most'), h.term(i.value)])
 }
-
-// The members of "at most one of the following holds": ¬(A ∧ B ∧ …), or
-// ¬(Aᵢ ∧ Aⱼ) for every pair of some A₁ … Aₙ (n ≥ 3); else null.
-function exclusionItems(f) {
-  if (f.t === 'not' && f.arg.t === 'and') return f.arg.args
-  if (f.t !== 'and' || !f.args.every(a => a.t === 'not' && a.arg.t === 'and' && a.arg.args.length === 2)) return null
-  const items = []
-  const indexOf = (g) => {
-    const i = items.findIndex(x => alphaEq(x, g))
-    if (i >= 0) return i
-    items.push(g)
-    return items.length - 1
-  }
-  const pairs = new Set(f.args.map(a => a.arg.args.map(indexOf).sort().join(',')))
-  const k = items.length
-  if (k < 3 || pairs.size !== f.args.length || pairs.size !== k * (k - 1) / 2) return null
-  return items
-}
-
-// (A₁ ∨ … ∨ Aₙ) ∧ "at most one of A₁ … Aₙ": the items, or null.
-function exclusiveOrItems(f) {
-  if (f.t !== 'and' || f.args[0]?.t !== 'or') return null
-  const alts = f.args[0].args
-  const rest = f.args.slice(1)
-  const excl = rest.length === 1 ? exclusionItems(rest[0]) : exclusionItems({ t: 'and', args: rest })
-  if (!excl || excl.length !== alts.length) return null
-  return excl.every(e => alts.some(a => alphaEq(a, e))) ? alts : null
-}
-
-// A is the fact atom B with the variables ys replaced by wildcards, so that
-// ∀x (A → ∃^{≤n} ys B) says the same as ∀x ∃^{≤n} ys B.
-function sameUpToWild(a, b, ys) {
-  if (a?.t !== 'fact' || b?.t !== 'fact' || a.factId !== b.factId) return false
-  return b.args.every((y, i) => (ys.includes(y) ? a.args[i]?.t === 'wild' : a.args[i] === y))
-}
-
-// ∃^{=1} y₁ … yₙ (R₁(x, y₁) ∧ … ∧ Rₙ(x, yₙ)), each Rᵢ a fact atom over x and
-// yᵢ only: the number of combinations is the product of the counts, so it
-// holds exactly when each Rᵢ has exactly one yᵢ.
-function distributable(ys, args, x) {
-  if (ys.length < 2 || args.length !== ys.length) return false
-  return ys.every(y => {
-    const own = args.filter(a => occurs(a, y))
-    return own.length === 1 && own[0].t === 'fact' && own[0].args.length === 2 &&
-      own[0].args.includes(x) && own[0].args.includes(y)
-  })
-}
-
-const isComplex = (f) => ['and', 'or', 'implies', 'iff'].includes(f.t)
 
 // ── Phrases built from parts ─────────────────────────────────────────────────
 
@@ -259,16 +194,6 @@ function anchoredClause(h, y, body, np) {
 // The functions the rules in english.vr call: structural tests (guards) and
 // phrase builders (templates). Each takes the phrase helpers h first.
 
-// The variable an atom is about, when it can be the subject of a verb phrase.
-function subjectOf(f) {
-  switch (f?.t) {
-    case 'type': return f.arg
-    case 'vcmp': case 'cmp': return isVar(f.left) ? f.left : null
-    case 'dpred': return isVar(f.args[0]) ? f.args[0] : null
-    case 'tc': return isVar(f.args[0]) ? f.args[0] : null
-    default: return null
-  }
-}
 
 const predicateLabel = (f) => PREDS[f.op]?.label ?? f.op
 
@@ -308,7 +233,7 @@ const functions = {
   countedNP: (h, q, ys) => {
     const one = isSingular(q.op, q.n)
     return ys.length === 1
-      ? tok(one ? h.name(ys[0]) : plural(h.name(ys[0])), 'type')
+      ? tok(one ? h.name(ys[0]) : h.plural(ys[0]), 'type')
       : [kw(one ? 'combination of' : 'combinations of'), names(h, ys)]
   },
   // "Course₁ is not a prerequisite for Course₃": ¬A as its subject and the
@@ -321,8 +246,8 @@ const functions = {
   },
   // is a Professor, is not a Professor, are Professors
   isA: (h, T) => {
-    const name = h.ctx.typeName(T)
-    if (h.env.verb === 'plural') return [kw('are'), tok(plural(name), 'type')]
+    const name = h.typeLabel(T)
+    if (h.env.verb === 'plural') return [kw('are'), tok(h.typePlural(T), 'type')]
     return seq(verb(h, 'is'), kw(article(name)), tok(name, 'type'))
   },
   // The words of a value comparison, inflected in a verb phrase.
@@ -390,17 +315,18 @@ const OPERATION = {
 }
 
 // An argument that is itself an infix operation is put in brackets when it
-// binds less tightly: "(Credits plus 5) times 2".
-function operation(h, t) {
+// binds less tightly: "(Credits plus 5) times 2". table maps operators to
+// patterns; others read as fallback(label) followed by the arguments.
+export function operation(h, t, table = OPERATION, fallback = (label) => `the ${label} of`, and = 'and') {
   const def = OPS[t.op]
   const arg = (a, i) => {
     const inner = a?.t === 'fn' ? OPS[a.op] : null
     const loose = def?.style === 'infix' && inner?.style === 'infix' &&
       (inner.prec < def.prec || (inner.prec === def.prec && (i > 0 || a.op !== t.op) && !(def.assoc && a.op === t.op)))
-    return loose ? [punct('('), term(h, a), punct(')')] : term(h, a)
+    return loose ? [punct('('), h.term(a), punct(')')] : h.term(a)
   }
-  const pattern = OPERATION[t.op]
-  if (!pattern) return [kw(`the ${def?.label ?? t.op} of`), joinList(t.args.map(a => term(h, a)), 'and')]
+  const pattern = table[t.op]
+  if (!pattern) return [kw(fallback(def?.label ?? t.op)), joinList(t.args.map(a => h.term(a)), and)]
   return pattern.split(/(\{\d\})/).filter(Boolean).map(part => {
     const m = /^\{(\d)\}$/.exec(part)
     if (m) return arg(t.args[Number(m[1])], Number(m[1]))
@@ -425,7 +351,7 @@ function aggregate(h, t) {
     const y = t.vars[0]
     if (!t.term || t.term === y) {
       const r = rels(y, conj)
-      if (r) return [kw(t.term ? `the ${label} of all` : 'the number of'), distinct, tok(plural(h.name(y)), 'type'), r]
+      if (r) return [kw(t.term ? `the ${label} of all` : 'the number of'), distinct, tok(h.plural(y), 'type'), r]
     }
   }
   if (t.vars.length === 2 && t.term && t.vars.includes(t.term)) {
@@ -438,7 +364,7 @@ function aggregate(h, t) {
       if (r) return [kw(`the ${label} of`), distinct, kw('the'), tok(h.name(k), 'type'), relPron(h, k), r]
     }
   }
-  const what = t.vars.length === 1 ? tok(plural(h.name(t.vars[0])), 'type') : [kw('combinations of'), names(h, t.vars)]
+  const what = t.vars.length === 1 ? tok(h.plural(t.vars[0]), 'type') : [kw('combinations of'), names(h, t.vars)]
   if (!t.term) return seq(kw('the number of'), distinct, what, kw('such that'), h.clause(t.cond))
   return seq(kw(`the ${label} of`), distinct, term(h, t.term), kw('over all'), what, kw('such that'), h.clause(t.cond))
 }
@@ -454,5 +380,6 @@ export const englishLibrary = {
   // A wildcard: "some Course", or "any Course" after "No" or a negated verb.
   wildNP: (h, w) => [kw(h.env.negative || h.env.verb === 'negated' ? 'any' : 'some'), tok(h.name(w), 'type')],
   verbForm: (h, text) => inflect(text, h.env.verb),
+  pluralise: (name) => plural(name),
   reflexive: (h, v) => kw(h.objectType(v)?.isPersonal ? 'themselves' : 'itself'),
 }

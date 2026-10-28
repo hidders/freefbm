@@ -15,6 +15,8 @@ import { isDerivedFact, isComputedRole, checkFactRule, whyNotDerivable } from '.
 import { makeContext } from '../logic/constraintFormulas.js'
 import DerivationRuleEditor from './DerivationRuleEditor'
 import { hasTextSelection } from '../utils/textPanel.js'
+import { plural as englishPlural } from '../verbalisation/languages/english.js'
+import { pluralise as dutchPlural } from '../verbalisation/languages/dutch.js'
 
 // ── Validation error components ───────────────────────────────────────────────
 
@@ -874,6 +876,9 @@ function ObjectTypeInspector({ ot }) {
           onChange={v => store.updateObjectType(ot.id, { isIndependent: v })}/>
       </Section>
 
+      <TypeLexiconSection name={ot.name} lexicon={ot.lexicon}
+        onChange={lexicon => store.updateObjectType(ot.id, { lexicon })}/>
+
       {ot.kind === 'entity' && <DerivationSection ot={ot} store={store}/>}
 
       <Section title="Constraints">
@@ -1700,6 +1705,117 @@ function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart }) {
   )
 }
 
+// ── Lexicon: names and readings in other languages ────────────────────────────
+// See src/verbalisation/lexicon.js for the format. Empty fields are left out,
+// so the verbalisation derives them (the placeholders show what it derives).
+
+const lexWithout = (lexicon, lang, entry) => {
+  const clean = Object.fromEntries(Object.entries(entry).filter(([, v]) =>
+    v != null && v !== '' && !(Array.isArray(v) && !v.length)))
+  const next = { ...(lexicon ?? {}) }
+  if (Object.keys(clean).length) next[lang] = clean
+  else delete next[lang]
+  return Object.keys(next).length ? next : undefined
+}
+
+// Plural (English), and name, plural and gender (Dutch) of a type.
+function TypeLexiconSection({ name, lexicon, onChange }) {
+  const lex = lexicon ?? {}
+  const set = (lang, key, value) => onChange(lexWithout(lexicon, lang, { ...(lex[lang] ?? {}), [key]: value.trim() ? value : undefined }))
+  const nlName = lex.nl?.name?.trim() || name
+  return (
+    <Section title="Languages">
+      <Row>
+        <Label>English plural</Label>
+        <TInput value={lex.en?.plural ?? ''} placeholder={name ? englishPlural(name) : ''} onChange={v => set('en', 'plural', v)}/>
+      </Row>
+      <Row>
+        <Label>Dutch name</Label>
+        <TInput value={lex.nl?.name ?? ''} placeholder={name} onChange={v => set('nl', 'name', v)}/>
+      </Row>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <Label>Dutch plural</Label>
+          <TInput value={lex.nl?.plural ?? ''} placeholder={nlName ? dutchPlural(nlName) : ''} onChange={v => set('nl', 'plural', v)}/>
+        </div>
+        <div>
+          <Label>Gender</Label>
+          <select value={lex.nl?.gender ?? ''} onChange={e => set('nl', 'gender', e.target.value)}
+            title="de-words take elke and die, het-words elk and dat">
+            <option value="">de (default)</option>
+            <option value="de">de</option>
+            <option value="het">het</option>
+          </select>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+const LEXICON_TABS = [
+  { id: 'nl', label: 'Dutch', forms: [
+    { key: 'parts', label: 'Reading', hint: 'Main clause order: Student volgt Course. Empty: the English reading is used.' },
+    { key: 'subParts', label: 'Subordinate form', hint: 'Verb last: … dat Student Course volgt. Empty: the first verb moves to the end.' },
+    { key: 'pluralParts', label: 'Plural form', hint: 'With a plural subject: Studenten volgen Course. Empty: the verb is made plural.' },
+  ] },
+  { id: 'en', label: 'English', forms: [
+    { key: 'pluralParts', label: 'Plural form', hint: 'With a plural subject: Courses are prerequisites for Course. Empty: the verb is made plural.' },
+  ] },
+]
+
+// Readings of a fact type in other languages, one per English reading order.
+function FactLexiconSection({ fact, store }) {
+  const [tab, setTab] = useState('nl')
+  const n = fact.arity
+  if (n < 1) return null
+  const orders = [
+    ...(fact.readingParts != null ? [Array.from({ length: n }, (_, i) => i)] : []),
+    ...(fact.alternativeReadings || []).map(r => r.roleOrder),
+  ].filter(o => o?.length === n)
+  if (!orders.length) return null
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+  const lang = LEXICON_TABS.find(t => t.id === tab)
+  const readings = fact.lexicon?.[tab]?.readings ?? []
+  const update = (roleOrder, key, i, val) => {
+    const old = readings.find(r => same(r.roleOrder, roleOrder)) ?? { roleOrder }
+    const parts = [...(old[key] ?? Array(n + 1).fill(''))]
+    parts[i] = val
+    const entry = { ...old, [key]: parts.some(p => p?.trim()) ? parts : undefined }
+    const keep = Object.keys(entry).some(k => k !== 'roleOrder' && entry[k])
+    const next = [...readings.filter(r => !same(r.roleOrder, roleOrder)), ...(keep ? [entry] : [])]
+    store.updateFact(fact.id, { lexicon: lexWithout(fact.lexicon, tab, { ...(fact.lexicon?.[tab] ?? {}), readings: next }) })
+  }
+  return (
+    <Section title="Readings in other languages">
+      <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+        {LEXICON_TABS.map(t => (
+          <button key={t.id} type="button" onClick={() => setTab(t.id)} style={{
+            fontSize: 10, padding: '1px 8px', borderRadius: 10, cursor: 'pointer',
+            border: `1px solid ${t.id === tab ? 'var(--accent)' : 'var(--border-soft)'}`,
+            background: 'transparent', color: t.id === tab ? 'var(--accent)' : 'var(--ink-muted)',
+          }}>{t.label}</button>
+        ))}
+      </div>
+      {orders.map(order => {
+        const r = readings.find(x => same(x.roleOrder, order)) ?? {}
+        return (
+          <div key={JSON.stringify(order)} style={{ marginBottom: 10 }}>
+            {orders.length > 1 && <Label>({order.map(i => i + 1).join(', ')})</Label>}
+            {lang.forms.map(f => (
+              <div key={f.key} style={{ marginBottom: 4 }} title={f.hint}>
+                <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginBottom: 2 }}>{f.label}</div>
+                <ReadingEditor fact={fact} store={store} roleOrder={order}
+                  parts={r[f.key] ?? Array(n + 1).fill('')}
+                  onUpdatePart={(i, val) => update(order, f.key, i, val)}/>
+              </div>
+            ))}
+          </div>
+        )
+      })}
+    </Section>
+  )
+}
+
 // ── Add reading row: dropdown for ordering + inline reading editor ────────────
 function AddReadingRow({ fact, store, available }) {
   const [selIdx, setSelIdx] = useState(0)
@@ -2255,6 +2371,8 @@ function FactInspector({ fact }) {
         )
       })()}
 
+      <FactLexiconSection fact={fact} store={store} />
+
       {/* Roles */}
       <Section title="Roles">
         <CompactRoleList fact={fact} store={store} />
@@ -2269,6 +2387,10 @@ function FactInspector({ fact }) {
             checked={!!fact.isIndependent}
             onChange={v => store.updateFact(fact.id, { isIndependent: v })}/>
         </Section>
+      )}
+      {fact.objectified && (
+        <TypeLexiconSection name={fact.objectifiedName || ''} lexicon={fact.lexicon}
+          onChange={lexicon => store.updateFact(fact.id, { lexicon })}/>
       )}
 
       {!fact.objectified && <FactDerivationSection fact={fact} store={store}/>}

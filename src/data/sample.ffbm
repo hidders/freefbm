@@ -10,7 +10,13 @@
         "y": 140,
         "isPersonal": false,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": null,
+        "lexicon": {
+          "nl": {
+            "name": "Persoon",
+            "gender": "de"
+          }
+        }
       },
       {
         "id": "ot_PersonNr",
@@ -19,7 +25,13 @@
         "x": 580,
         "y": 140,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": null,
+        "lexicon": {
+          "nl": {
+            "name": "Persoonsnummer",
+            "gender": "het"
+          }
+        }
       },
       {
         "id": "ot_PersonName",
@@ -32,6 +44,12 @@
           "profileId": "abstract",
           "datatypeId": "text",
           "params": {}
+        },
+        "lexicon": {
+          "nl": {
+            "name": "Naam",
+            "gender": "de"
+          }
         }
       },
       {
@@ -45,6 +63,12 @@
           "profileId": "abstract",
           "datatypeId": "text",
           "params": {}
+        },
+        "lexicon": {
+          "nl": {
+            "name": "E-mailadres",
+            "gender": "het"
+          }
         }
       },
       {
@@ -58,6 +82,12 @@
           "profileId": "abstract",
           "datatypeId": "text",
           "params": {}
+        },
+        "lexicon": {
+          "nl": {
+            "name": "Telefoonnummer",
+            "gender": "het"
+          }
         }
       },
       {
@@ -68,7 +98,14 @@
         "y": 360,
         "isPersonal": false,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": null,
+        "lexicon": {
+          "nl": {
+            "name": "Student",
+            "gender": "de",
+            "plural": "Studenten"
+          }
+        }
       },
       {
         "id": "ot_Staff",
@@ -78,7 +115,16 @@
         "y": 360,
         "isPersonal": false,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": null,
+        "lexicon": {
+          "nl": {
+            "name": "Medewerker",
+            "gender": "de"
+          },
+          "en": {
+            "plural": "Staff"
+          }
+        }
       },
       {
         "id": "ot_Professor",
@@ -88,7 +134,14 @@
         "y": 600,
         "isPersonal": false,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": null,
+        "lexicon": {
+          "nl": {
+            "name": "Hoogleraar",
+            "gender": "de",
+            "plural": "Hoogleraren"
+          }
+        }
       },
       {
         "id": "ot_Lecturer",
@@ -98,7 +151,13 @@
         "y": 600,
         "isPersonal": false,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": null,
+        "lexicon": {
+          "nl": {
+            "name": "Docent",
+            "gender": "de"
+          }
+        }
       },
       {
         "id": "ot_Building",
@@ -108,7 +167,13 @@
         "y": 240,
         "isPersonal": false,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": null,
+        "lexicon": {
+          "nl": {
+            "name": "Gebouw",
+            "gender": "het"
+          }
+        }
       },
       {
         "id": "ot_BuildingCode",
@@ -121,6 +186,12 @@
           "profileId": "abstract",
           "datatypeId": "text",
           "params": {}
+        },
+        "lexicon": {
+          "nl": {
+            "name": "Gebouwcode",
+            "gender": "de"
+          }
         }
       },
       {
@@ -134,6 +205,12 @@
           "profileId": "abstract",
           "datatypeId": "text",
           "params": {}
+        },
+        "lexicon": {
+          "nl": {
+            "name": "Kamernummer",
+            "gender": "het"
+          }
         }
       },
       {
@@ -144,7 +221,13 @@
         "y": 360,
         "isPersonal": false,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": null,
+        "lexicon": {
+          "nl": {
+            "name": "Kamer",
+            "gender": "de"
+          }
+        }
       },
       {
         "id": "ot_Extension",
@@ -157,6 +240,12 @@
           "profileId": "abstract",
           "datatypeId": "text",
           "params": {}
+        },
+        "lexicon": {
+          "nl": {
+            "name": "Toestelnummer",
+            "gender": "het"
+          }
         }
       },
       {
@@ -167,7 +256,14 @@
         "y": 270,
         "isPersonal": false,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": null,
+        "lexicon": {
+          "nl": {
+            "name": "Vak",
+            "gender": "het",
+            "plural": "Vakken"
+          }
+        }
       },
       {
         "id": "ot_CourseCode",
@@ -180,6 +276,12 @@
           "profileId": "abstract",
           "datatypeId": "text",
           "params": {}
+        },
+        "lexicon": {
+          "nl": {
+            "name": "Vakcode",
+            "gender": "de"
+          }
         }
       },
       {
@@ -193,6 +295,12 @@
           "profileId": "abstract",
           "datatypeId": "text",
           "params": {}
+        },
+        "lexicon": {
+          "nl": {
+            "name": "Vaktitel",
+            "gender": "de"
+          }
         }
       },
       {
@@ -216,7 +324,13 @@
             "type": "single",
             "value": "30"
           }
-        ]
+        ],
+        "lexicon": {
+          "nl": {
+            "name": "Studielast",
+            "gender": "de"
+          }
+        }
       },
       {
         "id": "ot_Grade",
@@ -236,7 +350,13 @@
             "lower": "0",
             "upper": "100"
           }
-        ]
+        ],
+        "lexicon": {
+          "nl": {
+            "name": "Cijfer",
+            "gender": "het"
+          }
+        }
       },
       {
         "id": "n1792595515478_2",
@@ -270,7 +390,13 @@
             "type": "single",
             "value": "Winter"
           }
-        ]
+        ],
+        "lexicon": {
+          "nl": {
+            "name": "Seizoen",
+            "gender": "het"
+          }
+        }
       },
       {
         "id": "n1792595521927_4",
@@ -280,7 +406,13 @@
         "y": 630,
         "valueRangeOffset": null,
         "datatypeAssignment": null,
-        "isPersonal": false
+        "isPersonal": false,
+        "lexicon": {
+          "nl": {
+            "name": "Studiejaar",
+            "gender": "het"
+          }
+        }
       },
       {
         "id": "n1792595733805_10",
@@ -290,7 +422,14 @@
         "y": 630,
         "isPersonal": false,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": null,
+        "lexicon": {
+          "nl": {
+            "name": "Periode",
+            "gender": "de",
+            "plural": "Periodes"
+          }
+        }
       },
       {
         "id": "n1792600091986_2",
@@ -299,7 +438,14 @@
         "x": 830,
         "y": 630,
         "valueRangeOffset": null,
-        "datatypeAssignment": null
+        "datatypeAssignment": null,
+        "lexicon": {
+          "nl": {
+            "name": "Jaar",
+            "gender": "het",
+            "plural": "Jaren"
+          }
+        }
       }
     ],
     "factTypes": [
@@ -371,7 +517,35 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "heeft",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "hoort bij",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_hasName",
@@ -425,7 +599,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "heeft",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_hasEmail",
@@ -482,7 +673,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "heeft",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_hasPhone",
@@ -536,7 +744,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "heeft",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_supervises",
@@ -602,7 +827,35 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "wordt begeleid door",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "begeleidt",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_Building_BuildingCode",
@@ -672,7 +925,35 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "heeft",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "hoort bij",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_roomInBuilding",
@@ -726,7 +1007,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "ligt in",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_roomHasNr",
@@ -780,7 +1078,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "heeft",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_hasOffice",
@@ -834,7 +1149,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "heeft",
+                  "als werkkamer"
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_hasExtension",
@@ -888,7 +1220,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "heeft",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_Course_CourseCode",
@@ -958,7 +1307,35 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "heeft",
+                  ""
+                ]
+              },
+              {
+                "roleOrder": [
+                  1,
+                  0
+                ],
+                "parts": [
+                  "",
+                  "hoort bij",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_hasTitle",
@@ -1015,7 +1392,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "heeft",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_hasCredits",
@@ -1069,7 +1463,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "heeft",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_prereq",
@@ -1124,7 +1535,29 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "is een voorkennisvak voor",
+                  ""
+                ],
+                "pluralParts": [
+                  "",
+                  "zijn voorkennisvakken voor",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_enrols",
@@ -1227,7 +1660,35 @@
             "roleNames": [
               null,
               null
-            ]
+            ],
+            "lexicon": {
+              "nl": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "betreft",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "is betrokken bij",
+                      ""
+                    ]
+                  }
+                ]
+              }
+            }
           },
           {
             "roleIndex": 1,
@@ -1261,7 +1722,35 @@
             "roleNames": [
               null,
               null
-            ]
+            ],
+            "lexicon": {
+              "nl": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "betreft",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "is betrokken bij",
+                      ""
+                    ]
+                  }
+                ]
+              }
+            }
           }
         ],
         "objectified": true,
@@ -1269,7 +1758,26 @@
         "nestedReading": false,
         "datatypeAssignment": null,
         "objectifiedName": "Enrolment",
-        "isIndependent": true
+        "isIndependent": true,
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "volgt",
+                  ""
+                ]
+              }
+            ],
+            "name": "Inschrijving",
+            "gender": "de"
+          }
+        }
       },
       {
         "id": "f_earned",
@@ -1323,7 +1831,29 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "leverde",
+                  "op"
+                ],
+                "subParts": [
+                  "",
+                  "",
+                  "opleverde"
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_assists",
@@ -1378,7 +1908,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "assisteert bij",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_qualified",
@@ -1433,7 +1980,29 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "is bevoegd om",
+                  "te doceren"
+                ],
+                "subParts": [
+                  "",
+                  "bevoegd is om",
+                  "te doceren"
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_teaches",
@@ -1488,7 +2057,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "doceert",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "f_coordinates",
@@ -1542,7 +2128,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "coördineert",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "n1792595806796_12",
@@ -1596,7 +2199,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "valt in",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "n1792595809976_16",
@@ -1650,7 +2270,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "hoort bij",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "n1792600091986_8",
@@ -1715,7 +2352,24 @@
         "readingOffsetBelow": null,
         "readingAbove": false,
         "uniquenessBelow": false,
-        "implicitLinks": []
+        "implicitLinks": [],
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "begint in",
+                  ""
+                ]
+              }
+            ]
+          }
+        }
       },
       {
         "id": "n1792654764379_4",
@@ -1803,7 +2457,35 @@
             "roleNames": [
               null,
               null
-            ]
+            ],
+            "lexicon": {
+              "nl": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "betreft",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "is betrokken bij",
+                      ""
+                    ]
+                  }
+                ]
+              }
+            }
           },
           {
             "roleIndex": 1,
@@ -1837,7 +2519,35 @@
             "roleNames": [
               null,
               null
-            ]
+            ],
+            "lexicon": {
+              "nl": {
+                "readings": [
+                  {
+                    "roleOrder": [
+                      0,
+                      1
+                    ],
+                    "parts": [
+                      "",
+                      "betreft",
+                      ""
+                    ]
+                  },
+                  {
+                    "roleOrder": [
+                      1,
+                      0
+                    ],
+                    "parts": [
+                      "",
+                      "is betrokken bij",
+                      ""
+                    ]
+                  }
+                ]
+              }
+            }
           }
         ],
         "objectified": true,
@@ -1845,7 +2555,31 @@
         "nestedReading": false,
         "datatypeAssignment": null,
         "objectifiedName": "Offering",
-        "isIndependent": true
+        "isIndependent": true,
+        "lexicon": {
+          "nl": {
+            "readings": [
+              {
+                "roleOrder": [
+                  0,
+                  1
+                ],
+                "parts": [
+                  "",
+                  "wordt aangeboden in",
+                  ""
+                ],
+                "subParts": [
+                  "",
+                  "in",
+                  "wordt aangeboden"
+                ]
+              }
+            ],
+            "name": "Vakaanbieding",
+            "gender": "de"
+          }
+        }
       }
     ],
     "subtypes": [

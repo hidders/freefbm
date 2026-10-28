@@ -25,6 +25,7 @@
 import { renderFormula } from '../logic/renderFormula.js'
 import { normalise } from './normalise.js'
 import { match, isVar } from './match.js'
+import { readingsFor, typeLexicon, hasText } from './lexicon.js'
 
 export const tok = (text, cls = 'kw') => ({ text, cls })
 
@@ -47,7 +48,13 @@ export function verbalise(formula, ctx, language) {
 }
 
 function makePhraser(ctx, lang, names, trace) {
-  const baseName = (v) => (v.typeIds?.length > 1 ? v.typeIds.map(ctx.typeName).join('&') : ctx.typeName(v.typeId))
+  // Names come from the language's lexicon; subscripts (Course₁) from the
+  // names the formula shows.
+  const lex = (typeId) => typeLexicon(ctx, typeId, lang.id)
+  const typeIdsOf = (v) => (v.typeIds?.length > 1 ? v.typeIds : [v.typeId])
+  const baseName = (v) => typeIdsOf(v).map(t => lex(t).name).join('&')
+  const subscript = (v) => (v.t === 'wild' ? '' : /[₀-₉]*$/u.exec(names.get(v) ?? '')[0])
+  const pluralOf = (typeId) => lex(typeId).plural ?? lang.pluralise?.(lex(typeId).name) ?? lex(typeId).name
 
   function phrase(as, node, env) {
     const seed = env.subject !== undefined ? { '?subj': env.subject } : {}
@@ -75,10 +82,16 @@ function makePhraser(ctx, lang, names, trace) {
       // carries over to verb phrases about the same subject only.
       vp: (node, subject, extra) => phrase('vp', node,
         { ...env, verb: subject === env.subject ? env.verb : undefined, ...extra, subject }),
-      // The variable's name as the formula shows it (Course₁), and the bare
-      // type name (Course), used for wildcards and plurals.
-      name: (v) => (v.t === 'wild' ? baseName(v) : names.get(v) ?? baseName(v)),
+      // The variable's name with its subscript (Course₁), the bare type name
+      // (Course), and the plural (Courses₁), all in the language.
+      name: (v) => baseName(v) + subscript(v),
       baseName,
+      plural: (v) => (typeIdsOf(v).length > 1 ? baseName(v) : pluralOf(v.typeId)) + subscript(v),
+      // The same for a type given by its id.
+      typeLabel: (typeId) => lex(typeId).name,
+      typePlural: (typeId) => pluralOf(typeId),
+      // The grammatical gender the lexicon gives the type (null if none).
+      gender: (vOrTypeId) => lex(typeof vOrTypeId === 'string' ? vOrTypeId : vOrTypeId.typeId).gender,
       objectType: (v) => ctx.otById.get(v.typeId),
       // A reference to a variable already introduced, or a wildcard.
       ref: (v) => (v?.t === 'wild' ? lang.wildNP(h, v) : lang.refNP(h, v)),
@@ -91,20 +104,20 @@ function makePhraser(ctx, lang, names, trace) {
   // The fact type (or implied link) of a fact atom.
   const factOf = (atom) => ctx.factById.get(atom.factId) ?? ctx.linkById?.get(atom.factId)
 
-  // Renders a fact atom with one of its readings. With a subject, only a
-  // reading that starts with the subject's role (with nothing before it) is
-  // used, and the subject's slot is left out: the verb phrase, whose first
-  // word the language inflects for env.verb (lang.verbForm, null when it
-  // cannot, which fails the reading). Without one,
-  // a reading that starts with a variable already introduced is preferred
-  // (as in "that Course has some CourseTitle"), else the primary reading.
-  // overrides maps variables to the phrases that fill their slots.
+  // Renders a fact atom with one of its readings in the language (see
+  // lexicon.js). With a subject, only a reading that starts with the
+  // subject's role (with nothing before it) is used, and the subject's slot
+  // is left out: the verb phrase. Without one, a reading that starts with a
+  // variable already introduced is preferred (as in "that Course has some
+  // CourseTitle"), else the primary reading. The language shapes the
+  // reading's parts for the environment (lang.shapeReading: verb forms, word
+  // order; null fails the reading). overrides maps variables to the phrases
+  // that fill their slots.
   function reading(h, atom, subject, overrides = new Map()) {
     const fact = factOf(atom)
     if (!fact) return null
     const n = atom.args.length
-    const all = [{ roleOrder: [...Array(n).keys()], parts: fact.readingParts ?? [] },
-      ...(fact.alternativeReadings ?? [])].filter(r => r.roleOrder?.length === n && r.parts)
+    const all = readingsFor(fact, lang.id, n)
     const empty0 = (r) => !r.parts[0]?.trim()
     let pick
     if (subject !== undefined) {
@@ -115,14 +128,12 @@ function makePhraser(ctx, lang, names, trace) {
       pick = all.find(r => { const a = atom.args[r.roleOrder[0]]; return isVar(a) && !overrides.has(a) && empty0(r) }) ?? all[0]
     }
     if (!pick) return null
+    const parts = (lang.shapeReading ?? shapeReading)(h, pick, subject !== undefined)
+    if (!parts) return null
     const out = []
     let subjectSeen = false
     for (let k = 0; k <= n; k++) {
-      let part = pick.parts[k]?.trim()
-      if (part && subject !== undefined && k === 1 && h.env.verb && lang.verbForm) {
-        part = lang.verbForm(h, part)
-        if (part === null) return null
-      }
+      const part = parts[k]?.trim()
       if (part) out.push(tok(part, 'reading'))
       if (k === n) break
       const arg = atom.args[pick.roleOrder[k]]
@@ -133,6 +144,16 @@ function makePhraser(ctx, lang, names, trace) {
       else out.push(h.ref(arg))
     }
     return out
+  }
+
+  // The default shaping: with a plural subject the reading's plural form if
+  // it has one, else the first word of the verb phrase inflected by
+  // lang.verbForm for env.verb (null when it cannot be).
+  function shapeReading(h, pick, elided) {
+    if (h.env.verb === 'plural' && hasText(pick.pluralParts)) return pick.pluralParts
+    if (!elided || !h.env.verb || !lang.verbForm || !pick.parts[1]?.trim()) return pick.parts
+    const verb = lang.verbForm(h, pick.parts[1].trim())
+    return verb === null ? null : [pick.parts[0], verb, ...pick.parts.slice(2)]
   }
 
   return phrase

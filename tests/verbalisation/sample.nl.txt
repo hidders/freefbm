@@ -1,0 +1,439 @@
+# Subtype · Student is a Person
+∀ Student Person(Student)
+Elke Student is een Persoon.
+
+# Subtype · Staff is a Person
+∀ Staff Person(Staff)
+Elke Medewerker is een Persoon.
+
+# Subtype · Professor is a Staff
+∀ Professor Staff(Professor)
+Elke Hoogleraar is een Medewerker.
+
+# Subtype · Lecturer is a Staff
+∀ Lecturer Staff(Lecturer)
+Elke Docent is een Medewerker.
+
+# Value range · Credits
+∀ Credits (Credits ≈ 15 ∨ Credits ≈ 30)
+De mogelijke waarden van Studielast zijn 15, 30.
+
+# Value range · Grade
+∀ Grade (Grade ≥ 0 ∧ Grade ≤ 100)
+De mogelijke waarden van Cijfer zijn 0 tot en met 100.
+
+# Value range · Season
+∀ Season (Season ≈ 'Spring' ∨ Season ≈ 'Summer' ∨ Season ≈ 'Autumn' ∨ Season ≈ 'Winter')
+De mogelijke waarden van Seizoen zijn 'Spring', 'Summer', 'Autumn', 'Winter'.
+
+# Uniqueness (preferred identifier) · Person has PersonNr
+∀ PersonNr ∃^{≤1} Person (Person has PersonNr)
+Elk Persoonsnummer hoort bij hoogstens één Persoon.
+
+# Preferred identifier (exactly one identifier) · Person has PersonNr
+∀ Person ∃^{=1} PersonNr (Person has PersonNr)
+Elke Persoon heeft precies één Persoonsnummer.
+
+# Uniqueness · Person has PersonName
+∀ Person ∃^{≤1} PersonName (Person has PersonName)
+Elke Persoon heeft hoogstens één Naam.
+
+# Mandatory role · Person has PersonName
+∀ Person ∃ PersonName (Person has PersonName)
+Elke Persoon heeft een Naam.
+
+# Uniqueness · Person has Email
+∀ Person ∃^{≤1} Email (Person has Email)
+Elke Persoon heeft hoogstens één E-mailadres.
+
+# Uniqueness · Person has Email
+∀ Email ∃^{≤1} Person (Person has Email)
+Voor elk E-mailadres geldt: hoogstens één Persoon heeft dat E-mailadres.
+
+# Uniqueness · Person has Phone
+∀ Person ∃^{≤1} Phone (Person has Phone)
+Elke Persoon heeft hoogstens één Telefoonnummer.
+
+# Uniqueness · Student is supervised by Professor
+∀ Student ∃^{≤1} Professor (Student is supervised by Professor)
+Elke Student wordt begeleid door hoogstens één Hoogleraar.
+
+# Uniqueness (preferred identifier) · Building has BuildingCode
+∀ BuildingCode ∃^{≤1} Building (Building has BuildingCode)
+Elke Gebouwcode hoort bij hoogstens één Gebouw.
+
+# Preferred identifier (exactly one identifier) · Building has BuildingCode
+∀ Building ∃^{=1} BuildingCode (Building has BuildingCode)
+Elk Gebouw heeft precies één Gebouwcode.
+
+# Uniqueness · Room is in Building
+∀ Room ∃^{≤1} Building (Room is in Building)
+Elke Kamer ligt in hoogstens één Gebouw.
+
+# Mandatory role · Room is in Building
+∀ Room ∃ Building (Room is in Building)
+Elke Kamer ligt in een Gebouw.
+
+# Uniqueness · Room has RoomNr
+∀ Room ∃^{≤1} RoomNr (Room has RoomNr)
+Elke Kamer heeft hoogstens één Kamernummer.
+
+# Mandatory role · Room has RoomNr
+∀ Room ∃ RoomNr (Room has RoomNr)
+Elke Kamer heeft een Kamernummer.
+
+# Uniqueness · Staff has office Room
+∀ Staff ∃^{≤1} Room (Staff has office Room)
+Elke Medewerker heeft hoogstens één Kamer als werkkamer.
+
+# Uniqueness · Staff has Extension
+∀ Staff ∃^{≤1} Extension (Staff has Extension)
+Elke Medewerker heeft hoogstens één Toestelnummer.
+
+# Uniqueness (preferred identifier) · Course has CourseCode
+∀ CourseCode ∃^{≤1} Course (Course has CourseCode)
+Elke Vakcode hoort bij hoogstens één Vak.
+
+# Preferred identifier (exactly one identifier) · Course has CourseCode
+∀ Course ∃^{=1} CourseCode (Course has CourseCode)
+Elk Vak heeft precies één Vakcode.
+
+# Uniqueness · Course has CourseTitle
+∀ Course ∃^{≤1} CourseTitle (Course has CourseTitle)
+Elk Vak heeft hoogstens één Vaktitel.
+
+# Uniqueness · Course has CourseTitle
+∀ CourseTitle ∃^{≤1} Course (Course has CourseTitle)
+Voor elke Vaktitel geldt: hoogstens één Vak heeft die Vaktitel.
+
+# Mandatory role · Course has CourseTitle
+∀ Course ∃ CourseTitle (Course has CourseTitle)
+Elk Vak heeft een Vaktitel.
+
+# Uniqueness · Course is worth Credits
+∀ Course ∃^{≤1} Credits (Course is worth Credits)
+Elk Vak heeft hoogstens één Studielast.
+
+# Mandatory role · Course is worth Credits
+∀ Course ∃ Credits (Course is worth Credits)
+Elk Vak heeft een Studielast.
+
+# Frequency · Student enrols in Course
+∀ Student ((∃ Course (Student enrols in Course)) → ∃^{≤6} Course (Student enrols in Course))
+Elke Student volgt hoogstens 6 Vakken.
+
+# Uniqueness · Enrolment earned Grade
+∀ Enrolment ∃^{≤1} Grade (Enrolment earned Grade)
+Elke Inschrijving leverde hoogstens één Cijfer op.
+
+# Uniqueness · Staff coordinates Course
+∀ Course ∃^{≤1} Staff (Staff coordinates Course)
+Voor elk Vak geldt: hoogstens één Medewerker coördineert dat Vak.
+
+# Mandatory role · Staff coordinates Course
+∀ Course ∃ Staff (Staff coordinates Course)
+Voor elk Vak geldt: een Medewerker coördineert dat Vak.
+
+# Uniqueness · Term is in Season
+∀ Term ∃^{≤1} Season (Term is in Season)
+Elke Periode valt in hoogstens één Seizoen.
+
+# Mandatory role · Term is in Season
+∀ Term ∃ Season (Term is in Season)
+Elke Periode valt in een Seizoen.
+
+# Uniqueness · Term is in AcademicYear
+∀ Term ∃^{≤1} AcademicYear (Term is in AcademicYear)
+Elke Periode hoort bij hoogstens één Studiejaar.
+
+# Mandatory role · Term is in AcademicYear
+∀ Term ∃ AcademicYear (Term is in AcademicYear)
+Elke Periode hoort bij een Studiejaar.
+
+# Uniqueness (preferred identifier) · AcademicYear starts in Year
+∀ Year ∃^{≤1} AcademicYear (AcademicYear starts in Year)
+Voor elk Jaar geldt: hoogstens één Studiejaar begint in dat Jaar.
+
+# Preferred identifier (exactly one identifier) · AcademicYear starts in Year
+∀ AcademicYear ∃^{=1} Year (AcademicYear starts in Year)
+Elk Studiejaar begint in precies één Jaar.
+
+# Value range (role 2) · AcademicYear starts in Year
+∀ Year ((∃ AcademicYear (AcademicYear starts in Year)) → (Year ≥ 1970 ∧ Year ≤ 2030))
+Elk Jaar waarin een Studiejaar begint, is minstens 1970 en is hoogstens 2030.
+
+# Inclusive-or
+∀ Person ((∃ Email (Person has Email)) ∨ ∃ Phone (Person has Phone))
+Elke Persoon heeft een E-mailadres of heeft een Telefoonnummer.
+
+# Inclusive-or
+∀ Person (Student(Person) ∨ Staff(Person))
+Elke Persoon is een Student of is een Medewerker.
+
+# Exclusive-or
+∀ Staff ((Professor(Staff) ∨ Lecturer(Staff)) ∧ ¬(Professor(Staff) ∧ Lecturer(Staff)))
+Voor elke Medewerker geldt precies één van de volgende: die Medewerker is een Hoogleraar; die Medewerker is een Docent.
+
+# External uniqueness (preferred identifier)
+∀ Building ∀ RoomNr ∃^{≤1} Room ((Room is in Building) ∧ (Room has RoomNr))
+Voor elk Gebouw en elk Kamernummer geldt: hoogstens één Kamer ligt in dat Gebouw en heeft dat Kamernummer.
+
+# Preferred identifier (exactly one identifying combination)
+∀ Room ∃^{=1} Building, RoomNr ((Room is in Building) ∧ (Room has RoomNr))
+Elke Kamer ligt in precies één Gebouw en heeft precies één Kamernummer.
+
+# Equality
+∀ Staff ((∃ Room (Staff has office Room)) ↔ ∃ Extension (Staff has Extension))
+Voor elke Medewerker geldt: die Medewerker heeft een Kamer als werkkamer als en slechts als die Medewerker een Toestelnummer heeft.
+
+# Ring (acyclic)
+∀ Course₁ ¬[TC_{Course₂,Course₃} (Course₂ is a prerequisite for Course₃)](Course₁, Course₁)
+Geen Vak₁ is een voorkennisvak voor zichzelf, direct of indirect.
+
+# Ring (intransitive)
+∀ Course₁ ∀ Course₂ ∀ Course₃ (((Course₁ is a prerequisite for Course₂) ∧ (Course₂ is a prerequisite for Course₃)) → ¬(Course₁ is a prerequisite for Course₃))
+Als Vak₁ een voorkennisvak voor Vak₂ is en Vak₂ een voorkennisvak voor Vak₃ is, dan is het niet zo dat Vak₁ een voorkennisvak voor Vak₃ is.
+
+# Exclusion
+∀ Student ∀ Course ¬((Student enrols in Course) ∧ (Student assists in Course))
+Voor elke Student en elk Vak geldt: hoogstens één van de volgende geldt: die Student volgt dat Vak; die Student assisteert bij dat Vak.
+
+# Subset
+∀ Staff ∀ Course ((∃ Offering ∃ Term ((Staff teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) → (Staff is qualified to teach Course))
+Als Medewerker een Vakaanbieding die Vak betreft en een Periode betreft doceert, dan is Medewerker bevoegd om Vak te doceren.
+
+# External uniqueness (preferred identifier)
+∀ Season ∀ AcademicYear ∃^{≤1} Term ((Term is in Season) ∧ (Term is in AcademicYear))
+Voor elk Seizoen en elk Studiejaar geldt: hoogstens één Periode valt in dat Seizoen en hoort bij dat Studiejaar.
+
+# Preferred identifier (exactly one identifying combination)
+∀ Term ∃^{=1} Season, AcademicYear ((Term is in Season) ∧ (Term is in AcademicYear))
+Elke Periode valt in precies één Seizoen en hoort bij precies één Studiejaar.
+
+# Disjoint roots · Person and Building
+∀ Person ¬Building(Person)
+Geen Persoon is een Gebouw.
+
+# Disjoint roots · Person and Room
+∀ Person ¬Room(Person)
+Geen Persoon is een Kamer.
+
+# Disjoint roots · Person and Course
+∀ Person ¬Course(Person)
+Geen Persoon is een Vak.
+
+# Disjoint roots · Person and AcademicYear
+∀ Person ¬AcademicYear(Person)
+Geen Persoon is een Studiejaar.
+
+# Disjoint roots · Person and Term
+∀ Person ¬Term(Person)
+Geen Persoon is een Periode.
+
+# Disjoint roots · Person and Enrolment
+∀ Person ¬Enrolment(Person)
+Geen Persoon is een Inschrijving.
+
+# Disjoint roots · Person and Offering
+∀ Person ¬Offering(Person)
+Geen Persoon is een Vakaanbieding.
+
+# Disjoint roots · Building and Room
+∀ Building ¬Room(Building)
+Geen Gebouw is een Kamer.
+
+# Disjoint roots · Building and Course
+∀ Building ¬Course(Building)
+Geen Gebouw is een Vak.
+
+# Disjoint roots · Building and AcademicYear
+∀ Building ¬AcademicYear(Building)
+Geen Gebouw is een Studiejaar.
+
+# Disjoint roots · Building and Term
+∀ Building ¬Term(Building)
+Geen Gebouw is een Periode.
+
+# Disjoint roots · Building and Enrolment
+∀ Building ¬Enrolment(Building)
+Geen Gebouw is een Inschrijving.
+
+# Disjoint roots · Building and Offering
+∀ Building ¬Offering(Building)
+Geen Gebouw is een Vakaanbieding.
+
+# Disjoint roots · Room and Course
+∀ Room ¬Course(Room)
+Geen Kamer is een Vak.
+
+# Disjoint roots · Room and AcademicYear
+∀ Room ¬AcademicYear(Room)
+Geen Kamer is een Studiejaar.
+
+# Disjoint roots · Room and Term
+∀ Room ¬Term(Room)
+Geen Kamer is een Periode.
+
+# Disjoint roots · Room and Enrolment
+∀ Room ¬Enrolment(Room)
+Geen Kamer is een Inschrijving.
+
+# Disjoint roots · Room and Offering
+∀ Room ¬Offering(Room)
+Geen Kamer is een Vakaanbieding.
+
+# Disjoint roots · Course and AcademicYear
+∀ Course ¬AcademicYear(Course)
+Geen Vak is een Studiejaar.
+
+# Disjoint roots · Course and Term
+∀ Course ¬Term(Course)
+Geen Vak is een Periode.
+
+# Disjoint roots · Course and Enrolment
+∀ Course ¬Enrolment(Course)
+Geen Vak is een Inschrijving.
+
+# Disjoint roots · Course and Offering
+∀ Course ¬Offering(Course)
+Geen Vak is een Vakaanbieding.
+
+# Disjoint roots · AcademicYear and Term
+∀ AcademicYear ¬Term(AcademicYear)
+Geen Studiejaar is een Periode.
+
+# Disjoint roots · AcademicYear and Enrolment
+∀ AcademicYear ¬Enrolment(AcademicYear)
+Geen Studiejaar is een Inschrijving.
+
+# Disjoint roots · AcademicYear and Offering
+∀ AcademicYear ¬Offering(AcademicYear)
+Geen Studiejaar is een Vakaanbieding.
+
+# Disjoint roots · Term and Enrolment
+∀ Term ¬Enrolment(Term)
+Geen Periode is een Inschrijving.
+
+# Disjoint roots · Term and Offering
+∀ Term ¬Offering(Term)
+Geen Periode is een Vakaanbieding.
+
+# Disjoint roots · Enrolment and Offering
+∀ Enrolment ¬Offering(Enrolment)
+Geen Inschrijving is een Vakaanbieding.
+
+# Participation (not independent) · Person
+∀ Person ((∃ PersonName (Person has PersonName)) ∨ (∃ Email (Person has Email)) ∨ (∃ Phone (Person has Phone)) ∨ (∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∨ (∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∨ (∃ Room (Staff(Person) ∧ (Person has office Room))) ∨ (∃ Extension (Staff(Person) ∧ (Person has Extension))) ∨ (∃ Course (Student(Person) ∧ (Person enrols in Course))) ∨ (∃ Course (Student(Person) ∧ (Person assists in Course))) ∨ (∃ Course (Staff(Person) ∧ (Person is qualified to teach Course))) ∨ (∃ Offering (Staff(Person) ∧ (Person teaches Offering))) ∨ ∃ Course (Staff(Person) ∧ (Person coordinates Course)))
+Voor elke Persoon geldt minstens één van de volgende: die Persoon heeft een Naam; die Persoon heeft een E-mailadres; die Persoon heeft een Telefoonnummer; die Persoon is een Student en die Persoon wordt begeleid door een Hoogleraar; die Persoon is een Hoogleraar en die Persoon begeleidt een Student; die Persoon is een Medewerker en die Persoon heeft een Kamer als werkkamer; die Persoon is een Medewerker en die Persoon heeft een Toestelnummer; die Persoon is een Student en die Persoon volgt een Vak; die Persoon is een Student en die Persoon assisteert bij een Vak; die Persoon is een Medewerker en die Persoon is bevoegd om een Vak te doceren; die Persoon is een Medewerker en die Persoon doceert een Vakaanbieding; die Persoon is een Medewerker en die Persoon coördineert een Vak.
+
+# Participation (not independent) · PersonNr
+∀ PersonNr ∃ Person (Person has PersonNr)
+Elk Persoonsnummer hoort bij een Persoon.
+
+# Participation (not independent) · PersonName
+∀ PersonName ∃ Person (Person has PersonName)
+Voor elke Naam geldt: een Persoon heeft die Naam.
+
+# Participation (not independent) · Email
+∀ Email ∃ Person (Person has Email)
+Voor elk E-mailadres geldt: een Persoon heeft dat E-mailadres.
+
+# Participation (not independent) · Phone
+∀ Phone ∃ Person (Person has Phone)
+Voor elk Telefoonnummer geldt: een Persoon heeft dat Telefoonnummer.
+
+# Participation (not independent) · Student
+∀ Student₁ ((∃ PersonName (Student₁ has PersonName)) ∨ (∃ Email (Student₁ has Email)) ∨ (∃ Phone (Student₁ has Phone)) ∨ (∃ Professor (Student₁ is supervised by Professor)) ∨ (∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∨ (∃ Room (Staff(Student₁) ∧ (Student₁ has office Room))) ∨ (∃ Extension (Staff(Student₁) ∧ (Student₁ has Extension))) ∨ (∃ Course (Student₁ enrols in Course)) ∨ (∃ Course (Student₁ assists in Course)) ∨ (∃ Course (Staff(Student₁) ∧ (Student₁ is qualified to teach Course))) ∨ (∃ Offering (Staff(Student₁) ∧ (Student₁ teaches Offering))) ∨ ∃ Course (Staff(Student₁) ∧ (Student₁ coordinates Course)))
+Voor elke Student₁ geldt minstens één van de volgende: die Student₁ heeft een Naam; die Student₁ heeft een E-mailadres; die Student₁ heeft een Telefoonnummer; die Student₁ wordt begeleid door een Hoogleraar; die Student₁ is een Hoogleraar en die Student₁ begeleidt een Student; die Student₁ is een Medewerker en die Student₁ heeft een Kamer als werkkamer; die Student₁ is een Medewerker en die Student₁ heeft een Toestelnummer; die Student₁ volgt een Vak; die Student₁ assisteert bij een Vak; die Student₁ is een Medewerker en die Student₁ is bevoegd om een Vak te doceren; die Student₁ is een Medewerker en die Student₁ doceert een Vakaanbieding; die Student₁ is een Medewerker en die Student₁ coördineert een Vak.
+
+# Participation (not independent) · Staff
+∀ Staff ((∃ PersonName (Staff has PersonName)) ∨ (∃ Email (Staff has Email)) ∨ (∃ Phone (Staff has Phone)) ∨ (∃ Professor (Student(Staff) ∧ (Staff is supervised by Professor))) ∨ (∃ Student (Professor(Staff) ∧ (Student is supervised by Staff))) ∨ (∃ Room (Staff has office Room)) ∨ (∃ Extension (Staff has Extension)) ∨ (∃ Course (Student(Staff) ∧ (Staff enrols in Course))) ∨ (∃ Course (Student(Staff) ∧ (Staff assists in Course))) ∨ (∃ Course (Staff is qualified to teach Course)) ∨ (∃ Offering (Staff teaches Offering)) ∨ ∃ Course (Staff coordinates Course))
+Voor elke Medewerker geldt minstens één van de volgende: die Medewerker heeft een Naam; die Medewerker heeft een E-mailadres; die Medewerker heeft een Telefoonnummer; die Medewerker is een Student en die Medewerker wordt begeleid door een Hoogleraar; die Medewerker is een Hoogleraar en die Medewerker begeleidt een Student; die Medewerker heeft een Kamer als werkkamer; die Medewerker heeft een Toestelnummer; die Medewerker is een Student en die Medewerker volgt een Vak; die Medewerker is een Student en die Medewerker assisteert bij een Vak; die Medewerker is bevoegd om een Vak te doceren; die Medewerker doceert een Vakaanbieding; die Medewerker coördineert een Vak.
+
+# Participation (not independent) · Professor
+∀ Professor₁ ((∃ PersonName (Professor₁ has PersonName)) ∨ (∃ Email (Professor₁ has Email)) ∨ (∃ Phone (Professor₁ has Phone)) ∨ (∃ Professor₂ (Student(Professor₁) ∧ (Professor₁ is supervised by Professor₂))) ∨ (∃ Student (Student is supervised by Professor₁)) ∨ (∃ Room (Professor₁ has office Room)) ∨ (∃ Extension (Professor₁ has Extension)) ∨ (∃ Course (Student(Professor₁) ∧ (Professor₁ enrols in Course))) ∨ (∃ Course (Student(Professor₁) ∧ (Professor₁ assists in Course))) ∨ (∃ Course (Professor₁ is qualified to teach Course)) ∨ (∃ Offering (Professor₁ teaches Offering)) ∨ ∃ Course (Professor₁ coordinates Course))
+Voor elke Hoogleraar₁ geldt minstens één van de volgende: die Hoogleraar₁ heeft een Naam; die Hoogleraar₁ heeft een E-mailadres; die Hoogleraar₁ heeft een Telefoonnummer; die Hoogleraar₁ is een Student en die Hoogleraar₁ wordt begeleid door een Hoogleraar; die Hoogleraar₁ begeleidt een Student; die Hoogleraar₁ heeft een Kamer als werkkamer; die Hoogleraar₁ heeft een Toestelnummer; die Hoogleraar₁ is een Student en die Hoogleraar₁ volgt een Vak; die Hoogleraar₁ is een Student en die Hoogleraar₁ assisteert bij een Vak; die Hoogleraar₁ is bevoegd om een Vak te doceren; die Hoogleraar₁ doceert een Vakaanbieding; die Hoogleraar₁ coördineert een Vak.
+
+# Participation (not independent) · Lecturer
+∀ Lecturer ((∃ PersonName (Lecturer has PersonName)) ∨ (∃ Email (Lecturer has Email)) ∨ (∃ Phone (Lecturer has Phone)) ∨ (∃ Professor (Student(Lecturer) ∧ (Lecturer is supervised by Professor))) ∨ (∃ Student (Professor(Lecturer) ∧ (Student is supervised by Lecturer))) ∨ (∃ Room (Lecturer has office Room)) ∨ (∃ Extension (Lecturer has Extension)) ∨ (∃ Course (Student(Lecturer) ∧ (Lecturer enrols in Course))) ∨ (∃ Course (Student(Lecturer) ∧ (Lecturer assists in Course))) ∨ (∃ Course (Lecturer is qualified to teach Course)) ∨ (∃ Offering (Lecturer teaches Offering)) ∨ ∃ Course (Lecturer coordinates Course))
+Voor elke Docent geldt minstens één van de volgende: die Docent heeft een Naam; die Docent heeft een E-mailadres; die Docent heeft een Telefoonnummer; die Docent is een Student en die Docent wordt begeleid door een Hoogleraar; die Docent is een Hoogleraar en die Docent begeleidt een Student; die Docent heeft een Kamer als werkkamer; die Docent heeft een Toestelnummer; die Docent is een Student en die Docent volgt een Vak; die Docent is een Student en die Docent assisteert bij een Vak; die Docent is bevoegd om een Vak te doceren; die Docent doceert een Vakaanbieding; die Docent coördineert een Vak.
+
+# Participation (not independent) · Building
+∀ Building ∃ Room (Room is in Building)
+Voor elk Gebouw geldt: een Kamer ligt in dat Gebouw.
+
+# Participation (not independent) · BuildingCode
+∀ BuildingCode ∃ Building (Building has BuildingCode)
+Elke Gebouwcode hoort bij een Gebouw.
+
+# Participation (not independent) · RoomNr
+∀ RoomNr ∃ Room (Room has RoomNr)
+Voor elk Kamernummer geldt: een Kamer heeft dat Kamernummer.
+
+# Participation (not independent) · Room
+∀ Room ∃ Staff (Staff has office Room)
+Voor elke Kamer geldt: een Medewerker heeft die Kamer als werkkamer.
+
+# Participation (not independent) · Extension
+∀ Extension ∃ Staff (Staff has Extension)
+Voor elk Toestelnummer geldt: een Medewerker heeft dat Toestelnummer.
+
+# Participation (not independent) · Course
+∀ Course₁ ((∃ CourseTitle (Course₁ has CourseTitle)) ∨ (∃ Credits (Course₁ is worth Credits)) ∨ (∃ Course₂ (Course₁ is a prerequisite for Course₂)) ∨ (∃ Course₂ (Course₂ is a prerequisite for Course₁)) ∨ (∃ Student (Student enrols in Course₁)) ∨ (∃ Student (Student assists in Course₁)) ∨ (∃ Staff (Staff is qualified to teach Course₁)) ∨ (∃ Staff (Staff coordinates Course₁)) ∨ ∃ Term (Course₁ is offered in Term))
+Voor elk Vak₁ geldt minstens één van de volgende: dat Vak₁ heeft een Vaktitel; dat Vak₁ heeft een Studielast; dat Vak₁ is een voorkennisvak voor een Vak; een Vak is een voorkennisvak voor dat Vak₁; een Student volgt dat Vak₁; een Student assisteert bij dat Vak₁; een Medewerker is bevoegd om dat Vak₁ te doceren; een Medewerker coördineert dat Vak₁; dat Vak₁ wordt aangeboden in een Periode.
+
+# Participation (not independent) · CourseCode
+∀ CourseCode ∃ Course (Course has CourseCode)
+Elke Vakcode hoort bij een Vak.
+
+# Participation (not independent) · CourseTitle
+∀ CourseTitle ∃ Course (Course has CourseTitle)
+Voor elke Vaktitel geldt: een Vak heeft die Vaktitel.
+
+# Participation (not independent) · Credits
+∀ Credits ∃ Course (Course is worth Credits)
+Voor elke Studielast geldt: een Vak heeft die Studielast.
+
+# Participation (not independent) · Grade
+∀ Grade ∃ Enrolment (Enrolment earned Grade)
+Voor elk Cijfer geldt: een Inschrijving leverde dat Cijfer op.
+
+# Participation (not independent) · Season
+∀ Season ∃ Term (Term is in Season)
+Voor elk Seizoen geldt: een Periode valt in dat Seizoen.
+
+# Participation (not independent) · AcademicYear
+∀ AcademicYear ∃ Term (Term is in AcademicYear)
+Voor elk Studiejaar geldt: een Periode hoort bij dat Studiejaar.
+
+# Participation (not independent) · Term
+∀ Term ∃ Course (Course is offered in Term)
+Voor elke Periode geldt: een Vak wordt aangeboden in die Periode.
+
+# Participation (not independent) · Year
+∀ Year ∃ AcademicYear (AcademicYear starts in Year)
+Voor elk Jaar geldt: een Studiejaar begint in dat Jaar.
+
+# Implied links (each fact has exactly one nesting instance) · Enrolment nests Student enrols in Course
+∀ Student ∀ Course ((Student enrols in Course) → ∃^{=1} Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course)))
+Als Student Vak volgt, dan is Student betrokken bij precies één Inschrijving die Vak betreft.
+
+# Implied links (linked values form a fact) · Enrolment nests Student enrols in Course
+∀ Student ∀ Course ((∃ Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course))) → (Student enrols in Course))
+Als een Inschrijving Student betreft en Vak betreft, dan volgt Student Vak.
+
+# Implied links (each nesting instance links exactly one combination) · Enrolment nests Student enrols in Course
+∀ Enrolment ∃^{=1} Student, Course ((Enrolment involves Student) ∧ (Enrolment involves Course))
+Elke Inschrijving betreft precies één Student en betreft precies één Vak.
+
+# Implied links (each fact has exactly one nesting instance) · Offering nests Course is offered in Term
+∀ Course ∀ Term ((Course is offered in Term) → ∃^{=1} Offering ((Offering involves Course) ∧ (Offering involves Term)))
+Als Vak in Periode wordt aangeboden, dan is Vak betrokken bij precies één Vakaanbieding die Periode betreft.
+
+# Implied links (linked values form a fact) · Offering nests Course is offered in Term
+∀ Course ∀ Term ((∃ Offering ((Offering involves Course) ∧ (Offering involves Term))) → (Course is offered in Term))
+Als een Vakaanbieding Vak betreft en Periode betreft, dan wordt Vak aangeboden in Periode.
+
+# Implied links (each nesting instance links exactly one combination) · Offering nests Course is offered in Term
+∀ Offering ∃^{=1} Course, Term ((Offering involves Course) ∧ (Offering involves Term))
+Elke Vakaanbieding betreft precies één Vak en betreft precies één Periode.

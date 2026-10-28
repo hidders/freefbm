@@ -4,7 +4,7 @@ import { useOrmStore } from '../store/ormStore'
 import { formalise } from '../logic/constraintFormulas.js'
 import { renderFormula } from '../logic/renderFormula.js'
 import { verbalise } from '../verbalisation/engine.js'
-import { useEnglish, openWorkbench } from '../verbalisation/workbench.js'
+import { useVerbalisation, useLanguageChoice, openWorkbench, LANGUAGES } from '../verbalisation/workbench.js'
 
 // ── Constraints tab ─────────────────────────────────────────────────────────
 // Lists every constraint in the selected part of the diagram (or, when
@@ -36,7 +36,7 @@ function useToggle(key) {
 }
 
 const VIEWS = [
-  { id: 'sentences', label: 'Sentences', title: 'Show each constraint as an English sentence' },
+  { id: 'sentences', label: 'Sentences', title: 'Show each constraint as a sentence' },
   { id: 'formulas',  label: 'Formulas',  title: 'Show each constraint as a formula of the logic' },
   { id: 'both',      label: 'Both',      title: 'Show each sentence with its formula underneath' },
 ]
@@ -79,7 +79,8 @@ export default function ConstraintsTab() {
   const [showLinks, toggleLinks] = useToggle('freefbm.formalisation.impliedLinks')
   const [wholeSchema, toggleWholeSchema] = useToggle('freefbm.formalisation.wholeSchema')
   const [view, setView] = useView()
-  const english = useEnglish()
+  const [langId, setLangId] = useLanguageChoice()
+  const verbaliser = useVerbalisation(langId)
 
   const { entries, implicit, ctx, scope } = useMemo(() => formalise(state, { wholeSchema }), [state, wholeSchema])
   const sections = [
@@ -107,15 +108,21 @@ export default function ConstraintsTab() {
         <ToggleButton on={wholeSchema} onClick={toggleWholeSchema}
           title="With nothing selected, list the constraints of the whole schema instead of only this diagram">Whole schema</ToggleButton>
         {view !== 'formulas' && (
+          <select value={langId} onChange={e => setLangId(e.target.value)} title="Language of the sentences"
+            style={{ fontSize: 10, padding: '0 4px', border: '1px solid var(--border-soft)', borderRadius: 10, background: 'transparent', color: 'var(--ink-2)' }}>
+            {LANGUAGES.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
+          </select>
+        )}
+        {view !== 'formulas' && (
           <button type="button" onClick={openWorkbench}
-            title={english.error ? `Your rules have an error, so the built-in rules are used: ${english.error}`
-              : english.custom ? 'Sentences use your own rules. Open the workbench to edit them.'
+            title={verbaliser.error ? `Your rules have an error, so the built-in rules are used: ${verbaliser.error}`
+              : verbaliser.custom ? 'Sentences use your own rules. Open the workbench to edit them.'
               : 'Open the verbalisation workbench to see and edit the rules behind the sentences'}
             style={{
               fontSize: 10, padding: '1px 8px', borderRadius: 10, cursor: 'pointer',
-              border: `1px solid ${english.error ? 'var(--danger)' : 'var(--border-soft)'}`, background: 'transparent',
-              color: english.error ? 'var(--danger)' : english.custom ? 'var(--accent)' : 'var(--ink-muted)',
-            }}>{english.custom ? 'Your rules…' : 'Rules…'}</button>
+              border: `1px solid ${verbaliser.error ? 'var(--danger)' : 'var(--border-soft)'}`, background: 'transparent',
+              color: verbaliser.error ? 'var(--danger)' : verbaliser.custom ? 'var(--accent)' : 'var(--ink-muted)',
+            }}>{verbaliser.custom ? 'Your rules…' : 'Rules…'}</button>
         )}
         <span style={{ flex: 1 }}/>
         <span style={{ display: 'inline-flex', gap: 6 }}>
@@ -137,12 +144,12 @@ export default function ConstraintsTab() {
         : (
           /* Focusable so Cmd/Ctrl+A selects just what is shown here (see App.jsx) */
           <div data-text-panel tabIndex={0} className="text-panel">
-            {entries.map(e => <Entry key={e.key} e={e} ctx={ctx} view={view} language={english.language} />)}
+            {entries.map(e => <Entry key={e.key} e={e} ctx={ctx} view={view} language={verbaliser.language} />)}
             {sections.map(sec => (
               <div key={sec.title}>
                 <div className="text-panel-section">{sec.title}</div>
                 {sec.items.length
-                  ? sec.items.map(e => <Entry key={e.key} e={e} ctx={ctx} view={view} language={english.language} />)
+                  ? sec.items.map(e => <Entry key={e.key} e={e} ctx={ctx} view={view} language={verbaliser.language} />)
                   : <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic', marginBottom: 10 }}>{sec.empty}</div>}
               </div>
             ))}
