@@ -3,12 +3,16 @@ import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
 import { formalise } from '../logic/constraintFormulas.js'
 import { renderFormula } from '../logic/renderFormula.js'
+import { verbalise } from '../verbalisation/engine.js'
+import { english } from '../verbalisation/languages/english.js'
 
-// ── Formalisation tab ───────────────────────────────────────────────────────
+// ── Formalisation and Verbalisation tabs ────────────────────────────────────
 // Lists the logic formula behind every constraint in the selected part of the
 // diagram (or, when nothing is selected, the whole diagram or the whole schema,
 // as the scope switch says), optionally followed
 // by the implicit disjointness, participation and implied-link constraints.
+// With verbalise set (the Verbalisation tab), each formula is shown under its
+// English sentence. Both tabs share the scope and section switches.
 
 export const TOKEN_STYLE = {
   var:     { color: 'var(--formula-var)', fontWeight: 600 },
@@ -32,7 +36,17 @@ function useToggle(key) {
   return [on, toggle]
 }
 
-export default function FormalisationTab() {
+// Sentence token colours: object types and readings as in the formulas,
+// fixed words in the logic colour.
+const SENTENCE_STYLE = {
+  kw:      { color: 'var(--formula-op)' },
+  type:    TOKEN_STYLE.type,
+  reading: TOKEN_STYLE.reading,
+  const:   TOKEN_STYLE.const,
+  punct:   { color: 'var(--ink-2)' },
+}
+
+export default function FormalisationTab({ verbalise: withSentences = false }) {
   const state = useOrmStore(useShallow(s => ({
     objectTypes: s.objectTypes, facts: s.facts, subtypes: s.subtypes, constraints: s.constraints,
     diagrams: s.diagrams, activeDiagramId: s.activeDiagramId,
@@ -79,23 +93,23 @@ export default function FormalisationTab() {
           <ToggleButton on={showLinks} onClick={toggleLinks}
             title="Show how a nested fact type relates to its implied link fact types">Implied links</ToggleButton>
         </span>
-        <Legend />
+        {withSentences ? <SentenceLegend /> : <Legend />}
       </div>
       {entries.length === 0 && sections.length === 0
         ? <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>
             {scope === 'diagram' ? 'This diagram has no constraints yet.'
               : scope === 'schema' ? 'The schema has no constraints yet.'
-              : 'The selection has no constraints. Select fact types or constraints to see their formulas.'}
+              : 'The selection has no constraints. Select fact types or constraints to see their ' + (withSentences ? 'verbalisations.' : 'formulas.')}
           </div>
         : (
           /* Focusable so Cmd/Ctrl+A selects just these formulas (see App.jsx) */
           <div data-text-panel tabIndex={0} className="text-panel">
-            {entries.map(e => <Entry key={e.key} e={e} ctx={ctx} />)}
+            {entries.map(e => <Entry key={e.key} e={e} ctx={ctx} withSentence={withSentences} />)}
             {sections.map(sec => (
               <div key={sec.title}>
                 <div className="text-panel-section">{sec.title}</div>
                 {sec.items.length
-                  ? sec.items.map(e => <Entry key={e.key} e={e} ctx={ctx} />)
+                  ? sec.items.map(e => <Entry key={e.key} e={e} ctx={ctx} withSentence={withSentences} />)
                   : <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic', marginBottom: 10 }}>{sec.empty}</div>}
               </div>
             ))}
@@ -105,15 +119,38 @@ export default function FormalisationTab() {
   )
 }
 
-function Entry({ e, ctx }) {
+function Entry({ e, ctx, withSentence }) {
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.04em', marginBottom: 2 }}>
         {e.kind}{e.subject ? ` · ${e.subject}` : ''}
       </div>
       {e.formula
-        ? <Formula formula={e.formula} ctx={ctx} />
+        ? (withSentence
+          ? <>
+              <Sentence formula={e.formula} ctx={ctx} />
+              <div style={{ opacity: 0.75, fontSize: 11 }}><Formula formula={e.formula} ctx={ctx} /></div>
+            </>
+          : <Formula formula={e.formula} ctx={ctx} />)
         : <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>{e.note}</div>}
+    </div>
+  )
+}
+
+// A formula's English verbalisation. Hovering shows the rules that built it.
+function Sentence({ formula, ctx }) {
+  const result = useMemo(() => {
+    try { return verbalise(formula, ctx, english) } catch (err) { return { error: err.message } }
+  }, [formula, ctx])
+  if (result.error) {
+    return <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>No verbalisation: {result.error}</div>
+  }
+  return (
+    <div title={`Rules: ${result.trace.join(' › ')}`}
+      style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', userSelect: 'text', marginBottom: 1 }}>
+      {result.tokens.map((t, i) => (
+        <React.Fragment key={i}>{t.space ? ' ' : ''}<span style={SENTENCE_STYLE[t.cls]}>{t.text}</span></React.Fragment>
+      ))}
     </div>
   )
 }
@@ -151,6 +188,23 @@ export function Formula({ formula, ctx }) {
             </React.Fragment>
           : <span key={i} style={TOKEN_STYLE[t.cls]}>{t.text}</span>)}
     </div>
+  )
+}
+
+function SentenceLegend() {
+  const item = (style, label) => (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ width: 8, height: 8, borderRadius: 2, background: style.color }}/>
+      {label}
+    </span>
+  )
+  return (
+    <span style={{ display: 'inline-flex', gap: 12, fontSize: 10, color: 'var(--ink-muted)' }}>
+      {item(SENTENCE_STYLE.type, 'object type')}
+      {item(SENTENCE_STYLE.reading, 'reading')}
+      {item(SENTENCE_STYLE.kw, 'keyword')}
+      {item(SENTENCE_STYLE.const, 'value')}
+    </span>
   )
 }
 
