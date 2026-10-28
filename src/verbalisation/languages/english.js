@@ -55,7 +55,7 @@ const names = (h, vars) => joinList(vars.map(v => tok(h.name(v), 'type')), 'and'
 // at most one / at least 2 / exactly one / at least 2 and at most 5
 function quantifier(op, n, m) {
   if (op === '..') return [kw('at least'), number(n), kw('and at most'), number(m)]
-  return [kw({ '≤': 'at most', '≥': 'at least', '=': 'exactly' }[op] ?? op), number(n)]
+  return [kw({ '≤': 'at most', '≥': 'at least', '=': 'exactly', '>': 'more than' }[op] ?? op), number(n)]
 }
 
 // "at most one Course", "at most 6 Courses"
@@ -209,6 +209,7 @@ const functions = {
   // Every variable of vs occurs in f.
   occursAll: (h, f, vs) => vs.every(v => occurs(f, v)),
   singular: (h, q) => isSingular(q.op, q.n),
+  wildCount: (h, f) => f.args.filter(a => a?.t === 'wild').length,
   subjectOf: (h, f) => subjectOf(f),
 
   // Phrases
@@ -376,9 +377,11 @@ export const englishLibrary = {
   functions,
   term,
   // "that Course", or "Course" in an If … then … sentence.
-  refNP: (h, v) => (h.env.refStyle === 'bare' ? tok(h.name(v), 'type') : [kw('that'), tok(h.name(v), 'type')]),
-  // A wildcard: "some Course", or "any Course" after "No" or a negated verb.
-  wildNP: (h, w) => [kw(h.env.negative || h.env.verb === 'negated' ? 'any' : 'some'), tok(h.name(w), 'type')],
+  // "the same Email" for the variables in env.same (negative.js).
+  refNP: (h, v) => (h.env.same?.includes(v) ? [kw('the same'), tok(h.name(v), 'type')] : h.env.refStyle === 'bare' ? tok(h.name(v), 'type') : [kw('that'), tok(h.name(v), 'type')]),
+  // A wildcard: "some Course", "any Course" after "No" or a negated verb,
+  // or "no Course" in a negated atom (env.none).
+  wildNP: (h, w) => [kw(h.env.none ? 'no' : h.env.negative || h.env.verb === 'negated' ? 'any' : 'some'), tok(h.name(w), 'type')],
   verbForm: (h, text) => inflect(text, h.env.verb),
   pluralise: (name) => plural(name),
   reflexive: (h, v) => kw(h.objectType(v)?.isPersonal ? 'themselves' : 'itself'),

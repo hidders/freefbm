@@ -3,7 +3,8 @@
 // the result with tests/verbalisation/sample.en.txt; then does the same for
 // the constructs tests/verbalisation/extras.mjs adds to the sample, against
 // tests/verbalisation/extras.en.txt; and both again in the other languages
-// (*.nl.txt, *.fr.txt, …).
+// (*.nl.txt, *.fr.txt, …); and all of it again in the negative mode, where
+// each block shows the rewritten formula (*.neg.txt, see negative.js).
 //
 //   node scripts/verbalisation-golden.mjs            check, exit 1 on a difference
 //   node scripts/verbalisation-golden.mjs --update   rewrite the expected files
@@ -45,7 +46,7 @@ const sample = {
 
 // The blocks for the entries whose key passes keep; notes (an entry without a
 // formula, say a rule with an error) are listed when withNotes is set.
-function verbaliseAll(state, language, keep, withNotes = false, results = [], stats) {
+function verbaliseAll(state, language, keep, withNotes = false, results = [], stats, negative = false) {
   const { entries, implicit, ctx } = formalise(state, { wholeSchema: true })
   const all = [...entries.flat(), ...implicit.disjointness, ...implicit.participation, ...implicit.impliedLinks]
   const blocks = []
@@ -54,9 +55,9 @@ function verbaliseAll(state, language, keep, withNotes = false, results = [], st
     if (!e.formula) { if (e.note && withNotes) blocks.push(`# ${e.kind} · ${e.subject}\nNOTE: ${e.note}\n`); continue }
     let sentence
     let r
-    try { r = verbalise(e.formula, ctx, language, { stats }); sentence = r.text } catch (err) { sentence = `ERROR: ${err.message}` }
+    try { r = verbalise(e.formula, ctx, language, { stats, negative }); sentence = r.text } catch (err) { sentence = `ERROR: ${err.message}` }
     results.push(r)
-    blocks.push(`# ${e.kind}${e.subject ? ` · ${e.subject}` : ''}\n${formulaToString(e.formula, ctx)}\n${sentence}\n`)
+    blocks.push(`# ${e.kind}${e.subject ? ` · ${e.subject}` : ''}\n${formulaToString(r?.formula ?? e.formula, ctx)}\n${sentence}\n`)
   }
   return blocks
 }
@@ -69,6 +70,8 @@ if (process.argv.includes('--coverage')) {
     const results = [], stats = newStats()
     verbaliseAll(sample, language, () => true, false, results, stats)
     verbaliseAll(extend(sample), language, isExtra, false, results, stats)
+    verbaliseAll(sample, language, () => true, false, results, stats, true)
+    verbaliseAll(extend(sample), language, isExtra, false, results, stats, true)
     const cover = coverage(language, results, stats)
     console.log(`${id}: ${cover.rules.length - cover.unused.length} of ${cover.rules.length} rules used by ${results.length} sentences` +
       (cover.fallbacks.length ? `, ${cover.fallbacks.length} without a fitting rule` : ''))
@@ -82,6 +85,8 @@ if (process.argv.includes('--coverage')) {
 for (const [file, blocks] of Object.entries(languages).filter(([id]) => !only || id === only).flatMap(([id, language]) => [
   [`sample.${id}.txt`, verbaliseAll(sample, language, () => true)],
   [`extras.${id}.txt`, verbaliseAll(extend(sample), language, isExtra, true)],
+  [`sample.${id}.neg.txt`, verbaliseAll(sample, language, () => true, false, [], undefined, true)],
+  [`extras.${id}.neg.txt`, verbaliseAll(extend(sample), language, isExtra, true, [], undefined, true)],
 ])) {
   const expectedFile = path.join(root, 'tests/verbalisation', file)
   const actual = blocks.join('\n')

@@ -111,8 +111,9 @@ export function romanceLibrary(P) {
   }
 
   // A reading's parts for the environment: the plural form, and the verb
-  // (the first word after the first slot) negated.
-  function shapeReading(h, pick) {
+  // (the first word after the first slot) negated. In Italian and Spanish a
+  // "nessun"/"ningún" before the verb takes no "non"/"no" (P.noneBeforeVerb).
+  function shapeReading(h, pick, elided, atom) {
     let parts = pick.parts
     const verb = h.env.verb
     if (verb === 'plural' && hasText(pick.pluralParts)) parts = pick.pluralParts
@@ -121,7 +122,8 @@ export function romanceLibrary(P) {
       if (v === null) return null
       parts = [parts[0], v, ...parts.slice(2)]
     }
-    const neg = verb === 'negated' ? 'negated' : (verb === 'ne' || h.env.none) ? 'ne' : null
+    const noneFirst = P.noneBeforeVerb && !verb && h.env.none && !elided && atom?.args[pick.roleOrder[0]]?.t === 'wild'
+    const neg = verb === 'negated' ? 'negated' : (verb === 'ne' || (h.env.none && !noneFirst)) ? 'ne' : null
     if (neg) {
       if (!parts[1]?.trim()) return null
       parts = [parts[0], verbForm(h, parts[1], neg), ...parts.slice(2)]
@@ -346,7 +348,8 @@ export function romanceLibrary(P) {
     label: P.label,
     functions,
     term,
-    refNP: (h, v) => (h.env.refStyle === 'bare' ? typeTok(h.name(v)) : [kw(P.that(gender(h, v))), typeTok(h.name(v))]),
+    // "la même Adresse e-mail" for the variables in env.same (negative.js).
+    refNP: (h, v) => (h.env.same?.includes(v) ? [kw(P.same(gender(h, v))), typeTok(h.name(v))] : h.env.refStyle === 'bare' ? typeTok(h.name(v)) : [kw(P.that(gender(h, v))), typeTok(h.name(v))]),
     // "un Cours", or "aucun Cours" in a negated atom (env.none).
     wildNP: (h, w) => [kw(h.env.none ? P.none(gender(h, w)) : P.some(gender(h, w))), typeTok(h.name(w))],
     reflexive: (h, v) => kw(P.reflexive(gender(h, v))),

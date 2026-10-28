@@ -1,0 +1,67 @@
+# Derivation rule · Student is a TeachingAssistant if and only if …
+∀ Student (TeachingAssistant(Student) ↔ ∃ Course (Student assists in Course))
+Estudiante es un TeachingAssistant si y solo si Estudiante asiste en un Curso.
+
+# Semi-derivation rule · Student is a BusyStudent if …
+¬(∃ Student ((∃^{≥4} Course (Student enrols in Course)) ∧ ¬BusyStudent(Student)))
+Es imposible que un Estudiante cursa al menos 4 Cursos y no es un BusyStudent.
+
+# Derivation rule · Course is a HeavyCourse if and only if …
+∀ Course (HeavyCourse(Course) ↔ ∃ Credits ((Course is worth Credits) ∧ Credits ≥ 30))
+Curso es un HeavyCourse si y solo si Curso tiene un Número de créditos que es al menos 30.
+
+# Derivation rule · Student is a FreeStudent if and only if …
+∀ Student (FreeStudent(Student) ↔ ¬(∃ Course (Student enrols in Course)))
+Estudiante es un FreeStudent si y solo si Estudiante no cursa ningún Curso.
+
+# Derivation rule · Course is an IntroCourse if and only if …
+∀ Course (IntroCourse(Course) ↔ ∃ CourseTitle ((Course has CourseTitle) ∧ startsWith(CourseTitle, 'Introduction')))
+Curso es un IntroCourse si y solo si Curso tiene un Título de curso que empieza por 'Introduction'.
+
+# Semi-derivation rule · Course is a LongTitleCourse if …
+¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
+Es imposible que un Curso tiene un Título de curso tal que la longitud de ese Título de curso es mayor que 40 y no es un LongTitleCourse.
+
+# Cardinality · Professor
+¬((∃^{≤1} Professor ⊤) ∨ ∃^{>20} Professor ⊤)
+Es imposible que hay como máximo un Profesor o hay más de 20 Profesores.
+
+# Cardinality · Building
+¬((∃^{≤2} Building ⊤) ∨ ∃^{>3} Building ⊤)
+Es imposible que hay como máximo 2 Edificios o hay más de 3 Edificios.
+
+# Cardinality · Course
+¬(∃^{>100} Course ⊤)
+Es imposible que hay más de 100 Cursos.
+
+# Cardinality (role 2) · Student enrols in Course
+¬(∃^{>50} Course ∃ Student (Student enrols in Course))
+Es imposible que hay más de 50 Cursos que un Estudiante cursa.
+
+# Cardinality (role 1) · Staff coordinates Course
+¬(∃^{≤4} Staff ∃ Course (Staff coordinates Course))
+Es imposible que hay como máximo 4 Empleados que coordinan un Curso.
+
+# Derivation rule · Student studies with Staff
+∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))
+Estudiante studies with Empleado si y solo si Estudiante cursa un Curso que Empleado coordina.
+
+# Derivation rule, every derived fact holds · Student has TotalCredits
+¬(∃ Student ¬(∃ TotalCredits (Student has TotalCredits)))
+Es imposible que un Estudiante no has ningún TotalCredits.
+
+# Derivation rule, only derived facts hold · Student has TotalCredits
+¬(∃ Student ∃ TotalCredits ((Student has TotalCredits) ∧ TotalCredits ≉ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)}))
+Es imposible que hay un Estudiante y un TotalCredits tales que ese Estudiante has ese TotalCredits y ese TotalCredits es distinto de la suma de los Números de créditos que cada Curso que ese Estudiante cursa tiene.
+
+# Derivation rule, every derived fact holds · Course has EnrolmentCount
+¬(∃ Course ¬(∃ EnrolmentCount (Course has EnrolmentCount)))
+Es imposible que un Curso no has ningún EnrolmentCount.
+
+# Derivation rule, only derived facts hold · Course has EnrolmentCount
+¬(∃ Course ∃ EnrolmentCount ((Course has EnrolmentCount) ∧ EnrolmentCount ≉ Count{Student : (Student enrols in Course)}))
+Es imposible que hay un Curso y un EnrolmentCount tales que ese Curso has ese EnrolmentCount y ese EnrolmentCount es distinto del número de Estudiantes que cursan ese Curso.
+
+# Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
+¬(∃ Student ∃ Course ∃ Credits ((Student assists in Course) ∧ (Course is worth Credits) ∧ ¬(∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))))
+Es imposible que hay un Estudiante, un Curso y un Número de créditos tales que ese Estudiante asiste en ese Curso y ese Curso tiene ese Número de créditos y no es cierto que ese Estudiante has credit load un TotalCredits que es (ese Número de créditos más 5) por 2.

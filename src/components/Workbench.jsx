@@ -37,6 +37,8 @@ export default function Workbench() {
   const [search, setSearch] = useState('')
   const [changedOnly, setChangedOnly] = useState(false)
   const [view, setView] = useState('sentences')
+  // Negative sentences (negative.js), as the Constraints tab's switch.
+  const [negative, setNegative] = useState(false)
   const editor = useRef(null)
 
   useEffect(() => { document.title = 'Verbalisation Workbench' }, [])
@@ -77,12 +79,12 @@ export default function Workbench() {
     const stats = newStats()
     if (!all) return { rows: [], stats }
     const rows = all.entries.map(e => {
-      const now = run(e.formula, all.ctx, compiled.language, stats)
-      const before = compiled.text === applied ? now : run(e.formula, all.ctx, appliedLanguage)
+      const now = run(e.formula, all.ctx, compiled.language, stats, negative)
+      const before = compiled.text === applied ? now : run(e.formula, all.ctx, appliedLanguage, undefined, negative)
       return { e, now, before, changed: now.text !== before.text }
     })
     return { rows, stats }
-  }, [all, compiled, applied, appliedLanguage])
+  }, [all, compiled, applied, appliedLanguage, negative])
 
   const cover = useMemo(() => (all && compiled.language ? coverage(compiled.language, rows.map(r => r.now), stats) : null),
     [all, compiled, rows, stats])
@@ -217,6 +219,11 @@ export default function Workbench() {
               <input type="checkbox" checked={changedOnly} onChange={e => setChangedOnly(e.target.checked)} />
               Changed only
             </label>
+            <label title="Verbalise what each constraint rules out, as in the Constraints tab's Negative mode"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, userSelect: 'none' }}>
+              <input type="checkbox" checked={negative} onChange={e => setNegative(e.target.checked)} />
+              Negative
+            </label>
             <span style={{ color: 'var(--ink-muted)' }}>
               {all ? `${shown.length} of ${rows.length} · ${changedCount} changed by your edit` : ''}
             </span>
@@ -241,9 +248,9 @@ function compile(text, info) {
   catch (err) { return { text, language: null, error: { reason: err.reason ?? err.message, line: err.line, col: err.col } } }
 }
 
-function run(formula, ctx, language, stats) {
+function run(formula, ctx, language, stats, negative = false) {
   if (!language) return { text: null, tokens: null, trace: [], error: 'The rules have an error' }
-  try { return verbalise(formula, ctx, language, { stats }) } catch (err) { return { text: null, tokens: null, trace: [], error: err.message } }
+  try { return verbalise(formula, ctx, language, { stats, negative }) } catch (err) { return { text: null, tokens: null, trace: [], error: err.message } }
 }
 
 const MUTED = { fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }
@@ -358,7 +365,7 @@ function Row({ r, ctx, onRule }) {
         <div style={{ fontSize: 12, color: 'var(--ink-muted)', textDecoration: 'line-through', marginTop: 1 }}
           title="The sentence under the rules in use">{before.text ?? before.error}</div>
       )}
-      <div style={{ opacity: 0.7, fontSize: 11, margin: '2px 0' }}><Formula formula={e.formula} ctx={ctx} /></div>
+      <div style={{ opacity: 0.7, fontSize: 11, margin: '2px 0' }}><Formula formula={now.formula ?? e.formula} ctx={ctx} /></div>
       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
         {now.trace.map((s, i) => (
           <React.Fragment key={i}>
