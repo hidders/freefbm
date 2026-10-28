@@ -28,6 +28,35 @@ function createWindow() {
   return win
 }
 
+// The verbalisation workbench: a second window of the same app (#workbench),
+// which gets the model from the main window through workbench:msg.
+let workbench = null
+function openWorkbench() {
+  if (workbench && !workbench.isDestroyed()) { workbench.focus(); return }
+  workbench = new BrowserWindow({
+    width: 1280, height: 820, minWidth: 800, minHeight: 500,
+    title: 'Verbalisation Workbench',
+    backgroundColor: '#f5f0e8',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  if (isDev) workbench.loadURL('http://localhost:5173/#workbench')
+  else workbench.loadFile(path.join(app.getAppPath(), 'dist', 'index.html'), { hash: 'workbench' })
+  workbench.on('closed', () => { workbench = null })
+}
+
+ipcMain.handle('workbench:open', () => { openWorkbench() })
+
+// Relays messages between the main window and the workbench.
+ipcMain.on('workbench:msg', (event, msg) => {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (w.webContents !== event.sender && !w.isDestroyed()) w.webContents.send('workbench:msg', msg)
+  }
+})
+
 function buildMenu(win) {
   const isMac = process.platform === 'darwin'
   const send = (ch) => () => win.webContents.send(ch)
@@ -63,6 +92,8 @@ function buildMenu(win) {
         { label: 'Zoom In',    accelerator: 'CmdOrCtrl+=', click: send('menu:zoomIn') },
         { label: 'Zoom Out',   accelerator: 'CmdOrCtrl+-', click: send('menu:zoomOut') },
         { label: 'Reset Zoom', accelerator: 'CmdOrCtrl+0', click: send('menu:zoomReset') },
+        { type: 'separator' },
+        { label: 'Verbalisation Workbench', accelerator: 'CmdOrCtrl+Shift+B', click: openWorkbench },
         { type: 'separator' },
         { role: 'toggleDevTools' }, { role: 'togglefullscreen' },
       ],
@@ -113,6 +144,26 @@ ipcMain.handle('dialog:saveFile', async (_, { defaultPath, content }) => {
     // Offer .ffbm even when the model was opened from a legacy .orm2/.json file
     defaultPath: (defaultPath || 'model.ffbm').replace(/\.(orm2|json)$/i, '.ffbm'),
     filters: [{ name: 'FreeFBM Model', extensions: ['ffbm'] }],
+  })
+  if (canceled || !filePath) return null
+  fs.writeFileSync(filePath, content, 'utf-8')
+  return filePath
+})
+
+// Rule files (.vr) for the workbench.
+const RULE_FILTERS = [{ name: 'Verbalisation Rules', extensions: ['vr'] }, { name: 'All Files', extensions: ['*'] }]
+
+ipcMain.handle('dialog:openRules', async (event) => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
+    filters: RULE_FILTERS, properties: ['openFile'],
+  })
+  if (canceled || !filePaths.length) return null
+  return { path: filePaths[0], content: fs.readFileSync(filePaths[0], 'utf-8') }
+})
+
+ipcMain.handle('dialog:saveRules', async (event, { defaultPath, content }) => {
+  const { canceled, filePath } = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+    defaultPath: defaultPath || 'english.vr', filters: RULE_FILTERS,
   })
   if (canceled || !filePath) return null
   fs.writeFileSync(filePath, content, 'utf-8')

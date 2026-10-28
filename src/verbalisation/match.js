@@ -15,6 +15,8 @@
 //                (already bound) variables in has, in any role. Without rest
 //                no other arguments are allowed; with rest the others are
 //                bound as a list.
+//   { $as: '?q', p }
+//                matches p and binds the matched value itself to ?q
 //   other values match by ===.
 //
 // match returns the extended bindings object, or null.
@@ -28,6 +30,7 @@ export function match(p, x, b = {}) {
   if (Array.isArray(p)) return matchList(p, x, b)
   if (p && typeof p === 'object') {
     if (p.$fact) return matchFact(p, x, b)
+    if (p.$as) { const inner = match(p.p, x, b); return inner && match(p.$as, x, inner) }
     if (!x || typeof x !== 'object') return null
     for (const k of Object.keys(p)) {
       b = match(p[k], x[k], b)

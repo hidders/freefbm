@@ -4,7 +4,7 @@ import { useOrmStore } from '../store/ormStore'
 import { formalise } from '../logic/constraintFormulas.js'
 import { renderFormula } from '../logic/renderFormula.js'
 import { verbalise } from '../verbalisation/engine.js'
-import { english } from '../verbalisation/languages/english.js'
+import { useEnglish, openWorkbench } from '../verbalisation/workbench.js'
 
 // ── Constraints tab ─────────────────────────────────────────────────────────
 // Lists every constraint in the selected part of the diagram (or, when
@@ -57,7 +57,7 @@ function useView() {
 
 // Sentence token colours: object types and readings as in the formulas,
 // fixed words in the logic colour.
-const SENTENCE_STYLE = {
+export const SENTENCE_STYLE = {
   kw:      { color: 'var(--formula-op)' },
   type:    TOKEN_STYLE.type,
   reading: TOKEN_STYLE.reading,
@@ -79,6 +79,7 @@ export default function ConstraintsTab() {
   const [showLinks, toggleLinks] = useToggle('freefbm.formalisation.impliedLinks')
   const [wholeSchema, toggleWholeSchema] = useToggle('freefbm.formalisation.wholeSchema')
   const [view, setView] = useView()
+  const english = useEnglish()
 
   const { entries, implicit, ctx, scope } = useMemo(() => formalise(state, { wholeSchema }), [state, wholeSchema])
   const sections = [
@@ -105,6 +106,17 @@ export default function ConstraintsTab() {
         <ViewSwitch view={view} onChange={setView} />
         <ToggleButton on={wholeSchema} onClick={toggleWholeSchema}
           title="With nothing selected, list the constraints of the whole schema instead of only this diagram">Whole schema</ToggleButton>
+        {view !== 'formulas' && (
+          <button type="button" onClick={openWorkbench}
+            title={english.error ? `Your rules have an error, so the built-in rules are used: ${english.error}`
+              : english.custom ? 'Sentences use your own rules. Open the workbench to edit them.'
+              : 'Open the verbalisation workbench to see and edit the rules behind the sentences'}
+            style={{
+              fontSize: 10, padding: '1px 8px', borderRadius: 10, cursor: 'pointer',
+              border: `1px solid ${english.error ? 'var(--danger)' : 'var(--border-soft)'}`, background: 'transparent',
+              color: english.error ? 'var(--danger)' : english.custom ? 'var(--accent)' : 'var(--ink-muted)',
+            }}>{english.custom ? 'Your rules…' : 'Rules…'}</button>
+        )}
         <span style={{ flex: 1 }}/>
         <span style={{ display: 'inline-flex', gap: 6 }}>
           <ToggleButton on={showDisjoint} onClick={toggleDisjoint}
@@ -125,12 +137,12 @@ export default function ConstraintsTab() {
         : (
           /* Focusable so Cmd/Ctrl+A selects just what is shown here (see App.jsx) */
           <div data-text-panel tabIndex={0} className="text-panel">
-            {entries.map(e => <Entry key={e.key} e={e} ctx={ctx} view={view} />)}
+            {entries.map(e => <Entry key={e.key} e={e} ctx={ctx} view={view} language={english.language} />)}
             {sections.map(sec => (
               <div key={sec.title}>
                 <div className="text-panel-section">{sec.title}</div>
                 {sec.items.length
-                  ? sec.items.map(e => <Entry key={e.key} e={e} ctx={ctx} view={view} />)
+                  ? sec.items.map(e => <Entry key={e.key} e={e} ctx={ctx} view={view} language={english.language} />)
                   : <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic', marginBottom: 10 }}>{sec.empty}</div>}
               </div>
             ))}
@@ -140,7 +152,7 @@ export default function ConstraintsTab() {
   )
 }
 
-function Entry({ e, ctx, view }) {
+function Entry({ e, ctx, view, language }) {
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.04em', marginBottom: 2 }}>
@@ -148,7 +160,7 @@ function Entry({ e, ctx, view }) {
       </div>
       {e.formula
         ? <>
-            {view !== 'formulas' && <Sentence formula={e.formula} ctx={ctx} />}
+            {view !== 'formulas' && <Sentence formula={e.formula} ctx={ctx} language={language} />}
             {view === 'formulas' && <Formula formula={e.formula} ctx={ctx} />}
             {view === 'both' && <div style={{ opacity: 0.75, fontSize: 11 }}><Formula formula={e.formula} ctx={ctx} /></div>}
           </>
@@ -158,10 +170,10 @@ function Entry({ e, ctx, view }) {
 }
 
 // A formula's English verbalisation. Hovering shows the rules that built it.
-function Sentence({ formula, ctx }) {
+export function Sentence({ formula, ctx, language }) {
   const result = useMemo(() => {
-    try { return verbalise(formula, ctx, english) } catch (err) { return { error: err.message } }
-  }, [formula, ctx])
+    try { return verbalise(formula, ctx, language) } catch (err) { return { error: err.message } }
+  }, [formula, ctx, language])
   if (result.error) {
     return <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>No verbalisation: {result.error}</div>
   }
