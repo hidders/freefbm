@@ -131,7 +131,7 @@ export default function BottomPanel() {
       {!collapsed && (
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 12 }}>
           {tab === 'population'    && <PopulationTab />}
-          {tab === 'verbalisation' && <VerbalisationTab />}
+          {tab === 'verbalisation' && <FormalisationTab verbalise />}
           {tab === 'formalisation' && <FormalisationTab />}
         </div>
       )}
@@ -3182,7 +3182,3 @@ function NestedCellEditor({
   )
 }
 
-// ── Verbalisation tab (placeholder) ────────────────────────────────────────
-function VerbalisationTab() {
-  return <EmptyState>Verbalisations will appear here.</EmptyState>
-}

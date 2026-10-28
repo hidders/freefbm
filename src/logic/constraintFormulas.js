@@ -727,7 +727,7 @@ export function makeContext(state) {
     for (const il of (f.implicitLinks ?? [])) {
       const id = `${f.id}_il_${il.roleIndex}`
       linkById.set(id, { id, roles: [{ objectTypeId: f.id }, { objectTypeId: f.roles[il.roleIndex]?.objectTypeId }],
-        readingParts: il.readingParts ?? ['', 'involves', ''] })
+        readingParts: il.readingParts ?? ['', 'involves', ''], alternativeReadings: il.alternativeReadings ?? [] })
     }
   }
   return {
