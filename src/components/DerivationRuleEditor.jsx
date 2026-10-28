@@ -195,7 +195,7 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
         const wrapBody = !(ATOMIC.has(n.body?.t) || QUANT.has(n.body?.t))
         body = <>
           <span style={TOKEN_STYLE.op}>{n.t === 'forall' ? '∀' : '∃'}</span>
-          {n.t === 'count' && <sup style={{ ...TOKEN_STYLE.op, fontSize: '0.75em' }}>{n.op}{n.n}</sup>}
+          {n.t === 'count' && <sup style={{ ...TOKEN_STYLE.op, fontSize: '0.75em' }}>{n.op === '..' ? `${n.n}..${n.m}` : `${n.op}${n.n}`}</sup>}
           <span style={TOKEN_STYLE.qgap}>{QGAP}</span>
           <span style={TOKEN_STYLE.var} title={`ranges over ${ctx.typeName(n.v.typeId)}`}>{nameOf.get(n.v.id)}</span>
           {' '}{wrapBody ? <>{'('}{b}{')'}</> : b}
@@ -467,12 +467,15 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
   const [showAll, setShowAll] = useState(false)
   const [qType, setQType] = useState(() => supers[0] ?? types[0]?.id ?? '')
   const [qN, setQN] = useState(1)
+  const [qM, setQM] = useState(2)
 
   // The innermost variable in scope that fits a place for instances of placeId.
   const fitting = (placeId) => [...scope].reverse().find(v => graph.fit(v.typeIds, placeId) === 'ok')?.id ?? null
   const quant = (t, op) => {
     const v = { id: newVarId(), typeId: qType }
-    return t === 'count' ? { t, op, n: Math.max(0, Number(qN) || 0), v, body: hole() } : { t, v, body: hole() }
+    const n = Math.max(0, Math.floor(Number(qN) || 0))
+    if (t !== 'count') return { t, v, body: hole() }
+    return op === '..' ? { t, op, n, m: Math.max(n, Math.floor(Number(qM) || 0)), v, body: hole() } : { t, op, n, v, body: hole() }
   }
   const parent = path.length ? getAt(draft, path.slice(0, path[path.length - 2] === 'args' ? -2 : -1)) : null
   const parentPath = path.length ? path.slice(0, path[path.length - 2] === 'args' ? -2 : -1) : null
@@ -490,7 +493,10 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
       {COUNT_OPS.map(op => (
         <button key={op} style={btn()} disabled={!qType} onClick={() => onPick(quant('count', op))}>∃<sup>{op}{qN}</sup></button>
       ))}
-      <input type="number" min={0} value={qN} onChange={e => setQN(e.target.value)} title="Bound of the counting quantifiers"
+      <input type="number" min={0} value={qN} onChange={e => setQN(e.target.value)} title="Bound of the counting quantifiers (the lower bound of a range)"
+        style={{ width: 46, fontSize: 12 }} />
+      <button style={btn()} disabled={!qType} onClick={() => onPick(quant('count', '..'))}>∃<sup>{qN}..{qM}</sup></button>
+      <input type="number" min={0} value={qM} onChange={e => setQM(e.target.value)} title="Upper bound of the range quantifier"
         style={{ width: 46, fontSize: 12 }} />
     </>
   )
@@ -576,18 +582,27 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
         <select value={node.t === 'count' ? `count${node.op}` : node.t} style={selectStyle} onChange={e => {
           const k = e.target.value
           if (k === 'forall' || k === 'exists') replace(path, { t: k, v: node.v, body: node.body })
-          else replace(path, { t: 'count', op: k.slice(5), n: node.n ?? 1, v: node.v, body: node.body })
+          else {
+            const op = k.slice(5), n = node.n ?? 1
+            replace(path, { t: 'count', op, n, ...(op === '..' ? { m: Math.max(n, node.m ?? n + 1) } : {}), v: node.v, body: node.body })
+          }
         }}>
           <option value="forall">∀ for all</option>
           <option value="exists">∃ there is</option>
           <option value="count≤">∃≤n at most n</option>
           <option value="count≥">∃≥n at least n</option>
           <option value="count=">∃=n exactly n</option>
+          <option value="count..">∃n..m at least n and at most m</option>
         </select>
         {node.t === 'count' && (
           <input type="number" min={0} value={node.n} style={{ width: 46, fontSize: 12 }}
             onChange={e => replace(path, { ...node, n: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} />
         )}
+        {node.t === 'count' && node.op === '..' && <>
+          {'..'}
+          <input type="number" min={0} value={node.m} style={{ width: 46, fontSize: 12 }} title="Upper bound"
+            onChange={e => replace(path, { ...node, m: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} />
+        </>}
       </>])
     }
     if (node.t === 'and' || node.t === 'or') {

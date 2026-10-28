@@ -1,7 +1,7 @@
 // Renders a formula tree (see formula.js) as a flat list of styled tokens:
 //   { text, cls }   cls: 'var' | 'reading' | 'type' | 'op' | 'fn' | 'const' | 'punct'
 //                   ('fn': data operators and predicates)
-//   { text, cls: 'op', sup: true }   the bound of a counting quantifier, or TC's *
+//   { text, cls: 'op', sup: true }   the bound of a counting quantifier (≤n, ≥n, =n or n..m), or TC's *
 //   { text, cls, sub: true }         the variables bound by TC, an aggregate's 'distinct'
 //   { text: QGAP, cls: 'qgap' }      the narrow gap between a quantifier and its variable
 //
@@ -205,7 +205,7 @@ export function renderFormula(formula, ctx, names = new Map()) {
         return
       case 'forall': case 'exists': case 'count': {
         if (f.t === 'count') {
-          push('∃', 'op'); push(`${f.op}${f.n}`, 'op', { sup: true }); push(QGAP, 'qgap')
+          push('∃', 'op'); push(f.op === '..' ? `${f.n}..${f.m}` : `${f.op}${f.n}`, 'op', { sup: true }); push(QGAP, 'qgap')
           f.vars.forEach((v, i) => { if (i) push(', '); bind(v); pushVar(v) })
         } else {
           f.vars.forEach((v, i) => { if (i) push(' '); push(f.t === 'forall' ? '∀' : '∃', 'op'); push(QGAP, 'qgap'); bind(v); pushVar(v) })
