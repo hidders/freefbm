@@ -36,7 +36,7 @@ function children(f) {
     case 'forall': case 'exists': case 'count': case 'tc': return [f.body]
     case 'and': case 'or': return f.args
     case 'implies': case 'iff': return [f.left, f.right]
-    case 'not': return [f.arg]
+    case 'not': case 'possible': return [f.arg]
     case 'vcmp': return [...termConds(f.left), ...termConds(f.right)]
     case 'dpred': return f.args.flatMap(termConds)
     case 'agg': return [f.cond, ...termConds(f.term)]
@@ -185,6 +185,12 @@ export function renderFormula(formula, ctx, names = new Map()) {
         return
       case 'dpred':
         renderCall(PREDS[f.op] ?? { symbol: f.op }, f.args)
+        return
+      case 'possible':
+        // ◇X: X can hold (the default verbalisation of a missing constraint).
+        push('◇', 'op')
+        if (ATOMIC.has(f.arg.t) || QUANTIFIERS.has(f.arg.t)) render(f.arg)
+        else wrapped(f.arg)
         return
       case 'not':
         push('¬', 'op')

@@ -12,6 +12,8 @@
 //   { t: 'and' | 'or', args: [F] }
 //   { t: 'implies' | 'iff', left, right }
 //   { t: 'not', arg }
+//   { t: 'possible', arg }                ◇X, X can hold: only in the default verbalisations of
+//       missing constraints (constraintFormulas.js possibleEntries)
 //   { t: 'true' }                            ⊤, the formula that always holds
 //   { t: 'fact', factId, args: [Var] }      fact type atom, args in roles[] order
 //   { t: 'type', typeId, arg: Var }          object type membership, e.g. Student(Person)

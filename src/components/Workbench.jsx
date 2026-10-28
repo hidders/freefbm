@@ -71,7 +71,7 @@ export default function Workbench() {
   const all = useMemo(() => {
     if (!model) return null
     const { entries, implicit, ctx } = formalise(model, { wholeSchema: true })
-    return { ctx, entries: [...entries.flat(), ...implicit.disjointness, ...implicit.participation, ...implicit.impliedLinks]
+    return { ctx, entries: [...entries.flat(), ...implicit.disjointness, ...implicit.participation, ...implicit.impliedLinks, ...implicit.possible]
       .filter(e => e.formula) }
   }, [model])
 

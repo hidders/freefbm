@@ -22,6 +22,13 @@ sentence rule impossible {
   template: "it is impossible that" clause(?x)
 }
 
+sentence rule possible {
+  # Default verbalisation: what a missing constraint allows (◇X, see
+  # possibleEntries in constraintFormulas.js).
+  match:    { t: "possible", arg: ?x }
+  template: "it is possible that" clause(?x)
+}
+
 sentence rule value-range {
   match:    ForAll([?x], ?body)
   guard:    rangeItems(?body, ?x)
@@ -310,4 +317,11 @@ vp rule not {
   match:    Not(?a)
   guard:    not env.verb
   template: vp(?a, ?subj, verb: "negated")
+}
+
+vp rule none {
+  # When the verb cannot be negated (a past tense): "earned no Grade".
+  match:    Not(?f @ Fact(?P, {?subj}, ?rest*))
+  guard:    not env.verb and wildCount(?f) == 1
+  template: with(none: true) { reading(?f, subject: ?subj) }
 }
