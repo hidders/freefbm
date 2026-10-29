@@ -93,7 +93,11 @@ export default function ConstraintsTab() {
   const [langId, setLangId] = useLanguageChoice()
   const verbaliser = useVerbalisation(langId)
 
-  const { entries, implicit, ctx, scope } = useMemo(() => formalise(state, { wholeSchema }), [state, wholeSchema])
+  const { entries: all, implicit, ctx, scope } = useMemo(() => formalise(state, { wholeSchema }), [state, wholeSchema])
+  // Default verbalisations of missing constraints sit where the constraint
+  // would have been; the Possible toggle hides them.
+  const entries = showPossible ? all : all.filter(e => !e.possible)
+  const count = all.filter(e => !e.possible).length
   const sections = [
     showDisjoint && { title: 'Implicit disjointness constraints', items: implicit.disjointness,
       empty: 'There is only one entity-type hierarchy, so there is nothing to keep disjoint.' },
@@ -101,8 +105,6 @@ export default function ConstraintsTab() {
       empty: 'Every type here is independent.' },
     showLinks && { title: 'Implied link constraints', items: implicit.impliedLinks,
       empty: 'There are no nested fact types here.' },
-    showPossible && { title: 'Possible: mandatory and uniqueness constraints that are not there', items: implicit.possible,
-      empty: 'Every role here is mandatory and every role is unique, so nothing more is left open.' },
   ].filter(Boolean)
 
   return (
@@ -115,7 +117,7 @@ export default function ConstraintsTab() {
       }}>
         <span>
           {scope === 'selection' ? 'Constraints in the selection'
-            : scope === 'schema' ? 'Constraints in the whole schema' : 'Constraints on this diagram'} ({entries.length})
+            : scope === 'schema' ? 'Constraints in the whole schema' : 'Constraints on this diagram'} ({count})
         </span>
         <Segmented options={VIEWS} value={view} onChange={setView} label="Show constraints as" />
         {view !== 'formulas' && <Segmented options={MODES} value={mode} onChange={setMode} label="Sentences say" />}

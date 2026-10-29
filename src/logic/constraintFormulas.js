@@ -368,7 +368,7 @@ function roleValueRangeEntry(fact, i, ctx, reading = readingText(fact, ctx)) {
 
 // ── Internal constraints of one fact type ────────────────────────────────────
 
-function factEntries(fact, ctx) {
+function factEntries(fact, ctx, info) {
   const out = []
   const reading = readingText(fact, ctx)
   const arity = fact.roles.length
@@ -388,12 +388,17 @@ function factEntries(fact, ctx) {
     out.push({ ...base, formula: forall(xs.filter((_, i) => u.includes(i)), count('≤', 1, ys, factAtom(fact.id, xs))) })
     if (isPreferred) out.push(...preferredIdentifierEntries(fact, u, reading))
   }
+  out.push(...possibleUniqueness(fact, reading, info))
 
   fact.roles.forEach((r, i) => { if (r.valueRange?.length) out.push(roleValueRangeEntry(fact, i, ctx, reading)) })
   fact.roles.forEach((r, i) => { if (r.cardinalityRange?.length) out.push(roleCardinalityEntry(fact, i, ctx, reading)) })
 
   fact.roles.forEach((r, i) => {
-    if (!r.mandatory) return
+    if (!r.mandatory) {
+      const d = possibleMandatory(fact, i, reading, info)
+      if (d) out.push(d)
+      return
+    }
     const xs = roleVars()
     out.push({ key: `${fact.id}:mand:${i}`, elementId: fact.id, kind: 'Mandatory role', subject: reading,
       formula: forall([xs[i]], exists(xs.filter((_, j) => j !== i), factAtom(fact.id, xs))) })
@@ -680,7 +685,9 @@ export function implicitEntries(state, ctx, typeIds) {
 //
 // As NORMA does, the Constraints tab can say what the schema allows because a
 // constraint is missing: "It is possible that some Person does not live in
-// any City." Only mandatory role and internal uniqueness constraints get one:
+// any City." factEntries lists them where the constraint would have been,
+// marked possible: true. Only mandatory role and internal uniqueness
+// constraints get one:
 //   mandatory   every role that is not mandatory, explicitly or implied: an
 //               identified role (preferred identifier) or the only role a
 //               type that is not independent plays (implicit participation);
@@ -689,39 +696,44 @@ export function implicitEntries(state, ctx, typeIds) {
 //               implied by it); an identified role counts as unique.
 // Fully derived fact types get none. Each entry's formula is ◇X, X the
 // counterexample of the missing constraint (verbalisation/negative.js).
-export function possibleEntries(state, ctx, factIds) {
+
+// What the defaults need to know of the whole schema.
+export function defaultsInfo(state) {
   const identified = identifiedRoles(state)
-  const onlyRole = implicitlyMandatoryRoles(state, identified)
-  const out = []
-  for (const fact of (state.facts ?? [])) {
-    if (!factIds.has(fact.id) || fact.derivation === 'derived') continue
-    const n = fact.roles.length
-    if (fact.roles.some(r => !r.objectTypeId)) continue
-    const reading = readingText(fact, ctx)
-    const xs = () => fact.roles.map(r => mkVar(r.objectTypeId))
-    const isIdentified = (i) => identified.has(`${fact.id}:${i}`)
-    fact.roles.forEach((r, i) => {
-      if (r.mandatory || isIdentified(i) || onlyRole.has(`${fact.id}:${i}`)) return
-      const v = xs()
-      out.push({ key: `${fact.id}:possible:mand:${i}`, elementId: fact.id, kind: 'Possible (role not mandatory)',
-        subject: reading, formula: possible(forall([v[i]], exists(v.filter((_, j) => j !== i), factAtom(fact.id, v)))) })
-    })
-    if (n < 2) continue
-    const ucs = [...(fact.uniqueness ?? []), ...fact.roles.map((_, i) => i).filter(isIdentified).map(i => [i])]
-    const missing = []
-    for (let mask = 1; mask < (1 << n) - 1; mask++) {
-      const set = fact.roles.map((_, i) => i).filter(i => mask & (1 << i))
-      if (!ucs.some(u => u.every(i => set.includes(i)))) missing.push(set)
-    }
-    for (const set of missing) {
-      if (missing.some(t => t.length > set.length && set.every(i => t.includes(i)))) continue
-      const v = xs()
-      out.push({ key: `${fact.id}:possible:uc:${set.join(',')}`, elementId: fact.id, kind: 'Possible (roles not unique)',
-        subject: reading, formula: possible(forall(v.filter((_, i) => set.includes(i)),
-          count('≤', 1, v.filter((_, i) => !set.includes(i)), factAtom(fact.id, v)))) })
-    }
+  return { identified, onlyRole: implicitlyMandatoryRoles(state, identified) }
+}
+
+const hasDefaults = (fact) => fact.derivation !== 'derived' && fact.roles.every(r => r.objectTypeId)
+
+// The missing uniqueness constraints of a fact type, maximal ones only.
+function possibleUniqueness(fact, reading, info) {
+  const n = fact.roles.length
+  if (!info || n < 2 || !hasDefaults(fact)) return []
+  const isIdentified = (i) => info.identified.has(`${fact.id}:${i}`)
+  const ucs = [...(fact.uniqueness ?? []), ...fact.roles.map((_, i) => i).filter(isIdentified).map(i => [i])]
+  const missing = []
+  for (let mask = 1; mask < (1 << n) - 1; mask++) {
+    const set = fact.roles.map((_, i) => i).filter(i => mask & (1 << i))
+    if (!ucs.some(u => u.every(i => set.includes(i)))) missing.push(set)
   }
-  return out
+  return missing
+    .filter(set => !missing.some(t => t.length > set.length && set.every(i => t.includes(i))))
+    .map(set => {
+      const v = fact.roles.map(r => mkVar(r.objectTypeId))
+      return { key: `${fact.id}:possible:uc:${set.join(',')}`, elementId: fact.id, kind: 'Possible (roles not unique)',
+        subject: reading, possible: true, formula: possible(forall(v.filter((_, i) => set.includes(i)),
+          count('≤', 1, v.filter((_, i) => !set.includes(i)), factAtom(fact.id, v)))) }
+    })
+}
+
+// The default verbalisation of role i when it is not mandatory, or null.
+function possibleMandatory(fact, i, reading, info) {
+  if (!info || !hasDefaults(fact)) return null
+  const key = `${fact.id}:${i}`
+  if (fact.roles[i].mandatory || info.identified.has(key) || info.onlyRole.has(key)) return null
+  const v = fact.roles.map(r => mkVar(r.objectTypeId))
+  return { key: `${fact.id}:possible:mand:${i}`, elementId: fact.id, kind: 'Possible (role not mandatory)',
+    subject: reading, possible: true, formula: possible(forall([v[i]], exists(v.filter((_, j) => j !== i), factAtom(fact.id, v)))) }
 }
 
 // ◇X for the constraint φ that is missing, X its counterexample.
@@ -841,7 +853,6 @@ export function formalise(state, { wholeSchema = false } = {}) {
     const typeId = ot?.id ?? fact?.roles[vr.roleIndex]?.objectTypeId
     const implicit = implicitEntries(state, ctx, new Set(typeId ? [typeId] : []))
     implicit.impliedLinks = []
-    implicit.possible = []
     return { entries: entry ? [entry] : [], implicit, ctx, scope: 'selection' }
   }
   // So does a selected cardinality range.
@@ -851,7 +862,6 @@ export function formalise(state, { wholeSchema = false } = {}) {
     const typeId = cr.otId ?? cr.nestedFactId ?? ctx.factById.get(cr.factId)?.roles[cr.roleIndex]?.objectTypeId
     const implicit = implicitEntries(state, ctx, new Set(typeId ? [typeId] : []))
     implicit.impliedLinks = []
-    implicit.possible = []
     return { entries: entry ? [entry] : [], implicit, ctx, scope: 'selection' }
   }
   const constraints = (state.constraints ?? []).filter(c => SEQUENCE_TYPES.has(c.constraintType))
@@ -925,10 +935,11 @@ export function formalise(state, { wholeSchema = false } = {}) {
     const inScope = selected.size ? otIds.has(t.id) || factIds.has(t.id) : typeIds.has(t.id)
     if (inScope) entries.push(typeCardinalityEntry(t.id, t.cardinalityRange, ctx))
   }
+  const info = defaultsInfo(state)
   for (const fact of (state.facts ?? [])) {
     if (factIds.has(fact.id)) {
       if (isDerivedFact(fact)) entries.push(...factDerivationEntries(fact, state, ctx))
-      entries.push(...factEntries(fact, ctx))
+      entries.push(...factEntries(fact, ctx, info))
       continue
     }
     // A selected object type brings the mandatory roles it plays.
@@ -944,7 +955,6 @@ export function formalise(state, { wholeSchema = false } = {}) {
   implicit.impliedLinks = (state.facts ?? [])
     .filter(f => factIds.has(f.id) && f.objectified && f.objectifiedKind !== 'value')
     .flatMap(f => impliedLinkEntries(f, ctx))
-  implicit.possible = possibleEntries(state, ctx, factIds)
   return { entries, implicit, ctx,
     scope: selected.size ? 'selection' : wholeSchema ? 'schema' : 'diagram' }
 }
