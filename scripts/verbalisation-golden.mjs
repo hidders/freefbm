@@ -48,7 +48,7 @@ const sample = {
 // formula, say a rule with an error) are listed when withNotes is set.
 function verbaliseAll(state, language, keep, withNotes = false, results = [], stats, negative = false) {
   const { entries, implicit, ctx } = formalise(state, { wholeSchema: true })
-  const all = [...entries.flat(), ...implicit.disjointness, ...implicit.participation, ...implicit.impliedLinks, ...implicit.possible]
+  const all = [...entries.flat(), ...implicit.disjointness, ...implicit.participation, ...implicit.impliedLinks]
   const blocks = []
   for (const e of all) {
     if (!keep(e.key)) continue

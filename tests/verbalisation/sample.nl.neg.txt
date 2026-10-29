@@ -38,6 +38,10 @@ Het is onmogelijk dat een Persoon geen Persoonsnummer heeft of meer dan één Pe
 ¬(∃ Person ∃^{>1} PersonName (Person has PersonName))
 Het is onmogelijk dat een Persoon meer dan één Naam heeft.
 
+# Possible (roles not unique) · Person has PersonName
+◇∃ PersonName ∃^{>1} Person (Person has PersonName)
+Het is mogelijk dat meer dan één Persoon dezelfde Naam heeft.
+
 # Mandatory role · Person has PersonName
 ¬(∃ Person ¬(∃ PersonName (Person has PersonName)))
 Het is onmogelijk dat een Persoon geen Naam heeft.
@@ -50,13 +54,37 @@ Het is onmogelijk dat een Persoon meer dan één E-mailadres heeft.
 ¬(∃ Email ∃^{>1} Person (Person has Email))
 Het is onmogelijk dat meer dan één Persoon hetzelfde E-mailadres heeft.
 
+# Possible (role not mandatory) · Person has Email
+◇∃ Person ¬(∃ Email (Person has Email))
+Het is mogelijk dat een Persoon geen E-mailadres heeft.
+
 # Uniqueness · Person has Phone
 ¬(∃ Person ∃^{>1} Phone (Person has Phone))
 Het is onmogelijk dat een Persoon meer dan één Telefoonnummer heeft.
 
+# Possible (roles not unique) · Person has Phone
+◇∃ Phone ∃^{>1} Person (Person has Phone)
+Het is mogelijk dat meer dan één Persoon hetzelfde Telefoonnummer heeft.
+
+# Possible (role not mandatory) · Person has Phone
+◇∃ Person ¬(∃ Phone (Person has Phone))
+Het is mogelijk dat een Persoon geen Telefoonnummer heeft.
+
 # Uniqueness · Student is supervised by Professor
 ¬(∃ Student ∃^{>1} Professor (Student is supervised by Professor))
 Het is onmogelijk dat meer dan één Hoogleraar dezelfde Student begeleidt.
+
+# Possible (roles not unique) · Student is supervised by Professor
+◇∃ Professor ∃^{>1} Student (Student is supervised by Professor)
+Het is mogelijk dat meer dan één Student door dezelfde Hoogleraar begeleid wordt.
+
+# Possible (role not mandatory) · Student is supervised by Professor
+◇∃ Student ¬(∃ Professor (Student is supervised by Professor))
+Het is mogelijk dat een Student door geen Hoogleraar begeleid wordt.
+
+# Possible (role not mandatory) · Student is supervised by Professor
+◇∃ Professor ¬(∃ Student (Student is supervised by Professor))
+Het is mogelijk dat een Hoogleraar geen Student begeleidt.
 
 # Uniqueness (preferred identifier) · Building has BuildingCode
 ¬(∃ BuildingCode ∃^{>1} Building (Building has BuildingCode))
@@ -70,6 +98,10 @@ Het is onmogelijk dat een Gebouw geen Gebouwcode heeft of meer dan één Gebouwc
 ¬(∃ Room ∃^{>1} Building (Room is in Building))
 Het is onmogelijk dat een Kamer in meer dan één Gebouw ligt.
 
+# Possible (roles not unique) · Room is in Building
+◇∃ Building ∃^{>1} Room (Room is in Building)
+Het is mogelijk dat meer dan één Kamer in hetzelfde Gebouw ligt.
+
 # Mandatory role · Room is in Building
 ¬(∃ Room ¬(∃ Building (Room is in Building)))
 Het is onmogelijk dat een Kamer in geen Gebouw ligt.
@@ -77,6 +109,10 @@ Het is onmogelijk dat een Kamer in geen Gebouw ligt.
 # Uniqueness · Room has RoomNr
 ¬(∃ Room ∃^{>1} RoomNr (Room has RoomNr))
 Het is onmogelijk dat een Kamer meer dan één Kamernummer heeft.
+
+# Possible (roles not unique) · Room has RoomNr
+◇∃ RoomNr ∃^{>1} Room (Room has RoomNr)
+Het is mogelijk dat meer dan één Kamer hetzelfde Kamernummer heeft.
 
 # Mandatory role · Room has RoomNr
 ¬(∃ Room ¬(∃ RoomNr (Room has RoomNr)))
@@ -86,9 +122,25 @@ Het is onmogelijk dat een Kamer geen Kamernummer heeft.
 ¬(∃ Staff ∃^{>1} Room (Staff has office Room))
 Het is onmogelijk dat een Medewerker meer dan één Kamer als werkkamer heeft.
 
+# Possible (roles not unique) · Staff has office Room
+◇∃ Room ∃^{>1} Staff (Staff has office Room)
+Het is mogelijk dat meer dan één Medewerker dezelfde Kamer als werkkamer heeft.
+
+# Possible (role not mandatory) · Staff has office Room
+◇∃ Staff ¬(∃ Room (Staff has office Room))
+Het is mogelijk dat een Medewerker geen Kamer als werkkamer heeft.
+
 # Uniqueness · Staff has Extension
 ¬(∃ Staff ∃^{>1} Extension (Staff has Extension))
 Het is onmogelijk dat een Medewerker meer dan één Toestelnummer heeft.
+
+# Possible (roles not unique) · Staff has Extension
+◇∃ Extension ∃^{>1} Staff (Staff has Extension)
+Het is mogelijk dat meer dan één Medewerker hetzelfde Toestelnummer heeft.
+
+# Possible (role not mandatory) · Staff has Extension
+◇∃ Staff ¬(∃ Extension (Staff has Extension))
+Het is mogelijk dat een Medewerker geen Toestelnummer heeft.
 
 # Uniqueness (preferred identifier) · Course has CourseCode
 ¬(∃ CourseCode ∃^{>1} Course (Course has CourseCode))
@@ -114,9 +166,45 @@ Het is onmogelijk dat een Vak geen Vaktitel heeft.
 ¬(∃ Course ∃^{>1} Credits (Course is worth Credits))
 Het is onmogelijk dat een Vak meer dan één Studielast heeft.
 
+# Possible (roles not unique) · Course is worth Credits
+◇∃ Credits ∃^{>1} Course (Course is worth Credits)
+Het is mogelijk dat meer dan één Vak dezelfde Studielast heeft.
+
 # Mandatory role · Course is worth Credits
 ¬(∃ Course ¬(∃ Credits (Course is worth Credits)))
 Het is onmogelijk dat een Vak geen Studielast heeft.
+
+# Possible (roles not unique) · Course is a prerequisite for Course
+◇∃ Course₁ ∃^{>1} Course₂ (Course₁ is a prerequisite for Course₂)
+Het is mogelijk dat een Vak₁ een voorkennisvak voor meer dan één Vak₂ is.
+
+# Possible (roles not unique) · Course is a prerequisite for Course
+◇∃ Course₁ ∃^{>1} Course₂ (Course₂ is a prerequisite for Course₁)
+Het is mogelijk dat meer dan één Vak₂ een voorkennisvak voor hetzelfde Vak₁ is.
+
+# Possible (role not mandatory) · Course is a prerequisite for Course
+◇∃ Course₁ ¬(∃ Course₂ (Course₁ is a prerequisite for Course₂))
+Het is mogelijk dat een Vak₁ een voorkennisvak voor geen Vak is.
+
+# Possible (role not mandatory) · Course is a prerequisite for Course
+◇∃ Course₁ ¬(∃ Course₂ (Course₂ is a prerequisite for Course₁))
+Het is mogelijk dat er een Vak₁ is zodanig dat geen Vak een voorkennisvak voor dat Vak₁ is.
+
+# Possible (roles not unique) · Student enrols in Course
+◇∃ Student ∃^{>1} Course (Student enrols in Course)
+Het is mogelijk dat een Student meer dan één Vak volgt.
+
+# Possible (roles not unique) · Student enrols in Course
+◇∃ Course ∃^{>1} Student (Student enrols in Course)
+Het is mogelijk dat meer dan één Student hetzelfde Vak volgt.
+
+# Possible (role not mandatory) · Student enrols in Course
+◇∃ Student ¬(∃ Course (Student enrols in Course))
+Het is mogelijk dat een Student geen Vak volgt.
+
+# Possible (role not mandatory) · Student enrols in Course
+◇∃ Course ¬(∃ Student (Student enrols in Course))
+Het is mogelijk dat er een Vak is zodanig dat geen Student dat Vak volgt.
 
 # Frequency · Student enrols in Course
 ¬(∃ Student ∃^{>6} Course (Student enrols in Course))
@@ -126,9 +214,73 @@ Het is onmogelijk dat een Student meer dan 6 Vakken volgt.
 ¬(∃ Enrolment ∃^{>1} Grade (Enrolment earned Grade))
 Het is onmogelijk dat een Inschrijving meer dan één Cijfer opleverde.
 
+# Possible (roles not unique) · Enrolment earned Grade
+◇∃ Grade ∃^{>1} Enrolment (Enrolment earned Grade)
+Het is mogelijk dat meer dan één Inschrijving hetzelfde Cijfer opleverde.
+
+# Possible (role not mandatory) · Enrolment earned Grade
+◇∃ Enrolment ¬(∃ Grade (Enrolment earned Grade))
+Het is mogelijk dat een Inschrijving geen Cijfer opleverde.
+
+# Possible (roles not unique) · Student assists in Course
+◇∃ Student ∃^{>1} Course (Student assists in Course)
+Het is mogelijk dat een Student bij meer dan één Vak assisteert.
+
+# Possible (roles not unique) · Student assists in Course
+◇∃ Course ∃^{>1} Student (Student assists in Course)
+Het is mogelijk dat meer dan één Student bij hetzelfde Vak assisteert.
+
+# Possible (role not mandatory) · Student assists in Course
+◇∃ Student ¬(∃ Course (Student assists in Course))
+Het is mogelijk dat een Student bij geen Vak assisteert.
+
+# Possible (role not mandatory) · Student assists in Course
+◇∃ Course ¬(∃ Student (Student assists in Course))
+Het is mogelijk dat er een Vak is zodanig dat geen Student bij dat Vak assisteert.
+
+# Possible (roles not unique) · Staff is qualified to teach Course
+◇∃ Staff ∃^{>1} Course (Staff is qualified to teach Course)
+Het is mogelijk dat een Medewerker bevoegd is om meer dan één Vak te doceren.
+
+# Possible (roles not unique) · Staff is qualified to teach Course
+◇∃ Course ∃^{>1} Staff (Staff is qualified to teach Course)
+Het is mogelijk dat meer dan één Medewerker bevoegd is om hetzelfde Vak te doceren.
+
+# Possible (role not mandatory) · Staff is qualified to teach Course
+◇∃ Staff ¬(∃ Course (Staff is qualified to teach Course))
+Het is mogelijk dat een Medewerker bevoegd is om geen Vak te doceren.
+
+# Possible (role not mandatory) · Staff is qualified to teach Course
+◇∃ Course ¬(∃ Staff (Staff is qualified to teach Course))
+Het is mogelijk dat er een Vak is zodanig dat geen Medewerker bevoegd is om dat Vak te doceren.
+
+# Possible (roles not unique) · Staff teaches Offering
+◇∃ Staff ∃^{>1} Offering (Staff teaches Offering)
+Het is mogelijk dat een Medewerker meer dan één Vakaanbieding doceert.
+
+# Possible (roles not unique) · Staff teaches Offering
+◇∃ Offering ∃^{>1} Staff (Staff teaches Offering)
+Het is mogelijk dat meer dan één Medewerker dezelfde Vakaanbieding doceert.
+
+# Possible (role not mandatory) · Staff teaches Offering
+◇∃ Staff ¬(∃ Offering (Staff teaches Offering))
+Het is mogelijk dat een Medewerker geen Vakaanbieding doceert.
+
+# Possible (role not mandatory) · Staff teaches Offering
+◇∃ Offering ¬(∃ Staff (Staff teaches Offering))
+Het is mogelijk dat er een Vakaanbieding is zodanig dat geen Medewerker die Vakaanbieding doceert.
+
 # Uniqueness · Staff coordinates Course
 ¬(∃ Course ∃^{>1} Staff (Staff coordinates Course))
 Het is onmogelijk dat meer dan één Medewerker hetzelfde Vak coördineert.
+
+# Possible (roles not unique) · Staff coordinates Course
+◇∃ Staff ∃^{>1} Course (Staff coordinates Course)
+Het is mogelijk dat een Medewerker meer dan één Vak coördineert.
+
+# Possible (role not mandatory) · Staff coordinates Course
+◇∃ Staff ¬(∃ Course (Staff coordinates Course))
+Het is mogelijk dat een Medewerker geen Vak coördineert.
 
 # Mandatory role · Staff coordinates Course
 ¬(∃ Course ¬(∃ Staff (Staff coordinates Course)))
@@ -138,6 +290,10 @@ Het is onmogelijk dat er een Vak is zodanig dat geen Medewerker dat Vak coördin
 ¬(∃ Term ∃^{>1} Season (Term is in Season))
 Het is onmogelijk dat een Periode in meer dan één Seizoen valt.
 
+# Possible (roles not unique) · Term is in Season
+◇∃ Season ∃^{>1} Term (Term is in Season)
+Het is mogelijk dat meer dan één Periode in hetzelfde Seizoen valt.
+
 # Mandatory role · Term is in Season
 ¬(∃ Term ¬(∃ Season (Term is in Season)))
 Het is onmogelijk dat een Periode in geen Seizoen valt.
@@ -145,6 +301,10 @@ Het is onmogelijk dat een Periode in geen Seizoen valt.
 # Uniqueness · Term is in AcademicYear
 ¬(∃ Term ∃^{>1} AcademicYear (Term is in AcademicYear))
 Het is onmogelijk dat een Periode bij meer dan één Studiejaar hoort.
+
+# Possible (roles not unique) · Term is in AcademicYear
+◇∃ AcademicYear ∃^{>1} Term (Term is in AcademicYear)
+Het is mogelijk dat meer dan één Periode bij hetzelfde Studiejaar hoort.
 
 # Mandatory role · Term is in AcademicYear
 ¬(∃ Term ¬(∃ AcademicYear (Term is in AcademicYear)))
@@ -161,6 +321,18 @@ Het is onmogelijk dat een Studiejaar in geen Jaar begint of in meer dan één Ja
 # Value range (role 2) · AcademicYear starts in Year
 ¬(∃ Year ((∃ AcademicYear (AcademicYear starts in Year)) ∧ (Year < 1970 ∨ Year > 2030)))
 Het is onmogelijk dat er een Jaar is zodanig dat een Studiejaar in dat Jaar begint en dat Jaar kleiner dan 1970 is of dat Jaar groter dan 2030 is.
+
+# Possible (roles not unique) · Course is offered in Term
+◇∃ Course ∃^{>1} Term (Course is offered in Term)
+Het is mogelijk dat een Vak in meer dan één Periode wordt aangeboden.
+
+# Possible (roles not unique) · Course is offered in Term
+◇∃ Term ∃^{>1} Course (Course is offered in Term)
+Het is mogelijk dat meer dan één Vak in dezelfde Periode wordt aangeboden.
+
+# Possible (role not mandatory) · Course is offered in Term
+◇∃ Course ¬(∃ Term (Course is offered in Term))
+Het is mogelijk dat een Vak in geen Periode wordt aangeboden.
 
 # Inclusive-or
 ¬(∃ Person (¬(∃ Email (Person has Email)) ∧ ¬(∃ Phone (Person has Phone))))
@@ -437,175 +609,3 @@ Het is onmogelijk dat er een Vak en een Periode is zodanig dat een Vakaanbieding
 # Implied links (each nesting instance links exactly one combination) · Offering nests Course is offered in Term
 ¬(∃ Offering ¬(∃^{=1} Course, Term ((Offering involves Course) ∧ (Offering involves Term))))
 Het is onmogelijk dat er een Vakaanbieding is zodanig dat het niet zo is dat er precies één combinatie van Vak en Periode is zodanig dat die Vakaanbieding dat Vak betreft en die Vakaanbieding die Periode betreft.
-
-# Possible (roles not unique) · Person has PersonName
-◇∃ PersonName ∃^{>1} Person (Person has PersonName)
-Het is mogelijk dat meer dan één Persoon dezelfde Naam heeft.
-
-# Possible (role not mandatory) · Person has Email
-◇∃ Person ¬(∃ Email (Person has Email))
-Het is mogelijk dat een Persoon geen E-mailadres heeft.
-
-# Possible (role not mandatory) · Person has Phone
-◇∃ Person ¬(∃ Phone (Person has Phone))
-Het is mogelijk dat een Persoon geen Telefoonnummer heeft.
-
-# Possible (roles not unique) · Person has Phone
-◇∃ Phone ∃^{>1} Person (Person has Phone)
-Het is mogelijk dat meer dan één Persoon hetzelfde Telefoonnummer heeft.
-
-# Possible (role not mandatory) · Student is supervised by Professor
-◇∃ Student ¬(∃ Professor (Student is supervised by Professor))
-Het is mogelijk dat een Student door geen Hoogleraar begeleid wordt.
-
-# Possible (role not mandatory) · Student is supervised by Professor
-◇∃ Professor ¬(∃ Student (Student is supervised by Professor))
-Het is mogelijk dat een Hoogleraar geen Student begeleidt.
-
-# Possible (roles not unique) · Student is supervised by Professor
-◇∃ Professor ∃^{>1} Student (Student is supervised by Professor)
-Het is mogelijk dat meer dan één Student door dezelfde Hoogleraar begeleid wordt.
-
-# Possible (roles not unique) · Room is in Building
-◇∃ Building ∃^{>1} Room (Room is in Building)
-Het is mogelijk dat meer dan één Kamer in hetzelfde Gebouw ligt.
-
-# Possible (roles not unique) · Room has RoomNr
-◇∃ RoomNr ∃^{>1} Room (Room has RoomNr)
-Het is mogelijk dat meer dan één Kamer hetzelfde Kamernummer heeft.
-
-# Possible (role not mandatory) · Staff has office Room
-◇∃ Staff ¬(∃ Room (Staff has office Room))
-Het is mogelijk dat een Medewerker geen Kamer als werkkamer heeft.
-
-# Possible (roles not unique) · Staff has office Room
-◇∃ Room ∃^{>1} Staff (Staff has office Room)
-Het is mogelijk dat meer dan één Medewerker dezelfde Kamer als werkkamer heeft.
-
-# Possible (role not mandatory) · Staff has Extension
-◇∃ Staff ¬(∃ Extension (Staff has Extension))
-Het is mogelijk dat een Medewerker geen Toestelnummer heeft.
-
-# Possible (roles not unique) · Staff has Extension
-◇∃ Extension ∃^{>1} Staff (Staff has Extension)
-Het is mogelijk dat meer dan één Medewerker hetzelfde Toestelnummer heeft.
-
-# Possible (roles not unique) · Course is worth Credits
-◇∃ Credits ∃^{>1} Course (Course is worth Credits)
-Het is mogelijk dat meer dan één Vak dezelfde Studielast heeft.
-
-# Possible (role not mandatory) · Course is a prerequisite for Course
-◇∃ Course₁ ¬(∃ Course₂ (Course₁ is a prerequisite for Course₂))
-Het is mogelijk dat een Vak₁ een voorkennisvak voor geen Vak is.
-
-# Possible (role not mandatory) · Course is a prerequisite for Course
-◇∃ Course₁ ¬(∃ Course₂ (Course₂ is a prerequisite for Course₁))
-Het is mogelijk dat er een Vak₁ is zodanig dat geen Vak een voorkennisvak voor dat Vak₁ is.
-
-# Possible (roles not unique) · Course is a prerequisite for Course
-◇∃ Course₁ ∃^{>1} Course₂ (Course₁ is a prerequisite for Course₂)
-Het is mogelijk dat een Vak₁ een voorkennisvak voor meer dan één Vak₂ is.
-
-# Possible (roles not unique) · Course is a prerequisite for Course
-◇∃ Course₁ ∃^{>1} Course₂ (Course₂ is a prerequisite for Course₁)
-Het is mogelijk dat meer dan één Vak₂ een voorkennisvak voor hetzelfde Vak₁ is.
-
-# Possible (role not mandatory) · Student enrols in Course
-◇∃ Student ¬(∃ Course (Student enrols in Course))
-Het is mogelijk dat een Student geen Vak volgt.
-
-# Possible (role not mandatory) · Student enrols in Course
-◇∃ Course ¬(∃ Student (Student enrols in Course))
-Het is mogelijk dat er een Vak is zodanig dat geen Student dat Vak volgt.
-
-# Possible (roles not unique) · Student enrols in Course
-◇∃ Student ∃^{>1} Course (Student enrols in Course)
-Het is mogelijk dat een Student meer dan één Vak volgt.
-
-# Possible (roles not unique) · Student enrols in Course
-◇∃ Course ∃^{>1} Student (Student enrols in Course)
-Het is mogelijk dat meer dan één Student hetzelfde Vak volgt.
-
-# Possible (role not mandatory) · Enrolment earned Grade
-◇∃ Enrolment ¬(∃ Grade (Enrolment earned Grade))
-Het is mogelijk dat een Inschrijving geen Cijfer opleverde.
-
-# Possible (roles not unique) · Enrolment earned Grade
-◇∃ Grade ∃^{>1} Enrolment (Enrolment earned Grade)
-Het is mogelijk dat meer dan één Inschrijving hetzelfde Cijfer opleverde.
-
-# Possible (role not mandatory) · Student assists in Course
-◇∃ Student ¬(∃ Course (Student assists in Course))
-Het is mogelijk dat een Student bij geen Vak assisteert.
-
-# Possible (role not mandatory) · Student assists in Course
-◇∃ Course ¬(∃ Student (Student assists in Course))
-Het is mogelijk dat er een Vak is zodanig dat geen Student bij dat Vak assisteert.
-
-# Possible (roles not unique) · Student assists in Course
-◇∃ Student ∃^{>1} Course (Student assists in Course)
-Het is mogelijk dat een Student bij meer dan één Vak assisteert.
-
-# Possible (roles not unique) · Student assists in Course
-◇∃ Course ∃^{>1} Student (Student assists in Course)
-Het is mogelijk dat meer dan één Student bij hetzelfde Vak assisteert.
-
-# Possible (role not mandatory) · Staff is qualified to teach Course
-◇∃ Staff ¬(∃ Course (Staff is qualified to teach Course))
-Het is mogelijk dat een Medewerker bevoegd is om geen Vak te doceren.
-
-# Possible (role not mandatory) · Staff is qualified to teach Course
-◇∃ Course ¬(∃ Staff (Staff is qualified to teach Course))
-Het is mogelijk dat er een Vak is zodanig dat geen Medewerker bevoegd is om dat Vak te doceren.
-
-# Possible (roles not unique) · Staff is qualified to teach Course
-◇∃ Staff ∃^{>1} Course (Staff is qualified to teach Course)
-Het is mogelijk dat een Medewerker bevoegd is om meer dan één Vak te doceren.
-
-# Possible (roles not unique) · Staff is qualified to teach Course
-◇∃ Course ∃^{>1} Staff (Staff is qualified to teach Course)
-Het is mogelijk dat meer dan één Medewerker bevoegd is om hetzelfde Vak te doceren.
-
-# Possible (role not mandatory) · Staff teaches Offering
-◇∃ Staff ¬(∃ Offering (Staff teaches Offering))
-Het is mogelijk dat een Medewerker geen Vakaanbieding doceert.
-
-# Possible (role not mandatory) · Staff teaches Offering
-◇∃ Offering ¬(∃ Staff (Staff teaches Offering))
-Het is mogelijk dat er een Vakaanbieding is zodanig dat geen Medewerker die Vakaanbieding doceert.
-
-# Possible (roles not unique) · Staff teaches Offering
-◇∃ Staff ∃^{>1} Offering (Staff teaches Offering)
-Het is mogelijk dat een Medewerker meer dan één Vakaanbieding doceert.
-
-# Possible (roles not unique) · Staff teaches Offering
-◇∃ Offering ∃^{>1} Staff (Staff teaches Offering)
-Het is mogelijk dat meer dan één Medewerker dezelfde Vakaanbieding doceert.
-
-# Possible (role not mandatory) · Staff coordinates Course
-◇∃ Staff ¬(∃ Course (Staff coordinates Course))
-Het is mogelijk dat een Medewerker geen Vak coördineert.
-
-# Possible (roles not unique) · Staff coordinates Course
-◇∃ Staff ∃^{>1} Course (Staff coordinates Course)
-Het is mogelijk dat een Medewerker meer dan één Vak coördineert.
-
-# Possible (roles not unique) · Term is in Season
-◇∃ Season ∃^{>1} Term (Term is in Season)
-Het is mogelijk dat meer dan één Periode in hetzelfde Seizoen valt.
-
-# Possible (roles not unique) · Term is in AcademicYear
-◇∃ AcademicYear ∃^{>1} Term (Term is in AcademicYear)
-Het is mogelijk dat meer dan één Periode bij hetzelfde Studiejaar hoort.
-
-# Possible (role not mandatory) · Course is offered in Term
-◇∃ Course ¬(∃ Term (Course is offered in Term))
-Het is mogelijk dat een Vak in geen Periode wordt aangeboden.
-
-# Possible (roles not unique) · Course is offered in Term
-◇∃ Course ∃^{>1} Term (Course is offered in Term)
-Het is mogelijk dat een Vak in meer dan één Periode wordt aangeboden.
-
-# Possible (roles not unique) · Course is offered in Term
-◇∃ Term ∃^{>1} Course (Course is offered in Term)
-Het is mogelijk dat meer dan één Vak in dezelfde Periode wordt aangeboden.

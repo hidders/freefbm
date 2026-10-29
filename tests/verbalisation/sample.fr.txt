@@ -38,6 +38,10 @@ Chaque Personne a exactement un Numéro de personne.
 ∀ Person ∃^{≤1} PersonName (Person has PersonName)
 Chaque Personne a au plus un Nom.
 
+# Possible (roles not unique) · Person has PersonName
+◇∃ PersonName ∃^{>1} Person (Person has PersonName)
+Il est possible que plus d'une Personne a le même Nom.
+
 # Mandatory role · Person has PersonName
 ∀ Person ∃ PersonName (Person has PersonName)
 Chaque Personne a un Nom.
@@ -50,13 +54,37 @@ Chaque Personne a au plus une Adresse e-mail.
 ∀ Email ∃^{≤1} Person (Person has Email)
 Pour chaque Adresse e-mail, au plus une Personne a cette Adresse e-mail.
 
+# Possible (role not mandatory) · Person has Email
+◇∃ Person ¬(∃ Email (Person has Email))
+Il est possible qu'une Personne n'a aucune Adresse e-mail.
+
 # Uniqueness · Person has Phone
 ∀ Person ∃^{≤1} Phone (Person has Phone)
 Chaque Personne a au plus un Numéro de téléphone.
 
+# Possible (roles not unique) · Person has Phone
+◇∃ Phone ∃^{>1} Person (Person has Phone)
+Il est possible que plus d'une Personne a le même Numéro de téléphone.
+
+# Possible (role not mandatory) · Person has Phone
+◇∃ Person ¬(∃ Phone (Person has Phone))
+Il est possible qu'une Personne n'a aucun Numéro de téléphone.
+
 # Uniqueness · Student is supervised by Professor
 ∀ Student ∃^{≤1} Professor (Student is supervised by Professor)
 Chaque Étudiant est encadré par au plus un Professeur.
+
+# Possible (roles not unique) · Student is supervised by Professor
+◇∃ Professor ∃^{>1} Student (Student is supervised by Professor)
+Il est possible que plus d'un Étudiant est encadré par le même Professeur.
+
+# Possible (role not mandatory) · Student is supervised by Professor
+◇∃ Student ¬(∃ Professor (Student is supervised by Professor))
+Il est possible qu'un Étudiant n'est encadré par aucun Professeur.
+
+# Possible (role not mandatory) · Student is supervised by Professor
+◇∃ Professor ¬(∃ Student (Student is supervised by Professor))
+Il est possible qu'un Professeur n'encadre aucun Étudiant.
 
 # Uniqueness (preferred identifier) · Building has BuildingCode
 ∀ BuildingCode ∃^{≤1} Building (Building has BuildingCode)
@@ -70,6 +98,10 @@ Chaque Bâtiment a exactement un Code de bâtiment.
 ∀ Room ∃^{≤1} Building (Room is in Building)
 Chaque Salle est située dans au plus un Bâtiment.
 
+# Possible (roles not unique) · Room is in Building
+◇∃ Building ∃^{>1} Room (Room is in Building)
+Il est possible que plus d'une Salle est située dans le même Bâtiment.
+
 # Mandatory role · Room is in Building
 ∀ Room ∃ Building (Room is in Building)
 Chaque Salle est située dans un Bâtiment.
@@ -77,6 +109,10 @@ Chaque Salle est située dans un Bâtiment.
 # Uniqueness · Room has RoomNr
 ∀ Room ∃^{≤1} RoomNr (Room has RoomNr)
 Chaque Salle a au plus un Numéro de salle.
+
+# Possible (roles not unique) · Room has RoomNr
+◇∃ RoomNr ∃^{>1} Room (Room has RoomNr)
+Il est possible que plus d'une Salle a le même Numéro de salle.
 
 # Mandatory role · Room has RoomNr
 ∀ Room ∃ RoomNr (Room has RoomNr)
@@ -86,9 +122,25 @@ Chaque Salle a un Numéro de salle.
 ∀ Staff ∃^{≤1} Room (Staff has office Room)
 Chaque Membre du personnel a au plus une Salle comme bureau.
 
+# Possible (roles not unique) · Staff has office Room
+◇∃ Room ∃^{>1} Staff (Staff has office Room)
+Il est possible que plus d'un Membre du personnel a la même Salle comme bureau.
+
+# Possible (role not mandatory) · Staff has office Room
+◇∃ Staff ¬(∃ Room (Staff has office Room))
+Il est possible qu'un Membre du personnel n'a aucune Salle comme bureau.
+
 # Uniqueness · Staff has Extension
 ∀ Staff ∃^{≤1} Extension (Staff has Extension)
 Chaque Membre du personnel a au plus un Poste téléphonique.
+
+# Possible (roles not unique) · Staff has Extension
+◇∃ Extension ∃^{>1} Staff (Staff has Extension)
+Il est possible que plus d'un Membre du personnel a le même Poste téléphonique.
+
+# Possible (role not mandatory) · Staff has Extension
+◇∃ Staff ¬(∃ Extension (Staff has Extension))
+Il est possible qu'un Membre du personnel n'a aucun Poste téléphonique.
 
 # Uniqueness (preferred identifier) · Course has CourseCode
 ∀ CourseCode ∃^{≤1} Course (Course has CourseCode)
@@ -114,9 +166,45 @@ Chaque Cours a un Intitulé de cours.
 ∀ Course ∃^{≤1} Credits (Course is worth Credits)
 Chaque Cours a au plus un Nombre de crédits.
 
+# Possible (roles not unique) · Course is worth Credits
+◇∃ Credits ∃^{>1} Course (Course is worth Credits)
+Il est possible que plus d'un Cours a le même Nombre de crédits.
+
 # Mandatory role · Course is worth Credits
 ∀ Course ∃ Credits (Course is worth Credits)
 Chaque Cours a un Nombre de crédits.
+
+# Possible (roles not unique) · Course is a prerequisite for Course
+◇∃ Course₁ ∃^{>1} Course₂ (Course₁ is a prerequisite for Course₂)
+Il est possible qu'un Cours₁ est un prérequis pour plus d'un Cours₂.
+
+# Possible (roles not unique) · Course is a prerequisite for Course
+◇∃ Course₁ ∃^{>1} Course₂ (Course₂ is a prerequisite for Course₁)
+Il est possible que plus d'un Cours₂ est un prérequis pour le même Cours₁.
+
+# Possible (role not mandatory) · Course is a prerequisite for Course
+◇∃ Course₁ ¬(∃ Course₂ (Course₁ is a prerequisite for Course₂))
+Il est possible qu'un Cours₁ n'est un prérequis pour aucun Cours.
+
+# Possible (role not mandatory) · Course is a prerequisite for Course
+◇∃ Course₁ ¬(∃ Course₂ (Course₂ is a prerequisite for Course₁))
+Il est possible qu'il existe un Cours₁ tel qu'aucun Cours n'est un prérequis pour ce Cours₁.
+
+# Possible (roles not unique) · Student enrols in Course
+◇∃ Student ∃^{>1} Course (Student enrols in Course)
+Il est possible qu'un Étudiant suit plus d'un Cours.
+
+# Possible (roles not unique) · Student enrols in Course
+◇∃ Course ∃^{>1} Student (Student enrols in Course)
+Il est possible que plus d'un Étudiant suit le même Cours.
+
+# Possible (role not mandatory) · Student enrols in Course
+◇∃ Student ¬(∃ Course (Student enrols in Course))
+Il est possible qu'un Étudiant ne suit aucun Cours.
+
+# Possible (role not mandatory) · Student enrols in Course
+◇∃ Course ¬(∃ Student (Student enrols in Course))
+Il est possible qu'il existe un Cours tel qu'aucun Étudiant ne suit ce Cours.
 
 # Frequency · Student enrols in Course
 ∀ Student ((∃ Course (Student enrols in Course)) → ∃^{≤6} Course (Student enrols in Course))
@@ -126,9 +214,73 @@ Chaque Étudiant suit au plus 6 Cours.
 ∀ Enrolment ∃^{≤1} Grade (Enrolment earned Grade)
 Chaque Inscription a obtenu au plus une Note.
 
+# Possible (roles not unique) · Enrolment earned Grade
+◇∃ Grade ∃^{>1} Enrolment (Enrolment earned Grade)
+Il est possible que plus d'une Inscription a obtenu la même Note.
+
+# Possible (role not mandatory) · Enrolment earned Grade
+◇∃ Enrolment ¬(∃ Grade (Enrolment earned Grade))
+Il est possible qu'une Inscription n'a obtenu aucune Note.
+
+# Possible (roles not unique) · Student assists in Course
+◇∃ Student ∃^{>1} Course (Student assists in Course)
+Il est possible qu'un Étudiant assiste à plus d'un Cours.
+
+# Possible (roles not unique) · Student assists in Course
+◇∃ Course ∃^{>1} Student (Student assists in Course)
+Il est possible que plus d'un Étudiant assiste au même Cours.
+
+# Possible (role not mandatory) · Student assists in Course
+◇∃ Student ¬(∃ Course (Student assists in Course))
+Il est possible qu'un Étudiant n'assiste à aucun Cours.
+
+# Possible (role not mandatory) · Student assists in Course
+◇∃ Course ¬(∃ Student (Student assists in Course))
+Il est possible qu'il existe un Cours tel qu'aucun Étudiant n'assiste à ce Cours.
+
+# Possible (roles not unique) · Staff is qualified to teach Course
+◇∃ Staff ∃^{>1} Course (Staff is qualified to teach Course)
+Il est possible qu'un Membre du personnel est qualifié pour enseigner plus d'un Cours.
+
+# Possible (roles not unique) · Staff is qualified to teach Course
+◇∃ Course ∃^{>1} Staff (Staff is qualified to teach Course)
+Il est possible que plus d'un Membre du personnel est qualifié pour enseigner le même Cours.
+
+# Possible (role not mandatory) · Staff is qualified to teach Course
+◇∃ Staff ¬(∃ Course (Staff is qualified to teach Course))
+Il est possible qu'un Membre du personnel n'est qualifié pour enseigner aucun Cours.
+
+# Possible (role not mandatory) · Staff is qualified to teach Course
+◇∃ Course ¬(∃ Staff (Staff is qualified to teach Course))
+Il est possible qu'il existe un Cours tel qu'aucun Membre du personnel n'est qualifié pour enseigner ce Cours.
+
+# Possible (roles not unique) · Staff teaches Offering
+◇∃ Staff ∃^{>1} Offering (Staff teaches Offering)
+Il est possible qu'un Membre du personnel enseigne plus d'une Offre de cours.
+
+# Possible (roles not unique) · Staff teaches Offering
+◇∃ Offering ∃^{>1} Staff (Staff teaches Offering)
+Il est possible que plus d'un Membre du personnel enseigne la même Offre de cours.
+
+# Possible (role not mandatory) · Staff teaches Offering
+◇∃ Staff ¬(∃ Offering (Staff teaches Offering))
+Il est possible qu'un Membre du personnel n'enseigne aucune Offre de cours.
+
+# Possible (role not mandatory) · Staff teaches Offering
+◇∃ Offering ¬(∃ Staff (Staff teaches Offering))
+Il est possible qu'il existe une Offre de cours telle qu'aucun Membre du personnel n'enseigne cette Offre de cours.
+
 # Uniqueness · Staff coordinates Course
 ∀ Course ∃^{≤1} Staff (Staff coordinates Course)
 Pour chaque Cours, au plus un Membre du personnel coordonne ce Cours.
+
+# Possible (roles not unique) · Staff coordinates Course
+◇∃ Staff ∃^{>1} Course (Staff coordinates Course)
+Il est possible qu'un Membre du personnel coordonne plus d'un Cours.
+
+# Possible (role not mandatory) · Staff coordinates Course
+◇∃ Staff ¬(∃ Course (Staff coordinates Course))
+Il est possible qu'un Membre du personnel ne coordonne aucun Cours.
 
 # Mandatory role · Staff coordinates Course
 ∀ Course ∃ Staff (Staff coordinates Course)
@@ -138,6 +290,10 @@ Pour chaque Cours, un Membre du personnel coordonne ce Cours.
 ∀ Term ∃^{≤1} Season (Term is in Season)
 Chaque Période a lieu en au plus une Saison.
 
+# Possible (roles not unique) · Term is in Season
+◇∃ Season ∃^{>1} Term (Term is in Season)
+Il est possible que plus d'une Période a lieu en la même Saison.
+
 # Mandatory role · Term is in Season
 ∀ Term ∃ Season (Term is in Season)
 Chaque Période a lieu en une Saison.
@@ -145,6 +301,10 @@ Chaque Période a lieu en une Saison.
 # Uniqueness · Term is in AcademicYear
 ∀ Term ∃^{≤1} AcademicYear (Term is in AcademicYear)
 Chaque Période fait partie d'au plus une Année universitaire.
+
+# Possible (roles not unique) · Term is in AcademicYear
+◇∃ AcademicYear ∃^{>1} Term (Term is in AcademicYear)
+Il est possible que plus d'une Période fait partie de la même Année universitaire.
 
 # Mandatory role · Term is in AcademicYear
 ∀ Term ∃ AcademicYear (Term is in AcademicYear)
@@ -161,6 +321,18 @@ Chaque Année universitaire commence en exactement une Année.
 # Value range (role 2) · AcademicYear starts in Year
 ∀ Year ((∃ AcademicYear (AcademicYear starts in Year)) → (Year ≥ 1970 ∧ Year ≤ 2030))
 Chaque Année en laquelle une Année universitaire commence est au moins 1970 et est au plus 2030.
+
+# Possible (roles not unique) · Course is offered in Term
+◇∃ Course ∃^{>1} Term (Course is offered in Term)
+Il est possible qu'un Cours est proposé pendant plus d'une Période.
+
+# Possible (roles not unique) · Course is offered in Term
+◇∃ Term ∃^{>1} Course (Course is offered in Term)
+Il est possible que plus d'un Cours est proposé pendant la même Période.
+
+# Possible (role not mandatory) · Course is offered in Term
+◇∃ Course ¬(∃ Term (Course is offered in Term))
+Il est possible qu'un Cours n'est proposé pendant aucune Période.
 
 # Inclusive-or
 ∀ Person ((∃ Email (Person has Email)) ∨ ∃ Phone (Person has Phone))
@@ -437,175 +609,3 @@ Si une Offre de cours concerne Cours et concerne Période, alors Cours est propo
 # Implied links (each nesting instance links exactly one combination) · Offering nests Course is offered in Term
 ∀ Offering ∃^{=1} Course, Term ((Offering involves Course) ∧ (Offering involves Term))
 Chaque Offre de cours concerne exactement un Cours et concerne exactement une Période.
-
-# Possible (roles not unique) · Person has PersonName
-◇∃ PersonName ∃^{>1} Person (Person has PersonName)
-Il est possible que plus d'une Personne a le même Nom.
-
-# Possible (role not mandatory) · Person has Email
-◇∃ Person ¬(∃ Email (Person has Email))
-Il est possible qu'une Personne n'a aucune Adresse e-mail.
-
-# Possible (role not mandatory) · Person has Phone
-◇∃ Person ¬(∃ Phone (Person has Phone))
-Il est possible qu'une Personne n'a aucun Numéro de téléphone.
-
-# Possible (roles not unique) · Person has Phone
-◇∃ Phone ∃^{>1} Person (Person has Phone)
-Il est possible que plus d'une Personne a le même Numéro de téléphone.
-
-# Possible (role not mandatory) · Student is supervised by Professor
-◇∃ Student ¬(∃ Professor (Student is supervised by Professor))
-Il est possible qu'un Étudiant n'est encadré par aucun Professeur.
-
-# Possible (role not mandatory) · Student is supervised by Professor
-◇∃ Professor ¬(∃ Student (Student is supervised by Professor))
-Il est possible qu'un Professeur n'encadre aucun Étudiant.
-
-# Possible (roles not unique) · Student is supervised by Professor
-◇∃ Professor ∃^{>1} Student (Student is supervised by Professor)
-Il est possible que plus d'un Étudiant est encadré par le même Professeur.
-
-# Possible (roles not unique) · Room is in Building
-◇∃ Building ∃^{>1} Room (Room is in Building)
-Il est possible que plus d'une Salle est située dans le même Bâtiment.
-
-# Possible (roles not unique) · Room has RoomNr
-◇∃ RoomNr ∃^{>1} Room (Room has RoomNr)
-Il est possible que plus d'une Salle a le même Numéro de salle.
-
-# Possible (role not mandatory) · Staff has office Room
-◇∃ Staff ¬(∃ Room (Staff has office Room))
-Il est possible qu'un Membre du personnel n'a aucune Salle comme bureau.
-
-# Possible (roles not unique) · Staff has office Room
-◇∃ Room ∃^{>1} Staff (Staff has office Room)
-Il est possible que plus d'un Membre du personnel a la même Salle comme bureau.
-
-# Possible (role not mandatory) · Staff has Extension
-◇∃ Staff ¬(∃ Extension (Staff has Extension))
-Il est possible qu'un Membre du personnel n'a aucun Poste téléphonique.
-
-# Possible (roles not unique) · Staff has Extension
-◇∃ Extension ∃^{>1} Staff (Staff has Extension)
-Il est possible que plus d'un Membre du personnel a le même Poste téléphonique.
-
-# Possible (roles not unique) · Course is worth Credits
-◇∃ Credits ∃^{>1} Course (Course is worth Credits)
-Il est possible que plus d'un Cours a le même Nombre de crédits.
-
-# Possible (role not mandatory) · Course is a prerequisite for Course
-◇∃ Course₁ ¬(∃ Course₂ (Course₁ is a prerequisite for Course₂))
-Il est possible qu'un Cours₁ n'est un prérequis pour aucun Cours.
-
-# Possible (role not mandatory) · Course is a prerequisite for Course
-◇∃ Course₁ ¬(∃ Course₂ (Course₂ is a prerequisite for Course₁))
-Il est possible qu'il existe un Cours₁ tel qu'aucun Cours n'est un prérequis pour ce Cours₁.
-
-# Possible (roles not unique) · Course is a prerequisite for Course
-◇∃ Course₁ ∃^{>1} Course₂ (Course₁ is a prerequisite for Course₂)
-Il est possible qu'un Cours₁ est un prérequis pour plus d'un Cours₂.
-
-# Possible (roles not unique) · Course is a prerequisite for Course
-◇∃ Course₁ ∃^{>1} Course₂ (Course₂ is a prerequisite for Course₁)
-Il est possible que plus d'un Cours₂ est un prérequis pour le même Cours₁.
-
-# Possible (role not mandatory) · Student enrols in Course
-◇∃ Student ¬(∃ Course (Student enrols in Course))
-Il est possible qu'un Étudiant ne suit aucun Cours.
-
-# Possible (role not mandatory) · Student enrols in Course
-◇∃ Course ¬(∃ Student (Student enrols in Course))
-Il est possible qu'il existe un Cours tel qu'aucun Étudiant ne suit ce Cours.
-
-# Possible (roles not unique) · Student enrols in Course
-◇∃ Student ∃^{>1} Course (Student enrols in Course)
-Il est possible qu'un Étudiant suit plus d'un Cours.
-
-# Possible (roles not unique) · Student enrols in Course
-◇∃ Course ∃^{>1} Student (Student enrols in Course)
-Il est possible que plus d'un Étudiant suit le même Cours.
-
-# Possible (role not mandatory) · Enrolment earned Grade
-◇∃ Enrolment ¬(∃ Grade (Enrolment earned Grade))
-Il est possible qu'une Inscription n'a obtenu aucune Note.
-
-# Possible (roles not unique) · Enrolment earned Grade
-◇∃ Grade ∃^{>1} Enrolment (Enrolment earned Grade)
-Il est possible que plus d'une Inscription a obtenu la même Note.
-
-# Possible (role not mandatory) · Student assists in Course
-◇∃ Student ¬(∃ Course (Student assists in Course))
-Il est possible qu'un Étudiant n'assiste à aucun Cours.
-
-# Possible (role not mandatory) · Student assists in Course
-◇∃ Course ¬(∃ Student (Student assists in Course))
-Il est possible qu'il existe un Cours tel qu'aucun Étudiant n'assiste à ce Cours.
-
-# Possible (roles not unique) · Student assists in Course
-◇∃ Student ∃^{>1} Course (Student assists in Course)
-Il est possible qu'un Étudiant assiste à plus d'un Cours.
-
-# Possible (roles not unique) · Student assists in Course
-◇∃ Course ∃^{>1} Student (Student assists in Course)
-Il est possible que plus d'un Étudiant assiste au même Cours.
-
-# Possible (role not mandatory) · Staff is qualified to teach Course
-◇∃ Staff ¬(∃ Course (Staff is qualified to teach Course))
-Il est possible qu'un Membre du personnel n'est qualifié pour enseigner aucun Cours.
-
-# Possible (role not mandatory) · Staff is qualified to teach Course
-◇∃ Course ¬(∃ Staff (Staff is qualified to teach Course))
-Il est possible qu'il existe un Cours tel qu'aucun Membre du personnel n'est qualifié pour enseigner ce Cours.
-
-# Possible (roles not unique) · Staff is qualified to teach Course
-◇∃ Staff ∃^{>1} Course (Staff is qualified to teach Course)
-Il est possible qu'un Membre du personnel est qualifié pour enseigner plus d'un Cours.
-
-# Possible (roles not unique) · Staff is qualified to teach Course
-◇∃ Course ∃^{>1} Staff (Staff is qualified to teach Course)
-Il est possible que plus d'un Membre du personnel est qualifié pour enseigner le même Cours.
-
-# Possible (role not mandatory) · Staff teaches Offering
-◇∃ Staff ¬(∃ Offering (Staff teaches Offering))
-Il est possible qu'un Membre du personnel n'enseigne aucune Offre de cours.
-
-# Possible (role not mandatory) · Staff teaches Offering
-◇∃ Offering ¬(∃ Staff (Staff teaches Offering))
-Il est possible qu'il existe une Offre de cours telle qu'aucun Membre du personnel n'enseigne cette Offre de cours.
-
-# Possible (roles not unique) · Staff teaches Offering
-◇∃ Staff ∃^{>1} Offering (Staff teaches Offering)
-Il est possible qu'un Membre du personnel enseigne plus d'une Offre de cours.
-
-# Possible (roles not unique) · Staff teaches Offering
-◇∃ Offering ∃^{>1} Staff (Staff teaches Offering)
-Il est possible que plus d'un Membre du personnel enseigne la même Offre de cours.
-
-# Possible (role not mandatory) · Staff coordinates Course
-◇∃ Staff ¬(∃ Course (Staff coordinates Course))
-Il est possible qu'un Membre du personnel ne coordonne aucun Cours.
-
-# Possible (roles not unique) · Staff coordinates Course
-◇∃ Staff ∃^{>1} Course (Staff coordinates Course)
-Il est possible qu'un Membre du personnel coordonne plus d'un Cours.
-
-# Possible (roles not unique) · Term is in Season
-◇∃ Season ∃^{>1} Term (Term is in Season)
-Il est possible que plus d'une Période a lieu en la même Saison.
-
-# Possible (roles not unique) · Term is in AcademicYear
-◇∃ AcademicYear ∃^{>1} Term (Term is in AcademicYear)
-Il est possible que plus d'une Période fait partie de la même Année universitaire.
-
-# Possible (role not mandatory) · Course is offered in Term
-◇∃ Course ¬(∃ Term (Course is offered in Term))
-Il est possible qu'un Cours n'est proposé pendant aucune Période.
-
-# Possible (roles not unique) · Course is offered in Term
-◇∃ Course ∃^{>1} Term (Course is offered in Term)
-Il est possible qu'un Cours est proposé pendant plus d'une Période.
-
-# Possible (roles not unique) · Course is offered in Term
-◇∃ Term ∃^{>1} Course (Course is offered in Term)
-Il est possible que plus d'un Cours est proposé pendant la même Période.
