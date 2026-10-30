@@ -14,6 +14,54 @@ const textStyle = {
   boxSizing: 'border-box',
 }
 
+// Note text sits TEXT_X in from the left edge, and a float keeps the first
+// line(s) clear of the dog-ear; NoteNode and noteLineBreaks share these.
+const TEXT_X = 7
+const TEXT_Y = 5
+
+// Where the text of a note of width w breaks into lines: the character
+// offsets that start a new line. Measured in a hidden element laid out like
+// the note, so it needs a document.
+export function noteLineBreaks(text, w, host = document.body) {
+  const box = document.createElement('div')
+  Object.assign(box.style, textStyle, { fontSize: `${textStyle.fontSize}px`, position: 'absolute', left: '-10000px', top: '0',
+    width: `${Math.max(1, w - TEXT_X)}px`, height: 'auto', visibility: 'hidden' })
+  const fold = document.createElement('div')
+  Object.assign(fold.style, { float: 'right', width: `${FOLD}px`, height: `${Math.max(0, FOLD - TEXT_Y)}px` })
+  const node = document.createTextNode(text)
+  box.append(fold, node)
+  host.appendChild(box)
+  const breaks = []
+  const range = document.createRange()
+  let lastTop = null
+  for (let i = 0; i < text.length; i++) {
+    if (i > 0 && !/\s/.test(text[i - 1])) continue   // lines only break after whitespace
+    if (/\s/.test(text[i])) continue
+    range.setStart(node, i); range.setEnd(node, i + 1)
+    const top = range.getClientRects()[0]?.top
+    if (top == null) continue
+    if (lastTop != null && top > lastTop + 1) breaks.push(i)
+    lastTop = top
+  }
+  box.remove()
+  return breaks.join()
+}
+
+// The narrowest width, down to min, at which the note's text wraps exactly
+// as it does at width w.
+export function narrowestNoteWidth(text, w, min = 60) {
+  if (!text || typeof document === 'undefined') return w
+  const want = noteLineBreaks(text, w)
+  let lo = min, hi = w
+  if (noteLineBreaks(text, lo) === want) return lo
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2)
+    if (noteLineBreaks(text, mid) === want) hi = mid
+    else lo = mid
+  }
+  return hi
+}
+
 export default function NoteNode({ note, selected, groupStyle: gs, onDragStart, onResizeStart, onDoubleClick, onContextMenu }) {
   const { id, x, y, w, h, text } = note
   const [truncated, setTruncated] = useState(null)
@@ -46,8 +94,8 @@ export default function NoteNode({ note, selected, groupStyle: gs, onDragStart, 
 
   // Text area: full width minus left padding; a float:right placeholder
   // reserves only the fold triangle so text flows into the space below it.
-  const textX = 7
-  const textY = 5
+  const textX = TEXT_X
+  const textY = TEXT_Y
   const textW = Math.max(1, w - textX)
   const textH = Math.max(1, h - 10)
   // How tall the fold triangle is inside the foreignObject coordinate space
