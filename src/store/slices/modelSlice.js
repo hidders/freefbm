@@ -16,6 +16,7 @@ import {
   syncConstraints, computeConnectedIds, hasNoConnectors, runFactMergePass,
   EMPTY,
 } from '../storeHelpers'
+import { BASE_LANGUAGE, swapLanguage } from '../viewLanguage.js'
 
 export function createModelSlice(set, get) {
   return {
@@ -734,6 +735,8 @@ export function createModelSlice(set, get) {
       const diagDS = activeDiag?.displaySettings ?? {}
       set({
         ruleEditor: null, ruleHighlight: null,
+        viewLanguage: BASE_LANGUAGE,
+        languages: Array.isArray(d.schema?.languages) ? d.schema.languages.filter(l => typeof l === 'string') : [],
         objectTypes: parsedOts,
         facts,
         subtypes:    parsedSts,
@@ -764,15 +767,33 @@ export function createModelSlice(set, get) {
       set({ isDirty: false })
     },
 
+    // Shows and edits the model's names and readings in another language
+    // (see viewLanguage.js); not a change to the model.
+    setViewLanguage(lang) {
+      const s = get()
+      if (!lang || lang === s.viewLanguage) return
+      set({ ...swapLanguage(s, s.viewLanguage, lang), viewLanguage: lang })
+    },
+
+    // Adds a language to the model and shows it.
+    addLanguage(lang) {
+      const s = get()
+      if (!s.languages.includes(lang)) set({ languages: [...s.languages, lang], isDirty: true })
+      get().setViewLanguage(lang)
+    },
+
     serialize() {
+      const state = get()
+      const { objectTypes, facts } = swapLanguage(state, state.viewLanguage, BASE_LANGUAGE)
+      const strip = ({ _fb: _, ...el }) => el
       const {
-        objectTypes, facts, subtypes, constraints, diagrams, activeDiagramId,
+        subtypes, constraints, diagrams, activeDiagramId,
         populations, factPopulations, subtypeMappings, nestedEntityMappings,
         pan, zoom,
         mandatoryDotPosition, showReferenceMode, showRoleNames,
         showSequenceMembership, showConstraintQueries,
-        showMinimap, minimapPos,
-      } = get()
+        showMinimap, minimapPos, languages,
+      } = state
       // Strip in-memory-only selection state; flush current pan/zoom + display settings into diagrams
       const cleanDiagrams = diagrams.map(({ multiSelectedIds: _, ...d }) => ({
         ...(d.id === activeDiagramId ? { ...d, pan, zoom } : d),
@@ -801,8 +822,9 @@ export function createModelSlice(set, get) {
       return JSON.stringify({
         version: 2,
         schema: {
-          objectTypes,
-          factTypes:            facts,
+          objectTypes:          objectTypes.map(strip),
+          factTypes:            facts.map(f => strip(f.implicitLinks ? { ...f, implicitLinks: f.implicitLinks.map(strip) } : f)),
+          ...(languages?.length && { languages }),
           subtypes,
           externalConstraints:  constraints,
           displaySettings: {

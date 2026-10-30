@@ -301,10 +301,11 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
       setDraftRef(refLabel ?? '')
       setEditingRef(true)
     } else {
-      setDraft(ot.name)
+      // A name not yet in the view language starts empty, the base name as its placeholder.
+      setDraft(ot._fb?.name != null ? '' : ot.name)
       setEditing(true)
     }
-  }, [ot.name, isSubtypeTool, isAssignTool, hasRef, refLabel])
+  }, [ot.name, ot._fb, isSubtypeTool, isAssignTool, hasRef, refLabel])
 
   const handleMouseDown = useCallback((e) => {
     if (editing || editingRef) { e.stopPropagation(); return }
@@ -474,6 +475,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
           <input
             ref={inputRef}
             value={draft}
+            placeholder={ot._fb?.name}
             onChange={e => setDraft(e.target.value)}
             onBlur={commitEdit}
             onKeyDown={e => {
@@ -501,7 +503,10 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
           fill={isConstraintTarget ? '#ffffff' : ot.kind === 'entity' ? 'var(--col-entity)' : 'var(--col-value)'}
           fontSize={OT_SIZE_NAME} fontFamily={OT_FONT}
           style={{ pointerEvents: 'none' }}>
-          {ot.name}
+          {/* A name not yet in the view language: the base name, grey and italic. */}
+          {ot._fb?.name != null
+            ? <tspan fill={isConstraintTarget ? '#ffffff' : 'var(--ink-muted)'} fontStyle="italic">{ot.name}</tspan>
+            : ot.name}
           {/* + sits on the baseline, so raise it to match the * of a derived type. */}
           {derivationMark(ot) === '+'
             ? <tspan baselineShift="super" fontSize={OT_SIZE_NAME * 0.75}>+</tspan>

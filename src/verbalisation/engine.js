@@ -142,7 +142,7 @@ function makePhraser(ctx, lang, names, trace, stats) {
     const fact = factOf(atom)
     if (!fact) return null
     const n = atom.args.length
-    const all = readingsFor(fact, lang.id, n)
+    const all = readingsFor(fact, lang.id, n, ctx.liveLanguage)
     const empty0 = (r) => !r.parts[0]?.trim()
     let pick
     if (subject !== undefined) {

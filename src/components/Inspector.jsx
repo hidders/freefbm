@@ -14,6 +14,7 @@ import { DERIVATION_MODES, directSupertypes, isDerived, checkRule } from '../log
 import { isDerivedFact, isComputedRole, checkFactRule, whyNotDerivable } from '../logic/factDerivation.js'
 import { makeContext } from '../logic/constraintFormulas.js'
 import { hasTextSelection } from '../utils/textPanel.js'
+import { isFallbackReading } from '../store/viewLanguage.js'
 import { plural as englishPlural } from '../verbalisation/languages/english.js'
 import { pluralise as dutchPlural } from '../verbalisation/languages/dutch.js'
 import { pluralise as frenchPlural } from '../verbalisation/languages/french.js'
@@ -812,7 +813,9 @@ function ObjectTypeInspector({ ot }) {
       <ValidationErrorStrip elementId={ot.id} store={store}/>
       <Row>
         <Label>Name</Label>
-        <TInput value={ot.name} onChange={v => store.updateObjectType(ot.id, { name: v })}/>
+        {/* Without a name in the view language, the base name is the placeholder. */}
+        <TInput value={ot._fb?.name != null ? '' : ot.name} placeholder={ot._fb?.name}
+          onChange={v => store.updateObjectType(ot.id, { name: v })}/>
       </Row>
       {ot.kind === 'entity' && (
         compositePiFact ? (
@@ -1618,7 +1621,8 @@ function generatePermutations(n) {
 // parts:        string[] of length arity+1
 // roleOrder:    number[] of length arity — roleOrder[i] is the role index at position i
 // onUpdatePart: (i, value) => void
-function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart }) {
+// fallback: the parts are the base language's, shown until translated.
+function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart, fallback = false }) {
   const n = fact.arity
   const otMap     = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
@@ -1657,7 +1661,8 @@ function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart }) {
                 position: 'absolute', inset: 0, width: '100%', height: '100%',
                 border: 'none', outline: 'none', background: 'transparent',
                 WebkitAppearance: 'none', appearance: 'none',
-                color: 'var(--ink-2)', fontSize: 12, fontFamily: FONT,
+                color: fallback ? 'var(--ink-muted)' : 'var(--ink-2)', fontSize: 12, fontFamily: FONT,
+                fontStyle: fallback ? 'italic' : 'normal',
                 padding: '0 4px', margin: 0, boxSizing: 'border-box',
               }}
             />
@@ -1704,9 +1709,12 @@ function ReadingEditor({ fact, store, parts, roleOrder, onUpdatePart }) {
   )
 }
 
-// ── Lexicon: names and readings in other languages ────────────────────────────
-// See src/verbalisation/lexicon.js for the format. Empty fields are left out,
-// so the verbalisation derives them (the placeholders show what it derives).
+// ── Lexicon: word and reading forms in the view language ──────────────────────
+// The name and readings themselves are in the view language already (see
+// src/store/viewLanguage.js); these sections edit what the language adds to
+// them, in lexicon[viewLanguage]. See src/verbalisation/lexicon.js for the
+// format. Empty fields are left out, so the verbalisation derives them (the
+// placeholders show what it derives).
 
 const lexWithout = (lexicon, lang, entry) => {
   const clean = Object.fromEntries(Object.entries(entry).filter(([, v]) =>
@@ -1719,15 +1727,14 @@ const lexWithout = (lexicon, lang, entry) => {
 
 // The languages of the lexicon: how a type is named in each (plural rule for
 // the placeholder, genders, and for Polish the case forms) and which forms of
-// a reading each has.
+// a reading each adds.
 const ROMANCE_GENDERS = [['m', 'masculine (default)'], ['f', 'feminine']]
 const LEXICON_LANGS = [
-  { id: 'en', label: 'English', ownName: false, pluralise: englishPlural, forms: [
+  { id: 'en', label: 'English', pluralise: englishPlural, forms: [
     { key: 'pluralParts', label: 'Plural form', hint: 'With a plural subject: Courses are prerequisites for Course. Empty: the verb is made plural.' },
   ] },
   { id: 'nl', label: 'Dutch', pluralise: dutchPlural,
     genders: [['de', 'de (default)'], ['het', 'het']], genderHint: 'de-words take elke and die, het-words elk and dat', forms: [
-      { key: 'parts', label: 'Reading', hint: 'Main clause order: Student volgt Course. Empty: the English reading is used.' },
       { key: 'subParts', label: 'Subordinate form', hint: 'Verb last: … dat Student Course volgt. Empty: the first verb moves to the end.' },
       { key: 'pluralParts', label: 'Plural form', hint: 'With a plural subject: Studenten volgen Course. Empty: the verb is made plural.' },
     ] },
@@ -1735,38 +1742,22 @@ const LEXICON_LANGS = [
     ['it', 'Italian', italianPlural, 'Studente frequenta Corso', 'Studenti frequentano Corso', 'un/una, quel/quella'],
     ['es', 'Spanish', spanishPlural, 'Estudiante cursa Curso', 'Estudiantes cursan Curso', 'un/una, ese/esa'],
   ].map(([id, label, pluralise, example, plural, genderHint]) => ({ id, label, pluralise, genders: ROMANCE_GENDERS, genderHint, forms: [
-    { key: 'parts', label: 'Reading', hint: `${example}. Empty: the English reading is used.` },
     { key: 'pluralParts', label: 'Plural form', hint: `With a plural subject: ${plural}. Empty: the verb is made plural.` },
   ] })),
   { id: 'pl', label: 'Polish', pluralise: polishPlural, cases: true,
     genders: [['mi', 'masc. inanimate (default)'], ['ma', 'masc. animate'], ['mp', 'masc. personal'], ['f', 'feminine'], ['n', 'neuter']],
     genderHint: 'Chooses każdy/każda/każde, ten/ta/to and the numeral forms', forms: [
-      { key: 'parts', label: 'Reading', hint: 'Student studiuje Przedmiot. Empty: the English reading is used.' },
       { key: 'pluralParts', label: 'Plural form', hint: 'With a plural subject: Studenci studiują Przedmiot. Empty: the verb is made plural.' },
     ] },
 ]
 const CASE_LABELS = { nom: 'Nominative', gen: 'Genitive', dat: 'Dative', acc: 'Accusative', ins: 'Instrumental', loc: 'Locative' }
 const CASE_SHORT = { gen: 'Gen.', dat: 'Dat.', acc: 'Acc.', ins: 'Ins.', loc: 'Loc.' }
 
-function LexiconTabs({ value, onChange }) {
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
-      {LEXICON_LANGS.map(t => (
-        <button key={t.id} type="button" onClick={() => onChange(t.id)} style={{
-          fontSize: 10, padding: '1px 8px', borderRadius: 10, cursor: 'pointer',
-          border: `1px solid ${t.id === value ? 'var(--accent)' : 'var(--border-soft)'}`,
-          background: 'transparent', color: t.id === value ? 'var(--accent)' : 'var(--ink-muted)',
-        }}>{t.label}</button>
-      ))}
-    </div>
-  )
-}
-
-// The name of a type in each language: name, plural and gender, and in
-// Polish the other cases.
+// The forms of a type's name in the view language: plural and gender, and
+// in Polish the other cases.
 function TypeLexiconSection({ name, lexicon, onChange }) {
-  const [tab, setTab] = useState('nl')
-  const lang = LEXICON_LANGS.find(l => l.id === tab)
+  const tab = useOrmStore(s => s.viewLanguage)
+  const lang = LEXICON_LANGS.find(l => l.id === tab) ?? LEXICON_LANGS[0]
   const lex = lexicon ?? {}
   const entry = lex[tab] ?? {}
   const setEntry = (next) => onChange(lexWithout(lexicon, tab, next))
@@ -1776,20 +1767,12 @@ function TypeLexiconSection({ name, lexicon, onChange }) {
     Object.keys(forms).forEach(k => forms[k] === undefined && delete forms[k])
     setEntry({ ...entry, forms: Object.keys(forms).length ? forms : undefined })
   }
-  const ownName = (lang.ownName !== false && entry.name?.trim()) || name
-  const plural = entry.plural?.trim() || (ownName ? lang.pluralise(ownName, entry.gender) : '')
+  const plural = entry.plural?.trim() || (name ? lang.pluralise(name, entry.gender) : '')
   return (
-    <Section title="Languages">
-      <LexiconTabs value={tab} onChange={setTab}/>
-      {lang.ownName !== false && (
-        <Row>
-          <Label>Name</Label>
-          <TInput value={entry.name ?? ''} placeholder={name} onChange={v => set('name', v)}/>
-        </Row>
-      )}
+    <Section title="Word forms">
       <Row>
         <Label>Plural</Label>
-        <TInput value={entry.plural ?? ''} placeholder={ownName ? lang.pluralise(ownName, entry.gender) : ''} onChange={v => set('plural', v)}/>
+        <TInput value={entry.plural ?? ''} placeholder={name ? lang.pluralise(name, entry.gender) : ''} onChange={v => set('plural', v)}/>
       </Row>
       {lang.genders && (
         <Row>
@@ -1807,7 +1790,7 @@ function TypeLexiconSection({ name, lexicon, onChange }) {
           {['gen', 'dat', 'acc', 'ins', 'loc'].map(c => (
             <React.Fragment key={c}>
               <span style={{ fontSize: 10, color: 'var(--ink-muted)' }} title={CASE_LABELS[c]}>{CASE_SHORT[c]}</span>
-              <TInput value={entry.forms?.[c] ?? ''} placeholder={ownName} onChange={v => setForm(c, v)}/>
+              <TInput value={entry.forms?.[c] ?? ''} placeholder={name} onChange={v => setForm(c, v)}/>
               <TInput value={entry.forms?.[`${c}Pl`] ?? ''} placeholder={plural} onChange={v => setForm(`${c}Pl`, v)}/>
             </React.Fragment>
           ))}
@@ -1817,19 +1800,21 @@ function TypeLexiconSection({ name, lexicon, onChange }) {
   )
 }
 
-// Readings of a fact type in other languages, one per English reading order;
-// in Polish with the case of each slot.
+// The forms of a fact type's readings in the view language (Dutch
+// subordinate form, plural form), one per reading; in Polish with the case
+// of each slot.
 function FactLexiconSection({ fact, store }) {
-  const [tab, setTab] = useState('nl')
+  const tab = store.viewLanguage
   const n = fact.arity
   if (n < 1) return null
+  // The readings in the view language (not the base readings shown in their place).
   const orders = [
-    ...(fact.readingParts != null ? [Array.from({ length: n }, (_, i) => i)] : []),
-    ...(fact.alternativeReadings || []).map(r => r.roleOrder),
-  ].filter(o => o?.length === n)
+    ...(fact.readingParts != null ? [{ roleOrder: Array.from({ length: n }, (_, i) => i), parts: fact.readingParts }] : []),
+    ...(fact.alternativeReadings || []),
+  ].filter(r => r.roleOrder?.length === n && !isFallbackReading(fact, r.roleOrder, r.parts)).map(r => r.roleOrder)
   if (!orders.length) return null
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
-  const lang = LEXICON_LANGS.find(t => t.id === tab)
+  const lang = LEXICON_LANGS.find(t => t.id === tab) ?? LEXICON_LANGS[0]
   const readings = fact.lexicon?.[tab]?.readings ?? []
   const save = (roleOrder, key, list) => {
     const old = readings.find(r => same(r.roleOrder, roleOrder)) ?? { roleOrder }
@@ -1850,8 +1835,7 @@ function FactLexiconSection({ fact, store }) {
     return p?.name || p?.objectifiedName || '?'
   }
   return (
-    <Section title="Readings in other languages">
-      <LexiconTabs value={tab} onChange={setTab}/>
+    <Section title="Reading forms">
       {orders.map(order => {
         const r = readings.find(x => same(x.roleOrder, order)) ?? {}
         return (
@@ -2421,6 +2405,7 @@ function FactInspector({ fact }) {
                       fact={fact} store={store}
                       parts={r.parts}
                       roleOrder={r.roleOrder}
+                      fallback={isFallbackReading(fact, r.roleOrder, r.parts)}
                       onUpdatePart={(i, val) => {
                         if (r.isDefault) {
                           const newParts = [...r.parts]
