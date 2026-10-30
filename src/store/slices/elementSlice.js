@@ -13,6 +13,14 @@ import {
   syncConstraints, computeConnectedIds, hasNoConnectors, runFactMergePass,
 } from '../storeHelpers'
 
+// A name typed in the view language is that language's own, even when it
+// equals the fallback it replaces (see viewLanguage.js).
+function ownName(el, renamed) {
+  if (!renamed || el._fb?.name == null) return el
+  const { name: _, ...fb } = el._fb
+  return { ...el, _fb: Object.keys(fb).length ? fb : undefined }
+}
+
 export function createElementSlice(set, get) {
   return {
     // ── object types ────────────────────────────────────────────────────────────
@@ -128,8 +136,8 @@ export function createElementSlice(set, get) {
 
         return {
           objectTypes: s.objectTypes.map(o =>
-            o.id === id              ? { ...o, ...patch } :
-            o.id === vtRename?.vtId  ? { ...o, name: vtRename.newName } : o
+            o.id === id              ? ownName({ ...o, ...patch }, patch.name !== undefined) :
+            o.id === vtRename?.vtId  ? ownName({ ...o, name: vtRename.newName }, true) : o
           ),
           isDirty: true,
         }
@@ -638,7 +646,7 @@ export function createElementSlice(set, get) {
 
     updateFact(id, patch) {
       set(s => ({
-        facts: s.facts.map(f => f.id === id ? { ...f, ...patch } : f),
+        facts: s.facts.map(f => f.id === id ? ownName({ ...f, ...patch }, patch.objectifiedName !== undefined) : f),
         isDirty: true,
       }))
     },

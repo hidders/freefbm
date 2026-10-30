@@ -3,7 +3,7 @@
 // User rules: the rules applied in the workbench are kept in localStorage
 // per language (both windows share it); without them the built-in rule file
 // applies. useVerbalisation(id) gives the language to verbalise with, and
-// useLanguageChoice() the language the Constraints tab shows.
+// useLanguageChoice() the language the workbench shows.
 //
 // Messages: in Electron through the main process (workbench:msg), in a plain
 // browser through a BroadcastChannel. The workbench sends hello when it opens
@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { compileLanguage } from './rules.js'
 import { LANGUAGES } from './languages/index.js'
+import { BASE_LANGUAGE, swapLanguage } from '../store/viewLanguage.js'
 
 export { LANGUAGES }
 export const languageInfo = (id) => LANGUAGES.find(l => l.id === id) ?? LANGUAGES[0]
@@ -99,8 +100,9 @@ export function openWorkbench() {
   else window.open(`${window.location.pathname}#workbench`, 'freefbm-workbench', 'width=1280,height=820')
 }
 
-// The parts of the model the workbench verbalises.
+// The parts of the model the workbench verbalises, in the base language
+// whatever the main window shows.
 export const modelSnapshot = (s) => JSON.parse(JSON.stringify({
-  objectTypes: s.objectTypes, facts: s.facts, subtypes: s.subtypes, constraints: s.constraints,
+  ...swapLanguage(s, s.viewLanguage ?? BASE_LANGUAGE, BASE_LANGUAGE), subtypes: s.subtypes, constraints: s.constraints,
   diagrams: s.diagrams, activeDiagramId: s.activeDiagramId,
 }))

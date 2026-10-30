@@ -1,6 +1,9 @@
-import React, { useRef } from 'react'
+import React, { useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
 import { triggerPdfExport } from '../utils/pdfExport'
+import { LANGUAGES } from '../verbalisation/languages/index.js'
+import { BASE_LANGUAGE, modelLanguages } from '../store/viewLanguage.js'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
@@ -28,6 +31,52 @@ function Btn({ label, title, active, onClick, disabled = false }) {
 
 function Divider() {
   return <div style={{ width: 1, height: 20, background: 'var(--border-soft)', margin: '0 4px' }}/>
+}
+
+const selectStyle = (highlight) => ({
+  fontSize: 12, padding: '4px 6px', borderRadius: 4, fontFamily: 'var(--font-mono)', cursor: 'pointer',
+  border: `1px solid ${highlight ? 'var(--accent)' : 'var(--border)'}`,
+  background: highlight ? 'var(--accent)' : 'var(--bg-raised)',
+  color: highlight ? '#fff' : 'var(--ink-2)',
+})
+
+// The language the model is shown in. A model in one language shows only a
+// button to add another; with more, a menu switches between them. The
+// switch stands out while the model is shown in another language than its
+// own (the base language).
+function LanguageSwitch() {
+  const state = useOrmStore(useShallow(s => ({ objectTypes: s.objectTypes, facts: s.facts, languages: s.languages, viewLanguage: s.viewLanguage })))
+  const setViewLanguage = useOrmStore(s => s.setViewLanguage)
+  const addLanguage = useOrmStore(s => s.addLanguage)
+  const [adding, setAdding] = useState(false)
+  const langs = modelLanguages(state, LANGUAGES)
+  const others = LANGUAGES.filter(l => !langs.includes(l))
+  const label = (l) => l.id === BASE_LANGUAGE ? `${l.label} (model language)` : l.label
+
+  if (adding) {
+    return (
+      <select autoFocus value="" style={selectStyle(false)} title="Add a language to show and edit the model in"
+        onChange={e => { setAdding(false); if (e.target.value) addLanguage(e.target.value) }}
+        onBlur={() => setAdding(false)}
+        onKeyDown={e => { if (e.key === 'Escape') setAdding(false) }}>
+        <option value="">Add language…</option>
+        {others.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
+      </select>
+    )
+  }
+  if (langs.length < 2) {
+    return others.length ? <Btn label="🌐" title="Add a language to show and edit the model in" onClick={() => setAdding(true)}/> : null
+  }
+  const away = state.viewLanguage !== BASE_LANGUAGE
+  return (
+    <select value={state.viewLanguage} style={selectStyle(away)}
+      title={away ? `Shown in ${LANGUAGES.find(l => l.id === state.viewLanguage)?.label}; the model's own language is ${LANGUAGES.find(l => l.id === BASE_LANGUAGE)?.label}`
+        : 'Language the names, readings and sentences are shown in'}
+      onChange={e => e.target.value === '+' ? setAdding(true) : setViewLanguage(e.target.value)}>
+      {langs.map(l => <option key={l.id} value={l.id}>🌐 {label(l)}</option>)}
+      {others.length > 0 && <option value="+">Add language…</option>}
+    </select>
+  )
 }
 
 export default function Toolbar() {
@@ -91,6 +140,10 @@ export default function Toolbar() {
       </div>
 
       <div style={{ flex: 1 }}/>
+
+      <div style={{ display: 'flex', alignItems: 'center', WebkitAppRegion: 'no-drag', marginRight: 8 }}>
+        <LanguageSwitch/>
+      </div>
 
       <div style={{ display: 'flex', gap: 4, alignItems: 'center', WebkitAppRegion: 'no-drag' }}>
         <Btn label="−" title="Zoom Out" onClick={() => store().zoomBy(-0.1)}/>

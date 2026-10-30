@@ -949,6 +949,10 @@ export const EMPTY = () => {
     constraints:     [],
     diagrams:        [d],
     activeDiagramId: d.id,
+    // The language names and readings are shown in (session only; the file
+    // is in the base language) and the languages added to the model.
+    viewLanguage:    'en',
+    languages:       [],
     // Schema-wide sample population: otId → array of instance values (strings).
     // Value type:  instance = the literal value.
     // Entity type: instance = the ref-mode value identifying the entity.

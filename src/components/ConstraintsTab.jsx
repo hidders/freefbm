@@ -5,7 +5,7 @@ import { formalise } from '../logic/constraintFormulas.js'
 import { renderFormula } from '../logic/renderFormula.js'
 import { verbalise } from '../verbalisation/engine.js'
 import { negativeForm } from '../verbalisation/negative.js'
-import { useVerbalisation, useLanguageChoice, openWorkbench, LANGUAGES } from '../verbalisation/workbench.js'
+import { useVerbalisation, openWorkbench } from '../verbalisation/workbench.js'
 
 // ── Constraints tab ─────────────────────────────────────────────────────────
 // Lists every constraint in the selected part of the diagram (or, when
@@ -80,7 +80,7 @@ export default function ConstraintsTab() {
     selectedId: s.selectedId, multiSelectedIds: s.multiSelectedIds,
     selectedMandatoryDot: s.selectedMandatoryDot, selectedUniqueness: s.selectedUniqueness,
     selectedInternalFrequency: s.selectedInternalFrequency, selectedValueRange: s.selectedValueRange,
-    selectedCardinalityRange: s.selectedCardinalityRange,
+    selectedCardinalityRange: s.selectedCardinalityRange, viewLanguage: s.viewLanguage,
   })))
   const [showDisjoint, toggleDisjoint] = useToggle('freefbm.formalisation.disjointness')
   const [showParticipation, toggleParticipation] = useToggle('freefbm.formalisation.participation')
@@ -90,8 +90,8 @@ export default function ConstraintsTab() {
   const [view, setView] = useChoice('freefbm.constraints.view', VIEWS)
   const [mode, setMode] = useChoice('freefbm.constraints.mode', MODES)
   const negative = mode === 'negative'
-  const [langId, setLangId] = useLanguageChoice()
-  const verbaliser = useVerbalisation(langId)
+  // Sentences are in the language the model is shown in (the toolbar's language switch).
+  const verbaliser = useVerbalisation(state.viewLanguage)
 
   const { entries: all, implicit, ctx, scope } = useMemo(() => formalise(state, { wholeSchema }), [state, wholeSchema])
   // Default verbalisations of missing constraints sit where the constraint
@@ -123,12 +123,6 @@ export default function ConstraintsTab() {
         {view !== 'formulas' && <Segmented options={MODES} value={mode} onChange={setMode} label="Sentences say" />}
         <ToggleButton on={wholeSchema} onClick={toggleWholeSchema}
           title="With nothing selected, list the constraints of the whole schema instead of only this diagram">Whole schema</ToggleButton>
-        {view !== 'formulas' && (
-          <select value={langId} onChange={e => setLangId(e.target.value)} title="Language of the sentences"
-            style={{ fontSize: 10, padding: '0 4px', border: '1px solid var(--border-soft)', borderRadius: 10, background: 'transparent', color: 'var(--ink-2)' }}>
-            {LANGUAGES.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
-          </select>
-        )}
         {view !== 'formulas' && (
           <button type="button" onClick={openWorkbench}
             title={verbaliser.error ? `Your rules have an error, so the built-in rules are used: ${verbaliser.error}`

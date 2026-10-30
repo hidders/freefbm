@@ -823,6 +823,8 @@ export function makeContext(state) {
   }
   return {
     otById, factById, linkById, typeName,
+    // The language the names and readings are in (see store/viewLanguage.js).
+    liveLanguage: state.viewLanguage ?? 'en',
     schema: { facts, objectTypes, subtypes: state.subtypes ?? [], constraints: state.constraints ?? [] },
     subtypeById: new Map((state.subtypes ?? []).map(s => [s.id, s])),
   }

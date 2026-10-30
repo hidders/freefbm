@@ -7,8 +7,10 @@
 // Polish), and in a language with cases (Polish)
 //   forms: { gen, dat, acc, ins, loc, genPl, datPl, accPl, insPl, locPl }
 // the name in the other cases (the nominative is name and plural).
-// English uses the element's own name; its lexicon entry only adds a plural
-// ("Staff", not "Staffs").
+// The language the element's own name and readings are in (the view
+// language, ctx.liveLanguage, English by default; see
+// src/store/viewLanguage.js) uses the element's own name; its lexicon entry
+// only adds a plural ("Staff", not "Staffs"), a gender and case forms.
 //
 // Fact types may carry
 //   lexicon: { [lang]: { readings: [{ roleOrder, parts, subParts?, pluralParts?, cases? }] } }
@@ -17,21 +19,21 @@
 // pluralParts the reading with a plural subject ("are prerequisites for"),
 // and cases the grammatical case of each slot in reading order (Polish:
 // ['nom', 'acc']).
-// For English, entries add subParts or pluralParts to the reading with the
-// same roleOrder; for other languages they are the language's readings, and
-// without any the English readings are used.
+// For the live language, entries add subParts, pluralParts or cases to the
+// reading with the same roleOrder; for other languages they are the
+// language's readings, and without any the live readings are used.
 
 const hasText = (parts) => Array.isArray(parts) && parts.some(p => p?.trim())
 const sameOrder = (a, b) => a.length === b.length && a.every((x, i) => x === b[i])
 
-export function readingsFor(fact, langId, n = fact.roles?.length ?? 0) {
-  const english = [
+export function readingsFor(fact, langId, n = fact.roles?.length ?? 0, live = 'en') {
+  const liveReadings = [
     { roleOrder: [...Array(n).keys()], parts: fact.readingParts ?? [] },
     ...(fact.alternativeReadings ?? []),
   ].filter(r => r.roleOrder?.length === n && hasText(r.parts))
   const own = (fact.lexicon?.[langId]?.readings ?? []).filter(r => r.roleOrder?.length === n)
-  if (langId !== 'en' && own.some(r => hasText(r.parts))) return own.filter(r => hasText(r.parts))
-  return english.map(r => {
+  if (langId !== live && own.some(r => hasText(r.parts))) return own.filter(r => hasText(r.parts))
+  return liveReadings.map(r => {
     const extra = own.find(o => sameOrder(o.roleOrder, r.roleOrder))
     return extra ? { ...r, subParts: extra.subParts, pluralParts: extra.pluralParts } : r
   })
@@ -43,7 +45,7 @@ export function typeLexicon(ctx, typeId, langId) {
   const el = ctx.otById.get(typeId) ?? ctx.factById.get(typeId)
   const lex = el?.lexicon?.[langId] ?? {}
   return {
-    name: (langId !== 'en' && lex.name?.trim()) || ctx.typeName(typeId),
+    name: (langId !== (ctx.liveLanguage ?? 'en') && lex.name?.trim()) || ctx.typeName(typeId),
     plural: lex.plural?.trim() || null,
     gender: lex.gender || null,
     forms: lex.forms ?? {},

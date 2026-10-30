@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { factDerivationMark } from '../logic/factDerivation.js'
 import { useOrmStore, subtypeKindOf } from '../store/ormStore'
+import { isFallbackReading } from '../store/viewLanguage.js'
 import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { roleAnchor } from '../utils/geometry'
@@ -283,6 +284,7 @@ export function makeImplicitLinkFact(parentFact, implicitLink) {
     })),
     readingParts: implicitLink.readingParts || ['', 'involves', ''],
     alternativeReadings: implicitLink.alternativeReadings || [],
+    _fb: implicitLink._fb,
     readingDisplay: ilPos?.readingDisplay ?? implicitLink.readingDisplay ?? 'forward',
     shownReadingOrder: roleOrder,
     roleOrder: ilPos?.roleOrder || roleOrder,
@@ -1110,8 +1112,10 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   const commitNameEdit = useCallback(() => {
     setEditingName(false)
     const trimmed = nameDraft.trim()
+    // Left empty, a name not yet in the view language keeps showing the base name.
+    if (!trimmed && fact._fb?.name != null) return
     store.updateFact(fact.id, { objectifiedName: trimmed })
-  }, [nameDraft, fact.id, store])
+  }, [nameDraft, fact.id, fact._fb, store])
 
   useEffect(() => {
     if (editingName && nameInputRef.current) {
@@ -1503,6 +1507,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       }
     }
 
+    // Readings not yet in the view language: the base readings, grey and italic.
+    const readingFallback = readingsWithContent.length > 0 && readingsWithContent.every(r => isFallbackReading(fact, r.roleOrder, r.parts))
+
     // The mark of a derived (*) or semi-derived (+) fact type follows the reading.
     const dmark = fact._implicit ? '' : factDerivationMark(fact)
     if (!text && !dmark && !editingReading) return null
@@ -1632,7 +1639,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
     return (
       <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle"
-        fontSize={14} fill="var(--ink-3)" fontFamily={FONT}
+        fontSize={14} fill={readingFallback ? 'var(--ink-muted)' : 'var(--ink-3)'} fontStyle={readingFallback ? 'italic' : undefined} fontFamily={FONT}
         style={{ cursor: isDraggingReading ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: inQueryEdit ? 'none' : undefined }}
         onMouseDown={e => {
           e.stopPropagation()
@@ -1995,6 +2002,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                     style={{ overflow: 'visible' }}>
                     <input ref={nameInputRef}
                       value={nameDraft}
+                      placeholder={fact._fb?.name}
                       onChange={e => setNameDraft(e.target.value)}
                       onKeyDown={e => {
                         if (e.key === 'Enter')  { e.preventDefault(); commitNameEdit() }
@@ -2029,10 +2037,12 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                     }}
                     onDoubleClick={e => {
                       e.stopPropagation()
-                      setNameDraft(fact.objectifiedName || '')
+                      setNameDraft(fact._fb?.name != null ? '' : (fact.objectifiedName || ''))
                       setEditingName(true)
                     }}>
-                    {`\u201c${fact.objectifiedName}${fact.isIndependent ? ' !' : ''}\u201d`}
+                    {fact._fb?.name != null
+                      ? <tspan fill="var(--ink-muted)" fontStyle="italic">{`\u201c${fact.objectifiedName}${fact.isIndependent ? ' !' : ''}\u201d`}</tspan>
+                      : `\u201c${fact.objectifiedName}${fact.isIndependent ? ' !' : ''}\u201d`}
                   </text>
                 )
               )}
@@ -2213,6 +2223,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                   style={{ overflow: 'visible' }}>
                   <input ref={nameInputRef}
                     value={nameDraft}
+                    placeholder={fact._fb?.name}
                     onChange={e => setNameDraft(e.target.value)}
                     onKeyDown={e => {
                       if (e.key === 'Enter')  { e.preventDefault(); commitNameEdit() }
@@ -2247,10 +2258,12 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                   }}
                   onDoubleClick={e => {
                     e.stopPropagation()
-                    setNameDraft(fact.objectifiedName || '')
+                    setNameDraft(fact._fb?.name != null ? '' : (fact.objectifiedName || ''))
                     setEditingName(true)
                   }}>
-                  {`\u201c${fact.objectifiedName}${fact.isIndependent ? ' !' : ''}\u201d`}
+                  {fact._fb?.name != null
+                    ? <tspan fill="var(--ink-muted)" fontStyle="italic">{`\u201c${fact.objectifiedName}${fact.isIndependent ? ' !' : ''}\u201d`}</tspan>
+                    : `\u201c${fact.objectifiedName}${fact.isIndependent ? ' !' : ''}\u201d`}
                 </text>
               )
             )}
