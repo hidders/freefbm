@@ -621,11 +621,17 @@ export function importNorma(xmlText) {
         const f = factById.get(subj)
         if (!f) continue
         const occ = { id: newOccId(), schemaElementId: f.id, x: b.cx, y: b.cy }
+        // FreeFBM's vertical fact type is NORMA's horizontal one turned a
+        // quarter clockwise (VerticalRotatedRight): the first role on top,
+        // the bars on the right. VerticalRotatedLeft turns it the other way,
+        // so the role order is reversed and the bars change side.
         const orient = attr(s, 'DisplayOrientation')
+        const turnedLeft = orient === 'VerticalRotatedLeft'
         if (orient && orient.startsWith('Vertical')) occ.orientation = 'vertical'
-        if (attr(s, 'ConstraintDisplayPosition') === 'Bottom') occ.uniquenessBelow = true
+        if ((attr(s, 'ConstraintDisplayPosition') === 'Bottom') !== turnedLeft) occ.uniquenessBelow = true
         const rdo = refsOf(kid(s, 'RoleDisplayOrder')).filter(r => f.roles.some(x => x.id === r))
-        const display = rdo.length === f.arity ? rdo : f._normaRoleOrder
+        const display = [...(rdo.length === f.arity ? rdo : f._normaRoleOrder)]
+        if (turnedLeft) display.reverse()
         const ro = display.map(rid => f.roles.findIndex(r => r.id === rid))
         if (ro.length === f.arity && ro.every(i => i >= 0) && ro.some((r, i) => r !== i)) occ.roleOrder = ro
         diag.occurrences.push(occ)
