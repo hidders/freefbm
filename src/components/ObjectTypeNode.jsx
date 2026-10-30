@@ -67,9 +67,10 @@ function fmtDate(v) {
 function formatRangeSpec(spec) {
   if (!spec) return ''
   if (spec.type === 'single') return fmtDate(String(spec.value ?? ''))
-  const open = spec.type !== 'upper' && spec.lowerOpen, close = spec.type !== 'lower' && spec.upperOpen
-  const left  = open ? '(' : close && spec.type === 'range' ? '[' : ''
-  const right = close ? ')' : open && spec.type === 'range' ? ']' : ''
+  // Bounds are closed by default; an open one gets a round bracket, as in
+  // Halpin & Morgan's {(0..100} (no square brackets for the closed end).
+  const left  = spec.type !== 'upper' && spec.lowerOpen ? '(' : ''
+  const right = spec.type !== 'lower' && spec.upperOpen ? ')' : ''
   if (spec.type === 'lower')  return `${left}${fmtDate(spec.lower ?? '')}..`
   if (spec.type === 'upper')  return `..${fmtDate(spec.upper ?? '')}${right}`
   if (spec.type === 'range')  return `${left}${fmtDate(spec.lower ?? '')}..${fmtDate(spec.upper ?? '')}${right}`
