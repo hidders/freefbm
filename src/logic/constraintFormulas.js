@@ -268,9 +268,9 @@ function cardinalityEntry(base, range, phi) {
 
 // The population of the type (an object type or an objectified fact type)
 // has a number of instances in the range.
-function typeCardinalityEntry(typeId, range, ctx) {
-  return cardinalityEntry({ key: `${typeId}:card`, elementId: typeId, kind: 'Cardinality', subject: ctx.typeName(typeId) },
-    range, () => ({ x: mkVar(typeId), body: truth() }))
+function typeCardinalityEntry(typeId, range, ctx, deontic = false) {
+  return asDeontic(deontic, cardinalityEntry({ key: `${typeId}:card`, elementId: typeId, kind: 'Cardinality', subject: ctx.typeName(typeId) },
+    range, () => ({ x: mkVar(typeId), body: truth() })))
 }
 
 // The number of distinct objects playing role i of the fact type is in the range.
@@ -278,19 +278,19 @@ function roleCardinalityEntry(fact, i, ctx, reading = readingText(fact, ctx)) {
   const r = fact.roles[i]
   const base = { key: `${fact.id}:card:${i}`, elementId: fact.id, kind: `Cardinality (role ${i + 1})`, subject: reading }
   if (!r.objectTypeId) return { ...base, note: 'The role has no player yet.' }
-  return cardinalityEntry(base, r.cardinalityRange, () => {
+  return asDeontic(r.cardinalityRangeDeontic, cardinalityEntry(base, r.cardinalityRange, () => {
     const xs = fact.roles.map(p => mkVar(p.objectTypeId))
     return { x: xs[i], body: exists(xs.filter((_, j) => j !== i), factAtom(fact.id, xs)) }
-  })
+  }))
 }
 
 // The entry for a selected cardinality range ({ otId } | { factId, roleIndex }
 // | { nestedFactId }), or null.
 function selectedCardinalityEntry(sel, ctx) {
   const ot = sel.otId ? ctx.otById.get(sel.otId) : null
-  if (ot?.cardinalityRange?.length) return typeCardinalityEntry(ot.id, ot.cardinalityRange, ctx)
+  if (ot?.cardinalityRange?.length) return typeCardinalityEntry(ot.id, ot.cardinalityRange, ctx, ot.cardinalityRangeDeontic)
   const nested = sel.nestedFactId ? ctx.factById.get(sel.nestedFactId) : null
-  if (nested?.cardinalityRange?.length) return typeCardinalityEntry(nested.id, nested.cardinalityRange, ctx)
+  if (nested?.cardinalityRange?.length) return typeCardinalityEntry(nested.id, nested.cardinalityRange, ctx, nested.cardinalityRangeDeontic)
   const fact = sel.factId != null ? ctx.factById.get(sel.factId) : null
   if (fact?.roles[sel.roleIndex]?.cardinalityRange?.length) return roleCardinalityEntry(fact, sel.roleIndex, ctx)
   return null
@@ -353,9 +353,9 @@ function valueRangeEntry(base, range, typeId, ctx, wrap) {
 
 function typeValueRangeEntry(type, ctx) {
   const x = mkVar(type.id)
-  return valueRangeEntry(
+  return asDeontic(type.valueRangeDeontic, valueRangeEntry(
     { key: `${type.id}:vr`, elementId: type.id, kind: 'Value range', subject: ctx.typeName(type.id) },
-    type.valueRange, type.id, ctx, (cond) => forall([x], cond(x)))
+    type.valueRange, type.id, ctx, (cond) => forall([x], cond(x))))
 }
 
 // ∀x (∃ȳ (… x …) → the value of x is in the range), for the value range on
@@ -366,8 +366,8 @@ function roleValueRangeEntry(fact, i, ctx, reading = readingText(fact, ctx)) {
     kind: `Value range (role ${i + 1})`, subject: reading }
   if (!r.objectTypeId) return { ...base, note: 'The role has no player yet.' }
   const xs = fact.roles.map(p => mkVar(p.objectTypeId))
-  return valueRangeEntry(base, r.valueRange, r.objectTypeId, ctx, (cond) =>
-    forall([xs[i]], implies(exists(xs.filter((_, j) => j !== i), factAtom(fact.id, xs)), cond(xs[i]))))
+  return asDeontic(r.valueRangeDeontic, valueRangeEntry(base, r.valueRange, r.objectTypeId, ctx, (cond) =>
+    forall([xs[i]], implies(exists(xs.filter((_, j) => j !== i), factAtom(fact.id, xs)), cond(xs[i])))))
 }
 
 // ── Internal constraints of one fact type ────────────────────────────────────
@@ -453,8 +453,11 @@ const modal = (deontic, phi) => (deontic ? obligatory(phi) : phi)
 // ── External constraints ─────────────────────────────────────────────────────
 
 // A deontic external constraint: each of its formulas becomes O(φ).
-function deonticEntries(c, e) {
-  if (!c.deontic) return e
+function deonticEntries(c, e) { return asDeontic(c.deontic, e) }
+
+// Entries (one or an array) made deontic when the flag is set.
+function asDeontic(deontic, e) {
+  if (!deontic) return e
   const wrap = (x) => ({ ...x, kind: `${x.kind} (deontic)`, ...(x.formula ? { formula: obligatory(x.formula) } : {}) })
   return Array.isArray(e) ? e.map(wrap) : wrap(e)
 }
@@ -951,7 +954,7 @@ export function formalise(state, { wholeSchema = false } = {}) {
   for (const t of [...(state.objectTypes ?? []), ...(state.facts ?? []).filter(f => f.objectified)]) {
     if (!t.cardinalityRange?.length) continue
     const inScope = selected.size ? otIds.has(t.id) || factIds.has(t.id) : typeIds.has(t.id)
-    if (inScope) entries.push(typeCardinalityEntry(t.id, t.cardinalityRange, ctx))
+    if (inScope) entries.push(typeCardinalityEntry(t.id, t.cardinalityRange, ctx, t.cardinalityRangeDeontic))
   }
   const info = defaultsInfo(state)
   for (const fact of (state.facts ?? [])) {

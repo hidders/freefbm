@@ -22,17 +22,17 @@ Przedmiot jest IntroCourse wtedy i tylko wtedy, gdy Przedmiot ma jakiś Tytuł p
 ∀ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) → LongTitleCourse(Course))
 Każdy Przedmiot, który ma jakiś Tytuł przedmiotu taki, że długość tego Tytułu przedmiotu wynosi więcej niż 40, jest LongTitleCourse.
 
-# Value range · Score
-∀ Score ((Score > 0 ∧ Score ≤ 100) ∨ Score > 200)
-Możliwe wartości Score to więcej niż 0 i co najwyżej 100, więcej niż 200.
+# Value range (deontic) · Score
+O(∀ Score ((Score > 0 ∧ Score ≤ 100) ∨ Score > 200))
+Obowiązuje zasada, że możliwe wartości Score to więcej niż 0 i co najwyżej 100, więcej niż 200.
 
 # Cardinality · Professor
 ∃^{2..20} Professor ⊤
 Istnieje co najmniej 2 i co najwyżej 20 Profesorów.
 
-# Cardinality · Building
-∃^{=3} Building ⊤
-Istnieją dokładnie 3 Budynki.
+# Cardinality (deontic) · Building
+O(∃^{=3} Building ⊤)
+Obowiązuje zasada, że istnieją dokładnie 3 Budynki.
 
 # Cardinality · Course
 ∃^{≤100} Course ⊤
@@ -42,9 +42,9 @@ Istnieje co najwyżej 100 Przedmiotów.
 ∃^{≤50} Course ∃ Student (Student enrols in Course)
 Istnieje co najwyżej 50 Przedmiotów, które jakiś Student studiuje.
 
-# Cardinality (role 1) · Staff coordinates Course
-∃^{≥5} Staff ∃ Course (Staff coordinates Course)
-Istnieje co najmniej 5 Pracowników, którzy koordynują jakiś Przedmiot.
+# Cardinality (role 1) (deontic) · Staff coordinates Course
+O(∃^{≥5} Staff ∃ Course (Staff coordinates Course))
+Obowiązuje zasada, że istnieje co najmniej 5 Pracowników, którzy koordynują jakiś Przedmiot.
 
 # Derivation rule · Student studies with Staff
 ∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))

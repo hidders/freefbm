@@ -2102,19 +2102,21 @@ export function computePopulationIssues(rawData) {
     }
   }
 
-  return markDeontic(issues, facts, constraints)
+  return markDeontic(issues, facts, constraints, otById)
 }
 
 // A population may break a deontic constraint (modality.js): the issue is
 // still reported, but as a violated obligation, marked deontic: true.
-function markDeontic(issues, facts, constraints) {
+function markDeontic(issues, facts, constraints, otById) {
   const factById = new Map((facts || []).map(f => [f.id, f]))
   const deonticCons = new Set((constraints || []).filter(c => c.deontic).map(c => c.id))
   const isDeontic = (i) => {
     if (i.constraintId) return deonticCons.has(i.constraintId)
+    if (i.kind === 'valueRangeViolation' && i.otId) return !!otById.get(i.otId)?.valueRangeDeontic
     const fact = factById.get(i.factId)
     if (!fact) return false
     if (i.kind === 'uniquenessViolation') return isDeonticUniqueness(fact, i.roleIndices)
+    if (i.kind === 'valueRangeViolation') return !!fact.roles?.[i.roleIndex]?.valueRangeDeontic
     if (i.kind === 'frequencyViolation')
       return !!(fact.internalFrequency || []).find(f => f.id === i.internalFrequencyId)?.deontic
     if (i.kind === 'mandatoryRoleNotPlayed') {

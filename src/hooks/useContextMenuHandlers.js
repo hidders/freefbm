@@ -1,6 +1,15 @@
 import { useCallback } from 'react'
 import { constraintMaxSequences, hasTargetObjectType, suppressRolePosition, isSingletonSequence } from '../utils/constraintRules'
 import { findRefMode, refModeCollapseBlockers } from '../utils/refMode'
+import { isDeonticUniqueness } from '../logic/modality'
+
+// The checkable "Deontic" item that switches a constraint between alethic and
+// deontic modality (modality.js).
+const deonticItem = (checked, setDeontic, disabledTitle = null) => ({
+  label: 'Deontic', checked: !!checked && !disabledTitle, disabled: !!disabledTitle,
+  title: disabledTitle ?? 'An obligation: what ought to hold, which a population may break',
+  action: () => setDeontic(!checked),
+})
 
 export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
 
@@ -226,6 +235,8 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
       x: e.clientX, y: e.clientY,
       items: [
         { label: 'Edit Frequency Range…', action: () => store.startFrequencyRangeEdit(fact.id, ifId) },
+        deonticItem((fact.internalFrequency || []).find(f => f.id === ifId)?.deontic,
+          v => store.updateInternalFrequency(fact.id, ifId, { deontic: v })),
         '---',
         { label: 'Change into Internal Uniqueness Constraint',
           action: () => store.convertFrequencyToUniqueness(fact.id, ifId),
@@ -247,9 +258,10 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
             store.setTool('select')
             setVrPopup({ factId: fact.id, roleIndex, x: e.clientX, y: e.clientY })
           }},
+        deonticItem(fact.roles[roleIndex]?.valueRangeDeontic, v => store.updateRole(fact.id, roleIndex, { valueRangeDeontic: v })),
         '---',
         { label: 'Delete Value Range', danger: true,
-          action: () => store.updateRole(fact.id, roleIndex, { valueRange: [] }) },
+          action: () => store.updateRole(fact.id, roleIndex, { valueRange: [], valueRangeDeontic: false }) },
       ],
     })
   }, [store, setContextMenu, setVrPopup])
@@ -265,9 +277,10 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
             setVrPopup({ factId: fact.id, roleIndex, x: e.clientX, y: e.clientY,
                          naturalNumbers: true, title: `Cardinality Range — Role ${roleIndex + 1}` })
           }},
+        deonticItem(fact.roles[roleIndex]?.cardinalityRangeDeontic, v => store.updateRole(fact.id, roleIndex, { cardinalityRangeDeontic: v })),
         '---',
         { label: 'Delete Cardinality Range', danger: true,
-          action: () => store.updateRole(fact.id, roleIndex, { cardinalityRange: [] }) },
+          action: () => store.updateRole(fact.id, roleIndex, { cardinalityRange: [], cardinalityRangeDeontic: false }) },
       ],
     })
   }, [store, setContextMenu, setVrPopup])
@@ -282,9 +295,10 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
             store.setTool('select')
             setVrPopup({ nestedFactId: fact.id, x: e.clientX, y: e.clientY })
           }},
+        deonticItem(fact?.valueRangeDeontic, v => store.updateFact(fact.id, { valueRangeDeontic: v })),
         '---',
         { label: 'Delete Value Range', danger: true,
-          action: () => store.updateFact(fact.id, { valueRange: null }) },
+          action: () => store.updateFact(fact.id, { valueRange: null, valueRangeDeontic: false }) },
       ],
     })
   }, [store, setContextMenu, setVrPopup])
@@ -300,9 +314,10 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
             setVrPopup({ nestedFactId: fact.id, x: e.clientX, y: e.clientY,
                          naturalNumbers: true, title: `Cardinality Range — ${fact.objectifiedName || 'Nested Type'}` })
           }},
+        deonticItem(fact?.cardinalityRangeDeontic, v => store.updateFact(fact.id, { cardinalityRangeDeontic: v })),
         '---',
         { label: 'Delete Cardinality Range', danger: true,
-          action: () => store.updateFact(fact.id, { cardinalityRange: null }) },
+          action: () => store.updateFact(fact.id, { cardinalityRange: null, cardinalityRangeDeontic: false }) },
       ],
     })
   }, [store, setContextMenu, setVrPopup])
@@ -317,9 +332,10 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
             store.setTool('select')
             setVrPopup({ otId: ot.id, x: e.clientX, y: e.clientY })
           }},
+        deonticItem(ot?.valueRangeDeontic, v => store.updateObjectType(ot.id, { valueRangeDeontic: v })),
         '---',
         { label: 'Delete Value Range', danger: true,
-          action: () => store.updateObjectType(ot.id, { valueRange: [] }) },
+          action: () => store.updateObjectType(ot.id, { valueRange: [], valueRangeDeontic: false }) },
       ],
     })
   }, [store, setContextMenu, setVrPopup])
@@ -335,9 +351,10 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
             setVrPopup({ otId: ot.id, x: e.clientX, y: e.clientY,
                          naturalNumbers: true, title: `Cardinality Range — ${ot.name || 'Object Type'}` })
           }},
+        deonticItem(ot?.cardinalityRangeDeontic, v => store.updateObjectType(ot.id, { cardinalityRangeDeontic: v })),
         '---',
         { label: 'Delete Cardinality Range', danger: true,
-          action: () => store.updateObjectType(ot.id, { cardinalityRange: [] }) },
+          action: () => store.updateObjectType(ot.id, { cardinalityRange: [], cardinalityRangeDeontic: false }) },
       ],
     })
   }, [store, setContextMenu, setVrPopup])
@@ -348,6 +365,9 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
+        deonticItem(store.facts.find(f => f.id === factId)?.roles[roleIndex]?.mandatoryDeontic,
+          v => store.updateRole(factId, roleIndex, { mandatoryDeontic: v })),
+        '---',
         { label: 'Delete Mandatory Constraint', danger: true,
           action: () => store.removeMandatoryRole(factId, roleIndex) },
       ],
@@ -381,6 +401,8 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
       items: [
         { label: 'Is Preferred', checked: isPreferred, disabled: piDisabled, title: piTitle,
           action: () => store.setPreferredUniqueness(fact.id, uRoles) },
+        deonticItem(isDeonticUniqueness(fact, uRoles), v => store.setUniquenessDeontic(fact.id, uRoles, v),
+          isPreferred ? 'A preferred identifier is always alethic' : null),
         '---',
         { label: 'Change into Internal Frequency Constraint',
           action: () => store.convertUniquenessToFrequency(fact.id, uRoles),
@@ -505,7 +527,8 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
           checked: !!c.isPreferredIdentifier,
           disabled: identifiesVt,
           title: identifiesVt ? 'A value type cannot have a preferred identifier' : undefined,
-          action: () => store.updateConstraint(c.id, { isPreferredIdentifier: !c.isPreferredIdentifier }),
+          action: () => store.updateConstraint(c.id, c.isPreferredIdentifier
+            ? { isPreferredIdentifier: false } : { isPreferredIdentifier: true, deontic: false }),
         })
         items.push({ label: 'Change into External Frequency Constraint',
           action: () => store.updateConstraint(c.id, { constraintType: 'frequency', frequency: [{ type: 'upper', upper: 1 }] }) })
@@ -542,7 +565,10 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         items.push('---')
       }
     }
-    if (items.length === 0 || items[items.length - 1] !== '---') items.push('---')
+    if (items.length && items[items.length - 1] === '---') items.pop()
+    items.push(deonticItem(c.deontic, v => store.updateConstraint(c.id, { deontic: v }),
+      c.isPreferredIdentifier ? 'A preferred identifier is always alethic' : null))
+    items.push('---')
     items.push({ label: 'Remove from Diagram',
       action: () => constraintOccurrenceId
         ? store.removeConstraintOccurrenceFromDiagram(constraintOccurrenceId, store.activeDiagramId)

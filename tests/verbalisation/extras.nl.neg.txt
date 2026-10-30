@@ -22,17 +22,17 @@ Vak is een IntroCourse als en slechts als Vak een Vaktitel die met 'Introduction
 ¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
 Het is onmogelijk dat een Vak een Vaktitel zodanig dat de lengte van die Vaktitel groter dan 40 is heeft en geen LongTitleCourse is.
 
-# Value range · Score
-¬(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
-Het is onmogelijk dat een Score hoogstens 0 is of groter dan 100 is en hoogstens 200 is.
+# Value range (deontic) · Score
+F(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
+Het is verboden dat een Score hoogstens 0 is of groter dan 100 is en hoogstens 200 is.
 
 # Cardinality · Professor
 ¬((∃^{≤1} Professor ⊤) ∨ ∃^{>20} Professor ⊤)
 Het is onmogelijk dat er hoogstens één Hoogleraar is of er meer dan 20 Hoogleraren zijn.
 
-# Cardinality · Building
-¬((∃^{≤2} Building ⊤) ∨ ∃^{>3} Building ⊤)
-Het is onmogelijk dat er hoogstens 2 Gebouwen zijn of er meer dan 3 Gebouwen zijn.
+# Cardinality (deontic) · Building
+F((∃^{≤2} Building ⊤) ∨ ∃^{>3} Building ⊤)
+Het is verboden dat er hoogstens 2 Gebouwen zijn of er meer dan 3 Gebouwen zijn.
 
 # Cardinality · Course
 ¬(∃^{>100} Course ⊤)
@@ -42,9 +42,9 @@ Het is onmogelijk dat er meer dan 100 Vakken zijn.
 ¬(∃^{>50} Course ∃ Student (Student enrols in Course))
 Het is onmogelijk dat er meer dan 50 Vakken die een Student volgt zijn.
 
-# Cardinality (role 1) · Staff coordinates Course
-¬(∃^{≤4} Staff ∃ Course (Staff coordinates Course))
-Het is onmogelijk dat er hoogstens 4 Medewerkers die een Vak coördineren zijn.
+# Cardinality (role 1) (deontic) · Staff coordinates Course
+F(∃^{≤4} Staff ∃ Course (Staff coordinates Course))
+Het is verboden dat er hoogstens 4 Medewerkers die een Vak coördineren zijn.
 
 # Derivation rule · Student studies with Staff
 ∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))

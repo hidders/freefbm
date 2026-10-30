@@ -22,17 +22,17 @@ Course is an IntroCourse if and only if Course has some CourseTitle that starts 
 ¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
 It is impossible that some Course has some CourseTitle such that the length of that CourseTitle is more than 40 and is not a LongTitleCourse.
 
-# Value range · Score
-¬(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
-It is impossible that some Score is at most 0 or is more than 100 and is at most 200.
+# Value range (deontic) · Score
+F(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
+It is forbidden that some Score is at most 0 or is more than 100 and is at most 200.
 
 # Cardinality · Professor
 ¬((∃^{≤1} Professor ⊤) ∨ ∃^{>20} Professor ⊤)
 It is impossible that there is at most one Professor or there are more than 20 Professors.
 
-# Cardinality · Building
-¬((∃^{≤2} Building ⊤) ∨ ∃^{>3} Building ⊤)
-It is impossible that there are at most 2 Buildings or there are more than 3 Buildings.
+# Cardinality (deontic) · Building
+F((∃^{≤2} Building ⊤) ∨ ∃^{>3} Building ⊤)
+It is forbidden that there are at most 2 Buildings or there are more than 3 Buildings.
 
 # Cardinality · Course
 ¬(∃^{>100} Course ⊤)
@@ -42,9 +42,9 @@ It is impossible that there are more than 100 Courses.
 ¬(∃^{>50} Course ∃ Student (Student enrols in Course))
 It is impossible that there are more than 50 Courses that some Student enrols in.
 
-# Cardinality (role 1) · Staff coordinates Course
-¬(∃^{≤4} Staff ∃ Course (Staff coordinates Course))
-It is impossible that there are at most 4 Staff that coordinate some Course.
+# Cardinality (role 1) (deontic) · Staff coordinates Course
+F(∃^{≤4} Staff ∃ Course (Staff coordinates Course))
+It is forbidden that there are at most 4 Staff that coordinate some Course.
 
 # Derivation rule · Student studies with Staff
 ∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))

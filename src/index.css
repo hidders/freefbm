@@ -208,3 +208,8 @@ input.cell-issue:-webkit-autofill:focus {
 .splitter:hover::after, .splitter.dragging::after {
   background-image: radial-gradient(circle, var(--accent) 1.2px, transparent 1.6px);
 }
+
+/* Range bounds in the Inspector are narrow: no number spinners, so the value stays readable. */
+input.range-field[type=number]::-webkit-inner-spin-button,
+input.range-field[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input.range-field[type=number] { -moz-appearance: textfield; }

@@ -23,11 +23,11 @@ export function extend(state) {
   const objectTypes = state.objectTypes.map(o =>
     o.id === 'ot_Course' ? { ...o, cardinalityRange: [{ type: 'upper', upper: '100' }] }
     : o.id === 'ot_Professor' ? { ...o, cardinalityRange: [{ type: 'range', lower: '2', upper: '20' }] }
-    : o.id === 'ot_Building' ? { ...o, cardinalityRange: [{ type: 'single', value: '3' }] }
+    : o.id === 'ot_Building' ? { ...o, cardinalityRange: [{ type: 'single', value: '3' }], cardinalityRangeDeontic: true }
     : o)
   const facts = state.facts.map(f =>
     f.id === 'f_enrols' ? { ...f, roles: f.roles.map((r, i) => i === 1 ? { ...r, cardinalityRange: [{ type: 'upper', upper: '50' }] } : r) }
-    : f.id === 'f_coordinates' ? { ...f, roles: f.roles.map((r, i) => i === 0 ? { ...r, cardinalityRange: [{ type: 'lower', lower: '5' }] } : r) }
+    : f.id === 'f_coordinates' ? { ...f, roles: f.roles.map((r, i) => i === 0 ? { ...r, cardinalityRange: [{ type: 'lower', lower: '5' }], cardinalityRangeDeontic: true } : r) }
     : f)
 
   objectTypes.push(
@@ -60,7 +60,7 @@ export function extend(state) {
     valueType('ot_TotalCredits', 'TotalCredits'),
     valueType('ot_EnrolmentCount', 'EnrolmentCount'),
     // Open bounds: (0..100] and more than 200.
-    { ...valueType('ot_Score', 'Score'), valueRange: [
+    { ...valueType('ot_Score', 'Score'), valueRangeDeontic: true, valueRange: [
       { type: 'range', lower: '0', upper: '100', lowerOpen: true },
       { type: 'lower', lower: '200', lowerOpen: true },
     ] },

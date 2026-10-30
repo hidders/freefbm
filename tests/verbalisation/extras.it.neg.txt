@@ -22,17 +22,17 @@ Corso è un IntroCourse se e solo se Corso ha un Titolo del corso che inizia con
 ¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
 È impossibile che un Corso ha un Titolo del corso tale che la lunghezza di quel Titolo del corso è maggiore di 40 e non è un LongTitleCourse.
 
-# Value range · Score
-¬(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
-È impossibile che uno Score è al massimo 0 o è maggiore di 100 ed è al massimo 200.
+# Value range (deontic) · Score
+F(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
+È vietato che uno Score è al massimo 0 o è maggiore di 100 ed è al massimo 200.
 
 # Cardinality · Professor
 ¬((∃^{≤1} Professor ⊤) ∨ ∃^{>20} Professor ⊤)
 È impossibile che c'è al massimo un Professore o ci sono più di 20 Professori.
 
-# Cardinality · Building
-¬((∃^{≤2} Building ⊤) ∨ ∃^{>3} Building ⊤)
-È impossibile che ci sono al massimo 2 Edifici o ci sono più di 3 Edifici.
+# Cardinality (deontic) · Building
+F((∃^{≤2} Building ⊤) ∨ ∃^{>3} Building ⊤)
+È vietato che ci sono al massimo 2 Edifici o ci sono più di 3 Edifici.
 
 # Cardinality · Course
 ¬(∃^{>100} Course ⊤)
@@ -42,9 +42,9 @@ Corso è un IntroCourse se e solo se Corso ha un Titolo del corso che inizia con
 ¬(∃^{>50} Course ∃ Student (Student enrols in Course))
 È impossibile che ci sono più di 50 Corsi che uno Studente frequenta.
 
-# Cardinality (role 1) · Staff coordinates Course
-¬(∃^{≤4} Staff ∃ Course (Staff coordinates Course))
-È impossibile che ci sono al massimo 4 Dipendenti che coordinano un Corso.
+# Cardinality (role 1) (deontic) · Staff coordinates Course
+F(∃^{≤4} Staff ∃ Course (Staff coordinates Course))
+È vietato che ci sono al massimo 4 Dipendenti che coordinano un Corso.
 
 # Derivation rule · Student studies with Staff
 ∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))

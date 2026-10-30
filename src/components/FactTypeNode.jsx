@@ -1806,7 +1806,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     return (() => {
         const nvDesc = { nestedFactId: fact.id }
         const isNvSelected = store.selectedValueRange?.nestedFactId === fact.id
-        const nvFill = isNvSelected ? 'var(--accent)' : 'var(--col-constraint)'
+        const nvFill = isNvSelected ? 'var(--accent)' : fact.valueRangeDeontic ? 'var(--col-deontic)' : 'var(--col-constraint)'
         return (
           <g key="nested-vr" className="selectable-group" style={{ filter: isNvSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined, pointerEvents: inQueryEdit ? 'none' : undefined }}>
             <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
@@ -1867,7 +1867,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     return (() => {
         const ncDesc = { nestedFactId: fact.id }
         const isNcSelected = store.selectedCardinalityRange?.nestedFactId === fact.id
-        const ncFill = isNcSelected ? 'var(--accent)' : 'var(--col-constraint)'
+        const ncFill = isNcSelected ? 'var(--accent)' : fact.cardinalityRangeDeontic ? 'var(--col-deontic)' : 'var(--col-constraint)'
         return (
           <g key="nested-cr" className="selectable-group" style={{ filter: isNcSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined, pointerEvents: inQueryEdit ? 'none' : undefined }}>
             <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
@@ -2826,7 +2826,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
       const vrDesc = { factId: fact.id, roleIndex: ri }
       const isVrSelected = store.selectedValueRange?.factId === fact.id && store.selectedValueRange?.roleIndex === ri
-      const vrFill = isVrSelected ? 'var(--accent)' : 'var(--col-constraint)'
+      const vrFill = isVrSelected ? 'var(--accent)' : role.valueRangeDeontic ? 'var(--col-deontic)' : 'var(--col-constraint)'
       return (
         <g key={`vr-${role.id}`} className="selectable-group" style={{ filter: isVrSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined, pointerEvents: inQueryEdit ? 'none' : undefined }}>
           <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
@@ -2885,7 +2885,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
       const crDesc = { factId: fact.id, roleIndex: ri }
       const isCrSelected = store.selectedCardinalityRange?.factId === fact.id && store.selectedCardinalityRange?.roleIndex === ri
-      const crFill = isCrSelected ? 'var(--accent)' : 'var(--col-constraint)'
+      const crFill = isCrSelected ? 'var(--accent)' : role.cardinalityRangeDeontic ? 'var(--col-deontic)' : 'var(--col-constraint)'
       return (
         <g key={`cr-${role.id}`} className="selectable-group" style={{ filter: isCrSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined, pointerEvents: inQueryEdit ? 'none' : undefined }}>
           <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}

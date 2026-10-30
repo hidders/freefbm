@@ -531,7 +531,7 @@ function RangeField({ value, onChange, placeholder, typeKind, numProps, inputSty
     )
   }
   return (
-    <input {...numProps} value={localValue ?? ''} placeholder={placeholder}
+    <input {...numProps} className="range-field" value={localValue ?? ''} placeholder={placeholder}
       onChange={e => setLocalValue(e.target.value)}
       onBlur={() => { if (localValue !== value) onChange(localValue) }}
       onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
@@ -648,7 +648,7 @@ export function ValueRangeEditor({ range, onChange, naturalNumbers = false, posi
     setDrag(null)
   }
 
-  const inputStyle = { fontSize: 11, padding: '2px 4px', flex: 1, minWidth: 0 }
+  const inputStyle = { fontSize: 11, padding: '2px 3px', flex: 1, minWidth: 0 }
   const sepStyle = { fontSize: 11, color: 'var(--ink-muted)', flexShrink: 0, padding: '0 2px' }
   // Value ranges may have open (exclusive) bounds, as in NORMA; counts
   // (cardinality, frequency) are integers and don't need them.
@@ -660,7 +660,7 @@ export function ValueRangeEditor({ range, onChange, naturalNumbers = false, posi
       <button onClick={() => updateSpec(i, { [field]: !open })}
         title={open ? 'Open bound: the bound itself is excluded. Click to include it.'
           : 'Closed bound: the bound itself is included. Click to exclude it.'}
-        style={{ fontSize: 12, fontFamily: 'var(--font-mono)', padding: '0 3px', flexShrink: 0,
+        style={{ fontSize: 12, fontFamily: 'var(--font-mono)', padding: '0 1px', flexShrink: 0,
           background: 'none', border: '1px solid transparent', borderRadius: 3, cursor: 'pointer',
           color: open ? 'var(--accent)' : 'var(--ink-muted)', fontWeight: open ? 700 : 400 }}>
         {sym}
@@ -716,7 +716,7 @@ export function ValueRangeEditor({ range, onChange, naturalNumbers = false, posi
             style={{ cursor: drag ? 'grabbing' : 'grab', color: 'var(--ink-muted)', fontSize: 11,
               flexShrink: 0, paddingRight: 1, userSelect: 'none', touchAction: 'none' }}>⠿</span>
           <select value={spec.type} onChange={e => changeType(i, e.target.value)}
-            style={{ fontSize: 11, flexShrink: 0 }}>
+            style={{ fontSize: 11, flexShrink: 1, minWidth: 0, width: 64 }}>
             {VR_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
 
@@ -1582,6 +1582,9 @@ function useRangeSelectionInfo(sel) {
       onBack: () => store.select(ot.id, ot.kind),
       valueRange:      ot.valueRange,
       cardinalityRange: ot.cardinalityRange,
+      valueRangeDeontic:       !!ot.valueRangeDeontic,
+      cardinalityRangeDeontic: !!ot.cardinalityRangeDeontic,
+      onPatch:                 patch => store.updateObjectType(ot.id, patch),
       valueTypeKind:   typeKindFromAssignment(ot.datatypeAssignment),
       onChangeValueRange:      vr => store.updateObjectType(ot.id, { valueRange: vr }),
       onChangeCardinalityRange: vr => store.updateObjectType(ot.id, { cardinalityRange: vr }),
@@ -1602,6 +1605,9 @@ function useRangeSelectionInfo(sel) {
       onBack: () => store.selectRole(f.id, sel.roleIndex),
       valueRange:      role.valueRange,
       cardinalityRange: role.cardinalityRange,
+      valueRangeDeontic:       !!role.valueRangeDeontic,
+      cardinalityRangeDeontic: !!role.cardinalityRangeDeontic,
+      onPatch:                 patch => store.updateRole(f.id, sel.roleIndex, patch),
       valueTypeKind:   typeKindFromAssignment(player?.datatypeAssignment),
       onChangeValueRange:      vr => store.updateRole(f.id, sel.roleIndex, { valueRange: vr }),
       onChangeCardinalityRange: vr => store.updateRole(f.id, sel.roleIndex, { cardinalityRange: vr }),
@@ -1619,6 +1625,9 @@ function useRangeSelectionInfo(sel) {
       onBack: () => store.select(f.id, 'fact'),
       valueRange:      f.valueRange,
       cardinalityRange: f.cardinalityRange,
+      valueRangeDeontic:       !!f.valueRangeDeontic,
+      cardinalityRangeDeontic: !!f.cardinalityRangeDeontic,
+      onPatch:                 patch => store.updateFact(f.id, patch),
       valueTypeKind:   typeKindFromAssignment(f.datatypeAssignment),
       onChangeValueRange:      vr => store.updateFact(f.id, { valueRange: vr }),
       onChangeCardinalityRange: vr => store.updateFact(f.id, { cardinalityRange: vr }),
@@ -1655,6 +1664,9 @@ function ValueRangeConstraintInspector({ sel }) {
           typeKind={info.valueTypeKind}
         />
       </Row>
+      <Label>Modality</Label>
+      <DeonticCheckbox checked={info.valueRangeDeontic}
+        onChange={v => info.onPatch({ valueRangeDeontic: v })}/>
       <Label>Usage</Label>
       <DangerBtn onClick={info.onDeleteValueRange}>Delete Value Range</DangerBtn>
     </div>
@@ -1687,6 +1699,9 @@ function CardinalityRangeInspector({ sel }) {
           onChange={info.onChangeCardinalityRange}
         />
       </Row>
+      <Label>Modality</Label>
+      <DeonticCheckbox checked={info.cardinalityRangeDeontic}
+        onChange={v => info.onPatch({ cardinalityRangeDeontic: v })}/>
       <Label>Usage</Label>
       <DangerBtn onClick={info.onDeleteCardinalityRange}>Delete Cardinality Range</DangerBtn>
     </div>

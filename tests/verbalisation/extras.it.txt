@@ -22,17 +22,17 @@ Corso è un IntroCourse se e solo se Corso ha un Titolo del corso che inizia con
 ∀ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) → LongTitleCourse(Course))
 Ogni Corso che ha un Titolo del corso tale che la lunghezza di quel Titolo del corso è maggiore di 40 è un LongTitleCourse.
 
-# Value range · Score
-∀ Score ((Score > 0 ∧ Score ≤ 100) ∨ Score > 200)
-I valori possibili di Score sono più di 0 e al massimo 100, più di 200.
+# Value range (deontic) · Score
+O(∀ Score ((Score > 0 ∧ Score ≤ 100) ∨ Score > 200))
+È obbligatorio che i valori possibili di Score sono più di 0 e al massimo 100, più di 200.
 
 # Cardinality · Professor
 ∃^{2..20} Professor ⊤
 Ci sono almeno 2 e al massimo 20 Professori.
 
-# Cardinality · Building
-∃^{=3} Building ⊤
-Ci sono esattamente 3 Edifici.
+# Cardinality (deontic) · Building
+O(∃^{=3} Building ⊤)
+È obbligatorio che ci sono esattamente 3 Edifici.
 
 # Cardinality · Course
 ∃^{≤100} Course ⊤
@@ -42,9 +42,9 @@ Ci sono al massimo 100 Corsi.
 ∃^{≤50} Course ∃ Student (Student enrols in Course)
 Ci sono al massimo 50 Corsi che uno Studente frequenta.
 
-# Cardinality (role 1) · Staff coordinates Course
-∃^{≥5} Staff ∃ Course (Staff coordinates Course)
-Ci sono almeno 5 Dipendenti che coordinano un Corso.
+# Cardinality (role 1) (deontic) · Staff coordinates Course
+O(∃^{≥5} Staff ∃ Course (Staff coordinates Course))
+È obbligatorio che ci sono almeno 5 Dipendenti che coordinano un Corso.
 
 # Derivation rule · Student studies with Staff
 ∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))

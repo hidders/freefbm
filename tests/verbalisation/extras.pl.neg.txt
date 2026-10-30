@@ -22,17 +22,17 @@ Przedmiot jest IntroCourse wtedy i tylko wtedy, gdy Przedmiot ma jakiś Tytuł p
 ¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
 Niemożliwe jest, że jakiś Przedmiot ma jakiś Tytuł przedmiotu taki, że długość tego Tytułu przedmiotu wynosi więcej niż 40 i nie jest LongTitleCourse.
 
-# Value range · Score
-¬(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
-Niemożliwe jest, że jakiś Score wynosi co najwyżej 0 lub wynosi więcej niż 100 i wynosi co najwyżej 200.
+# Value range (deontic) · Score
+F(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
+Niedopuszczalne jest, że jakiś Score wynosi co najwyżej 0 lub wynosi więcej niż 100 i wynosi co najwyżej 200.
 
 # Cardinality · Professor
 ¬((∃^{≤1} Professor ⊤) ∨ ∃^{>20} Professor ⊤)
 Niemożliwe jest, że istnieje co najwyżej jeden Profesor lub istnieje więcej niż 20 Profesorów.
 
-# Cardinality · Building
-¬((∃^{≤2} Building ⊤) ∨ ∃^{>3} Building ⊤)
-Niemożliwe jest, że istnieją co najwyżej 2 Budynki lub istnieją więcej niż 3 Budynki.
+# Cardinality (deontic) · Building
+F((∃^{≤2} Building ⊤) ∨ ∃^{>3} Building ⊤)
+Niedopuszczalne jest, że istnieją co najwyżej 2 Budynki lub istnieją więcej niż 3 Budynki.
 
 # Cardinality · Course
 ¬(∃^{>100} Course ⊤)
@@ -42,9 +42,9 @@ Niemożliwe jest, że istnieje więcej niż 100 Przedmiotów.
 ¬(∃^{>50} Course ∃ Student (Student enrols in Course))
 Niemożliwe jest, że istnieje więcej niż 50 Przedmiotów, które jakiś Student studiuje.
 
-# Cardinality (role 1) · Staff coordinates Course
-¬(∃^{≤4} Staff ∃ Course (Staff coordinates Course))
-Niemożliwe jest, że istnieje co najwyżej 4 Pracowników, którzy koordynują jakiś Przedmiot.
+# Cardinality (role 1) (deontic) · Staff coordinates Course
+F(∃^{≤4} Staff ∃ Course (Staff coordinates Course))
+Niedopuszczalne jest, że istnieje co najwyżej 4 Pracowników, którzy koordynują jakiś Przedmiot.
 
 # Derivation rule · Student studies with Staff
 ∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))

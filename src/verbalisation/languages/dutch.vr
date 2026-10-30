@@ -40,9 +40,16 @@ sentence rule forbidden {
   template: "het is verboden dat" clause(?x, form: "sub")
 }
 
+# Subordinate form (under "het is verplicht dat"): the verb goes last.
+sentence rule value-range-sub {
+  match:    ForAll([?x], ?body)
+  guard:    env.form == "sub" and rangeItems(?body, ?x)
+  template: "de mogelijke waarden van" name(?x) commaList(rangeItems(?body, ?x)) "zijn"
+}
+
 sentence rule value-range {
   match:    ForAll([?x], ?body)
-  guard:    rangeItems(?body, ?x)
+  guard:    not env.form and rangeItems(?body, ?x)
   template: "de mogelijke waarden van" name(?x) "zijn" commaList(rangeItems(?body, ?x))
 }
 

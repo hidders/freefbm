@@ -89,9 +89,9 @@ export function createSelectionSlice(set, get) {
     },
     deselectValueRange() { set({ selectedValueRange: null }) },
     removeValueRange(desc) {
-      if (desc.otId)          get().updateObjectType(desc.otId, { valueRange: [] })
-      else if (desc.factId != null) get().updateRole(desc.factId, desc.roleIndex, { valueRange: [] })
-      else if (desc.nestedFactId)   get().updateFact(desc.nestedFactId, { valueRange: null })
+      if (desc.otId)          get().updateObjectType(desc.otId, { valueRange: [], valueRangeDeontic: false })
+      else if (desc.factId != null) get().updateRole(desc.factId, desc.roleIndex, { valueRange: [], valueRangeDeontic: false })
+      else if (desc.nestedFactId)   get().updateFact(desc.nestedFactId, { valueRange: null, valueRangeDeontic: false })
       set({ selectedValueRange: null })
     },
 
@@ -103,9 +103,9 @@ export function createSelectionSlice(set, get) {
     },
     deselectCardinalityRange() { set({ selectedCardinalityRange: null }) },
     removeCardinalityRange(desc) {
-      if (desc.otId)          get().updateObjectType(desc.otId, { cardinalityRange: [] })
-      else if (desc.factId != null) get().updateRole(desc.factId, desc.roleIndex, { cardinalityRange: [] })
-      else if (desc.nestedFactId)   get().updateFact(desc.nestedFactId, { cardinalityRange: null })
+      if (desc.otId)          get().updateObjectType(desc.otId, { cardinalityRange: [], cardinalityRangeDeontic: false })
+      else if (desc.factId != null) get().updateRole(desc.factId, desc.roleIndex, { cardinalityRange: [], cardinalityRangeDeontic: false })
+      else if (desc.nestedFactId)   get().updateFact(desc.nestedFactId, { cardinalityRange: null, cardinalityRangeDeontic: false })
       set({ selectedCardinalityRange: null })
     },
 
@@ -113,7 +113,7 @@ export function createSelectionSlice(set, get) {
       set(s => ({
         facts: s.facts.map(f => {
           if (f.id !== factId) return f
-          const roles = f.roles.map((r, i) => i === roleIndex ? { ...r, mandatory: false } : r)
+          const roles = f.roles.map((r, i) => i === roleIndex ? { ...r, mandatory: false, mandatoryDeontic: false } : r)
           return { ...f, roles }
         }),
         selectedMandatoryDot: null,

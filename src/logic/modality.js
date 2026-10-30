@@ -13,6 +13,9 @@
 //   internal uniqueness   fact.deonticUniqueness, role-index arrays matched
 //                         like fact.preferredUniqueness; a preferred
 //                         identifier is always alethic
+//   value range           valueRangeDeontic on the object type, role or
+//                         objectified fact type that has the range
+//   cardinality range     cardinalityRangeDeontic, likewise
 
 const ucKey = (u) => [...u].sort((a, b) => a - b).join(',')
 
