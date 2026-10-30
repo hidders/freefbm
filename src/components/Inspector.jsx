@@ -1012,11 +1012,6 @@ function DerivationSection({ ot, store }) {
         </button>
       </div>
       {isDerived(ot) && (
-        <Checkbox label={`Population is also stored (${mode === 'derived' ? '**' : '++'})`} checked={!!ot.derivationStored}
-          title="Derived and stored, as NORMA's DerivationStorage: the name gets ** or ++"
-          onChange={v => store.updateObjectType(ot.id, { derivationStored: v })}/>
-      )}
-      {isDerived(ot) && (
         <div style={{ fontSize: 11, marginTop: 4,
           color: nErrors ? 'var(--danger)' : 'var(--ink-muted)' }}>
           {!ot.derivationRule ? 'No rule yet'
@@ -1061,11 +1056,6 @@ function FactDerivationSection({ fact, store }) {
           Derivation rule…
         </button>
       </div>
-      {isDerivedFact(fact) && (
-        <Checkbox label={`Population is also stored (${mode === 'derived' ? '**' : '++'})`} checked={!!fact.derivationStored}
-          title="Derived and stored, as NORMA's DerivationStorage: the reading gets ** or ++"
-          onChange={v => store.updateFact(fact.id, { derivationStored: v })}/>
-      )}
       {isDerivedFact(fact) && (
         <div style={{ fontSize: 11, marginTop: 4,
           color: nErrors ? 'var(--danger)' : 'var(--ink-muted)' }}>

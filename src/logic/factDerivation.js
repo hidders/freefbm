@@ -32,12 +32,8 @@ export function isDerivedFact(f) {
   return f?.derivation === 'derived' || f?.derivation === 'semiDerived'
 }
 
-// The ORM2 mark after the reading of a derived (*) or semi-derived (+) fact type,
-// doubled (** or ++) when its population is also stored, as in NORMA.
-export const factDerivationMark = (f) => {
-  const m = f?.derivation === 'derived' ? '*' : f?.derivation === 'semiDerived' ? '+' : ''
-  return m && f.derivationStored ? m + m : m
-}
+// The ORM2 mark after the reading of a derived (*) or semi-derived (+) fact type.
+export const factDerivationMark = (f) => (f?.derivation === 'derived' ? '*' : f?.derivation === 'semiDerived' ? '+' : '')
 
 export const emptyFactRule = () => ({ body: hole(), extraVars: [], terms: {} })
 

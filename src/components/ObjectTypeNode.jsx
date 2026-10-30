@@ -61,14 +61,11 @@ function fmtDate(v) {
   return v
 }
 
-// An open (exclusive) bound is written with a round bracket, as NORMA does:
-// (0..100]. The square bracket of a closed bound is only written next to an
-// open one; a range with closed bounds stays 0..100.
+// Bounds are closed by default; an open (exclusive) one gets a round bracket,
+// as in Halpin & Morgan's {(0..100}. Closed bounds get no square bracket.
 function formatRangeSpec(spec) {
   if (!spec) return ''
   if (spec.type === 'single') return fmtDate(String(spec.value ?? ''))
-  // Bounds are closed by default; an open one gets a round bracket, as in
-  // Halpin & Morgan's {(0..100} (no square brackets for the closed end).
   const left  = spec.type !== 'upper' && spec.lowerOpen ? '(' : ''
   const right = spec.type !== 'lower' && spec.upperOpen ? ')' : ''
   if (spec.type === 'lower')  return `${left}${fmtDate(spec.lower ?? '')}..`
@@ -514,9 +511,9 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
           {ot._fb?.name != null
             ? <tspan fill={isConstraintTarget ? '#ffffff' : 'var(--ink-muted)'} fontStyle="italic">{ot.name}</tspan>
             : ot.name}
-          {/* + sits on the baseline, so raise it (and ++) to match the * of a derived type. */}
-          {derivationMark(ot).startsWith('+')
-            ? <tspan baselineShift="super" fontSize={OT_SIZE_NAME * 0.75}>{derivationMark(ot)}</tspan>
+          {/* + sits on the baseline, so raise it to match the * of a derived type. */}
+          {derivationMark(ot) === '+'
+            ? <tspan baselineShift="super" fontSize={OT_SIZE_NAME * 0.75}>+</tspan>
             : derivationMark(ot)}
           {ot.isIndependent ? ' !' : ''}
         </text>

@@ -70,12 +70,8 @@ export function isDerived(ot) {
   return ot?.derivation === 'derived' || ot?.derivation === 'semiDerived'
 }
 
-// The ORM2 mark after the name of a derived (*) or semi-derived (+) type,
-// doubled (** or ++) when its population is also stored, as in NORMA.
-export const derivationMark = (ot) => {
-  const m = ot?.derivation === 'derived' ? '*' : ot?.derivation === 'semiDerived' ? '+' : ''
-  return m && ot.derivationStored ? m + m : m
-}
+// The ORM2 mark after the name of a derived (*) or semi-derived (+) type.
+export const derivationMark = (ot) => (ot?.derivation === 'derived' ? '*' : ot?.derivation === 'semiDerived' ? '+' : '')
 
 // ── Upgrading older rules ────────────────────────────────────────────────────
 

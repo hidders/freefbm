@@ -1704,7 +1704,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         {text}
         {dmark && (text ? ' ' : '')}
         {/* + sits on the baseline, so raise it to match the * of a derived fact type. */}
-        {dmark.startsWith('+') ? <tspan baselineShift="super" fontSize={14 * 0.75}>{dmark}</tspan> : dmark}
+        {dmark === '+' ? <tspan baselineShift="super" fontSize={14 * 0.75}>+</tspan> : dmark}
       </text>
     )
   }
