@@ -295,6 +295,13 @@ function readingSignature(parts, roleOrder, roles, otMap) {
 
 export function runValidation(state, enabledCategories) {
   const { objectTypes, facts, constraints, subtypes = [] } = state
+  // The composite preferred identifiers of the entity types, worked out once
+  // rather than per fact type.
+  let compositePIs = null
+  const entityCompositePIs = () => compositePIs ??= objectTypes
+    .filter(ot => ot.kind === 'entity')
+    .map(ot => findCompositePI(ot, facts, objectTypes, constraints))
+    .filter(Boolean)
   const errors = []
   let ctx = null   // made when a check needs it (constraintFormulas.js makeContext)
 
@@ -363,11 +370,7 @@ export function runValidation(state, enabledCategories) {
       // FactTypeRequiresInternalUniquenessConstraintError: non-unary facts need at least one
       // internal UC. An implied UC from a cross-fact external uniqueness PI also satisfies this.
       if (f.arity >= 2 && (!f.uniqueness || f.uniqueness.length === 0)) {
-        const hasImpliedUC = objectTypes.some(ot => {
-          if (ot.kind !== 'entity') return false
-          const cp = findCompositePI(ot, facts, objectTypes, constraints)
-          return cp && cp.factIds?.includes(f.id)
-        })
+        const hasImpliedUC = entityCompositePIs().some(cp => cp.factIds?.includes(f.id))
         if (!hasImpliedUC) {
           errors.push({
             id: `fact-needs-uniqueness-${f.id}`,
@@ -394,10 +397,8 @@ export function runValidation(state, enabledCategories) {
             valImpliedRoles.push(ri)
         }
       })
-      for (const ot of objectTypes) {
-        if (ot.kind !== 'entity') continue
-        const cp = findCompositePI(ot, facts, objectTypes, constraints)
-        if (!cp || !cp.factIds?.includes(f.id)) continue
+      for (const cp of entityCompositePIs()) {
+        if (!cp.factIds?.includes(f.id)) continue
         const ci = cp.factIds.indexOf(f.id)
         const entityRoleIdx = cp.entityRoleIndices?.[ci] ?? cp.entityRoleIndex
         if (entityRoleIdx != null && !valExistingUnary.has(entityRoleIdx) && !valImpliedRoles.includes(entityRoleIdx))

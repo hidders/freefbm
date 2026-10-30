@@ -19,7 +19,7 @@ This is an **Electron desktop application** for editing ORM2 (Object-Role Modeli
 
 ### Process split
 
-- **Electron main** (`electron/main.cjs`) — window lifecycle, native menus, file dialogs (`.ffbm` JSON files; `.orm2`/`.json` still open)
+- **Electron main** (`electron/main.cjs`) — window lifecycle, native menus, file dialogs (`.ffbm` JSON files; `.orm2`/`.json` still open; NORMA `.orm` is imported)
 - **Preload** (`electron/preload.cjs`) — exposes `window.electronAPI` (openFile, saveFile, onMenuEvent) via context bridge
 - **Renderer** — React 18 SPA served by Vite; communicates with main only through `window.electronAPI`
 
@@ -59,6 +59,8 @@ The active `selectedTool` in the store determines how canvas clicks are interpre
 ### File format
 
 Files are saved as `.ffbm` (JSON; the legacy `.orm2` and `.json` extensions still open). The store's `exportModel()` / `importModel()` functions serialise/deserialise all four element collections.
+
+File › Open also accepts NORMA `.orm` files: `src/import/norma.js` (`importNorma`) turns the XML into a FreeFBM model, which opens as a new unsaved model with an import log (`ImportLogPanel.jsx`); `src/import/openModelFile.js` routes the file. NORMA derivation rules and hand-drawn join paths are not translated yet.
 
 ### Styling
 

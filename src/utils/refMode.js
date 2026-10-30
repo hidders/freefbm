@@ -757,16 +757,36 @@ export function canBeExternalUniquenessPI(constraint, facts) {
   return { ok: true, entityOtId: commonEntityOtId }
 }
 
+// The ids of the facts that identify an entity type, by ref mode or composite
+// preferred identifier: { entity, nested }, for entity object types and for
+// objectified facts, and each one's findRefMode / findCompositePI result by
+// its id: { refModes, compositePIs }. Cached per state arrays, since callers
+// ask for every fact and working it out per fact is quadratic in a large
+// schema.
+let identCache = null
+export function identifyingFactIds(facts, objectTypes, constraints) {
+  if (identCache && identCache.facts === facts && identCache.objectTypes === objectTypes
+      && identCache.constraints === constraints) return identCache.ids
+  const refModes = new Map(), compositePIs = new Map()
+  const add = (set, t) => {
+    const rm = findRefMode(t, facts, objectTypes)
+    if (rm) { set.add(rm.factId); refModes.set(t.id, rm) }
+    const cp = findCompositePI(t, facts, objectTypes, constraints)
+    if (cp) compositePIs.set(t.id, cp)
+    if (cp?.factId) set.add(cp.factId)
+    for (const id of cp?.factIds ?? []) set.add(id)
+  }
+  const entity = new Set(), nested = new Set()
+  for (const ot of objectTypes) if (ot.kind === 'entity') add(entity, ot)
+  for (const f of facts) if (f.objectified && f.objectifiedKind !== 'value') add(nested, f)
+  const ids = { entity, nested, refModes, compositePIs }
+  identCache = { facts, objectTypes, constraints, ids }
+  return ids
+}
+
 // True iff the given fact is the identifying fact for some entity, either via
 // a ref-mode binary or via a composite preferred identifier.
 export function isIdentifyingFact(fact, facts, objectTypes, constraints) {
   if (!fact) return false
-  for (const ot of objectTypes) {
-    if (ot.kind !== 'entity') continue
-    const rm = findRefMode(ot, facts, objectTypes)
-    if (rm && rm.factId === fact.id) return true
-    const cp = findCompositePI(ot, facts, objectTypes, constraints)
-    if (cp && (cp.factId === fact.id || cp.factIds?.includes(fact.id))) return true
-  }
-  return false
+  return identifyingFactIds(facts, objectTypes, constraints).entity.has(fact.id)
 }

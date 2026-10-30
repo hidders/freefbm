@@ -24,7 +24,7 @@ import { forall, exists, implies, iff, and, factAtom } from './formula.js'
 import { hole, upgradeRule, checkFormula, formulaVariables, ruleFormula, childPaths, isDerived } from './derivationRule.js'
 import { fits } from './dataOperators.js'
 import { valueAccess } from './values.js'
-import { findRefMode, findCompositePI } from '../utils/refMode.js'
+import { identifyingFactIds } from '../utils/refMode.js'
 
 export const roleVarId = (role) => `role:${role.id}`
 
@@ -45,14 +45,8 @@ export const isComputedRole = (fact, role, rule = fact.derivationRule) =>
 // identifier) are not derived by a rule: their population follows from the
 // entity's population.
 export function isIdentifyingFact(fact, state) {
-  const facts = state.facts ?? [], objectTypes = state.objectTypes ?? []
-  for (const t of [...objectTypes, ...facts.filter(f => f.objectified)]) {
-    if (t.id === fact.id) continue
-    if (findRefMode(t, facts, objectTypes)?.factId === fact.id) return true
-    const cp = findCompositePI(t, facts, objectTypes, state.constraints)
-    if (cp && (cp.factId === fact.id || cp.factIds?.includes(fact.id))) return true
-  }
-  return false
+  const ids = identifyingFactIds(state.facts ?? [], state.objectTypes ?? [], state.constraints)
+  return ids.entity.has(fact.id) || ids.nested.has(fact.id)
 }
 
 // Why the fact type cannot be derived, or null.

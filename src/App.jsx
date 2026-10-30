@@ -5,6 +5,7 @@ import Canvas from './components/Canvas'
 import Inspector from './components/Inspector'
 import BottomPanel from './components/BottomPanel'
 import { RuleEditorPanel } from './components/DerivationRuleEditor'
+import ImportLogPanel from './components/ImportLogPanel'
 import StatusBar from './components/StatusBar'
 import WelcomeScreen from './components/WelcomeScreen'
 import DiagramTabs from './components/DiagramTabs'
@@ -325,6 +326,7 @@ export default function App() {
 
         <div id="app-statusbar" className="no-print"><StatusBar /></div>
         <RuleEditorPanel />
+        <ImportLogPanel />
       </div>
     </ErrorBoundary>
   )
