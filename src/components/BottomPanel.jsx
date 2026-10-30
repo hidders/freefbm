@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { findRefMode, refModeLabel, getVtEffectivePopulation, getEntityEffectivePopulation, findCompositePI, findInheritedPI, findRolePlayer, getEntityIdentifierShape, getRoleCellShape, getNestedCellShape, isCompleteValue, UNSET } from '../utils/refMode'
 import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
 import { computeRingConstraintRelation, computeUniquenessProjection, computeSequenceProjections, computeValueComparisonData, computeInclusiveOrTable, computeExclusiveOrTable, computeExclusionTable, computeEqualityTable, computeSubsetTable, freqRangeSatisfies, projCellKey, findLCAsForTypes, checkC1ForTypes } from '../utils/populationValidation.js'
@@ -17,7 +17,7 @@ const TABS = [
 ]
 
 export default function BottomPanel() {
-  const store     = useOrmStore()
+  const store     = useOrmStoreIgnoring('pan', 'zoom')
   const expandedH = store.bottomPanelHeight
   const collapsed = store.bottomPanelCollapsed
   const tab       = store.bottomPanelTab
@@ -139,7 +139,7 @@ export default function BottomPanel() {
 
 // ── Population tab ─────────────────────────────────────────────────────────
 function PopulationTab() {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const { selectedId, selectedRole, selectedKind } = store
 
   // Resolve the element whose population we're viewing
@@ -274,7 +274,7 @@ const displayTranslatedTuple = (tuple) =>
   tuple ? tuple.map(displayTranslated).join(', ') : '—'
 
 function RingConstraintPopulation({ con }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const [selectedLcaId, setSelectedLcaId] = useState(null)
   const otById = new Map((store.objectTypes || []).map(o => [o.id, o]))
   const data = {
@@ -385,7 +385,7 @@ function RingConstraintPopulation({ con }) {
 }
 
 function ExternalUniquenessPopulation({ con }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const data = {
     facts: store.facts,
     factPopulations: store.factPopulations,
@@ -492,7 +492,7 @@ function ExternalUniquenessPopulation({ con }) {
 }
 
 function ExternalFrequencyPopulation({ con }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const data = {
     facts: store.facts,
     factPopulations: store.factPopulations,
@@ -601,7 +601,7 @@ function ExternalFrequencyPopulation({ con }) {
 }
 
 function InclusiveOrConstraintPopulation({ con }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const [selectedLcaId, setSelectedLcaId] = useState(null)
   const otById = new Map((store.objectTypes || []).map(o => [o.id, o]))
   const data = {
@@ -703,7 +703,7 @@ function InclusiveOrConstraintPopulation({ con }) {
 }
 
 function ExclusiveOrConstraintPopulation({ con }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const [selectedLcaId, setSelectedLcaId] = useState(null)
   const otById = new Map((store.objectTypes || []).map(o => [o.id, o]))
   const data = {
@@ -819,7 +819,7 @@ function ExclusiveOrConstraintPopulation({ con }) {
 }
 
 function ExclusionConstraintPopulation({ con }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const [selectedLcaIds, setSelectedLcaIds] = useState({})
   const otById = new Map((store.objectTypes || []).map(o => [o.id, o]))
   const data = {
@@ -1013,7 +1013,7 @@ function SetConstraintTable({ label, rows, seqCount, positionInfo, violationCoun
 }
 
 function EqualityConstraintPopulation({ con }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const [selectedLcaIds, setSelectedLcaIds] = useState({})
   const otById = new Map((store.objectTypes || []).map(o => [o.id, o]))
   const data = {
@@ -1043,7 +1043,7 @@ function EqualityConstraintPopulation({ con }) {
 }
 
 function SubsetConstraintPopulation({ con }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const [selectedLcaIds, setSelectedLcaIds] = useState({})
   const otById = new Map((store.objectTypes || []).map(o => [o.id, o]))
   const data = {
@@ -1073,7 +1073,7 @@ function SubsetConstraintPopulation({ con }) {
 }
 
 function ExternalBinaryConstraintPopulation({ con }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const data = {
     facts: store.facts,
     factPopulations: store.factPopulations,
@@ -1246,7 +1246,7 @@ function ExternalBinaryConstraintPopulation({ con }) {
 }
 
 function ValueComparisonPopulation({ con }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const data = {
     facts: store.facts,
     factPopulations: store.factPopulations,
@@ -1385,7 +1385,7 @@ function typeKindFromOt(ot) {
 // disabled when `missing` is empty. Clicking adds the missing values to
 // `targetId`'s population (cascading further via the store helper).
 function PropagateButton({ label, missing, targetId, onPropagate, title, style }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const enabled = missing && missing.length > 0
   const tip = enabled
     ? (title || `Add ${missing.length} missing value${missing.length === 1 ? '' : 's'}`)
@@ -1480,7 +1480,7 @@ function candidatesAt(outerPop, rootValue, path) {
 // When the PI is inherited (this entity is a subtype using its supertype's
 // scheme), `inheritedFrom` is the supertype that owns the identifying fact.
 function CompositePIEntityPopulation({ ot, cp, inheritedFrom }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   // For cross-fact PI (cp.factId === null), each column belongs to a different fact.
   const getFactForCol = (ci) =>
     store.facts.find(f => f.id === (cp.factIds ? cp.factIds[ci] : cp.factId))
@@ -1633,7 +1633,7 @@ function CompositePIEntityPopulation({ ot, cp, inheritedFrom }) {
 }
 
 function ObjectTypePopulation({ ot }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const isEntity = ot.kind === 'entity'
   const refMode  = isEntity ? findRefMode(ot, store.facts, store.objectTypes) : null
   let refVt     = refMode ? store.objectTypes.find(o => o.id === refMode.vtId) : null
@@ -1764,7 +1764,7 @@ function ObjectTypePopulation({ ot }) {
 // population as what the rule requires, with the instances still missing
 // from the population marked and addable.
 function DerivedSubtypePopulation({ ot, semi = false }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const ev = makePopulationEvaluator(store)
   const result = ev.derived(ot.id)
   const stored = semi ? ev.population(ot.id) : null
@@ -1826,7 +1826,7 @@ function DerivedSubtypePopulation({ ot, semi = false }) {
 // below the editable population as what the rule requires, with the facts
 // still missing from the population marked and addable.
 function DerivedFactPopulation({ fact, semi = false }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const ev = makePopulationEvaluator(store)
   const result = ev.derivedFact(fact.id)
   const stored = semi ? ev.storedTuples(fact) : null
@@ -1910,7 +1910,7 @@ function DerivedFactPopulation({ fact, semi = false }) {
 // identifying-role player (cell values → that player's pop), plus one button
 // per inheriting supertype (whole tuple → supertype's pop).
 function CompositePIPropagateTargets({ ot, cp, fact, tuples }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   if (!ot || !cp) return null
   const items = []
   // Per identifying-role player.
@@ -1961,7 +1961,7 @@ function CompositePIPropagateTargets({ ot, cp, fact, tuples }) {
 //   - entity: each inheriting supertype, the ref-mode VT (if any).
 //   - value type: none (VTs are leaf populations under the new design).
 function PropagateTargets({ ot, sourceValues }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   if (ot.kind !== 'entity') return null
   const targets = []
   // Inheriting supertype edges where this entity is the subtype.
@@ -2001,7 +2001,7 @@ function PropagateTargets({ ot, sourceValues }) {
 // supertype whose composite-PI uses Building (itself composite-PI) renders
 // the Building column as two sub-sub-inputs.
 function SubtypeMappingPopulation({ edge }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const sub  = store.objectTypes.find(o => o.id === edge.subId)
   const sup  = store.objectTypes.find(o => o.id === edge.superId)
   if (!sub || !sup) return <EmptyState>Subtype endpoint not found.</EmptyState>
@@ -2219,7 +2219,7 @@ function SubtypeMappingPopulation({ edge }) {
 // implied links) and the explicit-PI case (combined PI=>Fact table + derived
 // PI fact + derived implied links).
 function NestedEntityObjectifiedPopulation({ fact }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const arity = fact.arity ?? fact.roles?.length ?? 0
   if (arity < 1) return <EmptyState>This fact type has no roles.</EmptyState>
 
@@ -2264,7 +2264,7 @@ function NestedEntityObjectifiedPopulation({ fact }) {
 
 // ── Implied-link population (derived, shown when the implied link is selected) ─
 function ImpliedLinkPopulation({ parentFact, roleIndex }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const arity = parentFact.arity ?? parentFact.roles?.length ?? 0
   const role  = parentFact.roles[roleIndex]
   const rolePlayer = role?.objectTypeId
@@ -2404,7 +2404,7 @@ function DerivedImpliedLinks({ arity, factTuples, roleShapes, entityShape, roleL
 
 // Case 1: No explicit PI. Editable underlying fact table + derived implied links.
 function NestedEntityImplicitPIPopulation({ fact, arity, name, factTuples, roleShapes, entityShape, roleLabel }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
 
   // Autocomplete metadata per leaf player (same pattern as FactTypePopulation).
   const collectLeafPlayers = (shape, out) => {
@@ -2494,7 +2494,7 @@ function NestedEntityImplicitPIPopulation({ fact, arity, name, factTuples, roleS
 
 // Case 2: Explicit PI. Combined (PI => Fact) table + derived PI-fact + derived implied links.
 function NestedEntityExplicitPIPopulation({ fact, arity, name, factTuples, roleShapes, entityShape, roleLabel, rm, cp, inherited, piShape }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const piValues  = store.nestedEntityMappings?.[fact.id] ?? []
   const rowCount  = Math.max(piValues.length, factTuples.length)
 
@@ -2658,7 +2658,7 @@ function NestedEntityExplicitPIPopulation({ fact, arity, name, factTuples, roleS
 }
 
 function FactTypePopulation({ fact }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const arity = fact.arity ?? fact.roles?.length ?? 0
   if (arity < 1) return <EmptyState>This fact type has no roles.</EmptyState>
 

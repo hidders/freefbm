@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { computeOtSize } from './ObjectTypeNode'
 import { ROLE_W, ROLE_H, ROLE_GAP, displayRoleOrder, nestedFactBounds } from './FactTypeNode'
@@ -433,7 +433,7 @@ function LinkLine({ link, atoms, factMap, subtypeMap, otMap }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function QueryAtoms({ onAtomClick, onAtomContextMenu, mousePos }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const { objectTypes, facts, collapsedRefFacts, collapsedRefFactOccs } = useDiagramElements()
   const qd = store.queryEditDraft
 

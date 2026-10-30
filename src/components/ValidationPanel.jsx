@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { VALIDATION_CATEGORIES } from '../utils/validation.js'
 import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 import { hasTextSelection } from '../utils/textPanel.js'
@@ -27,7 +27,7 @@ const rHandle = (dir) => ({
 })
 
 export default function ValidationPanel() {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
 
   const [collapsed,  setCollapsed]  = useState(true)
   const [animating,  setAnimating]  = useState(false)

@@ -1,5 +1,5 @@
 import React from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 
 // ── Tier 1: Tool hints — workflow guidance while a tool is active ─────────────
 const TOOL_HINTS = {
@@ -28,7 +28,7 @@ const TOOL_HINTS = {
 }
 
 export default function StatusBar() {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan')
   const isSel = store.tool === 'select'
 
   // ── Tier 4a: subtype endpoint-pick mode ──────────────────────────────────

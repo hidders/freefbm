@@ -24,7 +24,9 @@ export function useUndoRedo() {
   const past      = useRef([])
   const future    = useRef([])
   const restoring = useRef(false)
-  const lastSnap  = useRef(snapshot(useOrmStore.getState()))
+  const lastSnap  = useRef(null)
+  // Taken once, not on every render: a snapshot of a large model costs tens of ms.
+  if (lastSnap.current === null) lastSnap.current = snapshot(useOrmStore.getState())
 
   useEffect(() => {
     const unsub = useOrmStore.subscribe((state, prev) => {

@@ -1,10 +1,10 @@
 import React from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { EntityTypeIcon, FactTypeIcon } from './ToolPanel'
 import SAMPLE_RAW from '../data/sample.ffbm?raw'
 
 export default function WelcomeScreen({ onClose }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
 
   const handleDontShow = (e) => {
     if (e.target.checked) {

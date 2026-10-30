@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { roleCenter, nestedFactBounds, ROLE_H, displayRoleOrder, makeImplicitLinkFact } from './FactTypeNode'
 import { roleAnchor } from './RoleConnectors'
@@ -620,7 +620,7 @@ export function borderPoint(ot, tx, ty) {
 }
 
 export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, noteSubjectIds }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const { objectTypes, facts, constraints: visibleConstraints, subtypes, collapsedRefFacts, collapsedRefFactOccs } = useDiagramElements()
   // factMap: schema ID → first (oldest) occurrence, so adding a second occurrence of a fact
   // doesn't move existing constraint connectors that have no explicit roleOccurrenceRefs.

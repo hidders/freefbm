@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import {
@@ -300,7 +300,7 @@ function SectionHeader({ title, count }) {
 // ── main component ────────────────────────────────────────────────────────────
 
 export default function SchemaBrowser() {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const { diagram } = useDiagramElements()
 
   const diagrams = store.diagrams ?? []
