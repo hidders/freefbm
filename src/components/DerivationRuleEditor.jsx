@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
@@ -28,6 +28,12 @@ import { handleTextPanelKey, hasTextSelection } from '../utils/textPanel.js'
 // Value comparisons and data predicates take data terms, built the same way
 // from variables, constants, operators (src/logic/dataOperators.js),
 // if-then-else and aggregates (Sum{t | v₁, … : φ}).
+//
+// The editor is a floating panel, not a modal dialog: it can be dragged by its
+// title bar and folded, and the canvas stays usable while it is open. The
+// part under the mouse (or else the selected part) is highlighted on the
+// canvas: a fact atom lights up its fact type and players, a type atom, a
+// quantifier or a variable its type.
 
 const ATOMIC = new Set(['fact', 'type', 'true', 'not', 'hole'])
 const BINARY = new Set(['and', 'or', 'implies', 'iff'])
@@ -42,6 +48,58 @@ const samePath = (a, b) => keyOf(a) === keyOf(b)
 
 // The rule of a fact type as the editor works on it.
 const factDraft = (r) => ({ body: upgradeRule(r?.body) ?? hole(), extraVars: r?.extraVars ?? [], terms: r?.terms ?? {} })
+
+// The open rule editor, if any (store.ruleEditor). Keyed by its target, so
+// opening the rule of another element starts afresh.
+export function RuleEditorPanel() {
+  const target = useOrmStore(s => s.ruleEditor)
+  const close = useOrmStore(s => s.closeRuleEditor)
+  if (!target) return null
+  return <DerivationRuleEditor key={target.otId ?? target.factId} otId={target.otId} factId={target.factId} onClose={close} />
+}
+
+// The types of every variable of a rule: the free ones (roots) and those of
+// its quantifiers and aggregates.
+const varTypes = (draft, roots) => {
+  const m = new Map(roots.map(r => [r.id, r.typeIds]))
+  const walk = (n) => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) { n.forEach(walk); return }
+    if (n.v?.id) m.set(n.v.id, [n.v.typeId])
+    if (n.t === 'agg') for (const v of n.vars ?? []) m.set(v.id, [v.typeId])
+    Object.values(n).forEach(walk)
+  }
+  walk(draft)
+  return m
+}
+
+// What the canvas highlights for a part of the rule, or null.
+const highlightOf = (n, ctx, types) => {
+  if (!n) return null
+  if (n.t === 'fact') {
+    const f = atomFact(ctx, n.factId)
+    if (!f) return null
+    const base = n.factId.includes('_il_') ? n.factId.split('_il_')[0] : null
+    return { factIds: base ? [n.factId, base] : [n.factId], typeIds: f.roles.map(r => r.objectTypeId).filter(Boolean) }
+  }
+  if (n.t === 'type') return { factIds: [], typeIds: [n.typeId] }
+  if (QUANT.has(n.t)) return { factIds: [], typeIds: [n.v.typeId] }
+  if (n.t === 'agg') return { factIds: [], typeIds: (n.vars ?? []).map(v => v.typeId) }
+  if (n.t === 'var') return { factIds: [], typeIds: types.get(n.id) ?? [] }
+  return null
+}
+
+// Where the panel is and whether it is folded, kept between openings.
+const PANEL_KEY = 'freefbm.ruleEditor.panel'
+const loadPanel = () => {
+  try { return JSON.parse(localStorage.getItem(PANEL_KEY)) ?? {} } catch { return {} }
+}
+// Keep the whole width, and the title bar, inside the window.
+const clampX = (x, w) => Math.min(Math.max(0, x), Math.max(0, window.innerWidth - w))
+const clampY = (y) => Math.min(Math.max(0, y), window.innerHeight - 44)
+const savePanel = (p) => {
+  try { localStorage.setItem(PANEL_KEY, JSON.stringify(p)) } catch { /* not kept */ }
+}
 
 export default function DerivationRuleEditor({ otId, factId, onClose }) {
   const state = useOrmStore(useShallow(s => ({
@@ -80,6 +138,46 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
     return ot ? [derivationEntry({ ...ot, derivationRule: draft }, state, ctx)] : []
   }, [forFact, fact, ot, draft, state, ctx, errors.length])
   const types = useMemo(() => allTypeOptions(state), [state])
+
+  // ── Canvas highlight of the part under the mouse, or else the selected one ──
+  const [hover, setHover] = useState(null)
+  const setRuleHighlight = useOrmStore(s => s.setRuleHighlight)
+  const typesOfVars = useMemo(() => varTypes(draft, roots), [draft, roots])
+  const highlight = useMemo(() => {
+    const h = (hover && highlightOf(getAt(draft, hover), ctx, typesOfVars)) || highlightOf(getAt(draft, sel), ctx, typesOfVars)
+    return h ? JSON.stringify(h) : null
+  }, [hover, sel, draft, ctx, typesOfVars])
+  useEffect(() => { setRuleHighlight(highlight && JSON.parse(highlight)) }, [highlight, setRuleHighlight])
+  useEffect(() => () => setRuleHighlight(null), [setRuleHighlight])
+
+  // ── Panel position, size and folding ──
+  const [panel, setPanel] = useState(() => {
+    const p = loadPanel()
+    const w = Math.min(p.w ?? 760, window.innerWidth - 16)
+    return {
+      w, h: p.h ?? null, folded: !!p.folded,
+      x: clampX(p.x ?? (window.innerWidth - w) / 2, w),
+      y: clampY(p.y ?? 80),
+    }
+  })
+  useEffect(() => { savePanel(panel) }, [panel])
+  const panelRef = useRef(null)
+  const startDrag = (e) => {
+    if (e.button !== 0 || e.target.closest('button')) return
+    e.preventDefault()
+    const sx = e.clientX - panel.x, sy = e.clientY - panel.y
+    const move = (ev) => setPanel(p => ({ ...p, x: clampX(ev.clientX - sx, p.w), y: clampY(ev.clientY - sy) }))
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
+  // The panel can be resized from its corner (CSS resize); keep the size.
+  const keepSize = () => {
+    const el = panelRef.current
+    if (!el || panel.folded) return
+    const w = el.offsetWidth, h = el.offsetHeight
+    if (w !== panel.w || h !== panel.h) setPanel(p => ({ ...p, w, h }))
+  }
 
   if (forFact ? !fact : !ot) return null
   const changed = JSON.stringify(draft) !== JSON.stringify(stored)
@@ -293,7 +391,8 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
       default:
         body = '?'
     }
-    return <span onClick={click} style={wrapStyle}>{body}</span>
+    const over = (e) => { e.stopPropagation(); setHover(h => (h && samePath(h, path) ? h : path)) }
+    return <span onClick={click} onMouseOver={over} style={wrapStyle}>{body}</span>
   }
 
   const selNode = getAt(draft, sel)
@@ -357,30 +456,44 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
     </div>
   )
 
+  const foldBtn = {
+    fontSize: 12, lineHeight: 1, padding: '2px 6px', borderRadius: 3, cursor: 'pointer',
+    border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--ink-2)',
+  }
   return createPortal(
-    <div onKeyDown={onKeyDown} onMouseDown={e => e.stopPropagation()} style={{
-      position: 'fixed', inset: 0, background: 'rgba(26,22,18,0.28)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <div role="dialog" aria-label="Derivation rule" tabIndex={-1} style={{
-        width: 'min(920px, 94vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column',
+    <div ref={panelRef} role="dialog" aria-label="Derivation rule" tabIndex={-1}
+      onKeyDown={onKeyDown} onMouseDown={e => e.stopPropagation()} onMouseUp={keepSize} style={{
+        position: 'fixed', left: panel.x, top: panel.y, zIndex: 1000,
+        width: panel.w, height: panel.folded ? 'auto' : panel.h ?? 'auto',
+        minWidth: 360, minHeight: panel.folded ? 0 : 200, maxWidth: '100vw', maxHeight: `calc(100vh - ${panel.y}px)`,
+        resize: panel.folded ? 'none' : 'both', display: 'flex', flexDirection: 'column',
         background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
         boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
       }}>
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-soft)' }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
-            {semi ? 'Semi-derivation rule' : 'Derivation rule'} of {forFact ? factLabel(fact, ctx) : ot.name || 'Unnamed'}
+        <div onMouseDown={startDrag} onDoubleClick={e => { if (!e.target.closest('button')) setPanel(p => ({ ...p, folded: !p.folded })) }}
+          title="Drag to move · double-click to fold · the part of the rule under the mouse is highlighted on the canvas"
+          style={{ padding: '10px 14px', borderBottom: panel.folded ? 'none' : '1px solid var(--border-soft)',
+            cursor: 'move', userSelect: 'none', background: 'var(--bg-raised)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ flex: 1, fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
+              {semi ? 'Semi-derivation rule' : 'Derivation rule'} of {forFact ? factLabel(fact, ctx) : ot.name || 'Unnamed'}
+              {changed && <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--ink-muted)' }}> · not saved</span>}
+            </div>
+            <button style={foldBtn} title={panel.folded ? 'Unfold' : 'Fold to the title bar'}
+              onClick={() => setPanel(p => ({ ...p, folded: !p.folded }))}>{panel.folded ? '▸' : '▾'}</button>
+            <button style={foldBtn} title="Close without saving (Esc)" onClick={onClose}>×</button>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 2 }}>
+          {!panel.folded && <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 2 }}>
             {forFact
               ? semi
                 ? 'Each combination for which the condition holds, with the values of the computed roles, must be a fact.'
                 : 'The facts are exactly the combinations for which the condition holds, with the values of the computed roles.'
               : supers.length ? derivationHeading(ot, supers, ctx) : `${ot.name} has no supertype, so it cannot be derived.`}
-          </div>
+          </div>}
         </div>
 
-        <div style={{ padding: 14, overflow: 'auto', flex: 1 }}>
+        {!panel.folded && <>
+        <div onMouseLeave={() => setHover(null)} style={{ padding: 14, overflow: 'auto', flex: 1 }}>
           {factVariables}
           {forFact && <div style={sectionLabel}>Condition</div>}
           <div tabIndex={0} onClick={() => setSel(forFact ? ['body'] : [])} className="text-panel" style={{
@@ -443,7 +556,7 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
           <button onClick={onClose} style={btn()}>Cancel</button>
           <button onClick={save} disabled={!changed} style={btn(true, !changed)}>Save</button>
         </div>
-      </div>
+        </>}
     </div>,
     document.body,
   )
