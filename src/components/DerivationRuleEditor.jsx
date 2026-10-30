@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
-import { makeContext, readingText } from '../logic/constraintFormulas.js'
+import { makeContext, readingText, constraintEntry, CONSTRAINT_LABELS } from '../logic/constraintFormulas.js'
 import {
   SUBJECT, hole, getAt, setAt, directSupertypes, typeGraph, allTypeOptions,
-  ruleVariables, checkRule, derivationEntry, derivationHeading, upgradeRule, isTermSlot, atomFact,
+  ruleVariables, formulaVariables, checkRule, derivationEntry, derivationHeading, upgradeRule, isTermSlot, atomFact,
 } from '../logic/derivationRule.js'
+import { editableQuery, queryRoots, checkQuery } from '../logic/query.js'
 import {
   factRuleParts, factRuleVariables, checkFactRule, factDerivationEntries, factLabel,
 } from '../logic/factDerivation.js'
@@ -19,7 +20,9 @@ import { handleTextPanelKey, hasTextSelection } from '../utils/textPanel.js'
 // ── Derivation rule editor ──────────────────────────────────────────────────
 // A syntax-directed editor for the derivation rule of a derived or
 // semi-derived subtype (see src/logic/derivationRule.js), or of a fact type
-// (otId or factId; see src/logic/factDerivation.js). For a fact type the
+// (otId or factId; see src/logic/factDerivation.js), or of the query of a
+// role sequence of an external constraint (constraintId and sequenceIndex;
+// see src/logic/query.js). For a fact type the
 // roles' variables are marked selected or computed, extra variables can be
 // added, and each computed role gets a term. The formula is shown
 // with holes (□) for the parts not filled in yet; clicking a part selects it,
@@ -55,7 +58,8 @@ export function RuleEditorPanel() {
   const target = useOrmStore(s => s.ruleEditor)
   const close = useOrmStore(s => s.closeRuleEditor)
   if (!target) return null
-  return <DerivationRuleEditor key={target.otId ?? target.factId} otId={target.otId} factId={target.factId} onClose={close} />
+  return <DerivationRuleEditor key={target.otId ?? target.factId ?? `${target.constraintId}:${target.sequenceIndex}`}
+    otId={target.otId} factId={target.factId} constraintId={target.constraintId} sequenceIndex={target.sequenceIndex} onClose={close} />
 }
 
 // The types of every variable of a rule: the free ones (roots) and those of
@@ -101,31 +105,51 @@ const savePanel = (p) => {
   try { localStorage.setItem(PANEL_KEY, JSON.stringify(p)) } catch { /* not kept */ }
 }
 
-export default function DerivationRuleEditor({ otId, factId, onClose }) {
+// The positions of a query, as the editor lists them.
+const memberText = (m, ctx) => {
+  if (m?.kind === 'subtype') {
+    const st = ctx.subtypeById.get(m.subtypeId)
+    return st ? `is a ${ctx.typeName(st.subId)}` : 'a deleted subtype'
+  }
+  const f = m && atomFact(ctx, m.factId)
+  return f ? `plays role ${m.roleIndex + 1} of ${readingText(f, ctx) || 'an unnamed fact type'}` : 'a deleted role'
+}
+
+export default function DerivationRuleEditor({ otId, factId, constraintId, sequenceIndex, onClose }) {
   const state = useOrmStore(useShallow(s => ({
     objectTypes: s.objectTypes, facts: s.facts, subtypes: s.subtypes, constraints: s.constraints,
   })))
   const updateObjectType = useOrmStore(s => s.updateObjectType)
   const updateFact = useOrmStore(s => s.updateFact)
+  const setConstraintQuery = useOrmStore(s => s.setConstraintQuery)
   const forFact = factId != null
-  const ot = forFact ? null : state.objectTypes.find(o => o.id === otId)
+  const forQuery = constraintId != null
+  const ot = forFact || forQuery ? null : state.objectTypes.find(o => o.id === otId)
   const fact = forFact ? state.facts.find(f => f.id === factId) : null
-  const stored = forFact ? factDraft(fact?.derivationRule) : upgradeRule(ot?.derivationRule) ?? hole()
+  const constraint = forQuery ? state.constraints.find(c => c.id === constraintId) : null
+  const seq = constraint?.sequences?.[sequenceIndex] ?? []
+  // The query's free variables are fixed: the positions and the target.
+  const [query] = useState(() => (constraint ? editableQuery(constraint, sequenceIndex, makeContext(state)) : null))
+  const stored = forQuery ? query?.body ?? hole()
+    : forFact ? factDraft(fact?.derivationRule) : upgradeRule(ot?.derivationRule) ?? hole()
   const [draft, setDraft] = useState(stored)
   const [sel, setSel] = useState(forFact ? ['body'] : [])
   const [newVarType, setNewVarType] = useState('')
 
   const ctx = useMemo(() => makeContext(state), [state])
   const graph = useMemo(() => typeGraph(state), [state])
-  const supers = useMemo(() => (forFact ? [] : directSupertypes(otId, state.subtypes)), [forFact, otId, state.subtypes])
+  const supers = useMemo(() => (forFact || forQuery ? [] : directSupertypes(otId, state.subtypes)), [forFact, forQuery, otId, state.subtypes])
   const parts = useMemo(() => (forFact && fact ? factRuleParts(fact, draft) : null), [forFact, fact, draft])
   // The free variables of the condition (and of the terms).
-  const roots = useMemo(() => (forFact ? (parts ? [...parts.selected, ...parts.extra] : [])
-    : [{ id: SUBJECT, typeIds: supers }]), [forFact, parts, supers])
-  const { nameOf } = useMemo(() => (forFact ? (fact ? factRuleVariables(fact, ctx, draft) : { nameOf: new Map() })
-    : ruleVariables(draft, supers, ctx)), [forFact, fact, draft, supers, ctx])
-  const issues = useMemo(() => (forFact ? (fact ? checkFactRule(fact, state, ctx, undefined, draft) : [])
-    : checkRule(draft, otId, state, ctx)), [forFact, fact, draft, otId, state, ctx])
+  const roots = useMemo(() => (forQuery ? (query ? queryRoots(query) : [])
+    : forFact ? (parts ? [...parts.selected, ...parts.extra] : [])
+    : [{ id: SUBJECT, typeIds: supers }]), [forQuery, query, forFact, parts, supers])
+  const { nameOf } = useMemo(() => (forQuery ? formulaVariables(draft, roots, ctx)
+    : forFact ? (fact ? factRuleVariables(fact, ctx, draft) : { nameOf: new Map() })
+    : ruleVariables(draft, supers, ctx)), [forQuery, roots, forFact, fact, draft, supers, ctx])
+  const issues = useMemo(() => (forQuery ? (query ? checkQuery({ ...query, body: draft }, seq, state, ctx) : [])
+    : forFact ? (fact ? checkFactRule(fact, state, ctx, undefined, draft) : [])
+    : checkRule(draft, otId, state, ctx)), [forQuery, query, seq, forFact, fact, draft, otId, state, ctx])
   const severityAt = useMemo(() => {
     const m = new Map()
     for (const i of issues) if (m.get(keyOf(i.path)) !== 'error') m.set(keyOf(i.path), i.severity)
@@ -134,9 +158,15 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
   const errors = issues.filter(i => i.severity === 'error')
   const preview = useMemo(() => {
     if (errors.length) return []
+    if (forQuery) {
+      if (!constraint) return []
+      const queries = [...(constraint.queries ?? [])]
+      queries[sequenceIndex] = { ...query, body: draft }
+      return [constraintEntry({ ...constraint, queries }, ctx)]
+    }
     if (forFact) return fact ? factDerivationEntries(fact, state, ctx, draft) : []
     return ot ? [derivationEntry({ ...ot, derivationRule: draft }, state, ctx)] : []
-  }, [forFact, fact, ot, draft, state, ctx, errors.length])
+  }, [forQuery, constraint, sequenceIndex, query, forFact, fact, ot, draft, state, ctx, errors.length])
   const types = useMemo(() => allTypeOptions(state), [state])
 
   // ── Canvas highlight of the part under the mouse, or else the selected one ──
@@ -179,13 +209,14 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
     if (w !== panel.w || h !== panel.h) setPanel(p => ({ ...p, w, h }))
   }
 
-  if (forFact ? !fact : !ot) return null
+  if (forQuery ? !constraint || !query : forFact ? !fact : !ot) return null
   const changed = JSON.stringify(draft) !== JSON.stringify(stored)
-  const semi = (forFact ? fact : ot).derivation === 'semiDerived'
+  const semi = !forQuery && (forFact ? fact : ot).derivation === 'semiDerived'
 
   const replace = (path, node, nextSel = path) => { setDraft(d => setAt(d, path, node)); setSel(nextSel) }
   const save = () => {
-    if (forFact) updateFact(factId, { derivationRule: draft })
+    if (forQuery) setConstraintQuery(constraintId, sequenceIndex, { free: query.free, target: query.target, body: draft })
+    else if (forFact) updateFact(factId, { derivationRule: draft })
     else updateObjectType(otId, { derivationRule: draft })
     onClose()
   }
@@ -456,6 +487,26 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
     </div>
   )
 
+  const queryVariables = forQuery && (
+    <div style={{ marginBottom: 10 }}>
+      <div style={sectionLabel}>Free variables</div>
+      {query.free.map((f, i) => (
+        <div key={f.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12, marginBottom: 3 }}>
+          <span style={{ width: 72, flexShrink: 0, whiteSpace: 'nowrap', color: 'var(--ink-3)', fontSize: 11 }}>Position {i + 1}</span>
+          <span style={{ ...TOKEN_STYLE.var, fontFamily: 'var(--font-mono)', minWidth: 110 }}>{nameOf.get(f.id)}</span>
+          <span style={{ color: 'var(--ink-2)' }}>{memberText(seq[i], ctx)}</span>
+        </div>
+      ))}
+      {query.target && (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12, marginBottom: 3 }}>
+          <span style={{ width: 72, flexShrink: 0, color: 'var(--ink-3)', fontSize: 11 }}>Target</span>
+          <span style={{ ...TOKEN_STYLE.var, fontFamily: 'var(--font-mono)', minWidth: 110 }}>{nameOf.get(query.target.id)}</span>
+          <span style={{ color: 'var(--ink-2)' }}>the object the constraint counts per combination</span>
+        </div>
+      )}
+    </div>
+  )
+
   const foldBtn = {
     fontSize: 12, lineHeight: 1, padding: '2px 6px', borderRadius: 3, cursor: 'pointer',
     border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--ink-2)',
@@ -476,7 +527,9 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
             cursor: 'move', userSelect: 'none', background: 'var(--bg-raised)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ flex: 1, fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
-              {semi ? 'Semi-derivation rule' : 'Derivation rule'} of {forFact ? factLabel(fact, ctx) : ot.name || 'Unnamed'}
+              {forQuery ? `Query of S${sequenceIndex + 1} of ${constraint.name || constraint.label
+                  || `the ${(CONSTRAINT_LABELS[constraint.constraintType] ?? '').toLowerCase()} constraint`}`
+                : <>{semi ? 'Semi-derivation rule' : 'Derivation rule'} of {forFact ? factLabel(fact, ctx) : ot.name || 'Unnamed'}</>}
               {changed && <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--ink-muted)' }}> · not saved</span>}
             </div>
             <button style={foldBtn} title={panel.folded ? 'Unfold' : 'Fold to the title bar'}
@@ -484,7 +537,9 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
             <button style={foldBtn} title="Close without saving (Esc)" onClick={onClose}>×</button>
           </div>
           {!panel.folded && <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 2 }}>
-            {forFact
+            {forQuery
+              ? 'The combinations of objects at the positions for which the formula holds. Each position must play its role in an atom reached through ∃ and ∧ only.'
+              : forFact
               ? semi
                 ? 'Each combination for which the condition holds, with the values of the computed roles, must be a fact.'
                 : 'The facts are exactly the combinations for which the condition holds, with the values of the computed roles.'
@@ -495,7 +550,8 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
         {!panel.folded && <>
         <div onMouseLeave={() => setHover(null)} style={{ padding: 14, overflow: 'auto', flex: 1 }}>
           {factVariables}
-          {forFact && <div style={sectionLabel}>Condition</div>}
+          {queryVariables}
+          {(forFact || forQuery) && <div style={sectionLabel}>{forQuery ? 'Formula' : 'Condition'}</div>}
           <div tabIndex={0} onClick={() => setSel(forFact ? ['body'] : [])} className="text-panel" style={{
             fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 2, minHeight: 44, outline: 'none',
           }}>
@@ -518,13 +574,13 @@ export default function DerivationRuleEditor({ otId, factId, onClose }) {
             ? <TermPalette node={selNode} path={sel} scope={selScope} draft={draft} ctx={ctx} nameOf={nameOf}
                 types={types} replace={replace} />
             : <Palette node={selNode} path={sel} scope={selScope} draft={draft} state={state} ctx={ctx}
-                supers={forFact ? roots.map(r => r.typeIds[0]) : supers}
+                supers={forFact || forQuery ? roots.map(r => r.typeIds[0]) : supers}
                 graph={graph} replace={replace} />}
 
           {/* Focusable so the messages can be selected and copied */}
           <div data-text-panel tabIndex={0} className="copyable" style={{ marginTop: 12 }}>
             {issues.length === 0
-              ? <div style={{ fontSize: 12, color: 'var(--col-candidate)' }}>✓ This is a valid derivation rule.</div>
+              ? <div style={{ fontSize: 12, color: 'var(--col-candidate)' }}>✓ This is a valid {forQuery ? 'query' : 'derivation rule'}.</div>
               : issues.map((i, k) => (
                 <div key={k} onClick={() => { if (!hasTextSelection()) setSel(i.path) }} style={{
                   display: 'flex', gap: 6, fontSize: 12, cursor: 'pointer', marginBottom: 2,

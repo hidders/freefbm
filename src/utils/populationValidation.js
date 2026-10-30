@@ -3,7 +3,7 @@
 // is inconsistent with it.
 
 import { validateValueAgainstDatatype } from './datatypeValidation.js'
-import { hasGraph, queryRule } from '../logic/query.js'
+import { hasGraph, isFormulaQuery, queryRule, queryTyping } from '../logic/query.js'
 import { makePopulationEvaluator } from '../logic/derivedPopulation.js'
 import { isDeonticUniqueness, isDeonticMandatory } from '../logic/modality.js'
 import { VALUE_KINDS, valueKindOf, valueKindName, parseLiteral } from './datatypeValues.js'
@@ -1238,14 +1238,15 @@ export function computePopulationIssues(rawData) {
       // of a query result record.  "Target" means the value bound to the OT
       // copy whose originalId matches con.targetObjectTypeId.
       if (con.isPreferredIdentifier && con.targetObjectTypeId && query) {
-        const targetAtom = query.atoms.find(
+        // The query's target variable, or else the graph's atom of the target type.
+        const targetAtom = (query.atoms ?? []).find(
           a => a.kind === 'objectType' && a.originalId === con.targetObjectTypeId
         )
-        if (targetAtom) {
+        if (targetAtom || (isFormulaQuery(query) && query.target)) {
           const targetCounts = new Map()
           const resetQuery = (con.queries ?? [])[0] ?? null
           evaluateQuery(resetQuery, facts, populations, effectiveFactTuples, (varAssign) => {
-            const normKey = varAssign.get(targetAtom.id)
+            const normKey = varAssign.get(TARGET_KEY) ?? (targetAtom && varAssign.get(targetAtom.id))
             if (normKey != null) {
               targetCounts.set(normKey, (targetCounts.get(normKey) ?? 0) + 1)
             }
@@ -2825,6 +2826,9 @@ export function factTupleSource(data) {
 // strings, counts the bindings per result. A query with only a target object
 // type yields the target's values. onResult(varAssign) is called per binding
 // with varAssign: object type atom id → projCellKey string.
+// The key of the target's value in the varAssign that evaluateQuery reports.
+const TARGET_KEY = '$target'
+
 export function evaluateQuery(query, facts, populations, effectiveFactTuplesFn, onResult) {
   if (!query) return null
   if (hasGraph(query) && !(query.atoms ?? query.copies ?? []).length) return null
@@ -2844,12 +2848,16 @@ export function evaluateQuery(query, facts, populations, effectiveFactTuplesFn, 
     if (!rule.target) return null
     rule = { ...rule, free: [rule.target], target: null }
   }
-  const r = ev.queryResult(rule)
+  const r = ev.queryResult(rule, queryTyping(rule, ev.ctx))
   if (r.error) return null
   if (onResult) {
     const atomVars = rule.atomVars ?? new Map()
     for (const b of r.bindings) {
       const varAssign = new Map()
+      if (rule.target) {
+        const k = projCellKey(b.get(rule.target.id))
+        if (k !== null) varAssign.set(TARGET_KEY, JSON.stringify(k))
+      }
       for (const [atomId, varId] of atomVars) {
         const k = projCellKey(b.get(varId))
         if (k !== null) varAssign.set(atomId, JSON.stringify(k))

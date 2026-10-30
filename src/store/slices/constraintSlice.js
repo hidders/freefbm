@@ -5,6 +5,8 @@ import {
   roleOccRefsKey, syncConstraints, getConstraintDeps, getConstraintQueryDeps,
   findUniqueLCA, findPathDown, demoteOtherPIsFor, runFactMergePass, withSequences,
 } from '../storeHelpers'
+import { makeContext } from '../../logic/constraintFormulas.js'
+import { isFormulaQuery, ruleToGraph } from '../../logic/query.js'
 
 export function createConstraintSlice(set, get) {
   return {
@@ -687,6 +689,13 @@ export function createConstraintSlice(set, get) {
       const c = get().constraints.find(c => c.id === constraintId)
       if (!c) return
       const existing = (c.queries || [])[sequenceIndex] || null
+      // A query saved as a formula is drawn as its graph, when it has one.
+      if (isFormulaQuery(existing)) {
+        const g = ruleToGraph(existing, c.sequences?.[sequenceIndex] ?? [], makeContext(get()))
+        if (g.error) return
+        set({ queryEditDraft: { constraintId, sequenceIndex, atoms: g.atoms, links: g.links, pendingClick: null } })
+        return
+      }
       // Re-edit an already-saved query (atoms is the current field; copies is the old name for backward compat)
       if (existing?.atoms || existing?.copies) {
         const atoms = existing.atoms ?? existing.copies ?? []
@@ -1118,6 +1127,21 @@ export function createConstraintSlice(set, get) {
       const newAtoms = qd.atoms.filter(at => !orphaned.has(at.id))
       const newLinks = remainingLinks.filter(l => !orphaned.has(l.atomId) && !orphaned.has(l.variableId))
       set({ queryEditDraft: { ...qd, atoms: newAtoms, links: newLinks, pendingClick: null } })
+    },
+
+    // Saves the query of a sequence as a formula ({ free, target, body }, see
+    // src/logic/query.js), as the rule editor gives it; a graph it had is dropped.
+    setConstraintQuery(constraintId, sequenceIndex, query) {
+      set(s => ({
+        constraints: s.constraints.map(c => {
+          if (c.id !== constraintId) return c
+          const queries = [...(c.queries || [])]
+          while (queries.length <= sequenceIndex) queries.push(null)
+          queries[sequenceIndex] = query
+          return { ...c, queries }
+        }),
+        isDirty: true,
+      }))
     },
 
     clearConstraintQuery(constraintId, sequenceIndex) {

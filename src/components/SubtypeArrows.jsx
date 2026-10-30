@@ -4,6 +4,7 @@ import { useDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds } from './ObjectTypeNode'
 import { nestedFactBounds } from './FactTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
+import { queryElements } from '../logic/query.js'
 
 export function rectBorderPoint(b, tx, ty) {
   const cx = b.cx, cy = b.cy
@@ -71,8 +72,8 @@ export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes,
         const inQueryHighlight = selectedConstraint
           ? (selectedConstraint.queries || []).some((q, qi) => {
               if (qh && qh.constraintId === selectedConstraint.id && qh.queryIndex !== qi) return false
-              if (!q?.atoms) return (selectedConstraint.sequences?.[qi] || []).some(m => m.kind === 'subtype' && m.subtypeId === st.id)
-              return q.atoms.some(at => at.kind === 'subtype' && at.originalId === st.id)
+              if (!q) return (selectedConstraint.sequences?.[qi] || []).some(m => m.kind === 'subtype' && m.subtypeId === st.id)
+              return queryElements(q, store.subtypes).some(at => at.kind === 'subtype' && at.originalId === st.id)
             })
           : false
 

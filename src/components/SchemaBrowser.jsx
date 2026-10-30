@@ -8,6 +8,7 @@ import {
   EqualityConstraintIcon, SubsetConstraintIcon, RingConstraintIcon, FrequencyConstraintIcon,
   ValueComparisonConstraintIcon, NoteIcon,
 } from './ToolPanel'
+import { queryElements } from '../logic/query.js'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
@@ -518,8 +519,7 @@ export default function SchemaBrowser() {
     if (!seqAllPresent) return 'partial'
     // Also check query deps: every element used in the constraint's queries must be present
     for (const q of (c.queries ?? [])) {
-      if (!q?.atoms) continue
-      for (const at of q.atoms) {
+      for (const at of queryElements(q, store.subtypes)) {
         if (!at.originalId || at.originalId.includes('_il_')) continue
         if (at.kind === 'subtype') {
           if (!subtypeInDiag({ id: at.originalId })) return 'partial'

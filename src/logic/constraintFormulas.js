@@ -27,7 +27,7 @@ const SEQUENCE_TYPES = new Set([
   'uniqueness', 'frequency', 'ring', 'valueComparison',
 ])
 
-const CONSTRAINT_LABELS = {
+export const CONSTRAINT_LABELS = {
   inclusiveOr:     'Inclusive-or',
   exclusiveOr:     'Exclusive-or',
   exclusion:       'Exclusion',
@@ -315,7 +315,7 @@ function asDeontic(deontic, e) {
   return Array.isArray(e) ? e.map(wrap) : wrap(e)
 }
 
-function constraintEntry(c, ctx) {
+export function constraintEntry(c, ctx) {
   const entry = { key: c.id, elementId: c.id, kind: CONSTRAINT_LABELS[c.constraintType] ?? c.constraintType,
     subject: c.name || c.label || '' }
   const seqs = c.sequences ?? []

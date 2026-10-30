@@ -81,7 +81,7 @@ export function createModelSlice(set, get) {
 
     // The derivation rule editor, a floating panel that stays open while the
     // canvas is used, and the schema elements it highlights there.
-    ruleEditor:    null,   // { otId } | { factId } | null
+    ruleEditor:    null,   // { otId } | { factId } | { constraintId, sequenceIndex } | null
     ruleHighlight: null,   // { typeIds: string[], factIds: string[] } | null
 
     clipboard: null,  // { objectTypes[], facts[], constraints[], subtypes[] } | null
@@ -598,8 +598,8 @@ export function createModelSlice(set, get) {
         // Migrate 'copies'/'copyId' terminology to 'atoms'/'atomId'
         if (out.queries) {
           out = { ...out, queries: out.queries.map(q => {
-            if (!q || q.atoms) return q
-            const atoms = q.copies ?? []
+            if (!q || q.atoms || !q.copies) return q
+            const atoms = q.copies
             const links = (q.links ?? []).map(lk => lk.copyId !== undefined && lk.atomId === undefined ? { ...lk, atomId: lk.copyId } : lk)
             return { ...q, atoms, links }
           })}

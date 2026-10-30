@@ -13,6 +13,7 @@ import { VALIDATION_CATEGORIES } from '../utils/validation.js'
 import { DERIVATION_MODES, directSupertypes, isDerived, checkRule } from '../logic/derivationRule.js'
 import { isDerivedFact, isComputedRole, checkFactRule, whyNotDerivable } from '../logic/factDerivation.js'
 import { makeContext } from '../logic/constraintFormulas.js'
+import { isFormulaQuery, whyNotGraphical } from '../logic/query.js'
 import { hasTextSelection } from '../utils/textPanel.js'
 import { isFallbackReading } from '../store/viewLanguage.js'
 import { isDeonticUniqueness } from '../logic/modality.js'
@@ -3842,9 +3843,14 @@ function ExternalConstraintInspector({ c }) {
               if (seq.length === 0) return null
               const q = queries[gi] || null
               const atomCount = q?.atoms?.length ?? 0
-              const statusText = q
-                ? `${atomCount} atom${atomCount !== 1 ? 's' : ''}`
+              const asFormula = isFormulaQuery(q)
+              // A formula outside the graphical fragment can only be edited as a formula.
+              const notDrawable = asFormula ? whyNotGraphical(q, seq, makeContext(store)) : null
+              const statusText = asFormula
+                ? 'formula'
+                : q ? `${atomCount} atom${atomCount !== 1 ? 's' : ''}`
                 : 'Not defined'
+              const graphDisabled = (needsTarget && !hasTarget) || !!gc || !!notDrawable
               const qPressed = pressedQueryIndex === gi
               return (
                 <div key={gi} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
@@ -3873,13 +3879,24 @@ function ExternalConstraintInspector({ c }) {
                     {statusText}
                   </button>
                   <button
-                    disabled={(needsTarget && !hasTarget) || !!gc}
+                    disabled={graphDisabled}
+                    title={notDrawable ? `Can't be edited on the diagram: ${notDrawable}` : 'Edit the query as a join path on the diagram'}
                     onClick={() => store.startQueryEdit(c.id, gi)}
                     style={{ padding: '2px 8px', fontSize: 10, background: 'var(--bg-raised)',
                       border: '1px solid var(--border)', borderRadius: 3,
-                      cursor: (!needsTarget || hasTarget) && !gc ? 'pointer' : 'default',
-                      color: 'var(--ink-2)', opacity: (!needsTarget || hasTarget) && !gc ? 1 : 0.4 }}>
+                      cursor: !graphDisabled ? 'pointer' : 'default',
+                      color: 'var(--ink-2)', opacity: !graphDisabled ? 1 : 0.4 }}>
                     {q ? 'Edit' : 'Define'}
+                  </button>
+                  <button
+                    disabled={!!gc}
+                    title="Edit the query as a formula of the logic, in the rule editor"
+                    onClick={() => store.openRuleEditor({ constraintId: c.id, sequenceIndex: gi })}
+                    style={{ padding: '2px 8px', fontSize: 10, background: 'var(--bg-raised)',
+                      border: '1px solid var(--border)', borderRadius: 3,
+                      cursor: !gc ? 'pointer' : 'default',
+                      color: 'var(--ink-2)', opacity: !gc ? 1 : 0.4 }}>
+                    Text
                   </button>
                   {q && (
                     <button onClick={() => store.clearConstraintQuery(c.id, gi)}

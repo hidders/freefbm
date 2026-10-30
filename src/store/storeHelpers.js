@@ -1,6 +1,7 @@
 import { EXTERNAL_CONSTRAINT_TYPES } from '../constants.js'
 export { findRefMode, vtNameFromLabel } from '../utils/refMode.js'
 import { findRefMode } from '../utils/refMode.js'
+import { queryElements } from '../logic/query.js'
 
 // ── pan animation ─────────────────────────────────────────────────────────────
 export let _panAnimId = null
@@ -614,8 +615,7 @@ export function getConstraintQueryDeps(c, facts, objectTypes, subtypes) {
   const seen = new Set()
   const deps = []
   for (const q of (c.queries ?? [])) {
-    if (!q?.atoms) continue
-    for (const at of q.atoms) {
+    for (const at of queryElements(q, subtypes)) {
       const schemaId = at.originalId
       if (!schemaId || seen.has(schemaId) || schemaId.includes('_il_')) continue
       seen.add(schemaId)
