@@ -76,6 +76,11 @@ export function createModelSlice(set, get) {
     bottomPanelTab:       'population',
     bottomPanelCollapsed: true,
 
+    // The derivation rule editor, a floating panel that stays open while the
+    // canvas is used, and the schema elements it highlights there.
+    ruleEditor:    null,   // { otId } | { factId } | null
+    ruleHighlight: null,   // { typeIds: string[], factIds: string[] } | null
+
     clipboard: null,  // { objectTypes[], facts[], constraints[], subtypes[] } | null
 
     // ── clipboard ──────────────────────────────────────────────────────────
@@ -419,6 +424,9 @@ export function createModelSlice(set, get) {
     setBottomPanelHeight(h)     { set({ bottomPanelHeight: h }) },
     setBottomPanelTab(t)        { set({ bottomPanelTab: t }) },
     setBottomPanelCollapsed(v)  { set({ bottomPanelCollapsed: v }) },
+    openRuleEditor(target)      { set({ ruleEditor: target, ruleHighlight: null }) },
+    closeRuleEditor()           { set({ ruleEditor: null, ruleHighlight: null }) },
+    setRuleHighlight(h)         { set({ ruleHighlight: h }) },
 
     runValidation() {
       const s = get()
@@ -462,7 +470,7 @@ export function createModelSlice(set, get) {
             selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitLink: null, selectedImplicitLinkRole: null,
             selectedUniqueness: null, multiSelectedIds: [], selectedOccurrenceId: null, multiSelectedOccurrenceIds: [],
             uniquenessConstruction: null, frequencyConstruction: null,
-            linkDraft: null, roleReconnectDraft: null,
+            linkDraft: null, roleReconnectDraft: null, ruleEditor: null, ruleHighlight: null,
             pan: { x: 0, y: 0 }, zoom: 1 })
     },
 
@@ -725,6 +733,7 @@ export function createModelSlice(set, get) {
       const activeDiag = diagrams.find(d => d.id === activeDiagramId)
       const diagDS = activeDiag?.displaySettings ?? {}
       set({
+        ruleEditor: null, ruleHighlight: null,
         objectTypes: parsedOts,
         facts,
         subtypes:    parsedSts,

@@ -13,7 +13,6 @@ import { VALIDATION_CATEGORIES } from '../utils/validation.js'
 import { DERIVATION_MODES, directSupertypes, isDerived, checkRule } from '../logic/derivationRule.js'
 import { isDerivedFact, isComputedRole, checkFactRule, whyNotDerivable } from '../logic/factDerivation.js'
 import { makeContext } from '../logic/constraintFormulas.js'
-import DerivationRuleEditor from './DerivationRuleEditor'
 import { hasTextSelection } from '../utils/textPanel.js'
 import { plural as englishPlural } from '../verbalisation/languages/english.js'
 import { pluralise as dutchPlural } from '../verbalisation/languages/dutch.js'
@@ -917,7 +916,6 @@ function ObjectTypeInspector({ ot }) {
 // Not derived, derived or semi-derived; only a subtype can be derived. The
 // rule itself is edited in DerivationRuleEditor.
 function DerivationSection({ ot, store }) {
-  const [editing, setEditing] = useState(false)
   const supers = directSupertypes(ot.id, store.subtypes)
   const mode = ot.derivation ?? 'none'
   const notSubtype = supers.length === 0
@@ -939,7 +937,7 @@ function DerivationSection({ ot, store }) {
             </label>
           ))}
         </div>
-        <button disabled={notSubtype || !isDerived(ot)} onClick={() => setEditing(true)}
+        <button disabled={notSubtype || !isDerived(ot)} onClick={() => store.openRuleEditor({ otId: ot.id })}
           style={{ fontSize: 11, padding: '2px 8px', borderRadius: 3, border: '1px solid var(--border)',
             background: 'var(--bg-raised)', color: 'var(--ink-2)',
             cursor: notSubtype || !isDerived(ot) ? 'not-allowed' : 'pointer',
@@ -955,7 +953,6 @@ function DerivationSection({ ot, store }) {
             : 'The rule is valid'}
         </div>
       )}
-      {editing && <DerivationRuleEditor otId={ot.id} onClose={() => setEditing(false)}/>}
     </Section>
   )
 }
@@ -964,7 +961,6 @@ function DerivationSection({ ot, store }) {
 // Not derived, derived or semi-derived. The rule, with the roles it computes,
 // is edited in DerivationRuleEditor.
 function FactDerivationSection({ fact, store }) {
-  const [editing, setEditing] = useState(false)
   const mode = fact.derivation ?? 'none'
   const why = whyNotDerivable(fact, store)
   const blocked = !!why && mode === 'none'
@@ -986,7 +982,7 @@ function FactDerivationSection({ fact, store }) {
             </label>
           ))}
         </div>
-        <button disabled={!isDerivedFact(fact)} onClick={() => setEditing(true)}
+        <button disabled={!isDerivedFact(fact)} onClick={() => store.openRuleEditor({ factId: fact.id })}
           style={{ fontSize: 11, padding: '2px 8px', borderRadius: 3, border: '1px solid var(--border)',
             background: 'var(--bg-raised)', color: 'var(--ink-2)',
             cursor: !isDerivedFact(fact) ? 'not-allowed' : 'pointer',
@@ -1002,7 +998,6 @@ function FactDerivationSection({ fact, store }) {
             : `The rule is valid${nComputed ? `; it computes ${nComputed} role${nComputed > 1 ? 's' : ''}` : ''}`}
         </div>
       )}
-      {editing && <DerivationRuleEditor factId={fact.id} onClose={() => setEditing(false)}/>}
     </Section>
   )
 }

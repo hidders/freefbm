@@ -553,7 +553,12 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   const fcRoles                  = inFrequencyConstruction ? store.frequencyConstruction.roleIndices : []
 
   // Role boxes highlighted by constraint group table interaction
+  // Also every role of a fact type that the derivation rule editor points at.
   const highlightedRoles = (() => {
+    const rh = store.ruleHighlight
+    if (rh && (rh.factIds.includes(fact.id) || rh.typeIds.includes(fact.id))) {
+      return new Set(Array.from({ length: fact.arity }, (_, i) => i))
+    }
     const h = store.constraintHighlight
     if (!h) return null
     const hc = store.constraints.find(c => c.id === h.constraintId)

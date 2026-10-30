@@ -410,7 +410,9 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
   const strokeDash = (isReconnectTarget && !isSelected)
     ? '4 2'
     : ot.kind === 'value' ? '6 3' : 'none'
-  const fill    = isConstraintTarget ? '#1a7fd4' : inQueryHighlight ? 'var(--fill-query-in)' : '#ffffff'
+  const inRuleHighlight = !!store.ruleHighlight?.typeIds.includes(ot.id)
+  const fill    = isConstraintTarget ? '#1a7fd4' : inQueryHighlight ? 'var(--fill-query-in)'
+    : inRuleHighlight ? '#fde3c8' : '#ffffff'
 
   // Text vertical positions
   // Single line: name centred in box
