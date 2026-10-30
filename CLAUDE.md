@@ -39,6 +39,7 @@ All application state lives in a single **Zustand store** (`src/store/ormStore.j
 | Subtype | arrow between ObjectTypes | `superTypeId`, `subTypeId` |
 | Constraint | graphical badge | `type` (Exclusion/Equality/Subset/Ring/Frequency), `roleGroups[]` |
 | Group | none (colours its members) | `name`, `colors{outline,fill,text}`, `priority`, `members[]` (element, role or note ids); see `src/utils/groups.js` |
+| PropertyDefinition | none (values in each element's `properties`) | `name`, `category`, `type` (string/number/boolean/date/enum), `options`, `default`, `appliesTo[]`; see `src/utils/customProperties.js` |
 
 Roles connect FactTypes to ObjectTypes; `RoleConnectors.jsx` draws the SVG lines.
 

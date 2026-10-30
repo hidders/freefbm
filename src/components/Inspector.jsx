@@ -21,6 +21,7 @@ import { readingList, occurrences, preferredReadings } from '../store/readings.j
 const hasReadingText = (parts) => Array.isArray(parts) && parts.some(p => p?.trim())
 import { isDeonticUniqueness } from '../logic/modality.js'
 import { COLOR_CHANNELS, describeMember } from '../utils/groups.js'
+import { PROPERTY_TYPES, PROPERTY_KINDS, definitionsFor, validPropertyValue, withProperty } from '../utils/customProperties.js'
 import { plural as englishPlural } from '../verbalisation/languages/english.js'
 import { pluralise as dutchPlural } from '../verbalisation/languages/dutch.js'
 import { pluralise as frenchPlural } from '../verbalisation/languages/french.js'
@@ -428,6 +429,144 @@ function DocumentationSection({ el, onChange }) {
   )
 }
 
+// ── Custom properties ────────────────────────────────────────────────────────
+// The values of the model's property definitions (utils/customProperties.js)
+// that apply to this kind of element, grouped by category.
+function PropertyInput({ def, value, onChange }) {
+  const invalid = !validPropertyValue(def, value ?? '')
+  const style = { width: '100%', fontSize: 12, boxSizing: 'border-box',
+    ...(invalid && { borderColor: 'var(--danger)' }) }
+  const title = invalid ? `Not a valid ${PROPERTY_TYPES.find(t => t.id === def.type)?.label.toLowerCase()} value` : def.description || undefined
+  const dflt = def.default ? `${def.type === 'boolean' ? (def.default === 'true' ? 'Yes' : 'No') : def.default} (default)` : ''
+  if (def.type === 'boolean' || def.type === 'enum') {
+    const opts = def.type === 'boolean' ? [['true', 'Yes'], ['false', 'No']] : (def.options ?? []).map(o => [o, o])
+    return (
+      <select value={value ?? ''} onChange={e => onChange(e.target.value)} style={style} title={title}>
+        <option value="">{dflt || '—'}</option>
+        {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        {invalid && <option value={value}>{value}</option>}
+      </select>
+    )
+  }
+  return (
+    <input type={def.type === 'date' ? 'date' : def.type === 'number' ? 'number' : 'text'}
+      value={value ?? ''} placeholder={dflt} title={title} style={style}
+      onChange={e => onChange(e.target.value)}
+      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}/>
+  )
+}
+
+function PropertiesSection({ el, kind, onChange }) {
+  const store = useOrmStore()
+  const defs = definitionsFor(store.propertyDefinitions, kind)
+  if (!defs.length) return null
+  const categories = [...new Set(defs.map(d => d.category ?? ''))]
+  return (
+    <Section title="Custom properties">
+      {categories.map(cat => (
+        <div key={cat}>
+          {cat && <div style={{ fontSize: 11, color: 'var(--ink-3)', fontWeight: 600, margin: '4px 0 6px' }}>{cat}</div>}
+          {defs.filter(d => (d.category ?? '') === cat).map(d => (
+            <Row key={d.id}>
+              <Label>{d.name || '(unnamed)'}</Label>
+              <PropertyInput def={d} value={el.properties?.[d.id]}
+                onChange={v => onChange({ properties: withProperty(el.properties, d.id, v) })}/>
+            </Row>
+          ))}
+        </div>
+      ))}
+    </Section>
+  )
+}
+
+// Schema Settings: the model's property definitions.
+function PropertyDefinitionsEditor() {
+  const store = useOrmStore()
+  const [open, setOpen] = useState(null)
+  const defs = store.propertyDefinitions
+  const usage = id => {
+    let n = 0
+    const count = el => { if (el.properties?.[id] != null) n++ }
+    store.objectTypes.forEach(count); store.subtypes.forEach(count); store.constraints.forEach(count); store.groups.forEach(count)
+    store.facts.forEach(f => { count(f); f.roles.forEach(count) })
+    store.diagrams.forEach(d => (d.notes ?? []).forEach(count))
+    return n
+  }
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700,
+        letterSpacing: '0.1em', textTransform: 'uppercase',
+        borderBottom: '1px solid var(--border-soft)', paddingBottom: 5, marginBottom: 10 }}>
+        Custom Properties
+      </div>
+      {defs.length === 0 && (
+        <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8, lineHeight: 1.4 }}>
+          Declare properties, such as an acronym or a source reference, that elements can then fill in.
+        </div>
+      )}
+      {defs.map(d => {
+        const isOpen = open === d.id
+        const upd = patch => store.updatePropertyDefinition(d.id, patch)
+        return (
+          <div key={d.id} style={{ border: '1px solid var(--border-soft)', borderRadius: 4, marginBottom: 6,
+            background: 'var(--bg-raised)' }}>
+            <div onClick={() => setOpen(isOpen ? null : d.id)} title={PROPERTY_TYPES.find(t => t.id === d.type)?.label}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', cursor: 'pointer', fontSize: 12 }}>
+              <span style={{ color: 'var(--ink-muted)', fontSize: 9 }}>{isOpen ? '▼' : '▶'}</span>
+              <span style={{ flex: 1, minWidth: 0, color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {d.category && <span style={{ color: 'var(--ink-muted)' }}>{d.category} · </span>}{d.name || '(unnamed)'}
+              </span>
+            </div>
+            {isOpen && (
+              <div style={{ padding: '4px 8px 8px' }}>
+                <Row><Label>Name</Label><TInput value={d.name} onChange={v => upd({ name: v })}/></Row>
+                <Row><Label>Category</Label><TInput value={d.category} onChange={v => upd({ category: v })} placeholder="e.g. Glossary"/></Row>
+                <Row><Label>Description</Label><TInput value={d.description} onChange={v => upd({ description: v })}/></Row>
+                <Row>
+                  <Label>Type</Label>
+                  <select value={d.type} onChange={e => upd({ type: e.target.value, default: '' })} style={{ width: '100%', fontSize: 12 }}>
+                    {PROPERTY_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </select>
+                </Row>
+                {d.type === 'enum' && (
+                  <Row>
+                    <Label>Choices (one per line)</Label>
+                    <textarea rows={3} value={(d.options ?? []).join('\n')}
+                      onChange={e => upd({ options: e.target.value.split('\n') })}
+                      onBlur={e => upd({ options: [...new Set(e.target.value.split('\n').map(x => x.trim()).filter(Boolean))] })}
+                      style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, fontFamily: 'inherit' }}/>
+                  </Row>
+                )}
+                <Row>
+                  <Label>Default</Label>
+                  <PropertyInput def={{ ...d, default: '' }} value={d.default} onChange={v => upd({ default: v })}/>
+                </Row>
+                <Row>
+                  <Label>Applies to</Label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 8px' }}>
+                    {PROPERTY_KINDS.map(k => (
+                      <Checkbox key={k.id} label={k.label} checked={d.appliesTo.includes(k.id)}
+                        onChange={v => upd({ appliesTo: v ? [...d.appliesTo, k.id] : d.appliesTo.filter(x => x !== k.id) })}/>
+                    ))}
+                  </div>
+                </Row>
+                <DangerBtn onClick={() => {
+                  const n = usage(d.id)
+                  if (n && !window.confirm(`Delete “${d.name}” and its values on ${n} element${n === 1 ? '' : 's'}?`)) return
+                  store.deletePropertyDefinition(d.id)
+                }}>Delete Property</DangerBtn>
+              </div>
+            )}
+          </div>
+        )
+      })}
+      <button onClick={() => setOpen(store.addPropertyDefinition())} style={{ fontSize: 11, padding: '3px 8px' }}>
+        + Add property
+      </button>
+    </div>
+  )
+}
+
 // ── Element groups ───────────────────────────────────────────────────────────
 // The groups an element is in (utils/groups.js), with a picker to add it to
 // another group or a new one.
@@ -575,6 +714,7 @@ function GroupInspector({ group }) {
       </Section>
 
       <DocumentationSection el={group} onChange={update}/>
+      <PropertiesSection el={group} kind="group" onChange={update}/>
 
       <DangerBtn onClick={() => store.deleteGroup(group.id)}>Delete Group</DangerBtn>
     </div>
@@ -1122,6 +1262,7 @@ function ObjectTypeInspector({ ot }) {
       </Section>
 
       <DocumentationSection el={ot} onChange={patch => store.updateObjectType(ot.id, patch)}/>
+      <PropertiesSection el={ot} kind={ot.kind} onChange={patch => store.updateObjectType(ot.id, patch)}/>
       <GroupMembershipSection id={ot.id}/>
 
       <Section title="Usage">
@@ -1434,6 +1575,7 @@ function RoleInspector({ fact, roleIndex }) {
         onNavigateValueRange={() => store.selectValueRange({ factId: fact.id, roleIndex })}
         onNavigateCardinalityRange={() => store.selectCardinalityRange({ factId: fact.id, roleIndex })}
       />
+      <PropertiesSection el={role} kind="role" onChange={patch => store.updateRole(fact.id, roleIndex, patch)}/>
       <GroupMembershipSection id={role.id}/>
       <Section title="Usage">
         <DangerBtn onClick={() => { store.deleteRole(fact.id, roleIndex); store.select(fact.id, 'fact') }}>
@@ -2714,6 +2856,7 @@ function FactInspector({ fact }) {
       <FactConstraintsSubsection fact={fact} store={store} />
 
       <DocumentationSection el={fact} onChange={patch => store.updateFact(fact.id, patch)}/>
+      <PropertiesSection el={fact} kind="fact" onChange={patch => store.updateFact(fact.id, patch)}/>
       <GroupMembershipSection id={fact.id}/>
 
       <Section title="Usage">
@@ -3373,6 +3516,7 @@ function NoteInspector({ note }) {
         </div>
       )}
 
+      <PropertiesSection el={note} kind="note" onChange={patch => store.updateNote(note.id, patch)}/>
       <GroupMembershipSection id={note.id}/>
 
       <div style={{ marginTop: 8 }}>
@@ -3409,6 +3553,7 @@ function SubtypeInspector({ st }) {
         />
       </Row>
       <DocumentationSection el={st} onChange={patch => store.updateSubtype(st.id, patch)}/>
+      <PropertiesSection el={st} kind="subtype" onChange={patch => store.updateSubtype(st.id, patch)}/>
       <GroupMembershipSection id={st.id}/>
       <DiagramList elementId={st.id} kind="subtype" subtypeEndpointIds={[st.subId, st.superId]} />
       <div style={{ marginTop: 8 }}>
@@ -4031,6 +4176,7 @@ function ExternalConstraintInspector({ c }) {
       })()}
 
       <DocumentationSection el={c} onChange={patch => store.updateConstraint(c.id, patch)}/>
+      <PropertiesSection el={c} kind="constraint" onChange={patch => store.updateConstraint(c.id, patch)}/>
       <GroupMembershipSection id={c.id}/>
 
       <Section title="Usage">
@@ -4116,6 +4262,7 @@ function ConstraintInspector({ c }) {
       ))}
 
       <DocumentationSection el={c} onChange={patch => store.updateConstraint(c.id, patch)}/>
+      <PropertiesSection el={c} kind="constraint" onChange={patch => store.updateConstraint(c.id, patch)}/>
       <GroupMembershipSection id={c.id}/>
 
       <Section title="Usage">
@@ -4361,6 +4508,8 @@ export default function Inspector() {
               Target platform for value type datatype assignments
             </div>
           </div>
+
+          <PropertyDefinitionsEditor/>
 
           <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700,
             letterSpacing: '0.1em', textTransform: 'uppercase',
