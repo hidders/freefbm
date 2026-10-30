@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 
 const COL_CONSTRAINT = '#7c4dbd'
 
@@ -535,7 +535,7 @@ export function NoteConnectorIcon({ active }) {
 }
 
 export default function ToolPanel() {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const tool = store.sequenceConstruction ? 'connectConstraint' : store.tool
   const [advanced, setAdvanced] = useState(false)
 

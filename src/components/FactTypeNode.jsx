@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { factDerivationMark } from '../logic/factDerivation.js'
-import { useOrmStore, subtypeKindOf } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring, subtypeKindOf } from '../store/ormStore'
 import { isFallbackReading } from '../store/viewLanguage.js'
 import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
@@ -447,7 +447,7 @@ export function factBounds(fact) {
 }
 
 export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContextMenu, onRoleContextMenu, onBarContextMenu, onRoleValueClick, onNestedVrClick, onRoleCardinalityClick, onNestedCrClick, onIfContextMenu, onRoleValueContextMenu, onRoleCrContextMenu, onNestedVrContextMenu, onNestedCrContextMenu, isShared, dimObjectification, dimInnerFact, visibleConstraints, dimInternalConstraints }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const isImplicitSelected = fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact._parentFactId && store.selectedImplicitLink === fact._implicitRoleIndex
   const hasSelectedImplicitLink = !fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact.id
   const isSelected = isImplicitSelected || (fact._implicit ? false : (
@@ -718,7 +718,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
   const handleRoleContextMenu = useCallback((roleIndex, e) => {
     e.preventDefault(); e.stopPropagation()
-    const BORDER_PX = 3 * store.zoom
+    const BORDER_PX = 3 * useOrmStore.getState().zoom
     const bbox = e.currentTarget.getBoundingClientRect()
     const inInterior = e.clientX > bbox.left + BORDER_PX && e.clientX < bbox.right  - BORDER_PX &&
                        e.clientY > bbox.top  + BORDER_PX && e.clientY < bbox.bottom - BORDER_PX
@@ -729,7 +729,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     } else {
       onContextMenu(e)
     }
-  }, [store.zoom, onContextMenu, onRoleContextMenu])
+  }, [onContextMenu, onRoleContextMenu])
 
   const handleRoleMouseDown = useCallback((roleIndex, e) => {
     e.stopPropagation()
@@ -870,7 +870,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     // Select mode: use click position to decide border (→ fact) vs interior (→ role)
     const thisRoleSelected = store.selectedRole?.factId === fact.id && store.selectedRole?.roleIndex === roleIndex &&
       (!occurrenceId || !store.selectedRole?.occurrenceId || store.selectedRole?.occurrenceId === occurrenceId)
-    const BORDER_PX = 3 * store.zoom
+    const BORDER_PX = 3 * useOrmStore.getState().zoom
     const bbox = e.currentTarget.getBoundingClientRect()
     const inInterior = (
       e.clientX > bbox.left + BORDER_PX && e.clientX < bbox.right  - BORDER_PX &&
@@ -913,12 +913,12 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
   // Dynamic cursor on role boxes: crosshair (interior → selects role) vs pointer (border → selects fact)
   const handleRoleMouseMove = useCallback((e) => {
-    const BORDER_PX = 3 * store.zoom
+    const BORDER_PX = 3 * useOrmStore.getState().zoom
     const bbox = e.currentTarget.getBoundingClientRect()
     const inInterior = e.clientX > bbox.left + BORDER_PX && e.clientX < bbox.right  - BORDER_PX &&
                        e.clientY > bbox.top  + BORDER_PX && e.clientY < bbox.bottom - BORDER_PX
     e.currentTarget.parentElement?.classList.toggle('role-interior', inInterior)
-  }, [store.zoom])
+  }, [])
 
   const handleRoleMouseLeave = useCallback((e) => {
     e.currentTarget.parentElement?.classList.remove('role-interior')

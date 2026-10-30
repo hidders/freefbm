@@ -1,5 +1,5 @@
 import React from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { roleCenter, makeImplicitLinkFact } from './FactTypeNode'
 import { borderPoint } from './ConstraintNodes'
@@ -12,7 +12,7 @@ const PAD_X        = 5
 const PAD_Y        = 3
 
 export default function ConstraintMemberLabels() {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const { selectedId, selectedKind } = store
   const { facts: visibleFacts, objectTypes, subtypes, collapsedRefFacts, collapsedRefFactOccs } = useDiagramElements()
 

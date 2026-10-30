@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds } from './ObjectTypeNode'
 import { ROLE_W, ROLE_H, ROLE_GAP, nestedFactBounds, displayRoleOrder } from './FactTypeNode'
@@ -46,7 +46,7 @@ function playerXY(ot, nestedFact) {
 // ── component ─────────────────────────────────────────────────────────────────
 
 export default function RoleConnectors({ mousePos, queryReachable, queryOriginals }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const { objectTypes, facts: visibleFacts } = useDiagramElements()
   // Map by occurrence ID (for roleOccurrenceMap lookups)
   const otByOccId = Object.fromEntries(
@@ -391,7 +391,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
 // paint on top of the shapes they are linked to.
 
 export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals }) {
-  const store      = useOrmStore()
+  const store      = useOrmStoreIgnoring('pan', 'zoom')
   const { objectTypes, facts: visibleFacts } = useDiagramElements()
   const otMap      = Object.fromEntries(objectTypes.map(o => [o.id, o]))
   const nestedMap  = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))

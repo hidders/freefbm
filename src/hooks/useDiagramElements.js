@@ -1,4 +1,4 @@
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { findRefMode } from '../utils/refMode'
 
 /**
@@ -7,7 +7,7 @@ import { findRefMode } from '../utils/refMode'
  * Also returns the active diagram object and the elementIds Set.
  */
 export function useDiagramElements() {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   return getDiagramElements(store)
 }
 

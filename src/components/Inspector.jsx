@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { findRefMode, refModeLabel, findCompositePI, canBeExternalUniquenessPI } from '../utils/refMode'
 import { getDisplayReading, makeImplicitLinkFact } from './FactTypeNode'
 import { RingMiniSymbol } from './ConstraintNodes'
@@ -271,7 +271,7 @@ function RefModeExpandCollapseButtons({ factId, occurrenceId, store }) {
 // Shows which diagrams contain the given element, in tab order.
 // subtypeEndpointIds: [subId, superId] — for subtypes both endpoints must be in the diagram.
 function DiagramList({ elementId, kind, subtypeEndpointIds, factId, roleIndex }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const { diagrams } = store
   const [occPicker, setOccPicker] = useState(null)
   const isImplicitLink = kind === 'implicitLink' && factId != null && roleIndex != null
@@ -457,7 +457,7 @@ function PropertyInput({ def, value, onChange }) {
 }
 
 function PropertiesSection({ el, kind, onChange }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const defs = definitionsFor(store.propertyDefinitions, kind)
   if (!defs.length) return null
   const categories = [...new Set(defs.map(d => d.category ?? ''))]
@@ -481,7 +481,7 @@ function PropertiesSection({ el, kind, onChange }) {
 
 // Schema Settings: the model's property definitions.
 function PropertyDefinitionsEditor() {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const [open, setOpen] = useState(null)
   const defs = store.propertyDefinitions
   const usage = id => {
@@ -580,7 +580,7 @@ function GroupSwatch({ group, size = 10 }) {
 }
 
 function GroupPicker({ memberIds, exclude = [], label = 'Add to group…' }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const options = store.groups.filter(g => !exclude.includes(g.id))
   return (
     <select value="" style={{ fontSize: 11, width: '100%' }}
@@ -597,7 +597,7 @@ function GroupPicker({ memberIds, exclude = [], label = 'Add to group…' }) {
 }
 
 function GroupMembershipSection({ id }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const mine = store.groups.filter(g => g.members.includes(id))
   return (
     <Section title="Groups">
@@ -640,7 +640,7 @@ const COLOR_LABELS = { outline: 'Outline', fill: 'Fill', text: 'Text' }
 const COLOR_DEFAULTS = { outline: '#ff8000', fill: '#fff3e0', text: '#ff8000' }
 
 function GroupInspector({ group }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const update = patch => store.updateGroup(group.id, patch)
   const members = group.members.map(id => ({ id, m: describeMember(id, store) })).filter(x => x.m)
   const index = store.groups.findIndex(g => g.id === group.id)
@@ -1056,7 +1056,7 @@ export function ValueRangeEditor({ range, onChange, naturalNumbers = false, posi
 
 // ── Datatype field (value types, entity types with refMode, nested value types)─
 function DatatypeField({ assignment, onSet }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const activeDiagram = store.diagrams?.find(d => d.id === store.activeDiagramId)
   const profileId = activeDiagram?.profileId ?? null
   const profile = profileId ? PROFILE_MAP[profileId] : null
@@ -1153,7 +1153,7 @@ function DatatypeField({ assignment, onSet }) {
 
 // ── Entity / Value inspector ──────────────────────────────────────────────────
 function ObjectTypeInspector({ ot }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
 
   // Derived ref-mode info for entities.
   const refMode    = ot.kind === 'entity' ? findRefMode(ot, store.facts, store.objectTypes) : null
@@ -1389,7 +1389,7 @@ function RangeChip({ range, onClick, format = formatValueRange }) {
 
 // ── Base role chip — links to the base role of an implicit link ──────────────
 function BaseRoleChip({ parentFact, roleIndex }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const factMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
 
@@ -1532,7 +1532,7 @@ function CompactRoleList({ fact, store }) {
 
 // ── Role inspector ────────────────────────────────────────────────────────────
 function RoleInspector({ fact, roleIndex }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const role = fact.roles[roleIndex]
   if (!role) return null
   const reading = getDisplayReading(fact) || null
@@ -1588,7 +1588,7 @@ function RoleInspector({ fact, roleIndex }) {
 
 // ── Internal Uniqueness Bar inspector ────────────────────────────────────────
 function UniquenessBarInspector({ fact, uIndex }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const u = fact.uniqueness[uIndex]
   if (!u) return null
 
@@ -1707,7 +1707,7 @@ function UniquenessBarInspector({ fact, uIndex }) {
 
 // ── Implied Internal Uniqueness inspector (read-only) ───────────────────────
 function ImpliedUniquenessBarInspector({ fact, roleIndex }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const role = fact.roles[roleIndex]
   if (!role) return null
   const otMap     = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
@@ -1746,7 +1746,7 @@ function ImpliedUniquenessBarInspector({ fact, roleIndex }) {
 
 // ── Implied Mandatory Role inspector (read-only) ────────────────────────────
 function ImpliedMandatoryDotInspector({ fact, roleIndex }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const role = fact.roles[roleIndex]
   if (!role) return null
   const otMap     = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
@@ -1785,7 +1785,7 @@ function ImpliedMandatoryDotInspector({ fact, roleIndex }) {
 
 // ── Internal Frequency Constraint inspector ───────────────────────────────────
 function InternalFrequencyInspector({ fact, ifItem }) {
-  const store   = useOrmStore()
+  const store   = useOrmStoreIgnoring('pan', 'zoom')
   const isImplicit = fact._implicit === true
   const parentFact = isImplicit ? store.facts.find(f => f.id === fact._parentFactId) : null
   const otMap   = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
@@ -1863,7 +1863,7 @@ function typeKindFromAssignment(a) {
 
 // ── Shared helper: resolve a value/cardinality range selection to display info ─
 function useRangeSelectionInfo(sel) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   if (!sel) return null
   if (sel.otId) {
     const ot = store.objectTypes.find(o => o.id === sel.otId)
@@ -2761,7 +2761,7 @@ function FactConstraintsSubsection({ fact, store }) {
 
 // ── Fact type inspector ───────────────────────────────────────────────────────
 function FactInspector({ fact }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
 
   // Shared: arity + readings + display options
   const factTypeSection = (
@@ -2945,7 +2945,7 @@ function FactInspector({ fact }) {
 
 // ── Implicit link role inspector ──────────────────────────────────────────────
 function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const ilRaw = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
 
   const ilKey = `${parentFact.id}:il:${roleIndex}`
@@ -3082,7 +3082,7 @@ function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
 
 // ── Compact implicit link role list ──────────────────────────────────────────
 function CompactImplicitLinkRoleList({ parentFact, roleIndex }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
 
@@ -3142,7 +3142,7 @@ function CompactImplicitLinkRoleList({ parentFact, roleIndex }) {
 
 // ── Implicit link inspector ───────────────────────────────────────────────────
 function ImplicitLinkInspector({ parentFact, roleIndex }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const il = parentFact.implicitLinks?.find(l => l.roleIndex === roleIndex)
 
   const ilKey = `${parentFact.id}:il:${roleIndex}`
@@ -3413,7 +3413,7 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
 
 // ── Subtype inspector ─────────────────────────────────────────────────────────
 function NoteInspector({ note }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
 
   const connectorLabel = (targetId) => {
     if (targetId?.includes('_il_')) {
@@ -3527,7 +3527,7 @@ function NoteInspector({ note }) {
 }
 
 function SubtypeInspector({ st }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const playerName = (id) => {
     const ot = store.objectTypes.find(o => o.id === id)
     if (ot) return ot.name
@@ -3577,7 +3577,7 @@ const EXTERNAL_CONSTRAINT_TITLES = {
 
 // ── Subtype-like Constraint inspector ─────────────────────────────────────────
 function ExternalConstraintInspector({ c }) {
-  const store      = useOrmStore()
+  const store      = useOrmStoreIgnoring('pan', 'zoom')
   const gc         = store.sequenceConstruction?.constraintId === c.id ? store.sequenceConstruction : null
   const subtypeMap = Object.fromEntries(store.subtypes.map(st => [st.id, st]))
   const otMap      = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
@@ -4189,7 +4189,7 @@ function ExternalConstraintInspector({ c }) {
 
 // ── Constraint inspector ──────────────────────────────────────────────────────
 function ConstraintInspector({ c }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const factMap = Object.fromEntries(store.facts.map(f => [f.id, f]))
 
   return (
@@ -4277,7 +4277,7 @@ function ConstraintInspector({ c }) {
 
 // ── Main inspector ────────────────────────────────────────────────────────────
 export default function Inspector() {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const { selectedId, selectedKind, selectedRole, selectedImplicitLink, selectedImplicitLinkRole,
           selectedUniqueness, selectedMandatoryDot, selectedInternalFrequency,
           selectedValueRange, selectedCardinalityRange } = store

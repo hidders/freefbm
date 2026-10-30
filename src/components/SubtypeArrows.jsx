@@ -1,5 +1,5 @@
 import React from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds } from './ObjectTypeNode'
 import { nestedFactBounds } from './FactTypeNode'
@@ -37,7 +37,7 @@ function playerBoundsForEndpoint(occId, schemaId, otByOccId, nestedByOccId, otMa
 }
 
 export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes, queryReachable, queryOriginals, noteSubjectIds }) {
-  const store     = useOrmStore()
+  const store     = useOrmStoreIgnoring('pan', 'zoom')
   const { objectTypes, facts, subtypes } = useDiagramElements()
   // Schema-ID maps (for fallback and for the link-draft preview)
   const otMap     = Object.fromEntries(objectTypes.map(o => [o.id, o]))

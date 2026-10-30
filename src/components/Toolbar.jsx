@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { triggerPdfExport } from '../utils/pdfExport'
 import { openModelFile } from '../import/openModelFile'
 import { LANGUAGES } from '../verbalisation/languages/index.js'
@@ -82,7 +82,7 @@ function LanguageSwitch() {
 
 export default function Toolbar() {
   const storeRef = useRef(null)
-  storeRef.current = useOrmStore()
+  storeRef.current = useOrmStoreIgnoring('pan')
 
   // Read from ref inside handlers so we always get current state.
   const store = () => storeRef.current

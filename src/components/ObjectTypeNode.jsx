@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react'
-import { useOrmStore, subtypeKindOf } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring, subtypeKindOf } from '../store/ormStore'
 import { findRefMode, refModeLabel } from '../utils/refMode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { derivationMark } from '../logic/derivationRule.js'
@@ -133,7 +133,7 @@ export function entityBounds(ot) {
 }
 
 export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragStart, mousePos, onContextMenu, onDoubleClickValueRange, onValueRangeClick, onCardinalityRangeClick, onRefRoleValueRangeClick, onValueRangeContextMenu, onCardinalityRangeContextMenu, isShared, dimInternalConstraints }) {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const isSelected = occurrenceId
     ? ((store.selectedOccurrenceId !== null
          ? store.selectedOccurrenceId === occurrenceId

@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useOrmStore, subtypeKindOf } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring, subtypeKindOf } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { useContextMenuHandlers } from '../hooks/useContextMenuHandlers'
 import ObjectTypeNode, { computeOtSize, entityBounds, collapsedRefValueRole } from './ObjectTypeNode'
@@ -459,8 +459,38 @@ function ValueRangePopup({ title, initialRange, onCommit, x, y, onClose, natural
   )
 }
 
+// The pan/zoom transform of the diagram. Only this and GridPatterns re-render
+// on a pan: `children` are the same elements, so React skips them.
+function ViewportGroup({ children }) {
+  const pan  = useOrmStore(s => s.pan)
+  const zoom = useOrmStore(s => s.zoom)
+  return <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>{children}</g>
+}
+
+function GridPatterns() {
+  const pan  = useOrmStore(s => s.pan)
+  const zoom = useOrmStore(s => s.zoom)
+  return (
+    <>
+      <pattern id="gridSm" width={20 * zoom} height={20 * zoom}
+        x={pan.x % (20 * zoom)} y={pan.y % (20 * zoom)}
+        patternUnits="userSpaceOnUse">
+        <path d={`M ${20 * zoom} 0 L 0 0 0 ${20 * zoom}`}
+          fill="none" stroke="#ddd4c8" strokeWidth="0.5"/>
+      </pattern>
+      <pattern id="gridLg" width={100 * zoom} height={100 * zoom}
+        x={pan.x % (100 * zoom)} y={pan.y % (100 * zoom)}
+        patternUnits="userSpaceOnUse">
+        <rect width={100 * zoom} height={100 * zoom} fill="url(#gridSm)"/>
+        <path d={`M ${100 * zoom} 0 L 0 0 0 ${100 * zoom}`}
+          fill="none" stroke="#ccc3b8" strokeWidth="1"/>
+      </pattern>
+    </>
+  )
+}
+
 export default function Canvas() {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan')
   const { objectTypes: visibleOts, facts: visibleFacts, constraints: visibleConstraints, subtypes: visibleSubtypes } = useDiagramElements()
   const sharedIds = store.getSharedIds?.() ?? new Set()
   const activeDiagram = store.diagrams.find(d => d.id === store.activeDiagramId)
@@ -468,6 +498,9 @@ export default function Canvas() {
 
   // ── Note inline editing ──────────────────────────────────────────────────
   const [noteEditing, setNoteEditing] = useState(null)  // { noteId, text } | null
+  // The note editor and frequency popup are placed in screen space, so while
+  // either is open Canvas re-renders on a pan to keep them in place.
+  const overlayPan = useOrmStore(s => (noteEditing || s.frequencyConstruction?.stage === 3) ? s.pan : null)
 
   const commitNoteEdit = useCallback(() => {
     if (!noteEditing) return
@@ -754,23 +787,27 @@ export default function Canvas() {
     setVrPopup({ nestedFactId: fact.id, x: clientX, y: clientY, naturalNumbers: true, title: `Cardinality Range — ${fact.objectifiedName || 'Nested Type'}` })
   }, [store])
 
+  // Canvas doesn't re-render on a pan (see ViewportGroup), so `pan` is read
+  // from the store when needed rather than from `store`.
   const screenToWorld = useCallback((sx, sy) => {
     const rect = svgRef.current?.getBoundingClientRect()
     if (!rect) return { x: 0, y: 0 }
+    const { pan, zoom } = useOrmStore.getState()
     return {
-      x: (sx - rect.left - store.pan.x) / store.zoom,
-      y: (sy - rect.top  - store.pan.y) / store.zoom,
+      x: (sx - rect.left - pan.x) / zoom,
+      y: (sy - rect.top  - pan.y) / zoom,
     }
-  }, [store.pan, store.zoom])
+  }, [])
 
   const worldToScreen = useCallback((wx, wy) => {
     const rect = svgRef.current?.getBoundingClientRect()
     if (!rect) return { x: 0, y: 0 }
+    const { pan, zoom } = useOrmStore.getState()
     return {
-      x: wx * store.zoom + store.pan.x + rect.left,
-      y: wy * store.zoom + store.pan.y + rect.top,
+      x: wx * zoom + pan.x + rect.left,
+      y: wy * zoom + pan.y + rect.top,
     }
-  }, [store.pan, store.zoom])
+  }, [])
 
   // ── background click / placement ────────────────────────────────────────
   const handleSVGMouseDown = useCallback((e) => {
@@ -811,7 +848,7 @@ export default function Canvas() {
     if (e.button === 1 || (e.button === 0 && spaceRef.current)) {
       e.preventDefault()
       setDragState({ type: 'pan', startX: e.clientX, startY: e.clientY,
-                     origX: store.pan.x, origY: store.pan.y })
+                     origX: useOrmStore.getState().pan.x, origY: useOrmStore.getState().pan.y })
       return
     }
     if (e.button !== 0) return
@@ -1125,15 +1162,17 @@ export default function Canvas() {
       const cx = e.clientX - rect.left
       const cy = e.clientY - rect.top
       const factor = e.deltaY < 0 ? 1.1 : 0.909
-      const newZoom = Math.min(3, Math.max(0.15, store.zoom * factor))
+      const { pan, zoom } = useOrmStore.getState()
+      const newZoom = Math.min(3, Math.max(0.15, zoom * factor))
       store.setPan(
-        cx - (cx - store.pan.x) * (newZoom / store.zoom),
-        cy - (cy - store.pan.y) * (newZoom / store.zoom),
+        cx - (cx - pan.x) * (newZoom / zoom),
+        cy - (cy - pan.y) * (newZoom / zoom),
       )
       store.setZoom(newZoom)
     } else {
       // Two-finger trackpad scroll (or plain scroll wheel) → pan
-      store.setPan(store.pan.x - e.deltaX, store.pan.y - e.deltaY)
+      const { pan } = useOrmStore.getState()
+      store.setPan(pan.x - e.deltaX, pan.y - e.deltaY)
     }
   }, [store])
 
@@ -1279,19 +1318,7 @@ export default function Canvas() {
         onMouseLeave={handleMouseUp}
       >
         <defs>
-          <pattern id="gridSm" width={20 * store.zoom} height={20 * store.zoom}
-            x={store.pan.x % (20 * store.zoom)} y={store.pan.y % (20 * store.zoom)}
-            patternUnits="userSpaceOnUse">
-            <path d={`M ${20 * store.zoom} 0 L 0 0 0 ${20 * store.zoom}`}
-              fill="none" stroke="#ddd4c8" strokeWidth="0.5"/>
-          </pattern>
-          <pattern id="gridLg" width={100 * store.zoom} height={100 * store.zoom}
-            x={store.pan.x % (100 * store.zoom)} y={store.pan.y % (100 * store.zoom)}
-            patternUnits="userSpaceOnUse">
-            <rect width={100 * store.zoom} height={100 * store.zoom} fill="url(#gridSm)"/>
-            <path d={`M ${100 * store.zoom} 0 L 0 0 0 ${100 * store.zoom}`}
-              fill="none" stroke="#ccc3b8" strokeWidth="1"/>
-          </pattern>
+          <GridPatterns/>
           <marker id="arrowSubtype" markerWidth="4.5" markerHeight="4.5" refX="0.25" refY="2" orient="auto">
             <path d="M 0.25 0.25 L 4.25 2 L 0.25 3.75 Z" fill="var(--col-subtype)" stroke="none"/>
           </marker>
@@ -1329,7 +1356,7 @@ export default function Canvas() {
 
         <rect className="canvas-bg" width="100%" height="100%" fill="url(#gridLg)"/>
 
-        <g transform={`translate(${store.pan.x},${store.pan.y}) scale(${store.zoom})`}>
+        <ViewportGroup>
           {/* Note connectors — rendered below notes so notes sit on top */}
           {visibleNotes.flatMap(note => (note.connectors ?? []).map(conn => {
             let tx, ty
@@ -1600,7 +1627,7 @@ export default function Canvas() {
               style={{ pointerEvents: 'none' }}
             />
           )}
-        </g>
+        </ViewportGroup>
 
         {/* Space-pan overlay — covers all elements when Space is held so only panning is possible */}
         {spaceDown && (
@@ -1612,7 +1639,7 @@ export default function Canvas() {
               if (e.button !== 0) return
               e.stopPropagation()
               setDragState({ type: 'pan', startX: e.clientX, startY: e.clientY,
-                             origX: store.pan.x, origY: store.pan.y })
+                             origX: useOrmStore.getState().pan.x, origY: useOrmStore.getState().pan.y })
             }}
           />
         )}
@@ -1623,8 +1650,8 @@ export default function Canvas() {
         const note = visibleNotes.find(n => n.id === noteEditing.noteId)
         if (!note) return null
         const FOLD = 16
-        const left   = (note.x - note.w / 2) * store.zoom + store.pan.x
-        const top    = (note.y - note.h / 2) * store.zoom + store.pan.y
+        const left   = (note.x - note.w / 2) * store.zoom + overlayPan.x
+        const top    = (note.y - note.h / 2) * store.zoom + overlayPan.y
         const width  = (note.w - FOLD) * store.zoom
         const height = note.h * store.zoom
         return (

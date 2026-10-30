@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { triggerPdfExport } from '../utils/pdfExport'
 import { openModelFile } from '../import/openModelFile'
 
@@ -8,7 +8,7 @@ const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 export function useElectronMenu() {
   // Use a ref so IPC handlers always read current state without re-registering on every change.
   const storeRef = useRef(null)
-  storeRef.current = useOrmStore()
+  storeRef.current = useOrmStoreIgnoring('pan', 'zoom')
 
   useEffect(() => {
     if (!isElectron) return

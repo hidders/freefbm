@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { useOrmStore } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 
 export default function DiagramTabs() {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
   const diagrams        = store.diagrams ?? []
   const activeDiagramId = store.activeDiagramId
 

@@ -16,11 +16,11 @@ import { useElectronMenu } from './hooks/useElectronMenu'
 import { useWorkbenchBridge } from './hooks/useWorkbenchBridge'
 import { useUndoRedo } from './hooks/useUndoRedo'
 import { textPanelOf, handleTextPanelKey } from './utils/textPanel'
-import { useOrmStore } from './store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring } from './store/ormStore'
 import { getDiagramElements } from './hooks/useDiagramElements'
 
 function useKeyboardShortcuts() {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
 
   useEffect(() => {
     const handler = (e) => {
@@ -267,13 +267,21 @@ function useKeyboardShortcuts() {
   }, [store])
 }
 
+const VALIDATION_INPUTS = [
+  'objectTypes', 'facts', 'subtypes', 'constraints', 'groups', 'propertyDefinitions', 'diagrams',
+  'populations', 'factPopulations', 'subtypeMappings', 'nestedEntityMappings', 'viewLanguage',
+  'validationCategories',
+]
+
 function useValidation() {
   useEffect(() => {
     let timer = null
     let prev = null
     const schedule = (state) => {
-      const key = [state.objectTypes, state.facts, state.constraints, state.validationCategories]
-      if (key === prev) return
+      // Only model edits revalidate, not pan, zoom, selection or the results
+      // runValidation itself stores (which used to re-run it every 400 ms).
+      const key = VALIDATION_INPUTS.map(k => state[k])
+      if (prev && key.every((v, i) => v === prev[i])) return
       prev = key
       clearTimeout(timer)
       timer = setTimeout(() => useOrmStore.getState().runValidation(), 400)
@@ -285,7 +293,7 @@ function useValidation() {
 }
 
 export default function App() {
-  const store = useOrmStore()
+  const store = useOrmStoreIgnoring('pan', 'zoom')
 
   useElectronMenu()
   useWorkbenchBridge()

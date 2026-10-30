@@ -18,6 +18,36 @@
 // and plain (non-objectified) facts never qualify.
 export function findRefMode(entity, facts, objectTypes) {
   if (!entity) return null
+  return cachedLookup(refModeCache, [facts, objectTypes], entity, () => computeRefMode(entity, facts, objectTypes))
+}
+
+// Both lookups scan every fact, and the canvas, inspector and validation ask
+// them for many entities on every render, which is quadratic in a large schema.
+// Their results depend only on the state arrays (compared by identity, as the
+// store never mutates them in place) and on the entity's id and kind, so they
+// are cached per array combination. The results are shared: don't mutate them.
+const refModeCache = new WeakMap()
+const compositePICache = new WeakMap()
+const NO_CONSTRAINTS = {}, BY_ENTITY = {}
+function cachedLookup(cache, arrays, entity, compute) {
+  let level = cache
+  for (const a of arrays) {
+    const key = a ?? NO_CONSTRAINTS
+    if (typeof key !== 'object') return compute()
+    let next = level.get(key)
+    if (!next) { next = new WeakMap(); level.set(key, next) }
+    level = next
+  }
+  let byEntity = level.get(BY_ENTITY)
+  if (!byEntity) { byEntity = new Map(); level.set(BY_ENTITY, byEntity) }
+  const k = `${entity.id}\u0000${entity.kind}\u0000${!!entity.objectified}\u0000${entity.objectifiedKind}`
+  if (byEntity.has(k)) return byEntity.get(k)
+  const result = compute()
+  byEntity.set(k, result)
+  return result
+}
+
+function computeRefMode(entity, facts, objectTypes) {
   const isEntityOt    = entity.kind === 'entity'
   const isNestedEntity = !!entity.objectified && entity.objectifiedKind !== 'value'
   if (!isEntityOt && !isNestedEntity) return null
@@ -153,6 +183,11 @@ export function isRefModeFact(fact, facts, objectTypes) {
 // nested entity as a player.
 export function findCompositePI(entity, facts, objectTypes, constraints) {
   if (!entity) return null
+  return cachedLookup(compositePICache, [facts, objectTypes, constraints], entity,
+    () => computeCompositePI(entity, facts, objectTypes, constraints))
+}
+
+function computeCompositePI(entity, facts, objectTypes, constraints) {
   const isEntityOt    = entity.kind === 'entity'
   const isNestedEntity = !!entity.objectified && entity.objectifiedKind !== 'value'
   if (!isEntityOt && !isNestedEntity) return null
