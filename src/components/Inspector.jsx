@@ -20,6 +20,8 @@ import { readingList, occurrences, preferredReadings } from '../store/readings.j
 
 const hasReadingText = (parts) => Array.isArray(parts) && parts.some(p => p?.trim())
 import { isDeonticUniqueness } from '../logic/modality.js'
+import { COLOR_CHANNELS, describeMember } from '../utils/groups.js'
+import { PROPERTY_TYPES, PROPERTY_KINDS, definitionsFor, validPropertyValue, withProperty } from '../utils/customProperties.js'
 import { plural as englishPlural } from '../verbalisation/languages/english.js'
 import { pluralise as dutchPlural } from '../verbalisation/languages/dutch.js'
 import { pluralise as frenchPlural } from '../verbalisation/languages/french.js'
@@ -424,6 +426,298 @@ function DocumentationSection({ el, onChange }) {
         {area('note', 'Anything else worth recording…')}
       </Row>
     </Section>
+  )
+}
+
+// ── Custom properties ────────────────────────────────────────────────────────
+// The values of the model's property definitions (utils/customProperties.js)
+// that apply to this kind of element, grouped by category.
+function PropertyInput({ def, value, onChange }) {
+  const invalid = !validPropertyValue(def, value ?? '')
+  const style = { width: '100%', fontSize: 12, boxSizing: 'border-box',
+    ...(invalid && { borderColor: 'var(--danger)' }) }
+  const title = invalid ? `Not a valid ${PROPERTY_TYPES.find(t => t.id === def.type)?.label.toLowerCase()} value` : def.description || undefined
+  const dflt = def.default ? `${def.type === 'boolean' ? (def.default === 'true' ? 'Yes' : 'No') : def.default} (default)` : ''
+  if (def.type === 'boolean' || def.type === 'enum') {
+    const opts = def.type === 'boolean' ? [['true', 'Yes'], ['false', 'No']] : (def.options ?? []).map(o => [o, o])
+    return (
+      <select value={value ?? ''} onChange={e => onChange(e.target.value)} style={style} title={title}>
+        <option value="">{dflt || '—'}</option>
+        {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        {invalid && <option value={value}>{value}</option>}
+      </select>
+    )
+  }
+  return (
+    <input type={def.type === 'date' ? 'date' : def.type === 'number' ? 'number' : 'text'}
+      value={value ?? ''} placeholder={dflt} title={title} style={style}
+      onChange={e => onChange(e.target.value)}
+      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}/>
+  )
+}
+
+function PropertiesSection({ el, kind, onChange }) {
+  const store = useOrmStore()
+  const defs = definitionsFor(store.propertyDefinitions, kind)
+  if (!defs.length) return null
+  const categories = [...new Set(defs.map(d => d.category ?? ''))]
+  return (
+    <Section title="Custom properties">
+      {categories.map(cat => (
+        <div key={cat}>
+          {cat && <div style={{ fontSize: 11, color: 'var(--ink-3)', fontWeight: 600, margin: '4px 0 6px' }}>{cat}</div>}
+          {defs.filter(d => (d.category ?? '') === cat).map(d => (
+            <Row key={d.id}>
+              <Label>{d.name || '(unnamed)'}</Label>
+              <PropertyInput def={d} value={el.properties?.[d.id]}
+                onChange={v => onChange({ properties: withProperty(el.properties, d.id, v) })}/>
+            </Row>
+          ))}
+        </div>
+      ))}
+    </Section>
+  )
+}
+
+// Schema Settings: the model's property definitions.
+function PropertyDefinitionsEditor() {
+  const store = useOrmStore()
+  const [open, setOpen] = useState(null)
+  const defs = store.propertyDefinitions
+  const usage = id => {
+    let n = 0
+    const count = el => { if (el.properties?.[id] != null) n++ }
+    store.objectTypes.forEach(count); store.subtypes.forEach(count); store.constraints.forEach(count); store.groups.forEach(count)
+    store.facts.forEach(f => { count(f); f.roles.forEach(count) })
+    store.diagrams.forEach(d => (d.notes ?? []).forEach(count))
+    return n
+  }
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700,
+        letterSpacing: '0.1em', textTransform: 'uppercase',
+        borderBottom: '1px solid var(--border-soft)', paddingBottom: 5, marginBottom: 10 }}>
+        Custom Properties
+      </div>
+      {defs.length === 0 && (
+        <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8, lineHeight: 1.4 }}>
+          Declare properties, such as an acronym or a source reference, that elements can then fill in.
+        </div>
+      )}
+      {defs.map(d => {
+        const isOpen = open === d.id
+        const upd = patch => store.updatePropertyDefinition(d.id, patch)
+        return (
+          <div key={d.id} style={{ border: '1px solid var(--border-soft)', borderRadius: 4, marginBottom: 6,
+            background: 'var(--bg-raised)' }}>
+            <div onClick={() => setOpen(isOpen ? null : d.id)} title={PROPERTY_TYPES.find(t => t.id === d.type)?.label}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', cursor: 'pointer', fontSize: 12 }}>
+              <span style={{ color: 'var(--ink-muted)', fontSize: 9 }}>{isOpen ? '▼' : '▶'}</span>
+              <span style={{ flex: 1, minWidth: 0, color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {d.category && <span style={{ color: 'var(--ink-muted)' }}>{d.category} · </span>}{d.name || '(unnamed)'}
+              </span>
+            </div>
+            {isOpen && (
+              <div style={{ padding: '4px 8px 8px' }}>
+                <Row><Label>Name</Label><TInput value={d.name} onChange={v => upd({ name: v })}/></Row>
+                <Row><Label>Category</Label><TInput value={d.category} onChange={v => upd({ category: v })} placeholder="e.g. Glossary"/></Row>
+                <Row><Label>Description</Label><TInput value={d.description} onChange={v => upd({ description: v })}/></Row>
+                <Row>
+                  <Label>Type</Label>
+                  <select value={d.type} onChange={e => upd({ type: e.target.value, default: '' })} style={{ width: '100%', fontSize: 12 }}>
+                    {PROPERTY_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </select>
+                </Row>
+                {d.type === 'enum' && (
+                  <Row>
+                    <Label>Choices (one per line)</Label>
+                    <textarea rows={3} value={(d.options ?? []).join('\n')}
+                      onChange={e => upd({ options: e.target.value.split('\n') })}
+                      onBlur={e => upd({ options: [...new Set(e.target.value.split('\n').map(x => x.trim()).filter(Boolean))] })}
+                      style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, fontFamily: 'inherit' }}/>
+                  </Row>
+                )}
+                <Row>
+                  <Label>Default</Label>
+                  <PropertyInput def={{ ...d, default: '' }} value={d.default} onChange={v => upd({ default: v })}/>
+                </Row>
+                <Row>
+                  <Label>Applies to</Label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 8px' }}>
+                    {PROPERTY_KINDS.map(k => (
+                      <Checkbox key={k.id} label={k.label} checked={d.appliesTo.includes(k.id)}
+                        onChange={v => upd({ appliesTo: v ? [...d.appliesTo, k.id] : d.appliesTo.filter(x => x !== k.id) })}/>
+                    ))}
+                  </div>
+                </Row>
+                <DangerBtn onClick={() => {
+                  const n = usage(d.id)
+                  if (n && !window.confirm(`Delete “${d.name}” and its values on ${n} element${n === 1 ? '' : 's'}?`)) return
+                  store.deletePropertyDefinition(d.id)
+                }}>Delete Property</DangerBtn>
+              </div>
+            )}
+          </div>
+        )
+      })}
+      <button onClick={() => setOpen(store.addPropertyDefinition())} style={{ fontSize: 11, padding: '3px 8px' }}>
+        + Add property
+      </button>
+    </div>
+  )
+}
+
+// ── Element groups ───────────────────────────────────────────────────────────
+// The groups an element is in (utils/groups.js), with a picker to add it to
+// another group or a new one.
+function GroupSwatch({ group, size = 10 }) {
+  const c = group.colors ?? {}
+  return (
+    <span style={{ display: 'inline-block', width: size, height: size, flexShrink: 0, borderRadius: 2,
+      background: c.fill ?? 'transparent',
+      border: `2px solid ${c.outline ?? c.text ?? 'var(--border)'}` }}/>
+  )
+}
+
+function GroupPicker({ memberIds, exclude = [], label = 'Add to group…' }) {
+  const store = useOrmStore()
+  const options = store.groups.filter(g => !exclude.includes(g.id))
+  return (
+    <select value="" style={{ fontSize: 11, width: '100%' }}
+      onChange={e => {
+        const v = e.target.value
+        if (v === '__new') store.addGroup(memberIds)
+        else if (v) store.addToGroup(v, memberIds)
+      }}>
+      <option value="">{label}</option>
+      {options.map(g => <option key={g.id} value={g.id}>{g.name || '(unnamed group)'}</option>)}
+      <option value="__new">New group…</option>
+    </select>
+  )
+}
+
+function GroupMembershipSection({ id }) {
+  const store = useOrmStore()
+  const mine = store.groups.filter(g => g.members.includes(id))
+  return (
+    <Section title="Groups">
+      {mine.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+          {mine.map(g => (
+            <span key={g.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4,
+              fontSize: 11, padding: '1px 4px 1px 6px', borderRadius: 3,
+              border: '1px solid var(--border)', background: 'var(--bg-raised)' }}>
+              <GroupSwatch group={g}/>
+              <span style={{ cursor: 'pointer', color: 'var(--ink-2)' }} title="Show this group"
+                onClick={() => store.select(g.id, 'group')}>{g.name || '(unnamed group)'}</span>
+              <span title="Remove from this group" style={{ cursor: 'pointer', color: 'var(--ink-muted)', padding: '0 2px' }}
+                onClick={() => store.removeFromGroup(g.id, [id])}>×</span>
+            </span>
+          ))}
+        </div>
+      )}
+      <GroupPicker memberIds={[id]} exclude={mine.map(g => g.id)}/>
+    </Section>
+  )
+}
+
+// Opens a member: switches to a diagram that shows it and selects it.
+function goToMember(store, id) {
+  const m = describeMember(id, store)
+  if (!m) return
+  if (m.kind === 'note') {
+    if (m.diagramId !== store.activeDiagramId) store.setActiveDiagram(m.diagramId)
+    setTimeout(() => { store.select(id, 'note'); store.centerOnElement(id) }, 0)
+  } else if (m.kind === 'role') {
+    store.navigateToElement(m.factId, 'fact')
+    setTimeout(() => store.selectRole(m.factId, m.roleIndex), 0)
+  } else {
+    store.navigateToElement(id, m.kind === 'entity' || m.kind === 'value' ? 'objectType' : m.kind)
+  }
+}
+
+const COLOR_LABELS = { outline: 'Outline', fill: 'Fill', text: 'Text' }
+const COLOR_DEFAULTS = { outline: '#ff8000', fill: '#fff3e0', text: '#ff8000' }
+
+function GroupInspector({ group }) {
+  const store = useOrmStore()
+  const update = patch => store.updateGroup(group.id, patch)
+  const members = group.members.map(id => ({ id, m: describeMember(id, store) })).filter(x => x.m)
+  const index = store.groups.findIndex(g => g.id === group.id)
+  // Members shown on the active diagram that a multi-selection can hold.
+  const diagram = store.diagrams.find(d => d.id === store.activeDiagramId)
+  const selectable = members.filter(({ id, m }) =>
+    m.kind === 'constraint' ? (diagram?.constraintOccurrences ?? []).some(o => o.schemaConstraintId === id)
+    : m.kind === 'subtype' ? (diagram?.subtypeOccurrences ?? []).includes(id)
+    : m.kind === 'note' ? m.diagramId === diagram?.id
+    : m.kind !== 'role' && (diagram?.occurrences ?? []).some(o => o.schemaElementId === id))
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Group</InspectorTitle>
+      <Row>
+        <Label>Name</Label>
+        <TInput value={group.name} onChange={v => update({ name: v })} placeholder="Group name"/>
+      </Row>
+
+      <Section title="Colours">
+        {COLOR_CHANNELS.map(ch => {
+          const on = !!group.colors?.[ch]
+          return (
+            <div key={ch} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+              <Checkbox label={COLOR_LABELS[ch]} checked={on}
+                onChange={v => update({ colors: { ...group.colors, [ch]: v ? COLOR_DEFAULTS[ch] : undefined } })}/>
+              {on && <input type="color" value={group.colors[ch]}
+                onChange={e => update({ colors: { ...group.colors, [ch]: e.target.value } })}
+                style={{ width: 36, height: 20, padding: 0, border: '1px solid var(--border)', marginLeft: 'auto' }}/>}
+            </div>
+          )
+        })}
+        <Row>
+          <Label>Priority</Label>
+          <input type="number" step={1} value={group.priority ?? 0}
+            onChange={e => update({ priority: Number.isFinite(+e.target.value) ? Math.round(+e.target.value) : 0 })}
+            style={{ width: 70 }}/>
+          <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 4, lineHeight: 1.4 }}>
+            When an element is in several groups, the highest priority sets each colour; on a tie, the group higher in the list.
+          </div>
+        </Row>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button disabled={index <= 0} onClick={() => store.moveGroup(group.id, -1)} style={{ fontSize: 11, padding: '2px 8px' }}>Move up</button>
+          <button disabled={index >= store.groups.length - 1} onClick={() => store.moveGroup(group.id, 1)} style={{ fontSize: 11, padding: '2px 8px' }}>Move down</button>
+        </div>
+      </Section>
+
+      <Section title={`Members (${members.length})`}>
+        {members.length === 0 && (
+          <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 6, lineHeight: 1.4 }}>
+            No members yet. Add an element from its Groups section, or select several and use the Selection panel.
+          </div>
+        )}
+        {members.map(({ id, m }) => (
+          <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '2px 0',
+            borderBottom: '1px solid var(--border-soft)' }}>
+            <span style={{ color: 'var(--ink-muted)', width: 66, flexShrink: 0 }}>{m.kind}</span>
+            <span onClick={() => goToMember(store, id)} title="Go to this element"
+              style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                cursor: 'pointer', color: 'var(--ink-2)' }}>{m.label}</span>
+            <span title="Remove from group" onClick={() => store.removeFromGroup(group.id, [id])}
+              style={{ cursor: 'pointer', color: 'var(--ink-muted)', padding: '0 3px' }}>×</span>
+          </div>
+        ))}
+        {selectable.length > 0 && (
+          <button style={{ fontSize: 11, padding: '3px 8px', marginTop: 8 }}
+            title="Select the members shown on this diagram"
+            onClick={() => store.setMultiSelection(selectable.map(x => x.id))}>
+            Select on diagram ({selectable.length})
+          </button>
+        )}
+      </Section>
+
+      <DocumentationSection el={group} onChange={update}/>
+      <PropertiesSection el={group} kind="group" onChange={update}/>
+
+      <DangerBtn onClick={() => store.deleteGroup(group.id)}>Delete Group</DangerBtn>
+    </div>
   )
 }
 
@@ -968,6 +1262,8 @@ function ObjectTypeInspector({ ot }) {
       </Section>
 
       <DocumentationSection el={ot} onChange={patch => store.updateObjectType(ot.id, patch)}/>
+      <PropertiesSection el={ot} kind={ot.kind} onChange={patch => store.updateObjectType(ot.id, patch)}/>
+      <GroupMembershipSection id={ot.id}/>
 
       <Section title="Usage">
         <DiagramList elementId={ot.id} kind={ot.kind} />
@@ -1279,6 +1575,8 @@ function RoleInspector({ fact, roleIndex }) {
         onNavigateValueRange={() => store.selectValueRange({ factId: fact.id, roleIndex })}
         onNavigateCardinalityRange={() => store.selectCardinalityRange({ factId: fact.id, roleIndex })}
       />
+      <PropertiesSection el={role} kind="role" onChange={patch => store.updateRole(fact.id, roleIndex, patch)}/>
+      <GroupMembershipSection id={role.id}/>
       <Section title="Usage">
         <DangerBtn onClick={() => { store.deleteRole(fact.id, roleIndex); store.select(fact.id, 'fact') }}>
           Delete Role
@@ -2558,6 +2856,8 @@ function FactInspector({ fact }) {
       <FactConstraintsSubsection fact={fact} store={store} />
 
       <DocumentationSection el={fact} onChange={patch => store.updateFact(fact.id, patch)}/>
+      <PropertiesSection el={fact} kind="fact" onChange={patch => store.updateFact(fact.id, patch)}/>
+      <GroupMembershipSection id={fact.id}/>
 
       <Section title="Usage">
         <DiagramList elementId={fact.id} kind="fact" />
@@ -3216,6 +3516,9 @@ function NoteInspector({ note }) {
         </div>
       )}
 
+      <PropertiesSection el={note} kind="note" onChange={patch => store.updateNote(note.id, patch)}/>
+      <GroupMembershipSection id={note.id}/>
+
       <div style={{ marginTop: 8 }}>
         <DangerBtn onClick={() => store.deleteNote(note.id)}>Delete</DangerBtn>
       </div>
@@ -3250,6 +3553,8 @@ function SubtypeInspector({ st }) {
         />
       </Row>
       <DocumentationSection el={st} onChange={patch => store.updateSubtype(st.id, patch)}/>
+      <PropertiesSection el={st} kind="subtype" onChange={patch => store.updateSubtype(st.id, patch)}/>
+      <GroupMembershipSection id={st.id}/>
       <DiagramList elementId={st.id} kind="subtype" subtypeEndpointIds={[st.subId, st.superId]} />
       <div style={{ marginTop: 8 }}>
         <DangerBtn onClick={() => store.deleteSubtype(st.id)}>Delete</DangerBtn>
@@ -3871,6 +4176,8 @@ function ExternalConstraintInspector({ c }) {
       })()}
 
       <DocumentationSection el={c} onChange={patch => store.updateConstraint(c.id, patch)}/>
+      <PropertiesSection el={c} kind="constraint" onChange={patch => store.updateConstraint(c.id, patch)}/>
+      <GroupMembershipSection id={c.id}/>
 
       <Section title="Usage">
         <DiagramList elementId={c.id} kind="constraint" />
@@ -3955,6 +4262,8 @@ function ConstraintInspector({ c }) {
       ))}
 
       <DocumentationSection el={c} onChange={patch => store.updateConstraint(c.id, patch)}/>
+      <PropertiesSection el={c} kind="constraint" onChange={patch => store.updateConstraint(c.id, patch)}/>
+      <GroupMembershipSection id={c.id}/>
 
       <Section title="Usage">
         <DiagramList elementId={c.id} kind="constraint" />
@@ -4011,6 +4320,7 @@ export default function Inspector() {
   const ot  = store.objectTypes.find(o => o.id === selectedId)
   const activeDiag = store.diagrams.find(d => d.id === store.activeDiagramId)
   const note = selectedKind === 'note' ? (activeDiag?.notes ?? []).find(n => n.id === selectedId) : null
+  const group = selectedKind === 'group' ? store.groups.find(g => g.id === selectedId) : null
   const rawFact = store.facts.find(f => f.id === selectedId)
   // Merge per-diagram occurrence overrides so the inspector sees the same values as the canvas
   const activeDiagOccMap = Object.fromEntries(
@@ -4119,6 +4429,7 @@ export default function Inspector() {
     <div style={{ flex: 1, minWidth: 0, position: 'relative', overflowY: 'auto', padding: 14 }}>
 
       {note && <NoteInspector note={note} />}
+      {group && <GroupInspector group={group} />}
       {ot   && <ObjectTypeInspector ot={ot} />}
       {selectedKind === 'implicitLink' && fact && selectedImplicitLinkRole
         ? <ImplicitLinkRoleInspector parentFact={fact} roleIndex={selectedImplicitLinkRole.roleIndex} ilRoleIndex={selectedImplicitLinkRole.ilRoleIndex} />
@@ -4146,6 +4457,9 @@ export default function Inspector() {
           </div>
           <div style={{ fontSize: 12, color: 'var(--ink-2)', marginBottom: 8 }}>
             {store.multiSelectedIds.length} elements selected
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <GroupPicker memberIds={store.multiSelectedIds}/>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button
@@ -4194,6 +4508,8 @@ export default function Inspector() {
               Target platform for value type datatype assignments
             </div>
           </div>
+
+          <PropertyDefinitionsEditor/>
 
           <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700,
             letterSpacing: '0.1em', textTransform: 'uppercase',

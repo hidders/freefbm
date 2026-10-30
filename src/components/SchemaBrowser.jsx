@@ -266,6 +266,20 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
   )
 }
 
+const NEW_GROUP_ROW = { id: '__newGroup' }
+
+// A group's colours as a small square; dashed when it sets none.
+function GroupIcon({ group }) {
+  const c = group.colors ?? {}
+  const stroke = c.outline ?? c.text
+  return (
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
+      <rect x={2.5} y={3.5} width={13} height={11} rx={2} fill={c.fill ?? '#ffffff'}
+        stroke={stroke ?? 'var(--ink-muted)'} strokeWidth={stroke ? 2 : 1.2} strokeDasharray={stroke ? undefined : '2 1.5'}/>
+    </svg>
+  )
+}
+
 function SectionHeader({ title, count }) {
   return (
     <div style={{
@@ -865,6 +879,33 @@ export default function SchemaBrowser() {
       },
     },
     {
+      title: 'Groups',
+      count: store.groups.length,
+      items: showOrphans || showReady ? [] : [...store.groups, NEW_GROUP_ROW],
+      renderRow: (g) => g === NEW_GROUP_ROW ? (
+        <div key="__newGroup" onClick={() => store.addGroup()}
+          style={{ padding: '3px 8px 3px 35px', fontSize: 11, color: 'var(--ink-muted)', cursor: 'pointer',
+            borderBottom: '1px solid var(--border-soft)', fontFamily: FONT }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-raised)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = '' }}>
+          + New group
+        </div>
+      ) : (
+        <ElementRow key={g.id}
+          icon={<GroupIcon group={g} />}
+          label={<span style={{ fontSize: 11 }}>
+            {g.name || <i style={{ color: 'var(--ink-muted)' }}>(unnamed group)</i>}
+            <span style={{ color: 'var(--ink-muted)' }}> · {g.members.length}</span>
+          </span>}
+          isOrphaned={false}
+          inCurrentDiagram={true}
+          onSelect={() => store.select(g.id, 'group')}
+          onAdd={null}
+          onDelete={() => store.deleteGroup(g.id)}
+        />
+      ),
+    },
+    {
       title: 'Notes',
       items: showOrphans || showReady ? [] : (diagram?.notes ?? []),
       renderRow: (note) => {
@@ -884,6 +925,8 @@ export default function SchemaBrowser() {
       },
     },
   ].filter(s => s.items.length > 0)
+    // An empty schema just says so, without the lone "+ New group" row.
+    .filter((s, _, all) => s.title !== 'Groups' || s.count > 0 || all.length > 1)
 
   return (
     <>
@@ -1019,7 +1062,7 @@ export default function SchemaBrowser() {
               </div>
             ) : sections.map(sec => (
               <div key={sec.title}>
-                <SectionHeader title={sec.title} count={sec.items.length} />
+                <SectionHeader title={sec.title} count={sec.count ?? sec.items.length} />
                 {sec.items.map(item => sec.renderRow(item))}
               </div>
             ))}

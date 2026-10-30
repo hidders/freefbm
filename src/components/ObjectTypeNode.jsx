@@ -4,6 +4,7 @@ import { findRefMode, refModeLabel } from '../utils/refMode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { derivationMark } from '../logic/derivationRule.js'
 import { queryElements } from '../logic/query.js'
+import { groupStyle } from '../utils/groups.js'
 
 // Returns the ref-mode label (e.g. ".code") to display inside the entity rect,
 // or null when the entity has no ref mode or is expanded in the active diagram.
@@ -405,10 +406,13 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
   const isVrCandidate = isVrTool && (ot.kind === 'value' || !!refValueRole)
   const isCrTool      = store.tool === 'addConstraint:cardinality'
 
+  // Colours set by the element's groups (utils/groups.js) give way to any highlight.
+  const gs = groupStyle(store.groups, ot.id)
   const stroke = isSelected          ? 'var(--accent)'
     : isDraftFrom                    ? 'var(--col-subtype)'
     : isReconnectTarget && !isSelected ? 'var(--warning, #d97706)'
     : isConstraintTarget             ? '#1a7fd4'
+    : gs?.outline                    ? gs.outline
     : ot.kind === 'entity'           ? 'var(--col-entity)'
     :                                  'var(--col-value)'
 
@@ -418,7 +422,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     : ot.kind === 'value' ? '6 3' : 'none'
   const inRuleHighlight = !!store.ruleHighlight?.typeIds.includes(ot.id)
   const fill    = isConstraintTarget ? '#1a7fd4' : inQueryHighlight ? 'var(--fill-query-in)'
-    : inRuleHighlight ? '#fde3c8' : '#ffffff'
+    : inRuleHighlight ? '#fde3c8' : gs?.fill ?? '#ffffff'
 
   // Text vertical positions
   // Single line: name centred in box
@@ -505,7 +509,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
       ) : (
         <text x={ot.x} y={nameY}
           textAnchor="middle" dominantBaseline="middle"
-          fill={isConstraintTarget ? '#ffffff' : ot.kind === 'entity' ? 'var(--col-entity)' : 'var(--col-value)'}
+          fill={isConstraintTarget ? '#ffffff' : gs?.text ?? (ot.kind === 'entity' ? 'var(--col-entity)' : 'var(--col-value)')}
           fontSize={OT_SIZE_NAME} fontFamily={OT_FONT}
           style={{ pointerEvents: 'none' }}>
           {/* A name not yet in the view language: the base name, grey and italic. */}

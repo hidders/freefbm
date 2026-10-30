@@ -16,6 +16,7 @@ import QueryAtoms from './QueryAtoms'
 import NoteNode from './NoteNode'
 import { ValueRangeEditor } from './Inspector'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
+import { groupStyle } from '../utils/groups.js'
 
 const SNAP = 10  // grid snap in world units
 
@@ -1376,6 +1377,7 @@ export default function Canvas() {
               <NoteNode
                 note={note}
                 selected={store.selectedId === note.id && store.selectedKind === 'note'}
+                groupStyle={groupStyle(store.groups, note.id)}
                 onDragStart={handleDragStart}
                 onResizeStart={(noteId, e) => {
                   setDragState({ type: 'noteResize', noteId,

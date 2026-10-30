@@ -947,6 +947,11 @@ export const EMPTY = () => {
     facts:           [],
     subtypes:        [],
     constraints:     [],
+    // Element groups (utils/groups.js): named sets of elements that can colour them.
+    groups:          [],
+    // Custom property definitions (utils/customProperties.js); the values sit
+    // on the elements, in `properties`.
+    propertyDefinitions: [],
     diagrams:        [d],
     activeDiagramId: d.id,
     // The language names and readings are shown in (session only; the file

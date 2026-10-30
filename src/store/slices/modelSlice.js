@@ -19,6 +19,8 @@ import {
 import { BASE_LANGUAGE, swapLanguage } from '../viewLanguage.js'
 import { makeContext } from '../../logic/constraintFormulas.js'
 import { withRuleForms } from '../../logic/query.js'
+import { mkGroup, loadGroups, pruneGroups } from '../../utils/groups.js'
+import { mkPropertyDefinition, loadPropertyDefinitions, dropPropertyValues } from '../../utils/customProperties.js'
 
 export function createModelSlice(set, get) {
   return {
@@ -755,6 +757,8 @@ export function createModelSlice(set, get) {
         facts,
         subtypes:    parsedSts,
         constraints,
+        propertyDefinitions: loadPropertyDefinitions(d.schema?.propertyDefinitions),
+        groups: pruneGroups(loadGroups(d.schema?.groups ?? d.groups), { objectTypes: parsedOts, facts, subtypes: parsedSts, constraints, diagrams }),
         diagrams,
         activeDiagramId,
         pan:  activeDiag?.pan  ?? { x: 0, y: 0 },
@@ -807,7 +811,7 @@ export function createModelSlice(set, get) {
         pan, zoom,
         mandatoryDotPosition, showReferenceMode, showRoleNames,
         showSequenceMembership, showConstraintQueries,
-        showMinimap, minimapPos, languages,
+        showMinimap, minimapPos, languages, groups, propertyDefinitions,
       } = state
       // Strip in-memory-only selection state; flush current pan/zoom + display settings into diagrams
       const cleanDiagrams = diagrams.map(({ multiSelectedIds: _, ...d }) => ({
@@ -844,6 +848,8 @@ export function createModelSlice(set, get) {
           // Each query graph also carries its formula (query.js), so the file
           // states what every join path means.
           externalConstraints:  constraints.map(c => withRuleForms(c, ctx)),
+          ...(groups?.length && { groups: pruneGroups(groups, state) }),
+          ...(propertyDefinitions?.length && { propertyDefinitions }),
           displaySettings: {
             mandatoryDotPosition,
             showReferenceMode,
@@ -858,6 +864,58 @@ export function createModelSlice(set, get) {
         subtypeMappings:      cleanStMaps,
         nestedEntityMappings: cleanNem,
       }, null, 2)
+    },
+
+    // ── element groups ─────────────────────────────────────────────────────
+
+    addGroup(memberIds = []) {
+      const g = mkGroup(makeUniqueName('Group', new Set(get().groups.map(x => x.name))))
+      g.members = [...new Set(memberIds)]
+      set(s => ({ groups: [...s.groups, g], isDirty: true }))
+      get().select(g.id, 'group')
+      return g.id
+    },
+    updateGroup(id, patch) {
+      set(s => ({ groups: s.groups.map(g => g.id === id ? { ...g, ...patch } : g), isDirty: true }))
+    },
+    deleteGroup(id) {
+      set(s => ({ groups: s.groups.filter(g => g.id !== id), isDirty: true,
+        ...(s.selectedId === id && { selectedId: null, selectedKind: null }) }))
+    },
+    // Moves a group one place up or down the list (the tie-break for colours).
+    moveGroup(id, dir) {
+      set(s => {
+        const i = s.groups.findIndex(g => g.id === id), j = i + dir
+        if (i < 0 || j < 0 || j >= s.groups.length) return {}
+        const groups = [...s.groups]
+        ;[groups[i], groups[j]] = [groups[j], groups[i]]
+        return { groups, isDirty: true }
+      })
+    },
+    addToGroup(id, memberIds) {
+      set(s => ({ groups: s.groups.map(g => g.id !== id ? g
+        : { ...g, members: [...new Set([...g.members, ...memberIds])] }), isDirty: true }))
+    },
+    removeFromGroup(id, memberIds) {
+      const drop = new Set(memberIds)
+      set(s => ({ groups: s.groups.map(g => g.id !== id ? g
+        : { ...g, members: g.members.filter(m => !drop.has(m)) }), isDirty: true }))
+    },
+
+    // ── custom properties ──────────────────────────────────────────────────
+
+    addPropertyDefinition() {
+      const d = mkPropertyDefinition(makeUniqueName('Property', new Set(get().propertyDefinitions.map(x => x.name))))
+      set(s => ({ propertyDefinitions: [...s.propertyDefinitions, d], isDirty: true }))
+      return d.id
+    },
+    updatePropertyDefinition(id, patch) {
+      set(s => ({ propertyDefinitions: s.propertyDefinitions.map(d => d.id === id ? { ...d, ...patch } : d), isDirty: true }))
+    },
+    // Removes the definition and every element's value for it.
+    deletePropertyDefinition(id) {
+      set(s => ({ ...dropPropertyValues(s, id),
+        propertyDefinitions: s.propertyDefinitions.filter(d => d.id !== id), isDirty: true }))
     },
 
     setFilePath(p) { set({ filePath: p }) },
