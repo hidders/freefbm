@@ -16,6 +16,9 @@ import { makeContext } from '../logic/constraintFormulas.js'
 import { isFormulaQuery, whyNotGraphical, whyNoOuterJoin } from '../logic/query.js'
 import { hasTextSelection } from '../utils/textPanel.js'
 import { isFallbackReading } from '../store/viewLanguage.js'
+import { readingList, occurrences, preferredReadings } from '../store/readings.js'
+
+const hasReadingText = (parts) => Array.isArray(parts) && parts.some(p => p?.trim())
 import { isDeonticUniqueness } from '../logic/modality.js'
 import { plural as englishPlural } from '../verbalisation/languages/english.js'
 import { pluralise as dutchPlural } from '../verbalisation/languages/dutch.js'
@@ -1906,27 +1909,18 @@ function FactLexiconSection({ fact, store }) {
   const tab = store.viewLanguage
   const n = fact.arity
   if (n < 1) return null
-  // The readings in the view language (not the base readings shown in their place).
-  const orders = [
-    ...(fact.readingParts != null ? [{ roleOrder: Array.from({ length: n }, (_, i) => i), parts: fact.readingParts }] : []),
-    ...(fact.alternativeReadings || []),
-  ].filter(r => r.roleOrder?.length === n && !isFallbackReading(fact, r.roleOrder, r.parts)).map(r => r.roleOrder)
-  if (!orders.length) return null
-  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+  // The readings in the view language (not the base readings shown in their
+  // place), with their forms, by position in the reading list.
+  const all = readingList(fact, n, tab)
+  const occ = occurrences(all)
+  const shown = all.map((r, i) => ({ ...r, i, nth: occ[i] }))
+    .filter(r => hasReadingText(r.parts) && !isFallbackReading(fact, r.roleOrder, r.parts))
+  if (!shown.length) return null
   const lang = LEXICON_LANGS.find(t => t.id === tab) ?? LEXICON_LANGS[0]
-  const readings = fact.lexicon?.[tab]?.readings ?? []
-  const save = (roleOrder, key, list) => {
-    const old = readings.find(r => same(r.roleOrder, roleOrder)) ?? { roleOrder }
-    const entry = { ...old, [key]: list.some(p => p?.trim()) ? list : undefined }
-    const keep = Object.keys(entry).some(k => k !== 'roleOrder' && entry[k])
-    const next = [...readings.filter(r => !same(r.roleOrder, roleOrder)), ...(keep ? [entry] : [])]
-    store.updateFact(fact.id, { lexicon: lexWithout(fact.lexicon, tab, { ...(fact.lexicon?.[tab] ?? {}), readings: next }) })
-  }
-  const update = (roleOrder, key, i, val) => {
-    const old = readings.find(r => same(r.roleOrder, roleOrder)) ?? {}
-    const list = [...(old[key] ?? Array(key === 'cases' ? n : n + 1).fill(''))]
-    list[i] = val
-    save(roleOrder, key, list)
+  const update = (r, key, k, val) => {
+    const list = [...(r.forms?.[key] ?? Array(key === 'cases' ? n : n + 1).fill(''))]
+    list[k] = val
+    store.updateReadingForms(fact.id, r.i, { [key]: list.some(p => p?.trim()) ? list : undefined })
   }
   const playerName = (ri) => {
     const id = fact.roles?.[ri]?.objectTypeId
@@ -1935,17 +1929,18 @@ function FactLexiconSection({ fact, store }) {
   }
   return (
     <Section title="Reading forms">
-      {orders.map(order => {
-        const r = readings.find(x => same(x.roleOrder, order)) ?? {}
+      {shown.map(r => {
+        const order = r.roleOrder
+        const forms = r.forms ?? {}
         return (
-          <div key={JSON.stringify(order)} style={{ marginBottom: 10 }}>
-            {orders.length > 1 && <Label>({order.map(i => i + 1).join(', ')})</Label>}
+          <div key={r.i} style={{ marginBottom: 10 }}>
+            {shown.length > 1 && <Label>({order.map(i => i + 1).join(', ')}){r.nth ? ` · alternative ${r.nth}` : ''}</Label>}
             {lang.forms.map(f => (
               <div key={f.key} style={{ marginBottom: 4 }} title={f.hint}>
                 <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginBottom: 2 }}>{f.label}</div>
                 <ReadingEditor fact={fact} store={store} roleOrder={order}
-                  parts={r[f.key] ?? Array(n + 1).fill('')}
-                  onUpdatePart={(i, val) => update(order, f.key, i, val)}/>
+                  parts={forms[f.key] ?? Array(n + 1).fill('')}
+                  onUpdatePart={(i, val) => update(r, f.key, i, val)}/>
               </div>
             ))}
             {lang.cases && (
@@ -1955,7 +1950,7 @@ function FactLexiconSection({ fact, store }) {
                   {order.map((ri, k) => (
                     <React.Fragment key={k}>
                       <span style={{ fontSize: 11 }}>{playerName(ri)}</span>
-                      <select value={r.cases?.[k] ?? ''} onChange={e => update(order, 'cases', k, e.target.value)} style={{ width: '100%' }}>
+                      <select value={forms.cases?.[k] ?? ''} onChange={e => update(r, 'cases', k, e.target.value)} style={{ width: '100%' }}>
                         <option value="">{k ? 'accusative' : 'nominative'} (default)</option>
                         {Object.entries(CASE_LABELS).map(([c, label]) => <option key={c} value={c}>{label.toLowerCase()}</option>)}
                       </select>
@@ -1971,8 +1966,56 @@ function FactLexiconSection({ fact, store }) {
   )
 }
 
+// ── Reading rows ────────────────────────────────────────────────────────────
+// The readings of a fact type or implied link (readingList in
+// src/store/readings.js). A role order may have several readings; the first
+// is preferred (shown in the diagram, tried first in verbalisation), and the
+// others can be made preferred. The primary reading (roles in their own
+// order, first of its order) has no remove button.
+function ReadingRows({ readings, fact, store, isFallback = () => false, onUpdate, onRemove, onPrefer }) {
+  const occ = occurrences(readings)
+  const count = (order) => readings.filter(r => JSON.stringify(r.roleOrder) === JSON.stringify(order)).length
+  const linkBtn = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, padding: 0 }
+  return readings.map((r, i) => {
+    const several = count(r.roleOrder) > 1
+    const label = `(${r.roleOrder.map(j => j + 1).join(', ')})` + (several ? (occ[i] ? ` · alternative ${occ[i]}` : ' · preferred') : '')
+    return (
+      <Row key={`${JSON.stringify(r.roleOrder)}#${occ[i]}`}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3, gap: 8 }}>
+          <Label>{label}</Label>
+          <span style={{ display: 'flex', gap: 8 }}>
+            {occ[i] > 0 && (
+              <button onClick={() => onPrefer(i)} title="Make this the preferred reading for this role order"
+                style={{ ...linkBtn, color: 'var(--accent)', whiteSpace: 'nowrap' }}>prefer</button>
+            )}
+            {!(r.primary && occ[i] === 0) && (
+              <button onClick={() => onRemove(i)} title="Remove this reading"
+                style={{ ...linkBtn, color: 'var(--danger)', fontSize: 12 }}>✕</button>
+            )}
+          </span>
+        </div>
+        <ReadingEditor
+          fact={fact} store={store}
+          parts={r.parts}
+          roleOrder={r.roleOrder}
+          fallback={isFallback(r)}
+          onUpdatePart={(k, val) => {
+            const parts = [...r.parts]
+            parts[k] = val
+            onUpdate(i, parts)
+          }}
+        />
+      </Row>
+    )
+  })
+}
+
 // ── Add reading row: dropdown for ordering + inline reading editor ────────────
-function AddReadingRow({ fact, store, available }) {
+// Any role order can be chosen: one that has readings gets another one. A
+// word ending in a hyphen ("first-") binds to the next object type, one
+// starting with a hyphen ("-principal") to the previous one (NORMA hyphen
+// binding, src/verbalisation/hyphenBinding.js).
+function AddReadingRow({ fact, store, available, onAdd }) {
   const [selIdx, setSelIdx] = useState(0)
   const [draftParts, setDraftParts] = useState(() => Array(fact.arity + 1).fill(''))
   const arity = fact.arity
@@ -1997,7 +2040,7 @@ function AddReadingRow({ fact, store, available }) {
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && hasContent) {
       e.preventDefault()
-      store.updateAlternativeReading(fact.id, roleOrder, [...draftParts])
+      onAdd(roleOrder, [...draftParts])
       setDraftParts(Array(arity + 1).fill(''))
     }
   }
@@ -2163,7 +2206,7 @@ function FactPresentationSubsection({ fact, store }) {
           const n = fact.arity
           readings.push({ label: `(1, 2, ..., ${n}) — natural`, roleOrder: defaultOrder, has: true })
         }
-        for (const alt of (fact.alternativeReadings || [])) {
+        for (const alt of preferredReadings(fact.alternativeReadings || [])) {
           if (alt.parts?.some(p => p?.trim())) {
             readings.push({
               label: `(${alt.roleOrder.map(i => i + 1).join(', ')})`,
@@ -2472,57 +2515,17 @@ function FactInspector({ fact }) {
       {(() => {
         const arity = fact.arity
         if (arity < 1) return null
-        const defaultOrder = Array.from({ length: arity }, (_, i) => i)
         const allPerms = generatePermutations(arity)
-
-        // Unified list of readings: default (if present) + alternatives
-        const readings = []
-        if (fact.readingParts != null) {
-          readings.push({ roleOrder: defaultOrder, parts: fact.readingParts, isDefault: true })
-        }
-        for (const alt of (fact.alternativeReadings || [])) {
-          readings.push({ roleOrder: alt.roleOrder, parts: alt.parts, isDefault: false })
-        }
-        const usedKeys = new Set(readings.map(r => JSON.stringify(r.roleOrder)))
-        const available = allPerms.filter(p => !usedKeys.has(JSON.stringify(p)))
-
-         return (
-           <Section title="Readings">
-             {readings.map(r => {
-               const orderKey = JSON.stringify(r.roleOrder)
-               const label = r.roleOrder.map(i => i + 1).join(', ')
-               return (
-                 <Row key={orderKey}>
-                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
-                     <Label>({label})</Label>
-                     {!r.isDefault && (
-                       <button onClick={() => store.removeAlternativeReading(fact.id, r.roleOrder)}
-                         style={{ background: 'none', color: 'var(--danger)', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
-                     )}
-                  </div>
-                  <ReadingEditor
-                      fact={fact} store={store}
-                      parts={r.parts}
-                      roleOrder={r.roleOrder}
-                      fallback={isFallbackReading(fact, r.roleOrder, r.parts)}
-                      onUpdatePart={(i, val) => {
-                        if (r.isDefault) {
-                          const newParts = [...r.parts]
-                          newParts[i] = val
-                          store.updateFact(fact.id, { readingParts: newParts })
-                        } else {
-                          const newParts = [...r.parts]
-                          newParts[i] = val
-                          store.updateAlternativeReading(fact.id, r.roleOrder, newParts)
-                        }
-                      }}
-                    />
-                </Row>
-              )
-            })}
-            {available.length > 0 && (
-              <AddReadingRow fact={fact} store={store} available={available} />
-            )}
+        const readings = readingList(fact, arity, store.viewLanguage)
+        return (
+          <Section title="Readings">
+            <ReadingRows readings={readings} fact={fact} store={store}
+              isFallback={r => isFallbackReading(fact, r.roleOrder, r.parts)}
+              onUpdate={(i, parts) => store.updateReading(fact.id, i, parts)}
+              onRemove={i => store.removeReading(fact.id, i)}
+              onPrefer={i => store.preferReading(fact.id, i)}/>
+            <AddReadingRow fact={fact} store={store} available={allPerms}
+              onAdd={(roleOrder, parts) => store.addReading(fact.id, roleOrder, parts)}/>
           </Section>
         )
       })()}
@@ -2886,45 +2889,7 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
     ],
   }
 
-  // Unified list of readings: default (if present) + alternatives
-  const readings = []
-  if (mergedIl.readingParts != null) {
-    readings.push({ roleOrder: [0, 1], parts: mergedIl.readingParts, isDefault: true })
-  }
-  for (const alt of (mergedIl.alternativeReadings || [])) {
-    readings.push({ roleOrder: alt.roleOrder, parts: alt.parts, isDefault: false })
-  }
-  const usedKeys = new Set(readings.map(r => JSON.stringify(r.roleOrder)))
-  const available = [[1, 0]].filter(p => !usedKeys.has(JSON.stringify(p)))
-
-  const upReadingPart = (isDefault, roleOrder, i, val) => {
-    if (isDefault) {
-      const next = [...(mergedIl.readingParts || ['', '', ''])]
-      next[i] = val
-      store.updateImplicitLink(parentFact.id, roleIndex, { readingParts: next })
-    } else {
-      const existing = (mergedIl.alternativeReadings || []).find(r => JSON.stringify(r.roleOrder) === JSON.stringify(roleOrder))
-      if (existing) {
-        const next = [...existing.parts]
-        next[i] = val
-        store.updateImplicitLink(parentFact.id, roleIndex, {
-          alternativeReadings: (mergedIl.alternativeReadings || []).map(r =>
-            JSON.stringify(r.roleOrder) === JSON.stringify(roleOrder) ? { ...r, parts: next } : r
-          ),
-        })
-      }
-    }
-  }
-
-  const removeReading = (isDefault, roleOrder) => {
-    if (isDefault) {
-      store.updateImplicitLink(parentFact.id, roleIndex, { readingParts: null })
-    } else {
-      store.updateImplicitLink(parentFact.id, roleIndex, {
-        alternativeReadings: (mergedIl.alternativeReadings || []).filter(r => JSON.stringify(r.roleOrder) !== JSON.stringify(roleOrder)),
-      })
-    }
-  }
+  const readings = readingList(mergedIl, 2, store.viewLanguage)
 
   return (
     <div style={{ marginBottom: 18 }}>
@@ -2946,41 +2911,13 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
       </Section>
 
       <Section title="Readings">
-        {readings.map(r => {
-          const orderKey = JSON.stringify(r.roleOrder)
-          const label = r.roleOrder.map(i => i + 1).join(', ')
-          return (
-            <Row key={orderKey}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
-                <Label>({label})</Label>
-                {!r.isDefault && (
-                  <button onClick={() => removeReading(r.isDefault, r.roleOrder)}
-                    style={{ background: 'none', color: 'var(--danger)', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0 }}>✕</button>
-                )}
-              </div>
-              <ReadingEditor
-                fact={synthFact} store={store}
-                parts={r.parts}
-                roleOrder={r.roleOrder}
-                onUpdatePart={(i, val) => upReadingPart(r.isDefault, r.roleOrder, i, val)}
-              />
-            </Row>
-          )
-        })}
-        {available.length > 0 && (
-          <AddReadingRow
-            fact={{ ...synthFact, arity: 2 }}
-            store={{
-              ...store,
-              updateAlternativeReading: (_id, roleOrder, parts) => {
-                store.updateImplicitLink(parentFact.id, roleIndex, {
-                  alternativeReadings: [...(il.alternativeReadings || []), { roleOrder, parts }],
-                })
-              },
-            }}
-            available={available}
-          />
-        )}
+        <ReadingRows readings={readings} fact={synthFact} store={store}
+          isFallback={r => isFallbackReading(mergedIl, r.roleOrder, r.parts)}
+          onUpdate={(i, parts) => store.updateReading(parentFact.id, i, parts, roleIndex)}
+          onRemove={i => store.removeReading(parentFact.id, i, roleIndex)}
+          onPrefer={i => store.preferReading(parentFact.id, i, roleIndex)}/>
+        <AddReadingRow fact={{ ...synthFact, arity: 2 }} store={store} available={[[0, 1], [1, 0]]}
+          onAdd={(roleOrder, parts) => store.addReading(parentFact.id, roleOrder, parts, roleIndex)}/>
       </Section>
 
       <Section title="Presentation">

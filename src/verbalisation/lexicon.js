@@ -19,24 +19,29 @@
 // pluralParts the reading with a plural subject ("are prerequisites for"),
 // and cases the grammatical case of each slot in reading order (Polish:
 // ['nom', 'acc']).
-// For the live language, entries add subParts, pluralParts or cases to the
-// reading with the same roleOrder; for other languages they are the
-// language's readings, and without any the live readings are used.
+// A role order may have several readings, the first of them preferred
+// (src/store/readings.js). For the live language, entries add subParts,
+// pluralParts or cases to the reading with the same roleOrder and the same
+// position among the readings of that order; for other languages they are
+// the language's readings, and without any the live readings are used.
+
+import { occurrences, nthOfOrder } from '../store/readings.js'
 
 const hasText = (parts) => Array.isArray(parts) && parts.some(p => p?.trim())
-const sameOrder = (a, b) => a.length === b.length && a.every((x, i) => x === b[i])
 
 export function readingsFor(fact, langId, n = fact.roles?.length ?? 0, live = 'en') {
-  const liveReadings = [
-    { roleOrder: [...Array(n).keys()], parts: fact.readingParts ?? [] },
+  const all = [
+    ...(fact.readingParts != null ? [{ roleOrder: [...Array(n).keys()], parts: fact.readingParts }] : []),
     ...(fact.alternativeReadings ?? []),
-  ].filter(r => r.roleOrder?.length === n && hasText(r.parts))
+  ].filter(r => r.roleOrder?.length === n)
   const own = (fact.lexicon?.[langId]?.readings ?? []).filter(r => r.roleOrder?.length === n)
   if (langId !== live && own.some(r => hasText(r.parts))) return own.filter(r => hasText(r.parts))
-  return liveReadings.map(r => {
-    const extra = own.find(o => sameOrder(o.roleOrder, r.roleOrder))
-    return extra ? { ...r, subParts: extra.subParts, pluralParts: extra.pluralParts } : r
-  })
+  const occ = occurrences(all)
+  return all.map((r, i) => {
+    if (!hasText(r.parts)) return null
+    const extra = nthOfOrder(own, r.roleOrder, occ[i])
+    return extra ? { ...r, subParts: extra.subParts, pluralParts: extra.pluralParts, cases: extra.cases } : r
+  }).filter(Boolean)
 }
 
 // { name, plural, gender } of a type in a language; name falls back to the

@@ -82,6 +82,22 @@ It is obligatory that for each Student, some Staff mentors that Student.
 O(∀ Staff ((∃ Student (Staff mentors Student)) → ∃^{≤5} Student (Staff mentors Student)))
 It is obligatory that each Staff mentors at most 5 Students.
 
+# Uniqueness · Person has first given PersonName
+∀ Person ∃^{≤1} PersonName (Person has first given PersonName)
+Each Person has at most one first given PersonName.
+
+# Uniqueness · Person has first given PersonName
+∀ PersonName ∃^{≤1} Person (Person has first given PersonName)
+Each PersonName is the first given name of at most one Person.
+
+# Mandatory role · Person has first given PersonName
+∀ Person ∃ PersonName (Person has first given PersonName)
+Each Person has some first given PersonName.
+
+# Uniqueness · Person has Person -in-law
+∀ Person₁ ∃^{≤1} Person₂ (Person₂ has Person₁ -in-law)
+For each Person₁, at most one Person₂ has that Person₁-in-law.
+
 # External uniqueness (outer join)
 ∀ CourseTitle ∀ Staff ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by Staff))
 For each CourseTitle and Staff, at most one Course has that CourseTitle and is run by that Staff.

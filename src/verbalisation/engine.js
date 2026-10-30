@@ -27,6 +27,7 @@ import { normalise } from './normalise.js'
 import { negativeForm } from './negative.js'
 import { match, isVar } from './match.js'
 import { readingsFor, typeLexicon, hasText } from './lexicon.js'
+import { hyphenBind, isHyphenBound } from './hyphenBinding.js'
 
 export const tok = (text, cls = 'kw') => ({ text, cls })
 
@@ -138,12 +139,16 @@ function makePhraser(ctx, lang, names, trace, stats) {
   // change the cases too). overrides maps variables to the phrases that fill
   // their slots, or to functions from the slot's case to such a phrase.
   // A reading may give each slot a grammatical case (cases[k], Polish).
+  // Words a reading binds to a role player (hyphen binding,
+  // hyphenBinding.js) go with the phrase that fills its slot, after the
+  // quantifier ("at most one first Name"); a reading that binds words to its
+  // first role player does not count as starting with it.
   function reading(h, atom, subject, overrides = new Map()) {
     const fact = factOf(atom)
     if (!fact) return null
     const n = atom.args.length
     const all = readingsFor(fact, lang.id, n, ctx.liveLanguage)
-    const empty0 = (r) => !r.parts[0]?.trim()
+    const empty0 = (r) => !r.parts[0]?.trim() && !isHyphenBound(r.parts, n, 0)
     let pick
     if (subject !== undefined) {
       const si = atom.args.indexOf(subject)
@@ -155,7 +160,7 @@ function makePhraser(ctx, lang, names, trace, stats) {
     if (!pick) return null
     const shaped = (lang.shapeReading ?? shapeReading)(h, pick, subject !== undefined, atom)
     if (!shaped) return null
-    const parts = Array.isArray(shaped) ? shaped : shaped.parts
+    const { parts, bound } = hyphenBind(Array.isArray(shaped) ? shaped : shaped.parts, n)
     const cases = (Array.isArray(shaped) ? null : shaped.cases) ?? pick.cases ?? []
     const out = []
     let subjectSeen = false
@@ -165,15 +170,16 @@ function makePhraser(ctx, lang, names, trace, stats) {
       if (k === n) break
       const arg = atom.args[pick.roleOrder[k]]
       const c = cases[k] || undefined
+      const push = (p) => out.push(bound?.[k] ? bindInto(p, bound[k]) : p)
       if (subject !== undefined && arg === subject) {
-        if (subjectSeen) out.push(lang.reflexive(h, arg, c))
+        if (subjectSeen) push(lang.reflexive(h, arg, c))
         subjectSeen = true
       } else if (overrides.has(arg)) {
         const o = overrides.get(arg)
         const filled = typeof o === 'function' ? o(c) : o
         if (filled === null) return null
-        out.push(filled)
-      } else out.push(h.ref(arg, c))
+        push(filled)
+      } else push(h.ref(arg, c))
     }
     return out
   }
@@ -189,6 +195,27 @@ function makePhraser(ctx, lang, names, trace, stats) {
   }
 
   return phrase
+}
+
+// Puts the words a reading binds to a slot (b, from hyphenBind) around the
+// head of the phrase filling it: its first type token, else the whole phrase.
+function bindInto(phrase, b) {
+  let done = false
+  const around = (t) => [
+    ...(b.pre ? [tok(b.pre, 'reading')] : []),
+    b.preGlue ? { ...t, glue: true } : t,
+    ...(b.post ? [{ ...tok(b.post, 'reading'), ...(b.postGlue ? { glue: true } : {}) }] : []),
+  ]
+  const walk = (p) => {
+    if (done || !p) return p
+    if (Array.isArray(p)) return p.map(walk)
+    if (p.cls !== 'type') return p
+    done = true
+    return around(p)
+  }
+  const out = walk(phrase)
+  if (done) return out
+  return [...(b.pre ? [tok(b.pre, 'reading')] : []), phrase, ...(b.post ? [tok(b.post, 'reading')] : [])]
 }
 
 const NO_SPACE_BEFORE = new Set([',', ';', ':', '.', ')'])

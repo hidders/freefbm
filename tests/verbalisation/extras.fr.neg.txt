@@ -82,6 +82,22 @@ Il est interdit qu'il existe un Étudiant tel qu'aucun Membre du personnel ne me
 F(∃ Staff ∃^{>5} Student (Staff mentors Student))
 Il est interdit qu'un Membre du personnel mentors plus de 5 Étudiants.
 
+# Uniqueness · Person has first given PersonName
+¬(∃ Person ∃^{>1} PersonName (Person has first given PersonName))
+Il est impossible qu'une Personne a plus d'un Nom principal.
+
+# Uniqueness · Person has first given PersonName
+¬(∃ PersonName ∃^{>1} Person (Person has first given PersonName))
+Il est impossible que plus d'une Personne a le même Nom principal.
+
+# Mandatory role · Person has first given PersonName
+¬(∃ Person ¬(∃ PersonName (Person has first given PersonName)))
+Il est impossible qu'une Personne n'a aucun Nom principal.
+
+# Uniqueness · Person has Person -in-law
+¬(∃ Person₁ ∃^{>1} Person₂ (Person₂ has Person₁ -in-law))
+Il est impossible que plus d'une Personne₂ has la même Personne₁-in-law.
+
 # External uniqueness (outer join)
 ¬(∃ CourseTitle ∃ Staff ∃^{>1} Course ((Course has CourseTitle) ∧ (Course is run by Staff)))
 Il est impossible que plus d'un Cours a le même Intitulé de cours et is run by le même Membre du personnel.

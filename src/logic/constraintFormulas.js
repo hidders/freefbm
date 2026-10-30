@@ -21,6 +21,7 @@ import { valueAccess, withValues, valueConstant } from './values.js'
 import { isDerived, derivationEntry } from './derivationRule.js'
 import { isDerivedFact, factDerivationEntries } from './factDerivation.js'
 import { counterexample } from '../verbalisation/negative.js'
+import { plainParts } from '../verbalisation/hyphenBinding.js'
 
 const SEQUENCE_TYPES = new Set([
   'inclusiveOr', 'exclusiveOr', 'exclusion', 'equality', 'subset',
@@ -152,7 +153,7 @@ function selectedCardinalityEntry(sel, ctx) {
 // ── Readable labels ──────────────────────────────────────────────────────────
 
 export function readingText(fact, ctx) {
-  const parts = fact.readingParts ?? []
+  const parts = plainParts(fact.readingParts ?? [], fact.roles.length)
   const words = []
   fact.roles.forEach((r, i) => {
     if (parts[i]?.trim()) words.push(parts[i].trim())

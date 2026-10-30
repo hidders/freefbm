@@ -16,6 +16,7 @@ import { valueAccess } from '../logic/values.js'
 import { QGAP } from '../logic/renderFormula.js'
 import { TOKEN_STYLE, Formula } from './ConstraintsTab.jsx'
 import { handleTextPanelKey, hasTextSelection } from '../utils/textPanel.js'
+import { plainParts } from '../verbalisation/hyphenBinding.js'
 
 // ── Derivation rule editor ──────────────────────────────────────────────────
 // A syntax-directed editor for the derivation rule of a derived or
@@ -361,7 +362,7 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
       }
       case 'fact': {
         const fact = atomFact(ctx, n.factId)
-        const parts = fact?.readingParts ?? []
+        const parts = plainParts(fact?.readingParts ?? [], fact?.roles.length ?? 0)
         const words = []
         fact?.roles.forEach((r, i) => {
           if (parts[i]?.trim()) words.push(<span key={`p${i}`} style={TOKEN_STYLE.reading}>{parts[i].trim()}</span>)

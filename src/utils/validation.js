@@ -8,6 +8,7 @@ import { factDerivationIssues, factLabel } from '../logic/factDerivation.js'
 import { derivationGraph, derivationCycles } from '../logic/derivationDependencies.js'
 import { makeContext } from '../logic/constraintFormulas.js'
 import { isFormulaQuery, checkQuery, whyNoOuterJoin } from '../logic/query.js'
+import { plainParts } from '../verbalisation/hyphenBinding.js'
 
 export const VALIDATION_CATEGORIES = {
   factTypeDefinition: {
@@ -731,7 +732,9 @@ export function runValidation(state, enabledCategories) {
       // (b) Within-fact duplicates
       const localSigs = {}
       for (const r of readings) {
-        const sig = readingSignature(r.parts, r.roleOrder, f.roles, otMap)
+        // Binding hyphens only guide verbalisation: "has first- Name" and
+        // "has first Name" are the same reading.
+        const sig = readingSignature(plainParts(r.parts, r.roleOrder.length), r.roleOrder, f.roles, otMap)
         if (sig === null) continue  // skip incomplete readings
         if (localSigs[sig]) {
           errors.push({

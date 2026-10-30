@@ -82,6 +82,22 @@ O(∀ Student ∃ Staff (Staff mentors Student))
 O(∀ Staff ((∃ Student (Staff mentors Student)) → ∃^{≤5} Student (Staff mentors Student)))
 È obbligatorio che ogni Dipendente mentors al massimo 5 Studenti.
 
+# Uniqueness · Person has first given PersonName
+∀ Person ∃^{≤1} PersonName (Person has first given PersonName)
+Ogni Persona has al massimo un first given Nome.
+
+# Uniqueness · Person has first given PersonName
+∀ PersonName ∃^{≤1} Person (Person has first given PersonName)
+Ogni Nome is the first given name of al massimo una Persona.
+
+# Mandatory role · Person has first given PersonName
+∀ Person ∃ PersonName (Person has first given PersonName)
+Ogni Persona has un first given Nome.
+
+# Uniqueness · Person has Person -in-law
+∀ Person₁ ∃^{≤1} Person₂ (Person₂ has Person₁ -in-law)
+Per ogni Persona₁, al massimo una Persona₂ has quella Persona₁-in-law.
+
 # External uniqueness (outer join)
 ∀ CourseTitle ∀ Staff ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by Staff))
 Per ogni Titolo del corso e ogni Dipendente, al massimo un Corso ha quel Titolo del corso e is run by quel Dipendente.

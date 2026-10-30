@@ -129,6 +129,25 @@ export function extend(state) {
   facts.push(
     fact('f_runBy', ['', 'is run by', ''], [role('rb0', 'ot_Course'), role('rb1', 'ot_Staff')], { uniqueness: [[0]] }),
   )
+  // Hyphen binding (NORMA): "first- given" binds to PersonName, so the
+  // quantifier goes in front of it; the first reverse reading binds words to
+  // its lead role, so a sentence about a PersonName takes the second one, a
+  // further reading for the same role order. "--in-law" glues to Person.
+  facts.push(
+    fact('f_firstName', ['', 'has first- given', ''], [role('fn0', 'ot_Person', { mandatory: true }), role('fn1', 'ot_PersonName')], {
+      uniqueness: [[0], [1]],
+      alternativeReadings: [
+        { roleOrder: [1, 0], parts: ['first- given', 'is of', ''] },
+        { roleOrder: [1, 0], parts: ['', 'is the first given name of', ''] },
+      ],
+      // Dutch binds to the left, French to the right.
+      lexicon: {
+        nl: { readings: [{ roleOrder: [0, 1], parts: ['', 'heeft eerste-', ''] }] },
+        fr: { readings: [{ roleOrder: [0, 1], parts: ['', 'a', '-principal'] }] },
+      },
+    }),
+    fact('f_inLaw', ['', 'has', '--in-law'], [role('il0', 'ot_Person'), role('il1', 'ot_Person')], { uniqueness: [[1]] }),
+  )
   const constraints = [...state.constraints,
     { id: 'c_ojTitle', kind: 'constraint', constraintType: 'uniqueness', outerJoin: true, x: 0, y: 0,
       targetObjectTypeId: 'ot_Course',
@@ -144,4 +163,4 @@ export function extend(state) {
 }
 
 // The keys of the entries the additions bring.
-export const isExtra = (key) => /^(ot_(Course|Professor|Building):card|f_enrols:card|f_coordinates:card|ot_(TA|Busy|Heavy|Free|Intro|LongTitle):derivation|f_(studiesWith|totalCredits|enrolmentCount|creditLoad):derivation|ot_Score:vr|f_mentors:(uc|mand|freq)|c_d(Subset|Ring)|c_ojTitle)/.test(key)
+export const isExtra = (key) => /^(ot_(Course|Professor|Building):card|f_enrols:card|f_coordinates:card|ot_(TA|Busy|Heavy|Free|Intro|LongTitle):derivation|f_(studiesWith|totalCredits|enrolmentCount|creditLoad):derivation|ot_Score:vr|f_mentors:(uc|mand|freq)|f_(firstName|inLaw):(uc|mand)|c_d(Subset|Ring)|c_ojTitle)/.test(key)

@@ -82,6 +82,22 @@ Het is verboden dat er een Student is zodanig dat geen Medewerker die Student me
 F(∃ Staff ∃^{>5} Student (Staff mentors Student))
 Het is verboden dat een Medewerker meer dan 5 Studenten mentors.
 
+# Uniqueness · Person has first given PersonName
+¬(∃ Person ∃^{>1} PersonName (Person has first given PersonName))
+Het is onmogelijk dat een Persoon meer dan één eerste Naam heeft.
+
+# Uniqueness · Person has first given PersonName
+¬(∃ PersonName ∃^{>1} Person (Person has first given PersonName))
+Het is onmogelijk dat meer dan één Persoon dezelfde eerste Naam heeft.
+
+# Mandatory role · Person has first given PersonName
+¬(∃ Person ¬(∃ PersonName (Person has first given PersonName)))
+Het is onmogelijk dat een Persoon geen eerste Naam heeft.
+
+# Uniqueness · Person has Person -in-law
+¬(∃ Person₁ ∃^{>1} Person₂ (Person₂ has Person₁ -in-law))
+Het is onmogelijk dat meer dan één Persoon₂ dezelfde Persoon₁-in-law has.
+
 # External uniqueness (outer join)
 ¬(∃ CourseTitle ∃ Staff ∃^{>1} Course ((Course has CourseTitle) ∧ (Course is run by Staff)))
 Het is onmogelijk dat meer dan één Vak dezelfde Vaktitel heeft en run by dezelfde Medewerker is.
