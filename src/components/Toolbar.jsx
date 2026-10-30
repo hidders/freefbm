@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
 import { triggerPdfExport } from '../utils/pdfExport'
+import { openModelFile } from '../import/openModelFile'
 import { LANGUAGES } from '../verbalisation/languages/index.js'
 import { BASE_LANGUAGE, modelLanguages } from '../store/viewLanguage.js'
 
@@ -95,8 +96,8 @@ export default function Toolbar() {
     if (!isElectron) return
     const result = await window.electronAPI.openFile()
     if (!result) return
-    try { store().loadModel(result.content, result.path) }
-    catch { alert('Failed to parse model file.') }
+    try { openModelFile(result) }
+    catch (err) { alert(`Failed to open model file.${err?.message ? `\n${err.message}` : ''}`) }
   }
 
   const handleSave = async () => {
@@ -104,7 +105,7 @@ export default function Toolbar() {
     try {
       const s = store()
       const content = s.serialize()
-      const fp = await window.electronAPI.saveFile({ defaultPath: s.filePath || 'model.ffbm', content })
+      const fp = await window.electronAPI.saveFile({ defaultPath: s.filePath || s.importLog?.source || 'model.ffbm', content })
       if (fp) { store().setFilePath(fp); store().markClean() }
     } catch (err) {
       alert(`Save failed: ${err.message}`)

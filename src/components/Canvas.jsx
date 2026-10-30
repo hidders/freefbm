@@ -76,7 +76,7 @@ function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints,
           const { w, h } = computeOtSize(ot)
           const bx = ot.x + w / 2 - 1, by = ot.y - h / 2 + 1
           return (
-            <g key={ot.id} style={{ cursor: 'help', pointerEvents: 'all' }}
+            <g key={ot.occurrenceId ?? ot.id} style={{ cursor: 'help', pointerEvents: 'all' }}
                onMouseEnter={e => handleMouseEnter(e, ot.id)}
                onMouseLeave={() => setPopup(null)}>
               <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
@@ -106,7 +106,7 @@ function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints,
             }
           }
           return (
-            <g key={f.id} style={{ cursor: 'help', pointerEvents: 'all' }}
+            <g key={f.occurrenceId ?? f.id} style={{ cursor: 'help', pointerEvents: 'all' }}
                onMouseEnter={e => handleMouseEnter(e, f.id)}
                onMouseLeave={() => setPopup(null)}>
               <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
@@ -158,7 +158,7 @@ function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints,
           const { w, h } = computeOtSize(ot)
           const bx = ot.x - w / 2 + 1, by = ot.y - h / 2 + 1
           return (
-            <g key={`pop-${ot.id}`} style={{ cursor: 'help', pointerEvents: 'all' }}
+            <g key={`pop-${ot.occurrenceId ?? ot.id}`} style={{ cursor: 'help', pointerEvents: 'all' }}
                onMouseEnter={e => handlePopBadgeMouseEnter(e, ot.id)}
                onMouseLeave={() => setPopup(null)}>
               <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
@@ -189,7 +189,7 @@ function ValidationBadges({ store, visibleOts, visibleFacts, visibleConstraints,
             }
           }
           return (
-            <g key={`pop-${f.id}`} style={{ cursor: 'help', pointerEvents: 'all' }}
+            <g key={`pop-${f.occurrenceId ?? f.id}`} style={{ cursor: 'help', pointerEvents: 'all' }}
                onMouseEnter={e => handlePopBadgeMouseEnter(e, f.id)}
                onMouseLeave={() => setPopup(null)}>
               <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>

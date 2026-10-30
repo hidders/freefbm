@@ -7,7 +7,7 @@ import { hasGraph, isFormulaQuery, queryRule, queryTyping, outerJoinGroups } fro
 import { makePopulationEvaluator } from '../logic/derivedPopulation.js'
 import { isDeonticUniqueness, isDeonticMandatory } from '../logic/modality.js'
 import { VALUE_KINDS, valueKindOf, valueKindName, parseLiteral } from './datatypeValues.js'
-import { isIdentifyingFact, getVtEffectivePopulation, getEntityEffectivePopulation, getEntityIdentifierShape, findRefMode, findCompositePI, findInheritedPI, findRolePlayer, getNestedCellShape, isCompleteValue, UNSET } from './refMode.js'
+import { isIdentifyingFact, identifyingFactIds, getVtEffectivePopulation, getEntityEffectivePopulation, getEntityIdentifierShape, findRefMode, findCompositePI, findInheritedPI, findRolePlayer, getNestedCellShape, isCompleteValue, UNSET } from './refMode.js'
 
 // Walk `cell` against the nested `shape` (from getNestedCellShape), trimming
 // string leaves and returning either:
@@ -342,33 +342,15 @@ export function computePopulationIssues(rawData) {
   // Objectified facts are NOT skipped: their tuples are their own population
   // and must be validated like any fact-tuple set.
   // Also skip facts that are the identifying fact for a nested entity type.
-  const isSkippableFact = (fact) => {
-    if (isIdentifyingFact(fact, facts || [], objectTypes || [], constraints)) return true
-    for (const nf of (facts || [])) {
-      if (!nf.objectified || nf.objectifiedKind === 'value' || nf.id === fact.id) continue
-      const rm = findRefMode(nf, facts || [], objectTypes || [])
-      if (rm && rm.factId === fact.id) return true
-      const cp = findCompositePI(nf, facts || [], objectTypes || [], constraints)
-      if (cp && (cp.factId === fact.id || cp.factIds?.includes(fact.id))) return true
-    }
-    return false
-  }
+  const identIds = identifyingFactIds(facts || [], objectTypes || [], constraints)
+  const isSkippableFact = (fact) => identIds.entity.has(fact.id) || identIds.nested.has(fact.id)
 
   // (projCellKey and projCellDisplay are now module-level functions)
 
   // True when `fact` is the identifying fact (ref-mode or composite-PI) for
   // a nested entity type (objectified fact). Such facts' mandatory-role checks
   // are tautological and should be skipped in section 3.
-  const isNestedEntityIdentifyingFact = (fact) => {
-    for (const nf of (facts ?? [])) {
-      if (!nf.objectified || nf.objectifiedKind === 'value' || nf.id === fact.id) continue
-      const rm = findRefMode(nf, facts || [], objectTypes || [])
-      if (rm && rm.factId === fact.id) return true
-      const cp = findCompositePI(nf, facts || [], objectTypes || [], constraints)
-      if (cp && (cp.factId === fact.id || cp.factIds?.includes(fact.id))) return true
-    }
-    return false
-  }
+  const isNestedEntityIdentifyingFact = (fact) => identIds.nested.has(fact.id)
 
   // Wrapper for module-level computeEffectiveFactTuples with local state.
   const effectiveFactTuples = factTupleSource(data)
@@ -2724,29 +2706,24 @@ function computeEffectiveFactTuples(fact, facts, factPopulations, objectTypes, p
     return out
   }
 
-  let isIdentifying = false
-  for (const nf of (facts ?? [])) {
-    if (!nf.objectified || nf.objectifiedKind === 'value' || nf.id === fact.id) continue
-    const rm = findRefMode(nf, facts || [], objectTypes || [])
-    if (rm && rm.factId === fact.id) { isIdentifying = true; break }
-    const cp = findCompositePI(nf, facts || [], objectTypes || [], constraints)
-    if (cp && (cp.factId === fact.id || cp.factIds?.includes(fact.id))) { isIdentifying = true; break }
-  }
-  if (!isIdentifying) {
+  const ident = identifyingFactIds(facts || [], objectTypes || [], constraints)
+  if (!ident.nested.has(fact.id)) {
     const direct = factPopulations?.[fact.id]
     if (direct?.length) return direct
   }
+  // A fact type that identifies nothing has only its own population.
+  if (!ident.entity.has(fact.id) && !ident.nested.has(fact.id)) return []
   for (const ot of (objectTypes ?? [])) {
     if (ot.kind !== 'entity') continue
     const entityPop = populations?.[ot.id]
     if (!entityPop?.length) continue
     const arity = fact.arity ?? fact.roles?.length ?? 0
-    const rm = findRefMode(ot, facts || [], objectTypes || [])
+    const rm = ident.refModes.get(ot.id)
     if (rm && rm.factId === fact.id) {
       return entityPop.map(v => Array.from({ length: arity },
         () => (typeof v === 'string' ? v : '')))
     }
-    const cp = findCompositePI(ot, facts || [], objectTypes || [], constraints)
+    const cp = ident.compositePIs.get(ot.id)
     if (cp && cp.factId === fact.id) {
       return entityPop.map(t => {
         const out = Array(arity).fill('')
@@ -2773,13 +2750,13 @@ function computeEffectiveFactTuples(fact, facts, factPopulations, objectTypes, p
     const nfPop = nestedEntityMappings?.[nf.id]
     if (!nfPop?.length) continue
     const arity = fact.arity ?? fact.roles?.length ?? 0
-    const rm = findRefMode(nf, facts || [], objectTypes || [])
+    const rm = ident.refModes.get(nf.id)
     if (rm && rm.factId === fact.id) {
       return nfPop.map(piVal =>
         Array.from({ length: arity }, () => (typeof piVal === 'string' ? piVal : ''))
       )
     }
-    const cp = findCompositePI(nf, facts || [], objectTypes || [], constraints)
+    const cp = ident.compositePIs.get(nf.id)
     if (cp && cp.factId === fact.id) {
       return nfPop.map(piTuple => {
         const out = Array(arity).fill('')

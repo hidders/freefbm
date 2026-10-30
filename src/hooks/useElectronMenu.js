@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { triggerPdfExport } from '../utils/pdfExport'
+import { openModelFile } from '../import/openModelFile'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
@@ -26,17 +27,16 @@ export function useElectronMenu() {
     })
 
     on('menu:open', async () => {
-      const store = storeRef.current
       const result = await api.openFile()
       if (!result) return
-      try { store.loadModel(result.content, result.path) }
-      catch { alert('Failed to parse model file.') }
+      try { openModelFile(result) }
+      catch (err) { alert(`Failed to open model file.${err?.message ? `\n${err.message}` : ''}`) }
     })
 
     on('menu:save', async () => {
       const store = storeRef.current
       const content = store.serialize()
-      const fp = await api.saveFile({ defaultPath: store.filePath || 'model.ffbm', content })
+      const fp = await api.saveFile({ defaultPath: store.filePath || store.importLog?.source || 'model.ffbm', content })
       if (fp) { store.setFilePath(fp); store.markClean() }
     })
 
