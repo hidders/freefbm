@@ -14,8 +14,9 @@ const textStyle = {
   boxSizing: 'border-box',
 }
 
-// Note text sits TEXT_X in from the left edge, and a float keeps the first
-// line(s) clear of the dog-ear; NoteNode and noteLineBreaks share these.
+// Note text keeps TEXT_X clear of the left and right edges, and a float keeps
+// the first line(s) TEXT_X clear of the dog-ear too; NoteNode and
+// noteLineBreaks share these.
 const TEXT_X = 7
 const TEXT_Y = 5
 
@@ -25,7 +26,7 @@ const TEXT_Y = 5
 export function noteLineBreaks(text, w, host = document.body) {
   const box = document.createElement('div')
   Object.assign(box.style, textStyle, { fontSize: `${textStyle.fontSize}px`, position: 'absolute', left: '-10000px', top: '0',
-    width: `${Math.max(1, w - TEXT_X)}px`, height: 'auto', visibility: 'hidden' })
+    width: `${Math.max(1, w - 2 * TEXT_X)}px`, height: 'auto', visibility: 'hidden' })
   const fold = document.createElement('div')
   Object.assign(fold.style, { float: 'right', width: `${FOLD}px`, height: `${Math.max(0, FOLD - TEXT_Y)}px` })
   const node = document.createTextNode(text)
@@ -92,11 +93,12 @@ export default function NoteNode({ note, selected, groupStyle: gs, onDragStart, 
   const borderColor = selected ? 'var(--accent)' : gs?.outline ?? '#b8a040'
   const borderWidth = selected ? 1.5 : 1
 
-  // Text area: full width minus left padding; a float:right placeholder
-  // reserves only the fold triangle so text flows into the space below it.
+  // Text area: full width minus equal left and right padding; a float:right
+  // placeholder keeps the same padding from the fold, so text flows into the
+  // full width below it.
   const textX = TEXT_X
   const textY = TEXT_Y
-  const textW = Math.max(1, w - textX)
+  const textW = Math.max(1, w - 2 * textX)
   const textH = Math.max(1, h - 10)
   // How tall the fold triangle is inside the foreignObject coordinate space
   const foldReserveH = Math.max(0, FOLD - textY)
