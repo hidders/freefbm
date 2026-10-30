@@ -1,5 +1,6 @@
 import React, { useMemo, useCallback, useRef, useState, useEffect } from 'react'
 import { useOrmStore } from '../store/ormStore'
+import { nearestSubtypeEnds } from '../utils/subtypeEnds'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds, computeOtSize } from './ObjectTypeNode'
 import { factBounds, nestedFactBounds, ROLE_W, ROLE_H, ROLE_GAP } from './FactTypeNode'
@@ -358,9 +359,7 @@ export default function Minimap() {
 
         {/* Constraint connectors (all types) + target object type edges */}
         {(() => {
-          const otMap      = Object.fromEntries(visOts.map(o => [o.id, o]))
           const nestedMap  = Object.fromEntries(visFacts.filter(f => f.objectified).map(f => [f.id, f]))
-          const subtypeMap = Object.fromEntries(visSubs.map(st => [st.id, st]))
           const factMap    = Object.fromEntries(visFacts.map(f => [f.id, f]))
 
           return visCons.flatMap(c => {
@@ -371,10 +370,9 @@ export default function Minimap() {
                 seq.forEach((m, mi) => {
                   const key = `${c.id}-g${gi}-m${mi}`
                   if (m.kind === 'subtype') {
-                    const st = subtypeMap[m.subtypeId]
-                    if (!st) return
-                    const subOt = otMap[st.subId], supOt = otMap[st.superId]
-                    if (!subOt || !supOt) return
+                    const ends = nearestSubtypeEnds(m.subtypeId, c.x, c.y, visSubs, visOts)
+                    if (!ends) return
+                    const { subOt, supOt } = ends
                     lines.push(<line key={key}
                       x1={wx(c.x)} y1={wy(c.y)}
                       x2={wx((subOt.x + supOt.x) / 2)} y2={wy((subOt.y + supOt.y) / 2)}
