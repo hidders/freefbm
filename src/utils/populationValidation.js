@@ -3,6 +3,8 @@
 // is inconsistent with it.
 
 import { validateValueAgainstDatatype } from './datatypeValidation.js'
+import { hasGraph, queryRule } from '../logic/query.js'
+import { makePopulationEvaluator } from '../logic/derivedPopulation.js'
 import { isDeonticUniqueness, isDeonticMandatory } from '../logic/modality.js'
 import { VALUE_KINDS, valueKindOf, valueKindName, parseLiteral } from './datatypeValues.js'
 import { isIdentifyingFact, getVtEffectivePopulation, getEntityEffectivePopulation, getEntityIdentifierShape, findRefMode, findCompositePI, findInheritedPI, findRolePlayer, getNestedCellShape, isCompleteValue, UNSET } from './refMode.js'
@@ -1013,7 +1015,6 @@ export function computePopulationIssues(rawData) {
   if (constraints?.length && facts?.length) {
     const CHECKED = new Set([])  // exclusion, equality, subset all handled after DSU
 
-    // (normalizeSeededRole is now a module-level function)
 
     // Evaluate one query → { keys: Set<string>, values: any[] } or null.
     //
@@ -2697,9 +2698,6 @@ function projCellDisplay(v) {
   return Array.isArray(v) ? `(${v.map(projCellDisplay).join(', ')})` : `"${v}"`
 }
 
-function normalizeSeededRole(s) {
-  return typeof s === 'number' ? { roleIndex: s, seqPosition: 0 } : s
-}
 
 function computeEffectiveFactTuples(fact, facts, factPopulations, objectTypes, populations, nestedEntityMappings, constraints) {
   // Helper: reconstruct one fact's tuple from a cross-fact PI tuple.
@@ -2803,6 +2801,8 @@ export function factTupleSource(data) {
   const { facts = [], factPopulations, objectTypes = [], populations, subtypes = [], nestedEntityMappings, constraints } = data
   const tuples = (fact) =>
     computeEffectiveFactTuples(fact, facts, factPopulations || {}, objectTypes, populations || {}, nestedEntityMappings || {}, constraints)
+  // The data, so evaluateQuery can evaluate queries over it.
+  tuples.data = data
   const hasPI = new Map()
   tuples.nestingInstance = (fact, row, rowIndex) => {
     if (!fact?.objectified || !Array.isArray(row)) return null
@@ -2817,144 +2817,47 @@ export function factTupleSource(data) {
   return tuples
 }
 
-function evaluateQuery(query, facts, populations, effectiveFactTuplesFn, onResult) {
+// Evaluates the query of a sequence of an external constraint over the
+// populations: { keys, values, counts } or null when it can't be read or
+// evaluated. Queries are formulas (src/logic/query.js), evaluated like
+// derivation rules (derivedPopulation.js queryResult). values holds a cell per
+// result (an array of cells for several positions), keys their projCellKey
+// strings, counts the bindings per result. A query with only a target object
+// type yields the target's values. onResult(varAssign) is called per binding
+// with varAssign: object type atom id → projCellKey string.
+export function evaluateQuery(query, facts, populations, effectiveFactTuplesFn, onResult) {
   if (!query) return null
-  const { atoms, links } = query
-  if (!atoms || atoms.length === 0) return null
-
-  const factAtoms = atoms.filter(a => a.kind === 'fact')
-  const otAtoms   = atoms.filter(a => a.kind === 'objectType')
-  const stAtoms   = atoms.filter(a => a.kind === 'subtype')
-
-  // ── A: single subtype atom → supertype population (output bound via supertype PI) ──
-  if (stAtoms.length === 1 && factAtoms.length === 0) {
-    const stAtom  = stAtoms[0]
-    const supLink = links.find(l => l.atomId === stAtom.id && l.roleIndex === 1)
-    const supOtAtom = supLink ? otAtoms.find(a => a.id === supLink.variableId) : null
-    if (!supOtAtom) return null
-    const subPop = populations?.[supOtAtom.originalId] ?? []
-    const keys = new Set(), values = []
-    for (const inst of subPop) {
-      if (!isCompleteValue(inst)) continue
-      const key = JSON.stringify(projCellKey(inst))
-      if (!keys.has(key)) { keys.add(key); values.push(inst) }
-    }
-    return { keys, values }
+  if (hasGraph(query) && !(query.atoms ?? query.copies ?? []).length) return null
+  const source = effectiveFactTuplesFn
+  if (!source?.data) return null
+  source.queryEvaluator ??= makePopulationEvaluator(source.data)
+  const ev = source.queryEvaluator
+  // The sequence of the query, for the positions of subtype atoms.
+  let seq = []
+  for (const c of (source.data.constraints ?? [])) {
+    const i = (c.queries ?? []).indexOf(query)
+    if (i >= 0) { seq = c.sequences?.[i] ?? []; break }
   }
-
-  if (factAtoms.length === 0) return null
-
-  // Collect output positions from seeded roles across all fact atoms
-  const outputPositions = []
-  for (const fc of factAtoms) {
-    for (const s of (fc.seededRoles ?? []).map(normalizeSeededRole)) {
-      if (s.seqPosition != null)
-        outputPositions.push({ fcId: fc.id, roleIndex: s.roleIndex, seqPosition: s.seqPosition })
-    }
+  let rule = queryRule(query, seq, ev.ctx)
+  if (rule.error) return null
+  if (!rule.free.length) {
+    if (!rule.target) return null
+    rule = { ...rule, free: [rule.target], target: null }
   }
-  outputPositions.sort((a, b) => a.seqPosition - b.seqPosition)
-
-  // ── B: seeded-role outputs — general nested-loop join ─────────────────
-  if (outputPositions.length > 0) {
-    const fcLinks = new Map()
-    for (const lk of links) {
-      if (!fcLinks.has(lk.atomId)) fcLinks.set(lk.atomId, [])
-      fcLinks.get(lk.atomId).push(lk)
-    }
-
-    const fcRows = new Map()
-    const fcFacts = new Map()
-    for (const fc of factAtoms) {
-      const fact = (facts || []).find(f => f.id === fc.originalId)
-      if (!fact) return null
-      fcRows.set(fc.id, effectiveFactTuplesFn(fact) ?? [])
-      fcFacts.set(fc.id, fact)
-    }
-    // A link to a fact atom of an objectified fact type binds the role to the
-    // nesting instance of that atom's row, so such an atom is also a variable.
-    const nestingVars = new Set(links
-      .filter(lk => fcFacts.get(lk.variableId)?.objectified)
-      .map(lk => lk.variableId))
-
-    const results = new Map()
-    const resultCounts = new Map()
-
-    const enumerate = (fcIdx, varAssign, rowAssign) => {
-      if (fcIdx === factAtoms.length) {
-        const tuple = outputPositions.map(op => {
-          const row = rowAssign.get(op.fcId)
-          return Array.isArray(row) ? row[op.roleIndex] : null
-        })
-        if (tuple.some(v => v == null || projCellKey(v) === null)) return
-        const norms  = tuple.map(projCellKey)
-        const normVal = norms.length === 1 ? norms[0] : norms
-        const rawVal  = tuple.length === 1 ? tuple[0] : tuple
-        const key = JSON.stringify(normVal)
-        resultCounts.set(key, (resultCounts.get(key) ?? 0) + 1)
-        if (!results.has(key)) results.set(key, rawVal)
-        if (onResult) onResult(varAssign)
-        return
+  const r = ev.queryResult(rule)
+  if (r.error) return null
+  if (onResult) {
+    const atomVars = rule.atomVars ?? new Map()
+    for (const b of r.bindings) {
+      const varAssign = new Map()
+      for (const [atomId, varId] of atomVars) {
+        const k = projCellKey(b.get(varId))
+        if (k !== null) varAssign.set(atomId, JSON.stringify(k))
       }
-      const fc = factAtoms[fcIdx]
-      const myLinks = fcLinks.get(fc.id) ?? []
-      const rows = fcRows.get(fc.id) ?? []
-      for (let ri = 0; ri < rows.length; ri++) {
-        const row = rows[ri]
-        if (!Array.isArray(row)) continue
-        let ok = true
-        const newVar = new Map(varAssign)
-        const bindings = myLinks.map(lk => [lk.variableId, row[lk.roleIndex]])
-        if (nestingVars.has(fc.id))
-          bindings.push([fc.id, effectiveFactTuplesFn.nestingInstance?.(fcFacts.get(fc.id), row, ri) ?? null])
-        for (const [variableId, v] of bindings) {
-          const norm = projCellKey(v)
-          if (norm === null) { ok = false; break }
-          const nk = JSON.stringify(norm)
-          if (newVar.has(variableId)) {
-            if (newVar.get(variableId) !== nk) { ok = false; break }
-          } else {
-            newVar.set(variableId, nk)
-          }
-        }
-        if (!ok) continue
-        const newRow = new Map(rowAssign)
-        newRow.set(fc.id, row)
-        enumerate(fcIdx + 1, newVar, newRow)
-      }
-    }
-
-    enumerate(0, new Map(), new Map())
-    return { keys: new Set(results.keys()), values: [...results.values()], counts: new Map(resultCounts) }
-  }
-
-  // ── C: legacy — single isOutput OT atom, intersection across fact atoms
-  const outputOtAtoms = otAtoms.filter(a => a.isOutput)
-  if (outputOtAtoms.length !== 1 || stAtoms.length > 0) return null
-  const targetAtom = outputOtAtoms[0]
-  const factSets = factAtoms.map(fc => {
-    const link = links.find(l => l.atomId === fc.id && l.variableId === targetAtom.id)
-    if (!link) return null
-    const fact = (facts || []).find(f => f.id === fc.originalId)
-    if (!fact) return null
-    const rows = effectiveFactTuplesFn(fact)
-    const set = new Map()
-    for (const row of rows) {
-      if (!Array.isArray(row)) continue
-      const v = row[link.roleIndex]; const norm = projCellKey(v)
-      if (norm === null) continue
-      const key = JSON.stringify(norm)
-      if (!set.has(key)) set.set(key, v)
-    }
-    return set
-  })
-  if (factSets.some(s => s === null)) return null
-  let common = new Map(factSets[0])
-  for (let i = 1; i < factSets.length; i++) {
-    for (const key of [...common.keys()]) {
-      if (!factSets[i].has(key)) common.delete(key)
+      onResult(varAssign)
     }
   }
-  return { keys: new Set(common.keys()), values: [...common.values()] }
+  return { keys: r.keys, values: r.values, counts: r.counts }
 }
 
 /**

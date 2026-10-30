@@ -17,6 +17,8 @@ import {
   EMPTY,
 } from '../storeHelpers'
 import { BASE_LANGUAGE, swapLanguage } from '../viewLanguage.js'
+import { makeContext } from '../../logic/constraintFormulas.js'
+import { withRuleForms } from '../../logic/query.js'
 
 export function createModelSlice(set, get) {
   return {
@@ -601,6 +603,13 @@ export function createModelSlice(set, get) {
             const links = (q.links ?? []).map(lk => lk.copyId !== undefined && lk.atomId === undefined ? { ...lk, atomId: lk.copyId } : lk)
             return { ...q, atoms, links }
           })}
+          // A graph's formula is derived from it (query.js), so the stored
+          // copy that serialize writes is dropped.
+          out = { ...out, queries: out.queries.map(q => {
+            if (!q?.atoms) return q
+            const { free: _f, target: _t, body: _b, ...graph } = q
+            return graph
+          })}
         }
         return out
       })
@@ -786,6 +795,7 @@ export function createModelSlice(set, get) {
       const state = get()
       const { objectTypes, facts } = swapLanguage(state, state.viewLanguage, BASE_LANGUAGE)
       const strip = ({ _fb: _, ...el }) => el
+      const ctx = makeContext({ ...state, objectTypes, facts })
       const {
         subtypes, constraints, diagrams, activeDiagramId,
         populations, factPopulations, subtypeMappings, nestedEntityMappings,
@@ -826,7 +836,9 @@ export function createModelSlice(set, get) {
           factTypes:            facts.map(f => strip(f.implicitLinks ? { ...f, implicitLinks: f.implicitLinks.map(strip) } : f)),
           ...(languages?.length && { languages }),
           subtypes,
-          externalConstraints:  constraints,
+          // Each query graph also carries its formula (query.js), so the file
+          // states what every join path means.
+          externalConstraints:  constraints.map(c => withRuleForms(c, ctx)),
           displaySettings: {
             mandatoryDotPosition,
             showReferenceMode,
