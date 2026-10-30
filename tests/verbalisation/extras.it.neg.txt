@@ -82,6 +82,14 @@ F(∃ Student ¬(∃ Staff (Staff mentors Student)))
 F(∃ Staff ∃^{>5} Student (Staff mentors Student))
 È vietato che un Dipendente mentors più di 5 Studenti.
 
+# External uniqueness (outer join)
+¬(∃ CourseTitle ∃ Staff ∃^{>1} Course ((Course has CourseTitle) ∧ (Course is run by Staff)))
+È impossibile che più di un Corso ha lo stesso Titolo del corso e is run by lo stesso Dipendente.
+
+# External uniqueness (outer join): no value at position 2
+¬(∃ CourseTitle ∃^{>1} Course ((Course has CourseTitle) ∧ ¬(∃ Staff (Course is run by Staff))))
+È impossibile che più di un Corso ha lo stesso Titolo del corso e non is run by nessun Dipendente.
+
 # Subset (deontic)
 F(∃ Student ((∃ Staff (Staff mentors Student)) ∧ ¬(∃ Course (Student enrols in Course))))
 È vietato che c'è uno Studente tale che un Dipendente mentors quello Studente e quello Studente non frequenta nessun Corso.

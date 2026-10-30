@@ -13,7 +13,7 @@ import { VALIDATION_CATEGORIES } from '../utils/validation.js'
 import { DERIVATION_MODES, directSupertypes, isDerived, checkRule } from '../logic/derivationRule.js'
 import { isDerivedFact, isComputedRole, checkFactRule, whyNotDerivable } from '../logic/factDerivation.js'
 import { makeContext } from '../logic/constraintFormulas.js'
-import { isFormulaQuery, whyNotGraphical } from '../logic/query.js'
+import { isFormulaQuery, whyNotGraphical, whyNoOuterJoin } from '../logic/query.js'
 import { hasTextSelection } from '../utils/textPanel.js'
 import { isFallbackReading } from '../store/viewLanguage.js'
 import { isDeonticUniqueness } from '../logic/modality.js'
@@ -3481,6 +3481,23 @@ function ExternalConstraintInspector({ c }) {
               disabled={piDisabled}
               title={piTitle}
               onChange={v => store.updateConstraint(c.id, v ? { isPreferredIdentifier: true, deontic: false } : { isPreferredIdentifier: false })}
+            />
+          </Row>
+        )
+      })()}
+
+      {/* Outer join — only for external uniqueness (Halpin & Morgan 2024, sec. 10.1) */}
+      {c.constraintType === 'uniqueness' && (() => {
+        const why = whyNoOuterJoin(c, makeContext(store), { offerOnly: true })
+        return (
+          <Row>
+            <Label>Join</Label>
+            <Checkbox
+              label="Outer join (no value counts as a value)"
+              checked={!!c.outerJoin}
+              disabled={!c.outerJoin && !!why}
+              title={why ? `Not available: ${why}` : 'Objects that lack an optional part of the combination count as having the same "no value" there; drawn as an o through the bar'}
+              onChange={v => store.updateConstraint(c.id, { outerJoin: v || undefined })}
             />
           </Row>
         )

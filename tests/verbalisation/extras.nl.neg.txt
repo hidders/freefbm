@@ -82,6 +82,14 @@ Het is verboden dat er een Student is zodanig dat geen Medewerker die Student me
 F(∃ Staff ∃^{>5} Student (Staff mentors Student))
 Het is verboden dat een Medewerker meer dan 5 Studenten mentors.
 
+# External uniqueness (outer join)
+¬(∃ CourseTitle ∃ Staff ∃^{>1} Course ((Course has CourseTitle) ∧ (Course is run by Staff)))
+Het is onmogelijk dat meer dan één Vak dezelfde Vaktitel heeft en run by dezelfde Medewerker is.
+
+# External uniqueness (outer join): no value at position 2
+¬(∃ CourseTitle ∃^{>1} Course ((Course has CourseTitle) ∧ ¬(∃ Staff (Course is run by Staff))))
+Het is onmogelijk dat meer dan één Vak dezelfde Vaktitel heeft en run by geen Medewerker is.
+
 # Subset (deontic)
 F(∃ Student ((∃ Staff (Staff mentors Student)) ∧ ¬(∃ Course (Student enrols in Course))))
 Het is verboden dat er een Student is zodanig dat een Medewerker die Student mentors en die Student geen Vak volgt.

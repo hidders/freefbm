@@ -82,6 +82,14 @@ Het is verplicht dat voor elke Student geldt: een Medewerker die Student mentors
 O(∀ Staff ((∃ Student (Staff mentors Student)) → ∃^{≤5} Student (Staff mentors Student)))
 Het is verplicht dat elke Medewerker hoogstens 5 Studenten mentors.
 
+# External uniqueness (outer join)
+∀ CourseTitle ∀ Staff ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by Staff))
+Voor elke Vaktitel en elke Medewerker geldt: hoogstens één Vak heeft die Vaktitel en is run by die Medewerker.
+
+# External uniqueness (outer join): no value at position 2
+∀ CourseTitle ∃^{≤1} Course ((Course has CourseTitle) ∧ ¬(∃ Staff (Course is run by Staff)))
+Voor elke Vaktitel geldt: hoogstens één Vak heeft die Vaktitel en is run by geen Medewerker.
+
 # Subset (deontic)
 O(∀ Student ((∃ Staff (Staff mentors Student)) → ∃ Course (Student enrols in Course)))
 Het is verplicht dat elke Student die een Medewerker mentors, een Vak volgt.

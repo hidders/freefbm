@@ -1231,6 +1231,10 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                     <line x1={c.x - EXTERNAL_CONSTRAINT_R} y1={c.y} x2={c.x + EXTERNAL_CONSTRAINT_R} y2={c.y}
                       stroke={color} strokeWidth={2} strokeLinecap="round"/>
                   ))}
+                  {/* Outer join: a small "o" through the bar (Halpin & Morgan 2024, sec. 10.1) */}
+                  {c.constraintType === 'uniqueness' && c.outerJoin && (
+                    <circle cx={c.x} cy={c.y} r={2.75} fill="#ffffff" stroke={color} strokeWidth={1.25}/>
+                  )}
                 </g>
               )
             })()}

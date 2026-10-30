@@ -82,6 +82,14 @@ Es obligatorio que para cada Estudiante, un Empleado mentors ese Estudiante.
 O(∀ Staff ((∃ Student (Staff mentors Student)) → ∃^{≤5} Student (Staff mentors Student)))
 Es obligatorio que cada Empleado mentors como máximo 5 Estudiantes.
 
+# External uniqueness (outer join)
+∀ CourseTitle ∀ Staff ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by Staff))
+Para cada Título de curso y cada Empleado, como máximo un Curso tiene ese Título de curso e is run by ese Empleado.
+
+# External uniqueness (outer join): no value at position 2
+∀ CourseTitle ∃^{≤1} Course ((Course has CourseTitle) ∧ ¬(∃ Staff (Course is run by Staff)))
+Para cada Título de curso, como máximo un Curso tiene ese Título de curso y no is run by ningún Empleado.
+
 # Subset (deontic)
 O(∀ Student ((∃ Staff (Staff mentors Student)) → ∃ Course (Student enrols in Course)))
 Es obligatorio que cada Estudiante que un Empleado mentors cursa un Curso.

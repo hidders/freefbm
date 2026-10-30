@@ -2,6 +2,8 @@ import { useCallback } from 'react'
 import { constraintMaxSequences, hasTargetObjectType, suppressRolePosition, isSingletonSequence } from '../utils/constraintRules'
 import { findRefMode, refModeCollapseBlockers } from '../utils/refMode'
 import { isDeonticUniqueness } from '../logic/modality'
+import { makeContext } from '../logic/constraintFormulas.js'
+import { whyNoOuterJoin } from '../logic/query.js'
 
 // The checkable "Deontic" item that switches a constraint between alethic and
 // deontic modality (modality.js).
@@ -568,6 +570,12 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     if (items.length && items[items.length - 1] === '---') items.pop()
     items.push(deonticItem(c.deontic, v => store.updateConstraint(c.id, { deontic: v }),
       c.isPreferredIdentifier ? 'A preferred identifier is always alethic' : null))
+    if (c.constraintType === 'uniqueness') {
+      const why = c.outerJoin ? null : whyNoOuterJoin(c, makeContext(store), { offerOnly: true })
+      items.push({ label: 'Outer join', checked: !!c.outerJoin, disabled: !!why,
+        title: why ? `Not available: ${why}` : 'No value in an optional part counts as a value (drawn as an o through the bar)',
+        action: () => store.updateConstraint(c.id, { outerJoin: !c.outerJoin || undefined }) })
+    }
     items.push('---')
     items.push({ label: 'Remove from Diagram',
       action: () => constraintOccurrenceId

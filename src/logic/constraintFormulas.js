@@ -15,7 +15,7 @@ import {
   factAtom, typeAtom, cmp, vcmp, obligatory,
 } from './formula.js'
 import { isDeonticUniqueness, isDeonticMandatory } from './modality.js'
-import { compileQuery } from './query.js'
+import { compileQuery, queryRule, queryTyping, outerJoinGroups, ruleBodyFormula } from './query.js'
 import { VALUE_KINDS, parseLiteral } from '../utils/datatypeValues.js'
 import { valueAccess, withValues, valueConstant } from './values.js'
 import { isDerived, derivationEntry } from './derivationRule.js'
@@ -367,6 +367,7 @@ export function constraintEntry(c, ctx) {
       const xs = shared(q)
       const t = mkVar(q.targetType)
       const phi = () => q.build({ outVars: xs, targetVar: t })
+      if (c.constraintType === 'uniqueness' && c.outerJoin) return outerJoinEntries(c, seqs[0], q, entry, ctx)
       if (c.constraintType === 'uniqueness') {
         const kind = c.isPreferredIdentifier ? 'External uniqueness (preferred identifier)' : entry.kind
         const main = { ...entry, kind, formula: forall(xs, count('≤', 1, [t], phi())) }
@@ -406,6 +407,59 @@ export function constraintEntry(c, ctx) {
     default:
       return { ...entry, note: 'This constraint type has no formula yet.' }
   }
+}
+
+// An external uniqueness constraint read with outer joins (Halpin & Morgan
+// 2024, sec. 10.1; drawn with an "o" through the bar): an object that lacks
+// an optional part of the combination counts as having "no value" there, and
+// two objects with no value in the same parts must differ elsewhere. The
+// positions fall into groups that share nothing but the target
+// (outerJoinGroups); for each set S of optional groups there is one formula:
+// per combination of the other groups, at most one object has it and has no
+// value in the groups of S. S = ∅ gives the ordinary (inner-join) formula.
+function outerJoinEntries(c, seq, q, entry, ctx) {
+  const rule = queryRule(c.queries?.[0], seq, ctx)
+  const oj = outerJoinGroups(rule, ctx)
+  if (oj.error) return { ...entry, note: `No outer-join formula: ${oj.error}.` }
+  if (!oj.groups.some(g => g.mandatory))
+    return { ...entry, note: 'No outer-join formula: none of its roles is mandatory for the target.' }
+  const typing = queryTyping(rule, ctx)
+  const label = c.isPreferredIdentifier ? 'External uniqueness (preferred identifier, outer join)' : 'External uniqueness (outer join)'
+  const xs = q.outTypes.map(mkVar)
+  const t = mkVar(q.targetType)
+  const varsFor = (posVars, tv) => new Map([...rule.free.map((f, i) => [f.id, posVars[i]]), [rule.target.id, tv]])
+  // P_G(xs, t): the group's part of the query.
+  const part = (g, posVars, tv) => ruleBodyFormula(g.body, varsFor(posVars, tv), ctx, typing)
+  const filter = (tv) => (oj.filter ? ruleBodyFormula(oj.filter, varsFor([], tv), ctx, typing) : null)
+  // ∃ys P_G(ys, t), with fresh variables for the group's positions.
+  const hasPart = (g, tv) => {
+    const ys = q.outTypes.map(mkVar)
+    return exists(g.positions.map(i => ys[i]), part(g, ys, tv))
+  }
+  const optional = oj.groups.filter(g => !g.mandatory)
+  const entries = []
+  for (let mask = 0; mask < (1 << optional.length); mask++) {
+    const absent = optional.filter((_, i) => mask & (1 << i))
+    const present = oj.groups.filter(g => !absent.includes(g))
+    const free = present.flatMap(g => g.positions).sort((a, b) => a - b).map(i => xs[i])
+    const body = and(filter(t), ...present.map(g => part(g, xs, t)), ...absent.map(g => not(hasPart(g, t))))
+    const which = absent.map(g => g.positions.map(i => i + 1).join('+')).join(', ')
+    entries.push({ ...entry, key: mask ? `${c.id}:oj:${mask}` : c.id,
+      kind: mask ? `${label}: no value at position ${which}` : label,
+      formula: forall(free, count('≤', 1, [t], body)) })
+  }
+  if (c.isPreferredIdentifier) {
+    // Every instance of the target has one value in each mandatory group and
+    // at most one in each optional group.
+    const t2 = mkVar(q.targetType)
+    const one = (g) => {
+      const ys = q.outTypes.map(mkVar)
+      return count(g.mandatory ? '=' : '≤', 1, g.positions.map(i => ys[i]), part(g, ys, t2))
+    }
+    entries.push({ ...entry, key: `${c.id}:exactlyOne`, kind: 'Preferred identifier (one identifying combination, outer join)',
+      formula: forall([t2], oj.filter ? implies(filter(t2), and(oj.groups.map(one))) : and(oj.groups.map(one))) })
+  }
+  return entries
 }
 
 function ringEntries(c, q, entry) {

@@ -627,3 +627,80 @@ export function graphToRuleBody(graph, ctx) {
   const r = graphToRule(graph, [], ctx)
   return r.error ? r : { body: r.body }
 }
+
+// ── Outer joins ──────────────────────────────────────────────────────────────
+
+// The parts of an external uniqueness query for its outer-join reading
+// (Halpin & Morgan 2024, sec. 10.1): the conjuncts of the query split into
+// groups that share no variable other than the target. A group holding
+// positions gives those positions; it is optional when no atom in it says
+// that the target plays a mandatory role. A group without positions is a
+// condition on the target (filter). Each group has the form of a rule body
+// over its positions and the target: ∃ its own variables (its atoms).
+// Returns { groups: [{ positions: [i], body, mandatory }], filter: body | null }
+// or { error } when the query is not ∃ and ∧ over atoms or has no target.
+export function outerJoinGroups(rule, ctx) {
+  if (!rule.target) return { error: 'its query has no target object type' }
+  const core = conjunctiveCore(upgradeRule(rule.body))
+  if (core.rest.length) return { error: 'its query is not ∃ and ∧ over atoms' }
+  const t = rule.target.id
+  const varsOf = (n) => (n.t === 'fact' ? n.args : n.t === 'type' ? [n.arg] : [n.left, n.right]).filter(x => x != null)
+  // Atoms that share a variable other than the target are in one group.
+  const parent = core.atoms.map((_, i) => i)
+  const find = (i) => { while (parent[i] !== i) i = parent[i]; return i }
+  const holder = new Map()
+  core.atoms.forEach(({ node }, i) => {
+    for (const x of varsOf(node)) {
+      if (x === t) continue
+      if (holder.has(x)) parent[find(i)] = find(holder.get(x))
+      else holder.set(x, i)
+    }
+  })
+  const byRoot = new Map()
+  core.atoms.forEach(({ node }, i) => {
+    const r = find(i)
+    if (!byRoot.has(r)) byRoot.set(r, [])
+    byRoot.get(r).push(node)
+  })
+  const bodyOf = (atoms) => {
+    const used = new Set(atoms.flatMap(varsOf))
+    let body = atoms.length === 1 ? atoms[0] : { t: 'and', args: atoms }
+    for (const v of [...core.bound].reverse()) if (used.has(v.id)) body = { t: 'exists', v, body }
+    return body
+  }
+  const groups = [], filters = []
+  for (const atoms of byRoot.values()) {
+    const vars = new Set(atoms.flatMap(varsOf))
+    const positions = rule.free.map((f, i) => (vars.has(f.id) ? i : -1)).filter(i => i >= 0)
+    if (!positions.length) { filters.push(...atoms); continue }
+    const mandatory = atoms.some(n => n.t === 'fact' && n.args.some((a, r) => a === t
+      && (ctx.linkById?.has(n.factId) ? r === 0 : !!ctx.factById.get(n.factId)?.roles[r]?.mandatory)))
+    groups.push({ positions, body: bodyOf(atoms), mandatory })
+  }
+  groups.sort((a, b) => a.positions[0] - b.positions[0])
+  return { groups, filter: filters.length ? bodyOf(filters) : null }
+}
+
+// Why an external uniqueness constraint can't be read with outer joins, or
+// null. At least one group of its positions must be on a mandatory role, or
+// two objects with none of the optional ones would count as equal. With
+// offerOnly, also when every group is mandatory: the reading is then the
+// ordinary one, so the editor does not offer it.
+export function whyNoOuterJoin(c, ctx, { offerOnly = false } = {}) {
+  if (c.constraintType !== 'uniqueness') return 'only external uniqueness constraints have an outer-join reading'
+  const rule = queryRule(c.queries?.[0], c.sequences?.[0] ?? [], ctx)
+  if (rule.error) return rule.error
+  const g = outerJoinGroups(rule, ctx)
+  if (g.error) return g.error
+  if (!g.groups.some(x => x.mandatory)) return 'none of its roles is mandatory for the target'
+  if (offerOnly && g.groups.every(x => x.mandatory)) return 'all of its roles are mandatory for the target, so no value is ever missing'
+  return null
+}
+
+// The formula of a rule body for the variables in vars (rule variable id →
+// formula variable), with fresh variables for those it quantifies itself.
+export function ruleBodyFormula(body, vars, ctx, typing) {
+  const all = new Map(vars)
+  for (const q of quantifiedVars(body)) all.set(q.id, mkVar(q.typeId))
+  return mergeExists(ruleFormula(body, all, ctx, typing))
+}

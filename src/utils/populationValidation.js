@@ -3,7 +3,7 @@
 // is inconsistent with it.
 
 import { validateValueAgainstDatatype } from './datatypeValidation.js'
-import { hasGraph, isFormulaQuery, queryRule, queryTyping } from '../logic/query.js'
+import { hasGraph, isFormulaQuery, queryRule, queryTyping, outerJoinGroups } from '../logic/query.js'
 import { makePopulationEvaluator } from '../logic/derivedPopulation.js'
 import { isDeonticUniqueness, isDeonticMandatory } from '../logic/modality.js'
 import { VALUE_KINDS, valueKindOf, valueKindName, parseLiteral } from './datatypeValues.js'
@@ -1181,6 +1181,18 @@ export function computePopulationIssues(rawData) {
 
       const query = (con.queries ?? [])[0] ?? null
       let counts = new Map()
+
+      // Read with outer joins: objects that agree on every part of the
+      // combination, where having no value in a part counts as agreeing.
+      if (con.outerJoin) {
+        for (const clash of outerJoinClashes(con, effectiveFactTuples) ?? []) {
+          issues.push({
+            kind: 'uniquenessViolation', elementId: con.id, constraintId: con.id, value: clash.objects[0],
+            message: `External uniqueness (outer join) violated: ${clash.objects.map(projCellDisplay).join(' and ')} have the same combination ${clash.combination}`,
+          })
+        }
+        continue
+      }
 
       if (query) {
         const qResult = evaluateQuery(query, facts, populations, effectiveFactTuples)
@@ -2866,6 +2878,62 @@ export function evaluateQuery(query, facts, populations, effectiveFactTuplesFn, 
     }
   }
   return { keys: r.keys, values: r.values, counts: r.counts }
+}
+
+// Pairs of objects of the target of an outer-join external uniqueness
+// constraint that agree on every group of its positions (query.js
+// outerJoinGroups): in each group they have no value or share one. Returns
+// [{ objects: [norm, norm], combination }] or null when it can't be evaluated.
+function outerJoinClashes(con, source) {
+  if (!source?.data) return null
+  source.queryEvaluator ??= makePopulationEvaluator(source.data)
+  const ev = source.queryEvaluator
+  const rule = queryRule(con.queries?.[0], con.sequences?.[0] ?? [], ev.ctx)
+  if (rule.error) return null
+  const oj = outerJoinGroups(rule, ev.ctx)
+  if (oj.error) return null
+  const typing = queryTyping(rule, ev.ctx)
+  const t = rule.target
+  const objects = new Map()   // target key → norm
+  // Per group: target key → Map(value key → values as shown)
+  const perGroup = oj.groups.map(g => {
+    const free = [t, ...g.positions.map(i => rule.free[i])]
+    const r = ev.queryResult({ free, target: null, body: g.body }, typing)
+    const m = new Map()
+    if (r.error) return m
+    for (const b of r.bindings) {
+      const tn = projCellKey(b.get(t.id))
+      const vs = g.positions.map(i => projCellKey(b.get(rule.free[i].id)))
+      if (tn === null || vs.some(v => v === null)) continue
+      const tk = JSON.stringify(tn)
+      objects.set(tk, tn)
+      if (!m.has(tk)) m.set(tk, new Map())
+      m.get(tk).set(JSON.stringify(vs), vs)
+    }
+    return m
+  })
+  let keep = null
+  if (oj.filter) {
+    const r = ev.queryResult({ free: [t], target: null, body: oj.filter }, typing)
+    if (r.error) return null
+    keep = new Set(r.values.map(c => JSON.stringify(projCellKey(c))))
+  }
+  const keys = [...objects.keys()].filter(k => !keep || keep.has(k))
+  const clashes = []
+  for (let a = 0; a < keys.length; a++) {
+    for (let b = a + 1; b < keys.length; b++) {
+      const shown = rule.free.map(() => 'none')
+      const agree = oj.groups.every((g, gi) => {
+        const va = perGroup[gi].get(keys[a]), vb = perGroup[gi].get(keys[b])
+        if (!va && !vb) return true
+        const common = va && vb && [...va.keys()].find(k => vb.has(k))
+        if (common) va.get(common).forEach((v, j) => { shown[g.positions[j]] = projCellDisplay(v) })
+        return !!common
+      })
+      if (agree) clashes.push({ objects: [objects.get(keys[a]), objects.get(keys[b])], combination: `(${shown.join(', ')})` })
+    }
+  }
+  return clashes
 }
 
 /**

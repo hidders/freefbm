@@ -82,6 +82,14 @@ Obowiązuje zasada, że dla każdego Studenta jakiś Pracownik mentors tego Stud
 O(∀ Staff ((∃ Student (Staff mentors Student)) → ∃^{≤5} Student (Staff mentors Student)))
 Obowiązuje zasada, że każdy Pracownik mentors co najwyżej 5 Studentów.
 
+# External uniqueness (outer join)
+∀ CourseTitle ∀ Staff ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by Staff))
+Dla każdego Tytułu przedmiotu i każdego Pracownika co najwyżej jeden Przedmiot ma ten Tytuł przedmiotu i is run by tego Pracownika.
+
+# External uniqueness (outer join): no value at position 2
+∀ CourseTitle ∃^{≤1} Course ((Course has CourseTitle) ∧ ¬(∃ Staff (Course is run by Staff)))
+Dla każdego Tytułu przedmiotu co najwyżej jeden Przedmiot ma ten Tytuł przedmiotu i nie is run by żadnego Pracownika.
+
 # Subset (deontic)
 O(∀ Student ((∃ Staff (Staff mentors Student)) → ∃ Course (Student enrols in Course)))
 Obowiązuje zasada, że każdy Student, którego jakiś Pracownik mentors, studiuje jakiś Przedmiot.
