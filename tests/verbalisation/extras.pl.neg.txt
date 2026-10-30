@@ -22,6 +22,10 @@ Przedmiot jest IntroCourse wtedy i tylko wtedy, gdy Przedmiot ma jakiś Tytuł p
 ¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
 Niemożliwe jest, że jakiś Przedmiot ma jakiś Tytuł przedmiotu taki, że długość tego Tytułu przedmiotu wynosi więcej niż 40 i nie jest LongTitleCourse.
 
+# Value range · Score
+¬(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
+Niemożliwe jest, że jakiś Score wynosi co najwyżej 0 lub wynosi więcej niż 100 i wynosi co najwyżej 200.
+
 # Cardinality · Professor
 ¬((∃^{≤1} Professor ⊤) ∨ ∃^{>20} Professor ⊤)
 Niemożliwe jest, że istnieje co najwyżej jeden Profesor lub istnieje więcej niż 20 Profesorów.
@@ -65,3 +69,23 @@ Niemożliwe jest, że istnieją jakiś Przedmiot i jakiś EnrolmentCount takie, 
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ¬(∃ Student ∃ Course ∃ Credits ((Student assists in Course) ∧ (Course is worth Credits) ∧ ¬(∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))))
 Niemożliwe jest, że istnieją jakiś Student, jakiś Przedmiot i jakaś Punktacja takie, że ten Student asystuje przy tym Przedmiocie i ten Przedmiot ma tę Punktację i nieprawda, że ten Student has credit load jakiś TotalCredits, który wynosi (ta Punktacja plus 5) razy 2.
+
+# Uniqueness (deontic) · Staff mentors Student
+F(∃ Student ∃^{>1} Staff (Staff mentors Student))
+Niedopuszczalne jest, że więcej niż jeden Pracownik mentors tego samego Studenta.
+
+# Mandatory role (deontic) · Staff mentors Student
+F(∃ Student ¬(∃ Staff (Staff mentors Student)))
+Niedopuszczalne jest, że istnieje jakiś Student taki, że żaden Pracownik nie mentors tego Studenta.
+
+# Frequency (deontic) · Staff mentors Student
+F(∃ Staff ∃^{>5} Student (Staff mentors Student))
+Niedopuszczalne jest, że jakiś Pracownik mentors więcej niż 5 Studentów.
+
+# Subset (deontic)
+F(∃ Student ((∃ Staff (Staff mentors Student)) ∧ ¬(∃ Course (Student enrols in Course))))
+Niedopuszczalne jest, że istnieje jakiś Student taki, że jakiś Pracownik mentors tego Studenta i ten Student nie studiuje żadnego Przedmiotu.
+
+# Ring (irreflexive) (deontic)
+F(∃ Course (Course is a prerequisite for Course))
+Niedopuszczalne jest, że jakiś Przedmiot jest prerekwizytem dla siebie.

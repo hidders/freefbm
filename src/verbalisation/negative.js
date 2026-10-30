@@ -17,6 +17,11 @@
 import { isVar, alphaEq } from './match.js'
 
 export function negativeForm(f) {
+  // A deontic constraint O(φ) is said as what is forbidden: F(X).
+  if (f?.t === 'obligatory') {
+    const x = counterexample(f.arg)
+    return x ? { t: 'forbidden', arg: x } : null
+  }
   const x = counterexample(f)
   return x ? { t: 'not', mode: 'impossible', arg: x } : null
 }
@@ -67,7 +72,9 @@ function neg(f) {
     case 'vcmp': return FLIP[f.op] ? { ...f, op: FLIP[f.op] } : not(f)
     case 'iff':
     case 'true':
-    case 'possible': return null
+    case 'possible':
+    case 'obligatory':
+    case 'forbidden': return null
     default: return not(f)
   }
 }

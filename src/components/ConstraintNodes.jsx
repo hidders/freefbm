@@ -894,7 +894,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                ? store.multiSelectedOccurrenceIds.includes(c.constraintOccurrenceId)
                : store.multiSelectedIds.includes(c.id)))
           : (store.selectedId === c.id || store.multiSelectedIds.includes(c.id))
-        const color = CONSTRAINT_COLOR[c.constraintType] || 'var(--ink-3)'
+        const color = c.deontic ? 'var(--col-deontic)' : CONSTRAINT_COLOR[c.constraintType] || 'var(--ink-3)'
         const symbol = CONSTRAINT_SYMBOL[c.constraintType] || '?'
 
         // Draw arcs from constraint node — unified groups for subtype-like, roleGroups for others
@@ -911,7 +911,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
         const localFactMap = buildLocalFactMap(c)
         const arcs = EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType)
           ? (c.sequences || []).flatMap((seq, gi) => {
-              const markerEnd = c.constraintType === 'subset' && gi === 1 ? 'url(#arrowSubsetSolid)' : undefined
+              const markerEnd = c.constraintType === 'subset' && gi === 1 ? (c.deontic ? 'url(#arrowSubsetSolidDeontic)' : 'url(#arrowSubsetSolid)') : undefined
               // Rake: all-role sequence targeting same fact, ≥3 members or non-adjacent pair
               const allRole  = seq.every(m => m.kind === 'role')
               const roleRefs = allRole ? seq.map(m => ({ factId: m.factId, roleIndex: m.roleIndex })) : null
@@ -1346,6 +1346,18 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
               <circle className="hover-ring" cx={c.x} cy={c.y}
                 r={(EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) && c.constraintType !== 'ring' ? EXTERNAL_CONSTRAINT_R : CONSTRAINT_R) + 4}/>
             )}
+
+            {/* Deontic mark — a small open circle on the top-left of the shape, as
+                in NORMA (not for ring and value comparison constraints). */}
+            {c.deontic && c.constraintType !== 'ring' && c.constraintType !== 'valueComparison' && (() => {
+              const R = EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) || c.constraintType === 'frequency' ? EXTERNAL_CONSTRAINT_R : CONSTRAINT_R
+              const left = c.constraintType === 'frequency' ? c.x - freqStadiumW(formatFrequencyRange(c.frequency) ?? '') / 2 : c.x - R
+              const d = (1 - 0.7071) * 2 * R
+              return (
+                <circle cx={left + d / 2} cy={c.y - R + d / 2} r={d / 2}
+                  fill="#ffffff" stroke={color} strokeWidth={1.1} style={{ pointerEvents: 'none' }}/>
+              )
+            })()}
           </g>
         )
       })}

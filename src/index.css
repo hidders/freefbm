@@ -34,6 +34,7 @@
   --col-ring:     var(--col-constraint);
   --col-freq:     var(--col-constraint);
   --col-subtype:  var(--col-constraint);
+  --col-deontic:  #1f4fd1;   /* blue — deontic constraints (obligations), as in NORMA */
   --col-candidate: #3a9e6a;   /* mid green  — selectable candidate highlight */
   --col-role-name: #1a7fd4;   /* blue — role name labels on connectors */
   --fill-candidate: #e6f4eb;  /* light green fill for candidate elements */

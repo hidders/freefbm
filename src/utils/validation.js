@@ -107,6 +107,9 @@ function specInterval(spec, kind) {
   const hi = spec.type === 'single' ? val('value') : spec.type === 'lower' ? POS_INF : val('upper')
   return {
     lo, hi,
+    // Open (exclusive) bounds; an infinite side is never open.
+    loOpen: spec.type !== 'single' && spec.type !== 'upper' && !!spec.lowerOpen,
+    hiOpen: spec.type !== 'single' && spec.type !== 'lower' && !!spec.upperOpen,
     parseable: fields.every(f => 'value' in parsed[f]),
     emptyFields:   fields.filter(f => parsed[f].empty),
     invalidFields: fields.filter(f => parsed[f].invalid),
@@ -167,6 +170,8 @@ function validateRangeSequence(range, ctx, errors) {
       const c = cmp(ivs[i].lo, ivs[i].hi)
       if (c > 0) {
         push(`range-lo-gt-hi-${i}`, `${ctx.label}: spec ${i + 1} has lower bound greater than upper bound`, 'error')
+      } else if (c === 0 && (ivs[i].loOpen || ivs[i].hiOpen)) {
+        push(`range-empty-interval-${i}`, `${ctx.label}: spec ${i + 1} has equal bounds and an open bound, so it contains no value`, 'error')
       } else if (Number.isNaN(c)) {
         push(`range-incomparable-${i}`, `${ctx.label}: spec ${i + 1} has bounds that cannot be compared in ${tn}`, 'warning')
       }
@@ -181,7 +186,8 @@ function validateRangeSequence(range, ctx, errors) {
   // max(A.lo, B.lo) <= min(A.hi, B.hi). In a partial order that test needs
   // the bounds to be comparable; when they aren't, we only report a single
   // value that definitely lies inside the other interval.
-  const inside = (v, iv) => cmp(iv.lo, v) <= 0 && cmp(v, iv.hi) <= 0
+  const inside = (v, iv) => (iv.loOpen ? cmp(iv.lo, v) < 0 : cmp(iv.lo, v) <= 0) &&
+    (iv.hiOpen ? cmp(v, iv.hi) < 0 : cmp(v, iv.hi) <= 0)
   for (let i = 0; i < ivs.length; i++) {
     for (let j = i + 1; j < ivs.length; j++) {
       const A = ivs[i], B = ivs[j]
@@ -193,8 +199,13 @@ function validateRangeSequence(range, ctx, errors) {
         continue
       }
       const cLo = cmp(A.lo, B.lo), cHi = cmp(A.hi, B.hi)
+      // The intersection runs from the larger lower bound to the smaller
+      // upper one; a bound shared by both sides is open if either is.
+      const lo = cLo > 0 ? A : cLo < 0 ? B : { lo: A.lo, loOpen: A.loOpen || B.loOpen }
+      const hi = cHi < 0 ? A : cHi > 0 ? B : { hi: A.hi, hiOpen: A.hiOpen || B.hiOpen }
+      const meet = cmp(lo.lo, hi.hi)
       const overlap = !Number.isNaN(cLo) && !Number.isNaN(cHi)
-        ? cmp(cLo >= 0 ? A.lo : B.lo, cHi <= 0 ? A.hi : B.hi) <= 0
+        ? meet < 0 || (meet === 0 && !lo.loOpen && !hi.hiOpen)
         : (singleA && inside(A.lo, B)) || (singleB && inside(B.lo, A))
       if (overlap) {
         push(`range-overlap-${i}-${j}`, `${ctx.label}: spec ${i + 1} and spec ${j + 1} overlap`, 'warning')

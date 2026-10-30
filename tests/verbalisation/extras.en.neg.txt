@@ -22,6 +22,10 @@ Course is an IntroCourse if and only if Course has some CourseTitle that starts 
 ¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
 It is impossible that some Course has some CourseTitle such that the length of that CourseTitle is more than 40 and is not a LongTitleCourse.
 
+# Value range · Score
+¬(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
+It is impossible that some Score is at most 0 or is more than 100 and is at most 200.
+
 # Cardinality · Professor
 ¬((∃^{≤1} Professor ⊤) ∨ ∃^{>20} Professor ⊤)
 It is impossible that there is at most one Professor or there are more than 20 Professors.
@@ -65,3 +69,23 @@ It is impossible that there is some Course and some EnrolmentCount such that tha
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ¬(∃ Student ∃ Course ∃ Credits ((Student assists in Course) ∧ (Course is worth Credits) ∧ ¬(∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))))
 It is impossible that there is some Student, some Course and some Credits such that that Student assists in that Course and that Course is worth that Credits and it is not true that that Student has credit load some TotalCredits that is (that Credits plus 5) times 2.
+
+# Uniqueness (deontic) · Staff mentors Student
+F(∃ Student ∃^{>1} Staff (Staff mentors Student))
+It is forbidden that more than one Staff mentors the same Student.
+
+# Mandatory role (deontic) · Staff mentors Student
+F(∃ Student ¬(∃ Staff (Staff mentors Student)))
+It is forbidden that there is some Student such that no Staff mentors that Student.
+
+# Frequency (deontic) · Staff mentors Student
+F(∃ Staff ∃^{>5} Student (Staff mentors Student))
+It is forbidden that some Staff mentors more than 5 Students.
+
+# Subset (deontic)
+F(∃ Student ((∃ Staff (Staff mentors Student)) ∧ ¬(∃ Course (Student enrols in Course))))
+It is forbidden that there is some Student such that some Staff mentors that Student and that Student does not enrol in any Course.
+
+# Ring (irreflexive) (deontic)
+F(∃ Course (Course is a prerequisite for Course))
+It is forbidden that some Course is a prerequisite for itself.

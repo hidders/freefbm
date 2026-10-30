@@ -4,15 +4,17 @@
 // uniqueness and frequency, plus transitive closure [TC_{v,w} φ](s, t) for the
 // acyclic and strongly intransitive rings. Value ranges and value comparisons
 // use value atoms x ≈ c, x < y, … that compare data values under the
-// variable's datatype. Cardinality ranges are not formalised yet.
+// variable's datatype. Cardinality ranges are not formalised yet. A deontic
+// constraint's formula φ is wrapped as O(φ) (modality.js).
 //
 // Atoms use the fact type's primary reading (readingParts), whose slots follow
 // roles[] order, so fact atom arguments are always in roles[] order.
 
 import {
   mkVar, forall, exists, count, countRange, not, truth, implies, iff, and, or, tc,
-  factAtom, typeAtom, cmp, vcmp,
+  factAtom, typeAtom, cmp, vcmp, obligatory,
 } from './formula.js'
+import { isDeonticUniqueness, isDeonticMandatory } from './modality.js'
 import { VALUE_KINDS, parseLiteral } from '../utils/datatypeValues.js'
 import { valueAccess, withValues, valueConstant } from './values.js'
 import { isDerived, derivationEntry } from './derivationRule.js'
@@ -327,11 +329,13 @@ function rangeCondition(range, kindName) {
   const c = (raw) => valueConstant(raw, kindName)
   return {
     cond: (v) => or(range.map(spec => {
+      // An open bound (lowerOpen, upperOpen) excludes the bound itself.
+      const lo = spec.lowerOpen ? '>' : '≥', hi = spec.upperOpen ? '<' : '≤'
       switch (spec.type) {
         case 'single': return vcmp('≈', v, c(spec.value))
-        case 'lower':  return vcmp('≥', v, c(spec.lower))
-        case 'upper':  return vcmp('≤', v, c(spec.upper))
-        default:       return and(vcmp('≥', v, c(spec.lower)), vcmp('≤', v, c(spec.upper)))
+        case 'lower':  return vcmp(lo, v, c(spec.lower))
+        case 'upper':  return vcmp(hi, v, c(spec.upper))
+        default:       return and(vcmp(lo, v, c(spec.lower)), vcmp(hi, v, c(spec.upper)))
       }
     })),
   }
@@ -377,15 +381,16 @@ function factEntries(fact, ctx, info) {
 
   for (const u of (fact.uniqueness ?? [])) {
     const isPreferred = preferred.has([...u].sort().join(','))
+    const deontic = !isPreferred && isDeonticUniqueness(fact, u)
     const base = { key: `${fact.id}:uc:${u.join(',')}`, elementId: fact.id,
-      kind: isPreferred ? 'Uniqueness (preferred identifier)' : 'Uniqueness', subject: reading }
+      kind: isPreferred ? 'Uniqueness (preferred identifier)' : deontic ? 'Uniqueness (deontic)' : 'Uniqueness', subject: reading }
     if (u.length >= arity) {
       out.push({ ...base, note: 'Spans every role, so it holds for any set of facts.' })
       continue
     }
     const xs = roleVars()
     const ys = xs.filter((_, i) => !u.includes(i))
-    out.push({ ...base, formula: forall(xs.filter((_, i) => u.includes(i)), count('≤', 1, ys, factAtom(fact.id, xs))) })
+    out.push({ ...base, formula: modal(deontic, forall(xs.filter((_, i) => u.includes(i)), count('≤', 1, ys, factAtom(fact.id, xs)))) })
     if (isPreferred) out.push(...preferredIdentifierEntries(fact, u, reading))
   }
   out.push(...possibleUniqueness(fact, reading, info))
@@ -400,12 +405,13 @@ function factEntries(fact, ctx, info) {
       return
     }
     const xs = roleVars()
-    out.push({ key: `${fact.id}:mand:${i}`, elementId: fact.id, kind: 'Mandatory role', subject: reading,
-      formula: forall([xs[i]], exists(xs.filter((_, j) => j !== i), factAtom(fact.id, xs))) })
+    const deontic = isDeonticMandatory(r)
+    out.push({ key: `${fact.id}:mand:${i}`, elementId: fact.id, kind: deontic ? 'Mandatory role (deontic)' : 'Mandatory role',
+      subject: reading, formula: modal(deontic, forall([xs[i]], exists(xs.filter((_, j) => j !== i), factAtom(fact.id, xs)))) })
   })
 
   for (const f of (fact.internalFrequency ?? [])) {
-    const base = { key: `${fact.id}:freq:${f.id}`, elementId: fact.id, kind: 'Frequency', subject: reading }
+    const base = { key: `${fact.id}:freq:${f.id}`, elementId: fact.id, kind: f.deontic ? 'Frequency (deontic)' : 'Frequency', subject: reading }
     const specs = frequencySpecs(f.range)
     const roles = f.roles ?? []
     const xs = roleVars()
@@ -413,7 +419,7 @@ function factEntries(fact, ctx, info) {
       ? frequencyFormula(xs.filter((_, i) => roles.includes(i)), xs.filter((_, i) => !roles.includes(i)),
           () => factAtom(fact.id, xs), specs)
       : null
-    out.push(formula ? { ...base, formula } : { ...base, note: 'No frequency range is set yet.' })
+    out.push(formula ? { ...base, formula: modal(f.deontic, formula) } : { ...base, note: 'No frequency range is set yet.' })
   }
   return out
 }
@@ -429,7 +435,7 @@ function preferredIdentifierEntries(fact, u, reading) {
   if (others.length !== 1 || (fact.objectified && fact.objectifiedKind !== 'value')) return []
   const e = others[0]
   const atMost = !(fact.uniqueness ?? []).some(v => v.length === 1 && v[0] === e)
-  const atLeast = !fact.roles[e].mandatory
+  const atLeast = !fact.roles[e].mandatory || isDeonticMandatory(fact.roles[e])
   if (!atMost && !atLeast) return []
   const xs = fact.roles.map(r => mkVar(r.objectTypeId))
   const ys = xs.filter((_, i) => i !== e)
@@ -441,7 +447,17 @@ function preferredIdentifierEntries(fact, u, reading) {
     kind: `Preferred identifier (${label} identifier)`, formula: forall([xs[e]], body) }]
 }
 
+// The formula of a constraint with its modality: O(φ) for a deontic one.
+const modal = (deontic, phi) => (deontic ? obligatory(phi) : phi)
+
 // ── External constraints ─────────────────────────────────────────────────────
+
+// A deontic external constraint: each of its formulas becomes O(φ).
+function deonticEntries(c, e) {
+  if (!c.deontic) return e
+  const wrap = (x) => ({ ...x, kind: `${x.kind} (deontic)`, ...(x.formula ? { formula: obligatory(x.formula) } : {}) })
+  return Array.isArray(e) ? e.map(wrap) : wrap(e)
+}
 
 function constraintEntry(c, ctx) {
   const entry = { key: c.id, elementId: c.id, kind: CONSTRAINT_LABELS[c.constraintType] ?? c.constraintType,
@@ -946,11 +962,11 @@ export function formalise(state, { wholeSchema = false } = {}) {
     }
     // A selected object type brings the mandatory roles it plays.
     if (otIds.size) entries.push(...factEntries(fact, ctx).filter(e =>
-      e.kind === 'Mandatory role' && otIds.has(fact.roles[Number(e.key.split(':').pop())]?.objectTypeId)))
+      e.key.startsWith(`${fact.id}:mand:`) && otIds.has(fact.roles[Number(e.key.split(':').pop())]?.objectTypeId)))
   }
   for (const c of constraints) {
     if (!constraintIds.has(c.id)) continue
-    const e = constraintEntry(c, ctx)
+    const e = deonticEntries(c, constraintEntry(c, ctx))
     entries.push(...(Array.isArray(e) ? e : [e]))
   }
   const implicit = implicitEntries(state, ctx, typeIds)

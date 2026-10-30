@@ -352,6 +352,7 @@ function stadiumEdge(cx, cy, hw, hh, tx, ty) {
 
 
 const BAR_H            = 3    // stroke width of each uniqueness bar
+const DEONTIC_R        = 2.5  // radius of the circle that starts a deontic uniqueness bar
 const BAR_MARGIN       = 4    // gap between top of role box and lowest bar (no-rake case)
 const BAR_SPACING      = 5    // vertical distance between successive bar levels
 const PREF_OFFSET      = 2.5  // shift for preferred uniqueness bar (keeps inner line at original pos)
@@ -1307,6 +1308,10 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   const effBarMargin_h = rakeZone_h > 0 ? 0 : BAR_MARGIN
   const effBarMargin_v = rakeZone_v > 0 ? 0 : BAR_MARGIN
   const preferredKeys = new Set((fact.preferredUniqueness || []).map(pu => JSON.stringify([...pu].sort((a, b) => a - b))))
+  // Deontic uniqueness constraints are drawn in blue with a small circle at
+  // the start of the bar, as in NORMA.
+  const deonticKeys = new Set((fact.deonticUniqueness || []).map(du => JSON.stringify([...du].sort((a, b) => a - b))))
+  const isDeonticUC = (uRoles) => deonticKeys.has(JSON.stringify([...uRoles].sort((a, b) => a - b)))
   if (fact._implicit) {
     const il = store.facts.find(f => f.id === fact._parentFactId)?.implicitLinks?.find(il => il.roleIndex === fact._implicitRoleIndex)
     if (Array.isArray(il?.preferredUniqueness)) {
@@ -1338,7 +1343,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   }
 
   // ── Horizontal helpers ─────────────────────────────────────────────────────
-  function buildRuns(uRoles, level, ui) {
+  function buildRuns(uRoles, level, ui, deontic = false) {
     const dro = displayRoleOrder(fact)
     const posSet = new Set(uRoles.map(ri => dro.indexOf(ri)))
     const minPos = Math.min(...posSet)
@@ -1361,7 +1366,13 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         runSolid = solid
       }
     }
-    return { barY, runs }
+    // A deontic bar starts with a small circle; the first run makes room for it.
+    let dot = null
+    if (deontic && runs.length) {
+      dot = { cx: runs[0].x1 + DEONTIC_R, cy: barY }
+      runs[0] = { ...runs[0], x1: runs[0].x1 + 2 * DEONTIC_R + 1 }
+    }
+    return { barY, runs, dot }
   }
 
   // ── Vertical helpers ───────────────────────────────────────────────────────
@@ -1382,7 +1393,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     return barX_v(level) + dir * PREF_OFFSET * shiftCount
   }
 
-  function buildRunsV(uRoles, level, ui) {
+  function buildRunsV(uRoles, level, ui, deontic = false) {
     const dro = displayRoleOrder(fact)
     const posSet = new Set(uRoles.map(ri => dro.indexOf(ri)))
     const minPos   = Math.min(...posSet)
@@ -1405,7 +1416,12 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         runSolid = solid
       }
     }
-    return { barX, runs }
+    let dot = null
+    if (deontic && runs.length) {
+      dot = { cx: barX, cy: runs[0].y1 + DEONTIC_R }
+      runs[0] = { ...runs[0], y1: runs[0].y1 + 2 * DEONTIC_R + 1 }
+    }
+    return { barX, runs, dot }
   }
 
   // Shared bar click handler
@@ -1688,7 +1704,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         {text}
         {dmark && (text ? ' ' : '')}
         {/* + sits on the baseline, so raise it to match the * of a derived fact type. */}
-        {dmark === '+' ? <tspan baselineShift="super" fontSize={14 * 0.75}>+</tspan> : dmark}
+        {dmark.startsWith('+') ? <tspan baselineShift="super" fontSize={14 * 0.75}>{dmark}</tspan> : dmark}
       </text>
     )
   }
@@ -2457,7 +2473,8 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             const isUSelected = ((store.selectedUniqueness?.factId === fact.id && store.selectedUniqueness?.uIndex === ui &&
               (!occurrenceId || !store.selectedUniqueness?.occurrenceId || store.selectedUniqueness?.occurrenceId === occurrenceId)) ||
               (fact._implicit && store.selectedUniqueness?.factId === fact._parentFactId && store.selectedUniqueness?.roleIndex === fact._implicitRoleIndex && store.selectedUniqueness?.uIndex === ui)) || isEditing
-            const barStroke = isUSelected ? 'var(--accent)' : 'var(--col-mandatory)'
+            const deontic = !isEditing && isDeonticUC(uRoles)
+            const barStroke = isUSelected ? 'var(--accent)' : deontic ? 'var(--col-deontic)' : 'var(--col-mandatory)'
             const isEditingUnary = isEditing && uRoles.length === 1
             const displayLevel = isEditingUnary ? multiCount + 1 : levels[ui]
 
@@ -2475,7 +2492,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
               )
             }
 
-            const { barX: rawBarX, runs } = buildRunsV(displayRoles, displayLevel, ui)
+            const { barX: rawBarX, runs, dot } = buildRunsV(displayRoles, displayLevel, ui, deontic)
             const drov = displayRoleOrder(fact)
             const vPositions = displayRoles.map(ri => drov.indexOf(ri))
             const minPos_v = Math.min(...vPositions), maxPos_v = Math.max(...vPositions)
@@ -2515,6 +2532,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                       strokeOpacity={solid ? 1 : 0.6}/>
                   ))
                 )}
+                {dot && <circle cx={barX} cy={dot.cy} r={DEONTIC_R} fill="var(--bg-canvas)" stroke={barStroke} strokeWidth={1.3}/>}
               </g>
             )
           })}
@@ -2648,7 +2666,8 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             const isUSelected = ((store.selectedUniqueness?.factId === fact.id && store.selectedUniqueness?.uIndex === ui &&
               (!occurrenceId || !store.selectedUniqueness?.occurrenceId || store.selectedUniqueness?.occurrenceId === occurrenceId)) ||
               (fact._implicit && store.selectedUniqueness?.factId === fact._parentFactId && store.selectedUniqueness?.roleIndex === fact._implicitRoleIndex && store.selectedUniqueness?.uIndex === ui)) || isEditing
-            const barStroke = isUSelected ? 'var(--accent)' : 'var(--col-mandatory)'
+            const deontic = !isEditing && isDeonticUC(uRoles)
+            const barStroke = isUSelected ? 'var(--accent)' : deontic ? 'var(--col-deontic)' : 'var(--col-mandatory)'
             const isEditingUnary = isEditing && uRoles.length === 1
             const displayLevel = isEditingUnary ? multiCount + 1 : levels[ui]
 
@@ -2666,7 +2685,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
               )
             }
 
-            const { barY: rawBarY, runs } = buildRuns(displayRoles, displayLevel, ui)
+            const { barY: rawBarY, runs, dot } = buildRuns(displayRoles, displayLevel, ui, deontic)
             const droh = displayRoleOrder(fact)
             const hPositions = displayRoles.map(ri => droh.indexOf(ri))
             const minPos_h = Math.min(...hPositions), maxPos_h = Math.max(...hPositions)
@@ -2706,6 +2725,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                       strokeOpacity={solid ? 1 : 0.6}/>
                   ))
                 )}
+                {dot && <circle cx={dot.cx} cy={barY} r={DEONTIC_R} fill="var(--bg-canvas)" stroke={barStroke} strokeWidth={1.3}/>}
               </g>
             )
           })}
@@ -2914,7 +2934,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       const cx = (ifLive?.ifId === ifItem.id) ? ifLive.x : ifItem.x
       const cy = (ifLive?.ifId === ifItem.id) ? ifLive.y : ifItem.y
       const fr = formatFrequencyRange(ifItem.range)
-      const col = isEditing ? 'var(--accent)' : isIfSelected ? 'var(--accent)' : 'var(--col-constraint)'
+      const col = isEditing ? 'var(--accent)' : isIfSelected ? 'var(--accent)' : ifItem.deontic ? 'var(--col-deontic)' : 'var(--col-constraint)'
       const hw = ifShapeHalfW(fr)
       const isDragging = ifLive?.ifId === ifItem.id
       const handlers = {

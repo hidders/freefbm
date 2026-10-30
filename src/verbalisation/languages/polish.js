@@ -325,8 +325,11 @@ const PREDICATES = { startsWith: 'zaczyna się od', endsWith: 'kończy się na',
 const functions = {
   rangeItems: (h, body, x) => {
     const spec = rangeSpec(body, x)
-    return spec && spec.map(i => i.op === '..' ? [kw('od'), h.term(i.lo), kw('do'), h.term(i.hi)]
-      : i.op === '≈' ? [h.term(i.value)] : [kw(i.op === '≥' ? 'co najmniej' : 'co najwyżej'), h.term(i.value)])
+    const bound = { '≥': 'co najmniej', '≤': 'co najwyżej', '>': 'więcej niż', '<': 'mniej niż' }
+    return spec && spec.map(i => i.op === '..'
+      ? (i.loOp === '≥' && i.hiOp === '≤' ? [kw('od'), h.term(i.lo), kw('do'), h.term(i.hi)]
+        : [kw(bound[i.loOp]), h.term(i.lo), kw('i'), kw(bound[i.hiOp]), h.term(i.hi)])
+      : i.op === '≈' ? [h.term(i.value)] : [kw(bound[i.op]), h.term(i.value)])
   },
   exclusionItems: (h, f) => exclusionItems(f),
   exclusiveOrItems: (h, f) => exclusiveOrItems(f),

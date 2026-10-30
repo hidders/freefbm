@@ -225,8 +225,11 @@ function predicate(h, f, subjectPhrase) {
 const functions = {
   rangeItems: (h, body, x) => {
     const spec = rangeSpec(body, x)
-    return spec && spec.map(i => i.op === '..' ? [h.term(i.lo), kw('tot en met'), h.term(i.hi)]
-      : i.op === '≈' ? [h.term(i.value)] : [kw(i.op === '≥' ? 'minstens' : 'hoogstens'), h.term(i.value)])
+    const bound = { '≥': 'minstens', '≤': 'hoogstens', '>': 'meer dan', '<': 'minder dan' }
+    return spec && spec.map(i => i.op === '..'
+      ? (i.loOp === '≥' && i.hiOp === '≤' ? [h.term(i.lo), kw('tot en met'), h.term(i.hi)]
+        : [kw(bound[i.loOp]), h.term(i.lo), kw('en'), kw(bound[i.hiOp]), h.term(i.hi)])
+      : i.op === '≈' ? [h.term(i.value)] : [kw(bound[i.op]), h.term(i.value)])
   },
   exclusionItems: (h, f) => exclusionItems(f),
   exclusiveOrItems: (h, f) => exclusiveOrItems(f),

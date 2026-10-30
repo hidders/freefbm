@@ -1309,6 +1309,9 @@ export default function Canvas() {
           <marker id="arrowSubsetSolid" markerWidth="13" markerHeight="13" refX="12" refY="5" orient="auto">
             <path d="M 1 1 L 12 5 L 1 9 Z" fill="var(--col-excl)" stroke="none"/>
           </marker>
+          <marker id="arrowSubsetSolidDeontic" markerWidth="13" markerHeight="13" refX="12" refY="5" orient="auto">
+            <path d="M 1 1 L 12 5 L 1 9 Z" fill="var(--col-deontic)" stroke="none"/>
+          </marker>
           <marker id="arrowConstraintTarget" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
             <path d="M 1 1 L 7 4 L 1 7" fill="none" stroke="var(--col-constraint)" strokeWidth="1.5"
               strokeLinecap="round" strokeLinejoin="round"/>

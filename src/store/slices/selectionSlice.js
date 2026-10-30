@@ -4,6 +4,7 @@ import {
   computeConnectedIds, withSequences,
 } from '../storeHelpers'
 import { factAsDrawn, defaultFrequencyPos } from '../../utils/frequencyPlacement.js'
+import { isDeonticUniqueness } from '../../logic/modality.js'
 
 export function createSelectionSlice(set, get) {
   return {
@@ -436,9 +437,11 @@ export function createSelectionSlice(set, get) {
           i !== uc.uIndex && JSON.stringify([...u].sort((a, b) => a - b)) === newKey
         )
         if (alreadyExists) return  // selectedUniqueness stays pointing to the unchanged bar
+        const wasDeontic = isDeonticUniqueness(fact, oldRoles)
         get().toggleUniqueness(uc.factId, oldRoles)           // remove old
         if (uc.roleIndices.length > 0) {
           get().toggleUniqueness(uc.factId, uc.roleIndices)   // add new
+          if (wasDeontic) get().setUniquenessDeontic(uc.factId, uc.roleIndices, true)
           // Re-select the bar at its new index
           const updatedFact = get().facts.find(f => f.id === uc.factId)
           if (updatedFact) {
@@ -472,8 +475,10 @@ export function createSelectionSlice(set, get) {
       const duplicate = fact.uniqueness.some((u, i) =>
         i !== uIndex && JSON.stringify([...u].sort((a, b) => a - b)) === newKey)
       if (duplicate) return
+      const wasDeontic = isDeonticUniqueness(fact, oldRoles)
       get().toggleUniqueness(factId, oldRoles)   // remove old
       get().toggleUniqueness(factId, newRoles)   // add new
+      if (wasDeontic) get().setUniquenessDeontic(factId, newRoles, true)
       // Re-select at the new index
       const updated = get().facts.find(f => f.id === factId)
       if (updated) {
@@ -689,7 +694,8 @@ export function createSelectionSlice(set, get) {
           const internalFrequency = (f.internalFrequency || []).filter(i => i.id !== ifId)
           if (alreadyExists) return { ...f, internalFrequency }
           const uniqueness = [...f.uniqueness, roles].sort((a, b) => a.length - b.length)
-          return { ...f, internalFrequency, uniqueness }
+          const deonticUniqueness = ifItem.deontic ? [...(f.deonticUniqueness || []), roles] : f.deonticUniqueness
+          return { ...f, internalFrequency, uniqueness, deonticUniqueness }
         }),
         isDirty: true,
       }))
@@ -715,12 +721,14 @@ export function createSelectionSlice(set, get) {
           const preferredUniqueness = (f.preferredUniqueness || []).filter(pu =>
             JSON.stringify([...pu].sort((a, b) => a - b)) !== key
           )
+          const deontic = isDeonticUniqueness(f, uRoles)
           return {
             ...f,
             uniqueness,
             preferredUniqueness: preferredUniqueness.length > 0 ? preferredUniqueness : [],
+            deonticUniqueness: (f.deonticUniqueness || []).filter(du => JSON.stringify([...du].sort((a, b) => a - b)) !== key),
             internalFrequency: [...(f.internalFrequency || []), {
-              id: ifId, roles: [...uRoles], range: [{ type: 'upper', upper: 1 }], ...pos,
+              id: ifId, roles: [...uRoles], range: [{ type: 'upper', upper: 1 }], ...pos, ...(deontic ? { deontic } : {}),
             }],
           }
         }),

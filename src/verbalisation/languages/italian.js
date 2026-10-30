@@ -50,7 +50,7 @@ export const italianLibrary = romanceLibrary({
   that: (g) => (g === 'f' ? 'quella' : 'quel'),
   reflexive: (g) => (g === 'f' ? 'se stessa' : 'se stesso'),
   suchThat: (g, plural) => (plural ? 'tali che' : 'tale che'),
-  quant: { '≤': 'al massimo', '≥': 'almeno', '=': 'esattamente', '>': 'più di' },
+  quant: { '≤': 'al massimo', '≥': 'almeno', '=': 'esattamente', '>': 'più di', '<': 'meno di' },
   range: ['da', 'a'],
   negation: 'non',
   negationAfter: null,

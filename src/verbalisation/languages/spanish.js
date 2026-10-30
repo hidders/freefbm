@@ -49,7 +49,7 @@ export const spanishLibrary = romanceLibrary({
   that: (g) => (g === 'f' ? 'esa' : 'ese'),
   reflexive: (g) => (g === 'f' ? 'sí misma' : 'sí mismo'),
   suchThat: (g, plural) => (plural ? 'tales que' : 'tal que'),
-  quant: { '≤': 'como máximo', '≥': 'al menos', '=': 'exactamente', '>': 'más de' },
+  quant: { '≤': 'como máximo', '≥': 'al menos', '=': 'exactamente', '>': 'más de', '<': 'menos de' },
   range: ['de', 'a'],
   negation: 'no',
   negationAfter: null,

@@ -27,6 +27,19 @@ sentence rule possible {
   template: "è possibile che" clause(?x)
 }
 
+sentence rule obligatory {
+  # A deontic constraint O(X) (modality.js): what ought to hold, said as the
+  # sentence X would be.
+  match:    { t: "obligatory", arg: ?x }
+  template: "è obbligatorio che" sentence(?x)
+}
+
+sentence rule forbidden {
+  # Negative verbalisation of a deontic constraint: what ought not to hold.
+  match:    { t: "forbidden", arg: ?x }
+  template: "è vietato che" clause(?x)
+}
+
 sentence rule value-range {
   match:    ForAll([?x], ?body)
   guard:    rangeItems(?body, ?x)

@@ -22,6 +22,10 @@ Course is an IntroCourse if and only if Course has some CourseTitle that starts 
 ∀ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) → LongTitleCourse(Course))
 Each Course that has some CourseTitle such that the length of that CourseTitle is more than 40 is a LongTitleCourse.
 
+# Value range · Score
+∀ Score ((Score > 0 ∧ Score ≤ 100) ∨ Score > 200)
+The possible values of Score are more than 0 and at most 100, more than 200.
+
 # Cardinality · Professor
 ∃^{2..20} Professor ⊤
 There are at least 2 and at most 20 Professors.
@@ -65,3 +69,23 @@ If Course has EnrolmentCount then EnrolmentCount is the number of Students that 
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
 If Student assists in Course and Course is worth Credits then Student has credit load some TotalCredits that is (Credits plus 5) times 2.
+
+# Uniqueness (deontic) · Staff mentors Student
+O(∀ Student ∃^{≤1} Staff (Staff mentors Student))
+It is obligatory that for each Student, at most one Staff mentors that Student.
+
+# Mandatory role (deontic) · Staff mentors Student
+O(∀ Student ∃ Staff (Staff mentors Student))
+It is obligatory that for each Student, some Staff mentors that Student.
+
+# Frequency (deontic) · Staff mentors Student
+O(∀ Staff ((∃ Student (Staff mentors Student)) → ∃^{≤5} Student (Staff mentors Student)))
+It is obligatory that each Staff mentors at most 5 Students.
+
+# Subset (deontic)
+O(∀ Student ((∃ Staff (Staff mentors Student)) → ∃ Course (Student enrols in Course)))
+It is obligatory that each Student that some Staff mentors enrols in some Course.
+
+# Ring (irreflexive) (deontic)
+O(∀ Course ¬(Course is a prerequisite for Course))
+It is obligatory that no Course is a prerequisite for itself.

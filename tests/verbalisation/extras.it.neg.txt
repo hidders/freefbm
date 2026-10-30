@@ -22,6 +22,10 @@ Corso è un IntroCourse se e solo se Corso ha un Titolo del corso che inizia con
 ¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
 È impossibile che un Corso ha un Titolo del corso tale che la lunghezza di quel Titolo del corso è maggiore di 40 e non è un LongTitleCourse.
 
+# Value range · Score
+¬(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
+È impossibile che uno Score è al massimo 0 o è maggiore di 100 ed è al massimo 200.
+
 # Cardinality · Professor
 ¬((∃^{≤1} Professor ⊤) ∨ ∃^{>20} Professor ⊤)
 È impossibile che c'è al massimo un Professore o ci sono più di 20 Professori.
@@ -65,3 +69,23 @@ Studente studies with Dipendente se e solo se Studente frequenta un Corso che Di
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ¬(∃ Student ∃ Course ∃ Credits ((Student assists in Course) ∧ (Course is worth Credits) ∧ ¬(∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))))
 È impossibile che ci sono uno Studente, un Corso e un Numero di crediti tali che quello Studente è assistente in quel Corso e quel Corso ha quel Numero di crediti e non è vero che quello Studente has credit load un TotalCredits che è (quel Numero di crediti più 5) per 2.
+
+# Uniqueness (deontic) · Staff mentors Student
+F(∃ Student ∃^{>1} Staff (Staff mentors Student))
+È vietato che più di un Dipendente mentors lo stesso Studente.
+
+# Mandatory role (deontic) · Staff mentors Student
+F(∃ Student ¬(∃ Staff (Staff mentors Student)))
+È vietato che c'è uno Studente tale che nessun Dipendente mentors quello Studente.
+
+# Frequency (deontic) · Staff mentors Student
+F(∃ Staff ∃^{>5} Student (Staff mentors Student))
+È vietato che un Dipendente mentors più di 5 Studenti.
+
+# Subset (deontic)
+F(∃ Student ((∃ Staff (Staff mentors Student)) ∧ ¬(∃ Course (Student enrols in Course))))
+È vietato che c'è uno Studente tale che un Dipendente mentors quello Studente e quello Studente non frequenta nessun Corso.
+
+# Ring (irreflexive) (deontic)
+F(∃ Course (Course is a prerequisite for Course))
+È vietato che un Corso è un prerequisito per se stesso.
