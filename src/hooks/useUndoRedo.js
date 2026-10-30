@@ -9,6 +9,7 @@ function snapshot(state) {
     facts:          state.facts,
     subtypes:       state.subtypes,
     constraints:    state.constraints,
+    groups:         state.groups,
     diagrams:       state.diagrams,
     activeDiagramId: state.activeDiagramId,
     queryEditDraft: state.queryEditDraft,
@@ -32,6 +33,7 @@ export function useUndoRedo() {
         state.facts          === prev.facts          &&
         state.subtypes       === prev.subtypes       &&
         state.constraints    === prev.constraints    &&
+        state.groups         === prev.groups         &&
         state.diagrams       === prev.diagrams       &&
         state.activeDiagramId === prev.activeDiagramId &&
         state.queryEditDraft  === prev.queryEditDraft &&

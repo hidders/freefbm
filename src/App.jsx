@@ -161,6 +161,7 @@ function useKeyboardShortcuts() {
           return
         }
         if (!selectedId) return
+        if (selectedKind === 'group')      { store.deleteGroup(selectedId); return }
         if (selectedKind === 'note')       { store.deleteNote(selectedId); return }
         if (selectedKind === 'constraint') { store.deleteConstraint(selectedId); return }
         if (selectedKind === 'subtype') { store.deleteSubtype(selectedId); return }

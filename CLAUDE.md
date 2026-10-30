@@ -38,6 +38,7 @@ All application state lives in a single **Zustand store** (`src/store/ormStore.j
 | FactType | row of role boxes | `roles[]` (each has `objectTypeId`, uniqueness constraints) |
 | Subtype | arrow between ObjectTypes | `superTypeId`, `subTypeId` |
 | Constraint | graphical badge | `type` (Exclusion/Equality/Subset/Ring/Frequency), `roleGroups[]` |
+| Group | none (colours its members) | `name`, `colors{outline,fill,text}`, `priority`, `members[]` (element, role or note ids); see `src/utils/groups.js` |
 
 Roles connect FactTypes to ObjectTypes; `RoleConnectors.jsx` draws the SVG lines.
 

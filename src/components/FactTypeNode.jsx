@@ -9,6 +9,7 @@ import { RAKE_TOOTH, RAKE_STAGGER, RAKE_COMFORT, RAKE_BAR_ZONE } from '../consta
 import { findCompositePI } from '../utils/refMode'
 import { queryElements } from '../logic/query.js'
 import { preferredReadings } from '../store/readings.js'
+import { groupStyle } from '../utils/groups.js'
 
 const VR_DEFAULT_OFFSET = { dx: 0, dy: -50 }
 const VR_FONT      = "'Segoe UI', Helvetica, Arial, sans-serif"
@@ -1191,8 +1192,18 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   // Stage-1 frequency: tool is active but no construction started yet → fact is selectable candidate
   const isFrequencyCandidate = isFrequencyTool && !store.frequencyConstruction && !fact._implicit
   const isAdjFact = false  // no adjacent-fact dimming in new query model
+  // Colours set by the fact type's groups, and a role's own groups for its
+  // box (utils/groups.js); any highlight takes precedence.
+  const gs = groupStyle(store.groups, fact.id)
+  const roleGs = (ri) => {
+    const r = groupStyle(store.groups, fact.roles[ri]?.id)
+    // An objectified fact's fill goes on its frame, not on its role boxes.
+    const own = fact.objectified && gs?.fill ? { ...gs, fill: undefined } : gs
+    return r || own ? { ...own, ...r } : undefined
+  }
   const roleStroke    = isFactSelected               ? 'var(--accent)'
     : (isDraftFrom && fact.objectified)              ? 'var(--col-subtype)'
+    : gs?.outline                                    ? gs.outline
     :                                                  'var(--col-fact)'
   const roleStrokeW   = isFactSelected ? 2 : (isDraftFrom && fact.objectified) ? 2 : 1.5
   const gc = store.sequenceConstruction
@@ -1649,7 +1660,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
     return (
       <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle"
-        fontSize={14} fill={readingFallback ? 'var(--ink-muted)' : 'var(--ink-3)'} fontStyle={readingFallback ? 'italic' : undefined} fontFamily={FONT}
+        fontSize={14} fill={readingFallback ? 'var(--ink-muted)' : gs?.text ?? 'var(--ink-3)'} fontStyle={readingFallback ? 'italic' : undefined} fontFamily={FONT}
         style={{ cursor: isDraggingReading ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: inQueryEdit ? 'none' : undefined }}
         onMouseDown={e => {
           e.stopPropagation()
@@ -1953,12 +1964,14 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         const nestedCol  = isFactSelected      ? 'var(--accent)'
           : isDraftFrom                       ? 'var(--col-subtype)'
           : isConstraintTarget                ? '#1a7fd4'
+          : gs?.outline                       ? gs.outline
           :                                     'var(--col-entity)'
         const nestedTextCol = isFactSelected ? 'var(--accent)'
           : isDraftFrom                       ? 'var(--col-subtype)'
+          : gs?.text                          ? gs.text
           :                                     'var(--col-entity)'
         const nestedDash    = 'none'
-        const nestedFill    = isConstraintTarget ? '#1a7fd4' : nestedInQueryHighlight ? 'var(--fill-query-in)' : '#ffffff'
+        const nestedFill    = isConstraintTarget ? '#1a7fd4' : nestedInQueryHighlight ? 'var(--fill-query-in)' : gs?.fill ?? '#ffffff'
         const nestedStrokeW = (isFactSelected || isDraftFrom || isConstraintTarget) ? 2 : 1.5
         const nestedRefText = (store.showReferenceMode
           && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
@@ -2434,9 +2447,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                        : baseRoleOfIL ? '#dde8f5'
                        : roleSelected ? '#ffffff'
                        : highlightedRoles?.has(ri) ? '#fde3c8'
-                       : '#ffffff'
+                       : roleGs(ri)?.fill ?? '#ffffff'
                      }
-                     stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : roleStroke}
+                     stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : isFactSelected || isDraftFrom ? roleStroke : roleGs(ri)?.outline ?? roleStroke}
                      strokeWidth={roleInQueryPattern(ri) ? 2 : roleSelected ? 2 : baseRoleOfIL ? 2 : roleStrokeW}
                     strokeDasharray={fact._implicit ? '4 3' : undefined}
                     onMouseDown={(e)   => handleRoleMouseDown(ri, e)}
@@ -2627,9 +2640,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                        : baseRoleOfIL ? '#dde8f5'
                        : roleSelected ? '#ffffff'
                        : highlightedRoles?.has(ri) ? '#fde3c8'
-                       : '#ffffff'
+                       : roleGs(ri)?.fill ?? '#ffffff'
                      }
-                     stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : roleStroke}
+                     stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : isFactSelected || isDraftFrom ? roleStroke : roleGs(ri)?.outline ?? roleStroke}
                      strokeWidth={roleInQueryPattern(ri) ? 2 : roleSelected ? 2 : baseRoleOfIL ? 2 : roleStrokeW}
                     strokeDasharray={fact._implicit ? '4 3' : undefined}
                     onMouseDown={(e)   => handleRoleMouseDown(ri, e)}

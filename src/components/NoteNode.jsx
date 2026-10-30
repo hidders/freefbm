@@ -14,7 +14,7 @@ const textStyle = {
   boxSizing: 'border-box',
 }
 
-export default function NoteNode({ note, selected, onDragStart, onResizeStart, onDoubleClick, onContextMenu }) {
+export default function NoteNode({ note, selected, groupStyle: gs, onDragStart, onResizeStart, onDoubleClick, onContextMenu }) {
   const { id, x, y, w, h, text } = note
   const [truncated, setTruncated] = useState(null)
   const measRef = useRef(null)
@@ -41,7 +41,7 @@ export default function NoteNode({ note, selected, onDragStart, onResizeStart, o
   const lx = x - w / 2
   const ly = y - h / 2
 
-  const borderColor = selected ? 'var(--accent)' : '#b8a040'
+  const borderColor = selected ? 'var(--accent)' : gs?.outline ?? '#b8a040'
   const borderWidth = selected ? 1.5 : 1
 
   // Text area: full width minus left padding; a float:right placeholder
@@ -76,7 +76,7 @@ export default function NoteNode({ note, selected, onDragStart, onResizeStart, o
       {/* Main body with dog-ear cut */}
       <path
         d={`M 0 0 L ${w - FOLD} 0 L ${w} ${FOLD} L ${w} ${h} L 0 ${h} Z`}
-        fill="#fffde7"
+        fill={gs?.fill ?? '#fffde7'}
         stroke={borderColor}
         strokeWidth={borderWidth}
       />
@@ -98,7 +98,7 @@ export default function NoteNode({ note, selected, onDragStart, onResizeStart, o
           <div
             style={{
               ...textStyle,
-              color: text ? '#333' : '#bbb',
+              color: text ? gs?.text ?? '#333' : '#bbb',
               fontStyle: text ? 'normal' : 'italic',
             }}
           >

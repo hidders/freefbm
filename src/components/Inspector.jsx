@@ -20,6 +20,7 @@ import { readingList, occurrences, preferredReadings } from '../store/readings.j
 
 const hasReadingText = (parts) => Array.isArray(parts) && parts.some(p => p?.trim())
 import { isDeonticUniqueness } from '../logic/modality.js'
+import { COLOR_CHANNELS, describeMember } from '../utils/groups.js'
 import { plural as englishPlural } from '../verbalisation/languages/english.js'
 import { pluralise as dutchPlural } from '../verbalisation/languages/dutch.js'
 import { pluralise as frenchPlural } from '../verbalisation/languages/french.js'
@@ -424,6 +425,159 @@ function DocumentationSection({ el, onChange }) {
         {area('note', 'Anything else worth recording…')}
       </Row>
     </Section>
+  )
+}
+
+// ── Element groups ───────────────────────────────────────────────────────────
+// The groups an element is in (utils/groups.js), with a picker to add it to
+// another group or a new one.
+function GroupSwatch({ group, size = 10 }) {
+  const c = group.colors ?? {}
+  return (
+    <span style={{ display: 'inline-block', width: size, height: size, flexShrink: 0, borderRadius: 2,
+      background: c.fill ?? 'transparent',
+      border: `2px solid ${c.outline ?? c.text ?? 'var(--border)'}` }}/>
+  )
+}
+
+function GroupPicker({ memberIds, exclude = [], label = 'Add to group…' }) {
+  const store = useOrmStore()
+  const options = store.groups.filter(g => !exclude.includes(g.id))
+  return (
+    <select value="" style={{ fontSize: 11, width: '100%' }}
+      onChange={e => {
+        const v = e.target.value
+        if (v === '__new') store.addGroup(memberIds)
+        else if (v) store.addToGroup(v, memberIds)
+      }}>
+      <option value="">{label}</option>
+      {options.map(g => <option key={g.id} value={g.id}>{g.name || '(unnamed group)'}</option>)}
+      <option value="__new">New group…</option>
+    </select>
+  )
+}
+
+function GroupMembershipSection({ id }) {
+  const store = useOrmStore()
+  const mine = store.groups.filter(g => g.members.includes(id))
+  return (
+    <Section title="Groups">
+      {mine.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+          {mine.map(g => (
+            <span key={g.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4,
+              fontSize: 11, padding: '1px 4px 1px 6px', borderRadius: 3,
+              border: '1px solid var(--border)', background: 'var(--bg-raised)' }}>
+              <GroupSwatch group={g}/>
+              <span style={{ cursor: 'pointer', color: 'var(--ink-2)' }} title="Show this group"
+                onClick={() => store.select(g.id, 'group')}>{g.name || '(unnamed group)'}</span>
+              <span title="Remove from this group" style={{ cursor: 'pointer', color: 'var(--ink-muted)', padding: '0 2px' }}
+                onClick={() => store.removeFromGroup(g.id, [id])}>×</span>
+            </span>
+          ))}
+        </div>
+      )}
+      <GroupPicker memberIds={[id]} exclude={mine.map(g => g.id)}/>
+    </Section>
+  )
+}
+
+// Opens a member: switches to a diagram that shows it and selects it.
+function goToMember(store, id) {
+  const m = describeMember(id, store)
+  if (!m) return
+  if (m.kind === 'note') {
+    if (m.diagramId !== store.activeDiagramId) store.setActiveDiagram(m.diagramId)
+    setTimeout(() => { store.select(id, 'note'); store.centerOnElement(id) }, 0)
+  } else if (m.kind === 'role') {
+    store.navigateToElement(m.factId, 'fact')
+    setTimeout(() => store.selectRole(m.factId, m.roleIndex), 0)
+  } else {
+    store.navigateToElement(id, m.kind === 'entity' || m.kind === 'value' ? 'objectType' : m.kind)
+  }
+}
+
+const COLOR_LABELS = { outline: 'Outline', fill: 'Fill', text: 'Text' }
+const COLOR_DEFAULTS = { outline: '#ff8000', fill: '#fff3e0', text: '#ff8000' }
+
+function GroupInspector({ group }) {
+  const store = useOrmStore()
+  const update = patch => store.updateGroup(group.id, patch)
+  const members = group.members.map(id => ({ id, m: describeMember(id, store) })).filter(x => x.m)
+  const index = store.groups.findIndex(g => g.id === group.id)
+  // Members shown on the active diagram that a multi-selection can hold.
+  const diagram = store.diagrams.find(d => d.id === store.activeDiagramId)
+  const selectable = members.filter(({ id, m }) =>
+    m.kind === 'constraint' ? (diagram?.constraintOccurrences ?? []).some(o => o.schemaConstraintId === id)
+    : m.kind === 'subtype' ? (diagram?.subtypeOccurrences ?? []).includes(id)
+    : m.kind === 'note' ? m.diagramId === diagram?.id
+    : m.kind !== 'role' && (diagram?.occurrences ?? []).some(o => o.schemaElementId === id))
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Group</InspectorTitle>
+      <Row>
+        <Label>Name</Label>
+        <TInput value={group.name} onChange={v => update({ name: v })} placeholder="Group name"/>
+      </Row>
+
+      <Section title="Colours">
+        {COLOR_CHANNELS.map(ch => {
+          const on = !!group.colors?.[ch]
+          return (
+            <div key={ch} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+              <Checkbox label={COLOR_LABELS[ch]} checked={on}
+                onChange={v => update({ colors: { ...group.colors, [ch]: v ? COLOR_DEFAULTS[ch] : undefined } })}/>
+              {on && <input type="color" value={group.colors[ch]}
+                onChange={e => update({ colors: { ...group.colors, [ch]: e.target.value } })}
+                style={{ width: 36, height: 20, padding: 0, border: '1px solid var(--border)', marginLeft: 'auto' }}/>}
+            </div>
+          )
+        })}
+        <Row>
+          <Label>Priority</Label>
+          <input type="number" step={1} value={group.priority ?? 0}
+            onChange={e => update({ priority: Number.isFinite(+e.target.value) ? Math.round(+e.target.value) : 0 })}
+            style={{ width: 70 }}/>
+          <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 4, lineHeight: 1.4 }}>
+            When an element is in several groups, the highest priority sets each colour; on a tie, the group higher in the list.
+          </div>
+        </Row>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button disabled={index <= 0} onClick={() => store.moveGroup(group.id, -1)} style={{ fontSize: 11, padding: '2px 8px' }}>Move up</button>
+          <button disabled={index >= store.groups.length - 1} onClick={() => store.moveGroup(group.id, 1)} style={{ fontSize: 11, padding: '2px 8px' }}>Move down</button>
+        </div>
+      </Section>
+
+      <Section title={`Members (${members.length})`}>
+        {members.length === 0 && (
+          <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 6, lineHeight: 1.4 }}>
+            No members yet. Add an element from its Groups section, or select several and use the Selection panel.
+          </div>
+        )}
+        {members.map(({ id, m }) => (
+          <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '2px 0',
+            borderBottom: '1px solid var(--border-soft)' }}>
+            <span style={{ color: 'var(--ink-muted)', width: 66, flexShrink: 0 }}>{m.kind}</span>
+            <span onClick={() => goToMember(store, id)} title="Go to this element"
+              style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                cursor: 'pointer', color: 'var(--ink-2)' }}>{m.label}</span>
+            <span title="Remove from group" onClick={() => store.removeFromGroup(group.id, [id])}
+              style={{ cursor: 'pointer', color: 'var(--ink-muted)', padding: '0 3px' }}>×</span>
+          </div>
+        ))}
+        {selectable.length > 0 && (
+          <button style={{ fontSize: 11, padding: '3px 8px', marginTop: 8 }}
+            title="Select the members shown on this diagram"
+            onClick={() => store.setMultiSelection(selectable.map(x => x.id))}>
+            Select on diagram ({selectable.length})
+          </button>
+        )}
+      </Section>
+
+      <DocumentationSection el={group} onChange={update}/>
+
+      <DangerBtn onClick={() => store.deleteGroup(group.id)}>Delete Group</DangerBtn>
+    </div>
   )
 }
 
@@ -968,6 +1122,7 @@ function ObjectTypeInspector({ ot }) {
       </Section>
 
       <DocumentationSection el={ot} onChange={patch => store.updateObjectType(ot.id, patch)}/>
+      <GroupMembershipSection id={ot.id}/>
 
       <Section title="Usage">
         <DiagramList elementId={ot.id} kind={ot.kind} />
@@ -1279,6 +1434,7 @@ function RoleInspector({ fact, roleIndex }) {
         onNavigateValueRange={() => store.selectValueRange({ factId: fact.id, roleIndex })}
         onNavigateCardinalityRange={() => store.selectCardinalityRange({ factId: fact.id, roleIndex })}
       />
+      <GroupMembershipSection id={role.id}/>
       <Section title="Usage">
         <DangerBtn onClick={() => { store.deleteRole(fact.id, roleIndex); store.select(fact.id, 'fact') }}>
           Delete Role
@@ -2558,6 +2714,7 @@ function FactInspector({ fact }) {
       <FactConstraintsSubsection fact={fact} store={store} />
 
       <DocumentationSection el={fact} onChange={patch => store.updateFact(fact.id, patch)}/>
+      <GroupMembershipSection id={fact.id}/>
 
       <Section title="Usage">
         <DiagramList elementId={fact.id} kind="fact" />
@@ -3216,6 +3373,8 @@ function NoteInspector({ note }) {
         </div>
       )}
 
+      <GroupMembershipSection id={note.id}/>
+
       <div style={{ marginTop: 8 }}>
         <DangerBtn onClick={() => store.deleteNote(note.id)}>Delete</DangerBtn>
       </div>
@@ -3250,6 +3409,7 @@ function SubtypeInspector({ st }) {
         />
       </Row>
       <DocumentationSection el={st} onChange={patch => store.updateSubtype(st.id, patch)}/>
+      <GroupMembershipSection id={st.id}/>
       <DiagramList elementId={st.id} kind="subtype" subtypeEndpointIds={[st.subId, st.superId]} />
       <div style={{ marginTop: 8 }}>
         <DangerBtn onClick={() => store.deleteSubtype(st.id)}>Delete</DangerBtn>
@@ -3871,6 +4031,7 @@ function ExternalConstraintInspector({ c }) {
       })()}
 
       <DocumentationSection el={c} onChange={patch => store.updateConstraint(c.id, patch)}/>
+      <GroupMembershipSection id={c.id}/>
 
       <Section title="Usage">
         <DiagramList elementId={c.id} kind="constraint" />
@@ -3955,6 +4116,7 @@ function ConstraintInspector({ c }) {
       ))}
 
       <DocumentationSection el={c} onChange={patch => store.updateConstraint(c.id, patch)}/>
+      <GroupMembershipSection id={c.id}/>
 
       <Section title="Usage">
         <DiagramList elementId={c.id} kind="constraint" />
@@ -4011,6 +4173,7 @@ export default function Inspector() {
   const ot  = store.objectTypes.find(o => o.id === selectedId)
   const activeDiag = store.diagrams.find(d => d.id === store.activeDiagramId)
   const note = selectedKind === 'note' ? (activeDiag?.notes ?? []).find(n => n.id === selectedId) : null
+  const group = selectedKind === 'group' ? store.groups.find(g => g.id === selectedId) : null
   const rawFact = store.facts.find(f => f.id === selectedId)
   // Merge per-diagram occurrence overrides so the inspector sees the same values as the canvas
   const activeDiagOccMap = Object.fromEntries(
@@ -4119,6 +4282,7 @@ export default function Inspector() {
     <div style={{ flex: 1, minWidth: 0, position: 'relative', overflowY: 'auto', padding: 14 }}>
 
       {note && <NoteInspector note={note} />}
+      {group && <GroupInspector group={group} />}
       {ot   && <ObjectTypeInspector ot={ot} />}
       {selectedKind === 'implicitLink' && fact && selectedImplicitLinkRole
         ? <ImplicitLinkRoleInspector parentFact={fact} roleIndex={selectedImplicitLinkRole.roleIndex} ilRoleIndex={selectedImplicitLinkRole.ilRoleIndex} />
@@ -4146,6 +4310,9 @@ export default function Inspector() {
           </div>
           <div style={{ fontSize: 12, color: 'var(--ink-2)', marginBottom: 8 }}>
             {store.multiSelectedIds.length} elements selected
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <GroupPicker memberIds={store.multiSelectedIds}/>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button

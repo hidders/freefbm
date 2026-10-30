@@ -947,6 +947,8 @@ export const EMPTY = () => {
     facts:           [],
     subtypes:        [],
     constraints:     [],
+    // Element groups (utils/groups.js): named sets of elements that can colour them.
+    groups:          [],
     diagrams:        [d],
     activeDiagramId: d.id,
     // The language names and readings are shown in (session only; the file

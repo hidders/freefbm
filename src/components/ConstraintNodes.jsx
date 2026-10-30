@@ -6,6 +6,7 @@ import { roleAnchor } from './RoleConnectors'
 import { entityBounds, formatValueRange } from './ObjectTypeNode'
 import { EXTERNAL_CONSTRAINT_TYPES, RAKE_TOOTH, RAKE_STAGGER, RAKE_TOOTH_GAP } from '../constants.js'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
+import { groupStyle } from '../utils/groups.js'
 
 const CONSTRAINT_R = 14        // radius of standard constraint circle
 const EXTERNAL_CONSTRAINT_R = 10 // radius of external constraint circle
@@ -894,7 +895,8 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                ? store.multiSelectedOccurrenceIds.includes(c.constraintOccurrenceId)
                : store.multiSelectedIds.includes(c.id)))
           : (store.selectedId === c.id || store.multiSelectedIds.includes(c.id))
-        const color = c.deontic ? 'var(--col-deontic)' : CONSTRAINT_COLOR[c.constraintType] || 'var(--ink-3)'
+        const color = groupStyle(store.groups, c.id)?.outline
+          ?? (c.deontic ? 'var(--col-deontic)' : CONSTRAINT_COLOR[c.constraintType] || 'var(--ink-3)')
         const symbol = CONSTRAINT_SYMBOL[c.constraintType] || '?'
 
         // Draw arcs from constraint node — unified groups for subtype-like, roleGroups for others
