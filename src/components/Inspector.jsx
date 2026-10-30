@@ -15,6 +15,7 @@ import { isDerivedFact, isComputedRole, checkFactRule, whyNotDerivable } from '.
 import { makeContext } from '../logic/constraintFormulas.js'
 import { isFormulaQuery, whyNotGraphical, whyNoOuterJoin } from '../logic/query.js'
 import { hasTextSelection } from '../utils/textPanel.js'
+import { uid } from '../store/storeHelpers'
 import { isFallbackReading } from '../store/viewLanguage.js'
 import { readingList, occurrences, preferredReadings } from '../store/readings.js'
 
@@ -423,7 +424,61 @@ function DocumentationSection({ el, onChange }) {
         <Label>Note</Label>
         {area('note', 'Anything else worth recording…')}
       </Row>
+      <PropertiesField el={el} onChange={onChange}/>
     </Section>
+  )
+}
+
+// ── Custom properties ────────────────────────────────────────────────────────
+// Name/value pairs the modeller adds to an element: properties: [{ id, name,
+// value }]. Names used elsewhere in the model are offered as suggestions, so
+// the same property keeps the same name.
+function PropertiesField({ el, onChange }) {
+  const store = useOrmStore()
+  const props = el.properties ?? []
+  const listId = `prop-names-${el.id}`
+  const knownNames = [...new Set(
+    [store.objectTypes, store.facts, store.subtypes, store.constraints]
+      .flatMap(xs => (xs ?? []).flatMap(x => (x.properties ?? []).map(p => p.name?.trim())))
+      .filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b))
+
+  const update = (id, patch) => onChange({ properties: props.map(p => p.id === id ? { ...p, ...patch } : p) })
+  const remove = id => {
+    const rest = props.filter(p => p.id !== id)
+    onChange({ properties: rest.length ? rest : undefined })
+  }
+  const add = () => onChange({ properties: [...props, { id: uid(), name: '', value: '' }] })
+
+  const inputStyle = { flex: 1, minWidth: 0, fontSize: 12 }
+  return (
+    <Row>
+      <Label>Properties</Label>
+      <datalist id={listId}>
+        {knownNames.map(n => <option key={n} value={n}/>)}
+      </datalist>
+      {props.map(p => (
+        <div key={p.id} style={{ display: 'flex', gap: 3, marginBottom: 4, alignItems: 'center' }}>
+          <input value={p.name ?? ''} placeholder="name" list={listId} style={inputStyle}
+            onChange={e => update(p.id, { name: e.target.value })}
+            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}/>
+          <input value={p.value ?? ''} placeholder="value" style={inputStyle}
+            onChange={e => update(p.id, { value: e.target.value })}
+            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}/>
+          <button onClick={() => remove(p.id)} title="Remove this property"
+            style={{ background: 'none', border: 'none', color: 'var(--danger)',
+              cursor: 'pointer', fontSize: 13, padding: '0 2px', flexShrink: 0 }}>
+            ✕
+          </button>
+        </div>
+      ))}
+      <button onClick={add}
+        style={{ fontSize: 11, padding: '2px 8px', background: 'var(--bg-raised)',
+          border: '1px solid var(--border)', borderRadius: 3,
+          cursor: 'pointer', color: 'var(--ink-2)' }}>
+        + Add property
+      </button>
+    </Row>
   )
 }
 
