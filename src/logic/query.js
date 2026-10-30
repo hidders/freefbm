@@ -115,7 +115,7 @@ export function graphToRule(graph, seq, ctx) {
     }
   }
   outputs.sort((x, y) => x.seqPosition - y.seqPosition)
-  const targetAtom = atoms.find(a => a.kind === 'objectType' && a.isOutput)
+  const targetAtom = atoms.find(a => a.kind === 'objectType' && a.isOutput && !a.freeVar)
   const targetNode = targetAtom && !outputs.some(o => find(o.node) === find(targetAtom.id))
     ? targetAtom.id : null
 
@@ -139,6 +139,14 @@ export function graphToRule(graph, seq, ctx) {
   const varOf = new Map()   // class root → variable id
   const free = []
   const equalities = []
+  // Object type atoms that stand for a free variable of a derivation rule
+  // (see ruleBodyToGraph) keep its id.
+  for (const a of atoms) {
+    if (a.kind !== 'objectType' || !a.freeVar || !parent.has(a.id)) continue
+    const prev = varOf.get(find(a.id))
+    if (prev) equalities.push({ t: 'cmp', op: '=', left: prev, right: a.freeVar })
+    else varOf.set(find(a.id), a.freeVar)
+  }
   outputs.forEach((o, i) => {
     const id = `q${i}`
     free.push({ id, typeId: classType(find(o.node)) })
@@ -163,7 +171,7 @@ export function graphToRule(graph, seq, ctx) {
     ...subtypeParts.map(p => ({ t: 'type', typeId: p.subId, arg: v(p.node) })),
     ...equalities,
   ]
-  let body = conjuncts.length === 1 ? conjuncts[0] : { t: 'and', args: conjuncts }
+  let body = conjuncts.length === 0 ? { t: 'hole' } : conjuncts.length === 1 ? conjuncts[0] : { t: 'and', args: conjuncts }
   for (const b of [...bound].reverse()) body = { t: 'exists', v: b, body }
   // The variable of each object type atom, for tools that work on the graph.
   const atomVars = new Map(atoms.filter(a => a.kind === 'objectType' && parent.has(a.id) && varOf.has(find(a.id)))
@@ -412,15 +420,17 @@ const OUTSIDE = {
 //
 // Atom ids follow the formula (the k-th atom, the class of a variable), so a
 // layout stored per atom id stays put while the formula is unchanged.
-export function ruleToGraph(rule, seq, ctx, { lenient = false } = {}) {
-  const body = upgradeRule(rule.body)
+export function ruleToGraph(rule, seq, ctx, { lenient = false, fixed = [] } = {}) {
+  let body = upgradeRule(rule.body)
+  // A rule not filled in yet is drawn as its free variables alone.
+  if (fixed.length && (!body || body.t === 'hole')) body = { t: 'true' }
   const core = conjunctiveCore(body)
   if (core.rest.length && !lenient) {
     const t = core.rest[0].node?.t
     return { error: `it uses ${OUTSIDE[t] ?? 'a part'} that the diagram can't show` }
   }
   const find = equalityClasses(core)
-  const typeOf = new Map([...rule.free, ...(rule.target ? [rule.target] : []), ...core.bound].map(v => [v.id, v.typeId]))
+  const typeOf = new Map([...rule.free, ...(rule.target ? [rule.target] : []), ...fixed, ...core.bound].map(v => [v.id, v.typeId]))
 
   // Where each variable class is used: fact and subtype slots.
   const uses = new Map()
@@ -493,6 +503,15 @@ export function ruleToGraph(rule, seq, ctx, { lenient = false } = {}) {
     return otAtom.get(cls)
   }
   if (targetClass && uses.has(targetClass)) otAtomOf(targetClass)
+  // The free variables of a derivation rule always have an atom of their own.
+  const fixedClasses = new Set()
+  for (const f of fixed) {
+    const cls = find(f.id)
+    if (fixedClasses.has(cls)) return { error: 'two of its free variables are equated' }
+    fixedClasses.add(cls)
+    const id = otAtomOf(cls)
+    Object.assign(atoms.find(a => a.id === id), { originalId: f.typeId, isOutput: true, freeVar: f.id, ...(f.label ? { label: f.label } : {}) })
+  }
   for (const p of drawn) {
     const id = `a${p.k}`
     if (p.kind === 'fact' || p.kind === 'nest') {
@@ -500,7 +519,7 @@ export function ruleToGraph(rule, seq, ctx, { lenient = false } = {}) {
       atoms.push({ id, kind: 'fact', originalId: p.kind === 'nest' ? p.factId : p.node.factId, isOutput: false,
         ...(seeded ? { seededRoles: seeded } : {}) })
       p.classes.forEach((cls, ri) => {
-        if (cls !== null && (uses.get(cls) > 1 || cls === targetClass)) links.push({ atomId: id, roleIndex: ri, variableId: otAtomOf(cls) })
+        if (cls !== null && (uses.get(cls) > 1 || cls === targetClass || fixedClasses.has(cls))) links.push({ atomId: id, roleIndex: ri, variableId: otAtomOf(cls) })
       })
     } else {
       atoms.push({ id, kind: 'subtype', originalId: p.st.id, isOutput: !rule.target && seeds.has(p.k), isSeeded: seeds.has(p.k) })
@@ -591,4 +610,20 @@ export function editableQuery(c, i, ctx) {
   let body = conjuncts.length === 0 ? { t: 'hole' } : conjuncts.length === 1 ? conjuncts[0] : { t: 'and', args: conjuncts }
   for (const b of [...bound].reverse()) body = { t: 'exists', v: b, body }
   return { free, target, body }
+}
+
+// ── Derivation rules as graphs ───────────────────────────────────────────────
+
+// The graph of the condition of a derivation rule, whose free variables are
+// roots ([{ id, typeId, label }]): each free variable becomes an object type
+// atom marked with its id (freeVar). Or { error } when the condition is not
+// ∃ and ∧ over atoms that the diagram can show.
+export function ruleBodyToGraph(body, roots, ctx) {
+  return ruleToGraph({ free: [], target: null, body }, [], ctx, { fixed: roots })
+}
+
+// The condition of a derivation rule drawn as a graph (see ruleBodyToGraph).
+export function graphToRuleBody(graph, ctx) {
+  const r = graphToRule(graph, [], ctx)
+  return r.error ? r : { body: r.body }
 }

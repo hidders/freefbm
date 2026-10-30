@@ -132,6 +132,9 @@ function OtAtomFrame({ atom, dx, dy, isPending, isOutput, otMap, factMap, onMous
           fill={FILL} stroke={color} strokeWidth={sw} opacity={0.9}
           strokeDasharray={ot.kind === 'value' ? '4 2' : undefined}/>
         <rect className="hover-ring" x={x - 3} y={y - 3} width={w + 6} height={h + 6} rx={7}/>
+        {/* The free variable of a derivation rule that the atom stands for */}
+        {atom.label && <text x={x + w / 2} y={y - 4} textAnchor="middle" fontSize={11} fontWeight={600}
+          fill={color} style={{ pointerEvents: 'none', fontFamily: 'var(--font-mono)' }}>{atom.label}</text>}
       </g>
     )
   }

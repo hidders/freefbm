@@ -81,6 +81,7 @@ export function createModelSlice(set, get) {
 
     // The derivation rule editor, a floating panel that stays open while the
     // canvas is used, and the schema elements it highlights there.
+    ruleGraphResult: null,  // { ruleKey, atoms, links }: a rule condition drawn on the diagram (constraintSlice.startRuleGraphEdit)
     ruleEditor:    null,   // { otId } | { factId } | { constraintId, sequenceIndex } | null
     ruleHighlight: null,   // { typeIds: string[], factIds: string[] } | null
 
@@ -428,7 +429,11 @@ export function createModelSlice(set, get) {
     setBottomPanelTab(t)        { set({ bottomPanelTab: t }) },
     setBottomPanelCollapsed(v)  { set({ bottomPanelCollapsed: v }) },
     openRuleEditor(target)      { set({ ruleEditor: target, ruleHighlight: null }) },
-    closeRuleEditor()           { set({ ruleEditor: null, ruleHighlight: null }) },
+    closeRuleEditor() {
+      // A rule condition still being drawn goes with its editor.
+      const drawing = get().queryEditDraft?.ruleKey
+      set({ ruleEditor: null, ruleHighlight: null, ruleGraphResult: null, ...(drawing ? { queryEditDraft: null } : {}) })
+    },
     setRuleHighlight(h)         { set({ ruleHighlight: h }) },
 
     runValidation() {

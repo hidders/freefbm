@@ -7,7 +7,7 @@ import {
   SUBJECT, hole, getAt, setAt, directSupertypes, typeGraph, allTypeOptions,
   ruleVariables, formulaVariables, checkRule, derivationEntry, derivationHeading, upgradeRule, isTermSlot, atomFact,
 } from '../logic/derivationRule.js'
-import { editableQuery, queryRoots, checkQuery } from '../logic/query.js'
+import { editableQuery, queryRoots, checkQuery, ruleBodyToGraph, graphToRuleBody } from '../logic/query.js'
 import {
   factRuleParts, factRuleVariables, checkFactRule, factDerivationEntries, factLabel,
 } from '../logic/factDerivation.js'
@@ -168,6 +168,34 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
     return ot ? [derivationEntry({ ...ot, derivationRule: draft }, state, ctx)] : []
   }, [forQuery, constraint, sequenceIndex, query, forFact, fact, ot, draft, state, ctx, errors.length])
   const types = useMemo(() => allTypeOptions(state), [state])
+
+  // ── Drawing the condition on the diagram ──
+  // The conjunctive part of the logic (∃ and ∧ over atoms) can also be drawn
+  // and edited as a graph, in the query editor on the canvas. The free
+  // variables are fixed atoms there. Done hands the graph back here, where it
+  // becomes the condition of the draft.
+  const ruleKey = forQuery ? null : forFact ? `fact:${factId}` : `ot:${otId}`
+  const drawing = useOrmStore(s => (ruleKey && s.queryEditDraft?.ruleKey === ruleKey ? s.queryEditDraft : null))
+  const graphResult = useOrmStore(s => s.ruleGraphResult)
+  const startRuleGraphEdit = useOrmStore(s => s.startRuleGraphEdit)
+  const clearRuleGraphResult = useOrmStore(s => s.clearRuleGraphResult)
+  const otherDrawing = useOrmStore(s => !!s.queryEditDraft && s.queryEditDraft.ruleKey !== ruleKey)
+  const drawn = useMemo(() => {
+    if (forQuery) return null
+    if (forFact && parts?.computed.length) return { error: 'its computed roles need terms, which the diagram can\'t show' }
+    if (!forFact && !supers.length) return { error: 'the type is not a subtype' }
+    const graphRoots = forFact
+      ? [...(parts?.selected ?? []), ...(parts?.extra ?? [])].map(r => ({ id: r.id, typeId: r.typeIds[0], label: nameOf.get(r.id) }))
+      : [{ id: SUBJECT, typeId: supers[0], label: nameOf.get(SUBJECT) }]
+    return ruleBodyToGraph(forFact ? draft.body : draft, graphRoots, ctx)
+  }, [forQuery, forFact, parts, supers, nameOf, draft, ctx])
+  useEffect(() => {
+    if (!graphResult || graphResult.ruleKey !== ruleKey) return
+    const r = graphToRuleBody(graphResult, ctx)
+    if (!r.error) setDraft(d => (forFact ? { ...d, body: r.body } : r.body))
+    clearRuleGraphResult()
+    setPanel(p => ({ ...p, folded: false }))
+  }, [graphResult, ruleKey, ctx, forFact, clearRuleGraphResult])
 
   // ── Canvas highlight of the part under the mouse, or else the selected one ──
   const [hover, setHover] = useState(null)
@@ -547,6 +575,8 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
           </div>}
         </div>
 
+        {/* Folded to its title while the condition is drawn, so the diagram stays free */}
+        {drawing && <div style={{ padding: '10px 14px 0' }}><DrawingBanner draft={drawing} onCancel={() => setPanel(p => ({ ...p, folded: false }))} /></div>}
         {!panel.folded && <>
         <div onMouseLeave={() => setHover(null)} style={{ padding: 14, overflow: 'auto', flex: 1 }}>
           {factVariables}
@@ -609,12 +639,51 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
           <span style={{ flex: 1, fontSize: 11, color: 'var(--ink-muted)', alignSelf: 'center' }}>
             Click a part to select it · Delete clears it · Esc cancels
           </span>
+          {drawn && !drawing && (
+            <button style={btn(false, !!drawn.error || otherDrawing)} disabled={!!drawn.error || otherDrawing}
+              title={drawn.error ? `Can't be drawn: ${drawn.error}` : otherDrawing ? 'Another query is being edited on the diagram'
+                : 'Edit the condition as a graph on the diagram'}
+              onClick={() => { startRuleGraphEdit(ruleKey, drawn.atoms, drawn.links); setPanel(p => ({ ...p, folded: true })) }}>Draw on diagram</button>
+          )}
           <button onClick={onClose} style={btn()}>Cancel</button>
           <button onClick={save} disabled={!changed} style={btn(true, !changed)}>Save</button>
         </div>
         </>}
     </div>,
     document.body,
+  )
+}
+
+// While the condition is drawn on the diagram: what to do there, and Done or
+// Cancel.
+function DrawingBanner({ draft, onCancel }) {
+  // The draft prop changes with every edit, so this is read afresh.
+  const validation = useOrmStore.getState().getQueryEditValidation()
+  const commit = useOrmStore(s => s.commitQueryEdit)
+  const cancel = useOrmStore(s => s.cancelQueryEdit)
+  return (
+    <div style={{ background: 'var(--col-query-in)', color: '#fff', borderRadius: 4, padding: '7px 10px', marginBottom: 10, fontSize: 11 }}>
+      <div style={{ fontWeight: 600, marginBottom: 3 }}>Drawing the condition on the diagram</div>
+      <div style={{ opacity: 0.9, marginBottom: 4 }}>
+        Click an atom and an original (or two atoms) to link them. The atoms of the free variables are fixed;
+        Done puts the drawn condition in the editor.
+      </div>
+      <div style={{ opacity: 0.85, marginBottom: 6, fontSize: 10 }}>
+        {draft.atoms.length} atom{draft.atoms.length !== 1 ? 's' : ''}, {draft.links.length} link{draft.links.length !== 1 ? 's' : ''}
+        {draft.pendingClick ? ' — waiting for second click' : ''}
+      </div>
+      <div style={{ fontWeight: 600, marginBottom: 6, color: validation.valid ? '#a7f3d0' : '#fca5a5' }}>
+        {validation.valid ? '✓ Pattern is valid' : `✗ ${validation.reason || 'Invalid pattern'}`}
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {[['Done', commit, !validation.valid], ['Cancel', () => { cancel(); onCancel() }, false]].map(([label, onClick, disabled]) => (
+          <button key={label} disabled={disabled} onClick={onClick} style={{
+            padding: '3px 10px', fontSize: 11, background: 'rgba(255,255,255,0.2)', color: '#fff',
+            border: '1px solid rgba(255,255,255,0.4)', borderRadius: 3, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
+          }}>{label}</button>
+        ))}
+      </div>
+    </div>
   )
 }
 
