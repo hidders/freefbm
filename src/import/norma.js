@@ -706,6 +706,22 @@ export function importNorma(xmlText) {
       })
       occ.roleOccurrenceMap = map
     }
+    // subtype links: NORMA draws no shape for them, so link the closest pair
+    // of shapes (a type can be drawn more than once on a diagram)
+    diag.subtypeOccurrences = []
+    diag.subtypeEndpointOccs = {}
+    for (const st of subtypes) {
+      let best = null, bestD = Infinity
+      for (const sub of occsOf(st.subId)) {
+        if (sub.refModeOwnerOccId) continue
+        const sup = nearest(st.superId, sub.x, sub.y, o => !o.refModeOwnerOccId)
+        const d = sup ? Math.hypot(sup.x - sub.x, sup.y - sub.y) : Infinity
+        if (d < bestD) { bestD = d; best = { subOccId: sub.id, superOccId: sup.id } }
+      }
+      if (!best) continue
+      diag.subtypeOccurrences.push(st.id)
+      diag.subtypeEndpointOccs[st.id] = [best]
+    }
   }
 
   function refModeOf(ownerId) {
