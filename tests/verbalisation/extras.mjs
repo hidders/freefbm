@@ -1,6 +1,7 @@
 // Additions to the sample model for the verbalisation golden tests: the
 // constructs the sample does not use, namely cardinality ranges, derived and
-// semi-derived subtypes and fact types, data terms and aggregates.
+// semi-derived subtypes and fact types, data terms and aggregates, deontic
+// constraints and value ranges with open bounds.
 // extend(state) returns a new state; the golden test verbalises only the
 // entries these additions bring.
 
@@ -22,11 +23,11 @@ export function extend(state) {
   const objectTypes = state.objectTypes.map(o =>
     o.id === 'ot_Course' ? { ...o, cardinalityRange: [{ type: 'upper', upper: '100' }] }
     : o.id === 'ot_Professor' ? { ...o, cardinalityRange: [{ type: 'range', lower: '2', upper: '20' }] }
-    : o.id === 'ot_Building' ? { ...o, cardinalityRange: [{ type: 'single', value: '3' }] }
+    : o.id === 'ot_Building' ? { ...o, cardinalityRange: [{ type: 'single', value: '3' }], cardinalityRangeDeontic: true }
     : o)
   const facts = state.facts.map(f =>
     f.id === 'f_enrols' ? { ...f, roles: f.roles.map((r, i) => i === 1 ? { ...r, cardinalityRange: [{ type: 'upper', upper: '50' }] } : r) }
-    : f.id === 'f_coordinates' ? { ...f, roles: f.roles.map((r, i) => i === 0 ? { ...r, cardinalityRange: [{ type: 'lower', lower: '5' }] } : r) }
+    : f.id === 'f_coordinates' ? { ...f, roles: f.roles.map((r, i) => i === 0 ? { ...r, cardinalityRange: [{ type: 'lower', lower: '5' }], cardinalityRangeDeontic: true } : r) }
     : f)
 
   objectTypes.push(
@@ -58,6 +59,11 @@ export function extend(state) {
       ] } } },
     valueType('ot_TotalCredits', 'TotalCredits'),
     valueType('ot_EnrolmentCount', 'EnrolmentCount'),
+    // Open bounds: (0..100] and more than 200.
+    { ...valueType('ot_Score', 'Score'), valueRangeDeontic: true, valueRange: [
+      { type: 'range', lower: '0', upper: '100', lowerOpen: true },
+      { type: 'lower', lower: '200', lowerOpen: true },
+    ] },
   )
   const subtypes = [...state.subtypes,
     subtype('st_TA', 'ot_TA', 'ot_Student'),
@@ -109,8 +115,22 @@ export function extend(state) {
         terms: { cl1: { t: 'op', op: 'mul', args: [{ t: 'op', op: 'add', args: [v('k'), c('5')] }, c('2')] } } },
     }),
   )
-  return { ...state, objectTypes, facts, subtypes }
+  // Deontic constraints: internal uniqueness, mandatory role, frequency,
+  // subset and ring.
+  facts.push(
+    fact('f_mentors', ['', 'mentors', ''], [role('m0', 'ot_Staff'), role('m1', 'ot_Student', { mandatory: true, mandatoryDeontic: true })], {
+      uniqueness: [[1]], deonticUniqueness: [[1]],
+      internalFrequency: [{ id: 'if_m', roles: [0], range: [{ type: 'upper', upper: '5' }], deontic: true }],
+    }),
+  )
+  const constraints = [...state.constraints,
+    { id: 'c_dSubset', kind: 'constraint', constraintType: 'subset', deontic: true, x: 0, y: 0,
+      sequences: [[{ kind: 'role', factId: 'f_mentors', roleIndex: 1 }], [{ kind: 'role', factId: 'f_enrols', roleIndex: 0 }]] },
+    { id: 'c_dRing', kind: 'constraint', constraintType: 'ring', deontic: true, x: 0, y: 0, ringTypes: ['irreflexive'],
+      sequences: [[{ kind: 'role', factId: 'f_prereq', roleIndex: 0 }, { kind: 'role', factId: 'f_prereq', roleIndex: 1 }]] },
+  ]
+  return { ...state, objectTypes, facts, subtypes, constraints }
 }
 
 // The keys of the entries the additions bring.
-export const isExtra = (key) => /^(ot_(Course|Professor|Building):card|f_enrols:card|f_coordinates:card|ot_(TA|Busy|Heavy|Free|Intro|LongTitle):derivation|f_(studiesWith|totalCredits|enrolmentCount|creditLoad):derivation)/.test(key)
+export const isExtra = (key) => /^(ot_(Course|Professor|Building):card|f_enrols:card|f_coordinates:card|ot_(TA|Busy|Heavy|Free|Intro|LongTitle):derivation|f_(studiesWith|totalCredits|enrolmentCount|creditLoad):derivation|ot_Score:vr|f_mentors:(uc|mand|freq)|c_d(Subset|Ring))/.test(key)

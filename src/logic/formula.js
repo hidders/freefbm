@@ -14,6 +14,8 @@
 //   { t: 'not', arg }
 //   { t: 'possible', arg }                ◇X, X can hold: only in the default verbalisations of
 //       missing constraints (constraintFormulas.js factEntries)
+//   { t: 'obligatory', arg }              O(X), X ought to hold: a deontic constraint (modality.js)
+//   { t: 'forbidden', arg }               F(X), X ought not to hold: only in negative verbalisation
 //   { t: 'true' }                            ⊤, the formula that always holds
 //   { t: 'fact', factId, args: [Var] }      fact type atom, args in roles[] order
 //   { t: 'type', typeId, arg: Var }          object type membership, e.g. Student(Person)
@@ -48,6 +50,7 @@ export const count  = (op, n, vars, body) => ({ t: 'count', op, n, vars, body })
 export const countRange = (n, m, vars, body) => ({ t: 'count', op: '..', n, m, vars, body })
 export const not    = (arg) => ({ t: 'not', arg })
 export const truth  = () => ({ t: 'true' })
+export const obligatory = (arg) => ({ t: 'obligatory', arg })
 export const implies = (left, right) => ({ t: 'implies', left, right })
 export const iff     = (left, right) => ({ t: 'iff', left, right })
 export const factAtom = (factId, args) => ({ t: 'fact', factId, args })

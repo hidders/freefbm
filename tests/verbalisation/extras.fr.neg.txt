@@ -22,13 +22,17 @@ Cours est un IntroCourse si et seulement si Cours a un Intitulé de cours qui co
 ¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
 Il est impossible qu'un Cours a un Intitulé de cours tel que la longueur de cet Intitulé de cours est supérieur à 40 et n'est pas un LongTitleCourse.
 
+# Value range (deontic) · Score
+F(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
+Il est interdit qu'un Score est au plus 0 ou est supérieur à 100 et est au plus 200.
+
 # Cardinality · Professor
 ¬((∃^{≤1} Professor ⊤) ∨ ∃^{>20} Professor ⊤)
 Il est impossible qu'il existe au plus un Professeur ou il existe plus de 20 Professeurs.
 
-# Cardinality · Building
-¬((∃^{≤2} Building ⊤) ∨ ∃^{>3} Building ⊤)
-Il est impossible qu'il existe au plus 2 Bâtiments ou il existe plus de 3 Bâtiments.
+# Cardinality (deontic) · Building
+F((∃^{≤2} Building ⊤) ∨ ∃^{>3} Building ⊤)
+Il est interdit qu'il existe au plus 2 Bâtiments ou il existe plus de 3 Bâtiments.
 
 # Cardinality · Course
 ¬(∃^{>100} Course ⊤)
@@ -38,9 +42,9 @@ Il est impossible qu'il existe plus de 100 Cours.
 ¬(∃^{>50} Course ∃ Student (Student enrols in Course))
 Il est impossible qu'il existe plus de 50 Cours qu'un Étudiant suit.
 
-# Cardinality (role 1) · Staff coordinates Course
-¬(∃^{≤4} Staff ∃ Course (Staff coordinates Course))
-Il est impossible qu'il existe au plus 4 Membres du personnel qui coordonnent un Cours.
+# Cardinality (role 1) (deontic) · Staff coordinates Course
+F(∃^{≤4} Staff ∃ Course (Staff coordinates Course))
+Il est interdit qu'il existe au plus 4 Membres du personnel qui coordonnent un Cours.
 
 # Derivation rule · Student studies with Staff
 ∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))
@@ -65,3 +69,23 @@ Il est impossible qu'il existe un Cours et un EnrolmentCount telles que ce Cours
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ¬(∃ Student ∃ Course ∃ Credits ((Student assists in Course) ∧ (Course is worth Credits) ∧ ¬(∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))))
 Il est impossible qu'il existe un Étudiant, un Cours et un Nombre de crédits telles que cet Étudiant assiste à ce Cours et ce Cours a ce Nombre de crédits et il n'est pas vrai que cet Étudiant has credit load un TotalCredits qui est (ce Nombre de crédits plus 5) fois 2.
+
+# Uniqueness (deontic) · Staff mentors Student
+F(∃ Student ∃^{>1} Staff (Staff mentors Student))
+Il est interdit que plus d'un Membre du personnel mentors le même Étudiant.
+
+# Mandatory role (deontic) · Staff mentors Student
+F(∃ Student ¬(∃ Staff (Staff mentors Student)))
+Il est interdit qu'il existe un Étudiant tel qu'aucun Membre du personnel ne mentors cet Étudiant.
+
+# Frequency (deontic) · Staff mentors Student
+F(∃ Staff ∃^{>5} Student (Staff mentors Student))
+Il est interdit qu'un Membre du personnel mentors plus de 5 Étudiants.
+
+# Subset (deontic)
+F(∃ Student ((∃ Staff (Staff mentors Student)) ∧ ¬(∃ Course (Student enrols in Course))))
+Il est interdit qu'il existe un Étudiant tel qu'un Membre du personnel mentors cet Étudiant et cet Étudiant ne suit aucun Cours.
+
+# Ring (irreflexive) (deontic)
+F(∃ Course (Course is a prerequisite for Course))
+Il est interdit qu'un Cours est un prérequis pour lui-même.

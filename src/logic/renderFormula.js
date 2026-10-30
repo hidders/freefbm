@@ -36,7 +36,7 @@ function children(f) {
     case 'forall': case 'exists': case 'count': case 'tc': return [f.body]
     case 'and': case 'or': return f.args
     case 'implies': case 'iff': return [f.left, f.right]
-    case 'not': case 'possible': return [f.arg]
+    case 'not': case 'possible': case 'obligatory': case 'forbidden': return [f.arg]
     case 'vcmp': return [...termConds(f.left), ...termConds(f.right)]
     case 'dpred': return f.args.flatMap(termConds)
     case 'agg': return [f.cond, ...termConds(f.term)]
@@ -191,6 +191,11 @@ export function renderFormula(formula, ctx, names = new Map()) {
         push('◇', 'op')
         if (ATOMIC.has(f.arg.t) || QUANTIFIERS.has(f.arg.t)) render(f.arg)
         else wrapped(f.arg)
+        return
+      case 'obligatory': case 'forbidden':
+        // O(X): X ought to hold, a deontic constraint; F(X): X ought not to.
+        push(f.t === 'obligatory' ? 'O' : 'F', 'op')
+        wrapped(f.arg)
         return
       case 'not':
         push('¬', 'op')

@@ -848,6 +848,7 @@ export function createElementSlice(set, get) {
           })
 
           const uniqueness = f.uniqueness.map(u => u.map(i => oldToNew[i]))
+          const deonticUniqueness = (f.deonticUniqueness || []).map(u => u.map(i => oldToNew[i]))
 
           // Remap alternative readings' role order through oldToNew
           const remappedAlts = (f.alternativeReadings || []).map(r => ({
@@ -879,7 +880,7 @@ export function createElementSlice(set, get) {
               implicitLinks = implicitLinks.map(il => ({ ...il, roleIndex: oldToNew[il.roleIndex] ?? il.roleIndex }))
             }
 
-            return { ...f, roles, uniqueness, readingParts, alternativeReadings, implicitLinks }
+            return { ...f, roles, uniqueness, deonticUniqueness, readingParts, alternativeReadings, implicitLinks }
           }),
         diagrams: s.diagrams.map(d => {
           const ilp = { ...(d.implicitLinkPositions ?? {}) }
@@ -968,6 +969,7 @@ export function createElementSlice(set, get) {
           const roles = [...f.roles.slice(0, atIndex), newRole, ...f.roles.slice(atIndex)]
           const arity = f.arity + 1
           const uniqueness = f.uniqueness.map(u => u.map(i => i >= atIndex ? i + 1 : i))
+          const deonticUniqueness = (f.deonticUniqueness || []).map(u => u.map(i => i >= atIndex ? i + 1 : i))
           const internalFrequency = (f.internalFrequency || []).map(if_ => ({
             ...if_, roles: if_.roles.map(i => i >= atIndex ? i + 1 : i),
           }))
@@ -984,7 +986,7 @@ export function createElementSlice(set, get) {
             implicitLinks = [...implicitLinks, mkImplicitLink(atIndex)]
           }
 
-          return { ...f, arity, roles, uniqueness, internalFrequency, readingParts: rp, alternativeReadings: [], implicitLinks }
+          return { ...f, arity, roles, uniqueness, deonticUniqueness, internalFrequency, readingParts: rp, alternativeReadings: [], implicitLinks }
         })
         // The new role has no player yet, so each tuple gets an empty cell there
         const tuples = s.factPopulations?.[factId]
@@ -1041,6 +1043,9 @@ export function createElementSlice(set, get) {
           const uniqueness = f.uniqueness
             .filter(u => !u.includes(roleIndex))
             .map(u => u.map(i => i > roleIndex ? i - 1 : i))
+          const deonticUniqueness = (f.deonticUniqueness || [])
+            .filter(u => !u.includes(roleIndex))
+            .map(u => u.map(i => i > roleIndex ? i - 1 : i))
           const internalFrequency = (f.internalFrequency || [])
             .map(if_ => ({ ...if_, roles: if_.roles.filter(i => i !== roleIndex).map(i => i > roleIndex ? i - 1 : i) }))
             .filter(if_ => if_.roles.length > 0)
@@ -1052,7 +1057,7 @@ export function createElementSlice(set, get) {
               .filter(il => il.roleIndex !== roleIndex)
               .map(il => il.roleIndex > roleIndex ? { ...il, roleIndex: il.roleIndex - 1 } : il)
           }
-          return { ...f, arity, roles, uniqueness, internalFrequency, readingParts: rp, alternativeReadings: [], implicitLinks }
+          return { ...f, arity, roles, uniqueness, deonticUniqueness, internalFrequency, readingParts: rp, alternativeReadings: [], implicitLinks }
         })
         const constraints = s.constraints.map(c => ({
           ...c,
@@ -1182,7 +1187,23 @@ export function createElementSlice(set, get) {
           const preferredUniqueness = (f.preferredUniqueness || []).filter(pu =>
             JSON.stringify([...pu].sort()) !== key
           )
-          return { ...f, uniqueness, preferredUniqueness: preferredUniqueness.length > 0 ? preferredUniqueness : [] }
+          const deonticUniqueness = (f.deonticUniqueness || []).filter(du => JSON.stringify([...du].sort()) !== key)
+          return { ...f, uniqueness, preferredUniqueness: preferredUniqueness.length > 0 ? preferredUniqueness : [], deonticUniqueness }
+        }),
+        isDirty: true,
+      }))
+    },
+
+    // Make an internal uniqueness constraint deontic (an obligation, drawn in
+    // blue) or alethic again. A preferred identifier stays alethic.
+    setUniquenessDeontic(factId, roleIndices, deontic) {
+      const key = JSON.stringify([...roleIndices].sort())
+      set(s => ({
+        facts: s.facts.map(f => {
+          if (f.id !== factId) return f
+          const rest = (f.deonticUniqueness || []).filter(du => JSON.stringify([...du].sort()) !== key)
+          const preferred = (f.preferredUniqueness || []).some(pu => JSON.stringify([...pu].sort()) === key)
+          return { ...f, deonticUniqueness: deontic && !preferred ? [...rest, [...roleIndices]] : rest }
         }),
         isDirty: true,
       }))
@@ -1216,7 +1237,10 @@ export function createElementSlice(set, get) {
           const preferredUniqueness = wasOn
             ? current.filter(pu => JSON.stringify([...pu].sort()) !== key)
             : [...current, [...roleIndices]]
-          return { ...f, preferredUniqueness }
+          // A preferred identifier is alethic.
+          const deonticUniqueness = wasOn ? f.deonticUniqueness
+            : (f.deonticUniqueness || []).filter(du => JSON.stringify([...du].sort()) !== key)
+          return { ...f, preferredUniqueness, deonticUniqueness }
         })
 
         if (!isPromote) return { facts: newFacts, isDirty: true }

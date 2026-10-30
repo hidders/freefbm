@@ -48,6 +48,7 @@ function MenuPanel({ left, top, items, zIndex, onClose, onSubmenuEnter, onSubmen
               <button
                 key={i}
                 disabled={!!item.disabled}
+                title={item.title}
                 onClick={() => { if (!item.disabled) { item.action(); onClose() } }}
                 style={{
                   ...ITEM_STYLE,

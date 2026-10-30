@@ -109,10 +109,15 @@ const VALUE_OPS = { '≈': 'is', '≉': 'is not', '<': 'is less than', '≤': 'i
 // ── Structural tests ─────────────────────────────────────────────────────────
 
 // The value range ∀x (x ≈ c ∨ (x ≥ a ∧ x ≤ b) ∨ …) as its listed items, or null.
+// An interval with an open (exclusive) bound is said with both bounds: "more
+// than 0 and at most 100".
+const RANGE_BOUND = { '≥': 'at least', '≤': 'at most', '>': 'more than', '<': 'less than' }
 function rangeItems(h, body, x) {
   const spec = rangeSpec(body, x)
-  return spec && spec.map(i => i.op === '..' ? [h.term(i.lo), kw('to'), h.term(i.hi)]
-    : i.op === '≈' ? [h.term(i.value)] : [kw(i.op === '≥' ? 'at least' : 'at most'), h.term(i.value)])
+  return spec && spec.map(i => i.op === '..'
+    ? (i.loOp === '≥' && i.hiOp === '≤' ? [h.term(i.lo), kw('to'), h.term(i.hi)]
+      : [kw(RANGE_BOUND[i.loOp]), h.term(i.lo), kw('and'), kw(RANGE_BOUND[i.hiOp]), h.term(i.hi)])
+    : i.op === '≈' ? [h.term(i.value)] : [kw(RANGE_BOUND[i.op]), h.term(i.value)])
 }
 
 // ── Phrases built from parts ─────────────────────────────────────────────────

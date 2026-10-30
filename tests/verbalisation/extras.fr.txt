@@ -22,13 +22,17 @@ Cours est un IntroCourse si et seulement si Cours a un Intitulé de cours qui co
 ∀ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) → LongTitleCourse(Course))
 Chaque Cours qui a un Intitulé de cours tel que la longueur de cet Intitulé de cours est supérieur à 40 est un LongTitleCourse.
 
+# Value range (deontic) · Score
+O(∀ Score ((Score > 0 ∧ Score ≤ 100) ∨ Score > 200))
+Il est obligatoire que les valeurs possibles de Score sont plus de 0 et au plus 100, plus de 200.
+
 # Cardinality · Professor
 ∃^{2..20} Professor ⊤
 Il existe au moins 2 et au plus 20 Professeurs.
 
-# Cardinality · Building
-∃^{=3} Building ⊤
-Il existe exactement 3 Bâtiments.
+# Cardinality (deontic) · Building
+O(∃^{=3} Building ⊤)
+Il est obligatoire qu'il existe exactement 3 Bâtiments.
 
 # Cardinality · Course
 ∃^{≤100} Course ⊤
@@ -38,9 +42,9 @@ Il existe au plus 100 Cours.
 ∃^{≤50} Course ∃ Student (Student enrols in Course)
 Il existe au plus 50 Cours qu'un Étudiant suit.
 
-# Cardinality (role 1) · Staff coordinates Course
-∃^{≥5} Staff ∃ Course (Staff coordinates Course)
-Il existe au moins 5 Membres du personnel qui coordonnent un Cours.
+# Cardinality (role 1) (deontic) · Staff coordinates Course
+O(∃^{≥5} Staff ∃ Course (Staff coordinates Course))
+Il est obligatoire qu'il existe au moins 5 Membres du personnel qui coordonnent un Cours.
 
 # Derivation rule · Student studies with Staff
 ∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))
@@ -65,3 +69,23 @@ Si Cours has EnrolmentCount, alors EnrolmentCount est le nombre d'Étudiants qui
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
 Si Étudiant assiste à Cours et Cours a Nombre de crédits, alors Étudiant has credit load un TotalCredits qui est (Nombre de crédits plus 5) fois 2.
+
+# Uniqueness (deontic) · Staff mentors Student
+O(∀ Student ∃^{≤1} Staff (Staff mentors Student))
+Il est obligatoire que pour chaque Étudiant, au plus un Membre du personnel mentors cet Étudiant.
+
+# Mandatory role (deontic) · Staff mentors Student
+O(∀ Student ∃ Staff (Staff mentors Student))
+Il est obligatoire que pour chaque Étudiant, un Membre du personnel mentors cet Étudiant.
+
+# Frequency (deontic) · Staff mentors Student
+O(∀ Staff ((∃ Student (Staff mentors Student)) → ∃^{≤5} Student (Staff mentors Student)))
+Il est obligatoire que chaque Membre du personnel mentors au plus 5 Étudiants.
+
+# Subset (deontic)
+O(∀ Student ((∃ Staff (Staff mentors Student)) → ∃ Course (Student enrols in Course)))
+Il est obligatoire que chaque Étudiant qu'un Membre du personnel mentors suit un Cours.
+
+# Ring (irreflexive) (deontic)
+O(∀ Course ¬(Course is a prerequisite for Course))
+Il est obligatoire qu'aucun Cours n'est un prérequis pour lui-même.

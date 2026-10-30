@@ -22,13 +22,17 @@ Vak is een IntroCourse als en slechts als Vak een Vaktitel die met 'Introduction
 ∀ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) → LongTitleCourse(Course))
 Elk Vak dat een Vaktitel zodanig dat de lengte van die Vaktitel groter dan 40 is heeft, is een LongTitleCourse.
 
+# Value range (deontic) · Score
+O(∀ Score ((Score > 0 ∧ Score ≤ 100) ∨ Score > 200))
+Het is verplicht dat de mogelijke waarden van Score meer dan 0 en hoogstens 100, meer dan 200 zijn.
+
 # Cardinality · Professor
 ∃^{2..20} Professor ⊤
 Er zijn minstens 2 en hoogstens 20 Hoogleraren.
 
-# Cardinality · Building
-∃^{=3} Building ⊤
-Er zijn precies 3 Gebouwen.
+# Cardinality (deontic) · Building
+O(∃^{=3} Building ⊤)
+Het is verplicht dat er precies 3 Gebouwen zijn.
 
 # Cardinality · Course
 ∃^{≤100} Course ⊤
@@ -38,9 +42,9 @@ Er zijn hoogstens 100 Vakken.
 ∃^{≤50} Course ∃ Student (Student enrols in Course)
 Er zijn hoogstens 50 Vakken die een Student volgt.
 
-# Cardinality (role 1) · Staff coordinates Course
-∃^{≥5} Staff ∃ Course (Staff coordinates Course)
-Er zijn minstens 5 Medewerkers die een Vak coördineren.
+# Cardinality (role 1) (deontic) · Staff coordinates Course
+O(∃^{≥5} Staff ∃ Course (Staff coordinates Course))
+Het is verplicht dat er minstens 5 Medewerkers die een Vak coördineren zijn.
 
 # Derivation rule · Student studies with Staff
 ∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))
@@ -65,3 +69,23 @@ Als Vak EnrolmentCount has, dan is EnrolmentCount het aantal Studenten die Vak v
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
 Als Student bij Vak assisteert en Vak Studielast heeft, dan has Student credit load een TotalCredits die (Studielast plus 5) maal 2 is.
+
+# Uniqueness (deontic) · Staff mentors Student
+O(∀ Student ∃^{≤1} Staff (Staff mentors Student))
+Het is verplicht dat voor elke Student geldt: hoogstens één Medewerker die Student mentors.
+
+# Mandatory role (deontic) · Staff mentors Student
+O(∀ Student ∃ Staff (Staff mentors Student))
+Het is verplicht dat voor elke Student geldt: een Medewerker die Student mentors.
+
+# Frequency (deontic) · Staff mentors Student
+O(∀ Staff ((∃ Student (Staff mentors Student)) → ∃^{≤5} Student (Staff mentors Student)))
+Het is verplicht dat elke Medewerker hoogstens 5 Studenten mentors.
+
+# Subset (deontic)
+O(∀ Student ((∃ Staff (Staff mentors Student)) → ∃ Course (Student enrols in Course)))
+Het is verplicht dat elke Student die een Medewerker mentors, een Vak volgt.
+
+# Ring (irreflexive) (deontic)
+O(∀ Course ¬(Course is a prerequisite for Course))
+Het is verplicht dat geen Vak een voorkennisvak voor zichzelf is.

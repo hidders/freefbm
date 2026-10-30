@@ -7,16 +7,18 @@ export const occurs = (f, v) => f === v || (!!f && typeof f === 'object' && !isV
   Object.entries(f).some(([k, x]) => k !== 'vars' && occurs(x, v)))
 
 // The value range ∀x (x ≈ c ∨ (x ≥ a ∧ x ≤ b) ∨ …) as its items
-// [{ op: '≈' | '≥' | '≤', value } | { op: '..', lo, hi }], or null.
+// [{ op: '≈' | '≥' | '≤' | '>' | '<', value } | { op: '..', lo, hi, loOp, hiOp }],
+// or null. An interval's loOp is ≥ or > and its hiOp ≤ or <.
 export function rangeSpec(body, x) {
   const isConst = (t) => t?.t === 'const'
   const item = (f) => {
-    if (f.t === 'vcmp' && f.left === x && isConst(f.right) && ['≈', '≥', '≤'].includes(f.op)) return { op: f.op, value: f.right }
+    if (f.t === 'vcmp' && f.left === x && isConst(f.right) && ['≈', '≥', '≤', '>', '<'].includes(f.op)) return { op: f.op, value: f.right }
     if (f.t === 'and' && f.args.length === 2) {
+      // An interval; > and < are its open (exclusive) bounds.
       const [a, b] = f.args
-      if (a.t === 'vcmp' && b.t === 'vcmp' && a.left === x && b.left === x && a.op === '≥' && b.op === '≤' &&
-          isConst(a.right) && isConst(b.right))
-        return { op: '..', lo: a.right, hi: b.right }
+      if (a.t === 'vcmp' && b.t === 'vcmp' && a.left === x && b.left === x && (a.op === '≥' || a.op === '>') &&
+          (b.op === '≤' || b.op === '<') && isConst(a.right) && isConst(b.right))
+        return { op: '..', lo: a.right, hi: b.right, loOp: a.op, hiOp: b.op }
     }
     return null
   }

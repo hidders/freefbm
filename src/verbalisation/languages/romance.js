@@ -230,7 +230,9 @@ export function romanceLibrary(P) {
   const functions = {
     rangeItems: (h, body, x) => {
       const spec = rangeSpec(body, x)
-      return spec && spec.map(i => i.op === '..' ? [kw(P.range[0]), h.term(i.lo), kw(P.range[1]), h.term(i.hi)]
+      return spec && spec.map(i => i.op === '..'
+        ? (i.loOp === '≥' && i.hiOp === '≤' ? [kw(P.range[0]), h.term(i.lo), kw(P.range[1]), h.term(i.hi)]
+          : [kw(P.quant[i.loOp]), h.term(i.lo), kw(P.and), kw(P.quant[i.hiOp]), h.term(i.hi)])
         : i.op === '≈' ? [h.term(i.value)] : [kw(P.quant[i.op]), h.term(i.value)])
     },
     exclusionItems: (h, f) => exclusionItems(f),

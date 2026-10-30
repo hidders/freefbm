@@ -32,17 +32,17 @@ export function collapsedRefValueRole(ot) {
   return rm ? { kind: 'role', factId: rm.factId, roleIndex: rm.vtRoleIndex } : null
 }
 
-// The value range shown next to an object type, as { range, desc } where desc is the
-// selectValueRange descriptor ({ otId } or { factId, roleIndex }), or null.
+// The value range shown next to an object type, as { range, desc, deontic } where desc
+// is the selectValueRange descriptor ({ otId } or { factId, roleIndex }), or null.
 function valueRangeTarget(ot, refValueRole) {
-  if (ot.kind === 'value') return ot.valueRange?.length ? { range: ot.valueRange, desc: { otId: ot.id } } : null
+  if (ot.kind === 'value') return ot.valueRange?.length ? { range: ot.valueRange, desc: { otId: ot.id }, deontic: !!ot.valueRangeDeontic } : null
   if (!refValueRole) return null
   const s = useOrmStore.getState()
   const fact = s.facts.find(f => f.id === refValueRole.factId)
   const role = fact?.roles?.[refValueRole.roleIndex]
-  if (role?.valueRange?.length) return { range: role.valueRange, desc: { factId: fact.id, roleIndex: refValueRole.roleIndex } }
+  if (role?.valueRange?.length) return { range: role.valueRange, desc: { factId: fact.id, roleIndex: refValueRole.roleIndex }, deontic: !!role.valueRangeDeontic }
   const vt = s.objectTypes.find(o => o.id === role?.objectTypeId)
-  return vt?.valueRange?.length ? { range: vt.valueRange, desc: { otId: vt.id } } : null
+  return vt?.valueRange?.length ? { range: vt.valueRange, desc: { otId: vt.id }, deontic: !!vt.valueRangeDeontic } : null
 }
 
 const OT_FONT       = "'Segoe UI', Helvetica, Arial, sans-serif"
@@ -61,12 +61,16 @@ function fmtDate(v) {
   return v
 }
 
+// Bounds are closed by default; an open (exclusive) one gets a round bracket,
+// as in Halpin & Morgan's {(0..100}. Closed bounds get no square bracket.
 function formatRangeSpec(spec) {
   if (!spec) return ''
   if (spec.type === 'single') return fmtDate(String(spec.value ?? ''))
-  if (spec.type === 'lower')  return `${fmtDate(spec.lower ?? '')}..`
-  if (spec.type === 'upper')  return `..${fmtDate(spec.upper ?? '')}`
-  if (spec.type === 'range')  return `${fmtDate(spec.lower ?? '')}..${fmtDate(spec.upper ?? '')}`
+  const left  = spec.type !== 'upper' && spec.lowerOpen ? '(' : ''
+  const right = spec.type !== 'lower' && spec.upperOpen ? ')' : ''
+  if (spec.type === 'lower')  return `${left}${fmtDate(spec.lower ?? '')}..`
+  if (spec.type === 'upper')  return `..${fmtDate(spec.upper ?? '')}${right}`
+  if (spec.type === 'range')  return `${left}${fmtDate(spec.lower ?? '')}..${fmtDate(spec.upper ?? '')}${right}`
   return ''
 }
 
@@ -596,10 +600,11 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
         const lineEndX = dxB === 0 && dyB === 0 ? tx : tx + dxB * tLbl
         const lineEndY = dxB === 0 && dyB === 0 ? ty : ty + dyB * tLbl
 
+        const vrCol = vrTarget.deontic ? 'var(--col-deontic)' : 'var(--col-constraint)'
         return (
           <g opacity={_dimOpacity} className="selectable-group" style={store.queryEditDraft ? { pointerEvents: 'none' } : undefined}>
             <line x1={connX} y1={connY} x2={lineEndX} y2={lineEndY}
-              stroke="var(--col-constraint)" strokeWidth={1.5}
+              stroke={vrCol} strokeWidth={1.5}
               strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
             {(() => {
               const otVrDesc = vrTarget.desc
@@ -607,7 +612,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
               const isVrSel = !!sel && (otVrDesc.otId
                 ? sel.otId === otVrDesc.otId
                 : sel.factId === otVrDesc.factId && sel.roleIndex === otVrDesc.roleIndex)
-              const vrFill = isVrSel ? 'var(--accent)' : 'var(--col-constraint)'
+              const vrFill = isVrSel ? 'var(--accent)' : vrCol
               return (
                 <text x={tx} y={ty}
                   textAnchor="middle" dominantBaseline="middle"
@@ -668,15 +673,16 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
         const lineEndX = dxB === 0 && dyB === 0 ? tx : tx + dxB * tLbl
         const lineEndY = dxB === 0 && dyB === 0 ? ty : ty + dyB * tLbl
 
+        const crCol = ot.cardinalityRangeDeontic ? 'var(--col-deontic)' : 'var(--col-constraint)'
         return (
           <g opacity={_dimOpacity} className="selectable-group" style={store.queryEditDraft ? { pointerEvents: 'none' } : undefined}>
             <line x1={connX} y1={connY} x2={lineEndX} y2={lineEndY}
-              stroke="var(--col-constraint)" strokeWidth={1.5}
+              stroke={crCol} strokeWidth={1.5}
               strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
             {(() => {
               const otCrDesc = { otId: ot.id }
               const isCrSel = store.selectedCardinalityRange?.otId === ot.id
-              const crFill = isCrSel ? 'var(--accent)' : 'var(--col-constraint)'
+              const crFill = isCrSel ? 'var(--accent)' : crCol
               return (
                 <text x={tx} y={ty}
                   textAnchor="middle" dominantBaseline="middle"

@@ -56,7 +56,7 @@ export const frenchLibrary = romanceLibrary({
   that: (g) => (g === 'f' ? 'cette' : 'ce'),
   reflexive: (g) => (g === 'f' ? 'elle-même' : 'lui-même'),
   suchThat: (g, plural) => (plural ? (g === 'f' ? 'telles que' : 'tels que') : (g === 'f' ? 'telle que' : 'tel que')),
-  quant: { '≤': 'au plus', '≥': 'au moins', '=': 'exactement', '>': 'plus de' },
+  quant: { '≤': 'au plus', '≥': 'au moins', '=': 'exactement', '>': 'plus de', '<': 'moins de' },
   range: ['de', 'à'],
   negation: 'ne',
   negationAfter: 'pas',

@@ -22,13 +22,17 @@ Przedmiot jest IntroCourse wtedy i tylko wtedy, gdy Przedmiot ma jakiś Tytuł p
 ∀ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) → LongTitleCourse(Course))
 Każdy Przedmiot, który ma jakiś Tytuł przedmiotu taki, że długość tego Tytułu przedmiotu wynosi więcej niż 40, jest LongTitleCourse.
 
+# Value range (deontic) · Score
+O(∀ Score ((Score > 0 ∧ Score ≤ 100) ∨ Score > 200))
+Obowiązuje zasada, że możliwe wartości Score to więcej niż 0 i co najwyżej 100, więcej niż 200.
+
 # Cardinality · Professor
 ∃^{2..20} Professor ⊤
 Istnieje co najmniej 2 i co najwyżej 20 Profesorów.
 
-# Cardinality · Building
-∃^{=3} Building ⊤
-Istnieją dokładnie 3 Budynki.
+# Cardinality (deontic) · Building
+O(∃^{=3} Building ⊤)
+Obowiązuje zasada, że istnieją dokładnie 3 Budynki.
 
 # Cardinality · Course
 ∃^{≤100} Course ⊤
@@ -38,9 +42,9 @@ Istnieje co najwyżej 100 Przedmiotów.
 ∃^{≤50} Course ∃ Student (Student enrols in Course)
 Istnieje co najwyżej 50 Przedmiotów, które jakiś Student studiuje.
 
-# Cardinality (role 1) · Staff coordinates Course
-∃^{≥5} Staff ∃ Course (Staff coordinates Course)
-Istnieje co najmniej 5 Pracowników, którzy koordynują jakiś Przedmiot.
+# Cardinality (role 1) (deontic) · Staff coordinates Course
+O(∃^{≥5} Staff ∃ Course (Staff coordinates Course))
+Obowiązuje zasada, że istnieje co najmniej 5 Pracowników, którzy koordynują jakiś Przedmiot.
 
 # Derivation rule · Student studies with Staff
 ∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))
@@ -65,3 +69,23 @@ Jeśli Przedmiot has EnrolmentCount, to EnrolmentCount wynosi liczba Studentów,
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
 Jeśli Student asystuje przy Przedmiocie i Przedmiot ma Punktację, to Student has credit load jakiś TotalCredits, który wynosi (Punktacja plus 5) razy 2.
+
+# Uniqueness (deontic) · Staff mentors Student
+O(∀ Student ∃^{≤1} Staff (Staff mentors Student))
+Obowiązuje zasada, że dla każdego Studenta co najwyżej jeden Pracownik mentors tego Studenta.
+
+# Mandatory role (deontic) · Staff mentors Student
+O(∀ Student ∃ Staff (Staff mentors Student))
+Obowiązuje zasada, że dla każdego Studenta jakiś Pracownik mentors tego Studenta.
+
+# Frequency (deontic) · Staff mentors Student
+O(∀ Staff ((∃ Student (Staff mentors Student)) → ∃^{≤5} Student (Staff mentors Student)))
+Obowiązuje zasada, że każdy Pracownik mentors co najwyżej 5 Studentów.
+
+# Subset (deontic)
+O(∀ Student ((∃ Staff (Staff mentors Student)) → ∃ Course (Student enrols in Course)))
+Obowiązuje zasada, że każdy Student, którego jakiś Pracownik mentors, studiuje jakiś Przedmiot.
+
+# Ring (irreflexive) (deontic)
+O(∀ Course ¬(Course is a prerequisite for Course))
+Obowiązuje zasada, że żaden Przedmiot nie jest prerekwizytem dla siebie.

@@ -418,9 +418,12 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
           const dotDim = dotOpacity < 1
           return (
             <g key={`dot-${fact.occurrenceId ?? fact.id}-${ri}`} className="selectable-group" opacity={dotOpacity} style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}>
+              {/* A deontic mandatory role has an open blue dot, as in NORMA. */}
               <circle
-                cx={pos.x} cy={pos.y} r={DOT_R}
-                fill="var(--col-mandatory)"
+                cx={pos.x} cy={pos.y} r={role.mandatoryDeontic ? DOT_R - 0.6 : DOT_R}
+                fill={role.mandatoryDeontic ? 'var(--bg-canvas)' : 'var(--col-mandatory)'}
+                stroke={role.mandatoryDeontic ? 'var(--col-deontic)' : 'none'}
+                strokeWidth={role.mandatoryDeontic ? 1.5 : 0}
                 onClick={e => {
                   e.stopPropagation()
                   if (store.queryEditDraft) return

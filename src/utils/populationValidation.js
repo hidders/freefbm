@@ -3,6 +3,7 @@
 // is inconsistent with it.
 
 import { validateValueAgainstDatatype } from './datatypeValidation.js'
+import { isDeonticUniqueness, isDeonticMandatory } from '../logic/modality.js'
 import { VALUE_KINDS, valueKindOf, valueKindName, parseLiteral } from './datatypeValues.js'
 import { isIdentifyingFact, getVtEffectivePopulation, getEntityEffectivePopulation, getEntityIdentifierShape, findRefMode, findCompositePI, findInheritedPI, findRolePlayer, getNestedCellShape, isCompleteValue, UNSET } from './refMode.js'
 
@@ -2101,7 +2102,31 @@ export function computePopulationIssues(rawData) {
     }
   }
 
-  return issues
+  return markDeontic(issues, facts, constraints, otById)
+}
+
+// A population may break a deontic constraint (modality.js): the issue is
+// still reported, but as a violated obligation, marked deontic: true.
+function markDeontic(issues, facts, constraints, otById) {
+  const factById = new Map((facts || []).map(f => [f.id, f]))
+  const deonticCons = new Set((constraints || []).filter(c => c.deontic).map(c => c.id))
+  const isDeontic = (i) => {
+    if (i.constraintId) return deonticCons.has(i.constraintId)
+    if (i.kind === 'valueRangeViolation' && i.otId) return !!otById.get(i.otId)?.valueRangeDeontic
+    const fact = factById.get(i.factId)
+    if (!fact) return false
+    if (i.kind === 'uniquenessViolation') return isDeonticUniqueness(fact, i.roleIndices)
+    if (i.kind === 'valueRangeViolation') return !!fact.roles?.[i.roleIndex]?.valueRangeDeontic
+    if (i.kind === 'frequencyViolation')
+      return !!(fact.internalFrequency || []).find(f => f.id === i.internalFrequencyId)?.deontic
+    if (i.kind === 'mandatoryRoleNotPlayed') {
+      // Not when a preferred identifier makes the role mandatory anyway.
+      const implied = (fact.preferredUniqueness || []).some(pu => Array.isArray(pu) && !pu.includes(i.roleIndex))
+      return !implied && isDeonticMandatory(fact.roles?.[i.roleIndex])
+    }
+    return false
+  }
+  return issues.map(i => (isDeontic(i) ? { ...i, deontic: true, message: `Obligation violated: ${i.message}` } : i))
 }
 
 // ── LCA and C1/C2 detection helpers ──────────────────────────────────────────
@@ -3282,29 +3307,18 @@ function specSatisfies(value, spec, kind) {
     const cmp = compareValues(value, spec.value, kind)
     return Number.isFinite(cmp) && cmp === 0
   }
-  if (spec.type === 'lower') {
-    return boundOpen(spec.lower) || (() => {
-      const cmp = compareValues(value, spec.lower, kind)
-      return Number.isFinite(cmp) && cmp >= 0
-    })()
-  }
-  if (spec.type === 'upper') {
-    return boundOpen(spec.upper) || (() => {
-      const cmp = compareValues(value, spec.upper, kind)
-      return Number.isFinite(cmp) && cmp <= 0
-    })()
-  }
-  if (spec.type === 'range') {
-    const lo = boundOpen(spec.lower) || (() => {
-      const cmp = compareValues(value, spec.lower, kind)
-      return Number.isFinite(cmp) && cmp >= 0
-    })()
-    const hi = boundOpen(spec.upper) || (() => {
-      const cmp = compareValues(value, spec.upper, kind)
-      return Number.isFinite(cmp) && cmp <= 0
-    })()
-    return lo && hi
-  }
+  // An open bound (lowerOpen, upperOpen) excludes the bound itself.
+  const above = () => boundOpen(spec.lower) || (() => {
+    const cmp = compareValues(value, spec.lower, kind)
+    return Number.isFinite(cmp) && (spec.lowerOpen ? cmp > 0 : cmp >= 0)
+  })()
+  const below = () => boundOpen(spec.upper) || (() => {
+    const cmp = compareValues(value, spec.upper, kind)
+    return Number.isFinite(cmp) && (spec.upperOpen ? cmp < 0 : cmp <= 0)
+  })()
+  if (spec.type === 'lower') return above()
+  if (spec.type === 'upper') return below()
+  if (spec.type === 'range') return above() && below()
   return false
 }
 
