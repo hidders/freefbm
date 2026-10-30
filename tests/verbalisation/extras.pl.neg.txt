@@ -82,6 +82,14 @@ Niedopuszczalne jest, że istnieje jakiś Student taki, że żaden Pracownik nie
 F(∃ Staff ∃^{>5} Student (Staff mentors Student))
 Niedopuszczalne jest, że jakiś Pracownik mentors więcej niż 5 Studentów.
 
+# External uniqueness (outer join)
+¬(∃ CourseTitle ∃ Staff ∃^{>1} Course ((Course has CourseTitle) ∧ (Course is run by Staff)))
+Niemożliwe jest, że więcej niż jeden Przedmiot ma ten sam Tytuł przedmiotu i is run by tego samego Pracownika.
+
+# External uniqueness (outer join): no value at position 2
+¬(∃ CourseTitle ∃^{>1} Course ((Course has CourseTitle) ∧ ¬(∃ Staff (Course is run by Staff))))
+Niemożliwe jest, że więcej niż jeden Przedmiot ma ten sam Tytuł przedmiotu i nie is run by żadnego Pracownika.
+
 # Subset (deontic)
 F(∃ Student ((∃ Staff (Staff mentors Student)) ∧ ¬(∃ Course (Student enrols in Course))))
 Niedopuszczalne jest, że istnieje jakiś Student taki, że jakiś Pracownik mentors tego Studenta i ten Student nie studiuje żadnego Przedmiotu.

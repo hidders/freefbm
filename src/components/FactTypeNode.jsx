@@ -7,6 +7,7 @@ import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { roleAnchor } from '../utils/geometry'
 import { RAKE_TOOTH, RAKE_STAGGER, RAKE_COMFORT, RAKE_BAR_ZONE } from '../constants.js'
 import { findCompositePI } from '../utils/refMode'
+import { queryElements } from '../logic/query.js'
 
 const VR_DEFAULT_OFFSET = { dx: 0, dy: -50 }
 const VR_FONT      = "'Segoe UI', Helvetica, Arial, sans-serif"
@@ -530,12 +531,8 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     for (let qi = 0; qi < c.queries.length; qi++) {
       const q = c.queries[qi]
       if (!q) continue
-      if (!q.atoms) continue  // old format — skip
-      for (const lk of q.links) {
-        const at = q.atoms.find(at => at.id === lk.atomId)
-        if (at?.kind === 'fact' && at.originalId === fact.id) roles.add(lk.roleIndex)
-      }
-      for (const at of q.atoms) {
+      const atoms = queryElements(q, store.subtypes)
+      for (const at of atoms) {
         if (at.kind === 'fact' && at.originalId === fact.id) {
           // Highlight all roles: the whole fact type participates in this constraint.
           // Seeded/linked roles alone are unreliable for visibility because the
@@ -543,7 +540,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           for (let ri = 0; ri < fact.arity; ri++) roles.add(ri)
         }
       }
-      if (fact.objectified && q.atoms.some(at => at.originalId === fact.id)) nestedHighlight = true
+      if (fact.objectified && atoms.some(at => at.originalId === fact.id)) nestedHighlight = true
     }
     return { queryHighlightRoles: roles.size > 0 ? roles : null, nestedInQueryHighlight: nestedHighlight }
   })()

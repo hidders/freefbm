@@ -415,7 +415,36 @@ export function makePopulationEvaluator(rawData) {
     return p
   }
 
-  return { data, population, derived, derivedFact, factTuples, storedTuples, keyOf, ctx }
+  // ── Queries of external constraints ──
+
+  // The tuples of a query in rule form (query.js): { keys, values, counts,
+  // bindings } or { error }. values holds one cell per tuple of the free
+  // variables (the cell itself for a single position), keys their projCellKey
+  // strings, counts the number of bindings of all variables per tuple, and
+  // bindings every binding (varId → cell). The ∃ block at the top is solved
+  // together with the free variables, so its fact atoms drive the join.
+  const queryResult = (rule, typing = { sorts: new Map(), params: new Map() }) => {
+    let body = rule.body
+    const bound = []
+    while (body?.t === 'exists') { bound.push(body.v); body = body.body }
+    const ev = makeEval(typing)
+    const heads = [...rule.free, ...(rule.target ? [rule.target] : [])]
+    const envs = ev.solve(body, [...heads, ...bound].map(v => ({ id: v.id, typeIds: [v.typeId] })))
+    if (ev.state.failure) return { error: ev.state.failure }
+    const keys = new Set(), values = [], counts = new Map(), bindings = []
+    for (const env of envs) {
+      const cells = rule.free.map(f => env.get(f.id).cell)
+      const norms = cells.map(c => projCellKey(c))
+      if (norms.some(n => n === null)) continue
+      const key = JSON.stringify(norms.length === 1 ? norms[0] : norms)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+      if (!keys.has(key)) { keys.add(key); values.push(cells.length === 1 ? cells[0] : cells) }
+      bindings.push(new Map([...env].map(([id, a]) => [id, a.cell])))
+    }
+    return { keys, values, counts, bindings }
+  }
+
+  return { data, population, derived, derivedFact, factTuples, storedTuples, keyOf, ctx, queryResult }
 }
 
 // The data with the populations of derived types and fact types replaced by

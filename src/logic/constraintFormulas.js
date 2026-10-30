@@ -15,6 +15,7 @@ import {
   factAtom, typeAtom, cmp, vcmp, obligatory,
 } from './formula.js'
 import { isDeonticUniqueness, isDeonticMandatory } from './modality.js'
+import { compileQuery, queryRule, queryTyping, outerJoinGroups, ruleBodyFormula } from './query.js'
 import { VALUE_KINDS, parseLiteral } from '../utils/datatypeValues.js'
 import { valueAccess, withValues, valueConstant } from './values.js'
 import { isDerived, derivationEntry } from './derivationRule.js'
@@ -26,7 +27,7 @@ const SEQUENCE_TYPES = new Set([
   'uniqueness', 'frequency', 'ring', 'valueComparison',
 ])
 
-const CONSTRAINT_LABELS = {
+export const CONSTRAINT_LABELS = {
   inclusiveOr:     'Inclusive-or',
   exclusiveOr:     'Exclusive-or',
   exclusion:       'Exclusion',
@@ -57,157 +58,9 @@ const RING_LABELS = {
 
 // ── Join-path queries ────────────────────────────────────────────────────────
 //
-// Each sequence of an external constraint denotes a query: an existentially
-// quantified conjunction of atoms whose free variables are the sequence
-// positions (and, for uniqueness and frequency, the target object type).
-// compileSequence returns a builder that produces that formula for given free
-// variables, with fresh bound variables on every call.
-
-const normalizeSeeded = (s) => (typeof s === 'number' ? { roleIndex: s, seqPosition: 0 } : s)
-
-// A query for a sequence that has none stored: roles of one fact type, or a
-// single subtype edge. Mirrors the store's automatic query generation.
-function implicitQuery(seq) {
-  if (seq.length === 1 && seq[0].kind === 'subtype') {
-    return { atoms: [{ id: 's', kind: 'subtype', originalId: seq[0].subtypeId, isSeeded: true }], links: [] }
-  }
-  const roles = seq.filter(m => m.kind === 'role' && !m.factId?.includes('_il_'))
-  if (roles.length === 0 || roles.length !== seq.length) return null
-  if (new Set(roles.map(m => m.factId)).size !== 1) return null
-  return {
-    atoms: [{ id: 'f', kind: 'fact', originalId: roles[0].factId,
-      seededRoles: roles.map((m, i) => ({ roleIndex: m.roleIndex, seqPosition: i })) }],
-    links: [],
-  }
-}
-
-function compileSequence(seq, query, ctx) {
-  const q = query ?? implicitQuery(seq ?? [])
-  if (!q) return { error: 'its role sequence has no join path yet' }
-  const atoms = q.atoms ?? q.copies ?? []
-  const links = q.links ?? []
-
-  // Every argument slot of every atom is a node; links and subtype edges merge
-  // nodes into classes, and each class becomes one variable.
-  const parent = new Map()
-  const nodeType = new Map()
-  const find = (n) => { while (parent.get(n) !== n) n = parent.get(n); return n }
-  const addNode = (n, typeId) => { if (!parent.has(n)) { parent.set(n, n); nodeType.set(n, typeId) } }
-  const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(rb, ra) }
-  const linkTarget = (atomId, roleIndex) =>
-    links.find(l => l.atomId === atomId && l.roleIndex === roleIndex)?.variableId
-
-  for (const a of atoms) if (a.kind === 'objectType') addNode(a.id, a.originalId)
-  // A link to a fact atom of an objectified fact type stands for the instance
-  // that nests the atom's fact, so that atom is a node of the nested type too.
-  for (const a of atoms) {
-    if (a.kind === 'fact' && ctx.factById.get(a.originalId)?.objectified && links.some(l => l.variableId === a.id))
-      addNode(a.id, a.originalId)
-  }
-
-  const factParts = []   // { factId, nodes }
-  const subtypeParts = [] // { subId, node }
-  const outputs = []     // { seqPosition, node }
-  for (const a of atoms) {
-    if (a.kind === 'fact') {
-      const fact = ctx.factById.get(a.originalId)
-      if (!fact) return { error: 'its join path refers to a deleted fact type' }
-      const nodes = fact.roles.map((r, ri) => {
-        const linked = linkTarget(a.id, ri)
-        if (linked && parent.has(linked)) return linked
-        const n = `${a.id}#${ri}`
-        addNode(n, r.objectTypeId)
-        return n
-      })
-      if (parent.has(a.id)) {
-        // The nesting instance d of the fact, through the implied links:
-        // d involves A ∧ d involves B ∧ … (which entails the fact itself).
-        const ils = fact.roles.map((_, ri) => ctx.linkById.get(`${fact.id}_il_${ri}`))
-        if (ils.some(l => !l)) return { error: 'a role of its join path has no implied link yet' }
-        ils.forEach((l, ri) => factParts.push({ factId: l.id, nodes: [a.id, nodes[ri]] }))
-      } else {
-        factParts.push({ factId: fact.id, nodes })
-      }
-      for (const s of (a.seededRoles ?? []).map(normalizeSeeded)) {
-        if (s.seqPosition != null) outputs.push({ seqPosition: s.seqPosition, node: nodes[s.roleIndex] })
-      }
-    } else if (a.kind === 'subtype') {
-      const st = ctx.subtypeById.get(a.originalId)
-      if (!st) return { error: 'its join path refers to a deleted subtype' }
-      const ends = [0, 1].map(ri => {
-        const linked = linkTarget(a.id, ri)
-        if (linked && parent.has(linked)) return linked
-        const n = `${a.id}#${ri}`
-        addNode(n, ri === 0 ? st.subId : st.superId)
-        return n
-      })
-      union(ends[1], ends[0])
-      subtypeParts.push({ subId: st.subId, node: ends[1] })
-      if (a.isSeeded) {
-        const pos = Math.max(0, (seq ?? []).findIndex(m => m.kind === 'subtype' && m.subtypeId === st.id))
-        outputs.push({ seqPosition: pos, node: ends[1] })
-      }
-    }
-  }
-  outputs.sort((x, y) => x.seqPosition - y.seqPosition)
-  const targetAtom = atoms.find(a => a.kind === 'objectType' && a.isOutput)
-  const targetNode = targetAtom && !outputs.some(o => find(o.node) === find(targetAtom.id))
-    ? targetAtom.id : null
-
-  // The type of a class is the type of its most general node: the one that is
-  // not the subtype end of any subtype atom in the class.
-  const subEnds = new Set()
-  for (const a of atoms) if (a.kind === 'subtype') {
-    const linked = linkTarget(a.id, 0)
-    subEnds.add(linked && parent.has(linked) ? linked : `${a.id}#0`)
-  }
-  const classType = (root) => {
-    let fallback = null
-    for (const n of parent.keys()) {
-      if (find(n) !== root) continue
-      fallback ??= nodeType.get(n)
-      if (!subEnds.has(n)) return nodeType.get(n)
-    }
-    return fallback
-  }
-
-  const build = ({ outVars = [], targetVar = null } = {}) => {
-    const varOf = new Map()
-    const equalities = []
-    const bindFree = (node, v) => {
-      const root = find(node)
-      const prev = varOf.get(root)
-      if (prev && prev !== v) equalities.push(cmp('=', prev, v))
-      else varOf.set(root, v)
-    }
-    outputs.forEach((o, i) => { if (outVars[i]) bindFree(o.node, outVars[i]) })
-    if (targetNode && targetVar) bindFree(targetNode, targetVar)
-    const free = new Set(varOf.values())
-    const bound = []
-    const v = (node) => {
-      const root = find(node)
-      if (!varOf.has(root)) {
-        const nv = mkVar(classType(root))
-        varOf.set(root, nv)
-        bound.push(nv)
-      }
-      return varOf.get(root)
-    }
-    const conjuncts = [
-      ...factParts.map(p => factAtom(p.factId, p.nodes.map(v))),
-      ...subtypeParts.map(p => typeAtom(p.subId, v(p.node))),
-      ...equalities,
-    ]
-    return exists(bound.filter(b => !free.has(b)), and(conjuncts))
-  }
-
-  return {
-    arity: outputs.length,
-    outTypes: outputs.map(o => classType(find(o.node))),
-    targetType: targetNode ? classType(find(targetNode)) : null,
-    build,
-  }
-}
+// Each sequence of an external constraint denotes a query (query.js): a
+// formula whose free variables are the sequence positions (and, for
+// uniqueness and frequency, the target object type).
 
 // ── Frequency ranges ─────────────────────────────────────────────────────────
 
@@ -462,12 +315,12 @@ function asDeontic(deontic, e) {
   return Array.isArray(e) ? e.map(wrap) : wrap(e)
 }
 
-function constraintEntry(c, ctx) {
+export function constraintEntry(c, ctx) {
   const entry = { key: c.id, elementId: c.id, kind: CONSTRAINT_LABELS[c.constraintType] ?? c.constraintType,
     subject: c.name || c.label || '' }
   const seqs = c.sequences ?? []
   if (seqs.length === 0) return { ...entry, note: 'No role sequences yet.' }
-  const compiled = seqs.map((s, i) => compileSequence(s, c.queries?.[i], ctx))
+  const compiled = seqs.map((s, i) => compileQuery(c.queries?.[i], s, ctx))
   const bad = compiled.find(q => q.error)
   if (bad) return { ...entry, note: `No formula yet: ${bad.error}.` }
 
@@ -514,6 +367,7 @@ function constraintEntry(c, ctx) {
       const xs = shared(q)
       const t = mkVar(q.targetType)
       const phi = () => q.build({ outVars: xs, targetVar: t })
+      if (c.constraintType === 'uniqueness' && c.outerJoin) return outerJoinEntries(c, seqs[0], q, entry, ctx)
       if (c.constraintType === 'uniqueness') {
         const kind = c.isPreferredIdentifier ? 'External uniqueness (preferred identifier)' : entry.kind
         const main = { ...entry, kind, formula: forall(xs, count('≤', 1, [t], phi())) }
@@ -553,6 +407,59 @@ function constraintEntry(c, ctx) {
     default:
       return { ...entry, note: 'This constraint type has no formula yet.' }
   }
+}
+
+// An external uniqueness constraint read with outer joins (Halpin & Morgan
+// 2024, sec. 10.1; drawn with an "o" through the bar): an object that lacks
+// an optional part of the combination counts as having "no value" there, and
+// two objects with no value in the same parts must differ elsewhere. The
+// positions fall into groups that share nothing but the target
+// (outerJoinGroups); for each set S of optional groups there is one formula:
+// per combination of the other groups, at most one object has it and has no
+// value in the groups of S. S = ∅ gives the ordinary (inner-join) formula.
+function outerJoinEntries(c, seq, q, entry, ctx) {
+  const rule = queryRule(c.queries?.[0], seq, ctx)
+  const oj = outerJoinGroups(rule, ctx)
+  if (oj.error) return { ...entry, note: `No outer-join formula: ${oj.error}.` }
+  if (!oj.groups.some(g => g.mandatory))
+    return { ...entry, note: 'No outer-join formula: none of its roles is mandatory for the target.' }
+  const typing = queryTyping(rule, ctx)
+  const label = c.isPreferredIdentifier ? 'External uniqueness (preferred identifier, outer join)' : 'External uniqueness (outer join)'
+  const xs = q.outTypes.map(mkVar)
+  const t = mkVar(q.targetType)
+  const varsFor = (posVars, tv) => new Map([...rule.free.map((f, i) => [f.id, posVars[i]]), [rule.target.id, tv]])
+  // P_G(xs, t): the group's part of the query.
+  const part = (g, posVars, tv) => ruleBodyFormula(g.body, varsFor(posVars, tv), ctx, typing)
+  const filter = (tv) => (oj.filter ? ruleBodyFormula(oj.filter, varsFor([], tv), ctx, typing) : null)
+  // ∃ys P_G(ys, t), with fresh variables for the group's positions.
+  const hasPart = (g, tv) => {
+    const ys = q.outTypes.map(mkVar)
+    return exists(g.positions.map(i => ys[i]), part(g, ys, tv))
+  }
+  const optional = oj.groups.filter(g => !g.mandatory)
+  const entries = []
+  for (let mask = 0; mask < (1 << optional.length); mask++) {
+    const absent = optional.filter((_, i) => mask & (1 << i))
+    const present = oj.groups.filter(g => !absent.includes(g))
+    const free = present.flatMap(g => g.positions).sort((a, b) => a - b).map(i => xs[i])
+    const body = and(filter(t), ...present.map(g => part(g, xs, t)), ...absent.map(g => not(hasPart(g, t))))
+    const which = absent.map(g => g.positions.map(i => i + 1).join('+')).join(', ')
+    entries.push({ ...entry, key: mask ? `${c.id}:oj:${mask}` : c.id,
+      kind: mask ? `${label}: no value at position ${which}` : label,
+      formula: forall(free, count('≤', 1, [t], body)) })
+  }
+  if (c.isPreferredIdentifier) {
+    // Every instance of the target has one value in each mandatory group and
+    // at most one in each optional group.
+    const t2 = mkVar(q.targetType)
+    const one = (g) => {
+      const ys = q.outTypes.map(mkVar)
+      return count(g.mandatory ? '=' : '≤', 1, g.positions.map(i => ys[i]), part(g, ys, t2))
+    }
+    entries.push({ ...entry, key: `${c.id}:exactlyOne`, kind: 'Preferred identifier (one identifying combination, outer join)',
+      formula: forall([t2], oj.filter ? implies(filter(t2), and(oj.groups.map(one))) : and(oj.groups.map(one))) })
+  }
+  return entries
 }
 
 function ringEntries(c, q, entry) {

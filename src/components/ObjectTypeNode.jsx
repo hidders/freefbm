@@ -3,6 +3,7 @@ import { useOrmStore, subtypeKindOf } from '../store/ormStore'
 import { findRefMode, refModeLabel } from '../utils/refMode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { derivationMark } from '../logic/derivationRule.js'
+import { queryElements } from '../logic/query.js'
 
 // Returns the ref-mode label (e.g. ".code") to display inside the entity rect,
 // or null when the entity has no ref mode or is expanded in the active diagram.
@@ -171,7 +172,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     })
     const anchoredOccId = qor[ot.id]
     if (anchoredOccId && ot.occurrenceId && ot.occurrenceId !== anchoredOccId) return false
-    return c.queries.some(q => q?.atoms?.some(at => at.originalId === ot.id))
+    return c.queries.some(q => queryElements(q, store.subtypes).some(at => at.originalId === ot.id))
   })()
   const isPickingTarget    = !!store.pendingTargetPick
   const isSubtypeTool      = store.tool === 'addSubtype'

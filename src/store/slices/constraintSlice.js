@@ -5,6 +5,8 @@ import {
   roleOccRefsKey, syncConstraints, getConstraintDeps, getConstraintQueryDeps,
   findUniqueLCA, findPathDown, demoteOtherPIsFor, runFactMergePass, withSequences,
 } from '../storeHelpers'
+import { makeContext } from '../../logic/constraintFormulas.js'
+import { isFormulaQuery, ruleToGraph } from '../../logic/query.js'
 
 export function createConstraintSlice(set, get) {
   return {
@@ -687,6 +689,13 @@ export function createConstraintSlice(set, get) {
       const c = get().constraints.find(c => c.id === constraintId)
       if (!c) return
       const existing = (c.queries || [])[sequenceIndex] || null
+      // A query saved as a formula is drawn as its graph, when it has one.
+      if (isFormulaQuery(existing)) {
+        const g = ruleToGraph(existing, c.sequences?.[sequenceIndex] ?? [], makeContext(get()))
+        if (g.error) return
+        set({ queryEditDraft: { constraintId, sequenceIndex, atoms: g.atoms, links: g.links, pendingClick: null } })
+        return
+      }
       // Re-edit an already-saved query (atoms is the current field; copies is the old name for backward compat)
       if (existing?.atoms || existing?.copies) {
         const atoms = existing.atoms ?? existing.copies ?? []
@@ -739,6 +748,15 @@ export function createConstraintSlice(set, get) {
       }
       set({ queryEditDraft: { constraintId, sequenceIndex, atoms, links, pendingClick: null } })
     },
+
+    // Draws the condition of a derivation rule on the diagram, in the query
+    // editor; ruleKey names the rule editor it belongs to. Done hands the
+    // graph back as ruleGraphResult. Atom positions are kept per diagram
+    // under the key 'rule:<ruleKey>'.
+    startRuleGraphEdit(ruleKey, atoms, links) {
+      set({ queryEditDraft: { constraintId: `rule:${ruleKey}`, sequenceIndex: 0, ruleKey, atoms, links, pendingClick: null } })
+    },
+    clearRuleGraphResult() { set({ ruleGraphResult: null }) },
 
     queryEditClick(target) {
       // target: { type: 'otAtom'|'otOriginal'|'factAtomRole'|'factOriginalRole'|'subtypeAtom'|'subtypeOriginal', id, roleIndex? }
@@ -796,7 +814,7 @@ export function createConstraintSlice(set, get) {
 
         // Create subtype atom linking them
         const stAtomId = uid()
-        const stIsOutput = !get().constraints.find(c => c.id === qd.constraintId)?.targetObjectTypeId
+        const stIsOutput = !qd.ruleKey && !get().constraints.find(c => c.id === qd.constraintId)?.targetObjectTypeId
         newAtoms2.push({ id: stAtomId, kind: 'subtype', originalId: st.id, isOutput: stIsOutput, isSeeded: false, ...offsetFor(st.id) })
         newLinks2.push({ atomId: stAtomId, roleIndex: 0, variableId: st.subId   === ot1OrigId ? ot1AtomId : ot2AtomId })
         newLinks2.push({ atomId: stAtomId, roleIndex: 1, variableId: st.superId === ot1OrigId ? ot1AtomId : ot2AtomId })
@@ -854,7 +872,7 @@ export function createConstraintSlice(set, get) {
           roleAtomId = roleTarget.id
         } else {
           roleAtomId = uid()
-          const stOut = !get().constraints.find(c => c.id === qd.constraintId)?.targetObjectTypeId
+          const stOut = !qd.ruleKey && !get().constraints.find(c => c.id === qd.constraintId)?.targetObjectTypeId
           newAtoms.push({ id: roleAtomId, kind: 'subtype', originalId: stOriginalId, isOutput: stOut, isSeeded: false, ...newAtomOffset(stOriginalId) })
         }
       }
@@ -885,6 +903,11 @@ export function createConstraintSlice(set, get) {
     commitQueryEdit() {
       const qd = get().queryEditDraft
       if (!qd) return
+      // The graph of a derivation rule goes back to its rule editor.
+      if (qd.ruleKey) {
+        set({ queryEditDraft: null, ruleGraphResult: { ruleKey: qd.ruleKey, atoms: qd.atoms, links: qd.links } })
+        return
+      }
       set(s => ({
         queryEditDraft: null,
         constraints: s.constraints.map(c => {
@@ -947,7 +970,10 @@ export function createConstraintSlice(set, get) {
       const dragged = qd.atoms.find(a => a.id === draggedId)
       const target  = qd.atoms.find(a => a.id === targetId)
       if (!dragged || !target || dragged.originalId !== target.originalId) return
-      const survived = (dragged.isOutput || target.isOutput) ? { ...target, isOutput: true } : target
+      // Two free variables of a derivation rule stay apart.
+      if (dragged.freeVar && target.freeVar) return
+      const kept = dragged.freeVar ? { freeVar: dragged.freeVar, label: dragged.label } : {}
+      const survived = (dragged.isOutput || target.isOutput) ? { ...target, ...kept, isOutput: true } : target
       const afterMergeAtoms = qd.atoms.filter(a => a.id !== draggedId).map(a => a.id === targetId ? survived : a)
       const afterMergeLinks = qd.links.map(l => l.variableId === draggedId ? { ...l, variableId: targetId } : l)
       const { atoms, links } = runFactMergePass(afterMergeAtoms, afterMergeLinks, get().facts)
@@ -984,6 +1010,7 @@ export function createConstraintSlice(set, get) {
         newAtoms.push({
           id: newId, kind: at.kind, originalId: at.originalId,
           isOutput: at.isOutput && i === 0,
+          ...(at.freeVar && i === 0 ? { freeVar: at.freeVar, label: at.label } : {}),
           dx: baseDx + Math.round(Math.cos(angle) * radius),
           dy: baseDy + Math.round(Math.sin(angle) * radius),
         })
@@ -1118,6 +1145,21 @@ export function createConstraintSlice(set, get) {
       const newAtoms = qd.atoms.filter(at => !orphaned.has(at.id))
       const newLinks = remainingLinks.filter(l => !orphaned.has(l.atomId) && !orphaned.has(l.variableId))
       set({ queryEditDraft: { ...qd, atoms: newAtoms, links: newLinks, pendingClick: null } })
+    },
+
+    // Saves the query of a sequence as a formula ({ free, target, body }, see
+    // src/logic/query.js), as the rule editor gives it; a graph it had is dropped.
+    setConstraintQuery(constraintId, sequenceIndex, query) {
+      set(s => ({
+        constraints: s.constraints.map(c => {
+          if (c.id !== constraintId) return c
+          const queries = [...(c.queries || [])]
+          while (queries.length <= sequenceIndex) queries.push(null)
+          queries[sequenceIndex] = query
+          return { ...c, queries }
+        }),
+        isDirty: true,
+      }))
     },
 
     clearConstraintQuery(constraintId, sequenceIndex) {

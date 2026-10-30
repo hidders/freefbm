@@ -82,6 +82,14 @@ It is obligatory that for each Student, some Staff mentors that Student.
 O(∀ Staff ((∃ Student (Staff mentors Student)) → ∃^{≤5} Student (Staff mentors Student)))
 It is obligatory that each Staff mentors at most 5 Students.
 
+# External uniqueness (outer join)
+∀ CourseTitle ∀ Staff ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by Staff))
+For each CourseTitle and Staff, at most one Course has that CourseTitle and is run by that Staff.
+
+# External uniqueness (outer join): no value at position 2
+∀ CourseTitle ∃^{≤1} Course ((Course has CourseTitle) ∧ ¬(∃ Staff (Course is run by Staff)))
+For each CourseTitle, at most one Course has that CourseTitle and is not run by any Staff.
+
 # Subset (deontic)
 O(∀ Student ((∃ Staff (Staff mentors Student)) → ∃ Course (Student enrols in Course)))
 It is obligatory that each Student that some Staff mentors enrols in some Course.

@@ -17,6 +17,8 @@ import {
   EMPTY,
 } from '../storeHelpers'
 import { BASE_LANGUAGE, swapLanguage } from '../viewLanguage.js'
+import { makeContext } from '../../logic/constraintFormulas.js'
+import { withRuleForms } from '../../logic/query.js'
 
 export function createModelSlice(set, get) {
   return {
@@ -79,7 +81,8 @@ export function createModelSlice(set, get) {
 
     // The derivation rule editor, a floating panel that stays open while the
     // canvas is used, and the schema elements it highlights there.
-    ruleEditor:    null,   // { otId } | { factId } | null
+    ruleGraphResult: null,  // { ruleKey, atoms, links }: a rule condition drawn on the diagram (constraintSlice.startRuleGraphEdit)
+    ruleEditor:    null,   // { otId } | { factId } | { constraintId, sequenceIndex } | null
     ruleHighlight: null,   // { typeIds: string[], factIds: string[] } | null
 
     clipboard: null,  // { objectTypes[], facts[], constraints[], subtypes[] } | null
@@ -426,7 +429,11 @@ export function createModelSlice(set, get) {
     setBottomPanelTab(t)        { set({ bottomPanelTab: t }) },
     setBottomPanelCollapsed(v)  { set({ bottomPanelCollapsed: v }) },
     openRuleEditor(target)      { set({ ruleEditor: target, ruleHighlight: null }) },
-    closeRuleEditor()           { set({ ruleEditor: null, ruleHighlight: null }) },
+    closeRuleEditor() {
+      // A rule condition still being drawn goes with its editor.
+      const drawing = get().queryEditDraft?.ruleKey
+      set({ ruleEditor: null, ruleHighlight: null, ruleGraphResult: null, ...(drawing ? { queryEditDraft: null } : {}) })
+    },
     setRuleHighlight(h)         { set({ ruleHighlight: h }) },
 
     runValidation() {
@@ -596,10 +603,17 @@ export function createModelSlice(set, get) {
         // Migrate 'copies'/'copyId' terminology to 'atoms'/'atomId'
         if (out.queries) {
           out = { ...out, queries: out.queries.map(q => {
-            if (!q || q.atoms) return q
-            const atoms = q.copies ?? []
+            if (!q || q.atoms || !q.copies) return q
+            const atoms = q.copies
             const links = (q.links ?? []).map(lk => lk.copyId !== undefined && lk.atomId === undefined ? { ...lk, atomId: lk.copyId } : lk)
             return { ...q, atoms, links }
+          })}
+          // A graph's formula is derived from it (query.js), so the stored
+          // copy that serialize writes is dropped.
+          out = { ...out, queries: out.queries.map(q => {
+            if (!q?.atoms) return q
+            const { free: _f, target: _t, body: _b, ...graph } = q
+            return graph
           })}
         }
         return out
@@ -786,6 +800,7 @@ export function createModelSlice(set, get) {
       const state = get()
       const { objectTypes, facts } = swapLanguage(state, state.viewLanguage, BASE_LANGUAGE)
       const strip = ({ _fb: _, ...el }) => el
+      const ctx = makeContext({ ...state, objectTypes, facts })
       const {
         subtypes, constraints, diagrams, activeDiagramId,
         populations, factPopulations, subtypeMappings, nestedEntityMappings,
@@ -826,7 +841,9 @@ export function createModelSlice(set, get) {
           factTypes:            facts.map(f => strip(f.implicitLinks ? { ...f, implicitLinks: f.implicitLinks.map(strip) } : f)),
           ...(languages?.length && { languages }),
           subtypes,
-          externalConstraints:  constraints,
+          // Each query graph also carries its formula (query.js), so the file
+          // states what every join path means.
+          externalConstraints:  constraints.map(c => withRuleForms(c, ctx)),
           displaySettings: {
             mandatoryDotPosition,
             showReferenceMode,

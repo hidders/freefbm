@@ -1,7 +1,8 @@
 // Additions to the sample model for the verbalisation golden tests: the
 // constructs the sample does not use, namely cardinality ranges, derived and
 // semi-derived subtypes and fact types, data terms and aggregates, deontic
-// constraints and value ranges with open bounds.
+// constraints, value ranges with open bounds and an outer-join external
+// uniqueness constraint with a query stored as a formula.
 // extend(state) returns a new state; the golden test verbalises only the
 // entries these additions bring.
 
@@ -123,7 +124,17 @@ export function extend(state) {
       internalFrequency: [{ id: 'if_m', roles: [0], range: [{ type: 'upper', upper: '5' }], deontic: true }],
     }),
   )
+  // Outer join (Halpin & Morgan 2024, sec. 10.1): a Course is identified by
+  // its CourseTitle together with the Staff that runs it, if any.
+  facts.push(
+    fact('f_runBy', ['', 'is run by', ''], [role('rb0', 'ot_Course'), role('rb1', 'ot_Staff')], { uniqueness: [[0]] }),
+  )
   const constraints = [...state.constraints,
+    { id: 'c_ojTitle', kind: 'constraint', constraintType: 'uniqueness', outerJoin: true, x: 0, y: 0,
+      targetObjectTypeId: 'ot_Course',
+      sequences: [[{ kind: 'role', factId: 'f_hasTitle', roleIndex: 1 }, { kind: 'role', factId: 'f_runBy', roleIndex: 1 }]],
+      queries: [{ free: [{ id: 'q0', typeId: 'ot_CourseTitle' }, { id: 'q1', typeId: 'ot_Staff' }], target: { id: 't', typeId: 'ot_Course' },
+        body: { t: 'and', args: [{ t: 'fact', factId: 'f_hasTitle', args: ['t', 'q0'] }, { t: 'fact', factId: 'f_runBy', args: ['t', 'q1'] }] } }] },
     { id: 'c_dSubset', kind: 'constraint', constraintType: 'subset', deontic: true, x: 0, y: 0,
       sequences: [[{ kind: 'role', factId: 'f_mentors', roleIndex: 1 }], [{ kind: 'role', factId: 'f_enrols', roleIndex: 0 }]] },
     { id: 'c_dRing', kind: 'constraint', constraintType: 'ring', deontic: true, x: 0, y: 0, ringTypes: ['irreflexive'],
@@ -133,4 +144,4 @@ export function extend(state) {
 }
 
 // The keys of the entries the additions bring.
-export const isExtra = (key) => /^(ot_(Course|Professor|Building):card|f_enrols:card|f_coordinates:card|ot_(TA|Busy|Heavy|Free|Intro|LongTitle):derivation|f_(studiesWith|totalCredits|enrolmentCount|creditLoad):derivation|ot_Score:vr|f_mentors:(uc|mand|freq)|c_d(Subset|Ring))/.test(key)
+export const isExtra = (key) => /^(ot_(Course|Professor|Building):card|f_enrols:card|f_coordinates:card|ot_(TA|Busy|Heavy|Free|Intro|LongTitle):derivation|f_(studiesWith|totalCredits|enrolmentCount|creditLoad):derivation|ot_Score:vr|f_mentors:(uc|mand|freq)|c_d(Subset|Ring)|c_ojTitle)/.test(key)

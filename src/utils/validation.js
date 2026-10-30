@@ -7,6 +7,7 @@ import { derivationIssues } from '../logic/derivationRule.js'
 import { factDerivationIssues, factLabel } from '../logic/factDerivation.js'
 import { derivationGraph, derivationCycles } from '../logic/derivationDependencies.js'
 import { makeContext } from '../logic/constraintFormulas.js'
+import { isFormulaQuery, checkQuery, whyNoOuterJoin } from '../logic/query.js'
 
 export const VALIDATION_CATEGORIES = {
   factTypeDefinition: {
@@ -294,6 +295,7 @@ function readingSignature(parts, roleOrder, roles, otMap) {
 export function runValidation(state, enabledCategories) {
   const { objectTypes, facts, constraints, subtypes = [] } = state
   const errors = []
+  let ctx = null   // made when a check needs it (constraintFormulas.js makeContext)
 
   // ── Derivation Rules ─────────────────────────────────────────────────────────
   if (enabledCategories.has('derivationRules')) {
@@ -633,6 +635,29 @@ export function runValidation(state, enabledCategories) {
             severity: 'warning',
           })
         }
+        // A query stored as a formula must pass the query checks (query.js).
+        for (let i = 0; i < sequences.length; i++) {
+          if (!isFormulaQuery(queries[i])) continue
+          ctx ??= makeContext(state)
+          const bad = checkQuery(queries[i], sequences[i] ?? [], state, ctx).find(x => x.severity === 'error')
+          if (bad) errors.push({
+            id: `invalid-query-${c.id}-${i}`, category: 'constraintStructure', elementId: c.id, elementKind: 'constraint',
+            message: `${label} constraint: the query formula of sequence ${i + 1} is not valid: ${bad.message}`,
+            severity: 'error',
+          })
+        }
+      }
+
+      // An outer-join external uniqueness needs a conjunctive query with at
+      // least one part on a role that is mandatory for the target.
+      if (c.outerJoin) {
+        ctx ??= makeContext(state)
+        const why = whyNoOuterJoin(c, ctx)
+        if (why) errors.push({
+          id: `outer-join-${c.id}`, category: 'constraintStructure', elementId: c.id, elementKind: 'constraint',
+          message: `${label} constraint: it can't be read with outer joins: ${why}`,
+          severity: 'error',
+        })
       }
 
       // InvalidPreferredIdentifierError: external uniqueness marked as PI must satisfy

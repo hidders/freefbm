@@ -82,6 +82,14 @@ Il est interdit qu'il existe un Étudiant tel qu'aucun Membre du personnel ne me
 F(∃ Staff ∃^{>5} Student (Staff mentors Student))
 Il est interdit qu'un Membre du personnel mentors plus de 5 Étudiants.
 
+# External uniqueness (outer join)
+¬(∃ CourseTitle ∃ Staff ∃^{>1} Course ((Course has CourseTitle) ∧ (Course is run by Staff)))
+Il est impossible que plus d'un Cours a le même Intitulé de cours et is run by le même Membre du personnel.
+
+# External uniqueness (outer join): no value at position 2
+¬(∃ CourseTitle ∃^{>1} Course ((Course has CourseTitle) ∧ ¬(∃ Staff (Course is run by Staff))))
+Il est impossible que plus d'un Cours a le même Intitulé de cours et n'is run by aucun Membre du personnel.
+
 # Subset (deontic)
 F(∃ Student ((∃ Staff (Staff mentors Student)) ∧ ¬(∃ Course (Student enrols in Course))))
 Il est interdit qu'il existe un Étudiant tel qu'un Membre du personnel mentors cet Étudiant et cet Étudiant ne suit aucun Cours.

@@ -4,6 +4,8 @@ import { useDiagramElements } from '../hooks/useDiagramElements'
 import { computeOtSize } from './ObjectTypeNode'
 import { ROLE_W, ROLE_H, ROLE_GAP, displayRoleOrder, nestedFactBounds } from './FactTypeNode'
 import { roleAnchor } from '../utils/geometry'
+import { makeContext } from '../logic/constraintFormulas.js'
+import { isFormulaQuery, ruleToGraph } from '../logic/query.js'
 
 const ATOM_OFFSET = 16
 const ATOM_SCALE  = 0.5
@@ -130,6 +132,9 @@ function OtAtomFrame({ atom, dx, dy, isPending, isOutput, otMap, factMap, onMous
           fill={FILL} stroke={color} strokeWidth={sw} opacity={0.9}
           strokeDasharray={ot.kind === 'value' ? '4 2' : undefined}/>
         <rect className="hover-ring" x={x - 3} y={y - 3} width={w + 6} height={h + 6} rx={7}/>
+        {/* The free variable of a derivation rule that the atom stands for */}
+        {atom.label && <text x={x + w / 2} y={y - 4} textAnchor="middle" fontSize={11} fontWeight={600}
+          fill={color} style={{ pointerEvents: 'none', fontFamily: 'var(--font-mono)' }}>{atom.label}</text>}
       </g>
     )
   }
@@ -434,9 +439,16 @@ export default function QueryAtoms({ onAtomClick, onAtomContextMenu, mousePos })
 
   // Preview mode: show a saved query while the inspector button is held
   const qh = store.queryIndexHighlight
-  const previewQuery = (!qd && qh)
-    ? (store.constraints.find(c => c.id === qh.constraintId)?.queries?.[qh.queryIndex] ?? null)
-    : null
+  const previewQuery = (() => {
+    if (qd || !qh) return null
+    const c = store.constraints.find(c => c.id === qh.constraintId)
+    const q = c?.queries?.[qh.queryIndex] ?? null
+    if (!isFormulaQuery(q)) return q
+    // A query saved as a formula is drawn from its formula; the parts that
+    // the diagram can't show are left out.
+    const g = ruleToGraph(q, c.sequences?.[qh.queryIndex] ?? [], makeContext(store), { lenient: true })
+    return g.error ? null : g
+  })()
 
   if (!qd && !previewQuery) return null
 
