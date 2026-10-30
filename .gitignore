@@ -3,3 +3,12 @@ dist/
 release/
 .DS_Store
 .claude/
+
+# LaTeX build output
+*.aux
+*.log
+*.out
+*.toc
+*.fdb_latexmk
+*.fls
+*.synctex.gz
