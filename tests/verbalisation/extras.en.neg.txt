@@ -82,6 +82,22 @@ It is forbidden that there is some Student such that no Staff mentors that Stude
 F(∃ Staff ∃^{>5} Student (Staff mentors Student))
 It is forbidden that some Staff mentors more than 5 Students.
 
+# Uniqueness · Person has first given PersonName
+¬(∃ Person ∃^{>1} PersonName (Person has first given PersonName))
+It is impossible that more than one PersonName is the first given name of the same Person.
+
+# Uniqueness · Person has first given PersonName
+¬(∃ PersonName ∃^{>1} Person (Person has first given PersonName))
+It is impossible that more than one Person has the same first given PersonName.
+
+# Mandatory role · Person has first given PersonName
+¬(∃ Person ¬(∃ PersonName (Person has first given PersonName)))
+It is impossible that some Person does not have any first given PersonName.
+
+# Uniqueness · Person has Person -in-law
+¬(∃ Person₁ ∃^{>1} Person₂ (Person₂ has Person₁ -in-law))
+It is impossible that more than one Person₂ has the same Person₁-in-law.
+
 # External uniqueness (outer join)
 ¬(∃ CourseTitle ∃ Staff ∃^{>1} Course ((Course has CourseTitle) ∧ (Course is run by Staff)))
 It is impossible that more than one Course has the same CourseTitle and is run by the same Staff.

@@ -11,10 +11,12 @@
 //
 // Where the view language has no name or readings for an element, the live
 // fields show the base language's text instead, and the element records it
-// in _fb ({ name, readings: { [roleOrder]: parts } }), so the diagram can
+// in _fb ({ name, readings: [{ roleOrder, parts }] }), so the diagram can
 // show it as a placeholder and switching away does not store it as a
 // translation. Editing a name clears _fb.name; a reading counts as
 // translated once its text differs from the fallback.
+
+import { occurrences, nthOfOrder, pruneEntries } from './readings.js'
 
 export const BASE_LANGUAGE = 'en'
 
@@ -23,12 +25,16 @@ const keyOf = (order) => JSON.stringify(order)
 const identity = (n) => Array.from({ length: n }, (_, i) => i)
 const isEmpty = (o) => !o || !Object.keys(o).length
 
-function liveReadings(el, n) {
+// The live readings, primary first (as in src/store/readings.js).
+function allReadings(el, n) {
   return [
-    ...(hasText(el.readingParts) ? [{ roleOrder: identity(n), parts: el.readingParts }] : []),
-    ...(el.alternativeReadings ?? []).filter(r => r.roleOrder?.length === n && hasText(r.parts)),
-  ]
+    ...(el.readingParts != null ? [{ roleOrder: identity(n), parts: el.readingParts }] : []),
+    ...(el.alternativeReadings ?? []),
+  ].filter(r => r.roleOrder?.length === n)
 }
+
+const isFallback = (fb, roleOrder, parts) =>
+  (fb?.readings ?? []).some(r => keyOf(r.roleOrder) === keyOf(roleOrder) && keyOf(r.parts) === keyOf(parts))
 
 // Moves the live text of el (in language lang) into el.lexicon[lang].
 function flatten(el, lang, { nameKey, n }) {
@@ -40,19 +46,18 @@ function flatten(el, lang, { nameKey, n }) {
     if (name?.trim() && (fb.name == null || name !== fb.name)) entry.name = name
   }
   if (n != null) {
-    let readings = (entry.readings ?? []).map(r => {
-      const { parts: _, ...rest } = r
-      return rest
+    // Entry k goes with live reading k: its forms, and its text unless that
+    // is the fallback (see src/store/readings.js for the matching).
+    const extras = entry.readings ?? []
+    const all = allReadings(el, n)
+    const occ = occurrences(all)
+    const readings = all.map((r, i) => {
+      const { parts: _, ...forms } = nthOfOrder(extras, r.roleOrder, occ[i]) ?? { roleOrder: r.roleOrder }
+      const own = hasText(r.parts) && !isFallback(fb, r.roleOrder, r.parts)
+      return own ? { ...forms, parts: r.parts } : forms
     })
-    for (const r of liveReadings(el, n)) {
-      const k = keyOf(r.roleOrder)
-      if (fb.readings?.[k] && keyOf(fb.readings[k]) === keyOf(r.parts)) continue
-      const i = readings.findIndex(x => keyOf(x.roleOrder) === k)
-      if (i >= 0) readings[i] = { ...readings[i], parts: r.parts }
-      else readings.push({ roleOrder: r.roleOrder, parts: r.parts })
-    }
-    readings = readings.filter(r => Object.keys(r).some(k => k !== 'roleOrder' && r[k] != null))
-    if (readings.length) entry.readings = readings
+    const kept = pruneEntries(readings)
+    if (kept.length) entry.readings = kept
     else delete entry.readings
   }
   if (isEmpty(entry)) delete lexicon[lang]
@@ -80,18 +85,24 @@ function lift(el, lang, { nameKey, n }, fallbackLangs) {
     }
   }
   if (n != null) {
-    const textOf = (l) => (lexicon[l]?.readings ?? []).filter(r => r.roleOrder?.length === n && hasText(r.parts))
-    let readings = textOf(lang)
-    entry.readings = (entry.readings ?? []).map(r => {
+    const ofArity = (l) => (lexicon[l]?.readings ?? []).filter(r => r.roleOrder?.length === n)
+    const strip = (list) => list.map(r => {
       const { parts: _, ...rest } = r
       return rest
-    }).filter(r => Object.keys(r).some(k => k !== 'roleOrder' && r[k] != null))
-    if (!entry.readings.length) delete entry.readings
-    if (!readings.length) {
-      const from = fallbackLangs.find(l => textOf(l).length)
-      readings = from ? textOf(from) : []
-      if (readings.length) fb.readings = Object.fromEntries(readings.map(r => [keyOf(r.roleOrder), r.parts]))
+    })
+    let readings = ofArity(lang).filter(r => hasText(r.parts))
+    // The forms stay in the lexicon, in step with the readings lifted out.
+    let extras
+    if (readings.length) extras = strip(readings)
+    else {
+      extras = strip(ofArity(lang))
+      const from = fallbackLangs.find(l => ofArity(l).some(r => hasText(r.parts)))
+      readings = from ? ofArity(from).filter(r => hasText(r.parts)) : []
+      if (readings.length) fb.readings = readings.map(r => ({ roleOrder: r.roleOrder, parts: r.parts }))
     }
+    extras = pruneEntries(extras)
+    if (extras.length) entry.readings = extras
+    else delete entry.readings
     const idKey = keyOf(identity(n))
     const primary = readings.find(r => keyOf(r.roleOrder) === idKey)
     out.readingParts = primary ? [...primary.parts] : null
@@ -141,6 +152,5 @@ export function modelLanguages(state, all) {
 
 // Whether the shown reading of el with this role order is the fallback text.
 export function isFallbackReading(el, roleOrder, parts) {
-  const fb = el?._fb?.readings?.[keyOf(roleOrder)]
-  return !!fb && keyOf(fb) === keyOf(parts)
+  return isFallback(el?._fb, roleOrder, parts)
 }

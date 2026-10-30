@@ -12,6 +12,7 @@
 // display name, so an editor can label the variables the same way.
 
 import { OPS, PREDS, AGGS } from './dataOperators.js'
+import { plainParts } from '../verbalisation/hyphenBinding.js'
 
 const SUBSCRIPTS = '₀₁₂₃₄₅₆₇₈₉'
 const subscript = (n) => String(n).split('').map(d => SUBSCRIPTS[d]).join('')
@@ -159,7 +160,7 @@ export function renderFormula(formula, ctx, names = new Map()) {
     switch (f.t) {
       case 'fact': {
         const fact = ctx.factById.get(f.factId) ?? ctx.linkById?.get(f.factId)
-        const parts = fact?.readingParts ?? []
+        const parts = plainParts(fact?.readingParts ?? [], f.args.length)
         push('(')
         const words = []
         f.args.forEach((v, i) => {

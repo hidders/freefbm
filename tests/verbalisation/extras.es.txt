@@ -82,6 +82,22 @@ Es obligatorio que para cada Estudiante, un Empleado mentors ese Estudiante.
 O(∀ Staff ((∃ Student (Staff mentors Student)) → ∃^{≤5} Student (Staff mentors Student)))
 Es obligatorio que cada Empleado mentors como máximo 5 Estudiantes.
 
+# Uniqueness · Person has first given PersonName
+∀ Person ∃^{≤1} PersonName (Person has first given PersonName)
+Cada Persona has como máximo un first given Nombre.
+
+# Uniqueness · Person has first given PersonName
+∀ PersonName ∃^{≤1} Person (Person has first given PersonName)
+Cada Nombre is the first given name of como máximo una Persona.
+
+# Mandatory role · Person has first given PersonName
+∀ Person ∃ PersonName (Person has first given PersonName)
+Cada Persona has un first given Nombre.
+
+# Uniqueness · Person has Person -in-law
+∀ Person₁ ∃^{≤1} Person₂ (Person₂ has Person₁ -in-law)
+Para cada Persona₁, como máximo una Persona₂ has esa Persona₁-in-law.
+
 # External uniqueness (outer join)
 ∀ CourseTitle ∀ Staff ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by Staff))
 Para cada Título de curso y cada Empleado, como máximo un Curso tiene ese Título de curso e is run by ese Empleado.

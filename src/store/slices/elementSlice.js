@@ -1,4 +1,5 @@
 import { findRefMode, vtNameFromLabel, refModeCollapseBlockers } from '../../utils/refMode.js'
+import { readingList, readingsPatch, editReadings } from '../readings.js'
 import {
   uid, mkEntity, mkValue, mkFact, mkRole, mkSubtype, mkConstraint, mkDiagram, mkNote, mkImplicitLink,
   mkOcc, occOf, inDiag, patchOcc, rmOcc, patchOccById, buildRoleOccurrenceMap,
@@ -861,6 +862,9 @@ export function createElementSlice(set, get) {
           // and demote the old primary to an alternative (if it had any content).
           const n = f.roles.length
           const defaultKey = JSON.stringify(Array.from({ length: n }, (_, i) => i))
+          // Only the first such reading is promoted (a role order may have
+          // several), and the old primary goes first among the readings of
+          // its order, so each order keeps its preferred reading.
           const promoted = remappedAlts.find(r => JSON.stringify(r.roleOrder) === defaultKey)
 
             let readingParts = f.readingParts
@@ -868,19 +872,23 @@ export function createElementSlice(set, get) {
 
             if (promoted) {
               readingParts = promoted.parts
-              alternativeReadings = remappedAlts.filter(r => JSON.stringify(r.roleOrder) !== defaultKey)
+              alternativeReadings = remappedAlts.filter(r => r !== promoted)
               if (f.readingParts && f.readingParts.some(p => p?.trim())) {
                 const demotedOrder = Array.from({ length: n }, (_, i) => oldToNew[i])
-                alternativeReadings = [...alternativeReadings, { roleOrder: demotedOrder, parts: f.readingParts }]
+                alternativeReadings = [{ roleOrder: demotedOrder, parts: f.readingParts }, ...alternativeReadings]
               }
             }
+
+            // Every language's readings and reading forms follow the roles.
+            const lexicon = f.lexicon && Object.fromEntries(Object.entries(f.lexicon).map(([lang, entry]) => [lang,
+              entry?.readings ? { ...entry, readings: entry.readings.map(r => ({ ...r, roleOrder: r.roleOrder.map(i => oldToNew[i]) })) } : entry]))
 
             let implicitLinks = f.implicitLinks || []
             if (f.objectified) {
               implicitLinks = implicitLinks.map(il => ({ ...il, roleIndex: oldToNew[il.roleIndex] ?? il.roleIndex }))
             }
 
-            return { ...f, roles, uniqueness, deonticUniqueness, readingParts, alternativeReadings, implicitLinks }
+            return { ...f, roles, uniqueness, deonticUniqueness, readingParts, alternativeReadings, implicitLinks, ...(lexicon ? { lexicon } : {}) }
           }),
         diagrams: s.diagrams.map(d => {
           const ilp = { ...(d.implicitLinkPositions ?? {}) }
@@ -1284,37 +1292,45 @@ export function createElementSlice(set, get) {
       get().setPreferredUniqueness(factId, roleIndices)
     },
 
-    updateAlternativeReading(factId, roleOrder, parts) {
-      const key = JSON.stringify(roleOrder)
-      set(s => ({
-        facts: s.facts.map(f => {
-          if (f.id !== factId) return f
-          const n = f.arity
-          const defaultKey = JSON.stringify(Array.from({ length: n }, (_, i) => i))
-          // If the role order matches the natural order, store it as readingParts
-          if (key === defaultKey) {
-            return { ...f, readingParts: parts }
-          }
-          const existing = (f.alternativeReadings || [])
-          const exists = existing.some(r => JSON.stringify(r.roleOrder) === key)
-          const alternativeReadings = exists
-            ? existing.map(r => JSON.stringify(r.roleOrder) === key ? { ...r, parts } : r)
-            : [...existing, { roleOrder, parts }]
-          return { ...f, alternativeReadings }
-        }),
-        isDirty: true,
-      }))
+    // Readings (src/store/readings.js). index is a position in the list
+    // [primary, ...alternativeReadings]; ilRoleIndex, if given, selects the
+    // implied link of that role of an objectified fact type.
+    editReadings(factId, edit, ilRoleIndex = null) {
+      set(s => {
+        const lang = s.viewLanguage ?? 'en'
+        const apply = (el, n) => ({ ...el, ...readingsPatch(el, n, edit(readingList(el, n, lang)), lang) })
+        return {
+          facts: s.facts.map(f => {
+            if (f.id !== factId) return f
+            if (ilRoleIndex == null) return apply(f, f.arity)
+            return { ...f, implicitLinks: (f.implicitLinks || []).map(il => (il.roleIndex === ilRoleIndex ? apply(il, 2) : il)) }
+          }),
+          isDirty: true,
+        }
+      })
     },
 
-    removeAlternativeReading(factId, roleOrder) {
-      const key = JSON.stringify(roleOrder)
-      set(s => ({
-        facts: s.facts.map(f => {
-          if (f.id !== factId) return f
-          return { ...f, alternativeReadings: (f.alternativeReadings || []).filter(r => JSON.stringify(r.roleOrder) !== key) }
-        }),
-        isDirty: true,
-      }))
+    // Sets the preferred reading of a role order, adding it if there is none.
+    updateAlternativeReading(factId, roleOrder, parts, ilRoleIndex = null) {
+      get().editReadings(factId, list => editReadings.setPreferred(list, roleOrder, parts), ilRoleIndex)
+    },
+    addReading(factId, roleOrder, parts, ilRoleIndex = null) {
+      get().editReadings(factId, list => editReadings.add(list, roleOrder, parts), ilRoleIndex)
+    },
+    updateReading(factId, index, parts, ilRoleIndex = null) {
+      get().editReadings(factId, list => editReadings.setParts(list, index, parts), ilRoleIndex)
+    },
+    removeReading(factId, index, ilRoleIndex = null) {
+      get().editReadings(factId, list => editReadings.remove(list, index), ilRoleIndex)
+    },
+    // Sets forms of reading index in the view language (subParts,
+    // pluralParts, cases; undefined removes one).
+    updateReadingForms(factId, index, forms, ilRoleIndex = null) {
+      get().editReadings(factId, list => list.map((r, i) => (i === index ? { ...r, forms: { ...(r.forms ?? {}), ...forms } } : r)), ilRoleIndex)
+    },
+    // Makes a reading the preferred one of its role order.
+    preferReading(factId, index, ilRoleIndex = null) {
+      get().editReadings(factId, list => editReadings.prefer(list, index), ilRoleIndex)
     },
 
     removeDefaultReading(factId) {

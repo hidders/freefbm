@@ -8,6 +8,7 @@ import { roleAnchor } from '../utils/geometry'
 import { RAKE_TOOTH, RAKE_STAGGER, RAKE_COMFORT, RAKE_BAR_ZONE } from '../constants.js'
 import { findCompositePI } from '../utils/refMode'
 import { queryElements } from '../logic/query.js'
+import { preferredReadings } from '../store/readings.js'
 
 const VR_DEFAULT_OFFSET = { dx: 0, dy: -50 }
 const VR_FONT      = "'Segoe UI', Helvetica, Arial, sans-serif"
@@ -1135,7 +1136,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     parts.length = fact.arity + 1
     if (fact._implicit) {
       if (editingReadingIsReverse) {
-        store.updateImplicitLink(fact._parentFactId, fact._implicitRoleIndex, { alternativeReadings: [{ roleOrder: [1, 0], parts }] })
+        store.updateAlternativeReading(fact._parentFactId, [1, 0], parts, fact._implicitRoleIndex)
       } else {
         store.updateImplicitLink(fact._parentFactId, fact._implicitRoleIndex, { readingParts: parts })
       }
@@ -1455,16 +1456,12 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
     const hasContent = (parts) => parts && parts.some(p => p?.trim())
 
-    // Gather all readings that have actual content
-    const readingsWithContent = []
-    if (hasContent(fact.readingParts)) {
-      readingsWithContent.push({ roleOrder: Array.from({ length: fact.arity }, (_, i) => i), parts: fact.readingParts, isDefault: true })
-    }
-    for (const alt of (fact.alternativeReadings || [])) {
-      if (hasContent(alt.parts)) {
-        readingsWithContent.push({ roleOrder: alt.roleOrder, parts: alt.parts, isDefault: false })
-      }
-    }
+    // The preferred reading of each role order that has one with content (a
+    // role order may have several readings; the diagram shows the first).
+    const readingsWithContent = preferredReadings([
+      ...(hasContent(fact.readingParts) ? [{ roleOrder: Array.from({ length: fact.arity }, (_, i) => i), parts: fact.readingParts, isDefault: true }] : []),
+      ...(fact.alternativeReadings || []).filter(alt => hasContent(alt.parts)).map(alt => ({ roleOrder: alt.roleOrder, parts: alt.parts, isDefault: false })),
+    ])
 
     const dro = displayRoleOrder(fact)
     const defaultOrder = Array.from({ length: fact.arity }, (_, i) => i)
