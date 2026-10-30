@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
+import { nearestSubtypeEnds } from '../utils/subtypeEnds'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { roleCenter, nestedFactBounds, ROLE_H, displayRoleOrder, makeImplicitLinkFact } from './FactTypeNode'
 import { roleAnchor } from './RoleConnectors'
@@ -839,10 +840,9 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
           markerEnd={markerEnd}/>
       )
     } else {
-      const st = subtypeMap[member.subtypeId]
-      if (!st) return null
-      const subOt = otMap[st.subId], supOt = otMap[st.superId]
-      if (!subOt || !supOt) return null
+      const ends = nearestSubtypeEnds(member.subtypeId, cx, cy, subtypes, objectTypes)
+      if (!ends) return null
+      const { subOt, supOt } = ends
       const from = borderPoint(subOt, supOt.x, supOt.y)
       const to   = borderPoint(supOt, subOt.x, subOt.y)
       const midX = (from.x + to.x) / 2, midY = (from.y + to.y) / 2

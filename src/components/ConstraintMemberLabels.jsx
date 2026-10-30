@@ -1,5 +1,6 @@
 import React from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
+import { nearestSubtypeEnds } from '../utils/subtypeEnds'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { roleCenter, makeImplicitLinkFact } from './FactTypeNode'
 import { borderPoint } from './ConstraintNodes'
@@ -34,8 +35,6 @@ export default function ConstraintMemberLabels() {
   const firstFactBySchemaId = {}
   for (const f of visibleFacts) { if (!(f.id in firstFactBySchemaId)) firstFactBySchemaId[f.id] = f }
 
-  const subtypeMap = Object.fromEntries(subtypes.map(st => [st.id, st]))
-  const otMap      = Object.fromEntries(objectTypes.map(o  => [o.id,  o]))
 
   // When editing a query, restrict labels to the sequence being queried
   const qd = store.queryEditDraft
@@ -137,10 +136,9 @@ export default function ConstraintMemberLabels() {
             posKey = `ref:${owner.occurrenceId ?? owner.id}:${m.factId}:${m.roleIndex}`
           }
         } else {
-          const st    = subtypeMap[m.subtypeId]
-          if (!st) continue
-          const subOt = otMap[st.subId], supOt = otMap[st.superId]
-          if (!subOt || !supOt) continue
+          const ends  = nearestSubtypeEnds(m.subtypeId, cocc.x, cocc.y, subtypes, objectTypes)
+          if (!ends) continue
+          const { subOt, supOt } = ends
           const from  = borderPoint(subOt, supOt.x, supOt.y)
           const to    = borderPoint(supOt, subOt.x, subOt.y)
           x = (from.x + to.x) / 2
