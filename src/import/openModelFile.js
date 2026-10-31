@@ -11,7 +11,7 @@ export function openModelFile({ path, content }) {
     const { data, log, pendingJoinIds } = importNorma(content)
     store.loadModel(data, null)
     // The queries FreeFBM builds when a constraint is drawn, for the sequences
-    // that have none yet; not for joins NORMA's user drew by hand.
+    // that have none yet; not for join paths the importer could not translate.
     const pending = new Set(pendingJoinIds)
     for (const c of useOrmStore.getState().constraints) {
       if (pending.has(c.id)) continue
