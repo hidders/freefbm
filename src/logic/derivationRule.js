@@ -188,18 +188,34 @@ export function typeGraph(state) {
     memo.set(id, seen)
     return seen
   }
+  // The subtypes that an exclusion or exclusive-or constraint between subtype
+  // links makes mutually exclusive: one list of subtype ids per constraint.
+  const subOf = new Map(subtypes.map(st => [st.id, st.subId]))
+  const exclusive = (state.constraints ?? [])
+    .filter(c => (c.constraintType === 'exclusion' || c.constraintType === 'exclusiveOr') && (c.sequences?.length ?? 0) >= 2
+      && c.sequences.every(q => q?.length === 1 && q[0]?.kind === 'subtype' && subOf.has(q[0].subtypeId)))
+    .map(c => c.sequences.map(q => subOf.get(q[0].subtypeId)))
+  // Whether no instance can be both an a and a b: each lies at or below
+  // another of a set of mutually exclusive subtypes.
+  const disjoint = (a, b) => {
+    const ua = up(a), ub = up(b)
+    return exclusive.some(subs => subs.some((x, i) => ua.has(x) && subs.some((y, j) => j !== i && y !== x && ub.has(y))))
+  }
   // How well a variable of types typeIds (an intersection) fits a place for
   // instances of placeId: 'ok' when it is the place's type or a subtype of it,
-  // 'overlap' when the two share a supertype (only some instances fit), and
-  // 'none' when they lie in different hierarchies.
+  // 'overlap' when the two share a supertype (only some instances fit),
+  // 'disjoint' when they share one but are mutually exclusive, and 'none'
+  // when they lie in different hierarchies. With 'disjoint' and 'none' the
+  // variable can never be in the place.
   const fit = (typeIds, placeId) => {
     if (!placeId) return 'ok'
     if (typeIds.some(t => up(t).has(placeId))) return 'ok'
     const placeUp = up(placeId)
-    if (typeIds.some(t => [...up(t)].some(a => placeUp.has(a)))) return 'overlap'
-    return 'none'
+    if (!typeIds.some(t => [...up(t)].some(a => placeUp.has(a)))) return 'none'
+    if (typeIds.some(t => disjoint(t, placeId))) return 'disjoint'
+    return 'overlap'
   }
-  return { up, fit }
+  return { up, fit, disjoint }
 }
 
 // Every type a variable can range over: object types and objectified fact types.
@@ -297,12 +313,21 @@ export function checkFormula(rule, roots, opts, state, ctx, typing = { sorts: ne
     used.add(id)
     return v
   }
+  // Why a variable of typeIds can never be an instance of placeId (fit
+  // 'none' or 'disjoint'), or null when it can. Such an atom is always false,
+  // which is allowed but likely a mistake.
+  const never = (typeIds, placeId) => {
+    const f = graph.fit(typeIds, placeId)
+    if (f === 'none') return `${typeLabel(typeIds)} and ${ctx.typeName(placeId)} have no common supertype`
+    if (f === 'disjoint') return `${typeLabel(typeIds)} and ${ctx.typeName(placeId)} are mutually exclusive`
+    return null
+  }
+  const alwaysFalse = 'so this is always false and the formula can be simplified'
+  // A variable sharing a supertype with the place is fine: whether it is in
+  // the place depends on the population.
   const place = (path, v, placeId, where) => {
-    const f = graph.fit(v.typeIds, placeId)
-    if (f === 'none')
-      err(path, `${name(v.id)} cannot be ${where}: ${typeLabel(v.typeIds)} and ${ctx.typeName(placeId)} are in different type hierarchies`)
-    else if (f === 'overlap')
-      warn(path, `${name(v.id)} is ${where}, which only holds for those that are a ${ctx.typeName(placeId)}`)
+    const why = never(v.typeIds, placeId)
+    if (why) warn(path, `${name(v.id)} can never be ${where}: ${why}, ${alwaysFalse}`)
   }
   const valueOf = (path, v) => {
     const t = v.typeIds.find(id => valueAccess(id, ctx))
@@ -393,8 +418,8 @@ export function checkFormula(rule, roots, opts, state, ctx, typing = { sorts: ne
         if (!ctx.otById.has(n.typeId) && !ctx.factById.get(n.typeId)?.objectified) { err(path, 'The type no longer exists'); return }
         const v = use(path, n.arg, scope, 'The argument')
         if (!v) return
-        if (graph.fit(v.typeIds, n.typeId) === 'none')
-          err(path, `${name(v.id)} can never be a ${ctx.typeName(n.typeId)}: they are in different type hierarchies`)
+        const why = never(v.typeIds, n.typeId)
+        if (why) warn(path, `${name(v.id)} can never be a ${ctx.typeName(n.typeId)}: ${why}, ${alwaysFalse}`)
         if (selfAndBelow.has(n.typeId) && !(opts.positiveSelf && pol === 1))
           (opts.positiveSelf ? err : warn)(path, `The rule refers to ${ctx.typeName(n.typeId)}${opts.positiveSelf ? ' under a negation (or in a part that is not monotone)' : ''}, so it defines ${selfName} in terms of itself${opts.positiveSelf ? ' without a least fixpoint' : ''}`)
         return
@@ -402,8 +427,8 @@ export function checkFormula(rule, roots, opts, state, ctx, typing = { sorts: ne
       case 'cmp': {
         const a = use(path, n.left, scope, 'The left side')
         const b = use(path, n.right, scope, 'The right side')
-        if (a && b && graph.fit(a.typeIds, b.typeIds[0]) === 'none' && graph.fit(b.typeIds, a.typeIds[0]) === 'none')
-          err(path, `${name(a.id)} and ${name(b.id)} can never be the same object: they are in different type hierarchies`)
+        const why = a && b && b.typeIds.map(t => never(a.typeIds, t)).find(Boolean)
+        if (why) warn(path, `${name(a.id)} and ${name(b.id)} can never be the same object: ${why}, ${alwaysFalse}`)
         return
       }
       case 'vcmp': case 'dpred': {

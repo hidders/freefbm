@@ -1102,8 +1102,8 @@ const liftLabel = (n) => ({
 
 const NEW_VAR = '\u0000new'
 
-// A variable slot: the variables in scope, those from another type hierarchy
-// disabled, and those that fit only partly marked.
+// A variable slot: the variables in scope, those that can never fit (another
+// type hierarchy, or a mutually exclusive subtype) disabled.
 function VarSelect({ value, scope, nameOf, graph, placeId, ctx, onChange, onFocus, valuesOnly, onNew }) {
   const fits = (v) => (valuesOnly ? (v.typeIds.some(t => valueAccess(t, ctx)) ? 'ok' : 'novalue')
     : placeId ? graph.fit(v.typeIds, placeId) : 'ok')
@@ -1122,8 +1122,8 @@ function VarSelect({ value, scope, nameOf, graph, placeId, ctx, onChange, onFocu
       <option value="">□</option>
       {scope.map(v => {
         const f = fits(v)
-        return <option key={v.id} value={v.id} disabled={f === 'none' || f === 'novalue'}>
-          {nameOf.get(v.id)}{f === 'none' ? ' (other hierarchy)' : f === 'novalue' ? ' (no value)' : ''}
+        return <option key={v.id} value={v.id} disabled={f === 'none' || f === 'disjoint' || f === 'novalue'}>
+          {nameOf.get(v.id)}{f === 'none' ? ' (other hierarchy)' : f === 'disjoint' ? ' (exclusive)' : f === 'novalue' ? ' (no value)' : ''}
         </option>
       })}
       {onNew && <option value={NEW_VAR}>+ new {ctx.typeName(placeId)}</option>}
