@@ -20,14 +20,15 @@
 //     value comparison, value and cardinality ranges, deontic modality
 //   - subtypes, with constraints on subtype links
 //   - join paths that NORMA builds automatically become query graphs; other
-//     join paths and all derivation paths are left for the path translator
-//     (the derivation mode is set, the rule is not)
+//     join paths become query formulas, and derivation paths become the
+//     derivation rules of fact types and subtypes (normaPaths.js)
 //   - element groups with their colours, custom properties (a property
 //     named Definition or Note fills the element's own field), model notes
 //   - diagrams: shapes become occurrences, inches become pixels
 
 import { narrowestNoteWidth, fittingNoteHeight } from '../components/NoteNode.jsx'
 import { getDatatypeById } from '../data/datatypeProfiles.js'
+import { makePathTranslator } from './normaPaths.js'
 
 const SCALE = 200   // pixels per inch
 
@@ -160,6 +161,7 @@ export function importNorma(xmlText) {
   const note = (text) => log.push({ level: 'note', text })
   const warn = (text) => log.push({ level: 'warn', text })
   const count = (k, n = 1) => { counts[k] = (counts[k] ?? 0) + n }
+  const derivationPaths = []   // { el: fact type or object type, path: its NORMA derivation path }
 
   const byId = new Map()
   for (const el of doc.getElementsByTagName('*')) { const id = attr(el, 'id'); if (id) byId.set(id, el) }
@@ -222,7 +224,7 @@ export function importNorma(xmlText) {
     const sdr = path(o, 'SubtypeDerivationRule', 'SubtypeDerivationPath')
     if (sdr) {
       ot.derivation = attr(sdr, 'DerivationCompleteness') === 'PartiallyDerived' ? 'semiDerived' : 'derived'
-      count('subtypeRules')
+      derivationPaths.push({ el: ot, path: sdr, name })
     }
     objectTypes.push(ot); otById.set(id, ot); playerId.set(id, id)
   }
@@ -303,7 +305,7 @@ export function importNorma(xmlText) {
     if (dp) {
       fact.derivation = attr(dp, 'DerivationCompleteness') === 'PartiallyDerived' ? 'semiDerived' : 'derived'
       if (attr(dp, 'DerivationStorage') === 'Stored') addNote(fact, 'NORMA: the derived values are stored (DerivationStorage = Stored).')
-      count('factRules')
+      derivationPaths.push({ el: fact, path: dp, name: attr(f, '_Name') ?? id })
     }
     const ob = objectifiedFacts.get(id)
     if (ob) {
@@ -393,6 +395,37 @@ export function importNorma(xmlText) {
     return ps.size === 1 ? [...ps][0] ?? null : null
   }
 
+  // ── role paths: derivation rules and join paths ───────────────────────────
+  const upMemo = new Map()
+  const up = (t) => {
+    if (upMemo.has(t)) return upMemo.get(t)
+    const seen = new Set([t]), todo = [t]
+    while (todo.length) { const x = todo.pop(); for (const st of subtypes) if (st.subId === x && !seen.has(st.superId)) { seen.add(st.superId); todo.push(st.superId) } }
+    upMemo.set(t, seen)
+    return seen
+  }
+  const paths = makePathTranslator({
+    roleRef: (id) => roleRef.get(id), playerOf: playerOfMember, factById, stById,
+    typeOf: (id) => playerId.get(id), up, rangesOf: valueRanges,
+  })
+  const failedRules = []
+  for (const { el, path: dp, name } of derivationPaths) {
+    const isFact = el.kind !== 'entity' && el.kind !== 'value'
+    if (isFact) {
+      const r = paths.factRule(el, dp)
+      if (r.error) { failedRules.push(`fact type ${name}: ${r.error}`); continue }
+      el.derivationRule = r
+      count('factRules')
+    } else {
+      const supers = subtypes.filter(st => st.subId === el.id).map(st => st.superId)
+      const r = paths.subtypeRule(el, dp, supers)
+      if (r.error) { failedRules.push(`subtype ${name}: ${r.error}`); continue }
+      el.derivationRule = r.rule
+      if (r.skipped) addNote(el, `NORMA: ${r.skipped} empty path${r.skipped === 1 ? ' was' : 's were'} left out of the derivation rule.`)
+      count('subtypeRules')
+    }
+  }
+
   // The query graph of a sequence whose roles lie in several fact types
   // joined through one object type, as NORMA's automatic join paths do.
   // Returns undefined when the sequence needs no query, null when it needs
@@ -437,13 +470,26 @@ export function importNorma(xmlText) {
     ...(attr(c, 'Modality') === 'Deontic' && { deontic: true }),
     ...extra,
   })
-  const setQueries = (con, seqs, c, outputTarget = false) => {
-    const jr = c.getElementsByTagNameNS(ORM, 'JoinPath')[0]
-    const automatic = !jr || attr(jr, 'IsAutomatic') === 'true'
+  // seqEls: the RoleSequence elements, which hold each sequence's join path
+  const setQueries = (con, seqs, seqEls, outputTarget = false) => {
     let pending = false
-    con.queries = seqs.map(ms => {
-      const g = autoJoin(ms, automatic, outputTarget)
+    con.queries = seqs.map((ms, i) => {
+      const jp = path(seqEls[i], 'JoinRule', 'JoinPath')
+      const automatic = !jp || attr(jp, 'IsAutomatic') === 'true'
+      let g = autoJoin(ms, automatic, outputTarget)
       if (g === undefined) return null
+      if (g === null && jp) {
+        const crIds = kids(seqEls[i]).map(e => attr(e, 'id'))
+        const q = paths.joinQuery(jp, (id) => crIds.indexOf(id), ms.map(playerOfMember), outputTarget)
+        if (q.error) {
+          failedJoins.push(`${attr(seqEls[i].closest('[Name]'), 'Name') ?? con.id}: ${q.error}`)
+          pending = true
+          return null
+        }
+        count('translatedJoins')
+        if (outputTarget && q.target && !con.targetObjectTypeId) con.targetObjectTypeId = q.target.typeId
+        return q
+      }
       if (g === null) { pending = true; return null }
       if (outputTarget && !con.targetObjectTypeId) con.targetObjectTypeId = g._target
       delete g._target
@@ -451,6 +497,7 @@ export function importNorma(xmlText) {
     })
     if (pending) { count('pendingJoins'); con._pendingJoin = true }
   }
+  const failedJoins = []
   const pushCon = (con, c) => { constraints.push(con); conById.set(con.id, con); conAlias.set(attr(c, 'id'), con.id) }
   const unknownMembers = (ms, c) => {
     if (ms.every(Boolean)) return false
@@ -489,7 +536,7 @@ export function importNorma(xmlText) {
         targetObjectTypeId: pif ? playerId.get(pif) ?? null : null,
         isPreferredIdentifier: !!pif,
       })
-      setQueries(con, [ms], c, true)
+      setQueries(con, [ms], [seq], true)
       pushCon(con, c)
     } else if (t === 'MandatoryConstraint') {
       if (attr(c, 'IsImplied') === 'true') { count('impliedMandatory'); continue }
@@ -518,7 +565,7 @@ export function importNorma(xmlText) {
       if (sms.some(ms => unknownMembers(ms, c))) continue
       const type = t === 'ExclusionConstraint' ? 'exclusion' : t === 'SubsetConstraint' ? 'subset' : 'equality'
       const con = mkCon(c, type, { sequences: sms.map(ms => ms.map(asMember)) })
-      setQueries(con, sms, c)
+      setQueries(con, sms, seqs)
       pushCon(con, c)
     } else if (t === 'RingConstraint') {
       const ms = members(seq)
@@ -526,7 +573,7 @@ export function importNorma(xmlText) {
       const rt = ringTypes(attr(c, 'Type'))
       if (!rt) { warn(`Ring constraint ${attr(c, 'Name')} has a type FreeFBM does not know (${attr(c, 'Type')}); skipped.`); continue }
       const con = mkCon(c, 'ring', { sequences: [ms.map(asMember)], ringTypes: rt })
-      setQueries(con, [ms], c)
+      setQueries(con, [ms], [seq])
       pushCon(con, c)
     } else if (t === 'FrequencyConstraint') {
       const ms = members(seq)
@@ -541,7 +588,7 @@ export function importNorma(xmlText) {
         conAlias.set(id, `if:${f.id}`)
       } else {
         const con = mkCon(c, 'frequency', { sequences: [ms.map(asMember)], frequency: range, targetObjectTypeId: null })
-        setQueries(con, [ms], c, true)
+        setQueries(con, [ms], [seq], true)
         pushCon(con, c)
       }
     } else if (t === 'ValueComparisonConstraint') {
@@ -549,7 +596,7 @@ export function importNorma(xmlText) {
       if (unknownMembers(ms, c)) continue
       const con = mkCon(c, 'valueComparison', { sequences: [ms.map(asMember)],
         operator: VC_OPS[attr(c, 'Operator')] ?? '=', targetObjectTypeId: null })
-      setQueries(con, [ms], c)
+      setQueries(con, [ms], [seq])
       pushCon(con, c)
     } else {
       warn(`${t} ${attr(c, 'Name') ?? id} is not imported.`)
@@ -865,9 +912,11 @@ export function importNorma(xmlText) {
   if (counts.unaries) note(`${counts.unaries} unary fact types were stored by NORMA as binaries with an implicit boolean value type; they are unaries here.`)
   const skippedImplied = [...unused(counts.impliedObjectification, 'implied objectifications'), ...unused(counts.impliedMandatory, 'implied mandatory constraints')]
   if (skippedImplied.length) note(`Skipped what NORMA implies and FreeFBM derives itself: ${skippedImplied.join(', ')}.`)
-  if (counts.factRules || counts.subtypeRules)
-    warn(`${counts.factRules ?? 0} fact type and ${counts.subtypeRules ?? 0} subtype derivation rules are marked derived, but their rules are not translated yet; validation lists them as incomplete.`)
-  if (counts.pendingJoins) warn(`${counts.pendingJoins} constraints have a join path that is not translated yet; their sequences are imported without it.`)
+  if (counts.factRules || counts.subtypeRules || counts.translatedJoins)
+    note(`Translated ${counts.factRules ?? 0} fact type and ${counts.subtypeRules ?? 0} subtype derivation rules${counts.translatedJoins ? ` and ${counts.translatedJoins} join paths` : ''} from NORMA's role paths into formulas.`)
+  for (const f of failedRules) warn(`The derivation rule of ${f}; it is marked derived but has no rule, so validation lists it as incomplete.`)
+  for (const f of failedJoins) warn(`The join path of ${f}; the sequence is imported without it.`)
+  if (counts.pendingJoins) warn(`${counts.pendingJoins} constraints have a join path that could not be translated; their sequences are imported without it.`)
   if (counts.addedPlayers) note(`${counts.addedPlayers} object type shapes were added next to fact types whose players NORMA did not draw on that diagram.`)
   if (unplaced) note(`${unplaced} model notes had no shape and no element; they are on the “Imported notes” diagram.`)
   if (counts.groupMembersDropped) note(`${counts.groupMembersDropped} group members (internal constraints and similar) have no FreeFBM counterpart and were left out of their groups.`)
