@@ -19,6 +19,7 @@ export function openModelFile({ path, content }) {
     }
     const source = path.split(/[\\/]/).pop()
     store.markDirty()
+    store.setImportedFrom(path)
     store.setImportLog({ source, entries: log })
     return
   }
