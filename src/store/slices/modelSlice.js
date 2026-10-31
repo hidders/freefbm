@@ -27,6 +27,7 @@ export function createModelSlice(set, get) {
   return {
     filePath: null,
     importLog: null,   // { source, entries: [{ level, text }] } after a NORMA import
+    importedFrom: null, // path of the NORMA file the unsaved model was imported from
     isDirty:  false,
 
     pan:  { x: 0, y: 0 },
@@ -478,7 +479,7 @@ export function createModelSlice(set, get) {
     // ── model ops ──────────────────────────────────────────────────────────
 
     newModel() {
-      set({ ...EMPTY(), filePath: null, isDirty: false, importLog: null,
+      set({ ...EMPTY(), filePath: null, isDirty: false, importLog: null, importedFrom: null,
             selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitLink: null, selectedImplicitLinkRole: null,
             selectedUniqueness: null, multiSelectedIds: [], selectedOccurrenceId: null, multiSelectedOccurrenceIds: [],
             uniquenessConstruction: null, frequencyConstruction: null,
@@ -772,7 +773,7 @@ export function createModelSlice(set, get) {
         factPopulations,
         subtypeMappings,
         nestedEntityMappings,
-        filePath, isDirty: false, importLog: null, selectedId: null, selectedKind: null, selectedOccurrenceId: null, multiSelectedOccurrenceIds: [],
+        filePath, isDirty: false, importLog: null, importedFrom: null, selectedId: null, selectedKind: null, selectedOccurrenceId: null, multiSelectedOccurrenceIds: [],
         linkDraft: null, roleReconnectDraft: null,
         // Restore schema-level display settings (v2 files only; defaults kept for older files)
         ...(schemaDisplaySettings.mandatoryDotPosition  != null && { mandatoryDotPosition:    schemaDisplaySettings.mandatoryDotPosition }),
@@ -925,6 +926,7 @@ export function createModelSlice(set, get) {
 
     setFilePath(p) { set({ filePath: p }) },
     setImportLog(importLog) { set({ importLog }) },
+    setImportedFrom(importedFrom) { set({ importedFrom }) },
     markClean()    { set({ isDirty: false }) },
     markDirty()    { set({ isDirty: true }) },
   }
