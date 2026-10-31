@@ -60,7 +60,7 @@ The active `selectedTool` in the store determines how canvas clicks are interpre
 
 Files are saved as `.ffbm` (JSON; the legacy `.orm2` and `.json` extensions still open). The store's `exportModel()` / `importModel()` functions serialise/deserialise all four element collections.
 
-File › Open also accepts NORMA `.orm` files: `src/import/norma.js` (`importNorma`) turns the XML into a FreeFBM model, which opens as a new unsaved model with an import log (`ImportLogPanel.jsx`); `src/import/openModelFile.js` routes the file. NORMA derivation rules and hand-drawn join paths are not translated yet.
+File › Open also accepts NORMA `.orm` files: `src/import/norma.js` (`importNorma`) turns the XML into a FreeFBM model, which opens as a new unsaved model with an import log (`ImportLogPanel.jsx`); `src/import/openModelFile.js` routes the file. NORMA role paths (derivation rules of fact types and subtypes, hand-drawn join paths) become rule-tree formulas via `src/import/normaPaths.js`; outer joins and calculated values are not translated yet.
 
 ### Styling
 
