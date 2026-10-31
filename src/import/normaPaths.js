@@ -401,3 +401,95 @@ export function makePathTranslator(ctx) {
 
   return { factRule, subtypeRule, joinQuery }
 }
+
+// ── Positive linear recursion → transitive closure ─────────────────────────
+//
+// NORMA lets a fully derived fact type F use itself, as in
+//   F(x, n) ⇐ Base(x, n) ∨ ∃y (Step₁(x, y) ∧ F(y, n)) ∨ …
+// where every recursive case enters F once, positively, with all arguments
+// but one (the carried role k) passed on unchanged. Read as its least
+// fixpoint that is
+//   F(x, n) ⇐ ∃y ([TC*_{u,w} Step₁(u, w) ∨ …](x, y) ∧ Base(y, n))
+// which no longer refers to F. closeLinearRecursion(fact, rule) gives that
+// rule, or null when the rule is not of this form (or not recursive).
+// factById gives the fact types of the rule's atoms.
+
+// A copy of a rule tree with the variable ids of `map` renamed.
+function renameVars(n, map) {
+  if (typeof n === 'string') return map.has(n) ? map.get(n) : n
+  if (Array.isArray(n)) return n.map(x => renameVars(x, map))
+  if (!n || typeof n !== 'object') return n
+  const out = {}
+  for (const [k, x] of Object.entries(n)) {
+    // Only variable references are renamed, never fact or type ids.
+    if (k === 'args' && n.t === 'fact' || k === 'args' && n.t === 'tc' || k === 'arg' && n.t === 'type'
+      || (k === 'left' || k === 'right') && n.t === 'cmp' || k === 'id' && n.t === 'var') out[k] = renameVars(x, map)
+    else if (x && typeof x === 'object') out[k] = renameVars(x, map)
+    else out[k] = x
+  }
+  return out
+}
+
+const mentionsFact = (n, factId) => {
+  if (!n || typeof n !== 'object') return false
+  if (Array.isArray(n)) return n.some(x => mentionsFact(x, factId))
+  if (n.t === 'fact' && n.factId === factId) return true
+  return Object.values(n).some(x => mentionsFact(x, factId))
+}
+
+const varNumbers = (n, out = []) => {
+  if (typeof n === 'string') { const m = /^v(\d+)$/.exec(n); if (m) out.push(Number(m[1])) }
+  else if (Array.isArray(n)) n.forEach(x => varNumbers(x, out))
+  else if (n && typeof n === 'object') Object.values(n).forEach(x => varNumbers(x, out))
+  return out
+}
+
+export function closeLinearRecursion(fact, rule, factById) {
+  if (!rule?.body || !mentionsFact(rule.body, fact.id)) return null
+  const roleVar = fact.roles.map(r => `role:${r.id}`)
+  const whole = (rule.extraVars ?? []).reduceRight((b, v) => ({ t: 'exists', v, body: b }), rule.body)
+  const cases = whole.t === 'or' ? whole.args : [whole]
+  const bases = [], steps = []
+  let carried = null
+  for (const c of cases) {
+    if (!mentionsFact(c, fact.id)) { bases.push(c); continue }
+    // ∃v₁ … ∃vₙ (A₁ ∧ … ∧ F(…) ∧ … ∧ Aₘ)
+    const locals = []
+    let m = c
+    while (m.t === 'exists') { locals.push(m.v); m = m.body }
+    const conj = m.t === 'and' ? m.args : [m]
+    const self = conj.filter(a => a.t === 'fact' && a.factId === fact.id)
+    const rest = conj.filter(a => !self.includes(a))
+    if (self.length !== 1 || rest.some(a => mentionsFact(a, fact.id))) return null
+    const args = self[0].args
+    const k = args.findIndex((a, i) => a !== roleVar[i])
+    if (k < 0 || args.some((a, i) => i !== k && a !== roleVar[i])) return null
+    if (carried != null && carried !== k) return null
+    carried = k
+    const next = locals.find(v => v.id === args[k])
+    if (!next || !rest.length) return null
+    steps.push({ next, locals: locals.filter(v => v !== next), rest })
+  }
+  if (!bases.length || !steps.length) return null
+
+  let n = Math.max(0, ...varNumbers(rule))
+  const fresh = () => `v${++n}`
+  const typeId = fact.roles[carried].objectTypeId
+  const u = { id: fresh(), typeId }, w = { id: fresh(), typeId }, y = { id: fresh(), typeId }
+  const x = roleVar[carried]
+  const and = (args) => (args.length === 1 ? args[0] : { t: 'and', args })
+  const or = (args) => (args.length === 1 ? args[0] : { t: 'or', args })
+  const step = or(steps.map(s => {
+    const map = new Map([[x, u.id], [s.next.id, w.id]])
+    // A step that reaches a subtype of the carried role's player says so,
+    // unless a role it fills already does.
+    const fills = s.rest.some(a => a.t === 'fact' && a.args.some((id, i) =>
+      id === s.next.id && factById.get(a.factId)?.roles[i]?.objectTypeId === s.next.typeId))
+    const typed = s.next.typeId && s.next.typeId !== typeId && !fills ? [{ t: 'type', typeId: s.next.typeId, arg: w.id }] : []
+    const body = and([...s.rest.map(a => renameVars(a, map)), ...typed])
+    return s.locals.reduceRight((b, v) => ({ t: 'exists', v, body: b }), body)
+  }))
+  const closure = { t: 'tc', star: true, vars: [u, w], body: step, args: [x, y.id] }
+  const base = renameVars(or(bases), new Map([[x, y.id]]))
+  return { body: { t: 'exists', v: y, body: and([closure, base]) }, extraVars: [], terms: rule.terms ?? {} }
+}

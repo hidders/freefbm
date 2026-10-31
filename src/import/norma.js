@@ -28,7 +28,7 @@
 
 import { narrowestNoteWidth, fittingNoteHeight } from '../components/NoteNode.jsx'
 import { getDatatypeById } from '../data/datatypeProfiles.js'
-import { makePathTranslator } from './normaPaths.js'
+import { makePathTranslator, closeLinearRecursion } from './normaPaths.js'
 
 const SCALE = 200   // pixels per inch
 
@@ -408,13 +408,18 @@ export function importNorma(xmlText) {
     roleRef: (id) => roleRef.get(id), playerOf: playerOfMember, factById, stById,
     typeOf: (id) => playerId.get(id), up, rangesOf: valueRanges,
   })
-  const failedRules = []
+  const failedRules = [], closedNames = []
   for (const { el, path: dp, name } of derivationPaths) {
     const isFact = el.kind !== 'entity' && el.kind !== 'value'
     if (isFact) {
       const r = paths.factRule(el, dp)
       if (r.error) { failedRules.push(`fact type ${name}: ${r.error}`); continue }
-      el.derivationRule = r
+      // A fully derived fact type defined by positive linear recursion gets a
+      // transitive closure instead. A semi-derived one keeps its recursion:
+      // its stored facts feed it too, which FreeFBM reads as a least fixpoint.
+      const closed = el.derivation === 'derived' && closeLinearRecursion(el, r, factById)
+      el.derivationRule = closed || r
+      if (closed) { count('closedRecursions'); closedNames.push(name) }
       count('factRules')
     } else {
       const supers = subtypes.filter(st => st.subId === el.id).map(st => st.superId)
@@ -914,6 +919,7 @@ export function importNorma(xmlText) {
   if (skippedImplied.length) note(`Skipped what NORMA implies and FreeFBM derives itself: ${skippedImplied.join(', ')}.`)
   if (counts.factRules || counts.subtypeRules || counts.translatedJoins)
     note(`Translated ${counts.factRules ?? 0} fact type and ${counts.subtypeRules ?? 0} subtype derivation rules${counts.translatedJoins ? ` and ${counts.translatedJoins} join paths` : ''} from NORMA's role paths into formulas.`)
+  if (closedNames.length) note(`The recursive derivation rule${closedNames.length === 1 ? '' : 's'} of ${closedNames.join(', ')} ${closedNames.length === 1 ? 'was' : 'were'} rewritten with a transitive closure [TC* …], which says the same under least-fixpoint semantics without the fact type referring to itself.`)
   for (const f of failedRules) warn(`The derivation rule of ${f}; it is marked derived but has no rule, so validation lists it as incomplete.`)
   for (const f of failedJoins) warn(`The join path of ${f}; the sequence is imported without it.`)
   if (counts.pendingJoins) warn(`${counts.pendingJoins} constraints have a join path that could not be translated; their sequences are imported without it.`)
