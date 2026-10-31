@@ -26,7 +26,7 @@
 //     named Definition or Note fills the element's own field), model notes
 //   - diagrams: shapes become occurrences, inches become pixels
 
-import { narrowestNoteWidth } from '../components/NoteNode.jsx'
+import { narrowestNoteWidth, fittingNoteHeight } from '../components/NoteNode.jsx'
 
 const SCALE = 200   // pixels per inch
 
@@ -646,10 +646,13 @@ export function importNorma(xmlText) {
         noteCopies.set(subj, [...copies, nid])
         notesShown.add(subj)
         // FreeFBM's note font is smaller than NORMA's: keep the left edge and
-        // take the narrowest width that wraps the text the same way.
-        const w0 = Math.max(80, b.w)
+        // take the narrowest width that wraps the text the same way, and
+        // the height that leaves as much room below the text as above it.
+        // The top left corner stays where NORMA has it.
+        const w0 = Math.max(80, b.w), h0 = Math.max(40, b.h)
         const w = narrowestNoteWidth(mn.text, w0)
-        diag.notes.push({ id: nid, x: b.cx - (w0 - w) / 2, y: b.cy, w, h: Math.max(40, b.h), text: mn.text,
+        const h = fittingNoteHeight(mn.text, w) ?? h0
+        diag.notes.push({ id: nid, x: b.cx - (w0 - w) / 2, y: b.cy - (h0 - h) / 2, w, h, text: mn.text,
           connectors: mn.refs.map((targetId, i) => ({ id: `${nid}_c${i}`, targetId })) })
       } else if (/ConstraintShape$/.test(s.localName)) {
         const cid = conAlias.get(subj)

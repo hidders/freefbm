@@ -20,10 +20,9 @@ const textStyle = {
 const TEXT_X = 7
 const TEXT_Y = 5
 
-// Where the text of a note of width w breaks into lines: the character
-// offsets that start a new line. Measured in a hidden element laid out like
-// the note, so it needs a document.
-export function noteLineBreaks(text, w, host = document.body) {
+// Lays the text of a note of width w out in a hidden element styled like the
+// note's text area and passes it to measure; needs a document.
+function measureNoteText(text, w, measure) {
   const box = document.createElement('div')
   Object.assign(box.style, textStyle, { fontSize: `${textStyle.fontSize}px`, position: 'absolute', left: '-10000px', top: '0',
     width: `${Math.max(1, w - 2 * TEXT_X)}px`, height: 'auto', visibility: 'hidden' })
@@ -31,21 +30,35 @@ export function noteLineBreaks(text, w, host = document.body) {
   Object.assign(fold.style, { float: 'right', width: `${FOLD}px`, height: `${Math.max(0, FOLD - TEXT_Y)}px` })
   const node = document.createTextNode(text)
   box.append(fold, node)
-  host.appendChild(box)
-  const breaks = []
-  const range = document.createRange()
-  let lastTop = null
-  for (let i = 0; i < text.length; i++) {
-    if (i > 0 && !/\s/.test(text[i - 1])) continue   // lines only break after whitespace
-    if (/\s/.test(text[i])) continue
-    range.setStart(node, i); range.setEnd(node, i + 1)
-    const top = range.getClientRects()[0]?.top
-    if (top == null) continue
-    if (lastTop != null && top > lastTop + 1) breaks.push(i)
-    lastTop = top
-  }
-  box.remove()
-  return breaks.join()
+  document.body.appendChild(box)
+  try { return measure(box, node) } finally { box.remove() }
+}
+
+// Where the text of a note of width w breaks into lines: the character
+// offsets that start a new line.
+export function noteLineBreaks(text, w) {
+  return measureNoteText(text, w, (box, node) => {
+    const breaks = []
+    const range = document.createRange()
+    let lastTop = null
+    for (let i = 0; i < text.length; i++) {
+      if (i > 0 && !/\s/.test(text[i - 1])) continue   // lines only break after whitespace
+      if (/\s/.test(text[i])) continue
+      range.setStart(node, i); range.setEnd(node, i + 1)
+      const top = range.getClientRects()[0]?.top
+      if (top == null) continue
+      if (lastTop != null && top > lastTop + 1) breaks.push(i)
+      lastTop = top
+    }
+    return breaks.join()
+  })
+}
+
+// The height of a note of width w whose text has as much room below it as
+// above it.
+export function fittingNoteHeight(text, w, min = 24) {
+  if (!text || typeof document === 'undefined') return null
+  return Math.max(min, Math.ceil(measureNoteText(text, w, box => box.scrollHeight)) + 2 * TEXT_Y)
 }
 
 // The narrowest width, down to min, at which the note's text wraps exactly
