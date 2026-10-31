@@ -45,16 +45,30 @@ export function readingsFor(fact, langId, n = fact.roles?.length ?? 0, live = 'e
 }
 
 // { name, plural, gender } of a type in a language; name falls back to the
-// type's own name, plural and gender to null.
+// type's own name split into words (splitName), plural and gender to null.
 export function typeLexicon(ctx, typeId, langId) {
   const el = ctx.otById.get(typeId) ?? ctx.factById.get(typeId)
   const lex = el?.lexicon?.[langId] ?? {}
   return {
-    name: (langId !== (ctx.liveLanguage ?? 'en') && lex.name?.trim()) || ctx.typeName(typeId),
+    name: (langId !== (ctx.liveLanguage ?? 'en') && lex.name?.trim()) || splitName(ctx.typeName(typeId)),
     plural: lex.plural?.trim() || null,
     gender: lex.gender || null,
     forms: lex.forms ?? {},
   }
+}
+
+// Sentences show a combined name as separate words, keeping the capitals:
+// "InstructionType" → "Instruction Type", "PersonNr" → "Person Nr",
+// "HTTPRequest" → "HTTP Request", "Person_Name" → "Person Name". Digits stay
+// attached ("Year2", but "Year2Start" → "Year2 Start"). Formulas keep the name as entered.
+export function splitName(name) {
+  return (name ?? '')
+    .replace(/_+/g, ' ')
+    .replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2')
+    .replace(/(\p{Lu}+)(\p{Lu}\p{Ll})/gu, '$1 $2')
+    .replace(/(\d)(\p{Lu})/gu, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 export { hasText }

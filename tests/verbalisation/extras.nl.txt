@@ -1,26 +1,26 @@
 # Derivation rule · Student is a TeachingAssistant if and only if …
 ∀ Student (TeachingAssistant(Student) ↔ ∃ Course (Student assists in Course))
-Student is een TeachingAssistant als en slechts als Student bij een Vak assisteert.
+Student is een Teaching Assistant als en slechts als Student bij een Vak assisteert.
 
 # Semi-derivation rule · Student is a BusyStudent if …
 ∀ Student ((∃^{≥4} Course (Student enrols in Course)) → BusyStudent(Student))
-Elke Student die minstens 4 Vakken volgt, is een BusyStudent.
+Elke Student die minstens 4 Vakken volgt, is een Busy Student.
 
 # Derivation rule · Course is a HeavyCourse if and only if …
 ∀ Course (HeavyCourse(Course) ↔ ∃ Credits ((Course is worth Credits) ∧ Credits ≥ 30))
-Vak is een HeavyCourse als en slechts als Vak een Studielast die minstens 30 is heeft.
+Vak is een Heavy Course als en slechts als Vak een Studielast die minstens 30 is heeft.
 
 # Derivation rule · Student is a FreeStudent if and only if …
 ∀ Student (FreeStudent(Student) ↔ ¬(∃ Course (Student enrols in Course)))
-Student is een FreeStudent als en slechts als Student geen Vak volgt.
+Student is een Free Student als en slechts als Student geen Vak volgt.
 
 # Derivation rule · Course is an IntroCourse if and only if …
 ∀ Course (IntroCourse(Course) ↔ ∃ CourseTitle ((Course has CourseTitle) ∧ startsWith(CourseTitle, 'Introduction')))
-Vak is een IntroCourse als en slechts als Vak een Vaktitel die met 'Introduction' begint heeft.
+Vak is een Intro Course als en slechts als Vak een Vaktitel die met 'Introduction' begint heeft.
 
 # Semi-derivation rule · Course is a LongTitleCourse if …
 ∀ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) → LongTitleCourse(Course))
-Elk Vak dat een Vaktitel zodanig dat de lengte van die Vaktitel groter dan 40 is heeft, is een LongTitleCourse.
+Elk Vak dat een Vaktitel zodanig dat de lengte van die Vaktitel groter dan 40 is heeft, is een Long Title Course.
 
 # Value range (deontic) · Score
 O(∀ Score ((Score > 0 ∧ Score ≤ 100) ∨ Score > 200))
@@ -52,23 +52,23 @@ Student studies with Medewerker als en slechts als Student een Vak dat Medewerke
 
 # Derivation rule, every derived fact holds · Student has TotalCredits
 ∀ Student ∃ TotalCredits (Student has TotalCredits)
-Elke Student has een TotalCredits.
+Elke Student has een Total Credits.
 
 # Derivation rule, only derived facts hold · Student has TotalCredits
 ∀ Student ∀ TotalCredits ((Student has TotalCredits) → TotalCredits ≈ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)})
-Als Student TotalCredits has, dan is TotalCredits de som van de Studielast die elk Vak dat Student volgt heeft.
+Als Student Total Credits has, dan is Total Credits de som van de Studielast die elk Vak dat Student volgt heeft.
 
 # Derivation rule, every derived fact holds · Course has EnrolmentCount
 ∀ Course ∃ EnrolmentCount (Course has EnrolmentCount)
-Elk Vak has een EnrolmentCount.
+Elk Vak has een Enrolment Count.
 
 # Derivation rule, only derived facts hold · Course has EnrolmentCount
 ∀ Course ∀ EnrolmentCount ((Course has EnrolmentCount) → EnrolmentCount ≈ Count{Student : (Student enrols in Course)})
-Als Vak EnrolmentCount has, dan is EnrolmentCount het aantal Studenten die Vak volgen.
+Als Vak Enrolment Count has, dan is Enrolment Count het aantal Studenten die Vak volgen.
 
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
-Als Student bij Vak assisteert en Vak Studielast heeft, dan has Student credit load een TotalCredits die (Studielast plus 5) maal 2 is.
+Als Student bij Vak assisteert en Vak Studielast heeft, dan has Student credit load een Total Credits die (Studielast plus 5) maal 2 is.
 
 # Uniqueness (deontic) · Staff mentors Student
 O(∀ Student ∃^{≤1} Staff (Staff mentors Student))

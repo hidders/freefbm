@@ -1,26 +1,26 @@
 # Derivation rule · Student is a TeachingAssistant if and only if …
 ∀ Student (TeachingAssistant(Student) ↔ ∃ Course (Student assists in Course))
-Étudiant est un TeachingAssistant si et seulement si Étudiant assiste à un Cours.
+Étudiant est un Teaching Assistant si et seulement si Étudiant assiste à un Cours.
 
 # Semi-derivation rule · Student is a BusyStudent if …
 ∀ Student ((∃^{≥4} Course (Student enrols in Course)) → BusyStudent(Student))
-Chaque Étudiant qui suit au moins 4 Cours est un BusyStudent.
+Chaque Étudiant qui suit au moins 4 Cours est un Busy Student.
 
 # Derivation rule · Course is a HeavyCourse if and only if …
 ∀ Course (HeavyCourse(Course) ↔ ∃ Credits ((Course is worth Credits) ∧ Credits ≥ 30))
-Cours est un HeavyCourse si et seulement si Cours a un Nombre de crédits qui est au moins 30.
+Cours est un Heavy Course si et seulement si Cours a un Nombre de crédits qui est au moins 30.
 
 # Derivation rule · Student is a FreeStudent if and only if …
 ∀ Student (FreeStudent(Student) ↔ ¬(∃ Course (Student enrols in Course)))
-Étudiant est un FreeStudent si et seulement si Étudiant ne suit aucun Cours.
+Étudiant est un Free Student si et seulement si Étudiant ne suit aucun Cours.
 
 # Derivation rule · Course is an IntroCourse if and only if …
 ∀ Course (IntroCourse(Course) ↔ ∃ CourseTitle ((Course has CourseTitle) ∧ startsWith(CourseTitle, 'Introduction')))
-Cours est un IntroCourse si et seulement si Cours a un Intitulé de cours qui commence par 'Introduction'.
+Cours est un Intro Course si et seulement si Cours a un Intitulé de cours qui commence par 'Introduction'.
 
 # Semi-derivation rule · Course is a LongTitleCourse if …
 ∀ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) → LongTitleCourse(Course))
-Chaque Cours qui a un Intitulé de cours tel que la longueur de cet Intitulé de cours est supérieur à 40 est un LongTitleCourse.
+Chaque Cours qui a un Intitulé de cours tel que la longueur de cet Intitulé de cours est supérieur à 40 est un Long Title Course.
 
 # Value range (deontic) · Score
 O(∀ Score ((Score > 0 ∧ Score ≤ 100) ∨ Score > 200))
@@ -52,23 +52,23 @@ Il est obligatoire qu'il existe au moins 5 Membres du personnel qui coordonnent 
 
 # Derivation rule, every derived fact holds · Student has TotalCredits
 ∀ Student ∃ TotalCredits (Student has TotalCredits)
-Chaque Étudiant has un TotalCredits.
+Chaque Étudiant has un Total Credits.
 
 # Derivation rule, only derived facts hold · Student has TotalCredits
 ∀ Student ∀ TotalCredits ((Student has TotalCredits) → TotalCredits ≈ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)})
-Si Étudiant has TotalCredits, alors TotalCredits est la somme des Nombres de crédits que chaque Cours qu'Étudiant suit a.
+Si Étudiant has Total Credits, alors Total Credits est la somme des Nombres de crédits que chaque Cours qu'Étudiant suit a.
 
 # Derivation rule, every derived fact holds · Course has EnrolmentCount
 ∀ Course ∃ EnrolmentCount (Course has EnrolmentCount)
-Chaque Cours has un EnrolmentCount.
+Chaque Cours has un Enrolment Count.
 
 # Derivation rule, only derived facts hold · Course has EnrolmentCount
 ∀ Course ∀ EnrolmentCount ((Course has EnrolmentCount) → EnrolmentCount ≈ Count{Student : (Student enrols in Course)})
-Si Cours has EnrolmentCount, alors EnrolmentCount est le nombre d'Étudiants qui suivent Cours.
+Si Cours has Enrolment Count, alors Enrolment Count est le nombre d'Étudiants qui suivent Cours.
 
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
-Si Étudiant assiste à Cours et Cours a Nombre de crédits, alors Étudiant has credit load un TotalCredits qui est (Nombre de crédits plus 5) fois 2.
+Si Étudiant assiste à Cours et Cours a Nombre de crédits, alors Étudiant has credit load un Total Credits qui est (Nombre de crédits plus 5) fois 2.
 
 # Uniqueness (deontic) · Staff mentors Student
 O(∀ Student ∃^{≤1} Staff (Staff mentors Student))

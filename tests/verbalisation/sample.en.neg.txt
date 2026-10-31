@@ -28,23 +28,23 @@ It is impossible that some Season is not 'Spring' and is not 'Summer' and is not
 
 # Uniqueness (preferred identifier) · Person has PersonNr
 ¬(∃ PersonNr ∃^{>1} Person (Person has PersonNr))
-It is impossible that more than one Person has the same PersonNr.
+It is impossible that more than one Person has the same Person Nr.
 
 # Preferred identifier (exactly one identifier) · Person has PersonNr
 ¬(∃ Person (¬(∃ PersonNr (Person has PersonNr)) ∨ ∃^{>1} PersonNr (Person has PersonNr)))
-It is impossible that some Person does not have any PersonNr or has more than one PersonNr.
+It is impossible that some Person does not have any Person Nr or has more than one Person Nr.
 
 # Uniqueness · Person has PersonName
 ¬(∃ Person ∃^{>1} PersonName (Person has PersonName))
-It is impossible that some Person has more than one PersonName.
+It is impossible that some Person has more than one Person Name.
 
 # Possible (roles not unique) · Person has PersonName
 ◇∃ PersonName ∃^{>1} Person (Person has PersonName)
-It is possible that more than one Person has the same PersonName.
+It is possible that more than one Person has the same Person Name.
 
 # Mandatory role · Person has PersonName
 ¬(∃ Person ¬(∃ PersonName (Person has PersonName)))
-It is impossible that some Person does not have any PersonName.
+It is impossible that some Person does not have any Person Name.
 
 # Uniqueness · Person has Email
 ¬(∃ Person ∃^{>1} Email (Person has Email))
@@ -88,11 +88,11 @@ It is possible that some Professor does not supervise any Student.
 
 # Uniqueness (preferred identifier) · Building has BuildingCode
 ¬(∃ BuildingCode ∃^{>1} Building (Building has BuildingCode))
-It is impossible that more than one Building has the same BuildingCode.
+It is impossible that more than one Building has the same Building Code.
 
 # Preferred identifier (exactly one identifier) · Building has BuildingCode
 ¬(∃ Building (¬(∃ BuildingCode (Building has BuildingCode)) ∨ ∃^{>1} BuildingCode (Building has BuildingCode)))
-It is impossible that some Building does not have any BuildingCode or has more than one BuildingCode.
+It is impossible that some Building does not have any Building Code or has more than one Building Code.
 
 # Uniqueness · Room is in Building
 ¬(∃ Room ∃^{>1} Building (Room is in Building))
@@ -108,15 +108,15 @@ It is impossible that some Room is not in any Building.
 
 # Uniqueness · Room has RoomNr
 ¬(∃ Room ∃^{>1} RoomNr (Room has RoomNr))
-It is impossible that some Room has more than one RoomNr.
+It is impossible that some Room has more than one Room Nr.
 
 # Possible (roles not unique) · Room has RoomNr
 ◇∃ RoomNr ∃^{>1} Room (Room has RoomNr)
-It is possible that more than one Room has the same RoomNr.
+It is possible that more than one Room has the same Room Nr.
 
 # Mandatory role · Room has RoomNr
 ¬(∃ Room ¬(∃ RoomNr (Room has RoomNr)))
-It is impossible that some Room does not have any RoomNr.
+It is impossible that some Room does not have any Room Nr.
 
 # Uniqueness · Staff has office Room
 ¬(∃ Staff ∃^{>1} Room (Staff has office Room))
@@ -144,23 +144,23 @@ It is possible that some Staff does not have any Extension.
 
 # Uniqueness (preferred identifier) · Course has CourseCode
 ¬(∃ CourseCode ∃^{>1} Course (Course has CourseCode))
-It is impossible that more than one Course has the same CourseCode.
+It is impossible that more than one Course has the same Course Code.
 
 # Preferred identifier (exactly one identifier) · Course has CourseCode
 ¬(∃ Course (¬(∃ CourseCode (Course has CourseCode)) ∨ ∃^{>1} CourseCode (Course has CourseCode)))
-It is impossible that some Course does not have any CourseCode or has more than one CourseCode.
+It is impossible that some Course does not have any Course Code or has more than one Course Code.
 
 # Uniqueness · Course has CourseTitle
 ¬(∃ Course ∃^{>1} CourseTitle (Course has CourseTitle))
-It is impossible that some Course has more than one CourseTitle.
+It is impossible that some Course has more than one Course Title.
 
 # Uniqueness · Course has CourseTitle
 ¬(∃ CourseTitle ∃^{>1} Course (Course has CourseTitle))
-It is impossible that more than one Course has the same CourseTitle.
+It is impossible that more than one Course has the same Course Title.
 
 # Mandatory role · Course has CourseTitle
 ¬(∃ Course ¬(∃ CourseTitle (Course has CourseTitle)))
-It is impossible that some Course does not have any CourseTitle.
+It is impossible that some Course does not have any Course Title.
 
 # Uniqueness · Course is worth Credits
 ¬(∃ Course ∃^{>1} Credits (Course is worth Credits))
@@ -300,27 +300,27 @@ It is impossible that some Term is not in any Season.
 
 # Uniqueness · Term is in AcademicYear
 ¬(∃ Term ∃^{>1} AcademicYear (Term is in AcademicYear))
-It is impossible that some Term is in more than one AcademicYear.
+It is impossible that some Term is in more than one Academic Year.
 
 # Possible (roles not unique) · Term is in AcademicYear
 ◇∃ AcademicYear ∃^{>1} Term (Term is in AcademicYear)
-It is possible that more than one Term is in the same AcademicYear.
+It is possible that more than one Term is in the same Academic Year.
 
 # Mandatory role · Term is in AcademicYear
 ¬(∃ Term ¬(∃ AcademicYear (Term is in AcademicYear)))
-It is impossible that some Term is not in any AcademicYear.
+It is impossible that some Term is not in any Academic Year.
 
 # Uniqueness (preferred identifier) · AcademicYear starts in Year
 ¬(∃ Year ∃^{>1} AcademicYear (AcademicYear starts in Year))
-It is impossible that more than one AcademicYear starts in the same Year.
+It is impossible that more than one Academic Year starts in the same Year.
 
 # Preferred identifier (exactly one identifier) · AcademicYear starts in Year
 ¬(∃ AcademicYear (¬(∃ Year (AcademicYear starts in Year)) ∨ ∃^{>1} Year (AcademicYear starts in Year)))
-It is impossible that some AcademicYear does not start in any Year or starts in more than one Year.
+It is impossible that some Academic Year does not start in any Year or starts in more than one Year.
 
 # Value range (role 2) · AcademicYear starts in Year
 ¬(∃ Year ((∃ AcademicYear (AcademicYear starts in Year)) ∧ (Year < 1970 ∨ Year > 2030)))
-It is impossible that there is some Year such that some AcademicYear starts in that Year and that Year is less than 1970 or that Year is more than 2030.
+It is impossible that there is some Year such that some Academic Year starts in that Year and that Year is less than 1970 or that Year is more than 2030.
 
 # Possible (roles not unique) · Course is offered in Term
 ◇∃ Course ∃^{>1} Term (Course is offered in Term)
@@ -348,11 +348,11 @@ It is impossible that there is some Staff such that that Staff is not a Professo
 
 # External uniqueness (preferred identifier)
 ¬(∃ Building ∃ RoomNr ∃^{>1} Room ((Room is in Building) ∧ (Room has RoomNr)))
-It is impossible that more than one Room is in the same Building and has the same RoomNr.
+It is impossible that more than one Room is in the same Building and has the same Room Nr.
 
 # Preferred identifier (exactly one identifying combination)
 ¬(∃ Room ¬(∃^{=1} Building, RoomNr ((Room is in Building) ∧ (Room has RoomNr))))
-It is impossible that there is some Room such that it is not true that there is exactly one combination of Building and RoomNr such that that Room is in that Building and that Room has that RoomNr.
+It is impossible that there is some Room such that it is not true that there is exactly one combination of Building and Room Nr such that that Room is in that Building and that Room has that Room Nr.
 
 # Equality
 ∀ Staff ((∃ Room (Staff has office Room)) ↔ ∃ Extension (Staff has Extension))
@@ -376,11 +376,11 @@ It is impossible that there is some Staff and some Course such that that Staff t
 
 # External uniqueness (preferred identifier)
 ¬(∃ Season ∃ AcademicYear ∃^{>1} Term ((Term is in Season) ∧ (Term is in AcademicYear)))
-It is impossible that more than one Term is in the same Season and is in the same AcademicYear.
+It is impossible that more than one Term is in the same Season and is in the same Academic Year.
 
 # Preferred identifier (exactly one identifying combination)
 ¬(∃ Term ¬(∃^{=1} Season, AcademicYear ((Term is in Season) ∧ (Term is in AcademicYear))))
-It is impossible that there is some Term such that it is not true that there is exactly one combination of Season and AcademicYear such that that Term is in that Season and that Term is in that AcademicYear.
+It is impossible that there is some Term such that it is not true that there is exactly one combination of Season and Academic Year such that that Term is in that Season and that Term is in that Academic Year.
 
 # Disjoint roots · Person and Building
 ¬(∃ Person Building(Person))
@@ -396,7 +396,7 @@ It is impossible that some Person is a Course.
 
 # Disjoint roots · Person and AcademicYear
 ¬(∃ Person AcademicYear(Person))
-It is impossible that some Person is an AcademicYear.
+It is impossible that some Person is an Academic Year.
 
 # Disjoint roots · Person and Term
 ¬(∃ Person Term(Person))
@@ -420,7 +420,7 @@ It is impossible that some Building is a Course.
 
 # Disjoint roots · Building and AcademicYear
 ¬(∃ Building AcademicYear(Building))
-It is impossible that some Building is an AcademicYear.
+It is impossible that some Building is an Academic Year.
 
 # Disjoint roots · Building and Term
 ¬(∃ Building Term(Building))
@@ -440,7 +440,7 @@ It is impossible that some Room is a Course.
 
 # Disjoint roots · Room and AcademicYear
 ¬(∃ Room AcademicYear(Room))
-It is impossible that some Room is an AcademicYear.
+It is impossible that some Room is an Academic Year.
 
 # Disjoint roots · Room and Term
 ¬(∃ Room Term(Room))
@@ -456,7 +456,7 @@ It is impossible that some Room is an Offering.
 
 # Disjoint roots · Course and AcademicYear
 ¬(∃ Course AcademicYear(Course))
-It is impossible that some Course is an AcademicYear.
+It is impossible that some Course is an Academic Year.
 
 # Disjoint roots · Course and Term
 ¬(∃ Course Term(Course))
@@ -472,15 +472,15 @@ It is impossible that some Course is an Offering.
 
 # Disjoint roots · AcademicYear and Term
 ¬(∃ AcademicYear Term(AcademicYear))
-It is impossible that some AcademicYear is a Term.
+It is impossible that some Academic Year is a Term.
 
 # Disjoint roots · AcademicYear and Enrolment
 ¬(∃ AcademicYear Enrolment(AcademicYear))
-It is impossible that some AcademicYear is an Enrolment.
+It is impossible that some Academic Year is an Enrolment.
 
 # Disjoint roots · AcademicYear and Offering
 ¬(∃ AcademicYear Offering(AcademicYear))
-It is impossible that some AcademicYear is an Offering.
+It is impossible that some Academic Year is an Offering.
 
 # Disjoint roots · Term and Enrolment
 ¬(∃ Term Enrolment(Term))
@@ -496,15 +496,15 @@ It is impossible that some Enrolment is an Offering.
 
 # Participation (not independent) · Person
 ¬(∃ Person (¬(∃ PersonName (Person has PersonName)) ∧ ¬(∃ Email (Person has Email)) ∧ ¬(∃ Phone (Person has Phone)) ∧ ¬(∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∧ ¬(∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∧ ¬(∃ Room (Staff(Person) ∧ (Person has office Room))) ∧ ¬(∃ Extension (Staff(Person) ∧ (Person has Extension))) ∧ ¬(∃ Course (Student(Person) ∧ (Person enrols in Course))) ∧ ¬(∃ Course (Student(Person) ∧ (Person assists in Course))) ∧ ¬(∃ Course (Staff(Person) ∧ (Person is qualified to teach Course))) ∧ ¬(∃ Offering (Staff(Person) ∧ (Person teaches Offering))) ∧ ¬(∃ Course (Staff(Person) ∧ (Person coordinates Course)))))
-It is impossible that there is some Person such that that Person does not have any PersonName and that Person does not have any Email and that Person does not have any Phone and at most one of the following holds: that Person is a Student; that Person is supervised by some Professor and at most one of the following holds: that Person is a Professor; that Person supervises some Student and at most one of the following holds: that Person is a Staff; that Person has office some Room and at most one of the following holds: that Person is a Staff; that Person has some Extension and at most one of the following holds: that Person is a Student; that Person enrols in some Course and at most one of the following holds: that Person is a Student; that Person assists in some Course and at most one of the following holds: that Person is a Staff; that Person is qualified to teach some Course and at most one of the following holds: that Person is a Staff; that Person teaches some Offering and at most one of the following holds: that Person is a Staff; that Person coordinates some Course.
+It is impossible that there is some Person such that that Person does not have any Person Name and that Person does not have any Email and that Person does not have any Phone and at most one of the following holds: that Person is a Student; that Person is supervised by some Professor and at most one of the following holds: that Person is a Professor; that Person supervises some Student and at most one of the following holds: that Person is a Staff; that Person has office some Room and at most one of the following holds: that Person is a Staff; that Person has some Extension and at most one of the following holds: that Person is a Student; that Person enrols in some Course and at most one of the following holds: that Person is a Student; that Person assists in some Course and at most one of the following holds: that Person is a Staff; that Person is qualified to teach some Course and at most one of the following holds: that Person is a Staff; that Person teaches some Offering and at most one of the following holds: that Person is a Staff; that Person coordinates some Course.
 
 # Participation (not independent) · PersonNr
 ¬(∃ PersonNr ¬(∃ Person (Person has PersonNr)))
-It is impossible that some PersonNr does not refer to any Person.
+It is impossible that some Person Nr does not refer to any Person.
 
 # Participation (not independent) · PersonName
 ¬(∃ PersonName ¬(∃ Person (Person has PersonName)))
-It is impossible that there is some PersonName such that no Person has that PersonName.
+It is impossible that there is some Person Name such that no Person has that Person Name.
 
 # Participation (not independent) · Email
 ¬(∃ Email ¬(∃ Person (Person has Email)))
@@ -516,19 +516,19 @@ It is impossible that there is some Phone such that no Person has that Phone.
 
 # Participation (not independent) · Student
 ¬(∃ Student₁ (¬(∃ PersonName (Student₁ has PersonName)) ∧ ¬(∃ Email (Student₁ has Email)) ∧ ¬(∃ Phone (Student₁ has Phone)) ∧ ¬(∃ Professor (Student₁ is supervised by Professor)) ∧ ¬(∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∧ ¬(∃ Room (Staff(Student₁) ∧ (Student₁ has office Room))) ∧ ¬(∃ Extension (Staff(Student₁) ∧ (Student₁ has Extension))) ∧ ¬(∃ Course (Student₁ enrols in Course)) ∧ ¬(∃ Course (Student₁ assists in Course)) ∧ ¬(∃ Course (Staff(Student₁) ∧ (Student₁ is qualified to teach Course))) ∧ ¬(∃ Offering (Staff(Student₁) ∧ (Student₁ teaches Offering))) ∧ ¬(∃ Course (Staff(Student₁) ∧ (Student₁ coordinates Course)))))
-It is impossible that there is some Student₁ such that that Student₁ does not have any PersonName and that Student₁ does not have any Email and that Student₁ does not have any Phone and that Student₁ is not supervised by any Professor and at most one of the following holds: that Student₁ is a Professor; that Student₁ supervises some Student and at most one of the following holds: that Student₁ is a Staff; that Student₁ has office some Room and at most one of the following holds: that Student₁ is a Staff; that Student₁ has some Extension and that Student₁ does not enrol in any Course and that Student₁ does not assist in any Course and at most one of the following holds: that Student₁ is a Staff; that Student₁ is qualified to teach some Course and at most one of the following holds: that Student₁ is a Staff; that Student₁ teaches some Offering and at most one of the following holds: that Student₁ is a Staff; that Student₁ coordinates some Course.
+It is impossible that there is some Student₁ such that that Student₁ does not have any Person Name and that Student₁ does not have any Email and that Student₁ does not have any Phone and that Student₁ is not supervised by any Professor and at most one of the following holds: that Student₁ is a Professor; that Student₁ supervises some Student and at most one of the following holds: that Student₁ is a Staff; that Student₁ has office some Room and at most one of the following holds: that Student₁ is a Staff; that Student₁ has some Extension and that Student₁ does not enrol in any Course and that Student₁ does not assist in any Course and at most one of the following holds: that Student₁ is a Staff; that Student₁ is qualified to teach some Course and at most one of the following holds: that Student₁ is a Staff; that Student₁ teaches some Offering and at most one of the following holds: that Student₁ is a Staff; that Student₁ coordinates some Course.
 
 # Participation (not independent) · Staff
 ¬(∃ Staff (¬(∃ PersonName (Staff has PersonName)) ∧ ¬(∃ Email (Staff has Email)) ∧ ¬(∃ Phone (Staff has Phone)) ∧ ¬(∃ Professor (Student(Staff) ∧ (Staff is supervised by Professor))) ∧ ¬(∃ Student (Professor(Staff) ∧ (Student is supervised by Staff))) ∧ ¬(∃ Room (Staff has office Room)) ∧ ¬(∃ Extension (Staff has Extension)) ∧ ¬(∃ Course (Student(Staff) ∧ (Staff enrols in Course))) ∧ ¬(∃ Course (Student(Staff) ∧ (Staff assists in Course))) ∧ ¬(∃ Course (Staff is qualified to teach Course)) ∧ ¬(∃ Offering (Staff teaches Offering)) ∧ ¬(∃ Course (Staff coordinates Course))))
-It is impossible that there is some Staff such that that Staff does not have any PersonName and that Staff does not have any Email and that Staff does not have any Phone and at most one of the following holds: that Staff is a Student; that Staff is supervised by some Professor and at most one of the following holds: that Staff is a Professor; that Staff supervises some Student and that Staff does not have office any Room and that Staff does not have any Extension and at most one of the following holds: that Staff is a Student; that Staff enrols in some Course and at most one of the following holds: that Staff is a Student; that Staff assists in some Course and that Staff is not qualified to teach any Course and that Staff does not teach any Offering and that Staff does not coordinate any Course.
+It is impossible that there is some Staff such that that Staff does not have any Person Name and that Staff does not have any Email and that Staff does not have any Phone and at most one of the following holds: that Staff is a Student; that Staff is supervised by some Professor and at most one of the following holds: that Staff is a Professor; that Staff supervises some Student and that Staff does not have office any Room and that Staff does not have any Extension and at most one of the following holds: that Staff is a Student; that Staff enrols in some Course and at most one of the following holds: that Staff is a Student; that Staff assists in some Course and that Staff is not qualified to teach any Course and that Staff does not teach any Offering and that Staff does not coordinate any Course.
 
 # Participation (not independent) · Professor
 ¬(∃ Professor₁ (¬(∃ PersonName (Professor₁ has PersonName)) ∧ ¬(∃ Email (Professor₁ has Email)) ∧ ¬(∃ Phone (Professor₁ has Phone)) ∧ ¬(∃ Professor₂ (Student(Professor₁) ∧ (Professor₁ is supervised by Professor₂))) ∧ ¬(∃ Student (Student is supervised by Professor₁)) ∧ ¬(∃ Room (Professor₁ has office Room)) ∧ ¬(∃ Extension (Professor₁ has Extension)) ∧ ¬(∃ Course (Student(Professor₁) ∧ (Professor₁ enrols in Course))) ∧ ¬(∃ Course (Student(Professor₁) ∧ (Professor₁ assists in Course))) ∧ ¬(∃ Course (Professor₁ is qualified to teach Course)) ∧ ¬(∃ Offering (Professor₁ teaches Offering)) ∧ ¬(∃ Course (Professor₁ coordinates Course))))
-It is impossible that there is some Professor₁ such that that Professor₁ does not have any PersonName and that Professor₁ does not have any Email and that Professor₁ does not have any Phone and at most one of the following holds: that Professor₁ is a Student; that Professor₁ is supervised by some Professor and that Professor₁ does not supervise any Student and that Professor₁ does not have office any Room and that Professor₁ does not have any Extension and at most one of the following holds: that Professor₁ is a Student; that Professor₁ enrols in some Course and at most one of the following holds: that Professor₁ is a Student; that Professor₁ assists in some Course and that Professor₁ is not qualified to teach any Course and that Professor₁ does not teach any Offering and that Professor₁ does not coordinate any Course.
+It is impossible that there is some Professor₁ such that that Professor₁ does not have any Person Name and that Professor₁ does not have any Email and that Professor₁ does not have any Phone and at most one of the following holds: that Professor₁ is a Student; that Professor₁ is supervised by some Professor and that Professor₁ does not supervise any Student and that Professor₁ does not have office any Room and that Professor₁ does not have any Extension and at most one of the following holds: that Professor₁ is a Student; that Professor₁ enrols in some Course and at most one of the following holds: that Professor₁ is a Student; that Professor₁ assists in some Course and that Professor₁ is not qualified to teach any Course and that Professor₁ does not teach any Offering and that Professor₁ does not coordinate any Course.
 
 # Participation (not independent) · Lecturer
 ¬(∃ Lecturer (¬(∃ PersonName (Lecturer has PersonName)) ∧ ¬(∃ Email (Lecturer has Email)) ∧ ¬(∃ Phone (Lecturer has Phone)) ∧ ¬(∃ Professor (Student(Lecturer) ∧ (Lecturer is supervised by Professor))) ∧ ¬(∃ Student (Professor(Lecturer) ∧ (Student is supervised by Lecturer))) ∧ ¬(∃ Room (Lecturer has office Room)) ∧ ¬(∃ Extension (Lecturer has Extension)) ∧ ¬(∃ Course (Student(Lecturer) ∧ (Lecturer enrols in Course))) ∧ ¬(∃ Course (Student(Lecturer) ∧ (Lecturer assists in Course))) ∧ ¬(∃ Course (Lecturer is qualified to teach Course)) ∧ ¬(∃ Offering (Lecturer teaches Offering)) ∧ ¬(∃ Course (Lecturer coordinates Course))))
-It is impossible that there is some Lecturer such that that Lecturer does not have any PersonName and that Lecturer does not have any Email and that Lecturer does not have any Phone and at most one of the following holds: that Lecturer is a Student; that Lecturer is supervised by some Professor and at most one of the following holds: that Lecturer is a Professor; that Lecturer supervises some Student and that Lecturer does not have office any Room and that Lecturer does not have any Extension and at most one of the following holds: that Lecturer is a Student; that Lecturer enrols in some Course and at most one of the following holds: that Lecturer is a Student; that Lecturer assists in some Course and that Lecturer is not qualified to teach any Course and that Lecturer does not teach any Offering and that Lecturer does not coordinate any Course.
+It is impossible that there is some Lecturer such that that Lecturer does not have any Person Name and that Lecturer does not have any Email and that Lecturer does not have any Phone and at most one of the following holds: that Lecturer is a Student; that Lecturer is supervised by some Professor and at most one of the following holds: that Lecturer is a Professor; that Lecturer supervises some Student and that Lecturer does not have office any Room and that Lecturer does not have any Extension and at most one of the following holds: that Lecturer is a Student; that Lecturer enrols in some Course and at most one of the following holds: that Lecturer is a Student; that Lecturer assists in some Course and that Lecturer is not qualified to teach any Course and that Lecturer does not teach any Offering and that Lecturer does not coordinate any Course.
 
 # Participation (not independent) · Building
 ¬(∃ Building ¬(∃ Room (Room is in Building)))
@@ -536,11 +536,11 @@ It is impossible that there is some Building such that no Room is in that Buildi
 
 # Participation (not independent) · BuildingCode
 ¬(∃ BuildingCode ¬(∃ Building (Building has BuildingCode)))
-It is impossible that some BuildingCode does not refer to any Building.
+It is impossible that some Building Code does not refer to any Building.
 
 # Participation (not independent) · RoomNr
 ¬(∃ RoomNr ¬(∃ Room (Room has RoomNr)))
-It is impossible that there is some RoomNr such that no Room has that RoomNr.
+It is impossible that there is some Room Nr such that no Room has that Room Nr.
 
 # Participation (not independent) · Room
 ¬(∃ Room ¬(∃ Staff (Staff has office Room)))
@@ -552,15 +552,15 @@ It is impossible that there is some Extension such that no Staff has that Extens
 
 # Participation (not independent) · Course
 ¬(∃ Course₁ (¬(∃ CourseTitle (Course₁ has CourseTitle)) ∧ ¬(∃ Credits (Course₁ is worth Credits)) ∧ ¬(∃ Course₂ (Course₁ is a prerequisite for Course₂)) ∧ ¬(∃ Course₂ (Course₂ is a prerequisite for Course₁)) ∧ ¬(∃ Student (Student enrols in Course₁)) ∧ ¬(∃ Student (Student assists in Course₁)) ∧ ¬(∃ Staff (Staff is qualified to teach Course₁)) ∧ ¬(∃ Staff (Staff coordinates Course₁)) ∧ ¬(∃ Term (Course₁ is offered in Term))))
-It is impossible that there is some Course₁ such that that Course₁ does not have any CourseTitle and that Course₁ is not worth any Credits and that Course₁ is not a prerequisite for any Course and no Course is a prerequisite for that Course₁ and no Student enrols in that Course₁ and no Student assists in that Course₁ and no Staff is qualified to teach that Course₁ and no Staff coordinates that Course₁ and that Course₁ is not offered in any Term.
+It is impossible that there is some Course₁ such that that Course₁ does not have any Course Title and that Course₁ is not worth any Credits and that Course₁ is not a prerequisite for any Course and no Course is a prerequisite for that Course₁ and no Student enrols in that Course₁ and no Student assists in that Course₁ and no Staff is qualified to teach that Course₁ and no Staff coordinates that Course₁ and that Course₁ is not offered in any Term.
 
 # Participation (not independent) · CourseCode
 ¬(∃ CourseCode ¬(∃ Course (Course has CourseCode)))
-It is impossible that some CourseCode does not refer to any Course.
+It is impossible that some Course Code does not refer to any Course.
 
 # Participation (not independent) · CourseTitle
 ¬(∃ CourseTitle ¬(∃ Course (Course has CourseTitle)))
-It is impossible that there is some CourseTitle such that no Course has that CourseTitle.
+It is impossible that there is some Course Title such that no Course has that Course Title.
 
 # Participation (not independent) · Credits
 ¬(∃ Credits ¬(∃ Course (Course is worth Credits)))
@@ -576,7 +576,7 @@ It is impossible that there is some Season such that no Term is in that Season.
 
 # Participation (not independent) · AcademicYear
 ¬(∃ AcademicYear ¬(∃ Term (Term is in AcademicYear)))
-It is impossible that there is some AcademicYear such that no Term is in that AcademicYear.
+It is impossible that there is some Academic Year such that no Term is in that Academic Year.
 
 # Participation (not independent) · Term
 ¬(∃ Term ¬(∃ Course (Course is offered in Term)))
@@ -584,7 +584,7 @@ It is impossible that there is some Term such that no Course is offered in that 
 
 # Participation (not independent) · Year
 ¬(∃ Year ¬(∃ AcademicYear (AcademicYear starts in Year)))
-It is impossible that there is some Year such that no AcademicYear starts in that Year.
+It is impossible that there is some Year such that no Academic Year starts in that Year.
 
 # Implied links (each fact has exactly one nesting instance) · Enrolment nests Student enrols in Course
 ¬(∃ Student ∃ Course ((Student enrols in Course) ∧ (¬(∃ Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course))) ∨ ∃^{>1} Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course)))))

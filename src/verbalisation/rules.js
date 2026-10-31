@@ -320,7 +320,7 @@ const PUNCT = { comma: ',', colon: ':', semicolon: ';' }
 // The built-in functions: (h, args, named) → value.
 const BUILTINS = {
   name: (h, [v]) => tok(h.name(v), 'type'),
-  typeName: (h, [T]) => tok(h.ctx.typeName(T), 'type'),
+  typeName: (h, [T]) => tok(h.typeLabel(T), 'type'),
   ref: (h, [v], named) => h.ref(v, named.case),
   clause: (h, [f], named) => h.clause(f, named),
   sentence: (h, [f]) => h.sentence(f),
