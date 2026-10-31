@@ -19,6 +19,11 @@
 //   { t: 'forall' | 'exists', v: { id, typeId }, body }
 //   { t: 'count', op: '≤' | '≥' | '=', n, v: { id, typeId }, body }
 //   { t: 'count', op: '..', n, m, v: { id, typeId }, body }   ∃^{n..m}
+//   { t: 'tc', star, vars: [{ id, typeId }, { id, typeId }], body, args: [varId | null, varId | null] }
+//                                                   [TC_{v,w} φ](s, t), the transitive
+//                                                   closure of φ as a relation of v and w (with
+//                                                   star the reflexive-transitive one); binds
+//                                                   v and w in body only
 //   { t: 'fact', factId, args: [varId | null] }     args in roles[] order; factId
 //                                                   can also be an implied link of a
 //                                                   nested fact type, '<factId>_il_<i>'
@@ -39,7 +44,7 @@
 
 import {
   mkVar, mkMeetVar, forall, exists, count, countRange, not, truth, implies, iff, and, or,
-  factAtom, typeAtom, cmp, vcmp, dpred, fn, ite, agg,
+  factAtom, typeAtom, cmp, vcmp, dpred, fn, ite, agg, tc,
 } from './formula.js'
 import { renderFormula } from './renderFormula.js'
 import { valueAccess, withValues, valueConstant } from './values.js'
@@ -92,7 +97,7 @@ export function upgradeRule(rule) {
       case 'not': return { ...n, arg: up(n.arg) }
       case 'and': case 'or': return { ...n, args: n.args.map(up) }
       case 'implies': case 'iff': return { ...n, left: up(n.left), right: up(n.right) }
-      case 'forall': case 'exists': case 'count': return { ...n, body: up(n.body) }
+      case 'forall': case 'exists': case 'count': case 'tc': return { ...n, body: up(n.body) }
       case 'vcmp': {
         if (n.left && typeof n.left === 'object' && 't' in n.left && n.right && 't' in n.right) return n
         return { t: 'vcmp', op: n.op, left: side(n.left), right: side(n.right) }
@@ -127,7 +132,7 @@ export function childPaths(n) {
     case 'not': return [['arg']]
     case 'and': case 'or': return n.args.map((_, i) => ['args', i])
     case 'implies': case 'iff': return [['left'], ['right']]
-    case 'forall': case 'exists': case 'count': return [['body']]
+    case 'forall': case 'exists': case 'count': case 'tc': return [['body']]
     case 'vcmp': return [['left'], ['right']]
     case 'dpred': case 'op': return n.args.map((_, i) => ['args', i])
     case 'if': return [['cond'], ['then'], ['else']]
@@ -158,6 +163,7 @@ export function varsInScope(rule, path, subjectTypeIds) {
   let n = rule
   for (let i = 0; i < path.length; i++) {
     if (QUANT.has(n?.t) && path[i] === 'body') out.push({ id: n.v.id, typeIds: [n.v.typeId] })
+    if (n?.t === 'tc' && path[i] === 'body') for (const v of n.vars) out.push({ id: v.id, typeIds: [v.typeId] })
     if (n?.t === 'agg' && (path[i] === 'cond' || path[i] === 'term'))
       for (const v of (n.vars ?? [])) out.push({ id: v.id, typeIds: [v.typeId] })
     n = n?.[path[i]]
@@ -226,6 +232,10 @@ export function formulaVariables(rule, roots, ctx) {
         vars.set(n.v.id, v)
         return { t: n.t === 'count' ? 'exists' : n.t, vars: [v], body: skeleton(n.body) }
       }
+      case 'tc': {
+        const vs = n.vars.map(w => { const fv = mkVar(w.typeId); vars.set(w.id, fv); return fv })
+        return { t: 'exists', vars: vs, body: skeleton(n.body) }
+      }
       case 'vcmp': case 'dpred': {
         const parts = childPaths(n).flatMap(p => termSkeleton(getAt(n, p)))
         return parts.length ? { t: 'and', args: [truth(), ...parts] } : truth()
@@ -257,7 +267,9 @@ export function formulaVariables(rule, roots, ctx) {
 // part shared by the rules of derived subtypes and derived fact types.
 // opts: nameOf (display names of the variables), selfAndBelow (types whose use
 // makes the rule circular, with selfName), selfFactId (the fact type a rule
-// derives), unavailable (Map varId → message for variables that may not be
+// derives), positiveSelf (the rule may use selfFactId where it occurs
+// positively: a semi-derived fact type, read as its least fixpoint),
+// unavailable (Map varId → message for variables that may not be
 // used here), and extra ([{ node, path, scope }]: atoms checked on their own,
 // with their own scope). Returns { issues, used }, used = the ids of the
 // variables the formula and the extra atoms use.
@@ -306,7 +318,7 @@ export function checkFormula(rule, roots, opts, state, ctx, typing = { sorts: ne
       const a = v && valueOf(p, v)
       return a ? sortOf(a.kindName) : FAIL
     },
-    formula: (cond, p) => walk(cond, p, scope),
+    formula: (cond, p) => walk(cond, p, scope, 0),
     bind(vars, p) {
       vars.forEach((w, i) => {
         if (!w?.typeId || !(ctx.otById.has(w.typeId) || ctx.factById.get(w.typeId)?.objectified))
@@ -316,20 +328,38 @@ export function checkFormula(rule, roots, opts, state, ctx, typing = { sorts: ne
     },
   })
 
-  const walk = (n, path, scope) => {
+  // pol: 1 where the part occurs positively (under an even number of
+  // negations, outside the left of → and outside ↔), -1 negatively, 0 both or
+  // under a counting quantifier that is not monotone.
+  const walk = (n, path, scope, pol = 1) => {
     switch (n?.t) {
       case undefined: case 'hole':
         err(path, 'This part of the formula is not filled in yet')
         return
       case 'true': return
-      case 'not': walk(n.arg, [...path, 'arg'], scope); return
+      case 'not': walk(n.arg, [...path, 'arg'], scope, -pol); return
       case 'and': case 'or':
-        n.args.forEach((a, i) => walk(a, [...path, 'args', i], scope))
+        n.args.forEach((a, i) => walk(a, [...path, 'args', i], scope, pol))
         return
       case 'implies': case 'iff':
-        walk(n.left, [...path, 'left'], scope)
-        walk(n.right, [...path, 'right'], scope)
+        walk(n.left, [...path, 'left'], scope, n.t === 'iff' ? 0 : -pol)
+        walk(n.right, [...path, 'right'], scope, n.t === 'iff' ? 0 : pol)
         return
+      case 'tc': {
+        const vs = n.vars ?? []
+        vs.forEach((w, i) => {
+          if (!w?.typeId || !(ctx.otById.has(w.typeId) || ctx.factById.get(w.typeId)?.objectified))
+            err(path, `The ${i ? 'second' : 'first'} variable of the transitive closure has no type`)
+        })
+        ;(n.args ?? []).forEach((id, i) => {
+          const a = use(path, id, scope, `The ${i ? 'end' : 'start'} of the transitive closure`)
+          const w = vs[i]
+          if (a && w?.typeId && graph.fit(a.typeIds, w.typeId) === 'none')
+            err(path, `${name(a.id)} cannot be the ${i ? 'end' : 'start'} of this transitive closure: ${typeLabel(a.typeIds)} and ${ctx.typeName(w.typeId)} are in different type hierarchies`)
+        })
+        walk(n.body, [...path, 'body'], [...scope, ...vs.map(w => ({ id: w.id, typeIds: [w.typeId] }))], pol)
+        return
+      }
       case 'forall': case 'exists': case 'count':
         if (!n.v?.typeId || !(ctx.otById.has(n.v.typeId) || ctx.factById.get(n.v.typeId)?.objectified))
           err(path, 'The quantified variable has no type')
@@ -341,16 +371,20 @@ export function checkFormula(rule, roots, opts, state, ctx, typing = { sorts: ne
           else if (n.m < n.n)
             err(path, 'The upper bound of a counting quantifier is below its lower bound')
         }
-        walk(n.body, [...path, 'body'], [...scope, { id: n.v.id, typeIds: [n.v.typeId] }])
+        walk(n.body, [...path, 'body'], [...scope, { id: n.v.id, typeIds: [n.v.typeId] }],
+          n.t !== 'count' || n.op === '≥' ? pol : 0)
         return
       case 'fact': {
         const fact = atomFact(ctx, n.factId)
         if (!fact) { err(path, 'The fact type no longer exists'); return }
-        if (fact.id === opts.selfFactId) err(path, 'The rule uses the fact type it derives, so it defines it in terms of itself')
+        if (fact.id === opts.selfFactId && !(opts.positiveSelf && pol === 1))
+          err(path, opts.positiveSelf
+            ? 'The rule uses the fact type it derives under a negation (or in a part that is not monotone), so it has no least fixpoint'
+            : 'The rule uses the fact type it derives, so it defines it in terms of itself')
         fact.roles.forEach((r, i) => {
           const v = use(path, n.args?.[i], scope, `Argument ${i + 1}`)
-          if (selfAndBelow.has(r.objectTypeId))
-            warn(path, `The rule uses a role of ${ctx.typeName(r.objectTypeId)}, so it defines ${selfName} in terms of itself`)
+          if (selfAndBelow.has(r.objectTypeId) && !(opts.positiveSelf && pol === 1))
+            (opts.positiveSelf ? err : warn)(path, `The rule uses a role of ${ctx.typeName(r.objectTypeId)}${opts.positiveSelf ? ' where it is not positive' : ''}, so it defines ${selfName} in terms of itself${opts.positiveSelf ? ' without a least fixpoint' : ''}`)
           else if (v) place(path, v, r.objectTypeId, `in a ${ctx.typeName(r.objectTypeId)} role`)
         })
         return
@@ -361,8 +395,8 @@ export function checkFormula(rule, roots, opts, state, ctx, typing = { sorts: ne
         if (!v) return
         if (graph.fit(v.typeIds, n.typeId) === 'none')
           err(path, `${name(v.id)} can never be a ${ctx.typeName(n.typeId)}: they are in different type hierarchies`)
-        if (selfAndBelow.has(n.typeId))
-          warn(path, `The rule refers to ${ctx.typeName(n.typeId)}, so it defines ${selfName} in terms of itself`)
+        if (selfAndBelow.has(n.typeId) && !(opts.positiveSelf && pol === 1))
+          (opts.positiveSelf ? err : warn)(path, `The rule refers to ${ctx.typeName(n.typeId)}${opts.positiveSelf ? ' under a negation (or in a part that is not monotone)' : ''}, so it defines ${selfName} in terms of itself${opts.positiveSelf ? ' without a least fixpoint' : ''}`)
         return
       }
       case 'cmp': {
@@ -383,7 +417,7 @@ export function checkFormula(rule, roots, opts, state, ctx, typing = { sorts: ne
     }
   }
   if (rule !== undefined) walk(rule, [], roots)
-  for (const x of (opts.extra ?? [])) walk(x.node, x.path, x.scope)
+  for (const x of (opts.extra ?? [])) walk(x.node, x.path, x.scope, 0)
   return { issues, used }
 }
 
@@ -411,6 +445,7 @@ export function checkRule(rule, typeId, state, ctx, typing = { sorts: new Map(),
   const { nameOf } = ruleVariables(rule, supers, ctx)
   const { issues, used } = checkFormula(rule, [{ id: SUBJECT, typeIds: supers }], {
     nameOf, selfAndBelow: selfAndBelowOf(typeId, state.subtypes), selfName: ctx.typeName(typeId),
+    positiveSelf: ctx.otById.get(typeId)?.derivation === 'semiDerived',
   }, state, ctx, typing)
   if (!used.has(SUBJECT) && !issues.some(i => i.severity === 'error'))
     issues.push({ path: [], severity: 'warning',
@@ -440,6 +475,7 @@ export function ruleFormula(rule, vars, ctx, typing) {
       case 'forall': return forall([v(n.v.id)], tr(n.body))
       case 'exists': return exists([v(n.v.id)], tr(n.body))
       case 'count': return n.op === '..' ? countRange(n.n, n.m, [v(n.v.id)], tr(n.body)) : count(n.op, n.n, [v(n.v.id)], tr(n.body))
+      case 'tc': return tc(n.vars.map(w => v(w.id)), tr(n.body), n.args.map(v), !!n.star)
       case 'fact': return factAtom(n.factId, n.args.map(v))
       case 'type': return typeAtom(n.typeId, v(n.arg))
       case 'cmp': return cmp(n.op, v(n.left), v(n.right))

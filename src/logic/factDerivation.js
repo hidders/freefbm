@@ -134,7 +134,7 @@ export function checkFactRule(fact, state, ctx, typing = { sorts: new Map(), par
   const scope = [...parts.selected, ...parts.extra]
 
   // The condition φ.
-  const inBody = checkFormula(parts.body, scope, { nameOf, selfFactId: fact.id, unavailable }, state, ctx, typing)
+  const inBody = checkFormula(parts.body, scope, { nameOf, selfFactId: fact.id, positiveSelf: fact.derivation === 'semiDerived', unavailable }, state, ctx, typing)
   for (const i of inBody.issues) issues.push({ ...i, path: ['body', ...i.path] })
 
   // The terms, through their equations yᵢ ≈ tᵢ.

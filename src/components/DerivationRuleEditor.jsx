@@ -46,6 +46,9 @@ const OP = { and: ' ∧ ', or: ' ∨ ', implies: ' → ', iff: ' ↔ ' }
 const VALUE_OPS = ['≈', '≉', '<', '≤', '>', '≥']
 const COUNT_OPS = ['≤', '≥', '=']
 
+// The two variables a transitive closure binds in its body.
+const tcScope = (n) => (n.vars ?? []).map(w => ({ id: w.id, typeIds: [w.typeId] }))
+
 const newVarId = () => `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 const keyOf = (path) => path.join('.')
 const samePath = (a, b) => keyOf(a) === keyOf(b)
@@ -71,7 +74,7 @@ const varTypes = (draft, roots) => {
     if (!n || typeof n !== 'object') return
     if (Array.isArray(n)) { n.forEach(walk); return }
     if (n.v?.id) m.set(n.v.id, [n.v.typeId])
-    if (n.t === 'agg') for (const v of n.vars ?? []) m.set(v.id, [v.typeId])
+    if (n.t === 'agg' || n.t === 'tc') for (const v of n.vars ?? []) m.set(v.id, [v.typeId])
     Object.values(n).forEach(walk)
   }
   walk(draft)
@@ -89,7 +92,7 @@ const highlightOf = (n, ctx, types) => {
   }
   if (n.t === 'type') return { factIds: [], typeIds: [n.typeId] }
   if (QUANT.has(n.t)) return { factIds: [], typeIds: [n.v.typeId] }
-  if (n.t === 'agg') return { factIds: [], typeIds: (n.vars ?? []).map(v => v.typeId) }
+  if (n.t === 'agg' || n.t === 'tc') return { factIds: [], typeIds: (n.vars ?? []).map(v => v.typeId) }
   if (n.t === 'var') return { factIds: [], typeIds: types.get(n.id) ?? [] }
   return null
 }
@@ -270,6 +273,7 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
     let n = draft
     for (const k of path) {
       if (QUANT.has(n?.t) && k === 'body') out.push({ id: n.v.id, typeIds: [n.v.typeId] })
+      if (n?.t === 'tc' && k === 'body') out.push(...tcScope(n))
       if (n?.t === 'agg' && (k === 'cond' || k === 'term')) out.push(...aggScope(n))
       n = n?.[k]
     }
@@ -357,6 +361,23 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
           <span style={TOKEN_STYLE.qgap}>{QGAP}</span>
           <span style={TOKEN_STYLE.var} title={`ranges over ${ctx.typeName(n.v.typeId)}`}>{nameOf.get(n.v.id)}</span>
           {' '}{wrapBody ? <>{'('}{b}{')'}</> : b}
+        </>
+        break
+      }
+      case 'tc': {
+        // [TC_{v,w} φ](s, t)
+        const p = [...path, 'body']
+        const b = render(n.body, p, [...scope, ...tcScope(n)])
+        const tcVar = (w) => <span style={TOKEN_STYLE.var} title={`ranges over ${ctx.typeName(w.typeId)}`}>{nameOf.get(w.id)}</span>
+        body = <>
+          {'['}<span style={TOKEN_STYLE.op}>TC{n.star ? '*' : ''}</span>
+          <sub style={{ fontSize: '0.75em' }}>{tcVar(n.vars[0])},{tcVar(n.vars[1])}</sub>
+          <span style={TOKEN_STYLE.qgap}>{QGAP}</span>{b}{']('}
+          {n.vars.map((w, i) => {
+            const withArg = (id) => ({ ...n, args: n.args.map((a, j) => (j === i ? id : a)) })
+            return <React.Fragment key={i}>{i > 0 && ', '}{varPicker(path, n.args[i], scope, w.typeId,
+              (id) => replace(path, withArg(id)), false, withArg)}</React.Fragment>
+          })}{')'}
         </>
         break
       }
@@ -716,6 +737,12 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
     if (t !== 'count') return { t, v, body: hole() }
     return op === '..' ? { t, op, n, m: Math.max(n, Math.floor(Number(qM) || 0)), v, body: hole() } : { t, op, n, v, body: hole() }
   }
+  // [TC_{v,w} □](s, t) with s and t the innermost fitting variables in scope.
+  const closure = (star) => {
+    const vars = [{ id: newVarId(), typeId: qType }, { id: newVarId(), typeId: qType }]
+    const s = fitting(qType)
+    return { t: 'tc', star, vars, body: hole(), args: [s, s] }
+  }
   const parent = path.length ? getAt(draft, path.slice(0, path[path.length - 2] === 'args' ? -2 : -1)) : null
   const parentPath = path.length ? path.slice(0, path[path.length - 2] === 'args' ? -2 : -1) : null
 
@@ -737,6 +764,10 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
       <button style={btn()} disabled={!qType} onClick={() => onPick(quant('count', '..'))}>∃<sup>{qN}..{qM}</sup></button>
       <input type="number" min={0} value={qM} onChange={e => setQM(e.target.value)} title="Upper bound of the range quantifier"
         style={{ width: 46, fontSize: 12 }} />
+      <button style={btn()} disabled={!qType} title="Transitive closure of a relation between two variables of this type"
+        onClick={() => onPick(closure(false))}>[TC □]</button>
+      <button style={btn()} disabled={!qType} title="Reflexive-transitive closure of a relation between two variables of this type"
+        onClick={() => onPick(closure(true))}>[TC* □]</button>
     </>
   )
 
@@ -815,6 +846,17 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
       <button style={btn()} onClick={() => replace(path, { t: 'implies', left: hole(), right: node }, [...path, 'left'])}>□ → …</button>
     </>])
     rows.push(['Quantify', quantButtons((q) => replace(path, { ...q, body: node }, path))])
+    if (node.t === 'tc') {
+      rows.push(['Closure', <>
+        {node.vars.map((w, i) => <React.Fragment key={i}>
+          {typeSelect(w.typeId, (typeId) => replace(path, { ...node, vars: node.vars.map((x, j) => (j === i ? { ...x, typeId } : x)) }))}
+        </React.Fragment>)}
+        <select value={node.star ? 'star' : 'plain'} style={selectStyle} onChange={e => replace(path, { ...node, star: e.target.value === 'star' })}>
+          <option value="plain">TC: one or more steps</option>
+          <option value="star">TC*: zero or more steps</option>
+        </select>
+      </>])
+    }
     if (node.t === 'forall' || node.t === 'exists' || node.t === 'count') {
       rows.push(['Variable', <>
         {typeSelect(node.v.typeId, (typeId) => replace(path, { ...node, v: { ...node.v, typeId } }))}
@@ -880,7 +922,7 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
     }
     rows.push(['Remove', <>
       <button style={btn()} onClick={() => replace(path, hole())}>Clear</button>
-      {parent && (BINARY.has(parent.t) || QUANT.has(parent.t) || parent.t === 'not') && (
+      {parent && (BINARY.has(parent.t) || QUANT.has(parent.t) || parent.t === 'not' || parent.t === 'tc') && (
         <button style={btn()} title="Replace the enclosing formula by this part"
           onClick={() => replace(parentPath, node, parentPath)}>Lift out of {liftLabel(parent)}</button>
       )}
@@ -1053,7 +1095,7 @@ function TermPalette({ node, path, scope, draft, ctx, nameOf, types, replace }) 
 const aggScope = (n) => (n.vars ?? []).map(v => ({ id: v.id, typeIds: [v.typeId] }))
 
 const liftLabel = (n) => ({
-  and: '∧', or: '∨', implies: '→', iff: '↔', not: '¬', forall: '∀', exists: '∃', count: '∃ⁿ',
+  and: '∧', or: '∨', implies: '→', iff: '↔', not: '¬', forall: '∀', exists: '∃', count: '∃ⁿ', tc: 'TC',
 }[n.t])
 
 // ── Inline pickers ──────────────────────────────────────────────────────────

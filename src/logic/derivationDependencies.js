@@ -15,7 +15,10 @@
 // Depending on a type means depending on its rule when it is derived, and on
 // every derived fact type that computes objects of it (or of a subtype of it,
 // or of an entity type identified by its values), since those objects are in
-// its population. The graph over the rules must have no cycles.
+// its population. The graph over the rules must have no cycles, except that
+// a semi-derived fact type or subtype may use itself where it occurs
+// positively: its population is then the least fixpoint of its rule over the
+// stored population.
 
 import { upgradeRule, childPaths, isDerived, directSupertypes, typeGraph, atomFact } from './derivationRule.js'
 import { isDerivedFact, factRuleParts } from './factDerivation.js'
@@ -47,11 +50,25 @@ function boundByAtoms(cond, vs, ctx) {
   return bound
 }
 
-// The fact types and types a formula or term uses directly.
-function uses(n, ctx, out = { facts: new Set(), types: new Set() }) {
+// The polarity of each child of a node, given the node's (1 positive, -1
+// negative, 0 both or not monotone).
+function childPolarity(n, key, pol) {
+  switch (n.t) {
+    case 'not': return -pol
+    case 'implies': return key === 'left' ? -pol : pol
+    case 'iff': return 0
+    case 'count': return n.op === '≥' ? pol : 0
+    case 'and': case 'or': case 'forall': case 'exists': case 'tc': return pol
+    default: return 0   // data terms, if-conditions, aggregates
+  }
+}
+
+// The fact types and types a formula or term uses directly; nonPositive
+// collects those used somewhere other than positively.
+function uses(n, ctx, out = { facts: new Set(), types: new Set(), nonPositive: new Set() }, pol = 1) {
   if (!n || typeof n !== 'object') return out
-  if (n.t === 'fact' && n.factId) out.facts.add(n.factId)
-  if (n.t === 'type' && n.typeId) out.types.add(n.typeId)
+  if (n.t === 'fact' && n.factId) { out.facts.add(n.factId); if (pol !== 1) out.nonPositive.add(n.factId) }
+  if (n.t === 'type' && n.typeId) { out.types.add(n.typeId); if (pol !== 1) out.nonPositive.add(n.typeId) }
   if (QUANT.has(n.t) && n.v?.typeId) {
     // The formula restricting the variable: ∀x (φ → ψ) ranges over φ, while
     // ∃^{≤n}, ∃^{=n} and ∃^{0..m} also count the instances outside the body.
@@ -64,7 +81,12 @@ function uses(n, ctx, out = { facts: new Set(), types: new Set() }) {
     const bound = boundByAtoms(n.cond, vs, ctx)
     for (const v of vs) if (!bound.has(v.id) && v.typeIds[0]) out.types.add(v.typeIds[0])
   }
-  for (const p of childPaths(n)) uses(p.reduce((x, k) => x?.[k], n), ctx, out)
+  if (n.t === 'tc') {
+    const vs = (n.vars ?? []).map(v => ({ id: v.id, typeIds: [v.typeId] }))
+    const bound = boundByAtoms(n.body, vs, ctx)
+    for (const v of vs) if (!bound.has(v.id) && v.typeIds[0]) out.types.add(v.typeIds[0])
+  }
+  for (const p of childPaths(n)) uses(p.reduce((x, k) => x?.[k], n), ctx, out, childPolarity(n, p[0], pol))
   return out
 }
 
@@ -95,18 +117,20 @@ export function derivationGraph(state, ctx) {
     if (!isDerived(ot) || !ot.derivationRule) continue
     const u = uses(upgradeRule(ot.derivationRule), ctx)
     for (const s of directSupertypes(ot.id, state.subtypes)) u.types.add(s)
+    const deps = [...[...u.facts].flatMap(viaFact), ...[...u.types].flatMap(viaType)]
     nodes.set(typeKey(ot.id), { key: typeKey(ot.id), kind: 'type', id: ot.id, name: ctx.typeName(ot.id),
-      deps: [...[...u.facts].flatMap(viaFact), ...[...u.types].flatMap(viaType)] })
+      deps: ot.derivation === 'semiDerived' && !u.nonPositive.has(ot.id) ? deps.filter(k => k !== typeKey(ot.id)) : deps })
   }
   for (const f of facts) {
     if (!isDerivedFact(f) || !f.derivationRule) continue
     const parts = factRuleParts(f)
     const u = uses(parts.body, ctx)
-    for (const { eq } of parts.eqs) uses(eq.right, ctx, u)
+    for (const { eq } of parts.eqs) uses(eq.right, ctx, u, 0)
     const bound = boundByAtoms(parts.body, [...parts.selected, ...parts.extra], ctx)
     for (const v of [...parts.selected, ...parts.extra]) if (!bound.has(v.id)) u.types.add(v.typeIds[0])
+    const deps = [...[...u.facts].flatMap(viaFact), ...[...u.types].flatMap(viaType)]
     nodes.set(factKey(f.id), { key: factKey(f.id), kind: 'fact', id: f.id, name: null,
-      deps: [...[...u.facts].flatMap(viaFact), ...[...u.types].flatMap(viaType)] })
+      deps: f.derivation === 'semiDerived' && !u.nonPositive.has(f.id) ? deps.filter(k => k !== factKey(f.id)) : deps })
   }
   return nodes
 }

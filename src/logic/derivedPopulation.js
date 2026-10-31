@@ -13,7 +13,12 @@
 // population of another derived type is itself computed. A derived fact type
 // with computed roles adds the objects it computes to the populations of
 // their types (and their supertypes, and the value type of their reference
-// mode). Rules that depend on each other in a cycle get an error.
+// mode). Rules that depend on each other in a cycle get an error, except a
+// semi-derived fact type or subtype that uses itself positively: its rule is
+// applied until nothing new follows (the least fixpoint over the stored
+// population), and while it is, the rule sees what it has derived so far.
+// A transitive closure [TC_{v,w} φ](s, t) holds when a chain of φ-steps
+// leads from s to t (or s = t, for TC*).
 
 import { canonicalizePopulationData, factTupleSource, projCellKey } from '../utils/populationValidation.js'
 import { findRefMode, findCompositePI, findInheritedPI, propagateValueToPlayer } from '../utils/refMode.js'
@@ -23,6 +28,24 @@ import { valueAccess } from './values.js'
 import { makeTermEvaluator, valueText } from './dataOperators.js'
 import { SUBJECT, directSupertypes, checkRule, upgradeRule, typeGraph, atomFact } from './derivationRule.js'
 import { checkFactRule, factRuleParts } from './factDerivation.js'
+
+// The ids of the variables a transitive closure's body refers to, other than
+// its own two: the parameters its steps depend on.
+function paramIds(n) {
+  const own = new Set(n.vars.map(v => v.id)), out = new Set()
+  const walk = (x) => {
+    if (!x || typeof x !== 'object') return
+    if (Array.isArray(x)) { x.forEach(walk); return }
+    if (x.t === 'fact') (x.args ?? []).forEach(id => id != null && out.add(id))
+    if (x.t === 'type' && x.arg != null) out.add(x.arg)
+    if (x.t === 'cmp') { out.add(x.left); out.add(x.right) }
+    if (x.t === 'var') out.add(x.id)
+    if (x.t === 'tc') (x.args ?? []).forEach(id => id != null && out.add(id))
+    for (const [k, c] of Object.entries(x)) if (k !== 'v' && k !== 'vars') walk(c)
+  }
+  walk(n.body)
+  return [...out].filter(id => !own.has(id)).sort()
+}
 
 const keyOf = (cell) => {
   const k = projCellKey(cell)
@@ -43,6 +66,7 @@ export function makePopulationEvaluator(rawData) {
   const cache = new Map()
   const visiting = new Set()
   const factCache = new Map()
+  const fixpoint = new Map()   // fact type id → its tuples so far, while its rule is iterated
 
   const fromCells = (cells) => {
     const instances = [], keys = new Set()
@@ -120,6 +144,23 @@ export function makePopulationEvaluator(rawData) {
         return bindings.map(e => (n.term ? terms(e).value(n.term) : null))
       },
     })
+    // The steps of a transitive closure under env: start key → [end env entry].
+    const steps = new WeakMap()
+    const tcSteps = (n, env) => {
+      if (!steps.has(n)) steps.set(n, { params: paramIds(n), byParams: new Map() })
+      const s = steps.get(n)
+      const pk = JSON.stringify(s.params.map(id => env.get(id)?.key ?? null))
+      if (s.byParams.has(pk)) return s.byParams.get(pk)
+      const [v, w] = n.vars
+      const adj = new Map()
+      for (const e of solve(n.body, [{ id: v.id, typeIds: [v.typeId] }, { id: w.id, typeIds: [w.typeId] }], env)) {
+        const from = e.get(v.id).key
+        if (!adj.has(from)) adj.set(from, [])
+        adj.get(from).push(e.get(w.id).key)
+      }
+      s.byParams.set(pk, adj)
+      return adj
+    }
     const tupleKeys = (factId) => {
       const r = factTuples(factId)
       if (r.error) { fail(r.error); return new Set() }
@@ -149,6 +190,19 @@ export function makePopulationEvaluator(rawData) {
         }
         case 'fact':
           return tupleKeys(n.factId).has(JSON.stringify(n.args.map(id => env.get(id).key)))
+        case 'tc': {
+          const from = env.get(n.args[0]).key, to = env.get(n.args[1]).key
+          if (n.star && from === to) return true
+          const adj = tcSteps(n, env)
+          const seen = new Set([from]), todo = [from]
+          while (todo.length) {
+            for (const k of adj.get(todo.pop()) ?? []) {
+              if (k === to) return true
+              if (!seen.has(k)) { seen.add(k); todo.push(k) }
+            }
+          }
+          return false
+        }
         case 'type': {
           const p = population(n.typeId)
           if (p.error) fail(p.error)
@@ -224,17 +278,37 @@ export function makePopulationEvaluator(rawData) {
     if (bad) return { error: bad.error }
     // Candidates: instances in every direct supertype, in the first one's order.
     const candidates = superPops[0].instances.filter(c => superPops.every(p => p.keys.has(keyOf(c))))
-    const ev = makeEval(typing)
-    const instances = [], keys = new Set()
-    for (const cell of candidates) {
-      const key = keyOf(cell)
-      if (ev.holds(rule, new Map([[SUBJECT, { cell, key, typeIds: supers }]]))) {
-        instances.push(cell)
-        keys.add(key)
+    const once = () => {
+      const ev = makeEval(typing)
+      const instances = [], keys = new Set()
+      for (const cell of candidates) {
+        const key = keyOf(cell)
+        if (ev.holds(rule, new Map([[SUBJECT, { cell, key, typeIds: supers }]]))) {
+          instances.push(cell)
+          keys.add(key)
+        }
+        if (ev.state.failure) return { error: ev.state.failure }
       }
-      if (ev.state.failure) return { error: ev.state.failure }
+      return { instances, keys }
     }
-    return { instances, keys }
+    // A semi-derived subtype that uses itself: iterate from the stored
+    // population, which the rule sees through population().
+    if (ot.derivation !== 'semiDerived' || !JSON.stringify(rule).includes(JSON.stringify(ot.id))) return once()
+    const had = cache.has(ot.id), before = cache.get(ot.id)
+    const stored = had ? before : storedPopulation(ot.id)
+    if (stored.error) return stored
+    let current = stored, r
+    for (;;) {
+      cache.set(ot.id, current)
+      r = once()
+      if (r.error) break
+      const next = fromCells([...current.instances, ...r.instances])
+      if (next.keys.size === current.keys.size) break
+      current = next
+    }
+    if (had) cache.set(ot.id, before)
+    else cache.delete(ot.id)
+    return r
   }
 
   // ── Derived fact types ──
@@ -248,6 +322,26 @@ export function makePopulationEvaluator(rawData) {
     const errors = checkFactRule(fact, data, ctx, typing).filter(i => i.severity === 'error')
     if (errors.length) return { error: `${errors[0].message}.` }
     const parts = factRuleParts(fact)
+    // A semi-derived fact type that uses itself: iterate from the stored
+    // tuples, which the rule sees through factTuples().
+    if (fact.derivation === 'semiDerived' && !fixpoint.has(fact.id) && JSON.stringify(parts.body).includes(JSON.stringify(fact.id))) {
+      const stored = storedTuples(fact)
+      let current = stored, r
+      for (;;) {
+        fixpoint.set(fact.id, current)
+        r = deriveFact(fact)
+        if (r.error) break
+        const tuples = [...current.tuples], keys = new Set(current.keys)
+        for (const t of r.tuples) {
+          const k = JSON.stringify(t.map(keyOf))
+          if (!keys.has(k)) { keys.add(k); tuples.push(t) }
+        }
+        if (keys.size === current.keys.size) break
+        current = { tuples, keys }
+      }
+      fixpoint.delete(fact.id)
+      return r
+    }
     const ev = makeEval(typing)
     const bindings = ev.solve(parts.body, [...parts.selected, ...parts.extra])
     if (ev.state.failure) return { error: ev.state.failure }
@@ -344,6 +438,7 @@ export function makePopulationEvaluator(rawData) {
   // The tuples of any fact type: computed for a (fully) derived one, stored
   // otherwise.
   function factTuples(factId) {
+    if (fixpoint.has(factId)) return fixpoint.get(factId)
     const fact = factById.get(factId)
     if (!fact) {
       const link = ctx.linkById.get(factId)

@@ -203,7 +203,7 @@ export function queryRule(query, seq, ctx) {
 function quantifiedVars(n, out = []) {
   if (!n || typeof n !== 'object') return out
   if ((n.t === 'forall' || n.t === 'exists' || n.t === 'count') && n.v) out.push(n.v)
-  if (n.t === 'agg') out.push(...(n.vars ?? []))
+  if (n.t === 'agg' || n.t === 'tc') out.push(...(n.vars ?? []))
   for (const k of Object.keys(n)) {
     const c = n[k]
     if (Array.isArray(c)) c.forEach(x => quantifiedVars(x, out))
@@ -555,7 +555,7 @@ export function queryElements(q, subtypes = []) {
       else add('objectType', n.typeId)
     }
     if (n.v?.typeId) add('objectType', n.v.typeId)
-    for (const w of (n.t === 'agg' ? n.vars ?? [] : [])) add('objectType', w.typeId)
+    for (const w of (n.t === 'agg' || n.t === 'tc' ? n.vars ?? [] : [])) add('objectType', w.typeId)
     Object.values(n).forEach(walk)
   }
   walk(q.body)
