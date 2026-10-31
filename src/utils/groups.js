@@ -1,15 +1,18 @@
 // Element groups, as NORMA's: a named set of schema elements with its own
 // definition and note. A group carries no logic. It can colour its members on
-// the diagram: an outline, a fill and a text colour, each optional. When an
-// element is in several colouring groups, the group with the highest priority
-// sets each colour, and on a tie the group listed first.
+// the diagram, with NORMA's colour roles, each optional: outline, fill and
+// text of a shape, the role boxes of a fact type (graphics), readings, role
+// names and the text of a note without a fill (floating), constraints
+// (constraint, deontic) and the lines from roles to their players
+// (connector). When an element is in several colouring groups, the group with
+// the highest priority sets each colour, and on a tie the group listed first.
 //
 // Members are element ids: object types, fact types, single roles (role.id),
 // subtypes, external constraints and notes.
 
 import { uid } from '../store/storeHelpers'
 
-export const COLOR_CHANNELS = ['outline', 'fill', 'text']
+export const COLOR_CHANNELS = ['outline', 'fill', 'text', 'graphics', 'floating', 'constraint', 'deontic', 'connector']
 
 export const mkGroup = (name = 'Group') => ({
   id: uid(), name, definition: '', note: '', priority: 0, colors: {}, members: [],

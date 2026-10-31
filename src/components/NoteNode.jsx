@@ -104,6 +104,9 @@ export default function NoteNode({ note, selected, groupStyle: gs, onDragStart, 
   const ly = y - h / 2
 
   const borderColor = selected ? 'var(--accent)' : gs?.outline ?? '#b8a040'
+  // As in NORMA: a note filled by its groups takes their text colour, an
+  // unfilled one their floating-text colour.
+  const textColor = gs?.fill ? gs.text : gs?.floating ?? gs?.text
   const borderWidth = selected ? 1.5 : 1
 
   // Text area: full width minus equal left and right padding; a float:right
@@ -161,7 +164,7 @@ export default function NoteNode({ note, selected, groupStyle: gs, onDragStart, 
           <div
             style={{
               ...textStyle,
-              color: text ? gs?.text ?? '#333' : '#bbb',
+              color: text ? textColor ?? '#333' : '#bbb',
               fontStyle: text ? 'normal' : 'italic',
             }}
           >

@@ -1203,8 +1203,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   }
   const roleStroke    = isFactSelected               ? 'var(--accent)'
     : (isDraftFrom && fact.objectified)              ? 'var(--col-subtype)'
-    : gs?.outline                                    ? gs.outline
-    :                                                  'var(--col-fact)'
+    : gs?.graphics ?? gs?.outline                    ?? 'var(--col-fact)'
   const roleStrokeW   = isFactSelected ? 2 : (isDraftFrom && fact.objectified) ? 2 : 1.5
   const gc = store.sequenceConstruction
   const gcConstraint = gc ? store.constraints.find(c => c.id === gc.constraintId) : null
@@ -1660,7 +1659,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
     return (
       <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle"
-        fontSize={14} fill={readingFallback ? 'var(--ink-muted)' : gs?.text ?? 'var(--ink-3)'} fontStyle={readingFallback ? 'italic' : undefined} fontFamily={FONT}
+        fontSize={14} fill={readingFallback ? 'var(--ink-muted)' : gs?.floating ?? gs?.text ?? 'var(--ink-3)'} fontStyle={readingFallback ? 'italic' : undefined} fontFamily={FONT}
         style={{ cursor: isDraggingReading ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: inQueryEdit ? 'none' : undefined }}
         onMouseDown={e => {
           e.stopPropagation()
@@ -2449,7 +2448,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                        : highlightedRoles?.has(ri) ? '#fde3c8'
                        : roleGs(ri)?.fill ?? '#ffffff'
                      }
-                     stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : isFactSelected || isDraftFrom ? roleStroke : roleGs(ri)?.outline ?? roleStroke}
+                     stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : isFactSelected || isDraftFrom ? roleStroke : roleGs(ri)?.graphics ?? roleGs(ri)?.outline ?? roleStroke}
                      strokeWidth={roleInQueryPattern(ri) ? 2 : roleSelected ? 2 : baseRoleOfIL ? 2 : roleStrokeW}
                     strokeDasharray={fact._implicit ? '4 3' : undefined}
                     onMouseDown={(e)   => handleRoleMouseDown(ri, e)}
@@ -2642,7 +2641,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                        : highlightedRoles?.has(ri) ? '#fde3c8'
                        : roleGs(ri)?.fill ?? '#ffffff'
                      }
-                     stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : isFactSelected || isDraftFrom ? roleStroke : roleGs(ri)?.outline ?? roleStroke}
+                     stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : isFactSelected || isDraftFrom ? roleStroke : roleGs(ri)?.graphics ?? roleGs(ri)?.outline ?? roleStroke}
                      strokeWidth={roleInQueryPattern(ri) ? 2 : roleSelected ? 2 : baseRoleOfIL ? 2 : roleStrokeW}
                     strokeDasharray={fact._implicit ? '4 3' : undefined}
                     onMouseDown={(e)   => handleRoleMouseDown(ri, e)}

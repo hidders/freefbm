@@ -636,8 +636,10 @@ function goToMember(store, id) {
   }
 }
 
-const COLOR_LABELS = { outline: 'Outline', fill: 'Fill', text: 'Text' }
-const COLOR_DEFAULTS = { outline: '#ff8000', fill: '#fff3e0', text: '#ff8000' }
+const COLOR_LABELS = { outline: 'Outline', fill: 'Fill', text: 'Text', graphics: 'Role boxes',
+  floating: 'Readings and role names', constraint: 'Constraints', deontic: 'Deontic constraints', connector: 'Role lines' }
+const COLOR_DEFAULTS = { outline: '#ff8000', fill: '#fff3e0', text: '#ff8000', graphics: '#ff8000',
+  floating: '#ff8000', constraint: '#ff8000', deontic: '#ff8000', connector: '#ff8000' }
 
 function GroupInspector({ group }) {
   const store = useOrmStoreIgnoring('pan', 'zoom')
