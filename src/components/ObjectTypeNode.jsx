@@ -547,7 +547,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
                 textAlign: 'center',
                 fontSize: OT_SIZE_REF,
                 fontFamily: OT_FONT,
-                color: 'var(--ink-3)',
+                color: gs?.text ?? 'var(--ink-3)',
                 padding: 0,
               }}
             />
@@ -556,7 +556,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
           <>
             <text x={ot.x} y={refY}
               textAnchor="middle" dominantBaseline="middle"
-              fill={isConstraintTarget ? '#ffffff' : 'var(--ink-3)'} fontSize={OT_SIZE_REF} fontFamily={OT_FONT}
+              fill={isConstraintTarget ? '#ffffff' : gs?.text ?? 'var(--ink-3)'} fontSize={OT_SIZE_REF} fontFamily={OT_FONT}
               style={{ pointerEvents: 'none' }}>
               {refModeText}
             </text>
