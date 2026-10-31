@@ -27,6 +27,7 @@
 //   - diagrams: shapes become occurrences, inches become pixels
 
 import { narrowestNoteWidth, fittingNoteHeight } from '../components/NoteNode.jsx'
+import { getDatatypeById } from '../data/datatypeProfiles.js'
 
 const SCALE = 200   // pixels per inch
 
@@ -195,10 +196,16 @@ export function importNorma(xmlText) {
     if (cdt) {
       const dt = byId.get(attr(cdt, 'ref'))
       const dtId = dt && datatypeId(dt.localName)
-      if (dtId) {
+      const pdt = dtId && getDatatypeById('norma', dtId)
+      if (pdt) {
+        // NORMA's Length is the precision for floating point, decimal and money
         const len = Number(attr(cdt, 'Length') ?? 0), scale = Number(attr(cdt, 'Scale') ?? 0)
+        const lenParam = pdt.params.find(p => p.name === 'length' || p.name === 'precision')?.name
+        const hasScale = pdt.params.some(p => p.name === 'scale')
         ot.datatypeAssignment = { profileId: 'norma', datatypeId: dtId,
-          params: { ...(len > 0 && { length: len }), ...(scale > 0 && { scale }) } }
+          params: { ...(len > 0 && lenParam && { [lenParam]: len }), ...(scale > 0 && hasScale && { scale }) } }
+      } else if (dt && dt.localName !== 'UnspecifiedDataType') {
+        warn(`${o.localName === 'EntityType' ? 'Entity type' : 'Value type'} "${name}": data type ${dt.localName} has no FreeFBM equivalent, left unset.`)
       }
     }
     const vc = path(o, 'ValueRestriction', 'ValueConstraint')
@@ -633,7 +640,7 @@ export function importNorma(xmlText) {
   const ifPos = new Map()
   for (const d of doc.getElementsByTagNameNS('*', 'ORMDiagram')) {
     const diag = { id: attr(d, 'id'), name: attr(d, 'Name') || 'Diagram', occurrences: [], constraintOccurrences: [],
-      implicitLinkPositions: {}, profileId: null, shownImplicitLinks: [], notes: [], expandedRefModes: [],
+      implicitLinkPositions: {}, profileId: 'norma', shownImplicitLinks: [], notes: [], expandedRefModes: [],
       expandedRefModeOccs: [], pan: { x: 0, y: 0 }, zoom: 1 }
     const expandedOwners = []
     const seenCon = new Set()
@@ -843,7 +850,7 @@ export function importNorma(xmlText) {
   }
   if (unplaced) {
     const diag = { id: 'imported-notes', name: 'Imported notes', occurrences: [], constraintOccurrences: [],
-      implicitLinkPositions: {}, profileId: null, shownImplicitLinks: [], expandedRefModes: [], expandedRefModeOccs: [],
+      implicitLinkPositions: {}, profileId: 'norma', shownImplicitLinks: [], expandedRefModes: [], expandedRefModeOccs: [],
       pan: { x: 0, y: 0 }, zoom: 1,
       notes: [...modelNotes].filter(([id, mn]) => !notesShown.has(id) && !mn.refs.length)
         .map(([id, mn], i) => ({ id, x: 140 + (i % 4) * 260, y: 100 + Math.floor(i / 4) * 140, w: 240, h: 120, text: mn.text, connectors: [] })) }
