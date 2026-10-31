@@ -76,9 +76,9 @@ export function nestedFactBounds(fact, rakeMinPad = {}) {
   const barsBelow = !!fact.uniquenessBelow
 
   // Compute how many uniqueness bar levels are used (mirrors render logic)
-  const hasUnary  = fact.uniqueness?.some(u => u.length === 1) ?? false
+  const hasUnary  = fact.uniqueness?.some(u => u.roles.length === 1) ?? false
   let multiLevel  = hasUnary ? 0 : -1
-  for (const u of (fact.uniqueness || [])) if (u.length > 1) multiLevel++
+  for (const u of (fact.uniqueness || [])) if (u.roles.length > 1) multiLevel++
   const multiCount = multiLevel
   const hasAnyBar  = (fact.uniqueness?.length ?? 0) > 0
   const effBarMargin = rakeZoneOnBarSide > 0 ? 0 : BAR_MARGIN
@@ -252,8 +252,9 @@ export function makeImplicitLinkFact(parentFact, implicitLink) {
   const x = ilPos?.x ?? schemaX ?? defaultX
   const y = ilPos?.y ?? schemaY ?? defaultY
 
-  const hasSoloBaseRoleUniqueness = (parentFact.uniqueness || []).some(u => u.length === 1 && u[0] === implicitLink.roleIndex)
-  const propagatedUniqueness = hasSoloBaseRoleUniqueness ? [[0], [1]] : [[0]]
+  const hasSoloBaseRoleUniqueness = (parentFact.uniqueness || []).some(u => u.roles.length === 1 && u.roles[0] === implicitLink.roleIndex)
+  const ilUc = i => ({ id: `${parentFact.id}_il_${implicitLink.roleIndex}_u${i}`, roles: [i] })
+  const propagatedUniqueness = hasSoloBaseRoleUniqueness ? [ilUc(0), ilUc(1)] : [ilUc(0)]
 
   const propagatedFrequency = (parentFact.internalFrequency || [])
     .filter(ifc => ifc.roles.length === 1 && ifc.roles[0] === implicitLink.roleIndex)
@@ -422,8 +423,8 @@ export function roleLeft(fact, roleIndex) {
 
 export function factBounds(fact) {
   const n = Math.max(fact.arity, 1)
-  const multiCount = fact.uniqueness ? fact.uniqueness.filter(u => u.length > 1).length : 0
-  const hasUnary   = fact.uniqueness ? fact.uniqueness.some(u => u.length === 1) : false
+  const multiCount = fact.uniqueness ? fact.uniqueness.filter(u => u.roles.length > 1).length : 0
+  const hasUnary   = fact.uniqueness ? fact.uniqueness.some(u => u.roles.length === 1) : false
   const levelsUsed = (hasUnary ? 1 : 0) + multiCount + 1
   const barsBelow = !!fact.uniquenessBelow
   if (fact.orientation === 'vertical') {
@@ -1261,7 +1262,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   // parent fact id, so implied selection wouldn't resolve correctly here.
   // Computed before level assignment so that implied roles can influence hasUnary.
   const existingUnaryRoles = new Set(
-    fact.uniqueness.filter(u => u.length === 1).map(u => u[0])
+    fact.uniqueness.filter(u => u.roles.length === 1).map(u => u.roles[0])
   )
   const impliedRoles = []
   if (!fact._implicit) {
@@ -1292,9 +1293,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   // so level assignment here is simply positional.
   // Implied unary UCs are treated as if explicitly specified for level purposes,
   // so that explicit multi-role UCs are pushed to higher levels and don't overlap.
-  const hasUnary = fact.uniqueness.some(u => u.length === 1) || impliedRoles.length > 0
+  const hasUnary = fact.uniqueness.some(u => u.roles.length === 1) || impliedRoles.length > 0
   let multiLevel = hasUnary ? 0 : -1
-  const levels = fact.uniqueness.map(uRoles =>
+  const levels = fact.uniqueness.map(({ roles: uRoles }) =>
     uRoles.length === 1 ? 0 : ++multiLevel
   )
   const multiCount = multiLevel
@@ -1327,7 +1328,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     }
   }
   const pIndices = fact.uniqueness
-    .map((u, idx) => ({ idx, key: JSON.stringify([...u].sort((a, b) => a - b)) }))
+    .map((u, idx) => ({ idx, key: JSON.stringify([...u.roles].sort((a, b) => a - b)) }))
     .filter(({ key }) => preferredKeys.has(key))
     .map(({ idx }) => idx)
   const pLevels = pIndices.map(idx => levels[idx])
@@ -2473,14 +2474,15 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
           {/* Uniqueness bars (right side) */}
           <g opacity={dimInternalConstraints ? 0.15 : isAdjFact ? 0.35 : 1} style={(isAdjFact || inQueryEdit) ? { pointerEvents: 'none' } : undefined}>
-          {fact.uniqueness.map((uRoles, ui) => {
+          {fact.uniqueness.map(({ id: ucId, roles: uRoles }, ui) => {
             const isEditing = inConstruction && store.uniquenessConstruction?.uIndex === ui
             const displayRoles = isEditing ? ucRoles : uRoles
             const isUSelected = ((store.selectedUniqueness?.factId === fact.id && store.selectedUniqueness?.uIndex === ui &&
               (!occurrenceId || !store.selectedUniqueness?.occurrenceId || store.selectedUniqueness?.occurrenceId === occurrenceId)) ||
               (fact._implicit && store.selectedUniqueness?.factId === fact._parentFactId && store.selectedUniqueness?.roleIndex === fact._implicitRoleIndex && store.selectedUniqueness?.uIndex === ui)) || isEditing
             const deontic = !isEditing && isDeonticUC(uRoles)
-            const barStroke = isUSelected ? 'var(--accent)' : deontic ? 'var(--col-deontic)' : 'var(--col-mandatory)'
+            const ucGs = groupStyle(store.groups, ucId)
+            const barStroke = isUSelected ? 'var(--accent)' : deontic ? ucGs?.deontic ?? 'var(--col-deontic)' : ucGs?.constraint ?? 'var(--col-mandatory)'
             const isEditingUnary = isEditing && uRoles.length === 1
             const displayLevel = isEditingUnary ? multiCount + 1 : levels[ui]
 
@@ -2666,14 +2668,15 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
           {/* Uniqueness bars (above) */}
           <g opacity={dimInternalConstraints ? 0.15 : isAdjFact ? 0.35 : 1} style={(isAdjFact || inQueryEdit) ? { pointerEvents: 'none' } : undefined}>
-          {fact.uniqueness.map((uRoles, ui) => {
+          {fact.uniqueness.map(({ id: ucId, roles: uRoles }, ui) => {
             const isEditing = inConstruction && store.uniquenessConstruction?.uIndex === ui
             const displayRoles = isEditing ? ucRoles : uRoles
             const isUSelected = ((store.selectedUniqueness?.factId === fact.id && store.selectedUniqueness?.uIndex === ui &&
               (!occurrenceId || !store.selectedUniqueness?.occurrenceId || store.selectedUniqueness?.occurrenceId === occurrenceId)) ||
               (fact._implicit && store.selectedUniqueness?.factId === fact._parentFactId && store.selectedUniqueness?.roleIndex === fact._implicitRoleIndex && store.selectedUniqueness?.uIndex === ui)) || isEditing
             const deontic = !isEditing && isDeonticUC(uRoles)
-            const barStroke = isUSelected ? 'var(--accent)' : deontic ? 'var(--col-deontic)' : 'var(--col-mandatory)'
+            const ucGs = groupStyle(store.groups, ucId)
+            const barStroke = isUSelected ? 'var(--accent)' : deontic ? ucGs?.deontic ?? 'var(--col-deontic)' : ucGs?.constraint ?? 'var(--col-mandatory)'
             const isEditingUnary = isEditing && uRoles.length === 1
             const displayLevel = isEditingUnary ? multiCount + 1 : levels[ui]
 
@@ -2940,7 +2943,8 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       const cx = (ifLive?.ifId === ifItem.id) ? ifLive.x : ifItem.x
       const cy = (ifLive?.ifId === ifItem.id) ? ifLive.y : ifItem.y
       const fr = formatFrequencyRange(ifItem.range)
-      const col = isEditing ? 'var(--accent)' : isIfSelected ? 'var(--accent)' : ifItem.deontic ? 'var(--col-deontic)' : 'var(--col-constraint)'
+      const ifGs = groupStyle(store.groups, ifItem._origIfId ?? ifItem.id)
+      const col = isEditing ? 'var(--accent)' : isIfSelected ? 'var(--accent)' : ifItem.deontic ? ifGs?.deontic ?? 'var(--col-deontic)' : ifGs?.constraint ?? 'var(--col-constraint)'
       const hw = ifShapeHalfW(fr)
       const isDragging = ifLive?.ifId === ifItem.id
       const handlers = {

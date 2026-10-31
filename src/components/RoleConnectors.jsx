@@ -417,6 +417,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
           const border = playerBorderPoint(ot, nf, anchor.x, anchor.y)
           const pos    = dotAtObject ? border : anchor
           const isSelected = sel?.factId === fact.id && sel?.roleIndex === ri && !sel?.implied
+          const mgs = role.mandatoryId ? groupStyle(store.groups, role.mandatoryId) : null
           const dotOpacity = queryReachable != null
             ? (queryReachable.has(fact.id) && queryReachable.has(role.objectTypeId) ? 1 : 0.2)
             : 1
@@ -426,8 +427,8 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
               {/* A deontic mandatory role has an open blue dot, as in NORMA. */}
               <circle
                 cx={pos.x} cy={pos.y} r={role.mandatoryDeontic ? DOT_R - 0.6 : DOT_R}
-                fill={role.mandatoryDeontic ? 'var(--bg-canvas)' : 'var(--col-mandatory)'}
-                stroke={role.mandatoryDeontic ? 'var(--col-deontic)' : 'none'}
+                fill={role.mandatoryDeontic ? 'var(--bg-canvas)' : mgs?.constraint ?? 'var(--col-mandatory)'}
+                stroke={role.mandatoryDeontic ? mgs?.deontic ?? 'var(--col-deontic)' : 'none'}
                 strokeWidth={role.mandatoryDeontic ? 1.5 : 0}
                 onClick={e => {
                   e.stopPropagation()

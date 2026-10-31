@@ -419,6 +419,10 @@ export function importNorma(xmlText) {
     }
   }
   const conAlias = new Map()   // NORMA constraint id → FreeFBM constraint id (xor pairs)
+  // Internal constraints, which are no FreeFBM constraints but keep NORMA's id:
+  const ucById = new Map()      // internal uniqueness: NORMA id → { id, roles }
+  const ifById = new Map()      // internal frequency: NORMA id → its entry
+  const mandatoryIds = new Set() // simple mandatory: NORMA id = role.mandatoryId
 
   const mkCon = (c, type, extra = {}) => ({
     id: attr(c, 'id'), kind: 'constraint', constraintType: type, x: 0, y: 0,
@@ -459,7 +463,9 @@ export function importNorma(xmlText) {
         if (!real.length) continue
         const f = factById.get(real[0].factId)
         const roles = real.map(m => m.roleIndex).sort((a, b) => a - b)
-        if (!f.uniqueness.some(u => u.join() === roles.join())) f.uniqueness.push(roles)
+        const same = f.uniqueness.find(u => u.roles.join() === roles.join())
+        if (same) ucById.set(id, same)
+        else { const uc = { id, roles }; f.uniqueness.push(uc); ucById.set(id, uc) }
         // A preferred identifier for the player of the one role left over. NORMA
         // also marks the uniqueness that identifies an objectified fact type
         // itself; FreeFBM takes that from the fact type's uniqueness.
@@ -486,6 +492,8 @@ export function importNorma(xmlText) {
         if (!m || m.kind !== 'role' || m.link) continue   // subtype meta roles and link roles: implied
         const role = factById.get(m.factId).roles[m.roleIndex]
         role.mandatory = true
+        role.mandatoryId = id
+        mandatoryIds.add(id)
         if (attr(c, 'Modality') === 'Deontic') role.mandatoryDeontic = true
         continue
       }
@@ -522,6 +530,7 @@ export function importNorma(xmlText) {
         const f = factById.get(ms[0].factId)
         f.internalFrequency.push({ id, roles: ms.map(m => m.roleIndex), range,
           ...(attr(c, 'Modality') === 'Deontic' && { deontic: true }) })
+        ifById.set(id, f.internalFrequency.at(-1))
         conAlias.set(id, `if:${f.id}`)
       } else {
         const con = mkCon(c, 'frequency', { sequences: [ms.map(asMember)], frequency: range, targetObjectTypeId: null })
@@ -546,6 +555,8 @@ export function importNorma(xmlText) {
     if (factById.has(normaId)) return factById.get(normaId)
     if (playerId.has(normaId) && factById.has(playerId.get(normaId))) return factById.get(playerId.get(normaId))
     if (stById.has(normaId)) return stById.get(normaId)
+    if (ucById.has(normaId)) return ucById.get(normaId)
+    if (ifById.has(normaId)) return ifById.get(normaId)
     if (conAlias.has(normaId)) return conById.get(conAlias.get(normaId)) ?? null
     const rr = roleRef.get(normaId)
     if (rr?.kind === 'role' && !rr.link) return factById.get(rr.factId).roles[rr.roleIndex]
@@ -793,6 +804,7 @@ export function importNorma(xmlText) {
     for (const ref of refsOf(kid(g, 'Elements'))) {
       const k = kindOf(ref)
       if (k === 'ModelNote') { memberIds.push(...(noteCopies.get(ref) ?? [])); continue }
+      if (mandatoryIds.has(ref)) { memberIds.push(ref); continue }
       if (k === 'ReadingOrder') { let f = byId.get(ref); while (f && f.localName !== 'Fact') f = f.parentElement; if (f) memberIds.push(attr(f, 'id')); else skipped++; continue }
       const el = elementFor(ref)
       if (el?.id) memberIds.push(el.id); else skipped++

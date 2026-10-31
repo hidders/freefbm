@@ -15,6 +15,7 @@ import {
   factTypeLabel, getConstraintDeps, getConstraintQueryDeps, eligibleConstraints,
   syncConstraints, computeConnectedIds, hasNoConnectors, runFactMergePass,
   EMPTY,
+  mkUniqueness, withMandatoryId,
 } from '../storeHelpers'
 import { BASE_LANGUAGE, swapLanguage } from '../viewLanguage.js'
 import { makeContext } from '../../logic/constraintFormulas.js'
@@ -520,7 +521,10 @@ export function createModelSlice(set, get) {
           alternativeReadings: f.alternativeReadings || [],
           readingDisplay: f.readingDisplay || 'forward',
           shownReadingOrder: f.shownReadingOrder ?? null,
-          roles: (f.roles || []).map(r => ({
+          // Migration: internal uniqueness constraints were bare role-index
+          // arrays; they are { id, roles } now.
+          uniqueness: (f.uniqueness || []).map(u => Array.isArray(u) ? mkUniqueness(u) : u),
+          roles: (f.roles || []).map(r => withMandatoryId({
             ...r,
             linkReadingParts: r.linkReadingParts ?? (f.objectified ? ['', 'involves', ''] : ['', '', '']),
             linkReadingReverseParts: r.linkReadingReverseParts ?? null,

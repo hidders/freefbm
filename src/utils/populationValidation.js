@@ -424,7 +424,7 @@ export function computePopulationIssues(rawData) {
         if (!ucMap.has(k)) ucMap.set(k, sorted)
       }
       const arity0 = fact.arity ?? fact.roles?.length ?? 0
-      ;(fact.uniqueness          || []).forEach(addUC)
+      ;(fact.uniqueness          || []).forEach(u => addUC(u.roles))
       ;(fact.preferredUniqueness || []).forEach(addUC)
       for (const pu of (fact.preferredUniqueness || [])) {
         if (!Array.isArray(pu)) continue

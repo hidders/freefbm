@@ -8,7 +8,9 @@
 // the highest priority sets each colour, and on a tie the group listed first.
 //
 // Members are element ids: object types, fact types, single roles (role.id),
-// subtypes, external constraints and notes.
+// subtypes, external constraints, notes, and the internal constraints of a
+// fact type: uniqueness (uniqueness[i].id), frequency (internalFrequency[i].id)
+// and simple mandatory (role.mandatoryId).
 
 import { uid } from '../store/storeHelpers'
 
@@ -51,6 +53,15 @@ export function describeMember(id, state) {
   const f = state.facts.find(x => x.id === id)
   if (f) return { kind: 'fact', label: factLabel(f, state) }
   for (const fact of state.facts) {
+    const ui = (fact.uniqueness ?? []).findIndex(u => u.id === id)
+    if (ui >= 0) return { kind: 'uniqueness', factId: fact.id, uIndex: ui,
+      label: `Uniqueness on ${roleNumbers(fact.uniqueness[ui].roles)} in ${factLabel(fact, state)}` }
+    const fq = (fact.internalFrequency ?? []).find(x => x.id === id)
+    if (fq) return { kind: 'frequency', factId: fact.id, ifId: id,
+      label: `Frequency on ${roleNumbers(fq.roles)} in ${factLabel(fact, state)}` }
+    const mi = fact.roles.findIndex(r => r.mandatory && r.mandatoryId === id)
+    if (mi >= 0) return { kind: 'mandatory', factId: fact.id, roleIndex: mi,
+      label: `Mandatory role ${mi + 1} in ${factLabel(fact, state)}` }
     const ri = fact.roles.findIndex(r => r.id === id)
     if (ri < 0) continue
     const r = fact.roles[ri]
@@ -75,6 +86,8 @@ export function describeMember(id, state) {
   return null
 }
 
+const roleNumbers = rs => (rs.length === 1 ? 'role ' : 'roles ') + [...rs].sort((a, b) => a - b).map(i => i + 1).join(', ')
+
 function factLabel(f, state) {
   if (f.objectifiedName) return `“${f.objectifiedName}”`
   const parts = f.readingParts ?? []
@@ -93,7 +106,12 @@ function factLabel(f, state) {
 export function memberIdSet(state) {
   const ids = new Set()
   for (const o of state.objectTypes) ids.add(o.id)
-  for (const f of state.facts) { ids.add(f.id); for (const r of f.roles) ids.add(r.id) }
+  for (const f of state.facts) {
+    ids.add(f.id)
+    for (const r of f.roles) { ids.add(r.id); if (r.mandatory && r.mandatoryId) ids.add(r.mandatoryId) }
+    for (const u of f.uniqueness ?? []) ids.add(u.id)
+    for (const x of f.internalFrequency ?? []) ids.add(x.id)
+  }
   for (const s of state.subtypes) ids.add(s.id)
   for (const c of state.constraints) ids.add(c.id)
   for (const d of state.diagrams) for (const n of d.notes ?? []) ids.add(n.id)
