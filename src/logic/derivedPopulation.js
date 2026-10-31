@@ -166,6 +166,10 @@ export function makePopulationEvaluator(rawData) {
       if (r.error) { fail(r.error); return new Set() }
       return r.keys
     }
+    // Whether a variable of typeIds can never be an instance of placeId: the
+    // two lie in different type hierarchies (a warning for the rule), whose
+    // identifiers may look alike but never name the same object.
+    const otherHierarchy = (typeIds, placeId) => graph.fit(typeIds, placeId) === 'none'
     const holds = (n, env) => {
       switch (n.t) {
         case 'true': return true
@@ -188,8 +192,11 @@ export function makePopulationEvaluator(rawData) {
           return n.op === '≤' ? count <= n.n : n.op === '≥' ? count >= n.n
             : n.op === '..' ? count >= n.n && count <= n.m : count === n.n
         }
-        case 'fact':
+        case 'fact': {
+          const roles = atomFact(ctx, n.factId)?.roles ?? []
+          if (n.args.some((id, i) => otherHierarchy(env.get(id).typeIds, roles[i]?.objectTypeId))) return false
           return tupleKeys(n.factId).has(JSON.stringify(n.args.map(id => env.get(id).key)))
+        }
         case 'tc': {
           const from = env.get(n.args[0]).key, to = env.get(n.args[1]).key
           if (n.star && from === to) return true
@@ -204,12 +211,14 @@ export function makePopulationEvaluator(rawData) {
           return false
         }
         case 'type': {
+          if (otherHierarchy(env.get(n.arg).typeIds, n.typeId)) return false
           const p = population(n.typeId)
           if (p.error) fail(p.error)
           return !!p.keys?.has(env.get(n.arg).key)
         }
         case 'cmp': {
-          const eq = env.get(n.left).key === env.get(n.right).key
+          const a = env.get(n.left), b = env.get(n.right)
+          const eq = a.key === b.key && !b.typeIds.some(t => otherHierarchy(a.typeIds, t))
           return n.op === '=' ? eq : !eq
         }
         case 'vcmp': return terms(env).compare(n)
