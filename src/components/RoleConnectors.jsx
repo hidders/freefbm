@@ -7,6 +7,7 @@ export { roleAnchor } from '../utils/geometry'
 import { roleAnchor } from '../utils/geometry'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { findCompositePI } from '../utils/refMode'
+import { groupStyle } from '../utils/groups.js'
 
 const DOT_R = 4  // mandatory dot radius
 
@@ -160,9 +161,13 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
       const autoOx = -edgeDy / len * 9
       const autoOy =  edgeDx / len * 9
 
+      // Group colours of the role, else of its fact type (utils/groups.js)
+      const rgs = groupStyle(store.groups, role.id), fgs = groupStyle(store.groups, fact.id)
       return {
         key: `${fact.occurrenceId ?? fact.id}-${ri}`,
         factId: fact.id, otId: role.objectTypeId, roleIndex: ri,
+        lineColor: rgs?.connector ?? fgs?.connector,
+        nameColor: rgs?.floating ?? fgs?.floating,
         anchor, border, dotPos,
         mx, my,
         autoOffset: { dx: autoOx, dy: autoOy },
@@ -236,7 +241,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
   return (
     <g>
       {/* Connector lines */}
-      {allConnectors.map(({ key, factId, otId, anchor, border }) => {
+      {allConnectors.map(({ key, factId, otId, anchor, border, lineColor }) => {
         const connOpacity = queryReachable != null
           ? (queryReachable.has(factId) && queryReachable.has(otId) ? 1 : 0.2)
           : 1
@@ -244,14 +249,14 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
           <line key={key}
             x1={border.x} y1={border.y}
             x2={anchor.x} y2={anchor.y}
-            stroke="var(--col-fact)" strokeWidth={1.5} strokeOpacity={0.75}
+            stroke={lineColor ?? 'var(--col-fact)'} strokeWidth={1.5} strokeOpacity={lineColor ? 1 : 0.75}
             opacity={connOpacity}/>
         )
       })}
 
       {/* Role name labels — draggable, offset stored relative to connector midpoint */}
       {store.showRoleNames && allConnectors.map(({ key, factId, otId, roleIndex, roleName,
-                                                mx, my, autoOffset, nameOffset }) => {
+                                                mx, my, autoOffset, nameOffset, nameColor }) => {
         if (!roleName) return null
         const labelOpacity = queryReachable != null
           ? (queryReachable.has(factId) && queryReachable.has(otId) ? 1 : 0.2)
@@ -314,7 +319,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
             x={lx} y={ly}
             textAnchor="middle" dominantBaseline="middle"
             fontSize={12} fontFamily="'Segoe UI', Helvetica, Arial, sans-serif"
-            fill="var(--col-role-name)" opacity={labelOpacity}
+            fill={nameColor ?? 'var(--col-role-name)'} opacity={labelOpacity}
             style={{ cursor: isDragging ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
             onMouseDown={e => {
               e.stopPropagation()

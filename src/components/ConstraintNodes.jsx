@@ -895,7 +895,8 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                ? store.multiSelectedOccurrenceIds.includes(c.constraintOccurrenceId)
                : store.multiSelectedIds.includes(c.id)))
           : (store.selectedId === c.id || store.multiSelectedIds.includes(c.id))
-        const color = groupStyle(store.groups, c.id)?.outline
+        const cgs = groupStyle(store.groups, c.id)
+        const color = (c.deontic ? cgs?.deontic : cgs?.constraint) ?? cgs?.outline
           ?? (c.deontic ? 'var(--col-deontic)' : CONSTRAINT_COLOR[c.constraintType] || 'var(--ink-3)')
         const symbol = CONSTRAINT_SYMBOL[c.constraintType] || '?'
 

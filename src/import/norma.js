@@ -49,16 +49,34 @@ function bounds(shape) {
            w: Math.round(w * SCALE), h: Math.round(h * SCALE) }
 }
 
-// "255, 128, 0" or a .NET colour name → #rrggbb (names via the browser).
+// A NORMA colour as .NET's ColorConverter writes it: "255, 128, 0", "128, 255,
+// 128, 0" (alpha first) or a colour name → #rrggbb. Web colour names are the
+// CSS ones (resolved by the browser); Windows system colours get their
+// default Windows 10 values. Transparent colours give null (no colour).
+const SYSTEM_COLORS = {
+  activeborder: '#b4b4b4', activecaption: '#99b4d1', activecaptiontext: '#000000', appworkspace: '#ababab',
+  buttonface: '#f0f0f0', buttonhighlight: '#ffffff', buttonshadow: '#a0a0a0', control: '#f0f0f0',
+  controldark: '#a0a0a0', controldarkdark: '#696969', controllight: '#e3e3e3', controllightlight: '#ffffff',
+  controltext: '#000000', desktop: '#000000', gradientactivecaption: '#b9d1ea', gradientinactivecaption: '#d7e4f2',
+  graytext: '#6d6d6d', highlight: '#0078d7', highlighttext: '#ffffff', hottrack: '#0066cc',
+  inactiveborder: '#f4f7fc', inactivecaption: '#bfcddb', inactivecaptiontext: '#000000', info: '#ffffe1',
+  infotext: '#000000', menu: '#f0f0f0', menubar: '#f0f0f0', menuhighlight: '#3399ff', menutext: '#000000',
+  scrollbar: '#c8c8c8', window: '#ffffff', windowframe: '#646464', windowtext: '#000000',
+}
 let _ctx = null
 function toHex(v) {
   if (!v) return null
-  const m = v.match(/^\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*$/)
-  if (m) return '#' + m.slice(1).map(n => (+n).toString(16).padStart(2, '0')).join('')
+  const m = v.match(/^\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*(\d+)\s*)?$/)
+  if (m) {
+    const [a, rgb] = m[4] != null ? [+m[1], m.slice(2)] : [255, m.slice(1, 4)]
+    return a === 0 ? null : '#' + rgb.map(n => Math.min(255, +n).toString(16).padStart(2, '0')).join('')
+  }
+  const name = v.trim().toLowerCase()
+  if (SYSTEM_COLORS[name]) return SYSTEM_COLORS[name]
   try {
     _ctx ??= document.createElement('canvas').getContext('2d')
     _ctx.fillStyle = '#000000'
-    _ctx.fillStyle = v.toLowerCase()
+    _ctx.fillStyle = name
     return _ctx.fillStyle.startsWith('#') ? _ctx.fillStyle : null
   } catch { return null }
 }
@@ -755,7 +773,10 @@ export function importNorma(xmlText) {
 
   // ── groups ────────────────────────────────────────────────────────────────
   const groups = []
-  const COLOR_ROLES = { Outline: 'outline', Background: 'fill', ForegroundText: 'text' }
+  // NORMA's ORMDiagramDynamicColor roles → group colour channels (utils/groups.js)
+  const COLOR_ROLES = { Outline: 'outline', Background: 'fill', ForegroundText: 'text',
+    ForegroundGraphics: 'graphics', FloatingText: 'floating', Constraint: 'constraint',
+    DeonticConstraint: 'deontic', RolePlayerConnector: 'connector' }
   for (const g of doc.getElementsByTagNameNS('*', 'Group')) {
     if (g.namespaceURI !== ORM) continue
     const types = kids(kid(g, 'GroupTypes'))
