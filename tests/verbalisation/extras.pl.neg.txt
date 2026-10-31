@@ -1,26 +1,26 @@
 # Derivation rule · Student is a TeachingAssistant if and only if …
 ∀ Student (TeachingAssistant(Student) ↔ ∃ Course (Student assists in Course))
-Student jest TeachingAssistant wtedy i tylko wtedy, gdy Student asystuje przy jakimś Przedmiocie.
+Student jest Teaching Assistant wtedy i tylko wtedy, gdy Student asystuje przy jakimś Przedmiocie.
 
 # Semi-derivation rule · Student is a BusyStudent if …
 ¬(∃ Student ((∃^{≥4} Course (Student enrols in Course)) ∧ ¬BusyStudent(Student)))
-Niemożliwe jest, że jakiś Student studiuje co najmniej 4 Przedmioty i nie jest BusyStudent.
+Niemożliwe jest, że jakiś Student studiuje co najmniej 4 Przedmioty i nie jest Busy Student.
 
 # Derivation rule · Course is a HeavyCourse if and only if …
 ∀ Course (HeavyCourse(Course) ↔ ∃ Credits ((Course is worth Credits) ∧ Credits ≥ 30))
-Przedmiot jest HeavyCourse wtedy i tylko wtedy, gdy Przedmiot ma jakąś Punktację, która wynosi co najmniej 30.
+Przedmiot jest Heavy Course wtedy i tylko wtedy, gdy Przedmiot ma jakąś Punktację, która wynosi co najmniej 30.
 
 # Derivation rule · Student is a FreeStudent if and only if …
 ∀ Student (FreeStudent(Student) ↔ ¬(∃ Course (Student enrols in Course)))
-Student jest FreeStudent wtedy i tylko wtedy, gdy Student nie studiuje żadnego Przedmiotu.
+Student jest Free Student wtedy i tylko wtedy, gdy Student nie studiuje żadnego Przedmiotu.
 
 # Derivation rule · Course is an IntroCourse if and only if …
 ∀ Course (IntroCourse(Course) ↔ ∃ CourseTitle ((Course has CourseTitle) ∧ startsWith(CourseTitle, 'Introduction')))
-Przedmiot jest IntroCourse wtedy i tylko wtedy, gdy Przedmiot ma jakiś Tytuł przedmiotu, który zaczyna się od 'Introduction'.
+Przedmiot jest Intro Course wtedy i tylko wtedy, gdy Przedmiot ma jakiś Tytuł przedmiotu, który zaczyna się od 'Introduction'.
 
 # Semi-derivation rule · Course is a LongTitleCourse if …
 ¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
-Niemożliwe jest, że jakiś Przedmiot ma jakiś Tytuł przedmiotu taki, że długość tego Tytułu przedmiotu wynosi więcej niż 40 i nie jest LongTitleCourse.
+Niemożliwe jest, że jakiś Przedmiot ma jakiś Tytuł przedmiotu taki, że długość tego Tytułu przedmiotu wynosi więcej niż 40 i nie jest Long Title Course.
 
 # Value range (deontic) · Score
 F(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
@@ -52,23 +52,23 @@ Student studies with Pracownika wtedy i tylko wtedy, gdy Student studiuje jakiś
 
 # Derivation rule, every derived fact holds · Student has TotalCredits
 ¬(∃ Student ¬(∃ TotalCredits (Student has TotalCredits)))
-Niemożliwe jest, że jakiś Student nie has żadnego TotalCredits.
+Niemożliwe jest, że jakiś Student nie has żadnego Total Credits.
 
 # Derivation rule, only derived facts hold · Student has TotalCredits
 ¬(∃ Student ∃ TotalCredits ((Student has TotalCredits) ∧ TotalCredits ≉ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)}))
-Niemożliwe jest, że istnieją jakiś Student i jakiś TotalCredits takie, że ten Student has ten TotalCredits i ten TotalCredits nie wynosi suma Punktacji, które każdy Przedmiot, który ten Student studiuje ma.
+Niemożliwe jest, że istnieją jakiś Student i jakiś Total Credits takie, że ten Student has ten Total Credits i ten Total Credits nie wynosi suma Punktacji, które każdy Przedmiot, który ten Student studiuje ma.
 
 # Derivation rule, every derived fact holds · Course has EnrolmentCount
 ¬(∃ Course ¬(∃ EnrolmentCount (Course has EnrolmentCount)))
-Niemożliwe jest, że jakiś Przedmiot nie has żadnego EnrolmentCount.
+Niemożliwe jest, że jakiś Przedmiot nie has żadnego Enrolment Count.
 
 # Derivation rule, only derived facts hold · Course has EnrolmentCount
 ¬(∃ Course ∃ EnrolmentCount ((Course has EnrolmentCount) ∧ EnrolmentCount ≉ Count{Student : (Student enrols in Course)}))
-Niemożliwe jest, że istnieją jakiś Przedmiot i jakiś EnrolmentCount takie, że ten Przedmiot has ten EnrolmentCount i ten EnrolmentCount nie wynosi liczba Studentów, którzy studiują ten Przedmiot.
+Niemożliwe jest, że istnieją jakiś Przedmiot i jakiś Enrolment Count takie, że ten Przedmiot has ten Enrolment Count i ten Enrolment Count nie wynosi liczba Studentów, którzy studiują ten Przedmiot.
 
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ¬(∃ Student ∃ Course ∃ Credits ((Student assists in Course) ∧ (Course is worth Credits) ∧ ¬(∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))))
-Niemożliwe jest, że istnieją jakiś Student, jakiś Przedmiot i jakaś Punktacja takie, że ten Student asystuje przy tym Przedmiocie i ten Przedmiot ma tę Punktację i nieprawda, że ten Student has credit load jakiś TotalCredits, który wynosi (ta Punktacja plus 5) razy 2.
+Niemożliwe jest, że istnieją jakiś Student, jakiś Przedmiot i jakaś Punktacja takie, że ten Student asystuje przy tym Przedmiocie i ten Przedmiot ma tę Punktację i nieprawda, że ten Student has credit load jakiś Total Credits, który wynosi (ta Punktacja plus 5) razy 2.
 
 # Uniqueness (deontic) · Staff mentors Student
 F(∃ Student ∃^{>1} Staff (Staff mentors Student))

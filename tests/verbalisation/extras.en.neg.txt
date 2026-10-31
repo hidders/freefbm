@@ -1,26 +1,26 @@
 # Derivation rule · Student is a TeachingAssistant if and only if …
 ∀ Student (TeachingAssistant(Student) ↔ ∃ Course (Student assists in Course))
-Student is a TeachingAssistant if and only if Student assists in some Course.
+Student is a Teaching Assistant if and only if Student assists in some Course.
 
 # Semi-derivation rule · Student is a BusyStudent if …
 ¬(∃ Student ((∃^{≥4} Course (Student enrols in Course)) ∧ ¬BusyStudent(Student)))
-It is impossible that some Student enrols in at least 4 Courses and is not a BusyStudent.
+It is impossible that some Student enrols in at least 4 Courses and is not a Busy Student.
 
 # Derivation rule · Course is a HeavyCourse if and only if …
 ∀ Course (HeavyCourse(Course) ↔ ∃ Credits ((Course is worth Credits) ∧ Credits ≥ 30))
-Course is a HeavyCourse if and only if Course is worth some Credits that is at least 30.
+Course is a Heavy Course if and only if Course is worth some Credits that is at least 30.
 
 # Derivation rule · Student is a FreeStudent if and only if …
 ∀ Student (FreeStudent(Student) ↔ ¬(∃ Course (Student enrols in Course)))
-Student is a FreeStudent if and only if Student does not enrol in any Course.
+Student is a Free Student if and only if Student does not enrol in any Course.
 
 # Derivation rule · Course is an IntroCourse if and only if …
 ∀ Course (IntroCourse(Course) ↔ ∃ CourseTitle ((Course has CourseTitle) ∧ startsWith(CourseTitle, 'Introduction')))
-Course is an IntroCourse if and only if Course has some CourseTitle that starts with 'Introduction'.
+Course is an Intro Course if and only if Course has some Course Title that starts with 'Introduction'.
 
 # Semi-derivation rule · Course is a LongTitleCourse if …
 ¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
-It is impossible that some Course has some CourseTitle such that the length of that CourseTitle is more than 40 and is not a LongTitleCourse.
+It is impossible that some Course has some Course Title such that the length of that Course Title is more than 40 and is not a Long Title Course.
 
 # Value range (deontic) · Score
 F(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
@@ -52,23 +52,23 @@ Student studies with Staff if and only if Student enrols in some Course that Sta
 
 # Derivation rule, every derived fact holds · Student has TotalCredits
 ¬(∃ Student ¬(∃ TotalCredits (Student has TotalCredits)))
-It is impossible that some Student does not have any TotalCredits.
+It is impossible that some Student does not have any Total Credits.
 
 # Derivation rule, only derived facts hold · Student has TotalCredits
 ¬(∃ Student ∃ TotalCredits ((Student has TotalCredits) ∧ TotalCredits ≉ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)}))
-It is impossible that there is some Student and some TotalCredits such that that Student has that TotalCredits and that TotalCredits is not the sum of the Credits that each Course that that Student enrols in is worth.
+It is impossible that there is some Student and some Total Credits such that that Student has that Total Credits and that Total Credits is not the sum of the Credits that each Course that that Student enrols in is worth.
 
 # Derivation rule, every derived fact holds · Course has EnrolmentCount
 ¬(∃ Course ¬(∃ EnrolmentCount (Course has EnrolmentCount)))
-It is impossible that some Course does not have any EnrolmentCount.
+It is impossible that some Course does not have any Enrolment Count.
 
 # Derivation rule, only derived facts hold · Course has EnrolmentCount
 ¬(∃ Course ∃ EnrolmentCount ((Course has EnrolmentCount) ∧ EnrolmentCount ≉ Count{Student : (Student enrols in Course)}))
-It is impossible that there is some Course and some EnrolmentCount such that that Course has that EnrolmentCount and that EnrolmentCount is not the number of Students that enrol in that Course.
+It is impossible that there is some Course and some Enrolment Count such that that Course has that Enrolment Count and that Enrolment Count is not the number of Students that enrol in that Course.
 
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ¬(∃ Student ∃ Course ∃ Credits ((Student assists in Course) ∧ (Course is worth Credits) ∧ ¬(∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))))
-It is impossible that there is some Student, some Course and some Credits such that that Student assists in that Course and that Course is worth that Credits and it is not true that that Student has credit load some TotalCredits that is (that Credits plus 5) times 2.
+It is impossible that there is some Student, some Course and some Credits such that that Student assists in that Course and that Course is worth that Credits and it is not true that that Student has credit load some Total Credits that is (that Credits plus 5) times 2.
 
 # Uniqueness (deontic) · Staff mentors Student
 F(∃ Student ∃^{>1} Staff (Staff mentors Student))
@@ -84,15 +84,15 @@ It is forbidden that some Staff mentors more than 5 Students.
 
 # Uniqueness · Person has first given PersonName
 ¬(∃ Person ∃^{>1} PersonName (Person has first given PersonName))
-It is impossible that more than one PersonName is the first given name of the same Person.
+It is impossible that more than one Person Name is the first given name of the same Person.
 
 # Uniqueness · Person has first given PersonName
 ¬(∃ PersonName ∃^{>1} Person (Person has first given PersonName))
-It is impossible that more than one Person has the same first given PersonName.
+It is impossible that more than one Person has the same first given Person Name.
 
 # Mandatory role · Person has first given PersonName
 ¬(∃ Person ¬(∃ PersonName (Person has first given PersonName)))
-It is impossible that some Person does not have any first given PersonName.
+It is impossible that some Person does not have any first given Person Name.
 
 # Uniqueness · Person has Person -in-law
 ¬(∃ Person₁ ∃^{>1} Person₂ (Person₂ has Person₁ -in-law))
@@ -100,11 +100,11 @@ It is impossible that more than one Person₂ has the same Person₁-in-law.
 
 # External uniqueness (outer join)
 ¬(∃ CourseTitle ∃ Staff ∃^{>1} Course ((Course has CourseTitle) ∧ (Course is run by Staff)))
-It is impossible that more than one Course has the same CourseTitle and is run by the same Staff.
+It is impossible that more than one Course has the same Course Title and is run by the same Staff.
 
 # External uniqueness (outer join): no value at position 2
 ¬(∃ CourseTitle ∃^{>1} Course ((Course has CourseTitle) ∧ ¬(∃ Staff (Course is run by Staff))))
-It is impossible that more than one Course has the same CourseTitle and is not run by any Staff.
+It is impossible that more than one Course has the same Course Title and is not run by any Staff.
 
 # Subset (deontic)
 F(∃ Student ((∃ Staff (Staff mentors Student)) ∧ ¬(∃ Course (Student enrols in Course))))

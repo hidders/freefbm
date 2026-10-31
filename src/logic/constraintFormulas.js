@@ -669,26 +669,25 @@ const possible = (phi) => ({ t: 'possible', arg: counterexample(phi) })
 // "factId:roleIndex" of the roles implicitly mandatory because their player
 // is not independent and plays no other role (see implicitEntries).
 function implicitlyMandatoryRoles(state, identified) {
+  // Subtype hierarchies as connected components (as in implicitEntries), and
+  // the roles played within each, so this is linear in the schema's size.
+  const comp = new Map()
+  const find = (n) => { while (comp.get(n) !== n) n = comp.get(n); return n }
   const types = allTypes(state)
-  const subtypes = state.subtypes ?? []
-  const related = (a, b) => {
-    // Whether b is a or one of its sub- or supertypes, or shares a hierarchy.
-    const comp = new Set([a]), todo = [a]
-    while (todo.length) {
-      const x = todo.pop()
-      for (const st of subtypes) for (const [p, q] of [[st.subId, st.superId], [st.superId, st.subId]])
-        if (p === x && !comp.has(q)) { comp.add(q); todo.push(q) }
-    }
-    return comp.has(b)
-  }
+  for (const t of types) comp.set(t.id, t.id)
+  for (const st of (state.subtypes ?? [])) if (comp.has(st.subId) && comp.has(st.superId)) comp.set(find(st.subId), find(st.superId))
+  const played = new Map()
+  for (const f of (state.facts ?? [])) f.roles.forEach((r, i) => {
+    if (!r.objectTypeId || !comp.has(r.objectTypeId) || identified.has(`${f.id}:${i}`)) return
+    const root = find(r.objectTypeId)
+    if (!played.has(root)) played.set(root, [])
+    played.get(root).push({ f, i, p: r.objectTypeId })
+  })
   const out = new Set()
   for (const t of types) {
     if (t.independent || t.kind === 'nestedValue') continue
-    const played = []
-    for (const f of (state.facts ?? [])) f.roles.forEach((r, i) => {
-      if (r.objectTypeId && related(t.id, r.objectTypeId) && !identified.has(`${f.id}:${i}`)) played.push({ f, i, p: r.objectTypeId })
-    })
-    if (played.length === 1 && played[0].p === t.id) out.add(`${played[0].f.id}:${played[0].i}`)
+    const roles = played.get(find(t.id)) ?? []
+    if (roles.length === 1 && roles[0].p === t.id) out.add(`${roles[0].f.id}:${roles[0].i}`)
   }
   return out
 }

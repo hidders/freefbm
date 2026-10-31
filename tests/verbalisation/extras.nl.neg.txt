@@ -1,26 +1,26 @@
 # Derivation rule · Student is a TeachingAssistant if and only if …
 ∀ Student (TeachingAssistant(Student) ↔ ∃ Course (Student assists in Course))
-Student is een TeachingAssistant als en slechts als Student bij een Vak assisteert.
+Student is een Teaching Assistant als en slechts als Student bij een Vak assisteert.
 
 # Semi-derivation rule · Student is a BusyStudent if …
 ¬(∃ Student ((∃^{≥4} Course (Student enrols in Course)) ∧ ¬BusyStudent(Student)))
-Het is onmogelijk dat een Student minstens 4 Vakken volgt en geen BusyStudent is.
+Het is onmogelijk dat een Student minstens 4 Vakken volgt en geen Busy Student is.
 
 # Derivation rule · Course is a HeavyCourse if and only if …
 ∀ Course (HeavyCourse(Course) ↔ ∃ Credits ((Course is worth Credits) ∧ Credits ≥ 30))
-Vak is een HeavyCourse als en slechts als Vak een Studielast die minstens 30 is heeft.
+Vak is een Heavy Course als en slechts als Vak een Studielast die minstens 30 is heeft.
 
 # Derivation rule · Student is a FreeStudent if and only if …
 ∀ Student (FreeStudent(Student) ↔ ¬(∃ Course (Student enrols in Course)))
-Student is een FreeStudent als en slechts als Student geen Vak volgt.
+Student is een Free Student als en slechts als Student geen Vak volgt.
 
 # Derivation rule · Course is an IntroCourse if and only if …
 ∀ Course (IntroCourse(Course) ↔ ∃ CourseTitle ((Course has CourseTitle) ∧ startsWith(CourseTitle, 'Introduction')))
-Vak is een IntroCourse als en slechts als Vak een Vaktitel die met 'Introduction' begint heeft.
+Vak is een Intro Course als en slechts als Vak een Vaktitel die met 'Introduction' begint heeft.
 
 # Semi-derivation rule · Course is a LongTitleCourse if …
 ¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
-Het is onmogelijk dat een Vak een Vaktitel zodanig dat de lengte van die Vaktitel groter dan 40 is heeft en geen LongTitleCourse is.
+Het is onmogelijk dat een Vak een Vaktitel zodanig dat de lengte van die Vaktitel groter dan 40 is heeft en geen Long Title Course is.
 
 # Value range (deontic) · Score
 F(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
@@ -52,23 +52,23 @@ Student studies with Medewerker als en slechts als Student een Vak dat Medewerke
 
 # Derivation rule, every derived fact holds · Student has TotalCredits
 ¬(∃ Student ¬(∃ TotalCredits (Student has TotalCredits)))
-Het is onmogelijk dat een Student geen TotalCredits has.
+Het is onmogelijk dat een Student geen Total Credits has.
 
 # Derivation rule, only derived facts hold · Student has TotalCredits
 ¬(∃ Student ∃ TotalCredits ((Student has TotalCredits) ∧ TotalCredits ≉ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)}))
-Het is onmogelijk dat er een Student en een TotalCredits is zodanig dat die Student die TotalCredits has en die TotalCredits niet de som van de Studielast die elk Vak dat die Student volgt heeft is.
+Het is onmogelijk dat er een Student en een Total Credits is zodanig dat die Student die Total Credits has en die Total Credits niet de som van de Studielast die elk Vak dat die Student volgt heeft is.
 
 # Derivation rule, every derived fact holds · Course has EnrolmentCount
 ¬(∃ Course ¬(∃ EnrolmentCount (Course has EnrolmentCount)))
-Het is onmogelijk dat een Vak geen EnrolmentCount has.
+Het is onmogelijk dat een Vak geen Enrolment Count has.
 
 # Derivation rule, only derived facts hold · Course has EnrolmentCount
 ¬(∃ Course ∃ EnrolmentCount ((Course has EnrolmentCount) ∧ EnrolmentCount ≉ Count{Student : (Student enrols in Course)}))
-Het is onmogelijk dat er een Vak en een EnrolmentCount is zodanig dat dat Vak die EnrolmentCount has en die EnrolmentCount niet het aantal Studenten die dat Vak volgen is.
+Het is onmogelijk dat er een Vak en een Enrolment Count is zodanig dat dat Vak die Enrolment Count has en die Enrolment Count niet het aantal Studenten die dat Vak volgen is.
 
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ¬(∃ Student ∃ Course ∃ Credits ((Student assists in Course) ∧ (Course is worth Credits) ∧ ¬(∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))))
-Het is onmogelijk dat er een Student, een Vak en een Studielast is zodanig dat die Student bij dat Vak assisteert en dat Vak die Studielast heeft en het niet zo is dat die Student credit load een TotalCredits die (die Studielast plus 5) maal 2 is has.
+Het is onmogelijk dat er een Student, een Vak en een Studielast is zodanig dat die Student bij dat Vak assisteert en dat Vak die Studielast heeft en het niet zo is dat die Student credit load een Total Credits die (die Studielast plus 5) maal 2 is has.
 
 # Uniqueness (deontic) · Staff mentors Student
 F(∃ Student ∃^{>1} Staff (Staff mentors Student))

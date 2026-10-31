@@ -1,26 +1,26 @@
 # Derivation rule · Student is a TeachingAssistant if and only if …
 ∀ Student (TeachingAssistant(Student) ↔ ∃ Course (Student assists in Course))
-Student is a TeachingAssistant if and only if Student assists in some Course.
+Student is a Teaching Assistant if and only if Student assists in some Course.
 
 # Semi-derivation rule · Student is a BusyStudent if …
 ∀ Student ((∃^{≥4} Course (Student enrols in Course)) → BusyStudent(Student))
-Each Student that enrols in at least 4 Courses is a BusyStudent.
+Each Student that enrols in at least 4 Courses is a Busy Student.
 
 # Derivation rule · Course is a HeavyCourse if and only if …
 ∀ Course (HeavyCourse(Course) ↔ ∃ Credits ((Course is worth Credits) ∧ Credits ≥ 30))
-Course is a HeavyCourse if and only if Course is worth some Credits that is at least 30.
+Course is a Heavy Course if and only if Course is worth some Credits that is at least 30.
 
 # Derivation rule · Student is a FreeStudent if and only if …
 ∀ Student (FreeStudent(Student) ↔ ¬(∃ Course (Student enrols in Course)))
-Student is a FreeStudent if and only if Student does not enrol in any Course.
+Student is a Free Student if and only if Student does not enrol in any Course.
 
 # Derivation rule · Course is an IntroCourse if and only if …
 ∀ Course (IntroCourse(Course) ↔ ∃ CourseTitle ((Course has CourseTitle) ∧ startsWith(CourseTitle, 'Introduction')))
-Course is an IntroCourse if and only if Course has some CourseTitle that starts with 'Introduction'.
+Course is an Intro Course if and only if Course has some Course Title that starts with 'Introduction'.
 
 # Semi-derivation rule · Course is a LongTitleCourse if …
 ∀ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) → LongTitleCourse(Course))
-Each Course that has some CourseTitle such that the length of that CourseTitle is more than 40 is a LongTitleCourse.
+Each Course that has some Course Title such that the length of that Course Title is more than 40 is a Long Title Course.
 
 # Value range (deontic) · Score
 O(∀ Score ((Score > 0 ∧ Score ≤ 100) ∨ Score > 200))
@@ -52,23 +52,23 @@ Student studies with Staff if and only if Student enrols in some Course that Sta
 
 # Derivation rule, every derived fact holds · Student has TotalCredits
 ∀ Student ∃ TotalCredits (Student has TotalCredits)
-Each Student has some TotalCredits.
+Each Student has some Total Credits.
 
 # Derivation rule, only derived facts hold · Student has TotalCredits
 ∀ Student ∀ TotalCredits ((Student has TotalCredits) → TotalCredits ≈ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)})
-If Student has TotalCredits then TotalCredits is the sum of the Credits that each Course that Student enrols in is worth.
+If Student has Total Credits then Total Credits is the sum of the Credits that each Course that Student enrols in is worth.
 
 # Derivation rule, every derived fact holds · Course has EnrolmentCount
 ∀ Course ∃ EnrolmentCount (Course has EnrolmentCount)
-Each Course has some EnrolmentCount.
+Each Course has some Enrolment Count.
 
 # Derivation rule, only derived facts hold · Course has EnrolmentCount
 ∀ Course ∀ EnrolmentCount ((Course has EnrolmentCount) → EnrolmentCount ≈ Count{Student : (Student enrols in Course)})
-If Course has EnrolmentCount then EnrolmentCount is the number of Students that enrol in Course.
+If Course has Enrolment Count then Enrolment Count is the number of Students that enrol in Course.
 
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
-If Student assists in Course and Course is worth Credits then Student has credit load some TotalCredits that is (Credits plus 5) times 2.
+If Student assists in Course and Course is worth Credits then Student has credit load some Total Credits that is (Credits plus 5) times 2.
 
 # Uniqueness (deontic) · Staff mentors Student
 O(∀ Student ∃^{≤1} Staff (Staff mentors Student))
@@ -84,15 +84,15 @@ It is obligatory that each Staff mentors at most 5 Students.
 
 # Uniqueness · Person has first given PersonName
 ∀ Person ∃^{≤1} PersonName (Person has first given PersonName)
-Each Person has at most one first given PersonName.
+Each Person has at most one first given Person Name.
 
 # Uniqueness · Person has first given PersonName
 ∀ PersonName ∃^{≤1} Person (Person has first given PersonName)
-Each PersonName is the first given name of at most one Person.
+Each Person Name is the first given name of at most one Person.
 
 # Mandatory role · Person has first given PersonName
 ∀ Person ∃ PersonName (Person has first given PersonName)
-Each Person has some first given PersonName.
+Each Person has some first given Person Name.
 
 # Uniqueness · Person has Person -in-law
 ∀ Person₁ ∃^{≤1} Person₂ (Person₂ has Person₁ -in-law)
@@ -100,11 +100,11 @@ For each Person₁, at most one Person₂ has that Person₁-in-law.
 
 # External uniqueness (outer join)
 ∀ CourseTitle ∀ Staff ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by Staff))
-For each CourseTitle and Staff, at most one Course has that CourseTitle and is run by that Staff.
+For each Course Title and Staff, at most one Course has that Course Title and is run by that Staff.
 
 # External uniqueness (outer join): no value at position 2
 ∀ CourseTitle ∃^{≤1} Course ((Course has CourseTitle) ∧ ¬(∃ Staff (Course is run by Staff)))
-For each CourseTitle, at most one Course has that CourseTitle and is not run by any Staff.
+For each Course Title, at most one Course has that Course Title and is not run by any Staff.
 
 # Subset (deontic)
 O(∀ Student ((∃ Staff (Staff mentors Student)) → ∃ Course (Student enrols in Course)))

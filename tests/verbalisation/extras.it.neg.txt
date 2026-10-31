@@ -1,26 +1,26 @@
 # Derivation rule · Student is a TeachingAssistant if and only if …
 ∀ Student (TeachingAssistant(Student) ↔ ∃ Course (Student assists in Course))
-Studente è un TeachingAssistant se e solo se Studente è assistente in un Corso.
+Studente è un Teaching Assistant se e solo se Studente è assistente in un Corso.
 
 # Semi-derivation rule · Student is a BusyStudent if …
 ¬(∃ Student ((∃^{≥4} Course (Student enrols in Course)) ∧ ¬BusyStudent(Student)))
-È impossibile che uno Studente frequenta almeno 4 Corsi e non è un BusyStudent.
+È impossibile che uno Studente frequenta almeno 4 Corsi e non è un Busy Student.
 
 # Derivation rule · Course is a HeavyCourse if and only if …
 ∀ Course (HeavyCourse(Course) ↔ ∃ Credits ((Course is worth Credits) ∧ Credits ≥ 30))
-Corso è un HeavyCourse se e solo se Corso ha un Numero di crediti che è almeno 30.
+Corso è un Heavy Course se e solo se Corso ha un Numero di crediti che è almeno 30.
 
 # Derivation rule · Student is a FreeStudent if and only if …
 ∀ Student (FreeStudent(Student) ↔ ¬(∃ Course (Student enrols in Course)))
-Studente è un FreeStudent se e solo se Studente non frequenta nessun Corso.
+Studente è un Free Student se e solo se Studente non frequenta nessun Corso.
 
 # Derivation rule · Course is an IntroCourse if and only if …
 ∀ Course (IntroCourse(Course) ↔ ∃ CourseTitle ((Course has CourseTitle) ∧ startsWith(CourseTitle, 'Introduction')))
-Corso è un IntroCourse se e solo se Corso ha un Titolo del corso che inizia con 'Introduction'.
+Corso è un Intro Course se e solo se Corso ha un Titolo del corso che inizia con 'Introduction'.
 
 # Semi-derivation rule · Course is a LongTitleCourse if …
 ¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
-È impossibile che un Corso ha un Titolo del corso tale che la lunghezza di quel Titolo del corso è maggiore di 40 e non è un LongTitleCourse.
+È impossibile che un Corso ha un Titolo del corso tale che la lunghezza di quel Titolo del corso è maggiore di 40 e non è un Long Title Course.
 
 # Value range (deontic) · Score
 F(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
@@ -52,23 +52,23 @@ Studente studies with Dipendente se e solo se Studente frequenta un Corso che Di
 
 # Derivation rule, every derived fact holds · Student has TotalCredits
 ¬(∃ Student ¬(∃ TotalCredits (Student has TotalCredits)))
-È impossibile che uno Studente non has nessun TotalCredits.
+È impossibile che uno Studente non has nessun Total Credits.
 
 # Derivation rule, only derived facts hold · Student has TotalCredits
 ¬(∃ Student ∃ TotalCredits ((Student has TotalCredits) ∧ TotalCredits ≉ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)}))
-È impossibile che ci sono uno Studente e un TotalCredits tali che quello Studente has quel TotalCredits e quel TotalCredits è diverso da la somma dei Numeri di crediti che ogni Corso che quello Studente frequenta ha.
+È impossibile che ci sono uno Studente e un Total Credits tali che quello Studente has quel Total Credits e quel Total Credits è diverso da la somma dei Numeri di crediti che ogni Corso che quello Studente frequenta ha.
 
 # Derivation rule, every derived fact holds · Course has EnrolmentCount
 ¬(∃ Course ¬(∃ EnrolmentCount (Course has EnrolmentCount)))
-È impossibile che un Corso non has nessun EnrolmentCount.
+È impossibile che un Corso non has nessun Enrolment Count.
 
 # Derivation rule, only derived facts hold · Course has EnrolmentCount
 ¬(∃ Course ∃ EnrolmentCount ((Course has EnrolmentCount) ∧ EnrolmentCount ≉ Count{Student : (Student enrols in Course)}))
-È impossibile che ci sono un Corso e un EnrolmentCount tali che quel Corso has quell'EnrolmentCount e quell'EnrolmentCount è diverso da il numero di Studenti che frequentano quel Corso.
+È impossibile che ci sono un Corso e un Enrolment Count tali che quel Corso has quell'Enrolment Count e quell'Enrolment Count è diverso da il numero di Studenti che frequentano quel Corso.
 
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ¬(∃ Student ∃ Course ∃ Credits ((Student assists in Course) ∧ (Course is worth Credits) ∧ ¬(∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))))
-È impossibile che ci sono uno Studente, un Corso e un Numero di crediti tali che quello Studente è assistente in quel Corso e quel Corso ha quel Numero di crediti e non è vero che quello Studente has credit load un TotalCredits che è (quel Numero di crediti più 5) per 2.
+È impossibile che ci sono uno Studente, un Corso e un Numero di crediti tali che quello Studente è assistente in quel Corso e quel Corso ha quel Numero di crediti e non è vero che quello Studente has credit load un Total Credits che è (quel Numero di crediti più 5) per 2.
 
 # Uniqueness (deontic) · Staff mentors Student
 F(∃ Student ∃^{>1} Staff (Staff mentors Student))
