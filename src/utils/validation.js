@@ -369,7 +369,9 @@ export function runValidation(state, enabledCategories) {
 
       // FactTypeRequiresInternalUniquenessConstraintError: non-unary facts need at least one
       // internal UC. An implied UC from a cross-fact external uniqueness PI also satisfies this.
-      if (f.arity >= 2 && (!f.uniqueness || f.uniqueness.length === 0)) {
+      // Fully derived facts are exempt (their population follows from the rule);
+      // semi-derived and asserted facts are not.
+      if (f.arity >= 2 && f.derivation !== 'derived' && (!f.uniqueness || f.uniqueness.length === 0)) {
         const hasImpliedUC = entityCompositePIs().some(cp => cp.factIds?.includes(f.id))
         if (!hasImpliedUC) {
           errors.push({
