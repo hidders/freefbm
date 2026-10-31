@@ -462,10 +462,10 @@ export function createConstraintSlice(set, get) {
 
           const seq = sequences[i]
 
-          // Rule 3 (exclusion only): single subtype edge → subtype copy + sub OT copy + super OT copy.
+          // Rule 3: single subtype edge → subtype copy + sub OT copy + super OT copy.
           // Neither OT copy is isOutput — the result is the sub-type's population, identified by
           // the subtype copy being isSeeded.
-          if (c.constraintType === 'exclusion' && seq.length === 1 && seq[0].kind === 'subtype') {
+          if (seq.length === 1 && seq[0].kind === 'subtype') {
             const st = allSubtypes.find(s => s.id === seq[0].subtypeId)
             if (st) {
               const subOtAtomId = uid(), supOtAtomId = uid(), stAtomId = uid()
