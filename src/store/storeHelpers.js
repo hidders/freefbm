@@ -56,6 +56,20 @@ export function defaultReadingParts(arity, n) {
   return parts
 }
 
+// An internal uniqueness constraint: its own id and the indices of the roles
+// it spans. Preferred and deontic ones are still listed by role set in
+// fact.preferredUniqueness and fact.deonticUniqueness.
+export const mkUniqueness = (roles, id = uid()) => ({ id, roles: [...roles] })
+
+// A simple mandatory constraint is a flag on its role, with an id of its own
+// (role.mandatoryId) while it is set, so that groups can hold it.
+export function withMandatoryId(r) {
+  if (r.mandatory) return r.mandatoryId ? r : { ...r, mandatoryId: uid() }
+  if (!r.mandatoryId) return r
+  const { mandatoryId, ...rest } = r
+  return rest
+}
+
 export const mkFact = (x, y, arity = 2) => ({
   id: uid(), kind: 'fact',
   x, y, arity,
@@ -353,7 +367,7 @@ export function mkRefModePair(entity, vtName) {
   const ft = {
     ...mkFact(Math.round(entity.x + 80), Math.round(entity.y), 2),
     roles: [{ ...mkRole(), objectTypeId: entity.id }, { ...mkRole(), objectTypeId: vt.id }],
-    uniqueness: [[1]],
+    uniqueness: [mkUniqueness([1])],
     preferredUniqueness: [[1]],
     readingParts: ['', 'has', ''],
     alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'refers to', ''] }],
@@ -463,7 +477,7 @@ export function applyFreshRefMode(state, owner, targetVtName, existing, matchFac
   const ft = {
     ...mkFact(Math.round(owner.x + 80), Math.round(owner.y), 2),
     roles: [{ ...mkRole(), objectTypeId: owner.id }, { ...mkRole(), objectTypeId: vt.id }],
-    uniqueness: [[1]], preferredUniqueness: [[1]],
+    uniqueness: [mkUniqueness([1])], preferredUniqueness: [[1]],
     readingParts: ['', 'has', ''],
     alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'refers to', ''] }],
   }

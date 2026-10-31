@@ -41,7 +41,7 @@ export function defaultFrequencyPos(fact, roleIndices = []) {
   const along = positions.length
     ? positions.reduce((sum, p) => sum + p * (ROLE_W + ROLE_GAP) + ROLE_W / 2, 0) / positions.length - total / 2
     : 0
-  const uniq   = fact.uniqueness || []
+  const uniq   = (fact.uniqueness || []).map(u => u.roles)
   const levels = (uniq.some(u => u.length === 1) ? 1 : 0) + uniq.filter(u => u.length > 1).length
   const across = ROLE_H / 2 + (levels > 0 ? BAR_MARGIN + BAR_SPACING * levels : 0) + CLEARANCE + IF_CIRCLE_R
   // Bars sit above (horizontal) or right (vertical) unless uniquenessBelow flips them

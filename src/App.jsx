@@ -144,7 +144,8 @@ function useKeyboardShortcuts() {
         if (uniquenessConstruction?.uIndex != null) {
           // Delete the constraint being edited and exit construction mode
           const fact = store.facts.find(f => f.id === uniquenessConstruction.factId)
-          if (fact) store.toggleUniqueness(uniquenessConstruction.factId, fact.uniqueness[uniquenessConstruction.uIndex])
+          const roles = fact?.uniqueness[uniquenessConstruction.uIndex]?.roles
+          if (roles) store.toggleUniqueness(uniquenessConstruction.factId, roles)
           store.clearSelection()
           return
         }
@@ -156,7 +157,7 @@ function useKeyboardShortcuts() {
           }
           const fact = store.facts.find(f => f.id === selectedUniqueness.factId)
           if (fact) {
-            store.removeUniqueness(selectedUniqueness.factId, fact.uniqueness[selectedUniqueness.uIndex])
+            store.removeUniqueness(selectedUniqueness.factId, fact.uniqueness[selectedUniqueness.uIndex]?.roles)
             store.clearSelection()
           }
           return

@@ -2,6 +2,7 @@ import { findRefMode } from '../../utils/refMode.js'
 import {
   uid, occOf, inDiag, cInDiag,
   computeConnectedIds, withSequences,
+  mkUniqueness, withMandatoryId,
 } from '../storeHelpers'
 import { factAsDrawn, defaultFrequencyPos } from '../../utils/frequencyPlacement.js'
 import { isDeonticUniqueness } from '../../logic/modality.js'
@@ -113,7 +114,7 @@ export function createSelectionSlice(set, get) {
       set(s => ({
         facts: s.facts.map(f => {
           if (f.id !== factId) return f
-          const roles = f.roles.map((r, i) => i === roleIndex ? { ...r, mandatory: false, mandatoryDeontic: false } : r)
+          const roles = f.roles.map((r, i) => i === roleIndex ? withMandatoryId({ ...r, mandatory: false, mandatoryDeontic: false }) : r)
           return { ...f, roles }
         }),
         selectedMandatoryDot: null,
@@ -426,77 +427,40 @@ export function createSelectionSlice(set, get) {
       if (!fact) return
 
       if (uc.uIndex != null) {
-        // Editing an existing constraint — replace it unless unchanged
-        const oldRoles = fact.uniqueness[uc.uIndex]
-        if (!oldRoles) return
-        const oldKey = JSON.stringify([...oldRoles].sort((a, b) => a - b))
-        const newKey = JSON.stringify([...uc.roleIndices].sort((a, b) => a - b))
-        if (oldKey === newKey) return  // unchanged — selectedUniqueness still valid
-        // If the new role set already exists as a different constraint, leave everything intact
-        const alreadyExists = fact.uniqueness.some((u, i) =>
-          i !== uc.uIndex && JSON.stringify([...u].sort((a, b) => a - b)) === newKey
-        )
-        if (alreadyExists) return  // selectedUniqueness stays pointing to the unchanged bar
-        const wasDeontic = isDeonticUniqueness(fact, oldRoles)
-        get().toggleUniqueness(uc.factId, oldRoles)           // remove old
-        if (uc.roleIndices.length > 0) {
-          get().toggleUniqueness(uc.factId, uc.roleIndices)   // add new
-          if (wasDeontic) get().setUniquenessDeontic(uc.factId, uc.roleIndices, true)
-          // Re-select the bar at its new index
-          const updatedFact = get().facts.find(f => f.id === uc.factId)
-          if (updatedFact) {
-            const newIdx = updatedFact.uniqueness.findIndex(u =>
-              JSON.stringify([...u].sort((a, b) => a - b)) === newKey)
-            if (newIdx >= 0) get().selectUniqueness(uc.factId, newIdx)
-            else get().select(uc.factId, 'fact')
-          }
-        } else {
+        // Editing an existing constraint: same constraint (id), other roles
+        const old = fact.uniqueness[uc.uIndex]
+        if (!old) return
+        if (uc.roleIndices.length === 0) {
           // All roles removed — bar deleted, return to fact inspector
+          get().toggleUniqueness(uc.factId, old.roles)
           get().select(uc.factId, 'fact')
+          return
         }
+        const newIdx = get().setUniquenessRoles(uc.factId, uc.uIndex, uc.roleIndices)
+        // A role set another bar already has leaves everything intact
+        if (newIdx >= 0 && newIdx !== uc.uIndex) get().selectUniqueness(uc.factId, newIdx)
       } else {
         // New constraint
         if (uc.roleIndices.length === 0) return
         const key = JSON.stringify([...uc.roleIndices].sort((a, b) => a - b))
-        const exists = fact.uniqueness.some(u => JSON.stringify([...u].sort((a, b) => a - b)) === key)
+        const exists = fact.uniqueness.some(u => JSON.stringify([...u.roles].sort((a, b) => a - b)) === key)
         if (!exists) get().toggleUniqueness(uc.factId, uc.roleIndices)
       }
     },
     updateUniquenessRoles(factId, uIndex, newRoles) {
-      if (newRoles.length === 0) return
-      const fact = get().facts.find(f => f.id === factId)
-      if (!fact) return
-      const oldRoles = fact.uniqueness[uIndex]
-      if (!oldRoles) return
-      const oldKey = JSON.stringify([...oldRoles].sort((a, b) => a - b))
-      const newKey = JSON.stringify([...newRoles].sort((a, b) => a - b))
-      if (oldKey === newKey) return
-      // Don't allow if the new set duplicates another bar
-      const duplicate = fact.uniqueness.some((u, i) =>
-        i !== uIndex && JSON.stringify([...u].sort((a, b) => a - b)) === newKey)
-      if (duplicate) return
-      const wasDeontic = isDeonticUniqueness(fact, oldRoles)
-      get().toggleUniqueness(factId, oldRoles)   // remove old
-      get().toggleUniqueness(factId, newRoles)   // add new
-      if (wasDeontic) get().setUniquenessDeontic(factId, newRoles, true)
-      // Re-select at the new index
-      const updated = get().facts.find(f => f.id === factId)
-      if (updated) {
-        const newIdx = updated.uniqueness.findIndex(u =>
-          JSON.stringify([...u].sort((a, b) => a - b)) === newKey)
-        if (newIdx >= 0) get().selectUniqueness(factId, newIdx)
-      }
+      const newIdx = get().setUniquenessRoles(factId, uIndex, newRoles)
+      if (newIdx >= 0) get().selectUniqueness(factId, newIdx)
     },
     addUniquenessBar(factId) {
       const fact = get().facts.find(f => f.id === factId)
       if (!fact) return
       const newRoles = []
-      const hasEmpty = fact.uniqueness.some(u => u.length === 0)
+      const hasEmpty = fact.uniqueness.some(u => u.roles.length === 0)
       if (hasEmpty) return
       get().toggleUniqueness(factId, newRoles)
       const updated = get().facts.find(f => f.id === factId)
       if (!updated) return
-      const newIdx = updated.uniqueness.findIndex(u => u.length === 0)
+      const newIdx = updated.uniqueness.findIndex(u => u.roles.length === 0)
       if (newIdx >= 0) get().selectUniqueness(factId, newIdx)
     },
     addInternalFrequencyBar(factId) {
@@ -518,7 +482,7 @@ export function createSelectionSlice(set, get) {
     startUniquenessEdit(factId, uIndex) {
       const fact = get().facts.find(f => f.id === factId)
       if (!fact) return
-      const roleIndices = [...fact.uniqueness[uIndex]]
+      const roleIndices = [...fact.uniqueness[uIndex].roles]
       set({
         uniquenessConstruction: { factId, roleIndices, uIndex },
         selectedId: factId, selectedKind: 'fact',
@@ -687,13 +651,14 @@ export function createSelectionSlice(set, get) {
       if (!ifItem) return
       const roles = [...ifItem.roles]
       const key = JSON.stringify([...roles].sort((a, b) => a - b))
-      const alreadyExists = fact.uniqueness.some(u => JSON.stringify([...u].sort((a, b) => a - b)) === key)
+      const alreadyExists = fact.uniqueness.some(u => JSON.stringify([...u.roles].sort((a, b) => a - b)) === key)
       set(s => ({
         facts: s.facts.map(f => {
           if (f.id !== factId) return f
           const internalFrequency = (f.internalFrequency || []).filter(i => i.id !== ifId)
           if (alreadyExists) return { ...f, internalFrequency }
-          const uniqueness = [...f.uniqueness, roles].sort((a, b) => a.length - b.length)
+          // The uniqueness constraint keeps the frequency constraint's id
+          const uniqueness = [...f.uniqueness, mkUniqueness(roles, ifId)].sort((a, b) => a.roles.length - b.roles.length)
           const deonticUniqueness = ifItem.deontic ? [...(f.deonticUniqueness || []), roles] : f.deonticUniqueness
           return { ...f, internalFrequency, uniqueness, deonticUniqueness }
         }),
@@ -701,7 +666,7 @@ export function createSelectionSlice(set, get) {
       }))
       if (!alreadyExists) {
         const updated = get().facts.find(f => f.id === factId)
-        const uIndex = updated.uniqueness.findIndex(u => JSON.stringify([...u].sort((a, b) => a - b)) === key)
+        const uIndex = updated.uniqueness.findIndex(u => JSON.stringify([...u.roles].sort((a, b) => a - b)) === key)
         if (uIndex !== -1) get().selectUniqueness(factId, uIndex)
       } else {
         get().select(factId, 'fact')
@@ -711,13 +676,14 @@ export function createSelectionSlice(set, get) {
     convertUniquenessToFrequency(factId, uRoles) {
       const fact = get().facts.find(f => f.id === factId)
       if (!fact) return
-      const ifId = uid()
       const key = JSON.stringify([...uRoles].sort((a, b) => a - b))
+      // The frequency constraint keeps the uniqueness constraint's id
+      const ifId = fact.uniqueness.find(u => JSON.stringify([...u.roles].sort((a, b) => a - b)) === key)?.id ?? uid()
       const pos = defaultFrequencyPos(factAsDrawn(get(), factId), uRoles)
       set(s => ({
         facts: s.facts.map(f => {
           if (f.id !== factId) return f
-          const uniqueness = f.uniqueness.filter(u => JSON.stringify([...u].sort((a, b) => a - b)) !== key)
+          const uniqueness = f.uniqueness.filter(u => JSON.stringify([...u.roles].sort((a, b) => a - b)) !== key)
           const preferredUniqueness = (f.preferredUniqueness || []).filter(pu =>
             JSON.stringify([...pu].sort((a, b) => a - b)) !== key
           )

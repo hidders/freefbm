@@ -87,7 +87,7 @@ export function extend(state) {
     }),
     // Derived, computed role with a sum.
     fact('f_totalCredits', ['', 'has', ''], [role('tc0', 'ot_Student'), role('tc1', 'ot_TotalCredits')], {
-      uniqueness: [[0]], derivation: 'derived',
+      uniqueness: [{ id: 'xu1', roles: [0] }], derivation: 'derived',
       derivationRule: { extraVars: [], body: { t: 'true' }, terms: {
         tc1: { t: 'agg', fn: 'sum', distinct: false, vars: [{ id: 'c', typeId: 'ot_Course' }, { id: 'k', typeId: 'ot_Credits' }],
           cond: { t: 'and', args: [
@@ -99,7 +99,7 @@ export function extend(state) {
     }),
     // Derived, computed role with a count.
     fact('f_enrolmentCount', ['', 'has', ''], [role('ec0', 'ot_Course'), role('ec1', 'ot_EnrolmentCount')], {
-      uniqueness: [[0]], derivation: 'derived',
+      uniqueness: [{ id: 'xu2', roles: [0] }], derivation: 'derived',
       derivationRule: { extraVars: [], body: { t: 'true' }, terms: {
         ec1: { t: 'agg', fn: 'count', distinct: false, vars: [{ id: 's', typeId: 'ot_Student' }],
           cond: { t: 'fact', factId: 'f_enrols', args: ['s', 'role:ec0'] } },
@@ -120,14 +120,14 @@ export function extend(state) {
   // subset and ring.
   facts.push(
     fact('f_mentors', ['', 'mentors', ''], [role('m0', 'ot_Staff'), role('m1', 'ot_Student', { mandatory: true, mandatoryDeontic: true })], {
-      uniqueness: [[1]], deonticUniqueness: [[1]],
+      uniqueness: [{ id: 'xu3', roles: [1] }], deonticUniqueness: [[1]],
       internalFrequency: [{ id: 'if_m', roles: [0], range: [{ type: 'upper', upper: '5' }], deontic: true }],
     }),
   )
   // Outer join (Halpin & Morgan 2024, sec. 10.1): a Course is identified by
   // its CourseTitle together with the Staff that runs it, if any.
   facts.push(
-    fact('f_runBy', ['', 'is run by', ''], [role('rb0', 'ot_Course'), role('rb1', 'ot_Staff')], { uniqueness: [[0]] }),
+    fact('f_runBy', ['', 'is run by', ''], [role('rb0', 'ot_Course'), role('rb1', 'ot_Staff')], { uniqueness: [{ id: 'xu4', roles: [0] }] }),
   )
   // Hyphen binding (NORMA): "first- given" binds to PersonName, so the
   // quantifier goes in front of it; the first reverse reading binds words to
@@ -135,7 +135,7 @@ export function extend(state) {
   // further reading for the same role order. "--in-law" glues to Person.
   facts.push(
     fact('f_firstName', ['', 'has first- given', ''], [role('fn0', 'ot_Person', { mandatory: true }), role('fn1', 'ot_PersonName')], {
-      uniqueness: [[0], [1]],
+      uniqueness: [{ id: 'xu5', roles: [0] }, { id: 'xu6', roles: [1] }],
       alternativeReadings: [
         { roleOrder: [1, 0], parts: ['first- given', 'is of', ''] },
         { roleOrder: [1, 0], parts: ['', 'is the first given name of', ''] },
@@ -146,7 +146,7 @@ export function extend(state) {
         fr: { readings: [{ roleOrder: [0, 1], parts: ['', 'a', '-principal'] }] },
       },
     }),
-    fact('f_inLaw', ['', 'has', '--in-law'], [role('il0', 'ot_Person'), role('il1', 'ot_Person')], { uniqueness: [[1]] }),
+    fact('f_inLaw', ['', 'has', '--in-law'], [role('il0', 'ot_Person'), role('il1', 'ot_Person')], { uniqueness: [{ id: 'xu7', roles: [1] }] }),
   )
   const constraints = [...state.constraints,
     { id: 'c_ojTitle', kind: 'constraint', constraintType: 'uniqueness', outerJoin: true, x: 0, y: 0,

@@ -3,6 +3,7 @@ import {
   mkDiagram, occOf, inDiag, cInDiag, cOccOf,
   addOccIfAbsent, addOwnedRefModeOccsIfAbsent,
   normalizeStEps, syncConstraints, computeCascadeRemove, rmCOcc,
+  mkUniqueness, withMandatoryId,
 } from '../storeHelpers'
 
 // Module-level variable for pan animation — only used by centerOnElement/centerOnOccurrence
@@ -628,7 +629,7 @@ export function createDiagramSlice(set, get) {
         if (selectedUniqueness.implied || selectedUniqueness.roleIndex != null) return
         if (get().uniquenessConstruction) return
         const fact = get().facts.find(f => f.id === selectedUniqueness.factId)
-        const roles = fact?.uniqueness[selectedUniqueness.uIndex]
+        const roles = fact?.uniqueness[selectedUniqueness.uIndex]?.roles
         if (roles) get().removeUniqueness(fact.id, roles)
         get().clearSelection()
         return

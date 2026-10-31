@@ -108,7 +108,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     e.preventDefault()
     e.stopPropagation()
     const role = fact.roles[roleIndex]
-    const hasUnary = fact.uniqueness.some(u => u.length === 1 && u[0] === roleIndex)
+    const hasUnary = fact.uniqueness.some(u => u.roles.length === 1 && u.roles[0] === roleIndex)
     const items = [
       { label: 'is Mandatory', checked: !!role.mandatory,
         action: () => store.updateRole(fact.id, roleIndex, { mandatory: !role.mandatory }) },
@@ -171,7 +171,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
             disabled: (() => {
               const allRoles = Array.from({ length: fact.arity }, (_, i) => i)
               const key = JSON.stringify(allRoles)
-              return (fact.uniqueness || []).some(u => JSON.stringify([...u].sort()) === key)
+              return (fact.uniqueness || []).some(u => JSON.stringify([...u.roles].sort()) === key)
             })(),
             action: () => {
               const allRoles = Array.from({ length: fact.arity }, (_, i) => i)
@@ -379,7 +379,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
   const handleUniquenessBarContextMenu = useCallback((fact, ui, e) => {
     e.preventDefault()
     e.stopPropagation()
-    const uRoles = fact.uniqueness[ui]
+    const uRoles = fact.uniqueness[ui]?.roles
     if (!uRoles) return
     const uKey = JSON.stringify([...uRoles].sort((a, b) => a - b))
     const isPreferred = (fact.preferredUniqueness || []).some(pu =>
@@ -419,7 +419,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
   const handleImplicitLinkBarContextMenu = useCallback((parentFact, il, ui, e) => {
     e.preventDefault()
     e.stopPropagation()
-    const hasSoloBase = (parentFact.uniqueness || []).some(u => u.length === 1 && u[0] === il.roleIndex)
+    const hasSoloBase = (parentFact.uniqueness || []).some(u => u.roles.length === 1 && u.roles[0] === il.roleIndex)
     const propagated = hasSoloBase ? [[0], [1]] : [[0]]
     const uRoles = propagated[ui]
     if (!uRoles) return

@@ -12,6 +12,7 @@ import {
   migrateOldDiagram, nextRelationNumber, defaultReadingParts, subtypeKindOf,
   factTypeLabel, getConstraintDeps, getConstraintQueryDeps, eligibleConstraints, withSequences,
   syncConstraints, computeConnectedIds, hasNoConnectors, runFactMergePass,
+  mkUniqueness, withMandatoryId,
 } from '../storeHelpers'
 
 // A name typed in the view language is that language's own, even when it
@@ -740,7 +741,7 @@ export function createElementSlice(set, get) {
           } else {
             roles = f.roles.slice(0, newArity)
           }
-          const uniqueness = f.uniqueness.filter(u => u.every(i => i < newArity))
+          const uniqueness = f.uniqueness.filter(u => u.roles.every(i => i < newArity))
           const internalFrequency = (f.internalFrequency || []).map(if_ => ({
             ...if_,
             roles: if_.roles.filter(i => i < newArity),
@@ -848,7 +849,7 @@ export function createElementSlice(set, get) {
             oldToNew[oldI] = newI
           })
 
-          const uniqueness = f.uniqueness.map(u => u.map(i => oldToNew[i]))
+          const uniqueness = f.uniqueness.map(u => ({ ...u, roles: u.roles.map(i => oldToNew[i]) }))
           const deonticUniqueness = (f.deonticUniqueness || []).map(u => u.map(i => oldToNew[i]))
 
           // Remap alternative readings' role order through oldToNew
@@ -976,7 +977,7 @@ export function createElementSlice(set, get) {
           const newRole = f.objectified ? { ...mkRole(), linkReadingParts: ['', 'involves', ''] } : mkRole()
           const roles = [...f.roles.slice(0, atIndex), newRole, ...f.roles.slice(atIndex)]
           const arity = f.arity + 1
-          const uniqueness = f.uniqueness.map(u => u.map(i => i >= atIndex ? i + 1 : i))
+          const uniqueness = f.uniqueness.map(u => ({ ...u, roles: u.roles.map(i => i >= atIndex ? i + 1 : i) }))
           const deonticUniqueness = (f.deonticUniqueness || []).map(u => u.map(i => i >= atIndex ? i + 1 : i))
           const internalFrequency = (f.internalFrequency || []).map(if_ => ({
             ...if_, roles: if_.roles.map(i => i >= atIndex ? i + 1 : i),
@@ -1049,8 +1050,8 @@ export function createElementSlice(set, get) {
           const roles = f.roles.filter((_, i) => i !== roleIndex)
           const arity = f.arity - 1
           const uniqueness = f.uniqueness
-            .filter(u => !u.includes(roleIndex))
-            .map(u => u.map(i => i > roleIndex ? i - 1 : i))
+            .filter(u => !u.roles.includes(roleIndex))
+            .map(u => ({ ...u, roles: u.roles.map(i => i > roleIndex ? i - 1 : i) }))
           const deonticUniqueness = (f.deonticUniqueness || [])
             .filter(u => !u.includes(roleIndex))
             .map(u => u.map(i => i > roleIndex ? i - 1 : i))
@@ -1143,7 +1144,7 @@ export function createElementSlice(set, get) {
       set(s => ({
         facts: s.facts.map(f => {
           if (f.id !== factId) return f
-          const roles = f.roles.map((r, i) => i === roleIndex ? { ...r, ...patch } : r)
+          const roles = f.roles.map((r, i) => i === roleIndex ? withMandatoryId({ ...r, ...patch }) : r)
           return { ...f, roles }
         }),
         isDirty: true,
@@ -1183,15 +1184,15 @@ export function createElementSlice(set, get) {
       })
     },
 
-    toggleUniqueness(factId, roleIndices) {
+    toggleUniqueness(factId, roleIndices, id) {
       set(s => ({
         facts: s.facts.map(f => {
           if (f.id !== factId) return f
           const key = JSON.stringify([...roleIndices].sort())
-          const exists = f.uniqueness.some(u => JSON.stringify([...u].sort()) === key)
+          const exists = f.uniqueness.some(u => JSON.stringify([...u.roles].sort()) === key)
           const uniqueness = exists
-            ? f.uniqueness.filter(u => JSON.stringify([...u].sort()) !== key)
-            : [...f.uniqueness, roleIndices].sort((a, b) => a.length - b.length)
+            ? f.uniqueness.filter(u => JSON.stringify([...u.roles].sort()) !== key)
+            : [...f.uniqueness, mkUniqueness(roleIndices, id)].sort((a, b) => a.roles.length - b.roles.length)
           const preferredUniqueness = (f.preferredUniqueness || []).filter(pu =>
             JSON.stringify([...pu].sort()) !== key
           )
@@ -1217,13 +1218,38 @@ export function createElementSlice(set, get) {
       }))
     },
 
+    // Give an internal uniqueness constraint other roles, keeping its id (and
+    // so its groups) and its modality; it stops being a preferred identifier.
+    // Returns its new index, or -1 when the role set is empty or another
+    // constraint already has it.
+    setUniquenessRoles(factId, uIndex, newRoles) {
+      const fact = get().facts.find(f => f.id === factId)
+      const old = fact?.uniqueness[uIndex]
+      if (!old || newRoles.length === 0) return -1
+      const key = rs => JSON.stringify([...rs].sort())
+      const newKey = key(newRoles), oldKey = key(old.roles)
+      if (newKey === oldKey) return uIndex
+      if (fact.uniqueness.some((u, i) => i !== uIndex && key(u.roles) === newKey)) return -1
+      const updated = { ...old, roles: [...newRoles] }
+      const uniqueness = fact.uniqueness.map((u, i) => i === uIndex ? updated : u).sort((a, b) => a.roles.length - b.roles.length)
+      const wasDeontic = (fact.deonticUniqueness || []).some(du => key(du) === oldKey)
+      const deonticUniqueness = (fact.deonticUniqueness || []).filter(du => key(du) !== oldKey)
+      if (wasDeontic) deonticUniqueness.push([...newRoles])
+      const preferredUniqueness = (fact.preferredUniqueness || []).filter(pu => key(pu) !== oldKey)
+      set(s => ({
+        facts: s.facts.map(f => f.id === factId ? { ...f, uniqueness, deonticUniqueness, preferredUniqueness } : f),
+        isDirty: true,
+      }))
+      return uniqueness.indexOf(updated)
+    },
+
     // Remove-only counterpart of toggleUniqueness: safe to call more than once
     // for the same keystroke (Canvas and App both handle Backspace).
     removeUniqueness(factId, roleIndices) {
       const fact = get().facts.find(f => f.id === factId)
       if (!fact || !roleIndices) return
       const key = JSON.stringify([...roleIndices].sort())
-      if (!fact.uniqueness.some(u => JSON.stringify([...u].sort()) === key)) return
+      if (!fact.uniqueness.some(u => JSON.stringify([...u.roles].sort()) === key)) return
       get().toggleUniqueness(factId, roleIndices)
     },
 
@@ -1287,7 +1313,7 @@ export function createElementSlice(set, get) {
     togglePreferredUniqueness(factId, uniquenessIndex) {
       const fact = get().facts.find(f => f.id === factId)
       if (!fact) return
-      const roleIndices = (fact.uniqueness || [])[uniquenessIndex]
+      const roleIndices = (fact.uniqueness || [])[uniquenessIndex]?.roles
       if (!Array.isArray(roleIndices)) return
       get().setPreferredUniqueness(factId, roleIndices)
     },

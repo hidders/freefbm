@@ -1238,9 +1238,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            1
-          ]
+          {
+            "id": "f_Person_PersonNr_uc1",
+            "roles": [
+              1
+            ]
+          }
         ],
         "preferredUniqueness": [
           [
@@ -1412,7 +1415,8 @@
               "",
               ""
             ],
-            "linkReadingReverseParts": null
+            "linkReadingReverseParts": null,
+            "mandatoryId": "x3_mand"
           },
           {
             "id": "x4",
@@ -1436,9 +1440,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0
-          ]
+          {
+            "id": "f_hasName_uc2",
+            "roles": [
+              0
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -1571,12 +1578,18 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0
-          ],
-          [
-            1
-          ]
+          {
+            "id": "f_hasEmail_uc3",
+            "roles": [
+              0
+            ]
+          },
+          {
+            "id": "f_hasEmail_uc4",
+            "roles": [
+              1
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -1709,9 +1722,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0
-          ]
+          {
+            "id": "f_hasPhone_uc5",
+            "roles": [
+              0
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -1856,9 +1872,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0
-          ]
+          {
+            "id": "f_supervises_uc6",
+            "roles": [
+              0
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -2087,9 +2106,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            1
-          ]
+          {
+            "id": "f_Building_BuildingCode_uc7",
+            "roles": [
+              1
+            ]
+          }
         ],
         "preferredUniqueness": [
           [
@@ -2261,7 +2283,8 @@
               "",
               ""
             ],
-            "linkReadingReverseParts": null
+            "linkReadingReverseParts": null,
+            "mandatoryId": "x13_mand"
           },
           {
             "id": "x14",
@@ -2285,9 +2308,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0
-          ]
+          {
+            "id": "f_roomInBuilding_uc8",
+            "roles": [
+              0
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -2406,7 +2432,8 @@
               "",
               ""
             ],
-            "linkReadingReverseParts": null
+            "linkReadingReverseParts": null,
+            "mandatoryId": "x15_mand"
           },
           {
             "id": "x16",
@@ -2430,9 +2457,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0
-          ]
+          {
+            "id": "f_roomHasNr_uc9",
+            "roles": [
+              0
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -2565,9 +2595,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0
-          ]
+          {
+            "id": "f_hasOffice_uc10",
+            "roles": [
+              0
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -2700,9 +2733,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0
-          ]
+          {
+            "id": "f_hasExtension_uc11",
+            "roles": [
+              0
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -2847,9 +2883,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            1
-          ]
+          {
+            "id": "f_Course_CourseCode_uc12",
+            "roles": [
+              1
+            ]
+          }
         ],
         "preferredUniqueness": [
           [
@@ -3021,7 +3060,8 @@
               "",
               ""
             ],
-            "linkReadingReverseParts": null
+            "linkReadingReverseParts": null,
+            "mandatoryId": "x23_mand"
           },
           {
             "id": "x24",
@@ -3045,12 +3085,18 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0
-          ],
-          [
-            1
-          ]
+          {
+            "id": "f_hasTitle_uc13",
+            "roles": [
+              0
+            ]
+          },
+          {
+            "id": "f_hasTitle_uc14",
+            "roles": [
+              1
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -3159,7 +3205,8 @@
               "",
               ""
             ],
-            "linkReadingReverseParts": null
+            "linkReadingReverseParts": null,
+            "mandatoryId": "x25_mand"
           },
           {
             "id": "x26",
@@ -3183,9 +3230,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0
-          ]
+          {
+            "id": "f_hasCredits_uc15",
+            "roles": [
+              0
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -3318,10 +3368,13 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0,
-            1
-          ]
+          {
+            "id": "f_prereq_uc16",
+            "roles": [
+              0,
+              1
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -3479,10 +3532,13 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0,
-            1
-          ]
+          {
+            "id": "f_enrols_uc17",
+            "roles": [
+              0,
+              1
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [
@@ -4011,9 +4067,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0
-          ]
+          {
+            "id": "f_earned_uc18",
+            "roles": [
+              0
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -4171,10 +4230,13 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0,
-            1
-          ]
+          {
+            "id": "f_assists_uc19",
+            "roles": [
+              0,
+              1
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -4312,10 +4374,13 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0,
-            1
-          ]
+          {
+            "id": "f_qualified_uc20",
+            "roles": [
+              0,
+              1
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -4473,10 +4538,13 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0,
-            1
-          ]
+          {
+            "id": "f_teaches_uc21",
+            "roles": [
+              0,
+              1
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -4597,7 +4665,8 @@
               "",
               ""
             ],
-            "linkReadingReverseParts": null
+            "linkReadingReverseParts": null,
+            "mandatoryId": "x41_mand"
           }
         ],
         "readingParts": [
@@ -4609,9 +4678,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            1
-          ]
+          {
+            "id": "f_coordinates_uc22",
+            "roles": [
+              1
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -4720,7 +4792,8 @@
               "",
               ""
             ],
-            "linkReadingReverseParts": null
+            "linkReadingReverseParts": null,
+            "mandatoryId": "n1792595806796_13_mand"
           },
           {
             "id": "n1792595806796_14",
@@ -4744,9 +4817,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0
-          ]
+          {
+            "id": "n1792595806796_12_uc23",
+            "roles": [
+              0
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -4860,7 +4936,8 @@
               "",
               ""
             ],
-            "linkReadingReverseParts": null
+            "linkReadingReverseParts": null,
+            "mandatoryId": "n1792595809976_17_mand"
           },
           {
             "id": "n1792595809976_18",
@@ -4884,9 +4961,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0
-          ]
+          {
+            "id": "n1792595809976_16_uc24",
+            "roles": [
+              0
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],
@@ -5036,9 +5116,12 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            1
-          ]
+          {
+            "id": "n1792600091986_8_uc25",
+            "roles": [
+              1
+            ]
+          }
         ],
         "preferredUniqueness": [
           [
@@ -5185,10 +5268,13 @@
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
-          [
-            0,
-            1
-          ]
+          {
+            "id": "n1792654764379_4_uc26",
+            "roles": [
+              0,
+              1
+            ]
+          }
         ],
         "preferredUniqueness": [],
         "internalFrequency": [],

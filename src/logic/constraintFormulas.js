@@ -233,7 +233,7 @@ function factEntries(fact, ctx, info) {
   const roleVars = () => fact.roles.map(r => mkVar(r.objectTypeId))
   const preferred = new Set((fact.preferredUniqueness ?? []).map(u => [...u].sort().join(',')))
 
-  for (const u of (fact.uniqueness ?? [])) {
+  for (const { roles: u } of (fact.uniqueness ?? [])) {
     const isPreferred = preferred.has([...u].sort().join(','))
     const deontic = !isPreferred && isDeonticUniqueness(fact, u)
     const base = { key: `${fact.id}:uc:${u.join(',')}`, elementId: fact.id,
@@ -288,7 +288,7 @@ function preferredIdentifierEntries(fact, u, reading) {
   const others = fact.roles.map((_, i) => i).filter(i => !u.includes(i))
   if (others.length !== 1 || (fact.objectified && fact.objectifiedKind !== 'value')) return []
   const e = others[0]
-  const atMost = !(fact.uniqueness ?? []).some(v => v.length === 1 && v[0] === e)
+  const atMost = !(fact.uniqueness ?? []).some(v => v.roles.length === 1 && v.roles[0] === e)
   const atLeast = !fact.roles[e].mandatory || isDeonticMandatory(fact.roles[e])
   if (!atMost && !atLeast) return []
   const xs = fact.roles.map(r => mkVar(r.objectTypeId))
@@ -637,7 +637,7 @@ function possibleUniqueness(fact, reading, info) {
   const n = fact.roles.length
   if (!info || n < 2 || !hasDefaults(fact)) return []
   const isIdentified = (i) => info.identified.has(`${fact.id}:${i}`)
-  const ucs = [...(fact.uniqueness ?? []), ...fact.roles.map((_, i) => i).filter(isIdentified).map(i => [i])]
+  const ucs = [...(fact.uniqueness ?? []).map(u => u.roles), ...fact.roles.map((_, i) => i).filter(isIdentified).map(i => [i])]
   const missing = []
   for (let mask = 1; mask < (1 << n) - 1; mask++) {
     const set = fact.roles.map((_, i) => i).filter(i => mask & (1 << i))

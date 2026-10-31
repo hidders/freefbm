@@ -386,7 +386,7 @@ export function runValidation(state, enabledCategories) {
       // RedundantInternalUniquenessConstraintWarning
       // A constraint on role set J is redundant if another constraint (explicit or implied)
       // covers a proper subset of J.
-      const ucs = f.uniqueness || []
+      const ucs = (f.uniqueness || []).map(u => u.roles)
       // Compute implied unary UCs using the same logic as FactTypeNode / RoleConnectors.
       const valExistingUnary = new Set(ucs.filter(u => u.length === 1).map(u => u[0]))
       const valImpliedRoles = []

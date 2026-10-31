@@ -596,11 +596,11 @@ function GroupPicker({ memberIds, exclude = [], label = 'Add to group…' }) {
   )
 }
 
-function GroupMembershipSection({ id }) {
+function GroupMembershipSection({ id, title = 'Groups' }) {
   const store = useOrmStoreIgnoring('pan', 'zoom')
   const mine = store.groups.filter(g => g.members.includes(id))
   return (
-    <Section title="Groups">
+    <Section title={title}>
       {mine.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
           {mine.map(g => (
@@ -631,6 +631,12 @@ function goToMember(store, id) {
   } else if (m.kind === 'role') {
     store.navigateToElement(m.factId, 'fact')
     setTimeout(() => store.selectRole(m.factId, m.roleIndex), 0)
+  } else if (m.kind === 'uniqueness' || m.kind === 'mandatory' || m.kind === 'frequency') {
+    // Internal constraints: open their fact type, then select the constraint
+    store.navigateToElement(m.factId, 'fact')
+    setTimeout(() => m.kind === 'uniqueness' ? store.selectUniqueness(m.factId, m.uIndex)
+      : m.kind === 'mandatory' ? store.selectMandatoryDot(m.factId, m.roleIndex)
+      : store.selectInternalFrequency(m.factId, m.ifId), 0)
   } else {
     store.navigateToElement(id, m.kind === 'entity' || m.kind === 'value' ? 'objectType' : m.kind)
   }
@@ -652,7 +658,7 @@ function GroupInspector({ group }) {
     m.kind === 'constraint' ? (diagram?.constraintOccurrences ?? []).some(o => o.schemaConstraintId === id)
     : m.kind === 'subtype' ? (diagram?.subtypeOccurrences ?? []).includes(id)
     : m.kind === 'note' ? m.diagramId === diagram?.id
-    : m.kind !== 'role' && (diagram?.occurrences ?? []).some(o => o.schemaElementId === id))
+    : !m.factId && (diagram?.occurrences ?? []).some(o => o.schemaElementId === id))
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>Group</InspectorTitle>
@@ -1533,7 +1539,7 @@ function CompactRoleList({ fact, store }) {
 }
 
 // ── Role inspector ────────────────────────────────────────────────────────────
-function RoleInspector({ fact, roleIndex }) {
+function RoleInspector({ fact, roleIndex, mandatorySelected = false }) {
   const store = useOrmStoreIgnoring('pan', 'zoom')
   const role = fact.roles[roleIndex]
   if (!role) return null
@@ -1579,6 +1585,7 @@ function RoleInspector({ fact, roleIndex }) {
       />
       <PropertiesSection el={role} kind="role" onChange={patch => store.updateRole(fact.id, roleIndex, patch)}/>
       <GroupMembershipSection id={role.id}/>
+      {mandatorySelected && role.mandatoryId && <GroupMembershipSection id={role.mandatoryId} title="Groups of the mandatory constraint"/>}
       <Section title="Usage">
         <DangerBtn onClick={() => { store.deleteRole(fact.id, roleIndex); store.select(fact.id, 'fact') }}>
           Delete Role
@@ -1591,8 +1598,9 @@ function RoleInspector({ fact, roleIndex }) {
 // ── Internal Uniqueness Bar inspector ────────────────────────────────────────
 function UniquenessBarInspector({ fact, uIndex }) {
   const store = useOrmStoreIgnoring('pan', 'zoom')
-  const u = fact.uniqueness[uIndex]
-  if (!u) return null
+  const uc = fact.uniqueness[uIndex]
+  if (!uc) return null
+  const u = uc.roles
 
   const isImplicit = fact._implicit === true
   const parentFact = isImplicit ? store.facts.find(f => f.id === fact._parentFactId) : null
@@ -1696,6 +1704,7 @@ function UniquenessBarInspector({ fact, uIndex }) {
             onChange={v => store.setUniquenessDeontic(fact.id, u, v)}/>
         </Row>
       )}
+      {!isImplicit && <GroupMembershipSection id={uc.id}/>}
       {!isImplicit && (
         <div style={{ marginTop: 8 }}>
           <DangerBtn onClick={() => { store.toggleUniqueness(fact.id, u); store.select(fact.id, 'fact') }}>
@@ -1847,6 +1856,7 @@ function InternalFrequencyInspector({ fact, ifItem }) {
             onChange={v => store.updateInternalFrequency(fact.id, ifItem.id, { deontic: v })}/>
         </Row>
       )}
+      {!isImplicit && <GroupMembershipSection id={ifItem.id}/>}
       {!isImplicit && (
         <div style={{ marginTop: 8 }}>
           <Label>Usage</Label>
@@ -2681,7 +2691,7 @@ function FactConstraintsSubsection({ fact, store }) {
       {fact.uniqueness.length === 0 && (
         <div style={{ color: 'var(--ink-muted)', fontSize: 11, marginBottom: 8 }}>None defined</div>
       )}
-      {fact.uniqueness.map((u, ui) => {
+      {fact.uniqueness.map(({ roles: u }, ui) => {
         const uKey = JSON.stringify([...u].sort())
         const isPreferred = (fact.preferredUniqueness || []).some(pu =>
           JSON.stringify([...pu].sort()) === uKey
@@ -3018,10 +3028,10 @@ function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
           {srcIdx === 0 ? 'Mandatory (default)' : parentFact.roles[roleIndex]?.mandatory ? 'Mandatory (propagated)' : 'Optional'}
         </div>
 
-        {parentRole && parentUniqueness.length > 0 && parentUniqueness.some(u => u.includes(parentRoleIndex)) && (
+        {parentRole && parentUniqueness.length > 0 && parentUniqueness.some(u => u.roles.includes(parentRoleIndex)) && (
           <>
             <Label style={{ marginTop: 8 }}>Parent Fact Uniqueness</Label>
-            {parentUniqueness.map((uRoles, ui) => {
+            {parentUniqueness.map(({ roles: uRoles }, ui) => {
               if (!uRoles.includes(parentRoleIndex)) return null
               const key = JSON.stringify([...uRoles].sort((a, b) => a - b))
               const isPreferred = (parentFact.preferredUniqueness || []).some(pu =>
@@ -3348,7 +3358,7 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
       <Section title="Constraints">
         <Label>Uniqueness</Label>
         {(() => {
-          const hasSolo = (parentFact.uniqueness || []).some(u => u.length === 1 && u[0] === roleIndex)
+          const hasSolo = (parentFact.uniqueness || []).some(u => u.roles.length === 1 && u.roles[0] === roleIndex)
           const uBars = hasSolo ? [[0], [1]] : [[0]]
           const prefArr = il.preferredUniqueness || []
 
@@ -4384,7 +4394,7 @@ export default function Inspector() {
         }
       } else {
         const f = store.facts.find(f => f.id === factId)
-        if (f) internalConstraintContent = <RoleInspector fact={f} roleIndex={roleIndex} />
+        if (f) internalConstraintContent = <RoleInspector fact={f} roleIndex={roleIndex} mandatorySelected />
       }
     } else if (selectedInternalFrequency) {
       const f = store.facts.find(f => f.id === selectedInternalFrequency.factId)
