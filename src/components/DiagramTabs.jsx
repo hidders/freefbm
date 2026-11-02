@@ -1,10 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
+import { activeSchemaIdOf } from '../store/storeHelpers'
+import { NewSchemaMenu } from './SchemaStrip'
 
 export default function DiagramTabs() {
   const store = useOrmStoreIgnoring('pan', 'zoom')
-  const diagrams        = store.diagrams ?? []
+  // Only the active schema's diagrams are shown; indices below are into this
+  // list and are mapped back to store.diagrams for reordering.
+  const allDiagrams     = store.diagrams ?? []
+  const activeSchemaId  = activeSchemaIdOf(store)
+  const diagrams        = allDiagrams.filter(d => !activeSchemaId || d.schemaId === activeSchemaId)
   const activeDiagramId = store.activeDiagramId
+  const singleSchema    = (store.schemas?.length ?? 1) <= 1
 
   const [editingId, setEditingId] = useState(null)
   const [draft,     setDraft]     = useState('')
@@ -101,7 +108,11 @@ export default function DiagramTabs() {
       if (!dr) return
       if (dr.dragging) {
         const from = dr.fromIndex, to = dr.currentDrop
-        if (to !== from && to !== from + 1) store.reorderDiagram(from, to)
+        if (to !== from && to !== from + 1) {
+          const gFrom = allDiagrams.indexOf(diagrams[from])
+          const gTo = to < diagrams.length ? allDiagrams.indexOf(diagrams[to]) : allDiagrams.indexOf(diagrams[diagrams.length - 1]) + 1
+          store.reorderDiagram(gFrom, gTo)
+        }
         setDragIndex(null)
         setDropIndex(null)
         setDragOffsetX(0)
@@ -267,6 +278,9 @@ export default function DiagramTabs() {
       >
         +
       </div>
+
+      {/* With one schema the schema strip is hidden; a new schema starts here. */}
+      {singleSchema && <NewSchemaMenu variant="tab" />}
     </div>
   )
 }

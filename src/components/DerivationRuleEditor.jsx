@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
+import { scopeToSchema } from '../store/storeHelpers'
 import { makeContext, readingText, constraintEntry, CONSTRAINT_LABELS } from '../logic/constraintFormulas.js'
 import {
   SUBJECT, hole, getAt, setAt, directSupertypes, typeGraph, allTypeOptions,
@@ -120,9 +121,11 @@ const memberText = (m, ctx) => {
 }
 
 export default function DerivationRuleEditor({ otId, factId, constraintId, sequenceIndex, onClose }) {
-  const state = useOrmStore(useShallow(s => ({
-    objectTypes: s.objectTypes, facts: s.facts, subtypes: s.subtypes, constraints: s.constraints,
-  })))
+  // The rule is in the active schema, so only its types and facts are offered.
+  const state = useOrmStore(useShallow(st => {
+    const s = scopeToSchema(st)
+    return { objectTypes: s.objectTypes, facts: s.facts, subtypes: s.subtypes, constraints: s.constraints }
+  }))
   const updateObjectType = useOrmStore(s => s.updateObjectType)
   const updateFact = useOrmStore(s => s.updateFact)
   const setConstraintQuery = useOrmStore(s => s.setConstraintQuery)

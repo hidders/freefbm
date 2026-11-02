@@ -3,6 +3,7 @@ import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { VALIDATION_CATEGORIES } from '../utils/validation.js'
 import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 import { hasTextSelection } from '../utils/textPanel.js'
+import { activeSchemaIdOf } from '../store/storeHelpers'
 
 const FONT   = "'Segoe UI', Helvetica, Arial, sans-serif"
 const HDR_H  = 24
@@ -28,6 +29,13 @@ const rHandle = (dir) => ({
 
 export default function ValidationPanel() {
   const store = useOrmStoreIgnoring('pan', 'zoom')
+  const [allSchemas, setAllSchemas] = useState(() => {
+    try { return localStorage.getItem('freefbm.validation.allSchemas') === '1' } catch { return false }
+  })
+  const toggleAllSchemas = () => setAllSchemas(v => {
+    try { localStorage.setItem('freefbm.validation.allSchemas', v ? '0' : '1') } catch {}
+    return !v
+  })
 
   const [collapsed,  setCollapsed]  = useState(true)
   const [animating,  setAnimating]  = useState(false)
@@ -151,7 +159,18 @@ export default function ValidationPanel() {
     }
     return !diagrams.some(d => d.occurrences?.some(o => o.schemaElementId === e.elementId))
   }
-  const errors = (store.validationErrors || []).filter(e => !isElementOrphaned(e))
+  // With several schemas the panel lists the active schema's issues, or all
+  // of them (each then names its schema) when 'All schemas' is on.
+  const schemas = store.schemas || []
+  const multiSchema = schemas.length > 1
+  const activeSchemaId = activeSchemaIdOf(store)
+  const schemaOfElement = new Map()
+  if (multiSchema) for (const k of ['objectTypes', 'facts', 'subtypes', 'constraints'])
+    for (const x of (store[k] || [])) schemaOfElement.set(x.id, x.schemaId)
+  const schemaNameOf = (e) => schemas.find(x => x.id === schemaOfElement.get(e.elementId))?.name
+  const inScope = (e) => !multiSchema || allSchemas || !schemaOfElement.has(e.elementId)
+    || schemaOfElement.get(e.elementId) === activeSchemaId
+  const errors = (store.validationErrors || []).filter(e => !isElementOrphaned(e) && inScope(e))
   const errorCount = errors.length
   const byCategory = {}
   for (const e of errors) {
@@ -232,6 +251,19 @@ export default function ValidationPanel() {
             ⠿ validation
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {multiSchema && (
+              <button
+                onMouseDown={e => e.stopPropagation()}
+                onClick={toggleAllSchemas}
+                title={allSchemas ? 'Show only the issues of the active schema' : 'Show the issues of every schema in the file'}
+                style={{
+                  border: '1px solid var(--border-soft)', borderRadius: 3, cursor: 'pointer',
+                  fontSize: 9, lineHeight: '13px', padding: '0 4px', fontFamily: FONT,
+                  background: allSchemas ? 'var(--ink-2)' : 'transparent',
+                  color: allSchemas ? 'var(--bg-surface)' : 'var(--ink-muted)', pointerEvents: 'all',
+                }}
+              >All schemas</button>
+            )}
             {errorCount > 0 && (
               <span style={{
                 background: '#dc2626', color: 'white',
@@ -283,7 +315,7 @@ export default function ValidationPanel() {
                       <span style={{ color: SEV_COLOUR[e.severity], fontWeight: 700, fontSize: 9, marginTop: 2, flexShrink: 0 }}>
                         {SEV_ICON[e.severity]}
                       </span>
-                      <span style={{ fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.4 }}>{e.message}</span>
+                      <span style={{ fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.4 }}>{multiSchema && allSchemas && schemaNameOf(e) ? `${schemaNameOf(e)}: ${e.message}` : e.message}</span>
                     </div>
                   ))}
                 </div>

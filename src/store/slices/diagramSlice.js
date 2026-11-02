@@ -180,9 +180,14 @@ export function createDiagramSlice(set, get) {
 
     deleteDiagram(id) {
       set(s => {
-        if (s.diagrams.length <= 1) return {}  // can't delete the last diagram
+        // Every schema keeps at least one diagram (its active diagram makes it
+        // the active schema), so a schema's last diagram can't be deleted.
+        const gone = s.diagrams.find(d => d.id === id)
+        if (!gone) return {}
+        const siblings = s.diagrams.filter(d => d.id !== id && d.schemaId === gone.schemaId)
+        if (!siblings.length) return {}
         const newDiagrams = s.diagrams.filter(d => d.id !== id)
-        const newActiveId = s.activeDiagramId === id ? newDiagrams[0]?.id : s.activeDiagramId
+        const newActiveId = s.activeDiagramId === id ? siblings[0].id : s.activeDiagramId
         // Schema elements are never deleted when a diagram is removed —
         // they persist as orphaned elements accessible via the schema browser.
         return {

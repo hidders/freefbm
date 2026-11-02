@@ -9,6 +9,7 @@ import ImportLogPanel from './components/ImportLogPanel'
 import StatusBar from './components/StatusBar'
 import WelcomeScreen from './components/WelcomeScreen'
 import DiagramTabs from './components/DiagramTabs'
+import SchemaStrip from './components/SchemaStrip'
 import SchemaBrowser from './components/SchemaBrowser'
 import ValidationPanel from './components/ValidationPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -315,7 +316,7 @@ export default function App() {
 
         <div id="app-toolbar" className="no-print"><Toolbar /></div>
 
-        <div id="app-diagram-tabs" className="no-print"><DiagramTabs /></div>
+        <div id="app-diagram-tabs" className="no-print"><SchemaStrip /><DiagramTabs /></div>
 
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
           <div id="app-toolpanel" className="no-print" style={{ display: 'contents' }}><ToolPanel /></div>

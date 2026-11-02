@@ -1,5 +1,6 @@
 import React from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
+import { scopeToSchema } from '../store/storeHelpers'
 
 // ── Tier 1: Tool hints — workflow guidance while a tool is active ─────────────
 const TOOL_HINTS = {
@@ -150,7 +151,7 @@ export default function StatusBar() {
         <span style={{ fontSize: 11, color: 'var(--danger)' }}>● unsaved</span>
       )}
       <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
-        {store.objectTypes.length} types · {store.facts.length} facts · {store.constraints.length} constraints
+        {(() => { const sc = scopeToSchema(store); return `${sc.objectTypes.length} types · ${sc.facts.length} facts · ${sc.constraints.length} constraints` })()}
       </span>
     </div>
   )
