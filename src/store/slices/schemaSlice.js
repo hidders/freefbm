@@ -83,6 +83,9 @@ export const createSchemaSlice = (set, get) => ({
         facts: [...s.facts, ...built.facts],
         constraints: [...s.constraints, ...built.constraints],
         diagrams: [...s.diagrams, built.diagram],
+        // The rows of INSERT statements, as sample population.
+        populations: { ...s.populations, ...built.sample.populations },
+        factPopulations: { ...s.factPopulations, ...built.sample.factPopulations },
         isDirty: true,
       }))
       get().setActiveDiagram(built.diagram.id)
@@ -95,6 +98,7 @@ export const createSchemaSlice = (set, get) => ({
     get().setImportLog({ kind: 'ddl', source: `${name} (PostgreSQL DDL)`, entries: [
       { level: 'note', text: `Read ${st.tables} tables with ${st.columns} columns into schema ${unique}: ${st.valueTypes} value types, ${st.keys} keys, ${st.foreignKeys} foreign keys` },
       ...built.log,
+      ...built.sample.log,
     ] })
     return { schemaId: schema.id, stats: st }
   },

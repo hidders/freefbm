@@ -93,7 +93,14 @@ export function makePopulationEvaluator(rawData) {
     return { instances: [], keys: new Set() }
   }
 
+  // Stored tuples are worked out once per fact type: the data doesn't change
+  // while the evaluator lives, and joins ask for them again and again.
+  const storedCache = new Map()
   const storedTuples = (fact) => {
+    if (!storedCache.has(fact.id)) storedCache.set(fact.id, readStoredTuples(fact))
+    return storedCache.get(fact.id)
+  }
+  const readStoredTuples = (fact) => {
     const tuples = [], keys = new Set()
     for (const t of (tuplesOf(fact) ?? [])) {
       if (!Array.isArray(t)) continue
@@ -105,6 +112,24 @@ export function makePopulationEvaluator(rawData) {
       tuples.push(t.slice(0, fact.roles.length))
     }
     return { tuples, keys }
+  }
+
+  // Tuples of a fact type by the key of their cell at one position, per
+  // tuple list (they are cached, so the index lives as long as they do).
+  const tupleIndexes = new WeakMap()
+  const tupleIndex = (r, pos) => {
+    let byPos = tupleIndexes.get(r)
+    if (!byPos) { byPos = new Map(); tupleIndexes.set(r, byPos) }
+    if (!byPos.has(pos)) {
+      const ix = new Map()
+      for (const t of r.tuples) {
+        const k = keyOf(t[pos])
+        if (!ix.has(k)) ix.set(k, [])
+        ix.get(k).push(t)
+      }
+      byPos.set(pos, ix)
+    }
+    return byPos.get(pos)
   }
 
   // ── Evaluating formulas ──
@@ -245,7 +270,10 @@ export function makePopulationEvaluator(rawData) {
           const fact = atomFact(ctx, atom.factId)
           const r = factTuples(atom.factId)
           if (r.error) { fail(r.error); return }
-          for (const t of r.tuples) {
+          // A variable the atom shares with what is bound already picks the
+          // tuples through an index rather than a scan.
+          const at = atom.args.findIndex(id => id != null && env.has(id))
+          for (const t of (at < 0 ? r.tuples : tupleIndex(r, at).get(env.get(atom.args[at]).key) ?? [])) {
             const inner = new Map(env)
             let ok = true
             atom.args.forEach((id, i) => {

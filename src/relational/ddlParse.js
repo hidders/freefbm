@@ -3,14 +3,18 @@
 // CREATE TABLE (columns, types, NOT NULL, PRIMARY KEY, UNIQUE, REFERENCES,
 // CHECK), ALTER TABLE ... ADD [CONSTRAINT] (pg_dump style), CREATE TYPE ... AS
 // ENUM, CREATE DOMAIN and CREATE UNIQUE INDEX on plain columns. Everything else
-// (views, functions, triggers, data, grants...) is counted and skipped.
+// (views, functions, triggers, grants...) is counted and skipped. Rows of
+// INSERT INTO ... VALUES are read as sample data (step 8), with literal values
+// only.
 //
-// parseDdl(sql) → { tables, enums, domains, skipped, problems }
+// parseDdl(sql) → { tables, enums, domains, inserts, skipped, problems }
 //   tables:  [{ name, qualified, columns: [{ name, type, notNull, checks: [text] }],
 //               primaryKey: [col] | null, uniques: [[col]], foreignKeys: [{ columns,
 //               refTable, refColumns | null }], checks: [text] }]
 //   enums:   Map(name → [label])
 //   domains: Map(name → { type, notNull, checks: [text] })
+//   inserts: [{ table: { name, schema }, columns: [name] | null, rows: [[value]] }]
+//            value: a string, null (NULL), or undefined (not a literal)
 //   skipped: Map(statement kind → count)
 //   problems:[text]
 
@@ -192,6 +196,7 @@ export function parseDdl(sql) {
   const enums = new Map()
   const domains = new Map()
   const skipped = new Map()
+  const inserts = []
   const problems = []
   const skip = (kind) => skipped.set(kind, (skipped.get(kind) ?? 0) + 1)
   const keyOf = (q) => `${q.schema ?? ''}.${q.name}`
@@ -264,6 +269,22 @@ export function parseDdl(sql) {
         skip(`CREATE ${(kind ?? tokens[1]?.v ?? '').toUpperCase()}`)
         return
       }
+      if (s.eatWord('insert', 'into')) {
+        const q = qn()
+        let columns = null
+        if (s.isOp('(')) columns = nameList(s.group())
+        if (s.eatWord('overriding')) { s.next(); s.next() }
+        if (!q || !s.eatWord('values')) { skip('INSERT INTO ... (not VALUES)'); return }
+        const rows = []
+        for (;;) {
+          const g = s.group()
+          if (!g) break
+          rows.push(splitCommas(g).map(literalValue))
+          if (!s.eatOp(',')) break
+        }
+        inserts.push({ table: q, columns, rows })
+        return
+      }
       if (s.eatWord('alter', 'table')) {
         s.eatWord('if', 'exists'); s.eatWord('only')
         const q = qn()
@@ -295,7 +316,27 @@ export function parseDdl(sql) {
   for (const tokens of statements(tokenize(sql))) handle(tokens, null)
   // Partitions of a partitioned table hold its rows; they are not tables of their own.
   for (const k of partitions) if (tables.delete(k)) skip('partition (ALTER TABLE ... ATTACH PARTITION)')
-  return { tables: [...tables.values()], enums, domains, skipped, problems }
+  return { tables: [...tables.values()], enums, domains, inserts, skipped, problems }
+}
+
+// The value of a literal in a VALUES list: a string, null for NULL, or
+// undefined for anything else (an expression or a function call). Casts
+// (::type) are dropped.
+function literalValue(tokens) {
+  let tks = tokens
+  const cast = tks.findIndex(t => t.t === 'op' && t.v === '::')
+  if (cast > 0) tks = tks.slice(0, cast)
+  // E'...', B'...' and the like: the prefix is a word before the string.
+  if (tks.length === 2 && tks[0].t === 'id' && tks[1].t === 'str' && /^[ebxun&]$/.test(tks[0].v)) tks = [tks[1]]
+  if (tks.length === 1) {
+    const t = tks[0]
+    if (t.t === 'str' || t.t === 'num') return t.v
+    if (t.t === 'id' && t.v === 'null') return null
+    if (t.t === 'id' && (t.v === 'true' || t.v === 'false')) return t.v
+  }
+  if (tks.length === 2 && tks[0].t === 'op' && (tks[0].v === '-' || tks[0].v === '+') && tks[1].t === 'num')
+    return tks[0].v === '-' ? `-${tks[1].v}` : tks[1].v
+  return undefined
 }
 
 function parseCreateTable(s, tables, keyOf, problems, skip, defSchema) {

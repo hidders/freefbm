@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
 import { sideContext, sideTokens, checkRule, SIDES, sideSchemaId } from '../mapping/mapping.js'
 import { PatternText, IssueList } from './MappingFormula.jsx'
+import { runMapping, roundTrip } from '../mapping/runMapping.js'
 
 // The mappings of the file (workbench step 7): each relates a source and a
 // target schema by rules φ ⟺ ψ. Rules are edited in MappingRuleEditor.
@@ -13,6 +14,18 @@ export default function MappingsTab() {
   })))
   const act = useOrmStore.getState
   const schemas = state.schemas
+  // The last run per mapping: { kind: 'run' | 'roundTrip', direction, result, ms } | { error }.
+  const [runs, setRuns] = useState({})
+  const doRun = (m, kind, direction) => {
+    const full = useOrmStore.getState()
+    const t0 = performance.now()
+    try {
+      const result = kind === 'run' ? runMapping(full, m, direction) : roundTrip(full, m, direction)
+      setRuns(r => ({ ...r, [m.id]: { kind, direction, result, ms: Math.round(performance.now() - t0) } }))
+    } catch (err) {
+      setRuns(r => ({ ...r, [m.id]: { error: String(err?.message ?? err) } }))
+    }
+  }
   const [src, setSrc] = useState(schemas[0]?.id ?? '')
   const [tgt, setTgt] = useState(schemas[1]?.id ?? schemas[0]?.id ?? '')
   const name = (id) => schemas.find(s => s.id === id)?.name ?? '(deleted schema)'
@@ -70,8 +83,14 @@ export default function MappingsTab() {
               <div style={{ flex: 1 }} />
               <button style={btn} title="Show this mapping as a diagram: both schemas side by side, each rule linked to its elements" onClick={() => act().openMappingDiagram(m.id)}>Diagram</button>
               <button style={btn} onClick={() => act().addMappingRule(m.id)}>+ Rule</button>
+              <button style={btn} title={`Build the population of ${name(m.targetSchemaId)} from that of ${name(m.sourceSchemaId)}`} onClick={() => doRun(m, 'run', 'forward')}>Run →</button>
+              <button style={btn} title={`Build the population of ${name(m.sourceSchemaId)} from that of ${name(m.targetSchemaId)}`} onClick={() => doRun(m, 'run', 'backward')}>Run ←</button>
+              <button style={btn} title={`Run the mapping from ${name(m.sourceSchemaId)} there and back, and compare what comes back`} onClick={() => doRun(m, 'roundTrip', 'forward')}>Round trip</button>
               <button style={btn} title="Delete this mapping and its rules" onClick={() => act().deleteMapping(m.id)}>Delete</button>
             </div>
+            {runs[m.id] && <RunReport run={runs[m.id]} mapping={m} name={name}
+              onApply={(run) => { act().applyMappingRun(run); setRuns(r => ({ ...r, [m.id]: { ...r[m.id], applied: true } })) }}
+              onClose={() => setRuns(r => { const n = { ...r }; delete n[m.id]; return n })} />}
             {rules.length === 0 && <div style={{ padding: '6px 8px', color: 'var(--ink-muted)' }}>No rules yet.</div>}
             {rules.map(({ r, issues }, k) => {
               const open = state.editing?.mappingId === m.id && state.editing.ruleId === r.id
@@ -100,6 +119,73 @@ export default function MappingsTab() {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// What a run or a round trip of a mapping gave (runMapping.js).
+function RunReport({ run, mapping, name, onApply, onClose }) {
+  const box = { margin: '0', padding: '6px 8px 8px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg-text-panel)' }
+  const btn = { fontSize: 11, padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg-surface)', color: 'var(--ink-2)', cursor: 'pointer' }
+  const close = <button style={{ ...btn, border: 'none', background: 'none', color: 'var(--ink-muted)' }} title="Close" onClick={onClose}>×</button>
+  if (run.error) return <div style={{ ...box, color: '#dc2626' }}>The run failed: {run.error} {close}</div>
+  const levelColor = { error: '#dc2626', warning: '#d97706', note: 'var(--ink-muted)' }
+  const LogList = ({ log }) => log.map((l, i) => <div key={i} style={{ color: levelColor[l.level] ?? 'var(--ink-muted)' }}>{l.level === 'error' ? '✕' : l.level === 'warning' ? '!' : '·'} {l.text}</div>)
+  const sideName = (side) => name(side === 'source' ? mapping.sourceSchemaId : mapping.targetSchemaId)
+  const cell = { padding: '1px 10px 1px 0', whiteSpace: 'nowrap' }
+  const num = { ...cell, textAlign: 'right' }
+
+  if (run.kind === 'run') {
+    const r = run.result
+    const total = r.counts.reduce((a, c) => a + c.n, 0)
+    return (
+      <div className="mapping-run" data-text-panel tabIndex={0} style={{ ...box, outline: 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+          <b>{sideName(r.from)} → {sideName(r.to)}</b>
+          <span style={{ color: 'var(--ink-muted)' }}>{r.rules.map(x => `${x.name}: ${x.matches} match${x.matches === 1 ? '' : 'es'}`).join(' · ')} · {run.ms} ms</span>
+          <div style={{ flex: 1 }} />
+          {run.applied
+            ? <span style={{ color: 'var(--col-candidate)' }}>✓ Applied to the population of {sideName(r.to)} (Undo takes it back)</span>
+            : <button style={btn} disabled={!total} title={`Replace the sample population of ${sideName(r.to)} with this one`} onClick={() => onApply(r)}>Apply to {sideName(r.to)}</button>}
+          {close}
+        </div>
+        {r.counts.length === 0
+          ? <div style={{ color: 'var(--ink-muted)' }}>Nothing was built: no rule matched the population of {sideName(r.from)}.</div>
+          : <table style={{ borderCollapse: 'collapse', fontSize: 12 }}><tbody>
+            {r.counts.map(c => <tr key={c.id}><td style={cell}>{c.name}</td><td style={{ ...cell, color: 'var(--ink-muted)' }}>{c.kind === 'fact' ? 'fact type' : c.kind === 'value' ? 'value type' : 'entity type'}</td><td style={num}>{c.n}</td></tr>)}
+          </tbody></table>}
+        {r.log.length > 0 && <div style={{ marginTop: 4 }}><LogList log={r.log} /></div>}
+      </div>
+    )
+  }
+  const r = run.result
+  const exact = r.compare.every(c => !c.lost && !c.gained)
+  return (
+    <div className="mapping-run" data-text-panel tabIndex={0} style={{ ...box, outline: 'none' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+        <b>Round trip {sideName(r.there.from)} → {sideName(r.there.to)} → {sideName(r.there.from)}</b>
+        <span style={{ color: exact ? 'var(--col-candidate)' : '#d97706' }}>{exact ? '✓ everything the rules read comes back unchanged' : 'some facts change'}</span>
+        <span style={{ color: 'var(--ink-muted)' }}>· {run.ms} ms · nothing is changed</span>
+        <div style={{ flex: 1 }} />
+        {close}
+      </div>
+      <table style={{ borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead><tr style={{ color: 'var(--ink-muted)', textAlign: 'left' }}>
+          <th style={cell}>{sideName(r.there.from)}</th><th style={num}>before</th><th style={num}>after</th><th style={num}>lost</th><th style={num}>new</th><th style={cell}></th>
+        </tr></thead>
+        <tbody>{r.compare.map((c, i) => (
+          <tr key={i}>
+            <td style={cell}>{c.name}</td><td style={num}>{c.before}</td><td style={num}>{c.after}</td>
+            <td style={{ ...num, color: c.lost ? '#dc2626' : undefined }}>{c.lost}</td>
+            <td style={{ ...num, color: c.gained ? '#d97706' : undefined }}>{c.gained}</td>
+            <td style={{ ...cell, color: 'var(--ink-muted)', whiteSpace: 'normal' }}>{c.examples.join('; ')}</td>
+          </tr>
+        ))}</tbody>
+      </table>
+      {r.uncovered.length > 0 && <div style={{ marginTop: 4, color: 'var(--ink-muted)' }}>
+        Not read by any rule (not carried over): {r.uncovered.slice(0, 30).join(', ')}{r.uncovered.length > 30 ? `, and ${r.uncovered.length - 30} more` : ''}
+      </div>}
+      {r.log.length > 0 && <div style={{ marginTop: 4 }}><LogList log={r.log} /></div>}
     </div>
   )
 }

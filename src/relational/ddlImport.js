@@ -19,10 +19,88 @@
 //   { objectTypes, facts, constraints, diagram, log, stats }
 
 import { parseDdl, tokenize } from './ddlParse.js'
+import { relationalModel } from './relationalModel.js'
+import { findRefMode, findCompositePI, identifyingFactIds } from '../utils/refMode.js'
 import { mkEntity, mkValue, mkFact, mkUniqueness, withMandatoryId, mkConstraint, mkDiagram, mkOcc, uid } from '../store/storeHelpers.js'
 
 export function importPostgresDdl(sql, opts) {
-  return buildRelationalSchema(parseDdl(sql), opts)
+  const parsed = parseDdl(sql)
+  const built = buildRelationalSchema(parsed, opts)
+  built.sample = samplePopulation(parsed, built)
+  return built
+}
+
+// ── Sample rows ──────────────────────────────────────────────────────────────
+
+// The rows of the script's INSERT statements as the sample population of the
+// built schema: { populations, factPopulations, rows, log }. A row is an
+// instance of its table's entity type, identified by its primary key (the
+// reference mode, or the composite identifier); every other column with a
+// value is a tuple of the column's fact type. Rows of a table without a
+// primary key, or with a key that isn't given, are left out.
+const MAX_ROWS = 20000
+export function samplePopulation(parsed, built) {
+  const populations = {}, factPopulations = {}
+  const log = []
+  const inserts = parsed.inserts ?? []
+  if (!inserts.length) return { populations, factPopulations, rows: 0, log }
+  const { objectTypes, facts, constraints } = built
+  const rm = relationalModel({ objectTypes, facts, constraints }, null)
+  const ident = identifyingFactIds(facts, objectTypes, constraints)
+  const byName = new Map(rm.tables.map(t => [t.name.toLowerCase(), t]))
+  const sets = new Map()
+  const add = (obj, id, cell, key) => {
+    if (!sets.has(obj)) sets.set(obj, new Map())
+    const m = sets.get(obj)
+    if (!m.has(id)) { m.set(id, new Set()); obj[id] = [] }
+    if (m.get(id).has(key)) return
+    m.get(id).add(key)
+    obj[id].push(cell)
+  }
+  let rows = 0, dropped = 0, expr = 0
+  const noKey = new Set(), unknownCols = new Set()
+  for (const ins of inserts) {
+    const table = byName.get(ins.table.name.toLowerCase()) ?? byName.get(`${ins.table.schema}_${ins.table.name}`.toLowerCase())
+    if (!table) { dropped += ins.rows.length; continue }
+    const cols = ins.columns ?? table.columns.map(c => c.name)
+    const colOf = cols.map(n => {
+      const c = table.columns.find(x => x.name.toLowerCase() === String(n).toLowerCase())
+      if (!c) unknownCols.add(`${table.name}.${n}`)
+      return c
+    })
+    // How a row's entity is identified.
+    const refMode = findRefMode(table.entity, facts, objectTypes)
+    const cp = refMode ? null : findCompositePI(table.entity, facts, objectTypes, constraints)
+    const keyFacts = refMode ? [refMode.factId] : cp ? (cp.factIds ?? (cp.factId ? [cp.factId] : [])) : []
+    if (!keyFacts.length) { noKey.add(table.name); dropped += ins.rows.length; continue }
+    for (const row of ins.rows) {
+      if (rows >= MAX_ROWS) { dropped++; continue }
+      const val = new Map()
+      row.forEach((v, i) => {
+        if (v === undefined) expr++
+        // Leading and trailing spaces don't count in sample values.
+        if (colOf[i] && v != null && String(v).trim() !== '') val.set(colOf[i].fact.id, String(v).trim())
+      })
+      const keyVals = keyFacts.map(fid => val.get(fid))
+      if (keyVals.some(v => v == null)) { dropped++; continue }
+      const cell = refMode ? keyVals[0] : keyVals
+      add(populations, table.entity.id, cell, JSON.stringify(cell))
+      rows++
+      for (const [fid, v] of val) {
+        const col = rm.columnByFact.get(fid)
+        add(populations, col.vt.id, v, JSON.stringify(v))
+        if (ident.entity.has(fid)) continue
+        const t = []
+        t[col.t] = cell; t[col.v] = v
+        add(factPopulations, fid, t, JSON.stringify([JSON.stringify(cell), v]))
+      }
+    }
+  }
+  if (rows) log.push({ level: 'note', text: `Read ${rows} rows of INSERT statements into the sample population` })
+  if (dropped) log.push({ level: 'warn', text: `Left out ${dropped} rows${noKey.size ? ` (no primary key: ${[...noKey].join(', ')})` : ''}${rows >= MAX_ROWS ? `; at most ${MAX_ROWS} rows are read` : ''}` })
+  if (expr) log.push({ level: 'warn', text: `Left out ${expr} values that are not literals (expressions or function calls)` })
+  if (unknownCols.size) log.push({ level: 'warn', text: `Columns not in the table: ${[...unknownCols].slice(0, 8).join(', ')}` })
+  return { populations, factPopulations, rows, log }
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
