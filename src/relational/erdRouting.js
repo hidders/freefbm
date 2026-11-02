@@ -1,23 +1,28 @@
 // Layout and line routing for the ERD view (ErdView.jsx).
 //
-// layeredLayout(boxes, edges, originY) places boxes ({id, w, h}) in columns by
-//   foreign key depth: tables that reference nothing on the left, each table to
-//   the right of the tables it references, ordered in its column by where those
-//   tables are. A column that gets too tall continues in a next column.
+// layeredLayout(boxes, ids, edges, originY) places boxes ({w, h}) in columns by
+//   foreign key depth: tables that reference nothing on the right, each table
+//   to the left of the tables it references, ordered in its column by where
+//   the tables it is joined to are. A tall column continues in a next column.
 //
-// routeLines(boxes, ends, opts) draws each foreign key as a line of horizontal
-//   and vertical segments that keeps clear of the boxes: a shortest path, with a
-//   cost per bend and per stretch shared with a line routed before, over a grid
-//   of lanes beside the boxes. Each line leaves and enters a box sideways at a
-//   column's row, so the crow's foot markers sit on a straight stretch.
+// assignPorts gives each foreign key its own point on the facing side of both
+//   boxes, spread along that side.
+// routeLines(boxes, ends) draws each foreign key as a line of horizontal and
+//   vertical segments that keeps clear of the boxes: a shortest path, with a
+//   cost per bend and per stretch used by (or running right next to) a line
+//   routed before, over a grid of lanes beside the boxes. Lines leave and enter
+//   a box square to its side, so the crow's foot markers sit on a straight
+//   stretch.
 
-export const LANE = 14          // clearance kept between lines and boxes
+export const LANE = 16          // clearance kept between lines and boxes, and lane spacing
 export const LEAD = 2 * LANE    // straight stretch at both ends of a line
 const BEND_COST = 30
-const SHARED_COST = 1.5         // extra cost per unit along a stretch already used
+const SHARED_COST = 4           // extra cost per unit along a stretch already used
+const NEAR_COST = 0.4           // the same, counted for the lanes right next to a line
 // The search overestimates the remaining length by this factor: much faster on
 // large schemas, at the price of lines that are sometimes a little longer.
-const GREED = 1.6
+const GREED = 2
+const WINDOW = 300             // how far a line may stray beyond its two ends
 
 const COL_GAP = 120, ROW_GAP = 48
 
@@ -49,18 +54,21 @@ export function layeredLayout(boxes, ids, edges, originY = 0) {
   }
   ids.forEach(visit)
   const isolated = ids.filter(id => !out.get(id).size && !inc.get(id).size)
-  const layers = []
+  const byDepth = []
   for (const id of ids) {
     if (isolated.includes(id)) continue
-    ;(layers[depth.get(id)] ??= []).push(id)
+    ;(byDepth[depth.get(id)] ??= []).push(id)
   }
+  // Referencing tables left, the tables they reference right of them (as
+  // DBeaver does); tables without foreign keys last.
+  const layers = byDepth.filter(Boolean).reverse()
   if (isolated.length) layers.push(isolated)
 
   const totalArea = ids.reduce((s, id) => s + (boxes.get(id).w + COL_GAP) * (boxes.get(id).h + ROW_GAP), 0)
   const maxH = Math.max(700, Math.sqrt(totalArea) * 0.9)
   const centreY = new Map()
   let x = 0
-  for (const layer of layers.filter(Boolean)) {
+  for (const layer of layers) {
     // Order by the mean height of the tables a table is joined to that are
     // already placed; tables with none keep their order, after the others.
     const key = (id) => {
@@ -123,11 +131,65 @@ const uniqSorted = (arr) => [...new Set(arr.map(n => Math.round(n * 2) / 2))].so
 function above(arr, v) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] <= v) lo = m + 1; else hi = m } return lo }
 function below(arr, v) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < v) lo = m + 1; else hi = m } return lo - 1 }
 
-// boxes: Map(id → {x, y, w, h}).
-// ends: [{ key, from: {box, y}, to: {box, y} }] where box is an id and y the
-//   height of the row the line attaches to.
-// Returns Map(key → { points: [[x, y], ...], d1, d2 }) where d1/d2 are +1 when
-//   the line leaves the box to the right, -1 to the left.
+// Sides of a box: 'r', 'l', 'b', 't', with their outward direction (as in
+// the router: 0 +x, 1 −x, 2 +y, 3 −y) and unit vector.
+export const SIDES = {
+  r: { dir: 0, dx: 1, dy: 0 }, l: { dir: 1, dx: -1, dy: 0 },
+  b: { dir: 2, dx: 0, dy: 1 }, t: { dir: 3, dx: 0, dy: -1 },
+}
+
+// One attachment point per line end. links: [{ key, a, b }] (box ids, a the
+// referencing table). Each end goes on the side of its box that faces the
+// other box; the ends on one side are spread evenly along it, ordered by
+// where the other box is, so lines leaving one side don't cross each other.
+// top: how much of a box's top to keep free of side ports (its header).
+// Returns [{ key, from: {box, side, x, y}, to: {box, side, x, y} }].
+export function assignPorts(boxes, links, top = 0) {
+  const cx = (b) => b.x + b.w / 2, cy = (b) => b.y + b.h / 2
+  const sides = []   // [{ link, end: 'from'|'to', box, side, other }]
+  for (const l of links) {
+    const a = boxes.get(l.a), b = boxes.get(l.b)
+    if (!a || !b) continue
+    let sa, sb
+    if (a === b) { sa = 'r'; sb = 'r' }
+    else if (b.x >= a.x + a.w + 2 * LEAD) { sa = 'r'; sb = 'l' }
+    else if (a.x >= b.x + b.w + 2 * LEAD) { sa = 'l'; sb = 'r' }
+    else if (b.y >= a.y + a.h + 2 * LEAD) { sa = 'b'; sb = 't' }
+    else if (a.y >= b.y + b.h + 2 * LEAD) { sa = 't'; sb = 'b' }
+    else { sa = 'r'; sb = 'r' }
+    sides.push({ link: l, end: 'from', box: a, id: l.a, side: sa, other: b })
+    sides.push({ link: l, end: 'to', box: b, id: l.b, side: sb, other: a })
+  }
+  const groups = new Map()
+  for (const e of sides) {
+    const k = e.id + '|' + e.side
+    if (!groups.has(k)) groups.set(k, [])
+    groups.get(k).push(e)
+  }
+  const out = new Map(links.map(l => [l.key, { key: l.key }]))
+  for (const list of groups.values()) {
+    const { box, side } = list[0]
+    const vertical = side === 'l' || side === 'r'
+    // Order along the side by the other box's position; a self-reference's
+    // two ends sit next to each other.
+    list.sort((p, q) => (vertical ? cy(p.other) - cy(q.other) : cx(p.other) - cx(q.other))
+      || (p.end === 'from' ? -1 : 1))
+    const lo = vertical ? box.y + top : box.x, len = vertical ? box.h - top : box.w
+    const step = Math.min(len / (list.length + 1), 3 * LANE)
+    const start = lo + (len - step * (list.length - 1)) / 2
+    list.forEach((e, i) => {
+      const t = Math.round(start + i * step)
+      const x = side === 'r' ? box.x + box.w : side === 'l' ? box.x : t
+      const y = side === 'b' ? box.y + box.h : side === 't' ? box.y : t
+      out.get(e.link.key)[e.end] = { box: e.id, side, x, y }
+    })
+  }
+  return [...out.values()].filter(e => e.from && e.to)
+}
+
+// boxes: Map(id → {x, y, w, h}); ends from assignPorts.
+// Returns Map(key → { points: [[x, y], ...], s1, s2 }) with the sides the line
+//   leaves and enters by.
 export function routeLines(boxes, ends) {
   const result = new Map()
   if (!ends.length) return result
@@ -137,15 +199,19 @@ export function routeLines(boxes, ends) {
   for (const b of all) {
     // Several lanes beside each box, so lines can run side by side.
     for (let k = 1; k <= 4; k++) xsRaw.push(b.x - k * LANE, b.x + b.w + k * LANE)
-    for (let k = 1; k <= 3; k++) ysRaw.push(b.y - k * LANE, b.y + b.h + k * LANE)
+    for (let k = 1; k <= 4; k++) ysRaw.push(b.y - k * LANE, b.y + b.h + k * LANE)
     xsRaw.push(b.x + b.w / 2)
     ysRaw.push(b.y + b.h / 2)
     minX = Math.min(minX, b.x); minY = Math.min(minY, b.y)
     maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h)
   }
-  for (const e of ends) ysRaw.push(e.from.y, e.to.y)
-  xsRaw.push(minX - 3 * LANE, maxX + 3 * LANE)
-  ysRaw.push(minY - 3 * LANE, maxY + 3 * LANE)
+  const lead = (p) => [p.x + SIDES[p.side].dx * LEAD, p.y + SIDES[p.side].dy * LEAD]
+  for (const e of ends) for (const p of [e.from, e.to]) {
+    const [lx, ly] = lead(p)
+    xsRaw.push(lx); ysRaw.push(ly)
+  }
+  xsRaw.push(minX - 5 * LANE, maxX + 5 * LANE)
+  ysRaw.push(minY - 5 * LANE, maxY + 5 * LANE)
   const xs = uniqSorted(xsRaw), ys = uniqSorted(ysRaw)
   const nx = xs.length, ny = ys.length, N = nx * ny
 
@@ -162,65 +228,59 @@ export function routeLines(boxes, ends) {
     const i = ix.get(Math.round(x * 2) / 2), j = iy.get(Math.round(y * 2) / 2)
     return i == null || j == null ? -1 : j * nx + i
   }
-  // How many lines already use the step between two neighbouring nodes.
+  // How many lines use a step between two neighbouring nodes, and how many
+  // run along a lane next to it: both make a line try another lane.
   const used = new Map()
   const stepKey = (n, m) => Math.min(n, m) * 2 + (Math.abs(n - m) === 1 ? 0 : 1)
+  const mark = (n, m, w) => { const k = stepKey(n, m); used.set(k, (used.get(k) ?? 0) + w) }
   // Directions: 0 +x, 1 −x, 2 +y, 3 −y.
   const DX = [1, -1, 0, 0], DY = [0, 0, 1, -1]
 
   const dist = new Float64Array(N * 4).fill(Infinity)
   const prev = new Int32Array(N * 4)
+  const closed = new Int32Array(N * 4)   // line number + 1 that expanded a state
   let touched = []
+  let line = 0
 
   for (const e of ends) {
-    const a = boxes.get(e.from.box), b = boxes.get(e.to.box)
-    if (!a || !b) continue
-    // Ports: the lead point beside each side of the box, at the row's height.
-    const ports = (box, y) => [
-      { side: 1, n: node(box.x + box.w + LEAD, y), x: box.x + box.w, lx: box.x + box.w + LEAD },
-      { side: -1, n: node(box.x - LEAD, y), x: box.x, lx: box.x - LEAD },
-    ].filter(p => p.n >= 0 && !blocked[p.n])
-    const starts = ports(a, e.from.y), goals = ports(b, e.to.y)
-    if (!starts.length || !goals.length) { result.set(e.key, fallback(a, e.from.y, b, e.to.y)); continue }
-
+    line++
+    const sn = node(...lead(e.from)), gn = node(...lead(e.to))
+    if (sn < 0 || gn < 0 || blocked[sn] || blocked[gn]) { result.set(e.key, fallback(e)); continue }
     for (const s of touched) dist[s] = Infinity
     touched = []
     const heap = new Heap()
-    const goalSet = new Map(goals.map(g => [g.n, g]))
-    const gx = goals.map(g => g.n % nx), gy = goals.map(g => (g.n / nx) | 0)
-    const h = (n) => {
-      const i = n % nx, j = (n / nx) | 0
-      let best = Infinity
-      for (let k = 0; k < gx.length; k++) best = Math.min(best, Math.abs(xs[i] - xs[gx[k]]) + Math.abs(ys[j] - ys[gy[k]]))
-      return best * GREED
-    }
-    for (const s of starts) {
-      const st = s.n * 4 + (s.side === 1 ? 0 : 1)
-      dist[st] = 0; prev[st] = -1; touched.push(st)
-      heap.push(h(s.n), st)
-    }
+    const gi = gn % nx, gj = (gn / nx) | 0
+    // The search stays within a window around both ends.
+    const si = sn % nx, sj = (sn / nx) | 0
+    const wx0 = Math.min(xs[si], xs[gi]) - WINDOW, wx1 = Math.max(xs[si], xs[gi]) + WINDOW
+    const wy0 = Math.min(ys[sj], ys[gj]) - WINDOW, wy1 = Math.max(ys[sj], ys[gj]) + WINDOW
+    const h = (n) => (Math.abs(xs[n % nx] - xs[gi]) + Math.abs(ys[(n / nx) | 0] - ys[gj])) * GREED
+    const st0 = sn * 4 + SIDES[e.from.side].dir
+    dist[st0] = 0; prev[st0] = -1; touched.push(st0)
+    heap.push(h(sn), st0)
+    // The last stretch runs into the box: arriving the other way would be a
+    // U-turn, arriving across it is one more bend.
+    const inward = SIDES[e.to.side].dir ^ 1
     let found = -1, best = Infinity
     while (heap.size && heap.k[0] < best) {
       const st = heap.pop()
+      // Each state is expanded once (with an overestimating guide a state
+      // could otherwise be reopened many times).
+      if (closed[st] === line) continue
+      closed[st] = line
       const n = st >> 2, d = st & 3
-      const g = goalSet.get(n)
-      if (g) {
-        // The last stretch runs into the box: arriving the other way would be
-        // a U-turn, arriving vertically is one more bend.
-        const inward = g.side === 1 ? 1 : 0
-        if (d !== 1 - inward) {
-          const total = dist[st] + (d === inward ? 0 : BEND_COST)
-          if (total < best) { best = total; found = st }
-        }
+      if (n === gn && d !== (inward ^ 1)) {
+        const total = dist[st] + (d === inward ? 0 : BEND_COST)
+        if (total < best) { best = total; found = st }
       }
       const base = dist[st]
       const i = n % nx, j = (n / nx) | 0
       for (let nd = 0; nd < 4; nd++) {
-        if ((d ^ 1) === nd && (d >> 1) === (nd >> 1)) continue  // no reversing
+        if ((d ^ 1) === nd) continue  // no reversing
         const ni = i + DX[nd], nj = j + DY[nd]
         if (ni < 0 || nj < 0 || ni >= nx || nj >= ny) continue
         const m = nj * nx + ni
-        if (blocked[m]) continue
+        if (blocked[m] || xs[ni] < wx0 || xs[ni] > wx1 || ys[nj] < wy0 || ys[nj] > wy1) continue
         const len = Math.abs(xs[ni] - xs[i]) + Math.abs(ys[nj] - ys[j])
         const share = used.get(stepKey(n, m)) ?? 0
         const cost = base + len + (nd !== d ? BEND_COST : 0) + share * len * SHARED_COST
@@ -232,8 +292,8 @@ export function routeLines(boxes, ends) {
         }
       }
     }
-    if (found < 0) { result.set(e.key, fallback(a, e.from.y, b, e.to.y)); continue }
-    // Walk back, marking the steps as used.
+    if (found < 0) { result.set(e.key, fallback(e)); continue }
+    // Walk back, marking the steps as used and the lanes beside them as near.
     const path = []
     let st = found
     while (st >= 0) {
@@ -241,16 +301,19 @@ export function routeLines(boxes, ends) {
       path.push(n)
       const p = prev[st]
       if (p >= 0) {
-        const k = stepKey(p >> 2, n)
-        used.set(k, (used.get(k) ?? 0) + 1)
+        const pn = p >> 2
+        mark(pn, n, 1)
+        const off = Math.abs(n - pn) === 1 ? nx : 1   // the neighbouring lanes
+        for (const o of [off, -off]) {
+          const a = pn + o, b = n + o
+          if (a >= 0 && b >= 0 && a < N && b < N) mark(a, b, NEAR_COST)
+        }
       }
       st = p
     }
     path.reverse()
-    const s = starts.find(p => p.n === path[0]) ?? starts[0]
-    const g = goalSet.get(path[path.length - 1])
-    const pts = [[s.x, e.from.y], ...path.map(n => [xs[n % nx], ys[(n / nx) | 0]]), [g.x, e.to.y]]
-    result.set(e.key, { points: simplify(pts), d1: s.side, d2: g.side })
+    const pts = [[e.from.x, e.from.y], ...path.map(n => [xs[n % nx], ys[(n / nx) | 0]]), [e.to.x, e.to.y]]
+    result.set(e.key, { points: simplify(pts), s1: e.from.side, s2: e.to.side })
   }
   return result
 }
@@ -267,11 +330,10 @@ function simplify(pts) {
   return out
 }
 
-// When no clear path exists (e.g. overlapping boxes): side to side with one
-// vertical stretch in the middle.
-function fallback(a, y1, b, y2) {
-  const right = b.x + b.w / 2 >= a.x + a.w / 2
-  const x1 = right ? a.x + a.w : a.x, x2 = right ? b.x : b.x + b.w
-  const mx = (x1 + x2) / 2
-  return { points: [[x1, y1], [mx, y1], [mx, y2], [x2, y2]], d1: right ? 1 : -1, d2: right ? -1 : 1 }
+// When no clear path exists (e.g. overlapping boxes): out of both sides and
+// joined by a straight line.
+function fallback(e) {
+  const a = SIDES[e.from.side], b = SIDES[e.to.side]
+  const p1 = [e.from.x + a.dx * LEAD, e.from.y + a.dy * LEAD], p2 = [e.to.x + b.dx * LEAD, e.to.y + b.dy * LEAD]
+  return { points: [[e.from.x, e.from.y], p1, p2, [e.to.x, e.to.y]], s1: e.from.side, s2: e.to.side }
 }

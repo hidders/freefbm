@@ -4,7 +4,9 @@
 // the tables whose entity type it shows. Box positions are kept per diagram in
 // diagram.erdPositions (top-left corners); tables without one are laid out in
 // columns by foreign key depth, and the foreign keys are drawn as right-angled
-// lines routed around the boxes (src/relational/erdRouting.js). A click selects the table (header) or the column (row) for the
+// lines routed around the boxes (src/relational/erdRouting.js), each with its
+// own point on the box sides. Selecting a line (or a column) highlights the
+// foreign key and its columns. A click selects the table (header) or the column (row) for the
 // Inspector; dragging a box moves it, as one undo step.
 
 import React, { useMemo, useState, useRef, useEffect } from 'react'
@@ -12,7 +14,7 @@ import { useOrmStore } from '../store/ormStore'
 import { inDiag } from '../store/storeHelpers'
 import { relationalModel, isKey } from '../relational/relationalModel'
 import { typeSql } from '../relational/ddlExport'
-import { layeredLayout, routeLines } from '../relational/erdRouting'
+import { layeredLayout, routeLines, assignPorts, SIDES } from '../relational/erdRouting'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 const HEAD_H = 24, ROW_H = 19, PAD_X = 8, MARK_GAP = 6, GAP_TYPE = 18, MIN_W = 140
@@ -70,54 +72,46 @@ export function erdLayout(model, diagram) {
   return boxes
 }
 
-// y of a column's row centre inside its box.
-const rowY = (box, col) => box.y + HEAD_H + 3 + Math.max(0, box.table.columns.indexOf(col)) * ROW_H + ROW_H / 2
-
-// Crow's foot end marker at point p on a box side; d is +1 when the line
-// leaves to the right, -1 to the left. kind: 'one' (||), 'zeroOne' (o|),
-// 'zeroMany' (o<).
-function EndMarker({ x, y, d, kind }) {
-  const stroke = 'var(--ink-2)'
-  const bar = (at) => <line x1={x + d * at} y1={y - 6} x2={x + d * at} y2={y + 6} stroke={stroke} strokeWidth={1.3}/>
-  const circle = (at) => <circle cx={x + d * at} cy={y} r={3.8} fill="var(--bg-canvas)" stroke={stroke} strokeWidth={1.3}/>
+// Crow's foot end marker at (x, y) on a box side; (dx, dy) is the direction
+// the line leaves the box in. kind: 'one' (||), 'zeroOne' (o|), 'zeroMany' (o<).
+function EndMarker({ x, y, side, kind, stroke }) {
+  const { dx, dy } = SIDES[side]
+  const px = -dy, py = dx                     // across the line
+  const at = (t, s = 0) => [x + dx * t + px * s, y + dy * t + py * s]
+  const bar = (t) => { const [x1, y1] = at(t, -6), [x2, y2] = at(t, 6); return <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth={1.3}/> }
+  const circle = (t) => { const [cx, cy] = at(t); return <circle cx={cx} cy={cy} r={3.8} fill="var(--bg-canvas)" stroke={stroke} strokeWidth={1.3}/> }
   if (kind === 'one') return <g>{bar(9)}{bar(14)}</g>
   if (kind === 'zeroOne') return <g>{bar(9)}{circle(19)}</g>
+  const [ax, ay] = at(0, -7), [bx, by] = at(0, 7), [tx, ty] = at(12)
   return (
     <g>
-      <path d={`M ${x} ${y - 7} L ${x + d * 12} ${y} L ${x} ${y + 7} M ${x} ${y} L ${x + d * 12} ${y}`}
-        fill="none" stroke={stroke} strokeWidth={1.3}/>
+      <path d={`M ${ax} ${ay} L ${tx} ${ty} L ${bx} ${by} M ${x} ${y} L ${tx} ${ty}`} fill="none" stroke={stroke} strokeWidth={1.3}/>
       {circle(18)}
     </g>
   )
 }
 
-// The routing input for the foreign keys between shown tables.
-function fkEnds(fks, boxes) {
-  return fks.filter(fk => boxes.has(fk.fromTable.id) && boxes.has(fk.toTable.id)).map(fk => ({
-    key: fk.constraintId,
-    from: { box: fk.fromTable.id, y: rowY(boxes.get(fk.fromTable.id), fk.from[0]) },
-    to:   { box: fk.toTable.id,   y: rowY(boxes.get(fk.toTable.id), fk.to[0]) },
-  }))
-}
-
-function FkLine({ fk, route }) {
+function FkLine({ fk, route, selected, onDown }) {
   if (!route) return null
   const pts = route.points
   const d = pts.map(([x, y], i) => `${i ? 'L' : 'M'} ${x} ${y}`).join(' ')
   const [x1, y1] = pts[0], [x2, y2] = pts[pts.length - 1]
   const nullable = fk.from.some(c => !c.notNull)
   const many = !isKey(fk.fromTable, fk.from)
+  const stroke = selected ? 'var(--accent)' : 'var(--ink-2)'
   return (
-    <g>
-      <path d={d} fill="none" stroke="var(--ink-2)" strokeWidth={1.3} strokeLinejoin="round"
+    <g onMouseDown={e => onDown(e, fk)} style={{ cursor: 'pointer' }}>
+      {/* A wide invisible stroke makes the line easy to click. */}
+      <path d={d} fill="none" stroke="transparent" strokeWidth={10}/>
+      <path d={d} fill="none" stroke={stroke} strokeWidth={selected ? 2.4 : 1.3} strokeLinejoin="round"
         strokeDasharray={nullable ? '5 3' : undefined}/>
-      <EndMarker x={x1} y={y1} d={route.d1} kind={many ? 'zeroMany' : 'zeroOne'}/>
-      <EndMarker x={x2} y={y2} d={route.d2} kind={nullable ? 'zeroOne' : 'one'}/>
+      <EndMarker x={x1} y={y1} side={route.s1} kind={many ? 'zeroMany' : 'zeroOne'} stroke={stroke}/>
+      <EndMarker x={x2} y={y2} side={route.s2} kind={nullable ? 'zeroOne' : 'one'} stroke={stroke}/>
     </g>
   )
 }
 
-function TableBox({ box, selectedId, onHeaderDown, onRowDown }) {
+function TableBox({ box, selectedId, highlighted, onHeaderDown, onRowDown }) {
   const { table: t, x, y, w, h } = box
   const sel = selectedId === t.id
   const head = 'var(--col-schema-relational)'
@@ -135,9 +129,10 @@ function TableBox({ box, selectedId, onHeaderDown, onRowDown }) {
       {t.columns.map((c, i) => {
         const ry = y + HEAD_H + 3 + i * ROW_H
         const csel = selectedId === c.fact.id
+        const hl = highlighted.has(c)
         return (
           <g key={c.fact.id} onMouseDown={e => onRowDown(e, t, c)} style={{ cursor: 'pointer' }}>
-            <rect x={x + 1} y={ry} width={w - 2} height={ROW_H} fill={csel ? 'var(--selection)' : 'transparent'}/>
+            <rect x={x + 1} y={ry} width={w - 2} height={ROW_H} fill={hl ? 'rgba(180,83,9,0.28)' : csel ? 'var(--selection)' : 'transparent'}/>
             {i > 0 && t.columns[i - 1].pk && !c.pk && (
               <line x1={x + 1} y1={ry} x2={x + w - 1} y2={ry} stroke="var(--border-soft)" strokeWidth={1}/>
             )}
@@ -217,23 +212,50 @@ export default function ErdView() {
     useOrmStore.getState().select(c.fact.id, 'fact')
   }
 
-  const routes = useMemo(() => routeLines(boxes, fkEnds(model.fks, boxes)), [model, boxes])
+  const links = useMemo(() => model.fks.map(fk => ({ key: fk.constraintId, a: fk.fromTable.id, b: fk.toTable.id })), [model])
+  const routes = useMemo(() => routeLines(boxes, assignPorts(boxes, links, HEAD_H)), [links, boxes])
 
   const shown = drag
     ? new Map([...boxes].map(([id, b]) => [id, id === drag.id ? { ...b, x: b.x + drag.dx, y: b.y + drag.dy } : b]))
     : boxes
   // While dragging only the dragged table's lines are routed again.
+  // Ports are assigned afresh for all lines (they spread along the sides), but
+  // only the lines whose ports moved are routed again.
   const dragRoutes = useMemo(() => {
     if (!drag) return null
-    const mine = model.fks.filter(fk => fk.fromTable.id === drag.id || fk.toTable.id === drag.id)
-    return routeLines(shown, fkEnds(mine, shown))
-  }, [drag, model, boxes])
+    const ends = assignPorts(shown, links, HEAD_H)
+    const moved = ends.filter(e => {
+      const r = routes.get(e.key)
+      if (!r) return true
+      const [x1, y1] = r.points[0], [x2, y2] = r.points[r.points.length - 1]
+      return x1 !== e.from.x || y1 !== e.from.y || x2 !== e.to.x || y2 !== e.to.y || r.s1 !== e.from.side || r.s2 !== e.to.side
+    })
+    return routeLines(shown, moved)
+  }, [drag, links, boxes, routes])
+
+  // A selected foreign key (its subset constraint) is drawn in the accent
+  // colour, with its columns in both tables; so are the foreign keys of a
+  // selected column.
+  const selectedFks = new Set(model.fks.filter(fk => fk.constraintId === selectedId
+    || fk.from.some(c => c.fact.id === selectedId) || fk.to.some(c => c.fact.id === selectedId)))
+  const highlighted = new Set()
+  for (const fk of model.fks) if (fk.constraintId === selectedId) for (const c of [...fk.from, ...fk.to]) highlighted.add(c)
+
+  const selectFk = (e, fk) => {
+    if (e.button !== 0) return
+    e.stopPropagation()
+    useOrmStore.getState().select(fk.constraintId, 'constraint')
+  }
 
   return (
     <g className="erd-view">
-      {model.fks.map(fk => <FkLine key={fk.constraintId} fk={fk} route={dragRoutes?.get(fk.constraintId) ?? routes.get(fk.constraintId)}/>)}
+      {[...model.fks].sort((p, q) => selectedFks.has(p) - selectedFks.has(q)).map(fk => (
+        <FkLine key={fk.constraintId} fk={fk} selected={selectedFks.has(fk)} onDown={selectFk}
+          route={dragRoutes?.get(fk.constraintId) ?? routes.get(fk.constraintId)}/>
+      ))}
       {[...shown.values()].map(b => (
-        <TableBox key={b.table.id} box={b} selectedId={selectedId} onHeaderDown={startDrag} onRowDown={selectColumn}/>
+        <TableBox key={b.table.id} box={b} selectedId={selectedId} highlighted={highlighted}
+          onHeaderDown={startDrag} onRowDown={selectColumn}/>
       ))}
     </g>
   )
