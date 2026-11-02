@@ -1,23 +1,34 @@
 import { create } from 'zustand'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
-import { EMPTY } from './storeHelpers'
+import { EMPTY, stampSchemaIds } from './storeHelpers'
 import { createModelSlice } from './slices/modelSlice'
 import { createElementSlice } from './slices/elementSlice'
 import { createPopulationSlice } from './slices/populationSlice'
 import { createConstraintSlice } from './slices/constraintSlice'
 import { createSelectionSlice } from './slices/selectionSlice'
 import { createDiagramSlice } from './slices/diagramSlice'
+import { createSchemaSlice } from './slices/schemaSlice'
 export { subtypeKindOf } from './storeHelpers'
 
-export const useOrmStore = create((set, get) => ({
-  ...EMPTY(),
-  ...createModelSlice(set, get),
-  ...createElementSlice(set, get),
-  ...createPopulationSlice(set, get),
-  ...createConstraintSlice(set, get),
-  ...createSelectionSlice(set, get),
-  ...createDiagramSlice(set, get),
-}))
+export const useOrmStore = create((rawSet, get) => {
+  // Every update passes through here so that new elements and diagrams get
+  // the active schema's id (stampSchemaIds), whichever action made them.
+  const set = (partial, replace) => {
+    const prev = get()
+    const next = typeof partial === 'function' ? partial(prev) : partial
+    rawSet(stampSchemaIds(next, prev), replace)
+  }
+  return {
+    ...EMPTY(),
+    ...createModelSlice(set, get),
+    ...createElementSlice(set, get),
+    ...createPopulationSlice(set, get),
+    ...createConstraintSlice(set, get),
+    ...createSelectionSlice(set, get),
+    ...createDiagramSlice(set, get),
+    ...createSchemaSlice(set, get),
+  }
+})
 
 // The whole state, like useOrmStore(), but a change to only the given keys
 // doesn't re-render. Panning sets `pan` on every wheel event, so components
