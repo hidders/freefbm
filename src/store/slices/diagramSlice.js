@@ -187,6 +187,14 @@ export function createDiagramSlice(set, get) {
       }))
     },
 
+    // Forgets the ERD box positions, so the tables are laid out afresh.
+    resetErdPositions(id) {
+      set(s => ({
+        diagrams: s.diagrams.map(d => d.id === id ? { ...d, erdPositions: {} } : d),
+        isDirty: true,
+      }))
+    },
+
     // Top-left corners of ERD table boxes, per diagram: { [entityId]: {x, y} }.
     setErdPositions(id, positions) {
       set(s => ({
