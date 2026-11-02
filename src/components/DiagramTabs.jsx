@@ -283,6 +283,14 @@ export default function DiagramTabs() {
 
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'center' }}>
         {/* A relational schema's diagram can be drawn as ORM2 or as an ERD. */}
+        {activeDiagram && isRelational && activeDiagram.notation === 'erd' && (
+          <div title="Lay the tables out afresh (forgets the positions of moved tables)"
+            onClick={() => useOrmStore.getState().resetErdPositions(activeDiagram.id)}
+            style={{ fontSize: 11, color: 'var(--ink-3)', cursor: 'pointer', userSelect: 'none', padding: '0 4px', whiteSpace: 'nowrap' }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--ink-1)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--ink-3)' }}
+          >Auto layout</div>
+        )}
         {activeDiagram && isRelational && <NotationSwitch diagram={activeDiagram} />}
         {/* With one schema the schema strip is hidden; a new schema starts here. */}
         {singleSchema && <NewSchemaMenu variant="tab" />}
