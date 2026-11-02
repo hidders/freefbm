@@ -178,6 +178,23 @@ export function createDiagramSlice(set, get) {
       return d.id
     },
 
+    // A relational schema's diagram can be drawn as an ORM2 diagram or as an
+    // entity-relationship diagram (crow's foot, read-only); see ErdView.jsx.
+    setDiagramNotation(id, notation) {
+      set(s => ({
+        diagrams: s.diagrams.map(d => d.id === id ? { ...d, notation } : d),
+        isDirty: true,
+      }))
+    },
+
+    // Top-left corners of ERD table boxes, per diagram: { [entityId]: {x, y} }.
+    setErdPositions(id, positions) {
+      set(s => ({
+        diagrams: s.diagrams.map(d => d.id === id ? { ...d, erdPositions: { ...(d.erdPositions ?? {}), ...positions } } : d),
+        isDirty: true,
+      }))
+    },
+
     renameDiagram(id, name) {
       set(s => ({
         diagrams: s.diagrams.map(d => d.id === id ? { ...d, name } : d),

@@ -19,6 +19,7 @@ import { useUndoRedo } from './hooks/useUndoRedo'
 import { textPanelOf, handleTextPanelKey } from './utils/textPanel'
 import { useOrmStore, useOrmStoreIgnoring } from './store/ormStore'
 import { getDiagramElements } from './hooks/useDiagramElements'
+import { isErdDiagram } from './components/ErdView'
 
 function useKeyboardShortcuts() {
   const store = useOrmStoreIgnoring('pan', 'zoom')
@@ -77,6 +78,12 @@ function useKeyboardShortcuts() {
       }
 
       if (isTyping) return
+
+      // The ERD view is read-only: no deleting, moving, pasting or tool keys.
+      {
+        const st = useOrmStore.getState()
+        if (isErdDiagram(st, st.diagrams?.find(d => d.id === st.activeDiagramId))) return
+      }
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const s = useOrmStore.getState()

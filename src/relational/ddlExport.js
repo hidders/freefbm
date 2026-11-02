@@ -7,6 +7,7 @@
 // exportPostgresDdl(state, schemaId) → { sql, warnings }
 
 import { valueKindName } from '../utils/datatypeValues.js'
+import { relationalModel } from './relationalModel.js'
 
 const RESERVED = new Set(`all analyse analyze and any array as asc asymmetric both case cast check collate column
 constraint create current_catalog current_date current_role current_time current_timestamp current_user default
@@ -22,7 +23,7 @@ export function quoteIdent(name) {
 
 const NUMERIC_KINDS = new Set(['integer', 'decimal', 'float'])
 
-function typeSql(assignment, generated) {
+export function typeSql(assignment, generated) {
   if (generated === 'serial' || generated === 'bigserial' || generated === 'smallserial') return generated
   if (!assignment?.datatypeId) return null
   const p = assignment.params ?? {}
@@ -67,81 +68,22 @@ function rangeSql(col, specs, numeric) {
 
 export function exportPostgresDdl(state, schemaId) {
   const inSchema = (x) => !schemaId || x.schemaId === schemaId
-  const ots = (state.objectTypes ?? []).filter(inSchema)
-  const facts = (state.facts ?? []).filter(f => inSchema(f) && !f._implicit)
-  const constraints = (state.constraints ?? []).filter(inSchema)
-  const otById = new Map(ots.map(o => [o.id, o]))
+  const { tables, fks, notColumns, notExported } = relationalModel(state, schemaId)
   const warnings = []
-
-  // Columns: binary facts from an entity type (table) to a value type.
-  const columnOf = new Map()   // factId → { table, vt, t (table role), v (value role), name }
-  const tables = ots.filter(o => o.kind === 'entity')
-  const columnsOf = new Map(tables.map(t => [t.id, []]))
-  for (const f of facts) {
-    const kinds = f.roles.map(r => otById.get(r.objectTypeId)?.kind)
-    if (f.roles.length !== 2 || f.objectified || kinds.filter(k => k === 'entity').length !== 1 || !kinds.includes('value')) {
-      warnings.push(`Fact type ${(f.readingParts ?? []).join(' ').trim() || f.id} is not a column and is not exported`)
-      continue
-    }
-    const t = kinds.indexOf('entity'), v = 1 - t
-    const vt = otById.get(f.roles[v].objectTypeId)
-    const col = { fact: f, table: otById.get(f.roles[t].objectTypeId), vt, t, v, name: f.roles[v].roleName?.trim() || vt.name }
-    columnOf.set(f.id, col)
-    columnsOf.get(col.table.id).push(col)
-  }
-
-  // Role members of a sequence as columns of one table, or null.
-  const asColumns = (seq) => {
-    const cols = (seq ?? []).map(m => {
-      const c = m?.kind === 'role' ? columnOf.get(m.factId) : null
-      return c && m.roleIndex === c.v ? c : null
-    })
-    if (!cols.length || cols.some(c => !c)) return null
-    return new Set(cols.map(c => c.table.id)).size === 1 ? cols : null
-  }
-
-  const keyOf = new Map(tables.map(t => [t.id, { pk: null, uniques: [] }]))
-  for (const col of columnOf.values()) {
-    const f = col.fact
-    const k = keyOf.get(col.table.id)
-    const preferred = (f.preferredUniqueness ?? []).some(u => u.length === 1 && u[0] === col.v)
-    if (preferred) k.pk = [col]
-    else if ((f.uniqueness ?? []).some(u => u.roles?.length === 1 && u.roles[0] === col.v)) k.uniques.push([col])
-    if (!(f.uniqueness ?? []).some(u => u.roles?.length === 1 && u.roles[0] === col.t))
-      warnings.push(`${col.table.name}.${col.name} has no uniqueness constraint on the table's role; it is exported as an ordinary column`)
-  }
-  const fks = []
-  const notExported = []
-  for (const c of constraints) {
-    if (c.constraintType === 'uniqueness') {
-      const cols = asColumns(c.sequences?.[0])
-      if (!cols) { notExported.push(`external uniqueness constraint ${c.id} (not over the columns of one table)`); continue }
-      const k = keyOf.get(cols[0].table.id)
-      if (c.isPreferredIdentifier) k.pk = cols
-      else k.uniques.push(cols)
-      continue
-    }
-    if (c.constraintType === 'subset' && (c.sequences?.length === 2)) {
-      const from = asColumns(c.sequences[0]), to = asColumns(c.sequences[1])
-      if (from && to && from.length === to.length) { fks.push({ from, to }); continue }
-      notExported.push(`subset constraint ${c.id} (not between the columns of two tables)`)
-      continue
-    }
-    notExported.push(`${c.constraintType} constraint ${c.id}`)
-  }
+  for (const f of notColumns) warnings.push(`Fact type ${(f.readingParts ?? []).join(' ').trim() || f.id} is not a column and is not exported`)
+  for (const t of tables) for (const col of t.columns)
+    if (!col.singleValued) warnings.push(`${t.name}.${col.name} has no uniqueness constraint on the table's role; it is exported as an ordinary column`)
 
   const q = quoteIdent
   const lines = ['-- PostgreSQL DDL written by FreeFBM', '']
   for (const t of tables) {
-    const cols = columnsOf.get(t.id)
-    const k = keyOf.get(t.id)
     const items = []
-    for (const col of cols) {
+    for (const col of t.columns) {
       const role = col.fact.roles[col.v]
-      let type = typeSql(col.vt.datatypeAssignment, role.sqlGenerated)
+      let type = typeSql(col.vt.datatypeAssignment, col.generated)
       if (!type) { type = 'text'; warnings.push(`${t.name}.${col.name}: ${col.vt.name} has no PostgreSQL or SQL datatype; written as text`) }
       let line = `  ${q(col.name)} ${type}`
-      if (col.fact.roles[col.t].mandatory || k.pk?.includes(col)) line += ' NOT NULL'
+      if (col.notNull) line += ' NOT NULL'
       const numeric = NUMERIC_KINDS.has(valueKindName(col.vt.datatypeAssignment) ?? '')
       for (const specs of [col.vt.valueRange, role.valueRange]) {
         const cond = specs?.length ? rangeSql(q(col.name), specs, numeric) : null
@@ -149,18 +91,20 @@ export function exportPostgresDdl(state, schemaId) {
       }
       items.push(line)
     }
-    if (k.pk) items.push(`  PRIMARY KEY (${k.pk.map(c => q(c.name)).join(', ')})`)
-    for (const u of k.uniques) items.push(`  UNIQUE (${u.map(c => q(c.name)).join(', ')})`)
-    if (!cols.length) warnings.push(`Table ${t.name} has no columns`)
+    if (t.pk) items.push(`  PRIMARY KEY (${t.pk.map(c => q(c.name)).join(', ')})`)
+    for (const u of t.uniques) items.push(`  UNIQUE (${u.map(c => q(c.name)).join(', ')})`)
+    if (!t.columns.length) warnings.push(`Table ${t.name} has no columns`)
     lines.push(`CREATE TABLE ${q(t.name)} (`, items.join(',\n'), ');', '')
   }
   for (const fk of fks) {
-    lines.push(`ALTER TABLE ${q(fk.from[0].table.name)} ADD FOREIGN KEY (${fk.from.map(c => q(c.name)).join(', ')})`
-      + ` REFERENCES ${q(fk.to[0].table.name)} (${fk.to.map(c => q(c.name)).join(', ')});`)
+    lines.push(`ALTER TABLE ${q(fk.fromTable.name)} ADD FOREIGN KEY (${fk.from.map(c => q(c.name)).join(', ')})`
+      + ` REFERENCES ${q(fk.toTable.name)} (${fk.to.map(c => q(c.name)).join(', ')});`)
   }
   if (fks.length) lines.push('')
-  for (const s of (state.subtypes ?? []).filter(inSchema)) notExported.push(`subtype ${otById.get(s.subId)?.name} of ${otById.get(s.superId)?.name}`)
-  for (const n of notExported) warnings.push(`Not exported: ${n}`)
+  const otById = new Map((state.objectTypes ?? []).map(o => [o.id, o]))
+  const notes = [...notExported]
+  for (const s of (state.subtypes ?? []).filter(inSchema)) notes.push(`subtype ${otById.get(s.subId)?.name} of ${otById.get(s.superId)?.name}`)
+  for (const n of notes) warnings.push(`Not exported: ${n}`)
   if (warnings.length) lines.push('-- Not written as SQL:', ...warnings.map(w => `--   ${w}`), '')
   return { sql: lines.join('\n'), warnings }
 }

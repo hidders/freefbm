@@ -140,7 +140,7 @@ export function NewSchemaMenu({ variant = 'strip' }) {
 
   const tab = variant === 'tab'
   return (
-    <div ref={ref} style={{ position: tab ? 'static' : 'relative', marginLeft: tab ? 'auto' : 0, flexShrink: 0, alignSelf: tab ? 'center' : 'auto' }}>
+    <div ref={ref} style={{ position: tab ? 'static' : 'relative', flexShrink: 0, alignSelf: tab ? 'center' : 'auto' }}>
       <div
         onClick={() => setOpen(o => !o)}
         title="Add a schema to this file"
