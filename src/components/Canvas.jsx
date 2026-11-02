@@ -10,6 +10,7 @@ import { EXTERNAL_CONSTRAINT_TYPES } from '../constants'
 import ConstraintNodes from './ConstraintNodes'
 import RoleConnectors, { MandatoryDots } from './RoleConnectors'
 import Minimap from './Minimap'
+import ErdView, { isErdDiagram } from './ErdView'
 import ContextMenu from './ContextMenu'
 import ConstraintMemberLabels from './ConstraintMemberLabels'
 import QueryAtoms from './QueryAtoms'
@@ -495,6 +496,8 @@ export default function Canvas() {
   const sharedIds = store.getSharedIds?.() ?? new Set()
   const activeDiagram = store.diagrams.find(d => d.id === store.activeDiagramId)
   const visibleNotes = activeDiagram?.notes ?? []
+  // A relational schema's diagram may be drawn as a read-only ERD instead.
+  const erd = isErdDiagram(store, activeDiagram)
 
   // ── Note inline editing ──────────────────────────────────────────────────
   const [noteEditing, setNoteEditing] = useState(null)  // { noteId, text } | null
@@ -813,6 +816,18 @@ export default function Canvas() {
   const handleSVGMouseDown = useCallback((e) => {
     const isBackground = e.target === svgRef.current || e.target.closest('.canvas-bg')
     if (!isBackground) return
+
+    // ERD view: no tools; a background click clears the selection, a drag pans.
+    {
+      const st = useOrmStore.getState()
+      if (isErdDiagram(st, st.diagrams.find(d => d.id === st.activeDiagramId))) {
+        if (e.button !== 0 && e.button !== 1) return
+        e.preventDefault()
+        if (e.button === 0) st.clearSelection()
+        setDragState({ type: 'pan', startX: e.clientX, startY: e.clientY, origX: st.pan.x, origY: st.pan.y })
+        return
+      }
+    }
 
     // Role reconnect mode: background click cancels it
     if (store.roleReconnectDraft) { store.cancelRoleReconnect(); return }
@@ -1357,6 +1372,8 @@ export default function Canvas() {
         <rect className="canvas-bg" width="100%" height="100%" fill="url(#gridLg)"/>
 
         <ViewportGroup>
+          {erd && <ErdView/>}
+          {!erd && <>
           {/* Note connectors — rendered below notes so notes sit on top */}
           {visibleNotes.flatMap(note => (note.connectors ?? []).map(conn => {
             let tx, ty
@@ -1627,6 +1644,7 @@ export default function Canvas() {
               style={{ pointerEvents: 'none' }}
             />
           )}
+          </>}
         </ViewportGroup>
 
         {/* Space-pan overlay — covers all elements when Space is held so only panning is possible */}
@@ -1692,7 +1710,7 @@ export default function Canvas() {
       })()}
 
       {/* Minimap overlay */}
-      <Minimap/>
+      {!erd && <Minimap/>}
 
       {/* Context menu — rendered via portal at document.body to escape all stacking contexts */}
       {contextMenu && createPortal(

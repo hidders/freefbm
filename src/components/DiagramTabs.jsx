@@ -12,6 +12,8 @@ export default function DiagramTabs() {
   const diagrams        = allDiagrams.filter(d => !activeSchemaId || d.schemaId === activeSchemaId)
   const activeDiagramId = store.activeDiagramId
   const singleSchema    = (store.schemas?.length ?? 1) <= 1
+  const activeDiagram   = allDiagrams.find(d => d.id === activeDiagramId)
+  const isRelational    = store.schemas?.find(x => x.id === activeDiagram?.schemaId)?.profile === 'relational'
 
   const [editingId, setEditingId] = useState(null)
   const [draft,     setDraft]     = useState('')
@@ -279,9 +281,33 @@ export default function DiagramTabs() {
         +
       </div>
 
-      {/* With one schema the schema strip is hidden; a new schema starts here. */}
-      {singleSchema && <NewSchemaMenu variant="tab" />}
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'center' }}>
+        {/* A relational schema's diagram can be drawn as ORM2 or as an ERD. */}
+        {activeDiagram && isRelational && <NotationSwitch diagram={activeDiagram} />}
+        {/* With one schema the schema strip is hidden; a new schema starts here. */}
+        {singleSchema && <NewSchemaMenu variant="tab" />}
+      </div>
     </div>
   )
 }
 
+
+// ORM2 | ERD segmented switch for the active diagram of a relational schema.
+function NotationSwitch({ diagram }) {
+  const current = diagram.notation === 'erd' ? 'erd' : 'orm2'
+  const opts = [['orm2', 'ORM2', 'Draw this diagram in ORM2'], ['erd', 'ERD', "Draw this diagram as an entity-relationship diagram (crow's foot, read-only)"]]
+  return (
+    <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 11, overflow: 'hidden', height: 20, marginRight: 8, flexShrink: 0 }}>
+      {opts.map(([id, label, title]) => (
+        <div key={id} title={title}
+          onClick={() => { if (id !== current) useOrmStore.getState().setDiagramNotation(diagram.id, id) }}
+          style={{
+            padding: '0 9px', display: 'flex', alignItems: 'center', fontSize: 11, cursor: 'pointer', userSelect: 'none',
+            fontWeight: id === current ? 700 : 400,
+            background: id === current ? 'var(--col-schema-relational)' : 'transparent',
+            color: id === current ? '#fff' : 'var(--ink-3)',
+          }}>{label}</div>
+      ))}
+    </div>
+  )
+}
