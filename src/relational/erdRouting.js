@@ -9,7 +9,7 @@
 //   boxes, spread along that side.
 // routeLines(boxes, ends) draws each foreign key as a line of horizontal and
 //   vertical segments that keeps clear of the boxes: a shortest path, with a
-//   cost per bend and per stretch used by (or running right next to) a line
+//   cost per bend and per stretch used by (or running close to) a line
 //   routed before, over a grid of lanes beside the boxes. Lines leave and enter
 //   a box square to its side, so the crow's foot markers sit on a straight
 //   stretch.
@@ -18,10 +18,12 @@ export const LANE = 16          // clearance kept between lines and boxes, and l
 export const LEAD = 2 * LANE    // straight stretch at both ends of a line
 const BEND_COST = 30
 const SHARED_COST = 4           // extra cost per unit along a stretch already used
-const NEAR_COST = 0.4           // the same, counted for the lanes right next to a line
+const NEAR_COST = 3             // extra cost per unit right next to such a stretch,
+const NEAR_DIST = 3 * 16        //   falling to 0 at this distance
 // The search overestimates the remaining length by this factor: much faster on
 // large schemas, at the price of lines that are sometimes a little longer.
 const GREED = 2
+const SPREAD_BUDGET = 30000     // search steps allowed while keeping lines apart
 const WINDOW = 300             // how far a line may stray beyond its two ends
 
 const COL_GAP = 120, ROW_GAP = 48
@@ -228,11 +230,37 @@ export function routeLines(boxes, ends) {
     const i = ix.get(Math.round(x * 2) / 2), j = iy.get(Math.round(y * 2) / 2)
     return i == null || j == null ? -1 : j * nx + i
   }
-  // How many lines use a step between two neighbouring nodes, and how many
-  // run along a lane next to it: both make a line try another lane.
-  const used = new Map()
-  const stepKey = (n, m) => Math.min(n, m) * 2 + (Math.abs(n - m) === 1 ? 0 : 1)
-  const mark = (n, m, w) => { const k = stepKey(n, m); used.set(k, (used.get(k) ?? 0) + w) }
+  // Extra cost per unit of length for each step between neighbouring nodes:
+  // crowdH[n] for the step n → n+1, crowdV[n] for n → n+nx. A step along a
+  // stretch some line already uses costs SHARED_COST; one running parallel
+  // within NEAR_DIST of it up to NEAR_COST, more the closer it is. So lines
+  // keep apart wherever there is room.
+  const crowdH = new Float32Array(N), crowdV = new Float32Array(N)
+  const crowd = (n, m) => {
+    const lo = Math.min(n, m)
+    return Math.abs(n - m) === 1 ? crowdH[lo] : crowdV[lo]
+  }
+  // Records the step between neighbouring nodes n and m as used.
+  const record = (n, m) => {
+    const lo = Math.min(n, m)
+    const i = lo % nx, j = (lo / nx) | 0
+    if (Math.abs(n - m) === 1) {
+      // Horizontal: the same step in the rows within NEAR_DIST.
+      crowdH[lo] += SHARED_COST
+      for (const step of [-1, 1]) for (let k = j + step; k >= 0 && k < ny; k += step) {
+        const d = Math.abs(ys[k] - ys[j])
+        if (d >= NEAR_DIST) break
+        crowdH[k * nx + i] += NEAR_COST * (1 - d / NEAR_DIST)
+      }
+    } else {
+      crowdV[lo] += SHARED_COST
+      for (const step of [-1, 1]) for (let k = i + step; k >= 0 && k < nx; k += step) {
+        const d = Math.abs(xs[k] - xs[i])
+        if (d >= NEAR_DIST) break
+        crowdV[j * nx + k] += NEAR_COST * (1 - d / NEAR_DIST)
+      }
+    }
+  }
   // Directions: 0 +x, 1 −x, 2 +y, 3 −y.
   const DX = [1, -1, 0, 0], DY = [0, 0, 1, -1]
 
@@ -242,10 +270,11 @@ export function routeLines(boxes, ends) {
   let touched = []
   let line = 0
 
-  for (const e of ends) {
+  // Shortest path from node sn (leaving in direction dir0) to node gn,
+  // arriving in direction `inward`. With `spread`, stretches near other lines
+  // cost extra; the search gives up after `budget` expansions (-1).
+  const search = (sn, dir0, gn, inward, spread, budget) => {
     line++
-    const sn = node(...lead(e.from)), gn = node(...lead(e.to))
-    if (sn < 0 || gn < 0 || blocked[sn] || blocked[gn]) { result.set(e.key, fallback(e)); continue }
     for (const s of touched) dist[s] = Infinity
     touched = []
     const heap = new Heap()
@@ -255,14 +284,12 @@ export function routeLines(boxes, ends) {
     const wx0 = Math.min(xs[si], xs[gi]) - WINDOW, wx1 = Math.max(xs[si], xs[gi]) + WINDOW
     const wy0 = Math.min(ys[sj], ys[gj]) - WINDOW, wy1 = Math.max(ys[sj], ys[gj]) + WINDOW
     const h = (n) => (Math.abs(xs[n % nx] - xs[gi]) + Math.abs(ys[(n / nx) | 0] - ys[gj])) * GREED
-    const st0 = sn * 4 + SIDES[e.from.side].dir
+    const st0 = sn * 4 + dir0
     dist[st0] = 0; prev[st0] = -1; touched.push(st0)
     heap.push(h(sn), st0)
-    // The last stretch runs into the box: arriving the other way would be a
-    // U-turn, arriving across it is one more bend.
-    const inward = SIDES[e.to.side].dir ^ 1
-    let found = -1, best = Infinity
+    let found = -1, best = Infinity, pops = 0
     while (heap.size && heap.k[0] < best) {
+      if (++pops > budget) return -1
       const st = heap.pop()
       // Each state is expanded once (with an overestimating guide a state
       // could otherwise be reopened many times).
@@ -282,8 +309,7 @@ export function routeLines(boxes, ends) {
         const m = nj * nx + ni
         if (blocked[m] || xs[ni] < wx0 || xs[ni] > wx1 || ys[nj] < wy0 || ys[nj] > wy1) continue
         const len = Math.abs(xs[ni] - xs[i]) + Math.abs(ys[nj] - ys[j])
-        const share = used.get(stepKey(n, m)) ?? 0
-        const cost = base + len + (nd !== d ? BEND_COST : 0) + share * len * SHARED_COST
+        const cost = base + len + (nd !== d ? BEND_COST : 0) + (spread ? crowd(n, m) * len : 0)
         const ms = m * 4 + nd
         if (cost < dist[ms]) {
           if (dist[ms] === Infinity) touched.push(ms)
@@ -292,23 +318,28 @@ export function routeLines(boxes, ends) {
         }
       }
     }
+    return found
+  }
+
+  for (const e of ends) {
+    const sn = node(...lead(e.from)), gn = node(...lead(e.to))
+    if (sn < 0 || gn < 0 || blocked[sn] || blocked[gn]) { result.set(e.key, fallback(e)); continue }
+    // The last stretch runs into the box: arriving the other way would be a
+    // U-turn, arriving across it is one more bend.
+    const dir0 = SIDES[e.from.side].dir, inward = SIDES[e.to.side].dir ^ 1
+    // Keeping lines apart can make the search wander in a crowded schema; if
+    // it takes too long, the line is routed without it.
+    let found = search(sn, dir0, gn, inward, true, SPREAD_BUDGET)
+    if (found < 0) found = search(sn, dir0, gn, inward, false, Infinity)
     if (found < 0) { result.set(e.key, fallback(e)); continue }
-    // Walk back, marking the steps as used and the lanes beside them as near.
+    // Walk back, recording the stretches the line uses.
     const path = []
     let st = found
     while (st >= 0) {
       const n = st >> 2
       path.push(n)
       const p = prev[st]
-      if (p >= 0) {
-        const pn = p >> 2
-        mark(pn, n, 1)
-        const off = Math.abs(n - pn) === 1 ? nx : 1   // the neighbouring lanes
-        for (const o of [off, -off]) {
-          const a = pn + o, b = n + o
-          if (a >= 0 && b >= 0 && a < N && b < N) mark(a, b, NEAR_COST)
-        }
-      }
+      if (p >= 0) record(p >> 2, n)
       st = p
     }
     path.reverse()
