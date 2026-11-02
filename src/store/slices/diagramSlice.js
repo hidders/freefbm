@@ -163,6 +163,13 @@ export function createDiagramSlice(set, get) {
 
     addDiagram(name = 'Diagram') {
       const d = mkDiagram(name)   // starts with empty occurrences
+      // A diagram of a relational schema starts with PostgreSQL datatypes.
+      {
+        const s0 = get()
+        const active = s0.diagrams.find(x => x.id === s0.activeDiagramId)
+        const schema = s0.schemas?.find(x => x.id === active?.schemaId)
+        if (schema?.profile === 'relational') d.profileId = active?.profileId ?? 'postgresql'
+      }
       set(s => {
         // In v2 all diagrams already have explicit occurrences lists (no show-all concept).
         // No migration needed — just add the new empty diagram.

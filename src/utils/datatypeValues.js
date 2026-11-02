@@ -306,6 +306,21 @@ const TYPESCRIPT = {
   boolean: 'boolean', null: 'unordered', Date: 'datetime', Uint8Array: 'hexBinary',
 }
 
+// PostgreSQL: uuid, json, network addresses only by equality here.
+const POSTGRESQL = {
+  smallint: 'integer', integer: 'integer', bigint: 'integer',
+  smallserial: 'integer', serial: 'integer', bigserial: 'integer',
+  numeric: 'decimal', money: 'decimal',
+  real: 'float', 'double precision': 'float',
+  text: 'string', 'character varying': 'string', character: 'string',
+  bytea: 'hexBinary',
+  boolean: 'boolean',
+  date: 'date', time: 'time', timestamp: 'datetime',
+  interval: 'duration',   // narrowed by its fields below
+  uuid: 'unordered', json: 'unordered', jsonb: 'unordered', xml: 'unordered',
+  inet: 'unordered', cidr: 'unordered', macaddr: 'unordered',
+}
+
 // NORMA raw data cannot be compared in NORMA, so it is unordered here.
 const NORMA = {
   TextFixedLength: 'string', TextVariableLength: 'string', TextLargeLength: 'string',
@@ -332,6 +347,7 @@ const MAPPING = {
   json: JSON_PROFILE,
   typescript: TYPESCRIPT,
   norma: NORMA,
+  postgresql: POSTGRESQL,
 }
 
 // Name of the value kind for a datatype assignment, or null when the datatype
@@ -342,6 +358,12 @@ export function valueKindName(assignment) {
   if (kind === 'duration' && assignment.profileId === 'sql2016') {
     // SQL intervals are either year-month or day-time, by their leading field.
     const f = String(assignment.params?.startField ?? '').trim().toUpperCase()
+    if (f === 'YEAR' || f === 'MONTH') return 'yearMonthDuration'
+    if (['DAY', 'HOUR', 'MINUTE', 'SECOND'].includes(f)) return 'dayTimeDuration'
+  }
+  if (kind === 'duration' && assignment.profileId === 'postgresql') {
+    // interval YEAR TO MONTH, DAY TO SECOND, ...: the leading field decides.
+    const f = String(assignment.params?.fields ?? '').trim().toUpperCase().split(/\s+/)[0]
     if (f === 'YEAR' || f === 'MONTH') return 'yearMonthDuration'
     if (['DAY', 'HOUR', 'MINUTE', 'SECOND'].includes(f)) return 'dayTimeDuration'
   }

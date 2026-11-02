@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { triggerPdfExport } from '../utils/pdfExport'
 import { openModelFile } from '../import/openModelFile'
+import { activeSchemaIdOf } from '../store/storeHelpers'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
@@ -54,6 +55,27 @@ export function useElectronMenu() {
     on('menu:zoomReset', () => storeRef.current.resetView())
 
     on('menu:exportPdf', () => triggerPdfExport(storeRef.current))
+
+    // PostgreSQL DDL: imported as a new relational schema of this file, and
+    // exported from the active schema when it is relational.
+    on('menu:importSql', async () => {
+      const result = await api.openSql()
+      if (!result) return
+      const name = result.path.split(/[\\/]/).pop().replace(/\.(sql|ddl|pgsql)$/i, '')
+      try { useOrmStore.getState().importPostgresDdl(result.content, name) }
+      catch (err) { alert(`Failed to read the DDL.${err?.message ? `\n${err.message}` : ''}`) }
+    })
+
+    on('menu:exportSql', async () => {
+      const s = useOrmStore.getState()
+      const schema = s.schemas.find(x => x.id === activeSchemaIdOf(s))
+      if (schema?.profile !== 'relational') {
+        alert('Export PostgreSQL DDL writes a relational schema. Switch to a relational schema first (or set this schema\'s kind to Relational in Schema Settings).')
+        return
+      }
+      const { sql } = s.exportPostgresDdl(schema.id)
+      await api.saveSql({ defaultPath: `${schema.name.replace(/[^A-Za-z0-9_-]+/g, '_')}.sql`, content: sql })
+    })
 
     return () => unsubs.forEach(u => u())
   }, []) // register once — storeRef.current always holds latest state

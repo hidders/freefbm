@@ -71,6 +71,15 @@ const NORMA = {
   OtherRowId: 'text', OtherObjectId: 'text',
 }
 
+const POSTGRESQL = {
+  smallint: 'integer', integer: 'integer', bigint: 'integer',
+  smallserial: 'integer', serial: 'integer', bigserial: 'integer',
+  numeric: 'decimal', money: 'decimal', real: 'decimal', 'double precision': 'decimal',
+  text: 'text', 'character varying': 'text', character: 'text', bytea: 'text',
+  boolean: 'boolean', date: 'date', time: 'time', timestamp: 'datetime', interval: 'text',
+  uuid: 'text', json: 'text', jsonb: 'text', xml: 'text', inet: 'text', cidr: 'text', macaddr: 'text',
+}
+
 const MAPPING = {
   abstract: ABSTRACT,
   sql2016: SQL,
@@ -78,6 +87,7 @@ const MAPPING = {
   json: JSON_PROFILE,
   typescript: TYPESCRIPT,
   norma: NORMA,
+  postgresql: POSTGRESQL,
 }
 
 export function datatypeToKind(profileId, datatypeId) {
