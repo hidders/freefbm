@@ -769,6 +769,15 @@ export function createModelSlice(set, get) {
         objectTypes: parsedOts, facts, subtypes: parsedSts, constraints, diagrams,
       })
 
+      // A mapping diagram whose mapping is gone becomes an ordinary diagram.
+      const mappings = loadMappings(d.schema?.mappings, new Set(scoped.schemas.map(x => x.id)))
+      const mappingIds = new Set(mappings.map(m => m.id))
+      scoped.diagrams = scoped.diagrams.map(dg => {
+        if (!dg.mappingId || mappingIds.has(dg.mappingId)) return dg
+        const { mappingId: _gone, ...rest } = dg
+        return rest
+      })
+
       const activeDiag = diagrams.find(d => d.id === activeDiagramId)
       const diagDS = activeDiag?.displaySettings ?? {}
       set({
@@ -777,7 +786,7 @@ export function createModelSlice(set, get) {
         viewLanguage: BASE_LANGUAGE,
         languages: Array.isArray(d.schema?.languages) ? d.schema.languages.filter(l => typeof l === 'string') : [],
         propertyDefinitions: loadPropertyDefinitions(d.schema?.propertyDefinitions),
-        mappings: loadMappings(d.schema?.mappings, new Set(scoped.schemas.map(x => x.id))),
+        mappings,
         mappingRuleEditor: null,
         groups: pruneGroups(loadGroups(d.schema?.groups ?? d.groups), { objectTypes: parsedOts, facts, subtypes: parsedSts, constraints, diagrams }),
         activeDiagramId,

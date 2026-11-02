@@ -475,3 +475,49 @@ export function loadMappings(raw, schemaIds) {
     }))
 }
 const normPattern = (p) => (p && typeof p === 'object' && typeof p.t === 'string' ? p : { t: 'hole' })
+
+// ── Elements of a rule ───────────────────────────────────────────────────────
+
+// The schema elements a pattern names, for drawing a rule in a mapping
+// diagram: { typeIds, factIds, tableIds, columnFactIds }. A table row names
+// its table (an entity type of encoding B) and the column fact types it gives
+// an argument; fact and type atoms name their fact type or type; varTypeIds
+// are the types of its ∃ variables.
+export function patternElements(tree) {
+  const out = { typeIds: new Set(), factIds: new Set(), tableIds: new Set(), columnFactIds: new Set(), varTypeIds: new Set() }
+  const walk = (n) => {
+    if (!n || typeof n !== 'object') return
+    switch (n.t) {
+      case 'fact': if (n.factId) out.factIds.add(n.factId); return
+      case 'type': if (n.typeId) out.typeIds.add(n.typeId); return
+      case 'rel':
+        if (n.tableId) out.tableIds.add(n.tableId)
+        for (const [colId, arg] of Object.entries(n.args ?? {})) if (arg) out.columnFactIds.add(colId)
+        return
+      case 'and': for (const a of n.args ?? []) walk(a); return
+      case 'exists': if (n.v?.typeId) out.varTypeIds.add(n.v.typeId); walk(n.body); return
+      case 'opt': walk(n.body); return
+      case 'not': walk(n.arg); return
+      default:
+        // A flat side (older form) lists its atoms.
+        if (Array.isArray(n.atoms)) for (const a of n.atoms) walk(a)
+    }
+  }
+  walk(tree)
+  return {
+    typeIds: [...out.typeIds], factIds: [...out.factIds],
+    tableIds: [...out.tableIds], columnFactIds: [...out.columnFactIds],
+    varTypeIds: [...out.varTypeIds],   // types of the ∃ variables, for highlighting
+  }
+}
+
+// Both sides of a rule: { source, target } of patternElements.
+export const ruleElements = (rule) => ({ source: patternElements(rule?.source), target: patternElements(rule?.target) })
+
+// Every element id a rule names, on one side or both.
+export function ruleElementIds(rule, sides = SIDES) {
+  const ids = new Set()
+  const els = ruleElements(rule)
+  for (const side of sides) for (const k of ['typeIds', 'factIds', 'tableIds', 'columnFactIds']) for (const id of els[side][k]) ids.add(id)
+  return [...ids]
+}

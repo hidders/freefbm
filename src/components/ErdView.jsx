@@ -24,6 +24,7 @@ const GAP_Y = 70
 // notation switch is on.
 export function isErdDiagram(state, diagram) {
   if (diagram?.notation !== 'erd') return false
+  if (diagram.mappingId) return false   // mapping diagrams are drawn in ORM2
   return state.schemas?.find(s => s.id === diagram.schemaId)?.profile === 'relational'
 }
 

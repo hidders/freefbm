@@ -51,13 +51,16 @@ export const createSchemaSlice = (set, get) => ({
     const owned = x => x.schemaId === id
     if (s.objectTypes.some(owned) || s.facts.some(owned) || s.subtypes.some(owned) || s.constraints.some(owned)) return false
     // Leave the schema first if it is active, so the active diagram never dangles.
-    if (activeSchemaIdOf(s) === id) {
-      const target = s.diagrams.find(d => !owned(d))
+    // Mappings to or from the schema go too, with their diagrams.
+    const goneMappings = new Set((s.mappings ?? []).filter(m => m.sourceSchemaId === id || m.targetSchemaId === id).map(m => m.id))
+    const dropped = d => owned(d) || goneMappings.has(d.mappingId)
+    if (dropped(s.diagrams.find(d => d.id === s.activeDiagramId) ?? {})) {
+      const target = s.diagrams.find(d => !dropped(d) && !d.mappingId)
       if (target) get().setActiveDiagram(target.id)
     }
     set(st => ({
-      schemas: st.schemas.filter(x => x.id !== id), diagrams: st.diagrams.filter(d => !owned(d)),
-      mappings: (st.mappings ?? []).filter(m => m.sourceSchemaId !== id && m.targetSchemaId !== id),
+      schemas: st.schemas.filter(x => x.id !== id), diagrams: st.diagrams.filter(d => !dropped(d)),
+      mappings: (st.mappings ?? []).filter(m => !goneMappings.has(m.id)),
       isDirty: true,
     }))
     return true
@@ -104,8 +107,9 @@ export const createSchemaSlice = (set, get) => ({
   // Activates the schema by switching to its first diagram.
   setActiveSchema(id) {
     const s = get()
-    if (activeSchemaIdOf(s) === id) return
-    const target = s.diagrams.find(d => d.schemaId === id)
+    const cur = s.diagrams.find(d => d.id === s.activeDiagramId)
+    if (activeSchemaIdOf(s) === id && !cur?.mappingId) return
+    const target = s.diagrams.find(d => d.schemaId === id && !d.mappingId)
     if (target) get().setActiveDiagram(target.id)
   },
 })

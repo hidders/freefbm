@@ -8,12 +8,17 @@ export default function DiagramTabs() {
   // Only the active schema's diagrams are shown; indices below are into this
   // list and are mapped back to store.diagrams for reordering.
   const allDiagrams     = store.diagrams ?? []
+  // A mapping diagram's tabs are its mapping's diagrams instead.
   const activeSchemaId  = activeSchemaIdOf(store)
-  const diagrams        = allDiagrams.filter(d => !activeSchemaId || d.schemaId === activeSchemaId)
   const activeDiagramId = store.activeDiagramId
-  const singleSchema    = (store.schemas?.length ?? 1) <= 1
   const activeDiagram   = allDiagrams.find(d => d.id === activeDiagramId)
-  const isRelational    = store.schemas?.find(x => x.id === activeDiagram?.schemaId)?.profile === 'relational'
+  const mapping         = activeDiagram?.mappingId ? store.mappings?.find(m => m.id === activeDiagram.mappingId) : null
+  const diagrams        = mapping
+    ? allDiagrams.filter(d => d.mappingId === mapping.id)
+    : allDiagrams.filter(d => (!activeSchemaId || d.schemaId === activeSchemaId) && !d.mappingId)
+  const singleSchema    = (store.schemas?.length ?? 1) <= 1 && !(store.mappings?.length)
+  const isRelational    = !mapping && store.schemas?.find(x => x.id === activeDiagram?.schemaId)?.profile === 'relational'
+  const schemaName      = (id) => store.schemas?.find(x => x.id === id)?.name ?? '?'
 
   const [editingId, setEditingId] = useState(null)
   const [draft,     setDraft]     = useState('')
@@ -57,7 +62,7 @@ export default function DiagramTabs() {
 
   const handleDelete = (e, id) => {
     e.stopPropagation()
-    if (diagrams.length <= 1) return
+    if (diagrams.length <= 1 && !mapping) return
     store.deleteDiagram(id)
   }
 
@@ -168,7 +173,7 @@ export default function DiagramTabs() {
             style={{
               display: 'flex', alignItems: 'center', gap: 4,
               paddingLeft: 10,
-              paddingRight: diagrams.length > 1 ? 28 : 10,
+              paddingRight: (diagrams.length > 1 || mapping) ? 28 : 10,
               height: isActive ? 28 : 25,
               marginBottom: isActive ? -1 : 0,
               border: '1px solid var(--border)',
@@ -220,9 +225,9 @@ export default function DiagramTabs() {
               <span>{d.name}</span>
             )}
 
-            {diagrams.length > 1 && (
+            {(diagrams.length > 1 || mapping) && (
               <span
-                title="Remove diagram"
+                title={mapping && diagrams.length === 1 ? 'Remove this mapping diagram (the mapping and its rules stay)' : 'Remove diagram'}
                 onClick={e => handleDelete(e, d.id)}
                 style={{
                   position: 'absolute', right: 6,
@@ -282,6 +287,24 @@ export default function DiagramTabs() {
       </div>
 
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'center' }}>
+        {/* A mapping diagram names its mapping and can fetch its rules' elements. */}
+        {mapping && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--ink-3)', whiteSpace: 'nowrap', marginRight: 8 }}>
+            <span title="This diagram draws a mapping: elements of both schemas, and each rule as a node linked to the elements its patterns name">
+              Mapping <b style={{ color: 'var(--ink-1)', fontWeight: 600 }}>{mapping.name}</b>:{' '}
+              <span style={{ color: 'var(--map-source)', fontWeight: 600 }}>{schemaName(mapping.sourceSchemaId)}</span>
+              {' ⟺ '}
+              <span style={{ color: 'var(--map-target)', fontWeight: 600 }}>{schemaName(mapping.targetSchemaId)}</span>
+            </span>
+            <span title="Add the elements the rules name that this diagram doesn't show yet"
+              className="mapping-add-elements"
+              onClick={() => useOrmStore.getState().addMappingRuleElements(activeDiagram.id)}
+              style={{ cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'var(--border)' }}
+              onMouseEnter={e => { e.currentTarget.style.color = 'var(--ink-1)' }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'var(--ink-3)' }}
+            >Add rule elements</span>
+          </div>
+        )}
         {/* A relational schema's diagram can be drawn as ORM2 or as an ERD. */}
         {activeDiagram && isRelational && activeDiagram.notation === 'erd' && (
           <div title="Lay the tables out afresh (forgets the positions of moved tables)"

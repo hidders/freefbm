@@ -43,6 +43,12 @@
   --col-query-out:  #94a3b8;  /* muted slate — element not in query pattern (dimmed) */
   --col-schema-orm2:       #6b4f3a;  /* brown — ORM2 schema tag in the schema strip */
   --col-schema-relational: #0e7490;  /* teal — relational schema tag */
+  /* Mapping diagrams — the two schemas of a mapping, and its rule nodes */
+  --map-source:      #2563a8;  /* blue — source schema side */
+  --map-source-bg:   rgba(37,99,168,0.09);
+  --map-target:      #2f855a;  /* green — target schema side */
+  --map-target-bg:   rgba(47,133,90,0.10);
+  --map-rule:        #3d3529;  /* ink — rule nodes */
 
   /* Formalisation tab — formula token colours */
   --formula-var:     #1a5fb4;  /* blue — variables */
