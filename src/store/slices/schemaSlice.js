@@ -4,6 +4,9 @@ import { mkSchema, mkDiagram, SCHEMA_PROFILES, activeSchemaIdOf } from '../store
 // in `schemas`; elements and diagrams point to theirs with `schemaId`. The
 // active schema is the schema of the active diagram, so switching schema means
 // switching to one of its diagrams.
+// The datatype profile a relational schema's diagrams start with.
+const RELATIONAL_DATATYPES = 'postgresql'
+
 export const createSchemaSlice = (set, get) => ({
 
   // Adds a schema with one empty diagram and makes it active. Returns its id.
@@ -13,6 +16,7 @@ export const createSchemaSlice = (set, get) => ({
     for (let i = 2; used.has(unique); i++) unique = `${name} ${i}`
     const schema = mkSchema(unique, SCHEMA_PROFILES.includes(profile) ? profile : 'orm2')
     const d = mkDiagram('Main', schema.id)
+    if (schema.profile === 'relational') d.profileId = RELATIONAL_DATATYPES
     set(s => ({ schemas: [...s.schemas, schema], diagrams: [...s.diagrams, d], isDirty: true }))
     get().setActiveDiagram(d.id)
     return schema.id
@@ -26,7 +30,14 @@ export const createSchemaSlice = (set, get) => ({
 
   setSchemaProfile(id, profile) {
     if (!SCHEMA_PROFILES.includes(profile)) return
-    set(s => ({ schemas: s.schemas.map(x => x.id === id ? { ...x, profile } : x), isDirty: true }))
+    // A schema made relational gets PostgreSQL datatypes on its diagrams that
+    // have no datatype profile yet.
+    set(s => ({
+      schemas: s.schemas.map(x => x.id === id ? { ...x, profile } : x),
+      diagrams: profile !== 'relational' ? s.diagrams : s.diagrams.map(d =>
+        d.schemaId === id && !d.profileId ? { ...d, profileId: RELATIONAL_DATATYPES } : d),
+      isDirty: true,
+    }))
   },
 
   // Removes a schema that holds no elements, with its diagrams. Returns false

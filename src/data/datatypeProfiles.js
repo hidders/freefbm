@@ -136,6 +136,49 @@ export const PROFILES = [
     ],
   },
   {
+    // PostgreSQL's built-in types, for relational schemas (workbench step 4).
+    // Ids are the names PostgreSQL itself prints (format_type), in lower case.
+    id: 'postgresql',
+    name: 'PostgreSQL',
+    datatypes: [
+      // Numeric
+      { id: 'smallint',         name: 'smallint',         params: [] },
+      { id: 'integer',          name: 'integer',          params: [] },
+      { id: 'bigint',           name: 'bigint',           params: [] },
+      { id: 'numeric',          name: 'numeric',          params: [
+          { name: 'precision', type: 'integer', optional: true },
+          { name: 'scale',     type: 'integer', optional: true },
+        ] },
+      { id: 'real',             name: 'real',             params: [] },
+      { id: 'double precision', name: 'double precision', params: [] },
+      { id: 'smallserial',      name: 'smallserial',      params: [] },
+      { id: 'serial',           name: 'serial',           params: [] },
+      { id: 'bigserial',        name: 'bigserial',        params: [] },
+      { id: 'money',            name: 'money',            params: [] },
+      // Character
+      { id: 'text',             name: 'text',             params: [] },
+      { id: 'character varying', name: 'varchar',         params: [{ name: 'length', type: 'integer', optional: true }] },
+      { id: 'character',        name: 'char',             params: [{ name: 'length', type: 'integer', optional: true, default: 1 }] },
+      // Binary
+      { id: 'bytea',            name: 'bytea',            params: [] },
+      // Boolean
+      { id: 'boolean',          name: 'boolean',          params: [] },
+      // Date/time
+      { id: 'date',             name: 'date',             params: [] },
+      { id: 'time',             name: 'time',             params: [{ name: 'precision', type: 'integer', optional: true }, { name: 'withTimeZone', type: 'boolean', optional: true }] },
+      { id: 'timestamp',        name: 'timestamp',        params: [{ name: 'precision', type: 'integer', optional: true }, { name: 'withTimeZone', type: 'boolean', optional: true }] },
+      { id: 'interval',         name: 'interval',         params: [{ name: 'fields', type: 'string', optional: true }, { name: 'precision', type: 'integer', optional: true }] },
+      // Other
+      { id: 'uuid',             name: 'uuid',             params: [] },
+      { id: 'json',             name: 'json',             params: [] },
+      { id: 'jsonb',            name: 'jsonb',            params: [] },
+      { id: 'xml',              name: 'xml',              params: [] },
+      { id: 'inet',             name: 'inet',             params: [] },
+      { id: 'cidr',             name: 'cidr',             params: [] },
+      { id: 'macaddr',          name: 'macaddr',          params: [] },
+    ],
+  },
+  {
     // NORMA's portable data types, so that NORMA schemas can be imported.
     // Ids are NORMA's PortableDataType names; names follow NORMA's own labels.
     id: 'norma',

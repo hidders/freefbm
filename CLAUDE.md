@@ -39,6 +39,7 @@ All application state lives in a single **Zustand store** (`src/store/ormStore.j
 | Subtype | arrow between ObjectTypes | `superTypeId`, `subTypeId` |
 | Constraint | graphical badge | `type` (Exclusion/Equality/Subset/Ring/Frequency), `roleGroups[]` |
 | Group | none (colours its members) | `name`, `colors{outline,fill,text,graphics,floating,constraint,deontic,connector}` (NORMA colour roles), `priority`, `members[]` (element, role or note ids); see `src/utils/groups.js` |
+| Schema | none (schema strip above the diagram tabs) | `name`, `profile` (`orm2` or `relational`); elements and diagrams carry `schemaId`, the active schema is the active diagram's; panels use `scopeToSchema`/`useScopedStore`. A relational schema is encoding B (table = entity type, column = binary fact type to a value type, see docs/logic/schema-mappings.tex), checked by the Relational Profile validation category, with PostgreSQL datatypes |
 | PropertyDefinition | none (values in each element's `properties`) | `name`, `category`, `type` (string/number/boolean/date/enum), `options`, `default`, `appliesTo[]`; see `src/utils/customProperties.js` |
 
 Roles connect FactTypes to ObjectTypes; `RoleConnectors.jsx` draws the SVG lines.

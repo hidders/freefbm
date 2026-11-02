@@ -43,6 +43,10 @@ export const VALIDATION_CATEGORIES = {
     label: 'Derivation Rules',
     description: 'Missing, ill-formed or circular derivation rules of derived and semi-derived subtypes and fact types',
   },
+  relationalProfile: {
+    label: 'Relational Profile',
+    description: 'Elements of a relational schema that are not a table, a column or a SQL constraint',
+  },
   schemaScope: {
     label: 'Schemas',
     description: 'Elements that refer to elements of another schema in the same file',
@@ -684,6 +688,94 @@ export function runValidation(state, enabledCategories) {
         }
       }
 
+    }
+  }
+
+  // ── Relational Profile ───────────────────────────────────────────────────────
+  // A relational schema is an ORM2 schema in encoding B (docs/logic/
+  // schema-mappings.tex, 'The relational profile'): every table is an entity
+  // type, every column a binary fact type from it to a value type with a
+  // uniqueness constraint on the table's role, NOT NULL a mandatory role, the
+  // primary key its preferred identifier, UNIQUE an external uniqueness
+  // constraint over one table's columns, a foreign key a subset constraint.
+  // Anything else breaks the encoding (error) or has no SQL counterpart other
+  // than a CHECK constraint or a trigger (warning).
+  const relationalIds = new Set((state.schemas ?? []).filter(x => x.profile === 'relational').map(x => x.id))
+  if (enabledCategories.has('relationalProfile') && relationalIds.size) {
+    const inRM = x => relationalIds.has(x.schemaId)
+    const otById = new Map(objectTypes.map(o => [o.id, o]))
+    const typeName = id => otById.get(id)?.name ?? '?'
+    const isTable = id => otById.get(id)?.kind === 'entity'
+    const factName = f => {
+      const parts = f.readingParts ?? []
+      const words = []
+      f.roles.forEach((r, i) => { if (parts[i]?.trim()) words.push(parts[i].trim()); words.push(typeName(r.objectTypeId)) })
+      if (parts[f.roles.length]?.trim()) words.push(parts[f.roles.length].trim())
+      return `"${words.join(' ')}"`
+    }
+    const push = (id, el, elementKind, message, severity = 'error') => errors.push({
+      id: `rel-${id}-${el.id}`, category: 'relationalProfile', elementId: el.id, elementKind, message, severity,
+    })
+    const NOT_SQL = 'it has no SQL counterpart other than a CHECK constraint or a trigger'
+
+    // Columns: binary fact types from a table to a value type. tableOf maps
+    // each column fact to its table role, for the checks below.
+    const tableRole = new Map()
+    for (const f of facts) {
+      if (f._implicit || !inRM(f)) continue
+      if (f.objectified) { push('objectified', f, 'fact', `${factName(f)} is objectified; a relational schema has only tables and columns`); continue }
+      if (f.roles.length !== 2) { push('arity', f, 'fact', `${factName(f)} has ${f.roles.length} role${f.roles.length === 1 ? '' : 's'}; a column is a binary fact type from a table to a value type`); continue }
+      const tables = [0, 1].filter(i => isTable(f.roles[i].objectTypeId))
+      if (tables.length !== 1) {
+        push('column', f, 'fact', tables.length === 2
+          ? `${factName(f)} connects two tables; a reference between tables is a foreign key (a subset constraint), not a fact type`
+          : `${factName(f)} has no table (entity type); a column is a binary fact type from a table to a value type`)
+        continue
+      }
+      const t = tables[0]
+      tableRole.set(f.id, t)
+      if (!(f.uniqueness ?? []).some(u => u.roles?.length === 1 && u.roles[0] === t))
+        push('single-valued', f, 'fact', `${factName(f)} needs a uniqueness constraint on the role of ${typeName(f.roles[t].objectTypeId)}: a column holds one value per row`)
+      if ((f.internalFrequency ?? []).length)
+        push('frequency', f, 'fact', `${factName(f)} has a frequency constraint; ${NOT_SQL}`, 'warning')
+    }
+
+    for (const st of subtypes) {
+      if (inRM(st)) push('subtype', st, 'subtype', `${typeName(st.subId)} is a subtype of ${typeName(st.superId)}; a relational schema has no subtypes (use a table with a foreign key)`)
+    }
+
+    for (const ot of objectTypes) {
+      if (!inRM(ot)) continue
+      if (ot.kind === 'entity') {
+        const hasColumn = facts.some(f => tableRole.has(f.id) && f.roles[tableRole.get(f.id)].objectTypeId === ot.id)
+        if (!hasColumn) push('no-columns', ot, 'objectType', `Table ${ot.name} has no columns`, 'warning')
+      } else if (ot.kind === 'value') {
+        const pid = ot.datatypeAssignment?.profileId
+        if (!ot.datatypeAssignment?.datatypeId)
+          push('datatype', ot, 'objectType', `${ot.name} has no datatype; a column needs a SQL type`, 'warning')
+        else if (pid !== 'postgresql' && pid !== 'sql2016')
+          push('datatype', ot, 'objectType', `${ot.name} has a datatype from another profile; a column needs a PostgreSQL or SQL type`, 'warning')
+      }
+      if (ot.cardinalityRange?.length) push('cardinality', ot, 'objectType', `${ot.name} has a cardinality range; ${NOT_SQL}`, 'warning')
+    }
+
+    for (const c of constraints) {
+      if (!inRM(c)) continue
+      const label = CONSTRAINT_LABELS[c.constraintType] ?? c.constraintType
+      if (c.constraintType === 'subset') continue   // a foreign key
+      if (c.constraintType === 'uniqueness') {
+        // UNIQUE: the value roles of columns of one table.
+        const members = (c.sequences ?? []).flat().filter(Boolean)
+        const tablesOf = new Set(members.map(m => {
+          const t = m.kind === 'role' ? tableRole.get(m.factId) : undefined
+          if (t === undefined || m.roleIndex === t) return null
+          return facts.find(f => f.id === m.factId)?.roles[t].objectTypeId ?? null
+        }))
+        if (!members.length || tablesOf.has(null) || tablesOf.size !== 1)
+          push('unique', c, 'constraint', `${label} constraint is not over the columns of one table, so it is not a UNIQUE or PRIMARY KEY constraint; ${NOT_SQL}`, 'warning')
+        continue
+      }
+      push('not-sql', c, 'constraint', `${label} constraint: ${NOT_SQL}`, 'warning')
     }
   }
 
