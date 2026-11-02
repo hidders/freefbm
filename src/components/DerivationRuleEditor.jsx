@@ -1107,7 +1107,7 @@ const NEW_VAR = '\u0000new'
 
 // A variable slot: the variables in scope, those that can never fit (another
 // type hierarchy, or a mutually exclusive subtype) disabled.
-function VarSelect({ value, scope, nameOf, graph, placeId, ctx, onChange, onFocus, valuesOnly, onNew }) {
+export function VarSelect({ value, scope, nameOf, graph, placeId, ctx, onChange, onFocus, valuesOnly, onNew }) {
   const fits = (v) => (valuesOnly ? (v.typeIds.some(t => valueAccess(t, ctx)) ? 'ok' : 'novalue')
     : placeId ? graph.fit(v.typeIds, placeId) : 'ok')
   const known = scope.some(v => v.id === value)
@@ -1146,7 +1146,7 @@ function OpSelect({ value, ops, onChange }) {
   )
 }
 
-function ConstInput({ value, onChange, onFocus }) {
+export function ConstInput({ value, onChange, onFocus }) {
   return (
     <input value={value} onChange={e => onChange(e.target.value)} onFocus={onFocus}
       onClick={e => e.stopPropagation()} placeholder="value"
@@ -1158,11 +1158,11 @@ function ConstInput({ value, onChange, onFocus }) {
   )
 }
 
-const selectStyle = { fontSize: 12, width: 'auto', maxWidth: 220 }
-const sectionLabel = { fontSize: 10, color: 'var(--accent)', fontWeight: 700, letterSpacing: '0.08em',
+export const selectStyle = { fontSize: 12, width: 'auto', maxWidth: 220 }
+export const sectionLabel = { fontSize: 10, color: 'var(--accent)', fontWeight: 700, letterSpacing: '0.08em',
   textTransform: 'uppercase', marginBottom: 4 }
 
-function btn(primary = false, disabled = false) {
+export function btn(primary = false, disabled = false) {
   return {
     fontSize: 12, padding: '2px 8px', borderRadius: 3, cursor: disabled ? 'default' : 'pointer',
     border: `1px solid ${primary ? 'var(--accent)' : 'var(--border)'}`,

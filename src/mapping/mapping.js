@@ -6,15 +6,18 @@
 // meaning is ∀ŷ [∃x̄ φ ↔ ∃z̄ ψ].
 //
 //   mapping: { id, name, sourceSchemaId, targetSchemaId, rules: [rule] }
-//   rule:    { id, name, source: side, target: side }
-//   side:    { vars: [{ id, typeId }], atoms: [atom] }   a pattern: the
-//            conjunction of its atoms, with its variables existential
+//   rule:    { id, name, source: pattern, target: pattern }
 //
-// Atoms:
+// A pattern is stored in the rule-tree format of derivation rules
+// (logic/derivationRule.js), restricted to ∃, ∧ and atoms, and extended for
+// mappings:
+//   { t: 'hole' }
+//   { t: 'and', args: [P, …] }
+//   { t: 'exists', v: { id, typeId }, body: P }
 //   { t: 'fact', factId, args: [varId | null] }        args in roles[] order
 //   { t: 'type', typeId, arg: varId | null }
-//   { t: 'bind', v: varId | null, y: name }            v ≈ ŷ
-//   { t: 'const', v: varId | null, text }              v ≈ c
+//   { t: 'vcmp', op: '≈', left: { t: 'var', id }, right: { t: 'fv', y } }    x ≈ ŷ
+//   { t: 'vcmp', op: '≈', left: { t: 'var', id }, right: { t: 'const', text } }
 //   { t: 'rel', tableId, args: { [columnFactId]: arg } }
 //        relational atom R(…) over a table of encoding B; a column without
 //        an arg is _ (any value). arg:
@@ -22,10 +25,14 @@
 //          { k: 'opt', y }     ŷ?: the column's value, or NULL if it has none
 //          { k: 'const', text }
 //          { k: 'absent' }     −: the column has no value
-//          { k: 'var', v }     the column's value object (for a column whose
-//                              type is an entity type)
-//   { t: 'opt', y, vars, atoms }   [ŷ](…): an optional part, guarded by ŷ
-//   { t: 'not', vars, atoms }      ¬∃ vars (…)
+//          { k: 'var', v }     the column's value, as a variable of the pattern
+//   { t: 'opt', y, body: P }   [ŷ](…): an optional part, guarded by ŷ
+//   { t: 'not', arg: P }       ¬(…), usually ¬∃…
+//
+// The checks work on the flat form of a pattern (treeToSide):
+//   side: { vars: [{ id, typeId }], atoms: [atom] }
+// with atoms fact, type, rel as above, { t: 'bind', v, y }, { t: 'const', v,
+// text }, { t: 'opt', y, vars, atoms } and { t: 'not', vars, atoms }.
 //
 // Frontier variables are named by the user (y is the name without the hat).
 // A relational atom abbreviates the encoding-B formula (Definition "relational
@@ -38,11 +45,47 @@ import { plainParts } from '../verbalisation/hyphenBinding.js'
 export const mkMapping = (name, sourceSchemaId, targetSchemaId) =>
   ({ id: uid(), name, sourceSchemaId, targetSchemaId, rules: [] })
 export const mkSide = () => ({ vars: [], atoms: [] })
-export const mkRule = (name = '') => ({ id: uid(), name, source: mkSide(), target: mkSide() })
+export const mkRule = (name = '') => ({ id: uid(), name, source: { t: 'hole' }, target: { t: 'hole' } })
 export const newVarId = () => `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 
 export const SIDES = ['source', 'target']
 export const sideSchemaId = (mapping, side) => (side === 'source' ? mapping.sourceSchemaId : mapping.targetSchemaId)
+
+// ── Patterns as trees ───────────────────────────────────────────────────────
+
+// The flat form of a pattern tree, and what keeps it from being one: parts not
+// filled in, and nodes a pattern can't have.
+export function treeToSide(tree) {
+  const problems = []
+  const walk = (n, vars, atoms) => {
+    switch (n?.t) {
+      case undefined: case 'hole': problems.push('a part is not filled in (□)'); return
+      case 'true': return
+      case 'and': for (const a of n.args ?? []) walk(a, vars, atoms); return
+      case 'exists': if (n.v) vars.push(n.v); walk(n.body, vars, atoms); return
+      case 'fact': atoms.push({ t: 'fact', factId: n.factId, args: n.args ?? [] }); return
+      case 'type': atoms.push({ t: 'type', typeId: n.typeId, arg: n.arg ?? null }); return
+      case 'rel': atoms.push(n); return
+      case 'vcmp': {
+        const v = n.left?.t === 'var' ? n.left.id ?? null : null
+        if (n.op !== '≈' || (n.left && n.left.t !== 'var' && n.left.t !== 'hole')) problems.push('only x ≈ ŷ and x ≈ \'c\' compare values in a pattern')
+        else if (n.right?.t === 'fv') atoms.push({ t: 'bind', v, y: n.right.y ?? '' })
+        else if (n.right?.t === 'const') atoms.push({ t: 'const', v, text: n.right.text ?? '' })
+        else problems.push('a value comparison needs ŷ or a constant on its right')
+        return
+      }
+      case 'opt': { const p = part(n.body); atoms.push({ t: 'opt', y: n.y ?? '', ...p }); return }
+      case 'not': { const p = part(n.arg); atoms.push({ t: 'not', ...p }); return }
+      default: problems.push(`${n.t} is not allowed in a pattern`)
+    }
+  }
+  const part = (n) => { const vars = [], atoms = []; walk(n, vars, atoms); return { vars, atoms } }
+  return { side: part(tree), problems }
+}
+
+// A pattern in its flat form, whichever form it is given in.
+export const asSide = (x) => (x && Array.isArray(x.atoms) ? x : treeToSide(x).side)
+const isEmptyTree = (x) => !x || x.t === 'hole' || (Array.isArray(x.atoms) && !x.atoms.length)
 
 // ── Context ──────────────────────────────────────────────────────────────────
 
@@ -85,6 +128,7 @@ export function typesMeet(a, b, ctx) {
 // get ids from `fresh`; `origin` maps every new atom to the relational atom it
 // came from.
 export function expandSide(side, ctx) {
+  side = asSide(side)
   let n = 0
   const origin = new Map()
   const expandList = (vars, atoms) => {
@@ -135,6 +179,7 @@ export function expandSide(side, ctx) {
 // top: bound at the top level; guards: guards an optional part; inner: bound
 // inside optional or negated parts.
 export function frontierUse(side) {
+  side = asSide(side)
   const use = new Map()
   const get = (y) => { if (!use.has(y)) use.set(y, { top: 0, guards: 0, inner: 0, negated: 0 }); return use.get(y) }
   const walk = (atoms, where) => {
@@ -219,10 +264,12 @@ export function checkRule(rule, mapping, state, ctxs = null) {
   const uses = {}
   for (const side of SIDES) {
     const ctx = ctxOf(side)
-    const pat = rule[side] ?? mkSide()
     const label = side === 'source' ? 'Source' : 'Target'
     const err = (text, severity = 'error') => issues.push({ severity, side, text: `${label}: ${text}` })
-    if (!pat.atoms?.length) { err('the pattern is empty', 'warning'); uses[side] = new Map(); continue }
+    if (isEmptyTree(rule[side])) { err('the pattern is empty', 'warning'); uses[side] = new Map(); continue }
+    const flat = Array.isArray(rule[side].atoms) ? { side: rule[side], problems: [] } : treeToSide(rule[side])
+    const pat = flat.side
+    for (const p of new Set(flat.problems)) err(p)
 
     // Elements of the right schema, and atoms filled in.
     const varIds = new Set()
@@ -321,6 +368,7 @@ const sub = (n) => String(n).split('').map(d => SUB[+d]).join('')
 // Display names of a side's variables: the type's name, as in the
 // Constraints tab's formulas, with a subscript when several share it.
 export function variableNames(side, ctx) {
+  side = asSide(side)
   const all = []
   const collect = (vars, atoms) => {
     for (const v of vars ?? []) all.push(v)
@@ -354,6 +402,7 @@ export function readingName(f, ctx) {
 // A side as a list of tokens [{ text, kind }] (kind: 'var', 'fv', 'op',
 // 'type', 'reading', 'const', 'plain'), the way ConstraintsTab colours them.
 export function sideTokens(side, ctx) {
+  side = asSide(side)
   const names = variableNames(side, ctx)
   const out = []
   const push = (text, kind = 'plain') => out.push({ text, kind })
@@ -421,8 +470,8 @@ export function loadMappings(raw, schemaIds) {
       sourceSchemaId: m.sourceSchemaId, targetSchemaId: m.targetSchemaId,
       rules: (Array.isArray(m.rules) ? m.rules : []).filter(r => r && typeof r === 'object').map(r => ({
         id: String(r.id ?? uid()), name: String(r.name ?? ''),
-        source: normSide(r.source), target: normSide(r.target),
+        source: normPattern(r.source), target: normPattern(r.target),
       })),
     }))
 }
-const normSide = (s) => ({ vars: Array.isArray(s?.vars) ? s.vars : [], atoms: Array.isArray(s?.atoms) ? s.atoms : [] })
+const normPattern = (p) => (p && typeof p === 'object' && typeof p.t === 'string' ? p : { t: 'hole' })

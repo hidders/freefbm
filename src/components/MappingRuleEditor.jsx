@@ -2,11 +2,22 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
-import {
-  sideContext, sideTokens, checkRule, variableNames, readingName, typesMeet, newVarId, SIDES, sideSchemaId,
-} from '../mapping/mapping.js'
+import { sideContext, sideTokens, checkRule, variableNames, readingName, newVarId, SIDES, sideSchemaId } from '../mapping/mapping.js'
+import { getAt, setAt, hole, typeGraph } from '../logic/derivationRule.js'
+import { QGAP } from '../logic/renderFormula.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
+import { handleTextPanelKey } from '../utils/textPanel.js'
+import { TOKEN_STYLE } from './ConstraintsTab.jsx'
+import { VarSelect, ConstInput, btn, selectStyle, sectionLabel } from './DerivationRuleEditor.jsx'
 import { PatternText, IssueList, MAPPING_TOKEN_STYLE } from './MappingFormula.jsx'
+
+// ── Mapping rule editor ─────────────────────────────────────────────────────
+// The derivation rule editor's syntax-directed way of editing, for the two
+// patterns of a mapping rule φ ⟺ ψ (mapping/mapping.js). A pattern is a rule
+// tree restricted to ∃, ∧ and atoms, with table rows, x ≈ ŷ bindings, optional
+// parts [ŷ](…) and negations ¬(…). Clicking a part selects it, and the panel
+// below offers what can go there or what to wrap it in. Edits apply to the
+// rule at once (and can be undone).
 
 // The open mapping rule editor, if any (store.mappingRuleEditor).
 export function MappingRuleEditorPanel() {
@@ -15,40 +26,46 @@ export function MappingRuleEditorPanel() {
   return <MappingRuleEditor key={`${target.mappingId}:${target.ruleId}`} mappingId={target.mappingId} ruleId={target.ruleId} />
 }
 
-// Where the panel is and whether it is folded, kept between openings.
 const PANEL_KEY = 'freefbm.mappingEditor.panel'
 const loadPanel = () => { try { return JSON.parse(localStorage.getItem(PANEL_KEY)) ?? {} } catch { return {} } }
 const savePanel = (p) => { try { localStorage.setItem(PANEL_KEY, JSON.stringify(p)) } catch { /* not kept */ } }
 const clampX = (x, w) => Math.min(Math.max(0, x), Math.max(0, window.innerWidth - w))
 const clampY = (y) => Math.min(Math.max(0, y), window.innerHeight - 44)
 
-const input = {
-  fontSize: 12, padding: '1px 4px', border: '1px solid var(--border)', borderRadius: 3,
-  background: 'var(--bg-surface)', color: 'var(--ink)', fontFamily: 'var(--font-mono)',
-}
-const smallBtn = {
-  fontSize: 11, lineHeight: 1, padding: '2px 6px', borderRadius: 3, cursor: 'pointer',
-  border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--ink-2)',
-}
-const xBtn = { ...smallBtn, border: 'none', background: 'none', color: 'var(--ink-muted)', padding: '0 4px', fontSize: 13 }
-const label = { fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ink-muted)', margin: '10px 0 4px' }
+// Rendered without parentheses as the body of ∃ or after ¬.
+const ATOMIC = new Set(['fact', 'type', 'rel', 'hole', 'not', 'opt', 'exists'])
+const keyOf = (sel) => (sel ? `${sel.side}:${sel.path.join('.')}` : '')
 
-// Every reference to a variable of a side cleared, and the variable removed.
-function dropVar(side, id) {
-  const fixAtoms = (atoms) => atoms.map(a => {
-    if (a.t === 'fact') return { ...a, args: a.args.map(x => (x === id ? null : x)) }
-    if (a.t === 'type') return a.arg === id ? { ...a, arg: null } : a
-    if (a.t === 'bind' || a.t === 'const') return a.v === id ? { ...a, v: null } : a
-    if (a.t === 'rel') {
-      const args = {}
-      for (const [k, v] of Object.entries(a.args ?? {})) args[k] = v?.k === 'var' && v.v === id ? { k: 'var', v: null } : v
-      return { ...a, args }
-    }
-    if (a.t === 'opt' || a.t === 'not') return { ...a, vars: (a.vars ?? []).filter(v => v.id !== id), atoms: fixAtoms(a.atoms ?? []) }
-    return a
-  })
-  return { vars: side.vars.filter(v => v.id !== id), atoms: fixAtoms(side.atoms) }
+// The variables bound above a path: those of every ∃ whose body it is in.
+const scopeAt = (tree, path) => {
+  const out = []
+  let n = tree
+  for (const k of path) {
+    if (n?.t === 'exists' && k === 'body' && n.v) out.push({ id: n.v.id, typeIds: [n.v.typeId] })
+    n = n?.[k]
+  }
+  return out
 }
+
+// Where a new variable for a slot at path is quantified: at the top of the
+// innermost optional or negated part around it, or of the whole pattern.
+const anchorOf = (tree, path) => {
+  let anchor = [], n = tree
+  path.forEach((k, i) => {
+    if ((n?.t === 'opt' && k === 'body') || (n?.t === 'not' && k === 'arg')) anchor = path.slice(0, i + 1)
+    n = n?.[k]
+  })
+  return anchor
+}
+
+const COL_KINDS = [
+  { k: '', text: '_', title: 'any value' },
+  { k: 'fv', text: 'ŷ', title: 'the value is a frontier variable' },
+  { k: 'opt', text: 'ŷ?', title: 'the value, or NULL if the column has none' },
+  { k: 'const', text: "'c'", title: 'a constant' },
+  { k: 'absent', text: '−', title: 'the column has no value (NULL)' },
+  { k: 'var', text: 'x', title: 'a variable of the pattern' },
+]
 
 function MappingRuleEditor({ mappingId, ruleId }) {
   const state = useOrmStore(useShallow(s => ({
@@ -63,12 +80,20 @@ function MappingRuleEditor({ mappingId, ruleId }) {
     source: sideContext(state, mapping.sourceSchemaId),
     target: sideContext(state, mapping.targetSchemaId),
   } : null), [state, mapping])
+  const graphs = useMemo(() => (ctxs ? {
+    source: typeGraph({ subtypes: ctxs.source.subtypes, constraints: ctxs.source.constraints }),
+    target: typeGraph({ subtypes: ctxs.target.subtypes, constraints: ctxs.target.constraints }),
+  } : null), [ctxs])
+  const names = useMemo(() => (rule ? {
+    source: variableNames(rule.source, ctxs.source), target: variableNames(rule.target, ctxs.target),
+  } : null), [rule, ctxs])
   const issues = useMemo(() => (rule ? checkRule(rule, mapping, state, ctxs) : []), [rule, mapping, state, ctxs])
+  const [sel, setSel] = useState({ side: 'source', path: [] })
 
   // ── Panel position, size and folding ──
   const [panel, setPanel] = useState(() => {
     const p = loadPanel()
-    const w = Math.min(p.w ?? 1000, window.innerWidth - 16)
+    const w = Math.min(p.w ?? 820, window.innerWidth - 16)
     return { w, h: p.h ?? null, folded: !!p.folded, x: clampX(p.x ?? (window.innerWidth - w) / 2, w), y: clampY(p.y ?? 70) }
   })
   useEffect(() => { savePanel(panel) }, [panel])
@@ -88,22 +113,185 @@ function MappingRuleEditor({ mappingId, ruleId }) {
     const w = el.offsetWidth, h = el.offsetHeight
     if (w !== panel.w || h !== panel.h) setPanel(p => ({ ...p, w, h }))
   }
-  // Keys typed here are not canvas shortcuts.
-  const onKeyDown = (e) => {
-    e.stopPropagation()
-    if (e.key === 'Escape') close()
-  }
 
   if (!mapping || !rule) return null
   const schemaName = (id) => state.schemas.find(s => s.id === id)?.name ?? '?'
-  const setSide = (side, value) => update(mapping.id, rule.id, r => ({ ...r, [side]: value }))
+
+  // Edits of one side's tree.
+  const setTree = (side, fn) => update(mapping.id, rule.id, r => ({ ...r, [side]: fn(r[side] ?? hole()) }))
+  const replace = (side, path, node, nextPath = path) => { setTree(side, t => setAt(t, path, node)); setSel({ side, path: nextPath }) }
+
+  const onKeyDown = (e) => {
+    // Keep the canvas shortcuts out of the editor.
+    e.stopPropagation()
+    if (e.key === 'Escape') { e.preventDefault(); close(); return }
+    if (handleTextPanelKey(e)) return
+    const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)
+    if (!typing && (e.key === 'Delete' || e.key === 'Backspace')) {
+      e.preventDefault()
+      const n = getAt(rule[sel.side], sel.path)
+      if (n && n.t !== 'hole') replace(sel.side, sel.path, hole())
+    }
+  }
+
+  // A variable slot of an atom at path. "+ new T" quantifies a new variable at
+  // the top of the enclosing part and puts it in the slot (newOf builds the
+  // atom with it).
+  const varPicker = (side, path, value, scope, placeId, onChange, newOf) => {
+    const ctx = ctxs[side]
+    const onNew = placeId && newOf ? () => {
+      const v = { id: newVarId(), typeId: placeId }
+      const anchor = anchorOf(rule[side], path)
+      const moved = [...anchor, 'body', ...path.slice(anchor.length)]
+      setTree(side, t => {
+        const wrapped = setAt(t, anchor, { t: 'exists', v, body: getAt(t, anchor) })
+        return setAt(wrapped, moved, newOf(v.id))
+      })
+      setSel({ side, path: moved })
+    } : null
+    return (
+      <VarSelect value={value} scope={scope} nameOf={names[side]} graph={graphs[side]} placeId={placeId}
+        ctx={{ typeName: (id) => ctx.otById.get(id)?.name ?? '?' }} onChange={onChange}
+        onFocus={() => setSel({ side, path })} onNew={onNew} />
+    )
+  }
+
+  // A frontier variable's name, typed in place.
+  const fvInput = (side, path, value, onChange, optional = false) => (
+    <span style={{ whiteSpace: 'nowrap' }}>
+      <span style={MAPPING_TOKEN_STYLE.fv}>ŷ</span>
+      <input aria-label="Frontier variable" value={value ?? ''} placeholder="name" onClick={e => e.stopPropagation()}
+        onFocus={() => setSel({ side, path })} onChange={e => onChange(e.target.value.replace(/\s+/g, '_'))}
+        style={{ ...MAPPING_TOKEN_STYLE.fv, font: 'inherit', fontWeight: 700, background: 'transparent', border: 'none',
+          borderBottom: '1px dashed var(--formula-fn)', padding: '0 1px', width: `${String(value ?? '').length ? String(value).length + 0.5 : 4}ch` }} />
+      {optional && <span style={MAPPING_TOKEN_STYLE.fv}>?</span>}
+    </span>
+  )
+
+  // A table row's column argument, as shown in the formula.
+  const colArg = (side, path, n, col, scope) => {
+    const arg = n.args[col.fact.id]
+    const setArg = (a) => replace(side, path, { ...n, args: { ...n.args, [col.fact.id]: a } })
+    if (arg.k === 'fv' || arg.k === 'opt') return fvInput(side, path, arg.y, y => setArg({ ...arg, y }), arg.k === 'opt')
+    if (arg.k === 'const') return <ConstInput value={arg.text ?? ''} onFocus={() => setSel({ side, path })} onChange={text => setArg({ ...arg, text })} />
+    if (arg.k === 'absent') return <span style={TOKEN_STYLE.op}>−</span>
+    if (arg.k === 'var') return varPicker(side, path, arg.v, scope, col.vt.id, (id) => setArg({ k: 'var', v: id }),
+      (id) => ({ ...n, args: { ...n.args, [col.fact.id]: { k: 'var', v: id } } }))
+    return '_'
+  }
+
+  // ── Formula view ──
+  const render = (side, n, path, scope) => {
+    const ctx = ctxs[side]
+    const selected = keyOf(sel) === keyOf({ side, path })
+    const wrapStyle = {
+      borderRadius: 3, cursor: 'pointer', padding: '0 1px',
+      background: selected ? 'var(--formula-sel-bg)' : undefined,
+      outline: selected ? '1px solid var(--formula-sel)' : undefined,
+    }
+    const sub = (key, wrap, inScope = scope) => {
+      const k = Array.isArray(key) ? key : [key]
+      const inner = render(side, getAt(n, k), [...path, ...k], inScope)
+      return wrap ? <>{'('}{inner}{')'}</> : inner
+    }
+    let body
+    switch (n?.t) {
+      case 'hole': case undefined:
+        body = <span style={{ color: 'var(--formula-hole)', fontWeight: 600 }} title="Not filled in yet">□</span>
+        break
+      case 'and':
+        body = n.args.map((a, i) => (
+          <React.Fragment key={i}>
+            {i > 0 && <span style={TOKEN_STYLE.op}> ∧ </span>}
+            {sub(['args', i], a?.t === 'and' || (a?.t === 'exists' && i < n.args.length - 1))}
+          </React.Fragment>
+        ))
+        break
+      case 'exists': {
+        const inner = [...scope, { id: n.v.id, typeIds: [n.v.typeId] }]
+        body = <>
+          <span style={TOKEN_STYLE.op}>∃</span><span style={TOKEN_STYLE.qgap}>{QGAP}</span>
+          <span style={TOKEN_STYLE.var} title={`ranges over ${ctx.otById.get(n.v.typeId)?.name ?? '?'}`}>{names[side].get(n.v.id)}</span>
+          {' '}{sub('body', !ATOMIC.has(n.body?.t), inner)}
+        </>
+        break
+      }
+      case 'fact': {
+        const f = ctx.factById.get(n.factId)
+        const parts = plainParts(f?.readingParts ?? [], f?.roles.length ?? 0)
+        const words = []
+        f?.roles.forEach((r, i) => {
+          if (parts[i]?.trim()) words.push(<span key={`p${i}`} style={TOKEN_STYLE.reading}>{parts[i].trim()}</span>)
+          const withArg = (id) => ({ ...n, args: n.args.map((a, j) => (j === i ? id : a)) })
+          words.push(<React.Fragment key={`v${i}`}>{varPicker(side, path, n.args[i], scope, r.objectTypeId,
+            (id) => replace(side, path, withArg(id)), withArg)}</React.Fragment>)
+        })
+        const last = f?.roles.length ?? 0
+        if (parts[last]?.trim()) words.push(<span key="end" style={TOKEN_STYLE.reading}>{parts[last].trim()}</span>)
+        body = f ? <>{'('}{words.map((w, i) => <React.Fragment key={i}>{i > 0 && ' '}{w}</React.Fragment>)}{')'}</>
+          : <span style={{ color: 'var(--danger)' }}>(a deleted fact type)</span>
+        break
+      }
+      case 'type':
+        body = <>
+          <span style={TOKEN_STYLE.type}>{ctx.otById.get(n.typeId)?.name ?? '?'}</span>{'('}
+          {varPicker(side, path, n.arg, scope, n.typeId, (id) => replace(side, path, { ...n, arg: id }), (id) => ({ ...n, arg: id }))}{')'}
+        </>
+        break
+      case 'vcmp':
+        body = <>
+          {varPicker(side, path, n.left?.id ?? null, scope, null, (id) => replace(side, path, { ...n, left: { t: 'var', id } }))}
+          <span style={TOKEN_STYLE.op}> ≈ </span>
+          {n.right?.t === 'fv'
+            ? fvInput(side, path, n.right.y, y => replace(side, path, { ...n, right: { t: 'fv', y } }))
+            : <ConstInput value={n.right?.text ?? ''} onFocus={() => setSel({ side, path })}
+                onChange={text => replace(side, path, { ...n, right: { t: 'const', text } })} />}
+        </>
+        break
+      case 'rel': {
+        const tb = ctx.tableById.get(n.tableId)
+        const cols = (tb?.columns ?? []).filter(c => n.args?.[c.fact.id])
+        body = tb ? <>
+          <span style={TOKEN_STYLE.type}>{tb.name}</span>{'('}
+          {cols.map((c, i) => (
+            <React.Fragment key={c.fact.id}>{i > 0 && ', '}
+              <span style={TOKEN_STYLE.reading}>{c.name}: </span>{colArg(side, path, n, c, scope)}
+            </React.Fragment>
+          ))}
+          {cols.length < tb.columns.length && <span style={{ color: 'var(--ink-muted)' }}>{cols.length ? ', …' : '…'}</span>}{')'}
+        </> : <span style={{ color: 'var(--danger)' }}>(a deleted table)</span>
+        break
+      }
+      case 'opt':
+        body = <>
+          <span style={MAPPING_TOKEN_STYLE.fv}>[</span>
+          {fvInput(side, path, n.y, y => replace(side, path, { ...n, y }))}
+          <span style={MAPPING_TOKEN_STYLE.fv}>]</span>
+          {sub('body', true)}
+        </>
+        break
+      case 'not':
+        body = <><span style={TOKEN_STYLE.op}>¬</span>{sub('arg', !ATOMIC.has(n.arg?.t) || n.arg?.t === 'opt')}</>
+        break
+      case 'true':
+        body = <span style={TOKEN_STYLE.op}>⊤</span>
+        break
+      default:
+        body = <span style={{ color: 'var(--danger)' }}>{n.t}?</span>
+    }
+    const click = (e) => { e.stopPropagation(); setSel({ side, path }) }
+    return <span onClick={click} style={wrapStyle}>{body}</span>
+  }
+
+  const selTree = rule[sel.side] ?? hole()
+  const selNode = getAt(selTree, sel.path)
 
   return createPortal(
     <div ref={panelRef} role="dialog" aria-label="Mapping rule" tabIndex={-1}
       onKeyDown={onKeyDown} onMouseDown={e => e.stopPropagation()} onMouseUp={keepSize} style={{
         position: 'fixed', left: panel.x, top: panel.y, zIndex: 1000,
         width: panel.w, height: panel.folded ? 'auto' : panel.h ?? 'auto',
-        minWidth: 480, minHeight: panel.folded ? 0 : 200, maxWidth: '100vw', maxHeight: `calc(100vh - ${panel.y}px)`,
+        minWidth: 420, minHeight: panel.folded ? 0 : 200, maxWidth: '100vw', maxHeight: `calc(100vh - ${panel.y}px)`,
         resize: panel.folded ? 'none' : 'both', display: 'flex', flexDirection: 'column',
         background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
         boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
@@ -114,284 +302,188 @@ function MappingRuleEditor({ mappingId, ruleId }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Mapping rule</div>
           <input aria-label="Rule name" value={rule.name} placeholder="name"
-            onChange={e => update(mapping.id, rule.id, { name: e.target.value })} style={{ ...input, fontFamily: 'inherit', width: 160 }} />
+            onChange={e => update(mapping.id, rule.id, { name: e.target.value })} style={{ ...selectStyle, width: 150 }} />
           <div style={{ flex: 1, fontSize: 12, color: 'var(--ink-muted)' }}>of {mapping.name} ({schemaName(mapping.sourceSchemaId)} → {schemaName(mapping.targetSchemaId)})</div>
-          <button style={smallBtn} title={panel.folded ? 'Unfold' : 'Fold to the title bar'}
+          <button style={btn()} title={panel.folded ? 'Unfold' : 'Fold to the title bar'}
             onClick={() => setPanel(p => ({ ...p, folded: !p.folded }))}>{panel.folded ? '▸' : '▾'}</button>
-          <button style={smallBtn} title="Close (Esc); changes are kept" onClick={close}>×</button>
+          <button style={btn()} title="Close (Esc); changes are kept" onClick={close}>×</button>
         </div>
         {!panel.folded && <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 2 }}>
-          For all values of the frontier variables ŷ: the source pattern matches if and only if the target pattern does. Every other variable is existential and should be determined by the ŷ and the keys.
+          For all values of the frontier variables ŷ: the source pattern matches if and only if the target pattern does. Every other variable should be determined by the ŷ and the keys.
         </div>}
       </div>
       {!panel.folded && <div style={{ padding: 14, overflow: 'auto', flex: 1 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)', gap: 12 }}>
-          {SIDES.map((side, i) => (
-            <React.Fragment key={side}>
-              {i === 1 && <div style={{ alignSelf: 'center', fontSize: 18, ...MAPPING_TOKEN_STYLE.op }}>⟺</div>}
-              <SideEditor title={`${side === 'source' ? 'Source' : 'Target'} · ${schemaName(sideSchemaId(mapping, side))}`}
-                pattern={rule[side]} ctx={ctxs[side]} onChange={v => setSide(side, v)} />
-            </React.Fragment>
-          ))}
+        {SIDES.map((side, i) => (
+          <React.Fragment key={side}>
+            {i === 1 && <div style={{ ...MAPPING_TOKEN_STYLE.op, fontSize: 18, margin: '4px 0' }}>⟺</div>}
+            <div style={sectionLabel}>{side === 'source' ? 'Source' : 'Target'} · {schemaName(sideSchemaId(mapping, side))}</div>
+            <div tabIndex={0} onClick={() => setSel({ side, path: [] })} className="text-panel" style={{
+              fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 2, minHeight: 30, outline: 'none',
+              padding: '2px 6px', borderRadius: 3, background: sel.side === side ? 'var(--bg-raised)' : undefined,
+            }}>
+              {render(side, rule[side] ?? hole(), [], [])}
+            </div>
+          </React.Fragment>
+        ))}
+
+        <Palette key={keyOf(sel)} side={sel.side} node={selNode} path={sel.path} tree={selTree}
+          scope={scopeAt(selTree, sel.path)} ctx={ctxs[sel.side]} graph={graphs[sel.side]}
+          replace={(path, node, next) => replace(sel.side, path, node, next)} />
+
+        <div style={{ ...sectionLabel, marginTop: 12 }}>Checks</div>
+        <div data-text-panel tabIndex={0} className="copyable" style={{ outline: 'none' }}>
+          <IssueList issues={issues} ok="This rule is well formed and key-safe." />
         </div>
-        <div style={label}>Rule</div>
+        <div style={{ ...sectionLabel, marginTop: 12 }}>As listed in the Mappings tab</div>
         <div data-text-panel tabIndex={0} className="copyable" style={{ outline: 'none' }}>
           <PatternText tokens={sideTokens(rule.source, ctxs.source)} />
           <PatternText tokens={[{ text: '  ⟺  ', kind: 'op' }]} />
           <PatternText tokens={sideTokens(rule.target, ctxs.target)} />
         </div>
-        <div style={label}>Checks</div>
-        <div data-text-panel tabIndex={0} className="copyable" style={{ outline: 'none' }}>
-          <IssueList issues={issues} ok="This rule is well formed and key-safe." />
-        </div>
+      </div>}
+      {!panel.folded && <div style={{ padding: '6px 14px', borderTop: '1px solid var(--border-soft)', fontSize: 11, color: 'var(--ink-muted)' }}>
+        Click a part to select it · Delete clears it · Esc closes · changes apply at once and can be undone
       </div>}
     </div>,
     document.body,
   )
 }
 
-// One pattern: its variables and atoms.
-function SideEditor({ title, pattern, ctx, onChange }) {
-  const names = useMemo(() => variableNames(pattern, ctx), [pattern, ctx])
-  const env = { ctx, names, deleteVar: (id) => onChange(dropVar(pattern, id)) }
-  return (
-    <div style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>{title}</div>
-      <div style={{ padding: '6px 8px', background: 'var(--bg-raised)', borderRadius: 3, marginBottom: 6 }}>
-        <PatternText tokens={sideTokens(pattern, ctx)} />
-      </div>
-      <PartEditor part={pattern} scope={[]} env={env} onPart={p => onChange({ ...pattern, ...p })} />
-    </div>
-  )
-}
+// ── Palette: what can go in, or be done with, the selected part ────────────
 
-const typeOptions = (ctx) => [...ctx.objectTypes].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+function Palette({ side, node, path, tree, scope, ctx, graph, replace }) {
+  const types = useMemo(() => [...ctx.objectTypes].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')), [ctx])
+  const facts = useMemo(() => ctx.facts.map(f => ({ id: f.id, label: readingName(f, ctx) }))
+    .sort((a, b) => a.label.localeCompare(b.label)), [ctx])
+  const tables = useMemo(() => [...ctx.tables].sort((a, b) => a.name.localeCompare(b.name)), [ctx])
+  const [qType, setQType] = useState(() => types[0]?.id ?? '')
 
-// A conjunction: the variables it introduces and its atoms. Used for the
-// whole pattern and for optional and negated parts.
-function PartEditor({ part, scope, env, onPart }) {
-  const { ctx, names } = env
-  const vars = part.vars ?? [], atoms = part.atoms ?? []
-  const inScope = [...scope, ...vars]
-  const setAtom = (i, atom, newVar = null) => onPart({
-    vars: newVar ? [...vars, newVar] : vars,
-    atoms: atoms.map((a, j) => (j === i ? atom : a)),
-  })
-  const addAtom = (t) => {
-    const fresh = {
-      rel: { t: 'rel', tableId: null, args: {} },
-      fact: { t: 'fact', factId: null, args: [] },
-      type: { t: 'type', typeId: null, arg: null },
-      bind: { t: 'bind', v: null, y: '' },
-      const: { t: 'const', v: null, text: '' },
-      opt: { t: 'opt', y: '', vars: [], atoms: [] },
-      not: { t: 'not', vars: [], atoms: [] },
-    }[t]
-    if (fresh) onPart({ vars, atoms: [...atoms, fresh] })
+  // The innermost variable in scope that fits a place for instances of placeId.
+  const fitting = (placeId) => [...scope].reverse().find(v => graph.fit(v.typeIds, placeId) === 'ok')?.id ?? null
+  const factAtom = (id) => {
+    const f = ctx.factById.get(id)
+    return f ? { t: 'fact', factId: f.id, args: f.roles.map(r => fitting(r.objectTypeId)) } : null
   }
-  return (
-    <div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>∃</span>
-        {vars.map(v => (
-          <span key={v.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: '0 2px 0 6px',
-            border: '1px solid var(--border-soft)', borderRadius: 10, fontSize: 12 }}>
-            <span style={MAPPING_TOKEN_STYLE.var}>{names.get(v.id)}</span>
-            {names.get(v.id) !== ctx.otById.get(v.typeId)?.name && <span style={{ color: 'var(--ink-muted)' }}>: {ctx.otById.get(v.typeId)?.name ?? '?'}</span>}
-            <button style={xBtn} title="Remove this variable" onClick={() => env.deleteVar(v.id)}>×</button>
-          </span>
-        ))}
-        <select aria-label="Add a variable" value="" style={{ ...input, fontFamily: 'inherit', color: 'var(--ink-muted)' }}
-          onChange={e => { if (e.target.value) onPart({ vars: [...vars, { id: newVarId(), typeId: e.target.value }], atoms }) }}>
-          <option value="">+ variable of type…</option>
-          {typeOptions(ctx).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-        </select>
-      </div>
-      {atoms.map((a, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 4, padding: '3px 0', borderTop: '1px dotted var(--border-soft)' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <AtomEditor atom={a} inScope={inScope} env={env} onAtom={(x, nv) => setAtom(i, x, nv)} />
-          </div>
-          <button style={xBtn} title="Remove this atom" onClick={() => onPart({ vars, atoms: atoms.filter((_, j) => j !== i) })}>×</button>
-        </div>
-      ))}
-      <select aria-label="Add an atom" value="" style={{ ...input, fontFamily: 'inherit', color: 'var(--ink-muted)', marginTop: 4 }}
-        onChange={e => addAtom(e.target.value)}>
-        <option value="">+ atom…</option>
-        {ctx.relational && <option value="rel">Table row  R(…)</option>}
-        <option value="fact">Fact  p(x, y)</option>
-        <option value="type">Type  T(x)</option>
-        <option value="bind">Frontier binding  x ≈ ŷ</option>
-        <option value="const">Constant  x ≈ 'c'</option>
-        <option value="opt">Optional part  [ŷ](…)</option>
-        <option value="not">Negation  ¬∃(…)</option>
-      </select>
-    </div>
-  )
-}
+  const parentPath = path.length ? path.slice(0, path[path.length - 2] === 'args' ? -2 : -1) : null
+  const parent = parentPath ? getAt(tree, parentPath) : null
+  const lastVar = [...scope].reverse()[0]?.id ?? null
 
-// A variable slot: the variables in scope that fit the type, or a new one.
-function VarPick({ value, typeId, inScope, env, onPick }) {
-  const { ctx, names } = env
-  const fits = inScope.filter(v => !typeId || typesMeet(v.typeId, typeId, ctx))
-  const typeName = typeId ? ctx.otById.get(typeId)?.name : null
-  return (
-    <select aria-label={typeName ? `Variable of ${typeName}` : 'Variable'} value={value ?? ''}
-      onChange={e => {
-        const val = e.target.value
-        if (val === '__new') { const nv = { id: newVarId(), typeId }; onPick(nv.id, nv) } else onPick(val || null)
-      }}
-      style={{ ...input, ...MAPPING_TOKEN_STYLE.var, borderColor: value ? 'var(--border)' : 'var(--formula-hole, var(--border))' }}>
-      <option value="">□</option>
-      {fits.map(v => <option key={v.id} value={v.id}>{names.get(v.id)}{typeId && v.typeId !== typeId ? ` (${ctx.otById.get(v.typeId)?.name})` : ''}</option>)}
-      {typeId && <option value="__new">+ new {typeName}</option>}
+  const typeSelect = (value, onChange, placeholder) => (
+    <select value={value} onChange={e => e.target.value && onChange(e.target.value)} style={selectStyle}>
+      {placeholder && <option value="">{placeholder}</option>}
+      {types.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
     </select>
   )
-}
-
-function FvInput({ value, onChange, optional }) {
-  return (
-    <span style={{ whiteSpace: 'nowrap' }}>
-      <span style={MAPPING_TOKEN_STYLE.fv}>ŷ</span>
-      <input aria-label="Frontier variable" value={value ?? ''} placeholder="name" size={Math.max(4, (value ?? '').length + 1)}
-        onChange={e => onChange(e.target.value.replace(/\s+/g, '_'))} style={{ ...input, ...MAPPING_TOKEN_STYLE.fv }} />
-      {optional && <span style={MAPPING_TOKEN_STYLE.fv}>?</span>}
-    </span>
+  const factSelect = (value, onPick) => (
+    <select value={value} style={{ ...selectStyle, maxWidth: 380 }} onChange={e => { const a = factAtom(e.target.value); if (a) onPick(a) }}>
+      {!value && <option value="">Choose a fact type…</option>}
+      {facts.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+    </select>
   )
-}
+  const tableSelect = (value, onPick) => (
+    <select value={value} style={selectStyle} onChange={e => e.target.value && onPick(e.target.value)}>
+      {!value && <option value="">Choose a table…</option>}
+      {tables.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+    </select>
+  )
+  const exists = (body) => ({ t: 'exists', v: { id: newVarId(), typeId: qType }, body })
 
-function AtomEditor({ atom: a, inScope, env, onAtom }) {
-  const { ctx } = env
-  const op = (t) => <span style={MAPPING_TOKEN_STYLE.op}>{t}</span>
-  const row = { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, fontSize: 12 }
-
-  if (a.t === 'fact') {
-    const f = ctx.factById.get(a.factId)
-    const parts = f ? plainParts(f.readingParts ?? [], f.roles.length) : []
-    const facts = [...ctx.facts].sort((x, y) => readingName(x, ctx).localeCompare(readingName(y, ctx)))
-    return (
-      <div style={row}>
-        <select aria-label="Fact type" value={a.factId ?? ''} style={{ ...input, fontFamily: 'inherit', maxWidth: 220 }}
-          onChange={e => {
-            const nf = ctx.factById.get(e.target.value)
-            onAtom({ ...a, factId: nf?.id ?? null, args: nf ? nf.roles.map(() => null) : [] })
-          }}>
-          <option value="">fact type…</option>
-          {facts.map(x => <option key={x.id} value={x.id}>{readingName(x, ctx)}</option>)}
-        </select>
-        {f && f.roles.map((r, i) => (
-          <React.Fragment key={i}>
-            {parts[i]?.trim() && <span style={MAPPING_TOKEN_STYLE.reading}>{parts[i].trim()}</span>}
-            <VarPick value={a.args[i]} typeId={r.objectTypeId} inScope={inScope} env={env}
-              onPick={(id, nv) => onAtom({ ...a, args: a.args.map((x, j) => (j === i ? id : x)) }, nv)} />
-          </React.Fragment>
-        ))}
-        {f && parts[f.roles.length]?.trim() && <span style={MAPPING_TOKEN_STYLE.reading}>{parts[f.roles.length].trim()}</span>}
-      </div>
-    )
-  }
-  if (a.t === 'type') {
-    return (
-      <div style={row}>
-        <select aria-label="Type" value={a.typeId ?? ''} style={{ ...input, fontFamily: 'inherit', ...MAPPING_TOKEN_STYLE.type }}
-          onChange={e => onAtom({ ...a, typeId: e.target.value || null })}>
-          <option value="">type…</option>
-          {typeOptions(ctx).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-        </select>
-        {op('(')}
-        <VarPick value={a.arg} typeId={a.typeId} inScope={inScope} env={env} onPick={(id, nv) => onAtom({ ...a, arg: id }, nv)} />
-        {op(')')}
-      </div>
-    )
-  }
-  if (a.t === 'bind' || a.t === 'const') {
-    return (
-      <div style={row}>
-        <VarPick value={a.v} typeId={null} inScope={inScope} env={env} onPick={(id) => onAtom({ ...a, v: id })} />
-        {op('≈')}
-        {a.t === 'bind'
-          ? <FvInput value={a.y} onChange={y => onAtom({ ...a, y })} />
-          : <input aria-label="Constant" value={a.text ?? ''} placeholder="value" onChange={e => onAtom({ ...a, text: e.target.value })}
-              style={{ ...input, ...MAPPING_TOKEN_STYLE.const }} />}
-      </div>
-    )
-  }
-  if (a.t === 'rel') return <RelEditor atom={a} inScope={inScope} env={env} onAtom={onAtom} />
-  if (a.t === 'opt' || a.t === 'not') {
-    return (
-      <div>
-        <div style={row}>
-          {a.t === 'opt'
-            ? <>{op('[')}<FvInput value={a.y} onChange={y => onAtom({ ...a, y })} />{op(']')}
-                <span style={{ color: 'var(--ink-muted)' }}>optional: ŷ{a.y || '□'} is the value found here, or NULL when nothing matches</span></>
-            : <>{op('¬∃')}<span style={{ color: 'var(--ink-muted)' }}>no match for:</span></>}
-        </div>
-        <div style={{ marginLeft: 12, paddingLeft: 8, borderLeft: '2px solid var(--border-soft)' }}>
-          <PartEditor part={a} scope={inScope} env={env} onPart={p => onAtom({ ...a, ...p })} />
-        </div>
-      </div>
-    )
-  }
-  return <span style={{ color: 'var(--ink-muted)' }}>unknown atom</span>
-}
-
-const ARG_KINDS = [
-  { k: '', text: '_', title: 'any value' },
-  { k: 'fv', text: 'ŷ', title: 'the value is a frontier variable' },
-  { k: 'opt', text: 'ŷ?', title: 'the value, or NULL if the column has none' },
-  { k: 'const', text: "'c'", title: 'a constant' },
-  { k: 'absent', text: '−', title: 'the column has no value (NULL)' },
-  { k: 'var', text: 'x', title: 'a variable of the pattern' },
-]
-
-// A table row R(col: arg, …): one line per column.
-function RelEditor({ atom: a, inScope, env, onAtom }) {
-  const { ctx } = env
-  const table = ctx.tableById.get(a.tableId)
-  const setArg = (fid, arg, nv) => {
-    const args = { ...(a.args ?? {}) }
-    if (arg) args[fid] = arg; else delete args[fid]
-    onAtom({ ...a, args }, nv)
-  }
-  const tables = [...ctx.tables].sort((x, y) => x.name.localeCompare(y.name))
-  return (
-    <div>
-      <select aria-label="Table" value={a.tableId ?? ''} style={{ ...input, fontFamily: 'inherit', ...MAPPING_TOKEN_STYLE.type }}
-        onChange={e => onAtom({ ...a, tableId: e.target.value || null, args: {} })}>
-        <option value="">table…</option>
-        {tables.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+  const rows = []
+  if (!node || node.t === 'hole') {
+    rows.push(['Connective', <>
+      <button style={btn()} onClick={() => replace(path, { t: 'and', args: [hole(), hole()] }, [...path, 'args', 0])}>□ ∧ □</button>
+      <button style={btn()} title="An optional part: ŷ is its value, or NULL when it does not match"
+        onClick={() => replace(path, { t: 'opt', y: '', body: hole() }, [...path, 'body'])}>[ŷ](□)</button>
+      <button style={btn()} title="No match for the part" onClick={() => replace(path, { t: 'not', arg: hole() }, [...path, 'arg'])}>¬ □</button>
+    </>])
+    rows.push(['Quantifier', <>
+      {typeSelect(qType, setQType)}
+      <button style={btn()} disabled={!qType} onClick={() => replace(path, exists(hole()), [...path, 'body'])}>∃</button>
+    </>])
+    if (ctx.relational) rows.push(['Table row', tableSelect('', (tableId) => replace(path, { t: 'rel', tableId, args: {} }))])
+    rows.push(['Fact type', factSelect('', (a) => replace(path, a))])
+    rows.push(['Type', typeSelect('', (typeId) => replace(path, { t: 'type', typeId, arg: fitting(typeId) }), 'Is a type…')])
+    rows.push(['Value', <>
+      <button style={btn()} title="The variable's value is the frontier variable ŷ"
+        onClick={() => replace(path, { t: 'vcmp', op: '≈', left: { t: 'var', id: lastVar }, right: { t: 'fv', y: '' } })}>□ ≈ ŷ</button>
+      <button style={btn()} title="The variable's value is a constant"
+        onClick={() => replace(path, { t: 'vcmp', op: '≈', left: { t: 'var', id: lastVar }, right: { t: 'const', text: '' } })}>□ ≈ 'c'</button>
+    </>])
+  } else {
+    rows.push(['Wrap in', <>
+      <button style={btn()} onClick={() => replace(path, { t: 'and', args: [node, hole()] }, [...path, 'args', 1])}>… ∧ □</button>
+      <button style={btn()} title="Make this part optional: ŷ is its value, or NULL when it does not match"
+        onClick={() => replace(path, { t: 'opt', y: '', body: node }, path)}>[ŷ](…)</button>
+      <button style={btn()} onClick={() => replace(path, { t: 'not', arg: node }, path)}>¬ …</button>
+      {typeSelect(qType, setQType)}
+      <button style={btn()} disabled={!qType} onClick={() => replace(path, exists(node), path)}>∃ …</button>
+    </>])
+    if (node.t === 'and') rows.push(['Operands',
+      <button style={btn()} onClick={() => replace(path, { ...node, args: [...node.args, hole()] }, [...path, 'args', node.args.length])}>Add operand</button>])
+    if (node.t === 'exists') rows.push(['Variable', typeSelect(node.v.typeId, (typeId) => replace(path, { ...node, v: { ...node.v, typeId } }))])
+    if (node.t === 'fact') rows.push(['Fact type', factSelect(node.factId, (a) => replace(path, a))])
+    if (node.t === 'type') rows.push(['Type', typeSelect(node.typeId, (typeId) => replace(path, { ...node, typeId }))])
+    if (node.t === 'vcmp') rows.push(['Value', (
+      <select value={node.right?.t === 'fv' ? 'fv' : 'const'} style={selectStyle}
+        onChange={e => replace(path, { ...node, right: e.target.value === 'fv' ? { t: 'fv', y: '' } : { t: 'const', text: '' } })}>
+        <option value="fv">a frontier variable ŷ</option>
+        <option value="const">a constant</option>
       </select>
-      {table && <div style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr', gap: '2px 6px', alignItems: 'center', marginTop: 3, marginLeft: 12 }}>
-        {table.columns.map(col => {
-          const arg = a.args?.[col.fact.id]
-          return (
-            <React.Fragment key={col.fact.id}>
-              <span style={{ ...MAPPING_TOKEN_STYLE.reading, fontFamily: 'var(--font-mono)', fontSize: 12, ...(col.pk && { fontWeight: 700, textDecoration: 'underline' }) }}
-                title={`${col.vt.name}${col.pk ? ', primary key' : ''}${col.notNull ? ', not null' : ''}`}>
-                {col.name}
-              </span>
-              <select aria-label={`${col.name} argument`} value={arg?.k ?? ''} style={{ ...input, width: 52 }}
-                onChange={e => {
-                  const k = e.target.value
-                  if (!k) setArg(col.fact.id, null)
-                  else if (k === 'fv' || k === 'opt') setArg(col.fact.id, { k, y: arg?.y ?? col.name.toLowerCase() })
-                  else if (k === 'const') setArg(col.fact.id, { k, text: '' })
-                  else if (k === 'var') setArg(col.fact.id, { k, v: null })
-                  else setArg(col.fact.id, { k })
-                }}>
-                {ARG_KINDS.map(o => <option key={o.k} value={o.k} title={o.title}>{o.text}</option>)}
-              </select>
-              <span>
-                {(arg?.k === 'fv' || arg?.k === 'opt') && <FvInput value={arg.y} optional={arg.k === 'opt'} onChange={y => setArg(col.fact.id, { ...arg, y })} />}
-                {arg?.k === 'const' && <input aria-label="Constant" value={arg.text ?? ''} placeholder="value"
-                  onChange={e => setArg(col.fact.id, { ...arg, text: e.target.value })} style={{ ...input, ...MAPPING_TOKEN_STYLE.const }} />}
-                {arg?.k === 'var' && <VarPick value={arg.v} typeId={col.vt.id} inScope={inScope} env={env}
-                  onPick={(id, nv) => setArg(col.fact.id, { ...arg, v: id }, nv)} />}
-              </span>
-            </React.Fragment>
-          )
-        })}
-      </div>}
+    )])
+    if (node.t === 'rel') {
+      const tb = ctx.tableById.get(node.tableId)
+      rows.push(['Table', tableSelect(node.tableId, (tableId) => replace(path, { t: 'rel', tableId, args: {} }))])
+      if (tb) rows.push(['Columns', (
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr', gap: '2px 8px', alignItems: 'center', fontSize: 12 }}>
+          {tb.columns.map(col => {
+            const arg = node.args?.[col.fact.id]
+            const setArg = (a) => {
+              const args = { ...node.args }
+              if (a) args[col.fact.id] = a; else delete args[col.fact.id]
+              replace(path, { ...node, args })
+            }
+            return (
+              <React.Fragment key={col.fact.id}>
+                <span style={{ fontFamily: 'var(--font-mono)', ...TOKEN_STYLE.reading, ...(col.pk && { fontWeight: 700, textDecoration: 'underline' }) }}
+                  title={`${col.vt.name}${col.pk ? ', primary key' : ''}${col.notNull ? ', not null' : ''}`}>{col.name}</span>
+                <select aria-label={`${col.name} argument`} value={arg?.k ?? ''} style={{ ...selectStyle, width: 56 }}
+                  onChange={e => {
+                    const k = e.target.value
+                    if (!k) setArg(null)
+                    else if (k === 'fv' || k === 'opt') setArg({ k, y: arg?.y ?? col.name.toLowerCase() })
+                    else if (k === 'const') setArg({ k, text: '' })
+                    else if (k === 'var') setArg({ k, v: fitting(col.vt.id) })
+                    else setArg({ k })
+                  }}>
+                  {COL_KINDS.map(o => <option key={o.k} value={o.k} title={o.title}>{o.text}</option>)}
+                </select>
+                <span style={{ color: 'var(--ink-muted)' }}>{COL_KINDS.find(o => o.k === (arg?.k ?? ''))?.title}</span>
+              </React.Fragment>
+            )
+          })}
+        </div>
+      )])
+    }
+    rows.push(['Remove', <>
+      <button style={btn()} onClick={() => replace(path, hole())}>Clear</button>
+      {parent && ['and', 'exists', 'not', 'opt'].includes(parent.t) && (
+        <button style={btn()} title="Replace the enclosing part by this part"
+          onClick={() => replace(parentPath, node, parentPath)}>Lift out of {{ and: '∧', exists: '∃', not: '¬', opt: '[ŷ]' }[parent.t]}</button>
+      )}
+    </>])
+  }
+
+  return (
+    <div style={{ marginTop: 12, padding: 10, background: 'var(--bg-raised)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-soft)' }}>
+      <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+        {side === 'source' ? 'Source' : 'Target'}: {!node || node.t === 'hole' ? 'fill in the selected □' : 'selected part'}
+      </div>
+      {rows.map(([label, content]) => (
+        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 5 }}>
+          <span style={{ width: 84, fontSize: 11, color: 'var(--ink-3)' }}>{label}</span>
+          {content}
+        </div>
+      ))}
     </div>
   )
 }
