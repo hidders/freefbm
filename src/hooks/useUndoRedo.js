@@ -5,6 +5,7 @@ const MAX_HISTORY = 60
 
 function snapshot(state) {
   return JSON.stringify({
+    schemas:        state.schemas,
     objectTypes:    state.objectTypes,
     facts:          state.facts,
     subtypes:       state.subtypes,
@@ -32,6 +33,7 @@ export function useUndoRedo() {
     const unsub = useOrmStore.subscribe((state, prev) => {
       if (restoring.current) return
       if (
+        state.schemas        === prev.schemas        &&
         state.objectTypes    === prev.objectTypes    &&
         state.facts          === prev.facts          &&
         state.subtypes       === prev.subtypes       &&

@@ -242,6 +242,15 @@ export function createDiagramSlice(set, get) {
     },
 
     addElementToDiagram(elementId, diagramId) {
+      // A diagram shows only elements of its own schema.
+      {
+        const s = get()
+        const target = s.diagrams.find(d => d.id === diagramId)
+        const baseId = elementId.includes('_il_') ? elementId.split('_il_')[0] : elementId
+        const el = s.objectTypes.find(o => o.id === baseId) ?? s.facts.find(f => f.id === baseId)
+          ?? s.subtypes.find(st => st.id === baseId) ?? s.constraints.find(c => c.id === baseId)
+        if (target && el && el.schemaId && target.schemaId && el.schemaId !== target.schemaId) return
+      }
       set(s => {
         // BFS to collect all OT/fact IDs that must accompany elementId in the diagram.
         // Also tracks implied links that need to be shown.

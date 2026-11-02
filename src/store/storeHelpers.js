@@ -253,7 +253,7 @@ export const roleOccRefsKey = (refs) => {
   return Object.entries(r).sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}:${v}`).join('|')
 }
 
-export const mkDiagram = (name = 'Main') => ({ id: uid(), name, occurrences: [], constraintOccurrences: [], implicitLinkPositions: {}, multiSelectedIds: [], profileId: null, shownImplicitLinks: [], notes: [], expandedRefModes: [], expandedRefModeOccs: [], subtypeOccurrences: [], subtypeEndpointOccs: {} })
+export const mkDiagram = (name = 'Main', schemaId = null) => ({ id: uid(), name, schemaId, occurrences: [], constraintOccurrences: [], implicitLinkPositions: {}, multiSelectedIds: [], profileId: null, shownImplicitLinks: [], notes: [], expandedRefModes: [], expandedRefModeOccs: [], subtypeOccurrences: [], subtypeEndpointOccs: {} })
 export const mkNote    = (x, y)          => ({ id: uid(), x: Math.round(x), y: Math.round(y), w: 160, h: 100, text: '', connectors: [] })
 
 // ── name uniqueness ───────────────────────────────────────────────────────────
@@ -953,10 +953,70 @@ export function migrateOldDiagram(diag, parsedOts, facts, constraints, constrain
   }
 }
 
+// ── schemas ───────────────────────────────────────────────────────────────────
+// A file holds one or more schemas. Every object type, fact type, subtype,
+// constraint and diagram carries the id of the schema it belongs to
+// (`schemaId`); see stampSchemaIds below and docs/logic/schema-mappings.tex.
+// `profile` says which restricted form the schema follows: 'orm2' (none) or
+// 'relational' (tables in encoding B).
+export const SCHEMA_PROFILES = ['orm2', 'relational']
+export const mkSchema = (name = 'Schema', profile = 'orm2') => ({ id: `schema_${uid()}`, name, profile })
+
+// The keys of the store whose items belong to a schema.
+export const SCHEMA_SCOPED_KEYS = ['objectTypes', 'facts', 'subtypes', 'constraints', 'diagrams']
+
+// The schema of the active diagram, which is the schema new elements go into.
+export function activeSchemaIdOf(state) {
+  const d = state.diagrams?.find(x => x.id === state.activeDiagramId)
+  return d?.schemaId ?? state.schemas?.[0]?.id ?? null
+}
+
+// Gives every item in the schema-scoped arrays of `next` that has no schemaId
+// the schema that was active in `prev`. Element constructors don't know the
+// active schema, so the store stamps new items here, once, on the way in.
+// Arrays that are unchanged or fully stamped are returned as they are.
+export function stampSchemaIds(next, prev) {
+  if (!next || typeof next !== 'object') return next
+  let out = next
+  const fallback = () => activeSchemaIdOf(prev) ?? next.schemas?.[0]?.id ?? null
+  for (const key of SCHEMA_SCOPED_KEYS) {
+    const arr = next[key]
+    if (!Array.isArray(arr) || arr === prev[key]) continue
+    if (arr.every(x => x?.schemaId)) continue
+    const sid = fallback()
+    if (!sid) continue
+    if (out === next) out = { ...next }
+    out[key] = arr.map(x => (x && !x.schemaId ? { ...x, schemaId: sid } : x))
+  }
+  return out
+}
+
+// Reads the schema list of a file and makes every element and diagram point
+// to one of its schemas. Files from before schemas existed get one schema
+// holding everything; an unknown or missing schemaId falls back to the first.
+export function loadSchemas(raw, collections) {
+  const schemas = (Array.isArray(raw) ? raw : [])
+    .filter(x => x && typeof x.id === 'string' && x.id)
+    .map(x => ({
+      id: x.id,
+      name: typeof x.name === 'string' && x.name.trim() ? x.name : 'Schema',
+      profile: SCHEMA_PROFILES.includes(x.profile) ? x.profile : 'orm2',
+    }))
+  if (!schemas.length) schemas.push(mkSchema('Schema'))
+  const known = new Set(schemas.map(x => x.id))
+  const first = schemas[0].id
+  const tag = arr => (arr ?? []).map(x => (known.has(x?.schemaId) ? x : { ...x, schemaId: first }))
+  const out = { schemas }
+  for (const [key, arr] of Object.entries(collections)) out[key] = tag(arr)
+  return out
+}
+
 // ── empty model ───────────────────────────────────────────────────────────────
 export const EMPTY = () => {
-  const d = mkDiagram('Main')
+  const schema = mkSchema('Schema')
+  const d = mkDiagram('Main', schema.id)
   return {
+    schemas:         [schema],
     objectTypes:     [],
     facts:           [],
     subtypes:        [],

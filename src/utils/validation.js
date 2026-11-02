@@ -43,6 +43,10 @@ export const VALIDATION_CATEGORIES = {
     label: 'Derivation Rules',
     description: 'Missing, ill-formed or circular derivation rules of derived and semi-derived subtypes and fact types',
   },
+  schemaScope: {
+    label: 'Schemas',
+    description: 'Elements that refer to elements of another schema in the same file',
+  },
 }
 
 export const DEFAULT_VALIDATION_CATEGORIES = Object.fromEntries(
@@ -683,25 +687,78 @@ export function runValidation(state, enabledCategories) {
     }
   }
 
+  // ── Schemas ──────────────────────────────────────────────────────────────────
+  // Every reference (role player, subtype end, constraint role or target, rule
+  // atom, query link...) must stay inside the element's own schema; mappings
+  // between schemas are separate rules. References are found by walking the
+  // element's data for strings that are ids of elements of another schema.
+  if (enabledCategories.has('schemaScope') && (state.schemas?.length ?? 0) > 1) {
+    const schemaOf = new Map()
+    const kindOf = new Map()
+    for (const ot of objectTypes) { schemaOf.set(ot.id, ot.schemaId); kindOf.set(ot.id, ot.kind === 'value' ? 'value' : 'entity') }
+    for (const f of facts) { schemaOf.set(f.id, f.schemaId); kindOf.set(f.id, 'fact') }
+    for (const st of subtypes) { schemaOf.set(st.id, st.schemaId); kindOf.set(st.id, 'subtype') }
+    for (const c of constraints) { schemaOf.set(c.id, c.schemaId); kindOf.set(c.id, 'constraint') }
+    const schemaName = new Map(state.schemas.map(x => [x.id, x.name]))
+    const nameOf = (id) => {
+      const ot = objectTypes.find(o => o.id === id)
+      if (ot) return `"${ot.name}"`
+      const f = facts.find(x => x.id === id)
+      return f ? `fact type ${f.id}` : id
+    }
+    const foreignRefs = (el) => {
+      const found = new Set()
+      const walk = (v, key) => {
+        if (typeof v === 'string') {
+          if (key === 'id' || key === 'schemaId') return
+          const base = v.includes('_il_') ? v.slice(0, v.indexOf('_il_')) : v
+          const sid = schemaOf.get(base)
+          if (sid !== undefined && sid !== el.schemaId) found.add(base)
+        } else if (Array.isArray(v)) v.forEach(x => walk(x))
+        else if (v && typeof v === 'object') for (const k in v) walk(v[k], k)
+      }
+      walk(el)
+      return [...found]
+    }
+    for (const el of [...objectTypes, ...facts, ...subtypes, ...constraints]) {
+      if (el._implicit) continue
+      for (const ref of foreignRefs(el)) {
+        errors.push({
+          id: `schema-scope-${el.id}-${ref}`,
+          category: 'schemaScope',
+          elementId: el.id,
+          elementKind: kindOf.get(el.id),
+          message: `Refers to ${nameOf(ref)} of schema "${schemaName.get(schemaOf.get(ref)) ?? '?'}", outside its own schema "${schemaName.get(el.schemaId) ?? '?'}"`,
+          severity: 'error',
+        })
+      }
+    }
+  }
+
   // ── Naming ───────────────────────────────────────────────────────────────────
   if (enabledCategories.has('naming')) {
-    // ObjectTypeDuplicateNameError — all object type names (entity, value, nested entity) must be globally unique
-    // name → [{ elementId, elementKind }]
+    // ObjectTypeDuplicateNameError — object type names (entity, value, nested
+    // entity) must be unique within their schema; schemas in one file may
+    // reuse names. Keyed by schema and name; the message shows the name.
+    // key → [{ elementId, elementKind }]
     const globalNameMap = {}
     for (const ot of objectTypes) {
       const name = ot.name?.trim()
       if (!name) continue
-      if (!globalNameMap[name]) globalNameMap[name] = []
-      globalNameMap[name].push({ elementId: ot.id, elementKind: ot.kind === 'value' ? 'value' : 'entity' })
+      const key = `${ot.schemaId ?? ''}\u0000${name}`
+      if (!globalNameMap[key]) globalNameMap[key] = []
+      globalNameMap[key].push({ elementId: ot.id, elementKind: ot.kind === 'value' ? 'value' : 'entity' })
     }
     for (const f of facts) {
       if (!f.objectified) continue
       const name = f.objectifiedName?.trim()
       if (!name) continue
-      if (!globalNameMap[name]) globalNameMap[name] = []
-      globalNameMap[name].push({ elementId: f.id, elementKind: 'fact' })
+      const key = `${f.schemaId ?? ''}\u0000${name}`
+      if (!globalNameMap[key]) globalNameMap[key] = []
+      globalNameMap[key].push({ elementId: f.id, elementKind: 'fact' })
     }
-    for (const [name, entries] of Object.entries(globalNameMap)) {
+    for (const [key, entries] of Object.entries(globalNameMap)) {
+      const name = key.slice(key.indexOf('\u0000') + 1)
       if (entries.length > 1) {
         for (const { elementId, elementKind } of entries) {
           errors.push({
@@ -753,15 +810,17 @@ export function runValidation(state, enabledCategories) {
         }
       }
 
-      // Collect for cross-fact check (a)
+      // Collect for cross-fact check (a), within the fact type's schema
       for (const sig of Object.keys(localSigs)) {
-        if (!globalSigMap[sig]) globalSigMap[sig] = []
-        globalSigMap[sig].push(f.id)
+        const key = `${f.schemaId ?? ''}\u0000${sig}`
+        if (!globalSigMap[key]) globalSigMap[key] = []
+        globalSigMap[key].push(f.id)
       }
     }
 
     // (a) Cross-fact duplicates: same signature appears in two or more fact types
-    for (const [sig, factIds] of Object.entries(globalSigMap)) {
+    for (const [key, factIds] of Object.entries(globalSigMap)) {
+      const sig = key.slice(key.indexOf('\u0000') + 1)
       if (factIds.length > 1) {
         for (const fid of factIds) {
           errors.push({

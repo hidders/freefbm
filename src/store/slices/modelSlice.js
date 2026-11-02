@@ -14,7 +14,7 @@ import {
   migrateOldDiagram, nextRelationNumber, defaultReadingParts, subtypeKindOf,
   factTypeLabel, getConstraintDeps, getConstraintQueryDeps, eligibleConstraints,
   syncConstraints, computeConnectedIds, hasNoConnectors, runFactMergePass,
-  EMPTY,
+  EMPTY, loadSchemas, activeSchemaIdOf,
   mkUniqueness, withMandatoryId,
 } from '../storeHelpers'
 import { BASE_LANGUAGE, swapLanguage } from '../viewLanguage.js'
@@ -22,6 +22,15 @@ import { makeContext } from '../../logic/constraintFormulas.js'
 import { withRuleForms } from '../../logic/query.js'
 import { mkGroup, loadGroups, pruneGroups } from '../../utils/groups.js'
 import { mkPropertyDefinition, loadPropertyDefinitions, dropPropertyValues } from '../../utils/customProperties.js'
+
+// The clipboard holds elements of the schema it was copied in; they may only be
+// pasted or duplicated into a diagram of that same schema, because they refer
+// to that schema's object types and fact types. (A clipboard from before
+// schemas existed has no schemaId and is accepted.)
+function sameSchemaClipboard(state) {
+  const cb = state.clipboard
+  return !!cb && (!cb.schemaId || cb.schemaId === activeSchemaIdOf(state))
+}
 
 export function createModelSlice(set, get) {
   return {
@@ -155,6 +164,8 @@ export function createModelSlice(set, get) {
         shownImplicitLinks: [...copiedILKeys],
         expandedRefModes:   copiedExpandedRefs,
         positions:          clipPositions,
+        // Paste and duplicate stay within this schema (see sameSchemaClipboard).
+        schemaId:           activeSchemaIdOf(get()),
       }
       set({ clipboard: newClipboard })
     },
@@ -182,7 +193,7 @@ export function createModelSlice(set, get) {
     // Ctrl+V: add original clipboard elements to the active diagram, skip those already present
     pasteClipboard() {
       const { clipboard, activeDiagramId, diagrams, objectTypes, facts, constraints, subtypes } = get()
-      if (!clipboard) return
+      if (!sameSchemaClipboard(get())) return
 
       const activeDiagram = diagrams.find(d => d.id === activeDiagramId)
       const existingIds = new Set((activeDiagram?.occurrences ?? []).map(o => o.schemaElementId))
@@ -319,7 +330,7 @@ export function createModelSlice(set, get) {
     // Ctrl+D: duplicate clipboard elements as fresh schema copies at +20px offset
     duplicateClipboard() {
       const { clipboard, activeDiagramId } = get()
-      if (!clipboard) return
+      if (!sameSchemaClipboard(get())) return
       const OFFSET = 20
 
       const idMap = new Map()
@@ -753,19 +764,19 @@ export function createModelSlice(set, get) {
         if (clean.length) nestedEntityMappings[fid] = clean
       }
 
+      const scoped = loadSchemas(d.schema?.schemas, {
+        objectTypes: parsedOts, facts, subtypes: parsedSts, constraints, diagrams,
+      })
+
       const activeDiag = diagrams.find(d => d.id === activeDiagramId)
       const diagDS = activeDiag?.displaySettings ?? {}
       set({
+        ...scoped,
         ruleEditor: null, ruleHighlight: null,
         viewLanguage: BASE_LANGUAGE,
         languages: Array.isArray(d.schema?.languages) ? d.schema.languages.filter(l => typeof l === 'string') : [],
-        objectTypes: parsedOts,
-        facts,
-        subtypes:    parsedSts,
-        constraints,
         propertyDefinitions: loadPropertyDefinitions(d.schema?.propertyDefinitions),
         groups: pruneGroups(loadGroups(d.schema?.groups ?? d.groups), { objectTypes: parsedOts, facts, subtypes: parsedSts, constraints, diagrams }),
-        diagrams,
         activeDiagramId,
         pan:  activeDiag?.pan  ?? { x: 0, y: 0 },
         zoom: activeDiag?.zoom ?? 1,
@@ -817,7 +828,7 @@ export function createModelSlice(set, get) {
         pan, zoom,
         mandatoryDotPosition, showReferenceMode, showRoleNames,
         showSequenceMembership, showConstraintQueries,
-        showMinimap, minimapPos, languages, groups, propertyDefinitions,
+        showMinimap, minimapPos, languages, groups, propertyDefinitions, schemas,
       } = state
       // Strip in-memory-only selection state; flush current pan/zoom + display settings into diagrams
       const cleanDiagrams = diagrams.map(({ multiSelectedIds: _, ...d }) => ({
@@ -847,6 +858,7 @@ export function createModelSlice(set, get) {
       return JSON.stringify({
         version: 2,
         schema: {
+          schemas,
           objectTypes:          objectTypes.map(strip),
           factTypes:            facts.map(f => strip(f.implicitLinks ? { ...f, implicitLinks: f.implicitLinks.map(strip) } : f)),
           ...(languages?.length && { languages }),
