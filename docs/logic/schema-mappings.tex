@@ -1,0 +1,556 @@
+\documentclass[11pt]{amsart}
+\usepackage{geometry}
+\geometry{a4paper}
+\usepackage{amssymb}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[colorinlistoftodos,prependcaption]{todonotes}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{conjecture}[theorem]{Conjecture}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{example}{Example}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% ── Macros shared with agg-logic.tex ─────────────────────────────────────────
+\newcommand{\DataTypes}{\mathcal{T}}
+\newcommand{\DataValues}{\mathcal{V}}
+\newcommand{\DomObjects}{\mathcal{O}}
+\newcommand{\DomValues}{\mathcal{O}^{\mathsf{val}}}
+\newcommand{\DomEnts}{\mathcal{O}^{\mathsf{ent}}}
+\newcommand{\Preds}{\mathcal{P}}
+\newcommand{\EntPreds}{\Preds^{\textsf{ent}}}
+\newcommand{\ValPreds}{\Preds^{\textsf{val}}}
+\newcommand{\FactPreds}{\Preds^{\textsf{fact}}}
+\newcommand{\RefSchemes}{\mathcal{R}}
+\newcommand{\sem}[1]{[\![{#1}]\!]}
+\newcommand{\pr}[1]{\mathsf{\textcolor{RoyalBlue}{#1}}}
+\newcommand{\var}[1]{\mathsf{\textcolor{Plum}{#1}}}
+\newcommand{\tp}[1]{\texttt{\textsc{#1}}}
+\newcommand{\dataOp}[1]{\mathbin{\textcolor{ForestGreen}{#1}}}
+\newcommand{\dataVal}[1]{\textcolor{ForestGreen}{#1}}
+\newcommand{\dataEq}{\mathrel{\textcolor{ForestGreen}{\doteq}}}
+
+% ── New in this document ─────────────────────────────────────────────────────
+% Frontier (data) variables, shared between the two sides of a mapping rule.
+\newcommand{\fv}[1]{\mathit{\textcolor{BrickRed}{#1}}}
+\newcommand{\NULL}{\dataVal{\mathsf{null}}}
+\newcommand{\DataValuesN}{\DataValues_{\mathsf{null}}}
+\newcommand{\Opt}[1]{\mathsf{opt}_{#1}}
+\newcommand{\IdSchemes}{\mathcal{I}}
+\newcommand{\ident}{\mathit{id}}
+\newcommand{\corr}{\;\Longleftrightarrow\;}
+\newcommand{\Cov}{\mathsf{Cov}}
+\newcommand{\Det}{\mathsf{Det}}
+
+\title{Schema mappings for FreeFBM: tree-pattern correspondences}
+\author{Jan Hidders}
+\date{November 2026 (draft)}
+
+\begin{document}
+\maketitle
+
+\setcounter{tocdepth}{1}
+\tableofcontents
+
+\section{Goal}
+
+FreeFBM is to become a workbench for designing, redesigning and reverse
+engineering database schemas, with ORM2 as the common language. A
+relational schema is represented as an ORM2 schema of a restricted form (a
+\emph{profile}), and the relationship between two schemas is documented by
+a \emph{mapping}: a finite set of rules, each relating a pattern over one
+schema to a pattern over the other.
+
+This document defines a candidate language for these rules. It is chosen to
+be expressive enough for the usual relational design transformations
+(vertical and horizontal partitioning, foreign keys versus cross tables,
+nullable columns) while keeping three properties:
+\begin{enumerate}
+  \item \emph{No value invention.} Every object on one side that does not
+    occur on the other is determined by key and identification constraints
+    from values that do.
+  \item \emph{Symmetry.} A rule is a correspondence, not a directed
+    implication, so the inverse of a mapping is obtained by swapping the two
+    sides of every rule.
+  \item \emph{Checkability.} Whether a mapping is a bijection between the
+    legal instances of the two schemas reduces to a small number of
+    constraint implications (key-safety, coverage), and the constraints
+    that would have to be added to either schema to make it one can be
+    reported to the user (\emph{constraint accounting}).
+\end{enumerate}
+The logic is that of \emph{An intermediate sorted logic for ORM2}
+(\texttt{agg-logic.tex}); we reuse its notation and only add what mappings
+need. Aggregation, transitive closure and data functions are deliberately
+left out of the mapping language: a rule that needs them is expressed by a
+derived fact type inside one of the schemas, which the mapping then relates
+with a simple rule.
+
+\section{Setting}
+\label{sec:setting}
+
+\subsection{Schemas}
+
+A \emph{schema} $S = (V_S, \Sigma_S)$ consists of a vocabulary $V_S =
+(\Preds_S, \delta_S, \sigma_S, \RefSchemes_S)$ as in \texttt{agg-logic.tex}
+and a set $\Sigma_S$ of constraints, which are closed formulas of that
+logic. An \emph{instance} of $S$ is an interpretation $\iota_S$ of $V_S$
+with $\iota_S \models \Sigma_S$. A mapping relates two schemas $S$ and $T$
+whose predicate sets are disjoint, so that an instance of $S$ and an
+instance of $T$ together form an interpretation $\iota_S \cup \iota_T$ of
+the combined vocabulary.
+
+\subsection{Identification schemes}
+
+The vocabulary of \texttt{agg-logic.tex} only has simple reference schemes
+$\RefSchemes(p) = (r, q)$: an entity is identified by one value through one
+binary fact type. Relational keys and ORM2 external uniqueness constraints
+need composite identification, so we generalise.
+
+\begin{definition}
+An \emph{identification scheme} for an entity type $p \in \EntPreds$ is a
+non-empty sequence $(r_1, \ldots, r_k)$ of binary fact types with
+$\sigma(r_i) = (p, q_i)$ and $q_i \in \EntPreds \cup \ValPreds$. A schema
+\emph{uses} it if $\Sigma$ implies that in every instance the relation
+$$\{ (e, o_1, \ldots, o_k) \mid e \in \iota(p),\ (e, o_i) \in \iota(r_i)
+  \text{ for } 1 \le i \le k \}$$
+is a total injective function from $\iota(p)$ to $\iota(q_1) \times \cdots
+\times \iota(q_k)$. That is: each $r_i$ is mandatory and functional for
+$p$, and the $r_i$ together are unique (an external uniqueness constraint,
+the preferred identifier of $p$). We write $\IdSchemes(p)$ for the
+identification scheme used for $p$, if any, and require the graph with an
+edge from $p$ to each $q_i$ to be acyclic.
+\end{definition}
+
+A simple reference scheme $\RefSchemes(p) = (r, q)$ is the special case
+$\IdSchemes(p) = (r)$ with $q \in \ValPreds$. By acyclicity, every entity
+$e$ of a type with an identification scheme has an \emph{identifying tuple}
+$\ident(e) \in \DataValues^{+}$ of data values, obtained by recursively
+replacing every identifying entity by its own identifying tuple and every
+domain value $o$ by $\rho(o)$. Two entities of the same type are equal if
+and only if their identifying tuples are equal.
+
+\begin{remark}
+ORM2 requires a preferred identifier for every entity type, so in a
+validated FreeFBM schema every entity type has an identification scheme,
+possibly inherited from a supertype. The role order ``entity first'' in
+$\sigma(r_i)$ is for presentation only; FreeFBM allows the identifying role
+in any position.
+\end{remark}
+
+\subsection{The relational profile}
+
+A relational schema is represented in \emph{encoding~B}: every table is an
+entity type, every column is a binary fact type from that entity type to a
+value type (or, for an abstract identifier column, to an entity type), a
+\texttt{NOT NULL} column is a mandatory role, the primary key is the
+identification scheme of the table's entity type, a \texttt{UNIQUE}
+constraint is an external uniqueness constraint, and a foreign key is a
+subset constraint between role sequences. Relational notation is an
+abbreviation over this encoding (Definition~\ref{def:relatom}).
+
+\subsection{Frontier variables and $\NULL$}
+
+Besides the object variables of \texttt{agg-logic.tex}, which range over
+the domain objects of a type, mapping rules use \emph{frontier variables},
+written $\fv{y}, \fv{y}_1, \ldots$, which range over $\DataValuesN =
+\DataValues \cup \{ \NULL \}$, where $\NULL \notin \DataValues$. Frontier
+variables are the only variables shared by the two sides of a rule, so all
+that passes between two schemas is data values. Within mapping rules
+$\NULL$ is an ordinary constant: $\NULL \dataEq \NULL$ holds (as SQL's
+\texttt{IS NOT DISTINCT FROM}), and the logic stays two-valued.
+
+\section{Patterns}
+\label{sec:patterns}
+
+\begin{definition}
+\label{def:pattern}
+A \emph{pattern} over a vocabulary $V$ is a formula built by the grammar
+$$\varphi \;::=\; p(u_1, \ldots, u_n) \;\mid\; q(u) \;\mid\; u \dataEq \fv{y}
+  \;\mid\; u \dataEq c \;\mid\; \varphi \wedge \varphi \;\mid\;
+  \Opt{\fv{y}}(\varphi) \;\mid\; \neg \exists \bar u\, \varphi$$
+where $p \in \FactPreds$, $q \in \EntPreds \cup \ValPreds$, the $u_i$ are
+object variables, $\fv{y}$ is a frontier variable and $c$ a data constant,
+subject to the following conditions.
+\begin{enumerate}
+  \item[(P1)] \emph{Acyclicity.} The hypergraph whose nodes are the object
+    variables of $\varphi$ and whose hyperedges are the variable sets of its
+    fact atoms is $\alpha$-acyclic, both at the top level and within every
+    $\Opt{}$ and $\neg\exists$ part together with the variables it shares
+    with its context.
+  \item[(P2)] \emph{Binding of frontier variables.} A binding atom
+    $u \dataEq \fv{y}$ has a value-type variable $u$, or an entity-type
+    variable whose type has a simple reference scheme. Every frontier
+    variable occurring in $\varphi$ occurs in a binding atom at the top
+    level, or is the \emph{guard} $\fv{y}$ of exactly one optional part
+    $\Opt{\fv{y}}(\varphi')$. A guard occurs in a binding atom inside its
+    own optional part and nowhere outside it. A frontier variable that is
+    not a guard may occur in several binding atoms, which then join on its
+    value.
+  \item[(P3)] \emph{Guarded negation.} In $\neg\exists \bar u\, \varphi'$,
+    every free variable of $\varphi'$ not in $\bar u$ is an object variable
+    occurring in a fact or type atom of the enclosing pattern outside the
+    negation, or a frontier variable bound at the top level.
+\end{enumerate}
+The object variables occurring at the top level of $\varphi$, outside every
+$\Opt{}$ and $\neg\exists$ part, are its \emph{local variables}. Variables
+introduced inside an $\Opt{}$ part are local to that part and existentially
+quantified there.
+\end{definition}
+
+\begin{definition}
+The optional part abbreviates a first-order formula. Let $\bar w$ be the
+object variables that occur in $\varphi'$ but not in its context. Then
+$$\Opt{\fv{y}}(\varphi') \;:=\;
+  \big(\fv{y} \dataEq \NULL \,\wedge\, \neg \exists \bar w\, \exists \fv{y}'\,
+     \varphi'[\fv{y}'/\fv{y}]\big)
+  \;\vee\;
+  \big(\neg(\fv{y} \dataEq \NULL) \,\wedge\, \exists \bar w\, \varphi'\big).$$
+\end{definition}
+
+The first disjunct says that the optional branch is absent and the value is
+$\NULL$; the second that it is present with value $\fv{y}$. The negation
+$\neg\exists \bar u\,\varphi'$ is the general absence test (an anti-join),
+and is safe by (P3).
+
+\begin{definition}
+\label{def:relatom}
+Let $R$ be a table entity type with columns $\mathit{col}_1, \ldots,
+\mathit{col}_n$ (binary fact types with $\sigma(\mathit{col}_i) = (R,
+q_i)$). A \emph{relational atom} $R(t_1, \ldots, t_n)$, where each $t_i$ is
+a frontier variable $\fv{y}$, a nullable frontier variable $\fv{y}?$, a
+constant $c$, the absence marker $-$, the wildcard $\_$, or an object
+variable $u$ (for a column whose $q_i$ is an entity type), abbreviates
+$$\exists x \big( R(x) \wedge \textstyle\bigwedge_{i=1}^{n} \alpha_i(x)
+  \big)$$
+with a fresh local variable $x$ of type $R$ and fresh variables $v_i$ of
+type $q_i$, where
+\begin{center}
+\begin{tabular}{ll}
+$t_i = \fv{y}$: & $\alpha_i = \exists v_i\,(\mathit{col}_i(x, v_i) \wedge
+  v_i \dataEq \fv{y})$\\
+$t_i = \fv{y}?$: & $\alpha_i = \Opt{\fv{y}}(\mathit{col}_i(x, v_i) \wedge
+  v_i \dataEq \fv{y})$\\
+$t_i = c$: & $\alpha_i = \exists v_i\,(\mathit{col}_i(x, v_i) \wedge
+  v_i \dataEq c)$\\
+$t_i = -$: & $\alpha_i = \neg\exists v_i\, \mathit{col}_i(x, v_i)$\\
+$t_i = \_$: & $\alpha_i = \top$\\
+$t_i = u$: & $\alpha_i = \mathit{col}_i(x, u)$.
+\end{tabular}
+\end{center}
+A negated relational atom $\neg R(t_1, \ldots, t_n)$ abbreviates the
+negation of this formula, with the fresh variables quantified inside the
+negation.
+\end{definition}
+
+\begin{remark}
+\label{rem:optrow}
+Two different kinds of optionality occur in relational examples. A
+\emph{nullable column} $R(\fv{a}, \fv{b}, \fv{c}?)$ requires the row to
+exist and makes only the column optional. An \emph{optional row}
+$\Opt{\fv{c}}(R_3(d, \fv{c}))$ makes the whole atom optional: $\fv{c}$ is
+$\NULL$ if and only if no row of $R_3$ with first column $d$ exists. In
+encoding~B, where a row is an entity and each column a role, the first is
+an optional role of an existing entity and the second an optional entity.
+Earlier informal notes wrote both as $R(\ldots, \fv{c}?)$; the examples
+below use $\Opt{}$ for the second.
+\end{remark}
+
+The local variable $x$ is the row. For rules over relational schemas it is
+always determined by the primary key (see Section~\ref{sec:keysafety}), so
+it never needs to be invented.
+
+\section{Rules and mappings}
+\label{sec:rules}
+
+\begin{definition}
+A \emph{rule} from $S$ to $T$ has the form
+$$\varphi(\bar x, \bar{\fv{y}}) \corr \psi(\bar{\fv{y}}, \bar z)$$
+where $\varphi$ is a pattern over $V_S$ with local variables $\bar x$,
+$\psi$ is a pattern over $V_T$ with local variables $\bar z$, and
+$\bar{\fv{y}}$ is the set of frontier variables, each of which occurs in
+both patterns. Its meaning is the closed formula
+$$\sem{\varphi \corr \psi} \;:=\; \forall \bar{\fv{y}} \,\big[\,
+  \exists \bar x\, \varphi \;\leftrightarrow\; \exists \bar z\, \psi
+  \,\big],$$
+where $\forall \bar{\fv{y}}$ ranges over $\DataValuesN$. A \emph{mapping}
+$M = (S, T, \Gamma)$ consists of two schemas with disjoint vocabularies and
+a finite set $\Gamma$ of rules from $S$ to $T$. It denotes the relation
+$$\sem{M} \;=\; \{ (\iota_S, \iota_T) \mid \iota_S \models \Sigma_S,\
+  \iota_T \models \Sigma_T,\ \iota_S \cup \iota_T \models
+  \textstyle\bigwedge_{\gamma \in \Gamma} \sem{\gamma} \}.$$
+\end{definition}
+
+\begin{lemma}[Finite range]
+For a rule $\varphi \corr \psi$ and instances $\iota_S, \iota_T$, if
+$\exists \bar x\,\varphi$ holds for an assignment to $\bar{\fv{y}}$, then
+every $\fv{y}$ is assigned $\NULL$ or the data value of a domain object in
+$\iota_S$; likewise for $\psi$ and $\iota_T$. Hence $\sem{\varphi \corr
+\psi}$ can be decided by evaluating both patterns over finitely many
+assignments.
+\end{lemma}
+
+\begin{proof}
+By (P2), each $\fv{y}$ occurs in a positive binding atom $u \dataEq
+\fv{y}$ at the top level, or is the guard of an optional part. In the first
+case, and in the present case of the optional part, $u$ ranges over the
+domain objects of $\iota_S$. In the absent case the value is $\NULL$.
+\end{proof}
+
+\begin{proposition}[Inverse]
+Let $M^{-1} = (T, S, \{ \psi \corr \varphi \mid \varphi \corr \psi \in
+\Gamma \})$. Then $\sem{M^{-1}} = \{ (\iota_T, \iota_S) \mid (\iota_S,
+\iota_T) \in \sem{M} \}$.
+\end{proposition}
+
+\begin{proof}
+Immediate, since $\leftrightarrow$ is symmetric.
+\end{proof}
+
+A mapping is meant to relate instances only up to the choice of domain
+entities, which carry no information of their own. We write $\iota \cong
+\iota'$ if there is a bijection between their domain objects that preserves
+types, facts and the data values $\rho$ of domain values. Since the rules
+only exchange data values, $\sem{M}$ is closed under $\cong$ on each side.
+The question that matters is therefore whether $\sem{M}$ is a bijection
+\emph{up to} $\cong$.
+
+\section{Key-safety}
+\label{sec:keysafety}
+
+\begin{definition}
+Let $\varphi$ be a pattern over a schema $(V, \Sigma)$ with frontier
+variables $\bar{\fv{y}}$. The set $\Det(\varphi)$ of \emph{determined}
+local variables is the smallest set $D$ such that:
+\begin{enumerate}
+  \item[(D1)] if $u \dataEq \fv{y}$ or $u \dataEq c$ occurs at the top level
+    of $\varphi$, then $u \in D$;
+  \item[(D2)] if $e$ is a local variable of an entity type $p$ with
+    $\IdSchemes(p) = (r_1, \ldots, r_k)$, and $\varphi$ contains atoms
+    $r_i(e, u_i)$ with $u_i \in D$ for all $i$, then $e \in D$;
+  \item[(D3)] if $\Sigma$ contains a uniqueness constraint over the
+    positions $K$ of fact type $p$, and $\varphi$ contains an atom $p(u_1,
+    \ldots, u_n)$ with $u_k \in D$ for all $k \in K$, then $u_j \in D$ for
+    all $j$;
+  \item[(D4)] more generally, if $\Sigma$ implies a \emph{pattern key}
+    $\forall \bar v\, \forall w, w'\, (\pi(\bar v, w) \wedge \pi(\bar v, w')
+    \to w = w')$ for a conjunctive pattern $\pi$, and $\varphi$ contains an
+    instance of $\pi$ whose $\bar v$ are in $D$, then its $w$ is in $D$.
+\end{enumerate}
+The pattern is \emph{key-safe} if every local variable is in
+$\Det(\varphi)$, and, for every optional part $\Opt{\fv{y}}(\varphi')$,
+every variable local to $\varphi'$ is determined in $\varphi'$ starting
+from $D \cup \{ \fv{y} \}$. Variables under a negation need not be
+determined. A rule is key-safe if $\varphi$ is key-safe over $S$ and $\psi$
+over $T$; a mapping is key-safe if all its rules are.
+\end{definition}
+
+(D2) and (D3) are special cases of (D4); they are listed because they are
+what a checker in FreeFBM would mostly use: preferred identifiers, internal
+uniqueness constraints and external uniqueness constraints.
+
+\begin{lemma}[Unique witness]
+If $\varphi$ is key-safe and $\iota \models \Sigma$, then for every
+assignment to $\bar{\fv{y}}$ there is at most one assignment to the local
+variables $\bar x$ that satisfies the top level of $\varphi$.
+\end{lemma}
+
+\begin{proof}[Proof sketch]
+By induction on the derivation of $u \in \Det(\varphi)$. (D1) uses that
+$\rho$ is injective on each value type (and on reference values for entity
+types with a simple reference scheme), (D2) the injectivity of
+identification, (D3) and (D4) the key constraints. Optional parts are
+handled the same way relative to their context.
+\end{proof}
+
+So under key-safety, $\exists \bar x\,\varphi$ is in effect a definite
+description: ``the'' $\bar x$ with $\varphi$. This is what lets the
+declarative reading also be used to \emph{build} the other side: for each
+assignment to $\bar{\fv{y}}$ satisfying $\varphi$, the witness of $\psi$
+is constructed, and each new entity is the one with the identifying tuple
+that the binding gives it.
+
+\section{Coverage and bijectivity}
+\label{sec:coverage}
+
+The rules say nothing about a fact that is part of no match. For instance,
+in Example~\ref{ex:vertical} a row of $R_2$ without a row of $R_1$ for the
+same $d$ completes no match, and the conjunction of rules holds whether or
+not that row is there.
+
+\begin{definition}
+Let $\psi$ occur in a rule. An atom occurrence $p(u_1, \ldots, u_n)$ or
+$q(u)$ at the top level of $\psi$, or inside an optional part, \emph{covers}
+the fact $(p, o_1, \ldots, o_n)$ of an instance $\iota$ if some satisfying
+assignment of $\psi$ in $\iota$ maps each $u_i$ to $o_i$. A mapping is
+\emph{$T$-covering} if in every instance $\iota_T$ of $T$, every fact and
+every object of every type is covered by some atom occurrence in some rule.
+\end{definition}
+
+$T$-covering is the implication $\Sigma_T \models \Cov_T$, where $\Cov_T$
+is the conjunction, over all predicates $p$ of $V_T$, of
+$$\forall \bar u\, \big( p(\bar u) \to \textstyle\bigvee_{(\gamma, a)}
+  \exists \bar{\fv{y}}\, \exists (\bar z \setminus \bar u)\, \psi_\gamma
+  [a \mapsto \bar u] \big),$$
+with the disjunction over all rules $\gamma$ and occurrences $a$ of $p$ in
+the target pattern $\psi_\gamma$. $S$-covering is defined symmetrically.
+
+\begin{conjecture}[Bijection up to isomorphism]
+\label{conj:bijection}
+Let $M$ be key-safe, $S$-covering and $T$-covering, and let every entity
+type occurring in a rule have an identification scheme. If $(\iota_S,
+\iota_T), (\iota_S', \iota_T') \in \sem{M}$, then $\iota_S \cong \iota_S'$
+if and only if $\iota_T \cong \iota_T'$.
+\end{conjecture}
+
+\begin{proof}[Proof idea]
+For each rule $\gamma$ let $Y_\gamma(\iota_S)$ be the set of assignments to
+$\bar{\fv{y}}$ satisfying $\exists \bar x\,\varphi_\gamma$. By the
+semantics, $Y_\gamma(\iota_S) = Y_\gamma(\iota_T)$. By coverage every fact
+of $\iota_S$ lies in a match, and by unique witness each match is
+determined by its assignment. Identification makes the choice of entities
+consistent across rules: an entity occurring in two matches has the same
+identifying tuple in both. So $\iota_S$ is determined up to $\cong$ by the
+family $(Y_\gamma(\iota_S))_\gamma$, and likewise $\iota_T$.
+\todo{Check the identification argument when an entity is determined only
+by (D3) or (D4) and not by its own identification scheme.}
+\end{proof}
+
+The conjecture gives injectivity. Totality, meaning that every instance of
+$S$ has a corresponding instance of $T$, additionally requires that the
+instance built from the rules satisfies $\Sigma_T$. That is exactly what
+constraint accounting checks.
+
+\section{Constraint accounting}
+\label{sec:accounting}
+
+For a mapping satisfying the conditions of
+Conjecture~\ref{conj:bijection}, each predicate of $S$ is definable over
+$T$, with entities replaced by their identifying tuples: an $S$-fact holds
+if and only if some rule match produces it, and the match exists on the $S$
+side if and only if its target pattern holds on the $T$ side. Write
+$\chi^{\to T}$ for the result of rewriting a constraint $\chi$ over $S$ in
+this way, by unfolding every atom through the rules that produce it.
+Every constraint of $\Sigma_S$ then gets one of four statuses with respect
+to $T$:
+\begin{description}
+  \item[native] $\chi^{\to T}$ is (equivalent to) a constraint in
+    $\Sigma_T$, for a relational target typically a \texttt{PRIMARY KEY},
+    \texttt{UNIQUE}, \texttt{FOREIGN KEY}, \texttt{NOT NULL} or
+    \texttt{CHECK};
+  \item[implied] $\Sigma_T \models \chi^{\to T}$, shown syntactically;
+  \item[lost] a counterexample exists: an instance of $T$ violating
+    $\chi^{\to T}$; the user may add $\chi^{\to T}$ to $T$ as a formula
+    constraint or assertion, or mark it deontic;
+  \item[unknown] neither a proof nor a counterexample was found.
+\end{description}
+The same is done for $\Sigma_T$ with respect to $S$, and for the coverage
+conditions $\Cov_S$ and $\Cov_T$, whose missing parts are reported in the
+same way: these are the constraints that ``should have been added if the
+schemas are to be equivalent''.
+
+\begin{remark}
+Implication between ORM2 constraints is undecidable in general, so the
+statuses are not complete. For keys, mandatory roles, subset and exclusion
+constraints over tree patterns a decision procedure is plausible, and in
+the examples below everything is decided by unfolding plus simple key and
+inclusion reasoning.
+\end{remark}
+
+\section{Examples}
+\label{sec:examples}
+
+The examples use relational notation (Definition~\ref{def:relatom}).
+Columns marked $\#$ hold abstract identifiers: they are entity-valued, so
+in a rule they appear as object variables, never as frontier variables.
+
+\begin{example}[Vertical partitioning]
+\label{ex:vertical}
+$S_1$ has $R(a, b, c?)$ with key $\{a, b\}$. $S_2$ has $R_1(d\#, a)$,
+$R_2(d\#, b)$ and $R_3(d\#, c)$, each with key $\{d\}$. The mapping has one
+rule:
+$$R(\fv{a}, \fv{b}, \fv{c}?) \corr R_1(d, \fv{a}) \wedge R_2(d, \fv{b})
+  \wedge \Opt{\fv{c}}(R_3(d, \fv{c})).$$
+On the left, $\fv{c}?$ is a nullable column; on the right, the row of $R_3$
+is optional (Remark~\ref{rem:optrow}), and $d$ is a local variable. Key-safety on the right needs $d$ to be
+determined by $\fv{a}$ and $\fv{b}$. The keys $\{d\}$ of $R_1$ and $R_2$ go
+the other way, so $S_2$ needs the pattern key ``$\{a, b\}$ determines $d$
+in $R_1(d, a) \wedge R_2(d, b)$'', which in ORM2 is an external uniqueness
+constraint and the preferred identifier of the type of $d$. $S_2$-covering
+needs every $d$ in $R_1$ to also be in $R_2$ and vice versa, and every $d$
+in $R_3$ to be in $R_1$. With these three constraints added to $S_2$, the
+mapping satisfies the conditions of Conjecture~\ref{conj:bijection}.
+\end{example}
+
+\begin{example}[Foreign key to cross table]
+\label{ex:crosstable}
+$S_1$ has $A(a, b?)$ with key $\{a\}$, $B(b, c)$ with key $\{b\}$, and the
+foreign key $A[b] \subseteq B[b]$. $S_2$ has $A(a)$ with key $\{a\}$, the
+cross table $C(a, b)$ with key $\{a\}$, and $B(b, c)$ with key $\{b\}$. The
+mapping has two rules:
+\begin{align*}
+  A(\fv{a}, \fv{b}?) &\corr A(\fv{a}) \wedge \Opt{\fv{b}}(C(\fv{a}, \fv{b})),\\
+  B(\fv{b}, \fv{c}) &\corr B(\fv{b}, \fv{c}).
+\end{align*}
+The absent case of the optional row is $\neg C(\fv{a}, \_)$, and
+$\fv{a}$ occurs in two binding atoms on the right, which join on its value. A first
+version that joined $B$ into the first rule would leave rows of $B$ that no
+$A$ references uncovered on both sides. Accounting finds two constraints
+missing in $S_2$: $C[b] \subseteq B[b]$, the image of the foreign key, and
+$C[a] \subseteq A[a]$, for $S_2$-covering. The key $\{a\}$ of $C$ is
+native: it is the image of the functionality of $b$ in $A$.
+\end{example}
+
+\begin{example}[Horizontal partitioning by a discriminator]
+\label{ex:horizontal}
+$S_1$ has $R(a, b, c)$ with key $\{a\}$ and $c \in \{1, 2\}$. $S_2$ has
+$R_1(a, b)$ and $R_2(a, b)$, each with key $\{a\}$, and $R_1[a] \cap
+R_2[a] = \emptyset$. The mapping has two rules:
+\begin{align*}
+  R(\fv{a}, \fv{b}, \dataVal{1}) &\corr R_1(\fv{a}, \fv{b}),\\
+  R(\fv{a}, \fv{b}, \dataVal{2}) &\corr R_2(\fv{a}, \fv{b}).
+\end{align*}
+$S_1$-covering holds because of the enumeration constraint; without it a
+row with $c = 3$ would be uncovered. Unfolding the key of $R$ through both
+rules gives three cases: both rows in the first rule (the key of $R_1$),
+both in the second (the key of $R_2$), and one in each, which gives
+$R_1(\fv{a}, \fv{b}) \wedge R_2(\fv{a}, \fv{b}') \to \dataVal{1} \dataEq
+\dataVal{2}$, that is the disjointness. The enumeration needs no
+counterpart in $S_2$: every row the rules produce has $c \in \{1, 2\}$.
+Nothing is missing on either side.
+\end{example}
+
+In general, a key whose rows are spread over several rules unfolds into a
+key per rule plus a disjointness between the rules.
+
+\section{Open issues}
+
+\begin{enumerate}
+  \item Prove Conjecture~\ref{conj:bijection}, or find the extra condition
+    it needs (see the note in its proof).
+  \item Identification schemes should move into \texttt{agg-logic.tex},
+    replacing or generalising $\RefSchemes$.
+  \item Characterise a class of constraints (keys, mandatory, subset,
+    exclusion over tree patterns) for which key-safety, coverage and
+    accounting are decidable, ideally in polynomial time.
+  \item Objectified fact types are not covered; in encoding~B they are not
+    needed for relational schemas, but ORM2 schemas use them.
+  \item Bijective data functions (unit conversion, splitting a name) and
+    surrogate identifiers generated on one side only: in the latter case
+    the round trip holds up to renaming of the generated values, which
+    should be a weaker notion of $\cong$ that also renames those values.
+  \item Whether patterns should allow several occurrences of the same
+    predicate (self-joins) without restriction; (P1) allows it, but the
+    graphical editor needs numbered occurrences.
+  \item The relationship with the derivation rules of
+    \texttt{agg-logic.tex}: a rule with $\psi$ a single atom and $\varphi$
+    without negation reads as a derivation rule for that atom, so
+    ``derive, then fold'' can reuse the derivation rule syntax.
+\end{enumerate}
+
+\end{document}
