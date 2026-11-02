@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
-import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
+import { useOrmStore, useOrmStoreIgnoring, useScopedStore } from '../store/ormStore'
+import { activeSchemaIdOf } from '../store/storeHelpers'
 import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import {
@@ -300,7 +301,7 @@ function SectionHeader({ title, count }) {
 // ── main component ────────────────────────────────────────────────────────────
 
 export default function SchemaBrowser() {
-  const store = useOrmStoreIgnoring('pan', 'zoom')
+  const store = useScopedStore()
   const { diagram } = useDiagramElements()
 
   const diagrams = store.diagrams ?? []
@@ -1004,7 +1005,7 @@ export default function SchemaBrowser() {
             <span style={{ fontSize: 9, color: 'var(--ink-muted)',
               letterSpacing: '0.07em', textTransform: 'uppercase',
               pointerEvents: 'none' }}>
-              ⠿ schema browser
+              ⠿ schema browser{(store.schemas?.length ?? 0) > 1 && ` · ${store.schemas.find(x => x.id === activeSchemaIdOf(store))?.name ?? ''}`}
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               {readyCount > 0 && (

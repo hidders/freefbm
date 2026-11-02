@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
+import { scopeToSchema, activeSchemaIdOf } from '../store/storeHelpers'
 import { formalise } from '../logic/constraintFormulas.js'
 import { renderFormula } from '../logic/renderFormula.js'
 import { verbalise } from '../verbalisation/engine.js'
@@ -74,14 +75,16 @@ export const SENTENCE_STYLE = {
 }
 
 export default function ConstraintsTab() {
-  const state = useOrmStore(useShallow(s => ({
+  // Seen from the active schema: 'Whole schema' means that schema.
+  const state = useOrmStore(useShallow(st => { const s = scopeToSchema(st); return {
     objectTypes: s.objectTypes, facts: s.facts, subtypes: s.subtypes, constraints: s.constraints,
     diagrams: s.diagrams, activeDiagramId: s.activeDiagramId,
     selectedId: s.selectedId, multiSelectedIds: s.multiSelectedIds,
     selectedMandatoryDot: s.selectedMandatoryDot, selectedUniqueness: s.selectedUniqueness,
     selectedInternalFrequency: s.selectedInternalFrequency, selectedValueRange: s.selectedValueRange,
     selectedCardinalityRange: s.selectedCardinalityRange, viewLanguage: s.viewLanguage,
-  })))
+    schemaName: st.schemas?.length > 1 ? st.schemas.find(x => x.id === activeSchemaIdOf(st))?.name : null,
+  } }))
   const [showDisjoint, toggleDisjoint] = useToggle('freefbm.formalisation.disjointness')
   const [showParticipation, toggleParticipation] = useToggle('freefbm.formalisation.participation')
   const [showLinks, toggleLinks] = useToggle('freefbm.formalisation.impliedLinks')
@@ -117,7 +120,7 @@ export default function ConstraintsTab() {
       }}>
         <span>
           {scope === 'selection' ? 'Constraints in the selection'
-            : scope === 'schema' ? 'Constraints in the whole schema' : 'Constraints on this diagram'} ({count})
+            : scope === 'schema' ? (state.schemaName ? `Constraints in schema ${state.schemaName}` : 'Constraints in the whole schema') : 'Constraints on this diagram'} ({count})
         </span>
         <Segmented options={VIEWS} value={view} onChange={setView} label="Show constraints as" />
         {view !== 'formulas' && <Segmented options={MODES} value={mode} onChange={setMode} label="Sentences say" />}

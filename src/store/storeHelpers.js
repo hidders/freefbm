@@ -991,6 +991,34 @@ export function stampSchemaIds(next, prev) {
   return out
 }
 
+// The state as seen from one schema (by default the active one): the scoped
+// collections hold only that schema's elements and diagrams. Panels that list
+// or pick elements use it so a schema never offers another schema's elements.
+// Results are cached per array and per state, so they keep their identity
+// across renders (memo dependencies stay stable). With one schema the state
+// is returned as it is.
+const scopedArrays = new WeakMap()
+const scopedStates = new WeakMap()
+function scopedArray(arr, sid) {
+  if (!Array.isArray(arr)) return arr
+  let bySchema = scopedArrays.get(arr)
+  if (!bySchema) { bySchema = new Map(); scopedArrays.set(arr, bySchema) }
+  let out = bySchema.get(sid)
+  if (!out) { out = arr.filter(x => x?.schemaId === sid); bySchema.set(sid, out) }
+  return out
+}
+export function scopeToSchema(state, schemaId) {
+  if (!state || (state.schemas?.length ?? 0) <= 1) return state
+  const sid = schemaId ?? activeSchemaIdOf(state)
+  if (!sid) return state
+  const cached = scopedStates.get(state)
+  if (cached?.sid === sid) return cached.out
+  const out = { ...state }
+  for (const k of SCHEMA_SCOPED_KEYS) out[k] = scopedArray(state[k], sid)
+  scopedStates.set(state, { sid, out })
+  return out
+}
+
 // Reads the schema list of a file and makes every element and diagram point
 // to one of its schemas. Files from before schemas existed get one schema
 // holding everything; an unknown or missing schemaId falls back to the first.

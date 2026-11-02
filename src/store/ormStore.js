@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
-import { EMPTY, stampSchemaIds } from './storeHelpers'
+import { EMPTY, stampSchemaIds, scopeToSchema } from './storeHelpers'
 import { createModelSlice } from './slices/modelSlice'
 import { createElementSlice } from './slices/elementSlice'
 import { createPopulationSlice } from './slices/populationSlice'
@@ -44,3 +44,9 @@ export function useOrmStoreIgnoring(...keys) {
   })
 }
 const selectAll = s => s
+
+// useOrmStoreIgnoring('pan', 'zoom') seen from the active schema: the element
+// collections and diagrams hold only that schema's (storeHelpers scopeToSchema).
+export function useScopedStore() {
+  return scopeToSchema(useOrmStoreIgnoring('pan', 'zoom'))
+}
