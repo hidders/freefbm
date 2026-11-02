@@ -971,6 +971,23 @@ export function activeSchemaIdOf(state) {
   return d?.schemaId ?? state.schemas?.[0]?.id ?? null
 }
 
+// The schemas the active diagram shows: its own, and for a mapping diagram
+// (diagram.mappingId) the mapping's source and target schema. A mapping
+// diagram belongs to its mapping's source schema (schemaId), so new elements
+// drawn on it go there.
+export function activeScopeIdsOf(state) {
+  const d = state.diagrams?.find(x => x.id === state.activeDiagramId)
+  const own = d?.schemaId ?? state.schemas?.[0]?.id ?? null
+  if (d?.mappingId) {
+    const m = state.mappings?.find(x => x.id === d.mappingId)
+    if (m) return [...new Set([m.sourceSchemaId, m.targetSchemaId].filter(Boolean))]
+  }
+  return own ? [own] : []
+}
+
+// The mapping a diagram draws, if it is a mapping diagram.
+export const mappingOfDiagram = (state, d) => (d?.mappingId ? state.mappings?.find(m => m.id === d.mappingId) ?? null : null)
+
 // Gives every item in the schema-scoped arrays of `next` that has no schemaId
 // the schema that was active in `prev`. Element constructors don't know the
 // active schema, so the store stamps new items here, once, on the way in.
@@ -999,23 +1016,26 @@ export function stampSchemaIds(next, prev) {
 // is returned as it is.
 const scopedArrays = new WeakMap()
 const scopedStates = new WeakMap()
-function scopedArray(arr, sid) {
+function scopedArray(arr, sids) {
   if (!Array.isArray(arr)) return arr
   let bySchema = scopedArrays.get(arr)
   if (!bySchema) { bySchema = new Map(); scopedArrays.set(arr, bySchema) }
-  let out = bySchema.get(sid)
-  if (!out) { out = arr.filter(x => x?.schemaId === sid); bySchema.set(sid, out) }
+  const key = sids.join('|')
+  let out = bySchema.get(key)
+  if (!out) { const set = new Set(sids); out = arr.filter(x => set.has(x?.schemaId)); bySchema.set(key, out) }
   return out
 }
+// With a mapping diagram active, the scope is the mapping's two schemas.
 export function scopeToSchema(state, schemaId) {
   if (!state || (state.schemas?.length ?? 0) <= 1) return state
-  const sid = schemaId ?? activeSchemaIdOf(state)
-  if (!sid) return state
+  const sids = schemaId ? [schemaId] : activeScopeIdsOf(state)
+  if (!sids.length) return state
+  const key = sids.join('|')
   const cached = scopedStates.get(state)
-  if (cached?.sid === sid) return cached.out
+  if (cached?.key === key) return cached.out
   const out = { ...state }
-  for (const k of SCHEMA_SCOPED_KEYS) out[k] = scopedArray(state[k], sid)
-  scopedStates.set(state, { sid, out })
+  for (const k of SCHEMA_SCOPED_KEYS) out[k] = scopedArray(state[k], sids)
+  scopedStates.set(state, { key, out })
   return out
 }
 

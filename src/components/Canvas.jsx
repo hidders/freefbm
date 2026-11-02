@@ -11,6 +11,7 @@ import ConstraintNodes from './ConstraintNodes'
 import RoleConnectors, { MandatoryDots } from './RoleConnectors'
 import Minimap from './Minimap'
 import ErdView, { isErdDiagram } from './ErdView'
+import { MappingTints, MappingRules } from './MappingLayer'
 import ContextMenu from './ContextMenu'
 import ConstraintMemberLabels from './ConstraintMemberLabels'
 import QueryAtoms from './QueryAtoms'
@@ -1374,6 +1375,8 @@ export default function Canvas() {
         <ViewportGroup>
           {erd && <ErdView/>}
           {!erd && <>
+          {/* Mapping diagrams: each element tinted by its schema's side */}
+          <MappingTints/>
           {/* Note connectors — rendered below notes so notes sit on top */}
           {visibleNotes.flatMap(note => (note.connectors ?? []).map(conn => {
             let tx, ty
@@ -1521,6 +1524,8 @@ export default function Canvas() {
           <ConstraintMemberLabels/>
           <ValidationBadges store={store} visibleOts={visibleOts} visibleFacts={visibleFacts} visibleConstraints={visibleConstraints} visibleSubtypes={visibleSubtypes}/>
           </g>{/* end previewDim wrapper */}
+          {/* Mapping diagrams: rules as nodes linked to their elements */}
+          <MappingRules/>
           {(qd || store.queryIndexHighlight) && <QueryAtoms
             mousePos={mousePos}
             onAtomClick={target => store.queryEditClick(target)}

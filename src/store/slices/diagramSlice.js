@@ -1,7 +1,7 @@
 import { findRefMode } from '../../utils/refMode.js'
 import {
   mkDiagram, occOf, inDiag, cInDiag, cOccOf,
-  addOccIfAbsent, addOwnedRefModeOccsIfAbsent,
+  addOccIfAbsent, addOwnedRefModeOccsIfAbsent, mkOcc,
   normalizeStEps, syncConstraints, computeCascadeRemove, rmCOcc,
   mkUniqueness, withMandatoryId,
 } from '../storeHelpers'
@@ -169,6 +169,8 @@ export function createDiagramSlice(set, get) {
         const active = s0.diagrams.find(x => x.id === s0.activeDiagramId)
         const schema = s0.schemas?.find(x => x.id === active?.schemaId)
         if (schema?.profile === 'relational') d.profileId = active?.profileId ?? 'postgresql'
+        // A new diagram next to a mapping diagram draws the same mapping.
+        if (active?.mappingId) { d.mappingId = active.mappingId; d.schemaId = active.schemaId; d.profileId = active.profileId ?? null }
       }
       set(s => {
         // In v2 all diagrams already have explicit occurrences lists (no show-all concept).
@@ -216,7 +218,11 @@ export function createDiagramSlice(set, get) {
         // the active schema), so a schema's last diagram can't be deleted.
         const gone = s.diagrams.find(d => d.id === id)
         if (!gone) return {}
-        const siblings = s.diagrams.filter(d => d.id !== id && d.schemaId === gone.schemaId)
+        // A mapping diagram can always go; the schema's own diagrams remain.
+        const kin = d => d.id !== id && d.schemaId === gone.schemaId && !d.mappingId
+        const siblings = gone.mappingId
+          ? [...s.diagrams.filter(d => d.id !== id && d.mappingId === gone.mappingId), ...s.diagrams.filter(kin)]
+          : s.diagrams.filter(kin)
         if (!siblings.length) return {}
         const newDiagrams = s.diagrams.filter(d => d.id !== id)
         const newActiveId = s.activeDiagramId === id ? siblings[0].id : s.activeDiagramId
@@ -286,7 +292,10 @@ export function createDiagramSlice(set, get) {
         const baseId = elementId.includes('_il_') ? elementId.split('_il_')[0] : elementId
         const el = s.objectTypes.find(o => o.id === baseId) ?? s.facts.find(f => f.id === baseId)
           ?? s.subtypes.find(st => st.id === baseId) ?? s.constraints.find(c => c.id === baseId)
-        if (target && el && el.schemaId && target.schemaId && el.schemaId !== target.schemaId) return
+        // A mapping diagram shows both schemas of its mapping.
+        const m = target?.mappingId ? s.mappings?.find(x => x.id === target.mappingId) : null
+        const allowed = m ? [m.sourceSchemaId, m.targetSchemaId] : [target?.schemaId]
+        if (target && el && el.schemaId && target.schemaId && !allowed.includes(el.schemaId)) return
       }
       set(s => {
         // BFS to collect all OT/fact IDs that must accompany elementId in the diagram.
@@ -375,7 +384,14 @@ export function createDiagramSlice(set, get) {
           for (const id of idsToAdd) {
             const el = s.objectTypes.find(o => o.id === id) ?? s.facts.find(f => f.id === id)
             if (!el) continue
-            nd = addOccIfAbsent(nd, id, el.x ?? 0, el.y ?? 0)
+            // A value type whose only occurrences belong to collapsed reference
+            // modes (hidden) gets one of its own, so the fact types added with
+            // it don't point at nothing.
+            const occsOf = (nd.occurrences ?? []).filter(o => o.schemaElementId === id)
+            const expanded = new Set(nd.expandedRefModeOccs ?? [])
+            if (occsOf.length && el.kind === 'value' && occsOf.every(o => o.refModeOwnerOccId != null && !expanded.has(o.refModeOwnerOccId)))
+              nd = { ...nd, occurrences: [...nd.occurrences, mkOcc(id, el.x ?? 0, el.y ?? 0)] }
+            else nd = addOccIfAbsent(nd, id, el.x ?? 0, el.y ?? 0)
             // If this element has a ref mode, also create its owned VT/FT occurrences now
             // so each entity gets its own VT occurrence immediately (not only upon expansion).
             const ownerEl = s.objectTypes.find(o => o.id === id && o.kind === 'entity')

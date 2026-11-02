@@ -68,6 +68,7 @@ export default function MappingsTab() {
                 {issueCount.warning > 0 && <span style={{ color: '#d97706' }}> · {issueCount.warning} warning{issueCount.warning === 1 ? '' : 's'}</span>}
               </span>
               <div style={{ flex: 1 }} />
+              <button style={btn} title="Show this mapping as a diagram: both schemas side by side, each rule linked to its elements" onClick={() => act().openMappingDiagram(m.id)}>Diagram</button>
               <button style={btn} onClick={() => act().addMappingRule(m.id)}>+ Rule</button>
               <button style={btn} title="Delete this mapping and its rules" onClick={() => act().deleteMapping(m.id)}>Delete</button>
             </div>

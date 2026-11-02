@@ -16,10 +16,12 @@ export const PROFILE_LABELS = {
 // schema's diagrams, double-clicking renames it, and an empty schema can be
 // removed with its ✕.
 export default function SchemaStrip() {
-  const { schemas, activeId, counts } = useOrmStore(useShallow(s => ({
+  const { schemas, activeId, counts, mappings, activeMappingId } = useOrmStore(useShallow(s => ({
     schemas: s.schemas ?? [],
     activeId: activeSchemaIdOf(s),
     counts: countsKey(s),
+    mappings: s.mappings ?? [],
+    activeMappingId: s.diagrams.find(d => d.id === s.activeDiagramId)?.mappingId ?? null,
   })))
   const [editingId, setEditingId] = useState(null)
   const [draft, setDraft] = useState('')
@@ -29,7 +31,7 @@ export default function SchemaStrip() {
     if (editingId && inputRef.current) { inputRef.current.focus(); inputRef.current.select() }
   }, [editingId])
 
-  if (schemas.length <= 1) return null
+  if (schemas.length <= 1 && !mappings.length) return null
   const sizes = Object.fromEntries(counts.split('|').filter(Boolean).map(x => x.split('=')).map(([k, v]) => [k, +v]))
 
   const commit = () => {
@@ -48,7 +50,7 @@ export default function SchemaStrip() {
         Schemas
       </span>
       {schemas.map(sc => {
-        const active = sc.id === activeId
+        const active = sc.id === activeId && !activeMappingId
         const prof = PROFILE_LABELS[sc.profile] ?? PROFILE_LABELS.orm2
         const size = sizes[sc.id] ?? 0
         const editing = editingId === sc.id
@@ -106,6 +108,38 @@ export default function SchemaStrip() {
         )
       })}
       <NewSchemaMenu variant="strip" />
+      {mappings.length > 0 && <>
+        <span style={{ fontSize: 9, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ink-2)', margin: '0 2px 0 10px' }}>
+          Mappings
+        </span>
+        {mappings.map(m => {
+          const active = m.id === activeMappingId
+          const nameOf = (id) => schemas.find(x => x.id === id)?.name ?? '?'
+          return (
+            <div key={m.id}
+              data-mapping-id={m.id}
+              className="mapping-chip"
+              onClick={() => useOrmStore.getState().openMappingDiagram(m.id)}
+              title={`${nameOf(m.sourceSchemaId)} ⟺ ${nameOf(m.targetSchemaId)} · ${m.rules.length} rule${m.rules.length === 1 ? '' : 's'}. Click for its diagram.`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                height: 22, padding: '0 8px 0 3px', borderRadius: 11,
+                border: `1px ${active ? 'solid' : 'dashed'} ${active ? 'var(--border-dark)' : 'var(--border)'}`,
+                background: active ? 'var(--bg-canvas)' : 'var(--bg-surface)',
+                color: active ? 'var(--ink-1)' : 'var(--ink-2)',
+                fontSize: 12, fontWeight: active ? 600 : 400,
+                cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                boxShadow: active ? 'var(--shadow-sm)' : 'none',
+              }}>
+              <span style={{
+                fontSize: 9, fontWeight: 700, color: '#fff', borderRadius: 8, padding: '1px 5px', lineHeight: '12px',
+                background: 'linear-gradient(90deg, var(--map-source) 50%, var(--map-target) 50%)',
+              }}>⟺</span>
+              <span>{m.name}</span>
+            </div>
+          )
+        })}
+      </>}
     </div>
   )
 }
