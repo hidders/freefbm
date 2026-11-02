@@ -33,7 +33,9 @@ export default function ImportLogPanel() {
         ))}
       </ul>
       <div style={{ padding: '6px 10px', fontSize: 11, color: 'var(--ink-3)', borderTop: '1px solid var(--border-soft)' }}>
-        This is a new, unsaved model. Save writes a .ffbm file; the .orm file is not changed.
+        {log.kind === 'ddl'
+          ? 'The tables are a new relational schema in this file; the .sql file is not changed.'
+          : 'This is a new, unsaved model. Save writes a .ffbm file; the .orm file is not changed.'}
       </div>
     </div>
   )

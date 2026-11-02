@@ -73,6 +73,9 @@ function buildMenu(win) {
         { type: 'separator' },
         { label: 'Export to PDF…', accelerator: 'CmdOrCtrl+Shift+E', click: send('menu:exportPdf') },
         { type: 'separator' },
+        { label: 'Import PostgreSQL DDL…', click: send('menu:importSql') },
+        { label: 'Export PostgreSQL DDL…', click: send('menu:exportSql') },
+        { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
       ],
     },
@@ -149,6 +152,26 @@ ipcMain.handle('dialog:saveFile', async (_, { defaultPath, content }) => {
     // Offer .ffbm even when the model was opened from a legacy .orm2/.json file
     defaultPath: (defaultPath || 'model.ffbm').replace(/\.(orm2|json|orm)$/i, '.ffbm'),
     filters: [{ name: 'FreeFBM Model', extensions: ['ffbm'] }],
+  })
+  if (canceled || !filePath) return null
+  fs.writeFileSync(filePath, content, 'utf-8')
+  return filePath
+})
+
+// SQL scripts: PostgreSQL DDL read into, or written from, a relational schema.
+const SQL_FILTERS = [{ name: 'SQL Script', extensions: ['sql', 'ddl', 'pgsql'] }, { name: 'All Files', extensions: ['*'] }]
+
+ipcMain.handle('dialog:openSql', async (event) => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
+    filters: SQL_FILTERS, properties: ['openFile'],
+  })
+  if (canceled || !filePaths.length) return null
+  return { path: filePaths[0], content: fs.readFileSync(filePaths[0], 'utf-8') }
+})
+
+ipcMain.handle('dialog:saveSql', async (event, { defaultPath, content }) => {
+  const { canceled, filePath } = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+    defaultPath: defaultPath || 'schema.sql', filters: SQL_FILTERS,
   })
   if (canceled || !filePath) return null
   fs.writeFileSync(filePath, content, 'utf-8')

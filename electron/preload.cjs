@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportPdf: (html) => ipcRenderer.invoke('dialog:exportPdf', html),
   openRules: ()     => ipcRenderer.invoke('dialog:openRules'),
   saveRules: (opts) => ipcRenderer.invoke('dialog:saveRules', opts),
+  openSql:   ()     => ipcRenderer.invoke('dialog:openSql'),
+  saveSql:   (opts) => ipcRenderer.invoke('dialog:saveSql', opts),
 
   // The verbalisation workbench window and its messages to and from the
   // main window.
@@ -23,7 +25,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const valid = [
       'menu:new', 'menu:open', 'menu:save', 'menu:saveAs',
       'menu:deleteSelected', 'menu:zoomIn', 'menu:zoomOut', 'menu:zoomReset',
-      'menu:exportPdf',
+      'menu:exportPdf', 'menu:importSql', 'menu:exportSql',
     ]
     if (!valid.includes(channel)) return
     ipcRenderer.on(channel, cb)

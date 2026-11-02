@@ -61,6 +61,8 @@ The active `selectedTool` in the store determines how canvas clicks are interpre
 
 Files are saved as `.ffbm` (JSON; the legacy `.orm2` and `.json` extensions still open). The store's `exportModel()` / `importModel()` functions serialise/deserialise all four element collections.
 
+File › Import PostgreSQL DDL… reads a `.sql` script into a new relational schema of the open file (`src/relational/ddlParse.js` parses CREATE TABLE / ALTER TABLE ADD CONSTRAINT / enums / domains / unique indexes; `ddlImport.js` builds encoding B with one diagram, as one undo step via `store.historyBatch`); File › Export PostgreSQL DDL… writes the active relational schema (`ddlExport.js`).
+
 File › Open also accepts NORMA `.orm` files: `src/import/norma.js` (`importNorma`) turns the XML into a FreeFBM model, which opens as a new unsaved model with an import log (`ImportLogPanel.jsx`); `src/import/openModelFile.js` routes the file. NORMA role paths (derivation rules of fact types and subtypes, hand-drawn join paths) become rule-tree formulas via `src/import/normaPaths.js`; positive linear self-recursion in a fully derived fact type's rule is rewritten as a TC* closure (`closeLinearRecursion`); outer joins and calculated values are not translated yet. Semi-derived rules may use themselves positively (least fixpoint over the stored population, `derivedPopulation.js`).
 
 ### Styling

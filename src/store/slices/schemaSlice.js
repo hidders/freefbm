@@ -1,4 +1,6 @@
 import { mkSchema, mkDiagram, SCHEMA_PROFILES, activeSchemaIdOf } from '../storeHelpers'
+import { importPostgresDdl } from '../../relational/ddlImport.js'
+import { exportPostgresDdl } from '../../relational/ddlExport.js'
 
 // Several schemas in one file (workbench plan, step 2). The schemas are listed
 // in `schemas`; elements and diagrams point to theirs with `schemaId`. The
@@ -55,6 +57,44 @@ export const createSchemaSlice = (set, get) => ({
     }
     set(st => ({ schemas: st.schemas.filter(x => x.id !== id), diagrams: st.diagrams.filter(d => !owned(d)), isDirty: true }))
     return true
+  },
+
+  // Reads PostgreSQL DDL into a new relational schema of this file, with one
+  // diagram of its tables, as a single undo step. The import log lists what
+  // was left out. Returns { schemaId, stats }.
+  importPostgresDdl(sql, name = 'Relational') {
+    const used = new Set(get().schemas.map(s => s.name))
+    let unique = name
+    for (let i = 2; used.has(unique); i++) unique = `${name} ${i}`
+    const schema = mkSchema(unique, 'relational')
+    const built = importPostgresDdl(sql, { schemaId: schema.id, diagramName: 'Tables' })
+    set(s => ({ historyBatch: (s.historyBatch ?? 0) + 1 }))
+    try {
+      set(s => ({
+        schemas: [...s.schemas, schema],
+        objectTypes: [...s.objectTypes, ...built.objectTypes],
+        facts: [...s.facts, ...built.facts],
+        constraints: [...s.constraints, ...built.constraints],
+        diagrams: [...s.diagrams, built.diagram],
+        isDirty: true,
+      }))
+      get().setActiveDiagram(built.diagram.id)
+      // The queries FreeFBM builds when a constraint is drawn.
+      for (const c of built.constraints) get()._tryAutoGenerateQuery(c.id)
+    } finally {
+      set(s => ({ historyBatch: Math.max(0, (s.historyBatch ?? 1) - 1) }))
+    }
+    const st = built.stats
+    get().setImportLog({ kind: 'ddl', source: `${name} (PostgreSQL DDL)`, entries: [
+      { level: 'note', text: `Read ${st.tables} tables with ${st.columns} columns into schema ${unique}: ${st.valueTypes} value types, ${st.keys} keys, ${st.foreignKeys} foreign keys` },
+      ...built.log,
+    ] })
+    return { schemaId: schema.id, stats: st }
+  },
+
+  // The active relational schema as PostgreSQL DDL: { sql, warnings }.
+  exportPostgresDdl(schemaId = activeSchemaIdOf(get())) {
+    return exportPostgresDdl(get(), schemaId)
   },
 
   // Activates the schema by switching to its first diagram.

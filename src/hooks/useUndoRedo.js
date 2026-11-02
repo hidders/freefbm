@@ -32,7 +32,11 @@ export function useUndoRedo() {
   useEffect(() => {
     const unsub = useOrmStore.subscribe((state, prev) => {
       if (restoring.current) return
-      if (
+      // Changes made while a batch is open (store.historyBatch > 0) become one
+      // undo step, recorded when the batch closes.
+      if (state.historyBatch > 0) return
+      const batchClosed = prev.historyBatch > 0
+      if (!batchClosed &&
         state.schemas        === prev.schemas        &&
         state.objectTypes    === prev.objectTypes    &&
         state.facts          === prev.facts          &&
