@@ -22,6 +22,7 @@ import { makeContext } from '../../logic/constraintFormulas.js'
 import { withRuleForms } from '../../logic/query.js'
 import { mkGroup, loadGroups, pruneGroups } from '../../utils/groups.js'
 import { mkPropertyDefinition, loadPropertyDefinitions, dropPropertyValues } from '../../utils/customProperties.js'
+import { loadMappings } from '../../mapping/mapping.js'
 
 // The clipboard holds elements of the schema it was copied in; they may only be
 // pasted or duplicated into a diagram of that same schema, because they refer
@@ -776,6 +777,8 @@ export function createModelSlice(set, get) {
         viewLanguage: BASE_LANGUAGE,
         languages: Array.isArray(d.schema?.languages) ? d.schema.languages.filter(l => typeof l === 'string') : [],
         propertyDefinitions: loadPropertyDefinitions(d.schema?.propertyDefinitions),
+        mappings: loadMappings(d.schema?.mappings, new Set(scoped.schemas.map(x => x.id))),
+        mappingRuleEditor: null,
         groups: pruneGroups(loadGroups(d.schema?.groups ?? d.groups), { objectTypes: parsedOts, facts, subtypes: parsedSts, constraints, diagrams }),
         activeDiagramId,
         pan:  activeDiag?.pan  ?? { x: 0, y: 0 },
@@ -828,7 +831,7 @@ export function createModelSlice(set, get) {
         pan, zoom,
         mandatoryDotPosition, showReferenceMode, showRoleNames,
         showSequenceMembership, showConstraintQueries,
-        showMinimap, minimapPos, languages, groups, propertyDefinitions, schemas,
+        showMinimap, minimapPos, languages, groups, propertyDefinitions, schemas, mappings,
       } = state
       // Strip in-memory-only selection state; flush current pan/zoom + display settings into diagrams
       const cleanDiagrams = diagrams.map(({ multiSelectedIds: _, ...d }) => ({
@@ -868,6 +871,7 @@ export function createModelSlice(set, get) {
           externalConstraints:  constraints.map(c => withRuleForms(c, ctx)),
           ...(groups?.length && { groups: pruneGroups(groups, state) }),
           ...(propertyDefinitions?.length && { propertyDefinitions }),
+          ...(mappings?.length && { mappings }),
           displaySettings: {
             mandatoryDotPosition,
             showReferenceMode,

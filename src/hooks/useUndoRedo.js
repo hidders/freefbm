@@ -12,6 +12,7 @@ function snapshot(state) {
     constraints:    state.constraints,
     groups:         state.groups,
     propertyDefinitions: state.propertyDefinitions,
+    mappings:       state.mappings,
     diagrams:       state.diagrams,
     activeDiagramId: state.activeDiagramId,
     queryEditDraft: state.queryEditDraft,
@@ -44,6 +45,7 @@ export function useUndoRedo() {
         state.constraints    === prev.constraints    &&
         state.groups         === prev.groups         &&
         state.propertyDefinitions === prev.propertyDefinitions &&
+        state.mappings       === prev.mappings       &&
         state.diagrams       === prev.diagrams       &&
         state.activeDiagramId === prev.activeDiagramId &&
         state.queryEditDraft  === prev.queryEditDraft &&

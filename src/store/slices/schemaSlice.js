@@ -55,7 +55,11 @@ export const createSchemaSlice = (set, get) => ({
       const target = s.diagrams.find(d => !owned(d))
       if (target) get().setActiveDiagram(target.id)
     }
-    set(st => ({ schemas: st.schemas.filter(x => x.id !== id), diagrams: st.diagrams.filter(d => !owned(d)), isDirty: true }))
+    set(st => ({
+      schemas: st.schemas.filter(x => x.id !== id), diagrams: st.diagrams.filter(d => !owned(d)),
+      mappings: (st.mappings ?? []).filter(m => m.sourceSchemaId !== id && m.targetSchemaId !== id),
+      isDirty: true,
+    }))
     return true
   },
 

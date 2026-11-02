@@ -5,6 +5,7 @@ import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
 import { computeRingConstraintRelation, computeUniquenessProjection, computeSequenceProjections, computeValueComparisonData, computeInclusiveOrTable, computeExclusiveOrTable, computeExclusionTable, computeEqualityTable, computeSubsetTable, freqRangeSatisfies, projCellKey, findLCAsForTypes, checkC1ForTypes } from '../utils/populationValidation.js'
 import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 import ConstraintsTab from './ConstraintsTab.jsx'
+import MappingsTab from './MappingsTab.jsx'
 import { makePopulationEvaluator, formatCell } from '../logic/derivedPopulation.js'
 import Splitter from './Splitter.jsx'
 
@@ -14,6 +15,7 @@ const MAX_HEIGHT_RATIO = 0.75   // panel can't exceed 75% of the viewport row
 const TABS = [
   { id: 'population',    label: 'Population' },
   { id: 'constraints',   label: 'Constraints' },
+  { id: 'mappings',      label: 'Mappings' },
 ]
 
 export default function BottomPanel() {
@@ -131,6 +133,7 @@ export default function BottomPanel() {
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 12 }}>
           {tab === 'population'    && <PopulationTab />}
           {tab === 'constraints'   && <ConstraintsTab />}
+          {tab === 'mappings'      && <MappingsTab />}
         </div>
       )}
     </div>

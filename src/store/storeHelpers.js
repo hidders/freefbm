@@ -1054,6 +1054,9 @@ export const EMPTY = () => {
     // Custom property definitions (utils/customProperties.js); the values sit
     // on the elements, in `properties`.
     propertyDefinitions: [],
+    // Schema mappings (mapping/mapping.js): rules between two schemas of the file.
+    mappings:        [],
+    mappingRuleEditor: null,
     diagrams:        [d],
     activeDiagramId: d.id,
     // The language names and readings are shown in (session only; the file

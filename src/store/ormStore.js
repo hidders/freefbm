@@ -8,6 +8,7 @@ import { createConstraintSlice } from './slices/constraintSlice'
 import { createSelectionSlice } from './slices/selectionSlice'
 import { createDiagramSlice } from './slices/diagramSlice'
 import { createSchemaSlice } from './slices/schemaSlice'
+import { createMappingSlice } from './slices/mappingSlice'
 export { subtypeKindOf } from './storeHelpers'
 
 export const useOrmStore = create((rawSet, get) => {
@@ -27,6 +28,7 @@ export const useOrmStore = create((rawSet, get) => {
     ...createSelectionSlice(set, get),
     ...createDiagramSlice(set, get),
     ...createSchemaSlice(set, get),
+    ...createMappingSlice(set, get),
   }
 })
 
