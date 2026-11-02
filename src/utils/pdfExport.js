@@ -39,15 +39,23 @@ function resolveCssVars(str, cssStyle) {
 export async function triggerPdfExport(store) {
   if (!window.electronAPI) return
 
-  const bounds = computeBounds(store)
+  const svgEl = document.getElementById('orm2-canvas-svg')
+  if (!svgEl) return
+
+  // An ERD view's tables and lines have their own positions: take the bounds
+  // from what is drawn.
+  const erd = svgEl.querySelector('.erd-view')
+  let bounds
+  if (erd) {
+    const b = erd.getBBox()
+    if (!b.width && !b.height) return
+    bounds = { minX: b.x - PAD, minY: b.y - PAD, maxX: b.x + b.width + PAD, maxY: b.y + b.height + PAD }
+  } else bounds = computeBounds(store)
   if (!bounds) return
 
   const { minX, minY, maxX, maxY } = bounds
   const vbW = maxX - minX
   const vbH = maxY - minY
-
-  const svgEl = document.getElementById('orm2-canvas-svg')
-  if (!svgEl) return
 
   const serializer = new XMLSerializer()
   const cssStyle   = getComputedStyle(document.documentElement)
@@ -84,9 +92,11 @@ export async function triggerPdfExport(store) {
 <html>
 <head>
 <style>
+  @page { margin: 10mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: transparent; }
-  svg { display: block; width: 100%; height: auto; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  /* The whole diagram on one page, scaled to fit either way. */
+  svg { display: block; width: 100%; height: 100%; }
 </style>
 </head>
 <body>${svgDoc}</body>
