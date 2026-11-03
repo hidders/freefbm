@@ -7,6 +7,7 @@ import { derivationIssues } from '../logic/derivationRule.js'
 import { factDerivationIssues, factLabel } from '../logic/factDerivation.js'
 import { derivationGraph, derivationCycles } from '../logic/derivationDependencies.js'
 import { makeContext } from '../logic/constraintFormulas.js'
+import { sqlCheckOf } from '../relational/checkFormula.js'
 import { isFormulaConstraint, checkFormulaConstraint } from '../logic/formulaConstraint.js'
 import { isFormulaQuery, checkQuery, whyNoOuterJoin } from '../logic/query.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
@@ -795,6 +796,14 @@ export function runValidation(state, enabledCategories) {
         }))
         if (!members.length || tablesOf.has(null) || tablesOf.size !== 1)
           push('unique', c, 'constraint', `${label} constraint is not over the columns of one table, so it is not a UNIQUE or PRIMARY KEY constraint; ${NOT_SQL}`, 'warning')
+        continue
+      }
+      if (c.constraintType === 'formula') {
+        // A formula constraint read from a CHECK is written back as that CHECK.
+        const colName = (factId) => tableRole.has(factId) ? 'column' : null
+        const ch = sqlCheckOf(c, colName, x => x)
+        if (ch.text) continue
+        push('not-sql', c, 'constraint', `Formula constraint${c.name ? ` ${c.name}` : ''}: ${ch.reason}, so it is not written as SQL yet`, 'warning')
         continue
       }
       push('not-sql', c, 'constraint', `${label} constraint: ${NOT_SQL}`, 'warning')

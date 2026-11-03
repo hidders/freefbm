@@ -406,7 +406,7 @@ function readType(s) {
 // Column constraints after the type, into col (and, for REFERENCES, the table).
 function readColumnConstraints(s, col, table, problems) {
   while (!s.done()) {
-    if (s.eatWord('constraint')) { s.next(); continue }
+    if (s.eatWord('constraint')) { col._cname = s.next()?.v ?? null; continue }
     if (s.eatWord('not', 'null')) { col.notNull = true; continue }
     if (s.eatWord('null')) continue
     if (s.eatWord('default')) {
@@ -429,7 +429,12 @@ function readColumnConstraints(s, col, table, problems) {
     }
     if (s.eatWord('primary', 'key')) { if (table) table.primaryKey = [col.name]; col.notNull = true; continue }
     if (s.eatWord('unique')) { s.eatWord('nulls', 'not', 'distinct'); if (table) table.uniques.push([col.name]); continue }
-    if (s.eatWord('check')) { col.checks.push(tokensText(s.group() ?? [])); s.eatWord('no', 'inherit'); continue }
+    if (s.eatWord('check')) {
+      col.checks.push(tokensText(s.group() ?? []))
+      ;(col.checkNames ??= [])[col.checks.length - 1] = col._cname ?? null
+      s.eatWord('no', 'inherit')
+      continue
+    }
     if (s.eatWord('references')) {
       const q = s.qname()
       const g = s.isOp('(') ? nameList(s.group()) : null
@@ -528,6 +533,7 @@ function readTableConstraint(s, t, problems) {
   }
   if (s.eatWord('check')) {
     t.checks.push(tokensText(s.group() ?? []))
+    ;(t.checkNames ??= [])[t.checks.length - 1] = cname
     return true
   }
   if (s.eatWord('exclude')) {

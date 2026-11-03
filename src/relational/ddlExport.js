@@ -93,6 +93,7 @@ export function exportPostgresDdl(state, schemaId) {
     }
     if (t.pk) items.push(`  PRIMARY KEY (${t.pk.map(c => q(c.name)).join(', ')})`)
     for (const u of t.uniques) items.push(`  UNIQUE (${u.map(c => q(c.name)).join(', ')})`)
+    for (const ch of t.checks) items.push(`  ${ch.name ? `CONSTRAINT ${q(ch.name)} ` : ''}CHECK (${ch.text})`)
     if (!t.columns.length) warnings.push(`Table ${t.name} has no columns`)
     lines.push(`CREATE TABLE ${q(t.name)} (`, items.join(',\n'), ');', '')
   }

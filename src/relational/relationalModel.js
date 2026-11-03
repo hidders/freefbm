@@ -7,9 +7,15 @@
 //   fks: [{ from: [col], to: [col], fromTable, toTable, constraintId }],
 //   notColumns: [fact],      // fact types that are not columns
 //   notExported: [text],     // constraints with no table form
+//   (each table also has checks: [{ name, text, constraintId }], the formula
+//   constraints read from CHECK constraints)
 // }
 // col: { fact, table, vt, t (table role index), v (value role index), name,
 //        notNull, generated, pk, unique, fk }
+
+import { sqlCheckOf } from './checkFormula.js'
+
+const quoteName = (n) => (/^[a-z_][a-z0-9_$]*$/.test(n) ? n : `"${n.replace(/"/g, '""')}"`)
 
 export function relationalModel(state, schemaId) {
   const inSchema = (x) => !schemaId || x.schemaId === schemaId
@@ -18,7 +24,7 @@ export function relationalModel(state, schemaId) {
   const constraints = (state.constraints ?? []).filter(inSchema)
   const otById = new Map(ots.map(o => [o.id, o]))
 
-  const tables = ots.filter(o => o.kind === 'entity').map(e => ({ id: e.id, name: e.name, entity: e, columns: [], pk: null, uniques: [], fks: [] }))
+  const tables = ots.filter(o => o.kind === 'entity').map(e => ({ id: e.id, name: e.name, entity: e, columns: [], pk: null, uniques: [], fks: [], checks: [] }))
   const tableById = new Map(tables.map(t => [t.id, t]))
   const columnByFact = new Map()
   const notColumns = []
@@ -73,6 +79,13 @@ export function relationalModel(state, schemaId) {
         continue
       }
       notExported.push(`subset constraint ${c.id} (not between the columns of two tables)`)
+      continue
+    }
+    if (c.constraintType === 'formula') {
+      const ch = sqlCheckOf(c, (factId) => columnByFact.get(factId)?.name ?? null, quoteName)
+      const table = ch.text && tableById.get(ch.table)
+      if (table) table.checks.push({ name: ch.name, text: ch.text, constraintId: c.id })
+      else notExported.push(`formula constraint ${c.name || c.id} (${ch.reason ?? 'not over one table'})`)
       continue
     }
     notExported.push(`${c.constraintType} constraint ${c.id}`)
