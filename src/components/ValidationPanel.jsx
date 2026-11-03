@@ -145,6 +145,7 @@ export default function ValidationPanel() {
   // ── data ──────────────────────────────────────────────────────────────────
   const diagrams = store.diagrams || []
   const isElementOrphaned = (e) => {
+    if (e.elementKind === 'mappingRule') return false
     if (e.elementKind === 'subtype') {
       const st = (store.subtypes || []).find(s => s.id === e.elementId)
       if (!st) return false
@@ -167,9 +168,12 @@ export default function ValidationPanel() {
   const schemaOfElement = new Map()
   if (multiSchema) for (const k of ['objectTypes', 'facts', 'subtypes', 'constraints'])
     for (const x of (store[k] || [])) schemaOfElement.set(x.id, x.schemaId)
-  const schemaNameOf = (e) => schemas.find(x => x.id === schemaOfElement.get(e.elementId))?.name
-  const inScope = (e) => !multiSchema || allSchemas || !schemaOfElement.has(e.elementId)
-    || schemaOfElement.get(e.elementId) === activeSchemaId
+  // A mapping rule's issue belongs to both schemas of its mapping.
+  // (Its message names its mapping, which says which schemas.)
+  const schemaNameOf = (e) => (e.schemaIds ? null : schemas.find(x => x.id === schemaOfElement.get(e.elementId))?.name)
+  const inScope = (e) => !multiSchema || allSchemas
+    || (e.schemaIds ? e.schemaIds.includes(activeSchemaId)
+      : !schemaOfElement.has(e.elementId) || schemaOfElement.get(e.elementId) === activeSchemaId)
   const errors = (store.validationErrors || []).filter(e => !isElementOrphaned(e) && inScope(e))
   const errorCount = errors.length
   const byCategory = {}
@@ -178,7 +182,18 @@ export default function ValidationPanel() {
     byCategory[e.category].push(e)
   }
   // A click that ends a text selection only selects; see utils/textPanel.js.
-  const navigate = (e) => { if (!hasTextSelection()) store.navigateToElement(e.elementId, e.elementKind) }
+  const navigate = (e) => {
+    if (hasTextSelection()) return
+    // A mapping rule: the Mappings tab, with the rule open in the rule editor.
+    if (e.elementKind === 'mappingRule') {
+      const s = useOrmStore.getState()
+      s.setBottomPanelCollapsed(false)
+      s.setBottomPanelTab('mappings')
+      s.openMappingRuleEditor(e.mappingId, e.elementId)
+      return
+    }
+    store.navigateToElement(e.elementId, e.elementKind)
+  }
 
   // ── render ────────────────────────────────────────────────────────────────
   return (

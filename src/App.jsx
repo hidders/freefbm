@@ -281,7 +281,7 @@ function useKeyboardShortcuts() {
 const VALIDATION_INPUTS = [
   'objectTypes', 'facts', 'subtypes', 'constraints', 'groups', 'propertyDefinitions', 'diagrams',
   'populations', 'factPopulations', 'subtypeMappings', 'nestedEntityMappings', 'viewLanguage',
-  'validationCategories',
+  'validationCategories', 'mappings', 'schemas',
 ]
 
 function useValidation() {

@@ -261,6 +261,19 @@ function determined(vars, atoms, ctx, keys, start = new Set()) {
 export function checkRule(rule, mapping, state, ctxs = null) {
   const issues = []
   const ctxOf = (side) => ctxs?.[side] ?? sideContext(state, sideSchemaId(mapping, side))
+  // An element a rule names that is not in its side's schema: deleted, or
+  // (rarely) moved to another schema. Free edits of a schema leave rules
+  // pointing at such elements (workbench step 11).
+  const whereIs = (id, kind) => {
+    const el = (kind === 'fact' ? state.facts : state.objectTypes)?.find(x => x.id === id)
+    if (!el) return 'was deleted'
+    const sch = state.schemas?.find(x => x.id === el.schemaId)
+    return `is now in schema ${sch?.name ?? '?'}`
+  }
+  const namedType = (id) => {
+    const t = state.objectTypes?.find(x => x.id === id)
+    return t ? `type ${t.name}` : 'type'
+  }
   const uses = {}
   for (const side of SIDES) {
     const ctx = ctxOf(side)
@@ -274,19 +287,26 @@ export function checkRule(rule, mapping, state, ctxs = null) {
     // Elements of the right schema, and atoms filled in.
     const varIds = new Set()
     const varType = new Map()
-    const scanVars = (vars) => { for (const v of vars ?? []) { varIds.add(v.id); varType.set(v.id, v.typeId) } }
+    const scanVars = (vars) => {
+      for (const v of vars ?? []) {
+        varIds.add(v.id); varType.set(v.id, v.typeId)
+        if (v.typeId && !v.synthetic && !ctx.otById.has(v.typeId) && !ctx.factById.has(v.typeId))
+          err(`the ${namedType(v.typeId)} of a variable ${whereIs(v.typeId, 'type')}`)
+      }
+    }
     const scan = (vars, atoms) => {
       scanVars(vars)
       for (const a of atoms ?? []) {
         if (a.t === 'fact') {
           const f = ctx.factById.get(a.factId)
-          if (!f) err('a fact atom has no fact type of this schema')
+          if (!f) err(`a fact type it names ${whereIs(a.factId, 'fact')}`)
+          else if ((a.args?.length ?? 0) !== f.roles.length) err(`${readingName(f, ctx)} has ${f.roles.length} role${f.roles.length === 1 ? '' : 's'} now, but the atom gives ${a.args?.length ?? 0}`)
           else if (a.args.some(x => !x)) err(`a variable is missing in ${readingName(f, ctx)}`)
           else f.roles.forEach((r, i) => {
             if (!typesMeet(varType.get(a.args[i]), r.objectTypeId, ctx)) err(`in ${readingName(f, ctx)}, role ${i + 1} is played by ${ctx.otById.get(r.objectTypeId)?.name ?? '?'}, not ${ctx.otById.get(varType.get(a.args[i]))?.name ?? '?'}`)
           })
         } else if (a.t === 'type') {
-          if (!ctx.otById.has(a.typeId)) err('a type atom has no type of this schema')
+          if (!ctx.otById.has(a.typeId)) err(`the ${namedType(a.typeId)} it names ${whereIs(a.typeId, 'type')}`)
           else if (!a.arg) err(`a variable is missing in ${ctx.otById.get(a.typeId).name}(…)`)
           else if (!typesMeet(varType.get(a.arg), a.typeId, ctx)) err(`${ctx.otById.get(varType.get(a.arg))?.name ?? '?'} and ${ctx.otById.get(a.typeId).name} have no common subtype or supertype`)
         } else if (a.t === 'bind') {
@@ -300,10 +320,10 @@ export function checkRule(rule, mapping, state, ctxs = null) {
           if (!a.v || !String(a.text ?? '').trim()) err('a constant needs a variable and a value')
         } else if (a.t === 'rel') {
           const tb = ctx.tableById.get(a.tableId)
-          if (!tb) err('a relational atom has no table of this schema')
+          if (!tb) err(ctx.otById.has(a.tableId) ? `${ctx.otById.get(a.tableId).name} is no longer a table` : `the table it names (${namedType(a.tableId)}) ${whereIs(a.tableId, 'type')}`)
           else for (const [fid, arg] of Object.entries(a.args ?? {})) {
             const col = tb.columns.find(c => c.fact.id === fid)
-            if (!col) err(`${tb.name} has no column for one of the arguments`)
+            if (!col) err(`a column of ${tb.name} it names ${ctx.factById.has(fid) ? 'is no longer a column of it' : whereIs(fid, 'fact')}`)
             else if ((arg.k === 'fv' || arg.k === 'opt') && !arg.y) err(`${tb.name}.${col.name} needs a frontier variable name`)
             else if (arg.k === 'const' && !String(arg.text ?? '').trim()) err(`${tb.name}.${col.name} needs a constant`)
             else if (arg.k === 'var' && !arg.v) err(`${tb.name}.${col.name} needs a variable`)
