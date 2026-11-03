@@ -8,6 +8,8 @@ import { factDerivationIssues, factLabel } from '../logic/factDerivation.js'
 import { derivationGraph, derivationCycles } from '../logic/derivationDependencies.js'
 import { makeContext } from '../logic/constraintFormulas.js'
 import { sqlCheckOf } from '../relational/checkFormula.js'
+import { relationalModel } from '../relational/relationalModel.js'
+import { constraintsAsSql } from '../relational/formulaSql.js'
 import { isFormulaConstraint, checkFormulaConstraint } from '../logic/formulaConstraint.js'
 import { isFormulaQuery, checkQuery, whyNoOuterJoin } from '../logic/query.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
@@ -787,6 +789,28 @@ export function runValidation(state, enabledCategories) {
       if (ot.cardinalityRange?.length) push('cardinality', ot, 'objectType', `${ot.name} has a cardinality range; ${NOT_SQL}`, 'warning')
     }
 
+    // What the DDL export writes for a constraint with no table form: a
+    // CHECK from its formula (nothing to say), a query that finds its
+    // violations (not enforced), or nothing (the reason given).
+    let sqlForms = null
+    const sqlFormOf = (c) => {
+      if (!sqlForms) {
+        sqlForms = new Map()
+        for (const sid of relationalIds) for (const x of constraintsAsSql(state, relationalModel(state, sid))) sqlForms.set(x.c.id, x.entries)
+      }
+      return sqlForms.get(c.id) ?? []
+    }
+    const notSql = (c, message, sep = '; ') => {
+      const entries = sqlFormOf(c)
+      if (entries.length && entries.every(e => e.check)) return
+      if (entries.length && entries.every(e => e.check || e.query)) {
+        push('not-sql', c, 'constraint', `${message}${sep}the DDL export writes it as a query that finds its violations, which PostgreSQL does not enforce`, 'warning')
+        return
+      }
+      const why = entries.find(e => e.error)?.error
+      push('not-sql', c, 'constraint', `${message}${sep}${why ? `it is not written as SQL (${why})` : NOT_SQL}`, 'warning')
+    }
+
     for (const c of constraints) {
       if (!inRM(c)) continue
       const label = CONSTRAINT_LABELS[c.constraintType] ?? c.constraintType
@@ -800,7 +824,7 @@ export function runValidation(state, enabledCategories) {
           return facts.find(f => f.id === m.factId)?.roles[t].objectTypeId ?? null
         }))
         if (!members.length || tablesOf.has(null) || tablesOf.size !== 1)
-          push('unique', c, 'constraint', `${label} constraint is not over the columns of one table, so it is not a UNIQUE or PRIMARY KEY constraint; ${NOT_SQL}`, 'warning')
+          notSql(c, `${label} constraint is not over the columns of one table, so it is not a UNIQUE or PRIMARY KEY constraint`)
         continue
       }
       if (c.constraintType === 'valueComparison') {
@@ -812,7 +836,7 @@ export function runValidation(state, enabledCategories) {
           return facts.find(f => f.id === m.factId)?.roles[t].objectTypeId ?? null
         }))
         if (seq.length === 2 && !tables.has(null) && tables.size === 1) continue
-        push('not-sql', c, 'constraint', `${label} constraint is not between two columns of one table; ${NOT_SQL}`, 'warning')
+        notSql(c, `${label} constraint is not between two columns of one table`)
         continue
       }
       if (c.constraintType === 'formula') {
@@ -820,10 +844,10 @@ export function runValidation(state, enabledCategories) {
         const colName = (factId) => tableRole.has(factId) ? 'column' : null
         const ch = sqlCheckOf(c, colName, x => x)
         if (ch.text) continue
-        push('not-sql', c, 'constraint', `Formula constraint${c.name ? ` ${c.name}` : ''}: ${ch.reason}, so it is not written as SQL yet`, 'warning')
+        notSql(c, `Formula constraint${c.name ? ` ${c.name}` : ''}`, ': ')
         continue
       }
-      push('not-sql', c, 'constraint', `${label} constraint: ${NOT_SQL}`, 'warning')
+      notSql(c, `${label} constraint${c.name ? ` ${c.name}` : ''}`, ': ')
     }
   }
 

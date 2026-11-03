@@ -311,6 +311,13 @@ const modal = (deontic, phi) => (deontic ? obligatory(phi) : phi)
 // A deontic external constraint: each of its formulas becomes O(φ).
 function deonticEntries(c, e) { return asDeontic(c.deontic, e) }
 
+// The entries of one external or formula constraint (a ring constraint has
+// one per ring type), as formalise gives them.
+export function constraintEntries(c, state, ctx) {
+  const e = deonticEntries(c, isFormulaConstraint(c) ? formulaConstraintEntry(c, state, ctx) : constraintEntry(c, ctx))
+  return Array.isArray(e) ? e : [e]
+}
+
 // Entries (one or an array) made deontic when the flag is set.
 function asDeontic(deontic, e) {
   if (!deontic) return e

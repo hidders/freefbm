@@ -7,6 +7,8 @@
 //   fks: [{ from: [col], to: [col], fromTable, toTable, constraintId }],
 //   notColumns: [fact],      // fact types that are not columns
 //   notExported: [text],     // constraints with no table form
+//   unwritten: [constraint], // those constraints (formulaSql.js may still
+//                            // write them as a CHECK or a violation query)
 //   (each table also has checks: [{ name, text, constraintId }], the formula
 //   constraints read from CHECK constraints)
 // }
@@ -61,11 +63,12 @@ export function relationalModel(state, schemaId) {
     else if ((f.uniqueness ?? []).some(u => u.roles?.length === 1 && u.roles[0] === col.v)) col.table.uniques.push([col])
   }
   const fks = []
-  const notExported = []
+  const notExported = [], unwritten = []
+  const skip = (c, text) => { notExported.push(text); unwritten.push(c) }
   for (const c of constraints) {
     if (c.constraintType === 'uniqueness') {
       const cols = asColumns(c.sequences?.[0])
-      if (!cols) { notExported.push(`external uniqueness constraint ${c.id} (not over the columns of one table)`); continue }
+      if (!cols) { skip(c, `external uniqueness constraint ${c.id} (not over the columns of one table)`); continue }
       if (c.isPreferredIdentifier) cols[0].table.pk = cols
       else cols[0].table.uniques.push(cols)
       continue
@@ -78,7 +81,7 @@ export function relationalModel(state, schemaId) {
         fk.fromTable.fks.push(fk)
         continue
       }
-      notExported.push(`subset constraint ${c.id} (not between the columns of two tables)`)
+      skip(c, `subset constraint ${c.id} (not between the columns of two tables)`)
       continue
     }
     if (c.constraintType === 'valueComparison') {
@@ -89,24 +92,24 @@ export function relationalModel(state, schemaId) {
           text: `${quoteName(cols[0].name)} ${VC_SQL[c.operator ?? '=']} ${quoteName(cols[1].name)}` })
         continue
       }
-      notExported.push(`value comparison constraint ${c.name || c.id} (not between two columns of one table)`)
+      skip(c, `value comparison constraint ${c.name || c.id} (not between two columns of one table)`)
       continue
     }
     if (c.constraintType === 'formula') {
       const ch = sqlCheckOf(c, (factId) => columnByFact.get(factId)?.name ?? null, quoteName)
       const table = ch.text && tableById.get(ch.table)
       if (table) table.checks.push({ name: ch.name, text: ch.text, constraintId: c.id })
-      else notExported.push(`formula constraint ${c.name || c.id} (${ch.reason ?? 'not over one table'})`)
+      else skip(c, `formula constraint ${c.name || c.id} (${ch.reason ?? 'not over one table'})`)
       continue
     }
-    notExported.push(`${c.constraintType} constraint ${c.id}`)
+    skip(c, `${c.constraintType} constraint ${c.id}`)
   }
   for (const t of tables) {
     for (const c of t.pk ?? []) { c.pk = true; c.notNull = true }
     for (const u of t.uniques) if (u.length === 1) u[0].unique = true
     for (const fk of t.fks) for (const c of fk.from) c.fk = true
   }
-  return { tables, columnByFact, fks, notColumns, notExported }
+  return { tables, columnByFact, fks, notColumns, notExported, unwritten }
 }
 
 // Whether the columns are a key (primary or unique) of their table.
