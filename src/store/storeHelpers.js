@@ -856,6 +856,42 @@ export function migrateRefModeExpansion(diag, parsedOts, facts) {
   return { ...diag, occurrences: updatedOccs, expandedRefModeOccs }
 }
 
+// A collapsed reference mode whose fact type is also drawn as an independent
+// occurrence connected to the entity occurrence shows the scheme twice: as the
+// "(.ref)" shorthand and expanded. Such diagrams were made by the PostgreSQL DDL
+// import before v1.0.149. Mark those entity occurrences expanded and let them own
+// the fact type occurrence (and its value type occurrence, unless another fact
+// type occurrence is connected to it), as expandRefMode does.
+export function repairDrawnRefModes(diag, parsedOts, facts) {
+  const occs = diag.occurrences ?? []
+  const expanded = new Set(diag.expandedRefModeOccs ?? [])
+  const otById = new Map(parsedOts.map(o => [o.id, o]))
+  const factById = new Map(facts.map(f => [f.id, f]))
+  const owners = new Map()   // occ id → owner occ id
+  for (const occ of occs) {
+    if (expanded.has(occ.id)) continue
+    const rm = findRefMode(otById.get(occ.schemaElementId) ?? factById.get(occ.schemaElementId), facts, parsedOts)
+    if (!rm) continue
+    const entityRole = String(1 - rm.vtRoleIndex)
+    const ftOcc = occs.find(o => o.schemaElementId === rm.factId && !o.refModeOwnerOccId && !owners.has(o.id) &&
+      o.roleOccurrenceMap?.[entityRole] === occ.id)
+    if (!ftOcc) continue
+    expanded.add(occ.id)
+    owners.set(ftOcc.id, occ.id)
+    const vtOccId = ftOcc.roleOccurrenceMap?.[String(rm.vtRoleIndex)]
+    const vtOcc = vtOccId && occs.find(o => o.id === vtOccId)
+    const shared = vtOcc && occs.some(o => o.id !== ftOcc.id &&
+      Object.values(o.roleOccurrenceMap ?? {}).includes(vtOcc.id))
+    if (vtOcc && !vtOcc.refModeOwnerOccId && !shared) owners.set(vtOcc.id, occ.id)
+  }
+  if (!owners.size) return diag
+  return {
+    ...diag,
+    occurrences: occs.map(o => owners.has(o.id) ? { ...o, refModeOwnerOccId: owners.get(o.id) } : o),
+    expandedRefModeOccs: [...expanded],
+  }
+}
+
 // Populate subtypeOccurrences / subtypeEndpointOccs for diagrams that pre-date
 // per-diagram subtype tracking. Always stores endpoint pairs as Array<{ subOccId, superOccId }>.
 export function migrateSubtypeOccurrences(diag, parsedSts) {
