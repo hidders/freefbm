@@ -2,6 +2,8 @@ import { mkSchema, mkDiagram, SCHEMA_PROFILES, activeSchemaIdOf } from '../store
 import { importPostgresDdl } from '../../relational/ddlImport.js'
 import { exportPostgresDdl } from '../../relational/ddlExport.js'
 import { guessOrmSchema } from '../../relational/guessOrm.js'
+import { generateRelational } from '../../relational/rmap.js'
+import { runMapping, withRunApplied } from '../../mapping/runMapping.js'
 
 // Several schemas in one file (workbench plan, step 2). The schemas are listed
 // in `schemas`; elements and diagrams point to theirs with `schemaId`. The
@@ -144,6 +146,67 @@ export const createSchemaSlice = (set, get) => ({
     const r = svg?.getBoundingClientRect()
     get().fitToContent?.(r?.width || 1200, r?.height || 700)
     return { schemaId: schema.id, mappingId: built.mapping.id, stats: n }
+  },
+
+  // Generates a relational schema from an ORM2 one (workbench step 13,
+  // relational/rmap.js): a new relational schema with one diagram of its
+  // tables, and the mapping from the ORM2 schema to it, as one undo step. The
+  // ORM2 schema's population, if any, is carried over by running the mapping.
+  // surrogates: 'never' | 'composite' | 'always'; overrides: { typeId: bool }.
+  // Returns { schemaId, mappingId, sql }.
+  generateRelationalFromOrm(ormSchemaId, { surrogates = 'never', overrides = {} } = {}) {
+    const st = get()
+    const orm = st.schemas.find(x => x.id === ormSchemaId)
+    if (!orm) return null
+    const used = new Set(st.schemas.map(x => x.name))
+    let unique = `${orm.name} (SQL)`
+    for (let i = 2; used.has(unique); i++) unique = `${orm.name} (SQL) ${i}`
+    const schema = mkSchema(unique, 'relational')
+    const g = generateRelational(st, ormSchemaId, { schemaId: schema.id, surrogates, overrides, mappingName: `${orm.name} to ${unique}`, schemaName: orm.name })
+    const built = g.built
+    if (built.diagram) built.diagram.profileId = built.diagram.profileId ?? RELATIONAL_DATATYPES
+    let carried = null
+    set(s => ({ historyBatch: (s.historyBatch ?? 0) + 1 }))
+    try {
+      set(s => ({
+        schemas: [...s.schemas, schema],
+        objectTypes: [...s.objectTypes, ...built.objectTypes],
+        facts: [...s.facts, ...built.facts],
+        constraints: [...s.constraints, ...built.constraints],
+        diagrams: [...s.diagrams, built.diagram],
+        mappings: [...(s.mappings ?? []), g.mapping],
+        isDirty: true,
+      }))
+      get().setActiveDiagram(built.diagram.id)
+      for (const c of built.constraints) get()._tryAutoGenerateQuery(c.id)
+      // The sample population, carried over.
+      const now = get()
+      const ormIds = new Set([...now.objectTypes, ...now.facts].filter(x => x.schemaId === ormSchemaId).map(x => x.id))
+      const hasPop = [...ormIds].some(id => now.populations?.[id]?.length || now.factPopulations?.[id]?.length)
+      if (hasPop) {
+        try {
+          const run = runMapping(now, g.mapping, 'forward')
+          set(s => ({ ...withRunApplied(s, run) }))
+          const rows = built.objectTypes.filter(o => o.kind === 'entity').reduce((n, o) => n + (run.populations?.[o.id]?.length ?? 0), 0)
+          carried = { rows, problems: run.log.filter(l => l.level !== 'note') }
+        } catch (err) {
+          carried = { rows: 0, problems: [{ level: 'warn', text: `The population was not carried over: ${err?.message ?? err}` }] }
+        }
+      }
+    } finally {
+      set(s => ({ historyBatch: Math.max(0, (s.historyBatch ?? 1) - 1) }))
+    }
+    const n = built.stats ?? {}
+    get().setImportLog({ kind: 'generate', source: `${orm.name}`, entries: [
+      { level: 'note', text: `Schema ${unique}: ${n.tables ?? '?'} tables with ${n.columns ?? '?'} columns, ${n.keys ?? 0} keys, ${n.foreignKeys ?? 0} foreign keys (File › Export PostgreSQL DDL… writes them)` },
+      { level: 'note', text: `Mapping ${g.mapping.name}: ${g.mapping.rules.length} rules. Accounting in the Mappings tab lists the constraints the tables don't enforce` },
+      ...(carried ? [{ level: 'note', text: `Carried the population over by running the mapping: ${carried.rows} rows` }, ...carried.problems.slice(0, 20).map(l => ({ level: 'warn', text: l.text }))] : []),
+      ...g.log.filter(l => !/^\d+ tables:/.test(l.text)),
+    ] })
+    const svg = typeof document !== 'undefined' ? document.querySelector('.canvas-bg')?.closest('svg') : null
+    const r = svg?.getBoundingClientRect()
+    get().fitToContent?.(r?.width || 1200, r?.height || 700)
+    return { schemaId: schema.id, mappingId: g.mapping.id, sql: g.sql }
   },
 
   // The active relational schema as PostgreSQL DDL: { sql, warnings }.

@@ -51,7 +51,7 @@ function literalSql(value, numeric) {
 }
 
 // A value range as a SQL condition on col.
-function rangeSql(col, specs, numeric) {
+export function rangeSql(col, specs, numeric) {
   const lit = (v) => literalSql(v, numeric)
   const singles = specs.filter(s => s.type === 'single')
   const parts = []

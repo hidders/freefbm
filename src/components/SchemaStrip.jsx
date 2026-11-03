@@ -179,6 +179,7 @@ export function NewSchemaMenu({ variant = 'strip' }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const relSchemas = useOrmStore(useShallow(s => (s.schemas ?? []).filter(x => x.profile === 'relational')))
+  const ormSchemas = useOrmStore(useShallow(s => (s.schemas ?? []).filter(x => x.profile !== 'relational')))
 
   useEffect(() => {
     if (!open) return
@@ -232,6 +233,22 @@ export function NewSchemaMenu({ variant = 'strip' }) {
                 borderRadius: 8, padding: '1px 5px', lineHeight: '12px',
               }}>{PROFILE_LABELS.orm2.tag}</span>
               ORM2 schema guessed from {sc.name}…
+            </div>
+          ))}
+          {ormSchemas.map(sc => (
+            <div key={sc.id}
+              className="generate-relational-item"
+              onClick={() => { setOpen(false); useOrmStore.setState({ generateRelationalDialog: { ormSchemaId: sc.id } }) }}
+              title="A new relational schema generated from the ORM2 schema (Rmap), with the mapping between them"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 4, fontSize: 12, cursor: 'pointer', color: 'var(--ink-1)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+            >
+              <span style={{
+                fontSize: 9, fontWeight: 700, color: '#fff', background: PROFILE_LABELS.relational.color,
+                borderRadius: 8, padding: '1px 5px', lineHeight: '12px',
+              }}>{PROFILE_LABELS.relational.tag}</span>
+              Tables generated from {sc.name}…
             </div>
           ))}
           {['orm2', 'relational'].map(p => (
