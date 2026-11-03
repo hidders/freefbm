@@ -87,6 +87,7 @@ export const createSchemaSlice = (set, get) => ({
           selectedId: gone.has(st.selectedId) ? null : st.selectedId,
         } : {}),
         mappingAccounting: Object.fromEntries(Object.entries(st.mappingAccounting ?? {}).filter(([k]) => !goneMappings.has(k))),
+        mappingEquivalence: Object.fromEntries(Object.entries(st.mappingEquivalence ?? {}).filter(([k]) => !goneMappings.has(k))),
         mappingRuleEditor: goneMappings.has(st.mappingRuleEditor?.mappingId) ? null : st.mappingRuleEditor,
         isDirty: true,
       }))

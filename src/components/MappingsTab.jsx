@@ -5,6 +5,7 @@ import { sideContext, sideTokens, checkRule, SIDES, sideSchemaId } from '../mapp
 import { PatternText, IssueList } from './MappingFormula.jsx'
 import { runMapping, roundTrip } from '../mapping/runMapping.js'
 import { AccountingReport, runAccounting } from './AccountingReport.jsx'
+import { EquivalenceReport, runEquivalence } from './EquivalenceReport.jsx'
 
 // The mappings of the file (workbench step 7): each relates a source and a
 // target schema by rules φ ⟺ ψ. Rules are edited in MappingRuleEditor.
@@ -12,7 +13,7 @@ export default function MappingsTab() {
   const state = useOrmStore(useShallow(s => ({
     schemas: s.schemas, objectTypes: s.objectTypes, facts: s.facts, constraints: s.constraints,
     subtypes: s.subtypes, mappings: s.mappings ?? [], editing: s.mappingRuleEditor,
-    accounting: s.mappingAccounting ?? {}, advanced: s.advancedMode, focus: s.mappingRuleFocus,
+    accounting: s.mappingAccounting ?? {}, equivalence: s.mappingEquivalence ?? {}, advanced: s.advancedMode, focus: s.mappingRuleFocus,
   })))
   const advanced = state.advanced
   // Basic mode: a rule asked for (from the canvas or the Validation panel) is
@@ -97,6 +98,7 @@ export default function MappingsTab() {
               <button style={btn} title={`Build the population of ${name(m.targetSchemaId)} from that of ${name(m.sourceSchemaId)}`} onClick={() => doRun(m, 'run', 'forward')}>Run →</button>
               <button style={btn} title={`Build the population of ${name(m.sourceSchemaId)} from that of ${name(m.targetSchemaId)}`} onClick={() => doRun(m, 'run', 'backward')}>Run ←</button>
               <button style={btn} title={`Run the mapping from ${name(m.sourceSchemaId)} there and back, and compare what comes back`} onClick={() => doRun(m, 'roundTrip', 'forward')}>Round trip</button>
+              <button style={btn} title={`Whether ${name(m.sourceSchemaId)} and ${name(m.targetSchemaId)} are equivalent under this mapping: no information lost either way, every constraint kept, and how many need formula constraints`} onClick={() => runEquivalence(m)}>Equivalence</button>
               <button style={btn} title={`For each constraint of either schema, whether the other schema keeps it under this mapping: native, implied, lost (with a counterexample) or unknown`} onClick={() => runAccounting(m)}>Accounting</button>
               <button style={btn} title="Fold the derived types and fact types of a schema into this mapping: each gets a mapping rule and becomes ordinary, and the fact types it replaces can go" onClick={() => useOrmStore.setState({ foldDialog: { mappingId: m.id } })}>Fold…</button>
               <button style={btn} title="Delete this mapping and its rules" onClick={() => act().deleteMapping(m.id)}>Delete</button>
@@ -104,6 +106,7 @@ export default function MappingsTab() {
             {runs[m.id] && <RunReport run={runs[m.id]} mapping={m} name={name}
               onApply={(run) => { act().applyMappingRun(run); setRuns(r => ({ ...r, [m.id]: { ...r[m.id], applied: true } })) }}
               onClose={() => setRuns(r => { const n = { ...r }; delete n[m.id]; return n })} />}
+            {state.equivalence[m.id] && <EquivalenceReport eq={state.equivalence[m.id]} mapping={m} name={name} />}
             {state.accounting[m.id] && <AccountingReport acc={state.accounting[m.id]} mapping={m} name={name} />}
             {rules.length === 0 && <div style={{ padding: '6px 8px', color: 'var(--ink-muted)' }}>No rules yet.</div>}
             {rules.map(({ r, issues }, k) => {
