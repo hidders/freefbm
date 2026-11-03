@@ -60,7 +60,7 @@ export default function MappingsTab() {
       </div>
 
       {state.mappings.length === 0 && <div style={{ color: 'var(--ink-muted)' }}>
-        No mappings yet. A mapping relates a source and a target schema by rules φ ⟺ ψ: whenever the source pattern φ matches with values ŷ, the target pattern ψ matches with the same values, and back.
+        No mappings yet. A mapping relates a source and a target schema by rules φ ⟺ ψ: whenever the source pattern φ matches with values $y, the target pattern ψ matches with the same values, and back.
       </div>}
 
       {state.mappings.map(m => {
