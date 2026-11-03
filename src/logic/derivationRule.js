@@ -1,4 +1,5 @@
-// Derivation rules of derived and semi-derived subtypes.
+// Derivation rules of derived and semi-derived subtypes, and of entity types
+// without supertypes that are created through their reference scheme.
 //
 // A rule is a formula of the ORM2 logic with exactly one free variable, the
 // subject, which ranges over the intersection of the subtype's direct
@@ -6,6 +7,14 @@
 // For subtype S with rule φ:
 //   derived       ∀x (S(x) ↔ φ(x))
 //   semi-derived  ∀x (φ(x) → S(x))
+//
+// An entity type E with no supertype but a reference mode or a composite
+// identifier can be derived too (workbench step 12): its rule's free
+// variables are its reference values a1..an, one per part of the scheme, with
+// ids ref:0..ref:n-1 (referenceParts), and every answer creates the instance
+// those values identify:
+//   derived       ∀a1..an (∃e (E has a1 ∧ … ∧ E has an) ↔ φ(a1..an))
+//   semi-derived  ∀a1..an (φ(a1..an) → ∃e (E has a1 ∧ … ∧ E has an))
 //
 // Rules are stored on the object type (derivationRule) as JSON trees that the
 // rule editor builds. Variables have ids, and their display names are made at
@@ -49,6 +58,7 @@ import {
 import { renderFormula } from './renderFormula.js'
 import { valueAccess, withValues, valueConstant } from './values.js'
 import { sortOf, typeComparison, typePredicate, termVarIds, FAIL } from './dataOperators.js'
+import { findRefMode, findCompositePI } from '../utils/refMode.js'
 
 export const SUBJECT = 'subject'
 
@@ -69,6 +79,48 @@ export function directSupertypes(typeId, subtypes) {
   const out = []
   for (const st of (subtypes ?? [])) if (st.subId === typeId && !out.includes(st.superId)) out.push(st.superId)
   return out
+}
+
+// The parts of the reference scheme of an entity type without supertypes,
+// which are the free variables of its rule when it is derived:
+// [{ id: 'ref:i', typeId (the part's player), factId, roleIndex, entityRoleIndex }],
+// or null when it has no reference mode or composite identifier. For a
+// reference mode the instance is the value; for a composite identifier it is
+// the list of the parts' cells, in this order.
+export const refVarId = (i) => `ref:${i}`
+export function referenceParts(typeId, state) {
+  const facts = state.facts ?? [], objectTypes = state.objectTypes ?? []
+  const ot = objectTypes.find(o => o.id === typeId)
+  if (!ot || ot.kind !== 'entity') return null
+  const rm = findRefMode(ot, facts, objectTypes)
+  if (rm) return [{ id: refVarId(0), typeId: rm.vtId, factId: rm.factId, roleIndex: rm.vtRoleIndex, entityRoleIndex: 1 - rm.vtRoleIndex, refMode: true }]
+  const cp = findCompositePI(ot, facts, objectTypes, state.constraints)
+  if (!cp || (!cp.factIds && cp.entityRoleIndex == null)) return null
+  const raw = cp.factIds
+    ? cp.factIds.map((fid, i) => ({ factId: fid, entityRoleIndex: cp.entityRoleIndices[i], roleIndex: cp.identifyingRoleIndices[i] }))
+    : cp.identifyingRoleIndices.map(ri => ({ factId: cp.factId, entityRoleIndex: cp.entityRoleIndex, roleIndex: ri }))
+  const parts = raw.map((p, i) => ({ id: refVarId(i), ...p, typeId: facts.find(f => f.id === p.factId)?.roles[p.roleIndex]?.objectTypeId }))
+  return parts.every(p => p.typeId) ? parts : null
+}
+
+// The free variables of a type's rule ([{ id, typeIds }]): the subject for a
+// subtype, the reference values for an entity type created through its
+// reference scheme, or null when the type can't be derived.
+export function ruleRoots(typeId, state) {
+  const supers = directSupertypes(typeId, state.subtypes)
+  if (supers.length) return [{ id: SUBJECT, typeIds: supers }]
+  const parts = referenceParts(typeId, state)
+  return parts ? parts.map(p => ({ id: p.id, typeIds: [p.typeId] })) : null
+}
+
+// Why a type can't be derived, or null when it can.
+export function whyNotDerivableType(typeId, state) {
+  const ot = (state.objectTypes ?? []).find(o => o.id === typeId)
+  if (!ot) return 'The type no longer exists'
+  if (directSupertypes(typeId, state.subtypes).length) return null
+  if (ot.kind !== 'entity') return 'Only a subtype or an entity type can be derived'
+  if (!referenceParts(typeId, state)) return 'An entity type that is not a subtype can be derived only through its reference scheme: give it a reference mode or a preferred composite identifier'
+  return null
 }
 
 export function isDerived(ot) {
@@ -464,8 +516,28 @@ function selfAndBelowOf(typeId, subtypes) {
 export function checkRule(rule, typeId, state, ctx, typing = { sorts: new Map(), params: new Map() }) {
   rule = upgradeRule(rule)
   const supers = directSupertypes(typeId, state.subtypes)
-  if (!supers.length)
-    return [{ path: [], severity: 'error', message: `${ctx.typeName(typeId)} is not a subtype, so it cannot be derived` }]
+  if (!supers.length) {
+    const why = whyNotDerivableType(typeId, state)
+    if (why) return [{ path: [], severity: 'error', message: why }]
+    if (!rule) return [{ path: [], severity: 'error', message: 'There is no derivation rule yet' }]
+    // Created through its reference scheme: the rule gives the reference values.
+    const parts = referenceParts(typeId, state)
+    const roots = parts.map(p => ({ id: p.id, typeIds: [p.typeId] }))
+    const { nameOf } = formulaVariables(rule, roots, ctx)
+    const { issues, used } = checkFormula(rule, roots, {
+      nameOf, selfAndBelow: selfAndBelowOf(typeId, state.subtypes), selfName: ctx.typeName(typeId),
+      positiveSelf: ctx.otById.get(typeId)?.derivation === 'semiDerived',
+    }, state, ctx, typing)
+    for (const p of parts) {
+      if (!used.has(p.id) && !issues.some(i => i.severity === 'error'))
+        issues.push({ path: [], severity: 'error',
+          message: `The rule does not mention ${nameOf.get(p.id) ?? ctx.typeName(p.typeId)}, so it does not say which ${ctx.typeName(typeId)} objects there are` })
+      const f = ctx.factById.get(p.factId)
+      if (f?.derivation === 'derived' || f?.derivation === 'semiDerived')
+        issues.push({ path: [], severity: 'error', message: `The reference scheme of ${ctx.typeName(typeId)} uses a derived fact type` })
+    }
+    return issues
+  }
   if (!rule) return [{ path: [], severity: 'error', message: 'There is no derivation rule yet' }]
   const { nameOf } = ruleVariables(rule, supers, ctx)
   const { issues, used } = checkFormula(rule, [{ id: SUBJECT, typeIds: supers }], {
@@ -556,8 +628,16 @@ export function ruleFormula(rule, vars, ctx, typing) {
 const article = (word) => (/^[aeiou]/i.test(word) ? 'an' : 'a')
 const listAnd = (xs) => xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`
 
-// "Student who is an Employee is a TeachingAssistant if and only if …"
-export function derivationHeading(ot, supers, ctx) {
+// "Student who is an Employee is a TeachingAssistant if and only if …", or for
+// an entity type created through its reference scheme "There is an Address
+// with Street, City if and only if …".
+export function derivationHeading(ot, supers, ctx, state = null) {
+  if (!supers.length) {
+    const parts = state ? referenceParts(ot.id, state) : null
+    const conn = ot.derivation === 'semiDerived' ? 'if' : 'if and only if'
+    const name = ctx.typeName(ot.id)
+    return `There is ${article(name)} ${name}${parts ? ` with ${listAnd(parts.map(p => ctx.typeName(p.typeId)))}` : ''} ${conn} …`
+  }
   const names = supers.map(ctx.typeName)
   const sub = ctx.typeName(ot.id)
   const who = names.length > 1 ? ` who is ${listAnd(names.slice(1).map(n => `${article(n)} ${n}`))}` : ''
@@ -569,13 +649,31 @@ export function derivationHeading(ot, supers, ctx) {
 export function derivationEntry(ot, state, ctx) {
   const supers = directSupertypes(ot.id, state.subtypes)
   const semi = ot.derivation === 'semiDerived'
+  const parts = supers.length ? null : referenceParts(ot.id, state)
   const base = { key: `${ot.id}:derivation`, elementId: ot.id,
     kind: semi ? 'Semi-derivation rule' : 'Derivation rule',
-    subject: supers.length ? derivationHeading(ot, supers, ctx) : ctx.typeName(ot.id) }
+    subject: supers.length || parts ? derivationHeading(ot, supers, ctx, state) : ctx.typeName(ot.id) }
   const typing = { sorts: new Map(), params: new Map() }
   const errors = checkRule(ot.derivationRule, ot.id, state, ctx, typing).filter(i => i.severity === 'error')
   if (errors.length) return { ...base, note: `No formula yet. ${errors[0].message}.` }
   const rule = upgradeRule(ot.derivationRule)
+  if (parts) {
+    // ∀a1..an (∃e (E has a1 ∧ … ∧ E has an) ↔ φ)
+    const { vars } = formulaVariables(rule, parts.map(p => ({ id: p.id, typeIds: [p.typeId] })), ctx)
+    const as = parts.map(p => vars.get(p.id))
+    const e = mkVar(ot.id)
+    const byFact = new Map()
+    for (const p of parts) {
+      const f = ctx.factById.get(p.factId)
+      if (!byFact.has(p.factId)) byFact.set(p.factId, Array(f?.roles.length ?? 2).fill(null))
+      const args = byFact.get(p.factId)
+      args[p.entityRoleIndex] = e
+      args[p.roleIndex] = vars.get(p.id)
+    }
+    const ident = exists([e], and([...byFact].map(([fid, args]) => factAtom(fid, args))))
+    const phi = ruleFormula(rule, vars, ctx, typing)
+    return { ...base, formula: forall(as, semi ? implies(phi, ident) : iff(ident, phi)) }
+  }
   const { vars } = ruleVariables(rule, supers, ctx)
   const x = vars.get(SUBJECT)
   const phi = ruleFormula(rule, vars, ctx, typing)

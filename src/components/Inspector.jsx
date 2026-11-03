@@ -11,7 +11,7 @@ import { constraintMaxSequences, suppressRolePosition } from '../utils/constrain
 import { PROFILES, PROFILE_MAP, getDatatypeById } from '../data/datatypeProfiles'
 import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
 import { VALIDATION_CATEGORIES } from '../utils/validation.js'
-import { DERIVATION_MODES, directSupertypes, isDerived, checkRule } from '../logic/derivationRule.js'
+import { DERIVATION_MODES, whyNotDerivableType, isDerived, checkRule } from '../logic/derivationRule.js'
 import { isDerivedFact, isComputedRole, checkFactRule, whyNotDerivable } from '../logic/factDerivation.js'
 import { makeContext } from '../logic/constraintFormulas.js'
 import { isFormulaQuery, whyNotGraphical, whyNoOuterJoin } from '../logic/query.js'
@@ -1288,18 +1288,19 @@ function ObjectTypeInspector({ ot }) {
 
 
 // ── Derivation of a subtype ───────────────────────────────────────────────────
-// Not derived, derived or semi-derived; only a subtype can be derived. The
-// rule itself is edited in DerivationRuleEditor.
+// Not derived, derived or semi-derived; a subtype can be derived, and so can
+// an entity type through its reference scheme. The rule itself is edited in
+// DerivationRuleEditor.
 function DerivationSection({ ot, store }) {
-  const supers = directSupertypes(ot.id, store.subtypes)
+  const why = whyNotDerivableType(ot.id, store)
   const mode = ot.derivation ?? 'none'
-  const notSubtype = supers.length === 0
+  const notSubtype = !!why
   const issues = isDerived(ot) ? checkRule(ot.derivationRule, ot.id, store, makeContext(store)) : []
   const nErrors = issues.filter(i => i.severity === 'error').length
   return (
     <Section title="Derivation">
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}
-        title={notSubtype ? 'Only a subtype can be derived' : undefined}>
+        title={why ?? undefined}>
         <div>
           {DERIVATION_MODES.map(m => (
             <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, marginBottom: 3, whiteSpace: 'nowrap',

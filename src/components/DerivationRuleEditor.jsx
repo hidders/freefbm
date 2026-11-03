@@ -6,7 +6,7 @@ import { scopeToSchema } from '../store/storeHelpers'
 import { makeContext, readingText, constraintEntry, CONSTRAINT_LABELS } from '../logic/constraintFormulas.js'
 import {
   SUBJECT, hole, getAt, setAt, directSupertypes, typeGraph, allTypeOptions,
-  ruleVariables, formulaVariables, checkRule, derivationEntry, derivationHeading, upgradeRule, isTermSlot, atomFact,
+  ruleVariables, formulaVariables, ruleRoots, checkRule, derivationEntry, derivationHeading, upgradeRule, isTermSlot, atomFact,
 } from '../logic/derivationRule.js'
 import { editableQuery, queryRoots, checkQuery, ruleBodyToGraph, graphToRuleBody } from '../logic/query.js'
 import {
@@ -150,10 +150,10 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
   // The free variables of the condition (and of the terms).
   const roots = useMemo(() => (forQuery ? (query ? queryRoots(query) : [])
     : forFact ? (parts ? [...parts.selected, ...parts.extra] : [])
-    : [{ id: SUBJECT, typeIds: supers }]), [forQuery, query, forFact, parts, supers])
+    : ruleRoots(otId, state) ?? []), [forQuery, query, forFact, parts, supers, otId, state])
   const { nameOf } = useMemo(() => (forQuery ? formulaVariables(draft, roots, ctx)
     : forFact ? (fact ? factRuleVariables(fact, ctx, draft) : { nameOf: new Map() })
-    : ruleVariables(draft, supers, ctx)), [forQuery, roots, forFact, fact, draft, supers, ctx])
+    : supers.length ? ruleVariables(draft, supers, ctx) : formulaVariables(draft, roots, ctx)), [forQuery, roots, forFact, fact, draft, supers, ctx])
   const issues = useMemo(() => (forQuery ? (query ? checkQuery({ ...query, body: draft }, seq, state, ctx) : [])
     : forFact ? (fact ? checkFactRule(fact, state, ctx, undefined, draft) : [])
     : checkRule(draft, otId, state, ctx)), [forQuery, query, seq, forFact, fact, draft, otId, state, ctx])
@@ -190,12 +190,12 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
   const drawn = useMemo(() => {
     if (forQuery) return null
     if (forFact && parts?.computed.length) return { error: 'its computed roles need terms, which the diagram can\'t show' }
-    if (!forFact && !supers.length) return { error: 'the type is not a subtype' }
+    if (!forFact && !roots.length) return { error: 'the type is not a subtype and has no reference scheme' }
     const graphRoots = forFact
       ? [...(parts?.selected ?? []), ...(parts?.extra ?? [])].map(r => ({ id: r.id, typeId: r.typeIds[0], label: nameOf.get(r.id) }))
-      : [{ id: SUBJECT, typeId: supers[0], label: nameOf.get(SUBJECT) }]
+      : roots.map(r => ({ id: r.id, typeId: r.typeIds[0], label: nameOf.get(r.id) }))
     return ruleBodyToGraph(forFact ? draft.body : draft, graphRoots, ctx)
-  }, [forQuery, forFact, parts, supers, nameOf, draft, ctx])
+  }, [forQuery, forFact, parts, roots, nameOf, draft, ctx])
   useEffect(() => {
     if (!graphResult || graphResult.ruleKey !== ruleKey) return
     const r = graphToRuleBody(graphResult, ctx)
@@ -596,7 +596,7 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
               ? semi
                 ? 'Each combination for which the condition holds, with the values of the computed roles, must be a fact.'
                 : 'The facts are exactly the combinations for which the condition holds, with the values of the computed roles.'
-              : supers.length ? derivationHeading(ot, supers, ctx) : `${ot.name} has no supertype, so it cannot be derived.`}
+              : supers.length || roots.length ? derivationHeading(ot, supers, ctx, state) : `${ot.name} has no supertype or reference scheme, so it cannot be derived.`}
           </div>}
         </div>
 
@@ -629,7 +629,7 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
             ? <TermPalette node={selNode} path={sel} scope={selScope} draft={draft} ctx={ctx} nameOf={nameOf}
                 types={types} replace={replace} />
             : <Palette node={selNode} path={sel} scope={selScope} draft={draft} state={state} ctx={ctx}
-                supers={forFact || forQuery ? roots.map(r => r.typeIds[0]) : supers}
+                supers={forFact || forQuery || !supers.length ? roots.map(r => r.typeIds[0]) : supers}
                 graph={graph} replace={replace} />}
 
           {/* Focusable so the messages can be selected and copied */}
