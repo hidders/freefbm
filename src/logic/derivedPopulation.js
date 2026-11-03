@@ -55,11 +55,29 @@ const keyOf = (cell) => {
 // Evaluator over one (canonicalised) data set. population(typeId) returns
 // { instances: [cell], keys: Set } or { error }; factTuples(factId) returns
 // { tuples: [[cell]], keys: Set } or { error }.
+// The context and type graph depend on the schema arrays only (compared by
+// identity: the store never changes them in place), so evaluators over many
+// small populations of one schema share them.
+const lookupCache = new WeakMap()
+const NONE = {}
+function schemaLookups(data) {
+  let level = lookupCache
+  for (const a of [data.objectTypes, data.facts, data.subtypes, data.constraints]) {
+    const k = a && typeof a === 'object' ? a : NONE
+    if (!level.has(k)) level.set(k, new WeakMap())
+    level = level.get(k)
+  }
+  const lang = data.viewLanguage ?? 'en'
+  let byLang = level.get(NONE)
+  if (!byLang) { byLang = new Map(); level.set(NONE, byLang) }
+  if (!byLang.has(lang)) byLang.set(lang, { ctx: makeContext(data), graph: typeGraph(data) })
+  return byLang.get(lang)
+}
+
 export function makePopulationEvaluator(rawData) {
   const data = canonicalizePopulationData(rawData)
   const { objectTypes = [], facts = [], subtypes = [], constraints = [], populations = {}, factPopulations = {}, nestedEntityMappings = {} } = data
-  const ctx = makeContext(data)
-  const graph = typeGraph(data)
+  const { ctx, graph } = schemaLookups(data)
   const tuplesOf = factTupleSource(data)
   const otById = new Map(objectTypes.map(o => [o.id, o]))
   const factById = new Map(facts.map(f => [f.id, f]))

@@ -1,7 +1,8 @@
 // A parser for the table-defining part of PostgreSQL DDL (workbench step 5).
 // It reads what a schema dump or a hand-written script declares about tables:
 // CREATE TABLE (columns, types, NOT NULL, PRIMARY KEY, UNIQUE, REFERENCES,
-// CHECK), ALTER TABLE ... ADD [CONSTRAINT] (pg_dump style), CREATE TYPE ... AS
+// CHECK), ALTER TABLE ... ADD [CONSTRAINT] (pg_dump style) and column changes
+// (ADD/DROP/RENAME/ALTER COLUMN), CREATE TYPE ... AS
 // ENUM, CREATE DOMAIN and CREATE UNIQUE INDEX on plain columns. Everything else
 // (views, functions, triggers, grants...) is counted and skipped. Rows of
 // INSERT INTO ... VALUES are read as sample data (step 8), with literal values
@@ -299,12 +300,16 @@ export function parseDdl(sql) {
         let used = false
         for (const a of actions) {
           const as = new Stream(a)
+          if (!t) {
+            // Sequences, views and the like are altered too; only adding to a missing table is a problem.
+            if (as.isWord('add') && !as.isWord('column', 1)) problems.push(`ALTER TABLE ${q?.name}: the table was not created in this script`)
+            continue
+          }
+          if (alterColumn(as, t, problems)) { used = true; continue }
           if (!as.eatWord('add')) continue
-          if (as.isWord('column')) continue
-          if (!t) { problems.push(`ALTER TABLE ${q?.name}: the table was not created in this script`); continue }
           if (readTableConstraint(as, t, problems)) used = true
         }
-        if (!used) skip('ALTER TABLE (other than adding a constraint)')
+        if (!used) skip('ALTER TABLE (other than adding a constraint or changing columns)')
         return
       }
       const head = tokens.slice(0, 2).filter(t => t.t === 'id').map(t => t.v.toUpperCase()).join(' ')
@@ -435,6 +440,68 @@ function readColumnConstraints(s, col, table, problems) {
     if (s.eatWord('deferrable') || s.eatWord('not', 'deferrable') || s.eatWord('initially', 'deferred') || s.eatWord('initially', 'immediate')) continue
     s.next()
   }
+}
+
+// ALTER TABLE actions on columns: ADD [COLUMN], DROP COLUMN, RENAME [COLUMN]
+// a TO b, ALTER [COLUMN] c SET|DROP NOT NULL, [SET DATA] TYPE, SET|DROP
+// DEFAULT. Scripts such as AdventureWorks reshape tables after CREATE TABLE.
+// Returns false for anything else (ADD of a table constraint among them).
+function alterColumn(s, t, problems) {
+  const colName = () => { const k = s.next(); return k && (k.t === 'id' || k.t === 'qid') ? k.v : null }
+  const find = (n) => t.columns.find(c => c.name === n)
+  const start = s.i
+  if (s.eatWord('add')) {
+    const explicit = s.eatWord('column')
+    if (!explicit && ['constraint', 'primary', 'unique', 'foreign', 'check', 'exclude'].some(w => s.isWord(w))) { s.i = start; return false }
+    s.eatWord('if', 'not', 'exists')
+    const name = colName()
+    if (!name) { s.i = start; return false }
+    const col = { name, type: readType(s), notNull: false, checks: [] }
+    readColumnConstraints(s, col, t, problems)
+    if (find(name)) t.columns = t.columns.filter(c => c.name !== name)
+    t.columns.push(col)
+    return true
+  }
+  if (s.eatWord('drop')) {
+    if (!s.eatWord('column')) { s.i = start; return false }
+    s.eatWord('if', 'exists')
+    const name = colName()
+    if (!name) return true
+    // CASCADE or not, constraints on the column go with it.
+    t.columns = t.columns.filter(c => c.name !== name)
+    if (t.primaryKey?.includes(name)) t.primaryKey = null
+    t.uniques = t.uniques.filter(u => !u.includes(name))
+    t.foreignKeys = t.foreignKeys.filter(fk => !fk.columns.includes(name))
+    return true
+  }
+  if (s.eatWord('rename')) {
+    if (s.isWord('to') || s.isWord('constraint')) { s.i = start; return false }
+    s.eatWord('column')
+    const from = colName()
+    if (!s.eatWord('to')) { s.i = start; return false }
+    const to = colName()
+    const col = from && to && find(from)
+    if (!col) { problems.push(`${t.name}: RENAME COLUMN of an unknown column ${from}`); return true }
+    col.name = to
+    const ren = (cols) => cols?.map(c => (c === from ? to : c)) ?? cols
+    t.primaryKey = ren(t.primaryKey)
+    t.uniques = t.uniques.map(ren)
+    for (const fk of t.foreignKeys) fk.columns = ren(fk.columns)
+    return true
+  }
+  if (s.eatWord('alter')) {
+    s.eatWord('column')
+    const col = find(colName())
+    if (!col) { problems.push(`${t.name}: ALTER COLUMN of an unknown column`); return true }
+    if (s.eatWord('set', 'not', 'null')) col.notNull = true
+    else if (s.eatWord('drop', 'not', 'null')) col.notNull = false
+    else if (s.eatWord('set', 'data', 'type') || s.eatWord('type')) col.type = readType(s)
+    else if (s.eatWord('drop', 'default')) { delete col.defaultGenerated }
+    else if (s.isWord('set') && s.isWord('default', 1)) { s.i++; readColumnConstraints(s, col, null, problems) }
+    else if (s.isWord('add') && s.isWord('generated', 1)) { s.i++; readColumnConstraints(s, col, null, problems) }
+    return true
+  }
+  return false
 }
 
 function readTableConstraint(s, t, problems) {
