@@ -1,6 +1,6 @@
 import { runValidation as runValidationRules, DEFAULT_VALIDATION_CATEGORIES } from '../../utils/validation.js'
 import { computePopulationIssues } from '../../utils/populationValidation.js'
-import { withDerivedPopulations, semiDerivedPopulationIssues, derivedFactPopulationIssues } from '../../logic/derivedPopulation.js'
+import { withDerivedPopulations, semiDerivedPopulationIssues, derivedFactPopulationIssues, formulaConstraintPopulationIssues } from '../../logic/derivedPopulation.js'
 import { isIdentifyingFact } from '../../utils/refMode.js'
 import {
   uid, mkEntity, mkValue, mkFact, mkRole, mkSubtype, mkConstraint, mkDiagram, mkNote, mkImplicitLink,
@@ -462,7 +462,7 @@ export function createModelSlice(set, get) {
         validationErrors: runValidationRules(s, enabled),
         // Derived subtypes are validated with their computed populations.
         populationIssues: [...computePopulationIssues(withDerivedPopulations(s)), ...semiDerivedPopulationIssues(s),
-          ...derivedFactPopulationIssues(s)],
+          ...derivedFactPopulationIssues(s), ...formulaConstraintPopulationIssues(s)],
       })
     },
     toggleValidationCategory(category) {

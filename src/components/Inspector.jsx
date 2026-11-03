@@ -14,6 +14,8 @@ import { VALIDATION_CATEGORIES } from '../utils/validation.js'
 import { DERIVATION_MODES, whyNotDerivableType, isDerived, checkRule } from '../logic/derivationRule.js'
 import { isDerivedFact, isComputedRole, checkFactRule, whyNotDerivable } from '../logic/factDerivation.js'
 import { makeContext } from '../logic/constraintFormulas.js'
+import { isFormulaConstraint, formulaConstraintEntry } from '../logic/formulaConstraint.js'
+import { Formula } from './ConstraintsTab.jsx'
 import { isFormulaQuery, whyNotGraphical, whyNoOuterJoin } from '../logic/query.js'
 import { hasTextSelection } from '../utils/textPanel.js'
 import { isFallbackReading } from '../store/viewLanguage.js'
@@ -4202,6 +4204,51 @@ function ExternalConstraintInspector({ c }) {
 }
 
 // ── Constraint inspector ──────────────────────────────────────────────────────
+// A formula constraint (logic/formulaConstraint.js): its name, its formula,
+// edited in the rule editor, and its modality.
+function FormulaConstraintInspector({ c }) {
+  const store = useScopedStore()
+  const ctx = makeContext(store)
+  const entry = formulaConstraintEntry(c, store, ctx)
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Formula Constraint</InspectorTitle>
+      <ValidationErrorStrip elementId={c.id} store={store}/>
+      <Row>
+        <Label>Name</Label>
+        <input value={c.name ?? ''} placeholder="(optional)" style={{ width: '100%' }}
+          onChange={e => store.updateConstraint(c.id, { name: e.target.value })}
+          onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}/>
+      </Row>
+      <Row>
+        <Label>Formula</Label>
+        <div className="copyable" style={{ padding: '6px 8px', border: '1px solid var(--border-soft)', borderRadius: 4, background: 'var(--bg-text-panel)' }}>
+          {entry.formula ? <Formula formula={entry.formula} ctx={ctx} />
+            : <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{entry.note}</span>}
+        </div>
+        <button style={{ marginTop: 6 }} onClick={() => store.openRuleEditor({ formulaId: c.id })}>Edit formula…</button>
+      </Row>
+      <Row>
+        <Label>Modality</Label>
+        <DeonticCheckbox checked={!!c.deontic} onChange={v => store.updateConstraint(c.id, { deontic: v })}/>
+      </Row>
+      <div style={{ fontSize: 11, color: 'var(--ink-muted)', lineHeight: 1.45, marginBottom: 14 }}>
+        A formula constraint is a statement of the logic for which ORM2 has no graphical form. It is checked against the
+        sample population and verbalised like the others, but it is not part of the graphical notation.
+      </div>
+      <DocumentationSection el={c} onChange={patch => store.updateConstraint(c.id, patch)}/>
+      <PropertiesSection el={c} kind="constraint" onChange={patch => store.updateConstraint(c.id, patch)}/>
+      <GroupMembershipSection id={c.id}/>
+      <Section title="Usage">
+        <DiagramList elementId={c.id} kind="constraint" />
+      </Section>
+      <div style={{ marginTop: 8 }}>
+        <DangerBtn onClick={() => store.deleteConstraint(c.id)}>Delete Constraint</DangerBtn>
+      </div>
+    </div>
+  )
+}
+
 function ConstraintInspector({ c }) {
   const store = useScopedStore()
   const factMap = Object.fromEntries(store.facts.map(f => [f.id, f]))
@@ -4457,9 +4504,10 @@ export default function Inspector() {
             ? <UniquenessBarInspector fact={fact} uIndex={selectedUniqueness.uIndex} />
             : fact && <FactInspector fact={fact} />}
       {st   && <SubtypeInspector st={st} />}
-      {con  && (con.constraintType === 'ring' || con.constraintType === 'exclusiveOr' || con.constraintType === 'exclusion' || con.constraintType === 'inclusiveOr' || con.constraintType === 'uniqueness' || con.constraintType === 'equality' || con.constraintType === 'subset' || con.constraintType === 'frequency' || con.constraintType === 'valueComparison')
+      {con && isFormulaConstraint(con) && <FormulaConstraintInspector c={con} />}
+      {con  && !isFormulaConstraint(con) && (con.constraintType === 'ring' || con.constraintType === 'exclusiveOr' || con.constraintType === 'exclusion' || con.constraintType === 'inclusiveOr' || con.constraintType === 'uniqueness' || con.constraintType === 'equality' || con.constraintType === 'subset' || con.constraintType === 'frequency' || con.constraintType === 'valueComparison')
              ? <ExternalConstraintInspector c={con} />
-             : con && <ConstraintInspector c={con} />}
+             : con && !isFormulaConstraint(con) && <ConstraintInspector c={con} />}
       {internalConstraintContent}
 
       {store.multiSelectedIds.length > 0 && (

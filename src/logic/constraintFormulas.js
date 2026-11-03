@@ -22,6 +22,7 @@ import { isDerived, derivationEntry } from './derivationRule.js'
 import { isDerivedFact, factDerivationEntries } from './factDerivation.js'
 import { counterexample } from '../verbalisation/negative.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
+import { isFormulaConstraint, formulaConstraintEntry, formulaElements } from './formulaConstraint.js'
 
 const SEQUENCE_TYPES = new Set([
   'inclusiveOr', 'exclusiveOr', 'exclusion', 'equality', 'subset',
@@ -38,6 +39,7 @@ export const CONSTRAINT_LABELS = {
   frequency:       'External frequency',
   ring:            'Ring',
   valueComparison: 'Value comparison',
+  formula:         'Formula constraint',
 }
 
 // Value comparison operators: the stored = and ≠ compare values, so they
@@ -757,6 +759,7 @@ export function makeContext(state) {
 }
 
 function constraintFactIds(c) {
+  if (isFormulaConstraint(c)) return formulaElements(c.rule).facts
   const ids = new Set()
   for (const seq of (c.sequences ?? []))
     for (const m of seq) if (m.kind === 'role' && m.factId) ids.add(m.factId.split('_il_')[0])
@@ -792,7 +795,7 @@ export function formalise(state, { wholeSchema = false } = {}) {
     implicit.impliedLinks = []
     return { entries: entry ? [entry] : [], implicit, ctx, scope: 'selection' }
   }
-  const constraints = (state.constraints ?? []).filter(c => SEQUENCE_TYPES.has(c.constraintType))
+  const constraints = (state.constraints ?? []).filter(c => SEQUENCE_TYPES.has(c.constraintType) || isFormulaConstraint(c))
 
   const selected = new Set(state.multiSelectedIds ?? [])
   if (state.selectedId) selected.add(state.selectedId.split('_il_')[0])
@@ -876,7 +879,7 @@ export function formalise(state, { wholeSchema = false } = {}) {
   }
   for (const c of constraints) {
     if (!constraintIds.has(c.id)) continue
-    const e = deonticEntries(c, constraintEntry(c, ctx))
+    const e = deonticEntries(c, isFormulaConstraint(c) ? formulaConstraintEntry(c, state, ctx) : constraintEntry(c, ctx))
     entries.push(...(Array.isArray(e) ? e : [e]))
   }
   const implicit = implicitEntries(state, ctx, typeIds)

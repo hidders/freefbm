@@ -24,6 +24,7 @@ const ALL_CONSTRAINT_TYPES = [
   { key: 'ring',              label: 'Ring',         short: null },
   { key: 'valueComparison',   label: 'Value Comparison', short: null },
   { key: 'frequency',         label: 'External Frequency', short: null },
+  { key: 'formula',           label: 'Formula',      short: 'φ', shortSize: 14 },
 ]
 
 const BASIC_CONSTRAINT_TYPES    = ALL_CONSTRAINT_TYPES.slice(0, 4)

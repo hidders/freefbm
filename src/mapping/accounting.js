@@ -40,7 +40,8 @@
 import { formalise } from '../logic/constraintFormulas.js'
 import { counterexample } from '../verbalisation/negative.js'
 import { computePopulationIssues, projCellKey } from '../utils/populationValidation.js'
-import { makePopulationEvaluator } from '../logic/derivedPopulation.js'
+import { makePopulationEvaluator, formulaConstraintPopulationIssues } from '../logic/derivedPopulation.js'
+import { isFormulaConstraint, formulaElements } from '../logic/formulaConstraint.js'
 import { identifyingFactIds } from '../utils/refMode.js'
 import { isDeonticUniqueness, isDeonticMandatory } from '../logic/modality.js'
 import { relationalModel } from '../relational/relationalModel.js'
@@ -272,8 +273,14 @@ function issuesOf(w, pops, constraintId) {
   // Preferred identifiers always: they say how instances are identified.
   const constraints = constraintId !== undefined
     ? w.els.constraints.filter(c => c.id === constraintId || c.isPreferredIdentifier)
-    : w.els.constraints.filter(c => c.isPreferredIdentifier || (c.sequences ?? []).some(sq => (sq ?? []).some(m => factIds.has(m?.factId))) || active.has(c.targetObjectTypeId))
-  return computePopulationIssues({ ...w.els, facts: stable(w, facts), constraints: stable(w, constraints), ...pops, nestedEntityMappings: {}, subtypeMappings: {} })
+    : w.els.constraints.filter(c => c.isPreferredIdentifier || (c.sequences ?? []).some(sq => (sq ?? []).some(m => factIds.has(m?.factId))) || active.has(c.targetObjectTypeId)
+      || (isFormulaConstraint(c) && [...formulaElements(c.rule).facts].some(id => factIds.has(id))))
+  const data = { ...w.els, facts: stable(w, facts), constraints: stable(w, constraints), ...pops, nestedEntityMappings: {}, subtypeMappings: {} }
+  // Formula constraints are checked by evaluating their formula (over all of
+  // the side's fact types, which the formula may name beyond those populated).
+  const formulas = constraints.filter(isFormulaConstraint)
+  const formulaIssues = formulas.length ? formulaConstraintPopulationIssues({ ...data, facts: w.els.facts, constraints: formulas }) : []
+  return [...computePopulationIssues(data), ...formulaIssues]
     .filter(i => !NOISE.has(i.kind) && !onNull(i))
 }
 

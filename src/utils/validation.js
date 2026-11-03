@@ -7,6 +7,7 @@ import { derivationIssues } from '../logic/derivationRule.js'
 import { factDerivationIssues, factLabel } from '../logic/factDerivation.js'
 import { derivationGraph, derivationCycles } from '../logic/derivationDependencies.js'
 import { makeContext } from '../logic/constraintFormulas.js'
+import { isFormulaConstraint, checkFormulaConstraint } from '../logic/formulaConstraint.js'
 import { isFormulaQuery, checkQuery, whyNoOuterJoin } from '../logic/query.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
 import { mappingRuleIssues, mappingCoverageIssues } from '../mapping/mappingIssues.js'
@@ -69,6 +70,7 @@ export const DEFAULT_VALIDATION_CATEGORIES = Object.fromEntries(
 
 // Human-readable constraint type labels for error messages
 const CONSTRAINT_LABELS = {
+  formula: 'Formula',
   exclusion:    'Exclusion',
   equality:     'Equality',
   subset:       'Subset',
@@ -457,7 +459,17 @@ export function runValidation(state, enabledCategories) {
     const ARITY_SENSITIVE = new Set(['equality', 'subset', 'exclusion', 'inclusiveOr', 'exclusiveOr'])
     const factById = new Map(facts.map(f => [f.id, f]))
     const otById   = new Map(objectTypes.map(o => [o.id, o]))
+    let fctx = null
     for (const c of constraints) {
+      // A formula constraint: its formula must be complete and well typed.
+      if (isFormulaConstraint(c)) {
+        fctx ??= makeContext(state)
+        checkFormulaConstraint(c, state, fctx).forEach((i, k) => errors.push({
+          id: `formula-${c.id}-${k}`, category: 'constraintStructure', elementId: c.id, elementKind: 'constraint',
+          message: `Formula constraint${c.name ? ` ${c.name}` : ''}: ${i.message}`, severity: i.severity,
+        }))
+        continue
+      }
       const sequences = c.sequences || []
       const label = CONSTRAINT_LABELS[c.constraintType] ?? c.constraintType
 
