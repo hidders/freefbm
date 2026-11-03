@@ -257,7 +257,7 @@ function matchSide(side, ev, limit = 100000, players = new Map()) {
 // objectified fact type): { kind: 'refMode', rm } | { kind: 'composite', parts }
 // with parts [{ factId, entityRoleIndex, roleIndex }] in identifier order.
 const schemeCache = new WeakMap()
-function schemeOf(typeId, data) {
+export function schemeOf(typeId, data) {
   let m = schemeCache.get(data)
   if (!m) { m = new Map(); schemeCache.set(data, m) }
   if (!m.has(typeId)) m.set(typeId, computeScheme(typeId, data))
@@ -406,7 +406,10 @@ function buildSide(side, y, data, pop, ident) {
       if (env.has(v.id)) continue
       const sch = schemeOf(v.typeId, data)
       if (sch?.kind !== 'refMode') continue
-      for (const key of altKeysOf(v.typeId, data)) {
+      // The same key in every rule (inventKeys, from prepareRun), so that
+      // rules giving different keys still invent the same surrogate.
+      const keys = pop.inventKeys?.has(v.typeId) ? [pop.inventKeys.get(v.typeId)] : altKeysOf(v.typeId, data)
+      for (const key of keys) {
         const vals = key.map(p => {
           const a = atoms.find(x => x.t === 'fact' && x.factId === p.factId && x.args[p.entityRi] === v.id && env.has(x.args[p.valueRi]))
           return a ? valueOf(env.get(a.args[p.valueRi])) : undefined
@@ -455,44 +458,13 @@ function buildSide(side, y, data, pop, ident) {
 // ── Running a mapping ────────────────────────────────────────────────────────
 
 export function runMapping(state, mapping, direction = 'forward') {
-  const from = direction === 'forward' ? 'source' : 'target'
-  const to = other(from)
-  const data = dataOf(state)
-  const ev = makePopulationEvaluator(data)
-  const ctxs = { source: sideContext(state, mapping.sourceSchemaId), target: sideContext(state, mapping.targetSchemaId) }
-  const ident = identifyingFactIds(data.facts, data.objectTypes, data.constraints)
-  const players = new Map(data.facts.map(f => [f.id, f.roles.map(r => r.objectTypeId)]))
-  const pop = { types: new Map(), facts: new Map() }
-  const log = []
-  const rules = []
-  for (const [k, r] of mapping.rules.entries()) {
-    const name = r.name || `Rule ${k + 1}`
-    const fromSide = expandSide(asSide(r[from]), ctxs[from])
-    const toSide = expandSide(asSide(r[to]), ctxs[to])
-    if (!(fromSide.atoms ?? []).length || !(toSide.atoms ?? []).length) {
-      log.push({ level: 'warning', text: `${name}: skipped, a pattern is empty` })
-      rules.push({ id: r.id, name, matches: 0, built: 0, skipped: true })
-      continue
-    }
-    const errors = checkRule(r, mapping, state, ctxs).filter(i => i.severity === 'error')
-    if (errors.length) log.push({ level: 'warning', text: `${name}: run although it has ${errors.length === 1 ? 'an error' : `${errors.length} errors`} (${errors[0].text})` })
-    const m = matchSide(fromSide, ev, undefined, players)
-    for (const e of m.errors) log.push({ level: 'error', text: `${name}: ${e}` })
-    if (m.truncated) log.push({ level: 'warning', text: `${name}: stopped after ${m.tuples.length} matches` })
-    if (hasNot(toSide.atoms)) log.push({ level: 'note', text: `${name}: the negated part of the ${to} pattern is a condition; nothing is built for it` })
-    const unknown = new Map()
-    for (const y of m.tuples) {
-      for (const v of buildSide(toSide, y, data, pop, ident)) unknown.set(v.id, v)
-    }
-    for (const v of unknown.values()) {
-      const t = ctxs[to].otById.get(v.typeId) ?? data.facts.find(f => f.id === v.typeId)
-      log.push({ level: 'warning', text: `${name}: the ${t?.name ?? t?.objectifiedName ?? 'variable'} of the ${to} pattern is not determined by $y (no reference scheme reaches it), so it was not created` })
-    }
-    rules.push({ id: r.id, name, matches: m.tuples.length })
-  }
-  const populations = {}, factPopulations = {}
-  for (const [id, m] of pop.types) populations[id] = [...m.values()]
-  for (const [id, m] of pop.facts) factPopulations[id] = [...m.values()]
+  const prep = prepareRun(state, mapping, direction)
+  const { from, to, ctxs } = prep
+  const log = [...prep.log]
+  const ex = executeRun(prep, state)
+  const rules = prep.rules.map(r => ({ id: r.id, name: r.name, matches: ex.matches.get(r.id) ?? 0, ...(r.skipped ? { built: 0, skipped: true } : {}) }))
+  log.push(...ex.log)
+  const { populations, factPopulations } = ex
   // What each element of the other side gets.
   const counts = []
   for (const o of ctxs[to].objectTypes) {
@@ -503,12 +475,103 @@ export function runMapping(state, mapping, direction = 'forward') {
     const n = factPopulations[f.id]?.length ?? 0
     if (n) counts.push({ id: f.id, name: readingName(f, ctxs[to]), kind: 'fact', n })
   }
-  const invented = [...(pop.invented ?? new Map())].map(([typeId, key]) => ({ typeId, key }))
+  const invented = ex.invented
   for (const { typeId } of invented) {
     const t = ctxs[to].otById.get(typeId)
     log.push({ level: 'note', text: `${t?.name ?? 'An entity type'}: its reference values were invented from another key (⟨…⟩), as nothing gives them` })
   }
   return { from, to, schemaId: sideSchemaId(mapping, to), populations, factPopulations, rules, counts, log, invented }
+}
+
+// What a run needs that does not depend on the population: the rules' sides
+// spelt out, and lookups of the elements. Used again and again by constraint
+// accounting (accounting.js), which runs mappings on many small populations.
+export function prepareRun(state, mapping, direction = 'forward', { check = true } = {}) {
+  const from = direction === 'forward' ? 'source' : 'target'
+  const to = other(from)
+  const elements = dataOf({ ...state, populations: {}, factPopulations: {}, nestedEntityMappings: {}, subtypeMappings: {} })
+  const ctxs = { source: sideContext(state, mapping.sourceSchemaId), target: sideContext(state, mapping.targetSchemaId) }
+  const log = []
+  const rules = []
+  for (const [k, r] of mapping.rules.entries()) {
+    const name = r.name || `Rule ${k + 1}`
+    const fromSide = expandSide(asSide(r[from]), ctxs[from])
+    const toSide = expandSide(asSide(r[to]), ctxs[to])
+    if (!(fromSide.atoms ?? []).length || !(toSide.atoms ?? []).length) {
+      log.push({ level: 'warning', text: `${name}: skipped, a pattern is empty` })
+      rules.push({ id: r.id, name, skipped: true })
+      continue
+    }
+    if (check) {
+      const errors = checkRule(r, mapping, state, ctxs).filter(i => i.severity === 'error')
+      if (errors.length) log.push({ level: 'warning', text: `${name}: run although it has ${errors.length === 1 ? 'an error' : `${errors.length} errors`} (${errors[0].text})` })
+    }
+    if (hasNot(toSide.atoms)) log.push({ level: 'note', text: `${name}: the negated part of the ${to} pattern is a condition; nothing is built for it` })
+    rules.push({ id: r.id, name, fromSide, toSide })
+  }
+  return {
+    from, to, ctxs, rules, log, elements,
+    ident: identifyingFactIds(elements.facts, elements.objectTypes, elements.constraints),
+    players: new Map(elements.facts.map(f => [f.id, f.roles.map(r => r.objectTypeId)])),
+    inventKeys: inventKeysOf(rules, elements),
+  }
+}
+
+// For each entity type whose surrogate a run may have to invent: the first
+// other key that every rule building it without its reference value gives.
+function inventKeysOf(rules, data) {
+  const avail = new Map()   // typeId → Set(index into altKeysOf)
+  for (const r of rules) {
+    if (r.skipped) continue
+    const atoms = r.toSide.atoms ?? []
+    const given = new Set(atoms.filter(a => a.t === 'bind' || a.t === 'const').map(a => a.v))
+    for (const v of r.toSide.vars ?? []) {
+      const sch = schemeOf(v.typeId, data)
+      if (sch?.kind !== 'refMode') continue
+      const refGiven = atoms.some(a => a.t === 'fact' && a.factId === sch.rm.factId && a.args[1 - sch.rm.vtRoleIndex] === v.id && given.has(a.args[sch.rm.vtRoleIndex]))
+      if (refGiven) continue
+      const keys = altKeysOf(v.typeId, data)
+      const here = new Set(keys.map((k, i) => (k.every(p => atoms.some(a => a.t === 'fact' && a.factId === p.factId && a.args[p.entityRi] === v.id)) ? i : -1)).filter(i => i >= 0))
+      if (!here.size) continue
+      avail.set(v.typeId, avail.has(v.typeId) ? new Set([...avail.get(v.typeId)].filter(i => here.has(i))) : here)
+    }
+  }
+  const out = new Map()
+  for (const [typeId, set] of avail) if (set.size) out.set(typeId, altKeysOf(typeId, data)[Math.min(...set)])
+  return out
+}
+
+// Runs prepared rules on the population in `pops` ({ populations,
+// factPopulations, … }, e.g. the store state): { populations,
+// factPopulations, matches: Map(ruleId → n), invented, log }.
+export function executeRun(prep, pops, { limit } = {}) {
+  const { ctxs, to } = prep
+  const data = { ...prep.elements, populations: pops.populations ?? {}, factPopulations: pops.factPopulations ?? {},
+    nestedEntityMappings: pops.nestedEntityMappings ?? {}, subtypeMappings: pops.subtypeMappings ?? {} }
+  const ev = makePopulationEvaluator(data)
+  const pop = { types: new Map(), facts: new Map(), inventKeys: prep.inventKeys }
+  const log = []
+  const matches = new Map()
+  for (const r of prep.rules) {
+    if (r.skipped) continue
+    const m = matchSide(r.fromSide, ev, limit, prep.players)
+    for (const e of m.errors) log.push({ level: 'error', text: `${r.name}: ${e}` })
+    if (m.truncated) log.push({ level: 'warning', text: `${r.name}: stopped after ${m.tuples.length} matches` })
+    const unknown = new Map()
+    for (const y of m.tuples) {
+      for (const v of buildSide(r.toSide, y, prep.elements, pop, prep.ident)) unknown.set(v.id, v)
+    }
+    for (const v of unknown.values()) {
+      const t = ctxs[to].otById.get(v.typeId) ?? prep.elements.facts.find(f => f.id === v.typeId)
+      log.push({ level: 'warning', text: `${r.name}: the ${t?.name ?? t?.objectifiedName ?? 'variable'} of the ${to} pattern is not determined by $y (no reference scheme reaches it), so it was not created` })
+    }
+    matches.set(r.id, m.tuples.length)
+  }
+  const populations = {}, factPopulations = {}
+  for (const [id, m] of pop.types) populations[id] = [...m.values()]
+  for (const [id, m] of pop.facts) factPopulations[id] = [...m.values()]
+  const invented = [...(pop.invented ?? new Map())].map(([typeId, key]) => ({ typeId, key }))
+  return { populations, factPopulations, matches, invented, log }
 }
 
 const hasNot = (atoms) => (atoms ?? []).some(a => a.t === 'not' || (a.t === 'opt' && hasNot(a.atoms)))

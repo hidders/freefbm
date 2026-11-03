@@ -239,3 +239,52 @@ export function MappingRules() {
     </g>
   )
 }
+
+// Constraint accounting badges (AccountingReport.jsx), on the left (the
+// validation badges are at the top right): on each shown fact type or object type with a constraint that a mapping loses (red !) or
+// could not decide (grey ?), from the accounting results of the mappings.
+export function AccountingBadges() {
+  const accounting = useOrmStore(s => s.mappingAccounting)
+  const constraints = useOrmStore(s => s.constraints)
+  const { objectTypes, facts, collapsedRefFacts } = useDiagramElements()
+  const marks = useMemo(() => {
+    const m = new Map()   // element id → { lost: [text], unknown: [text] }
+    for (const acc of Object.values(accounting ?? {})) {
+      for (const side of SIDES) for (const x of acc.result?.sides?.[side] ?? []) {
+        if (x.status !== 'lost' && x.status !== 'unknown') continue
+        const c = constraints.find(k => k.id === x.entry.elementId)
+        const ids = c ? [...new Set((c.sequences ?? []).flat().map(mm => mm?.factId).filter(Boolean))].slice(0, 1) : [x.entry.elementId]
+        for (const id of ids) {
+          const owner = collapsedRefFacts?.[id]?.owner?.id ?? id
+          if (!m.has(owner)) m.set(owner, { lost: [], unknown: [] })
+          m.get(owner)[x.status].push(x.label ?? `${x.entry.kind}${x.entry.subject ? ` · ${x.entry.subject}` : ''}`)
+        }
+      }
+    }
+    return m
+  }, [accounting, constraints, collapsedRefFacts])
+  if (!marks.size) return null
+  const items = [
+    // Just left of a fact type's first role box; at an object type's corner.
+    ...facts.filter(f => !f._implicit && marks.has(f.id)).map(f => ({ el: f, at: { x: factBounds(f).left - 8, y: f.y - 11 } })),
+    ...objectTypes.filter(o => marks.has(o.id)).map(o => { const b = entityBounds(o); return { el: o, at: { x: b.left - 2, y: b.top - 2 } } }),
+  ]
+  return (
+    <g className="accounting-badges">
+      {items.map(({ el, at }) => {
+        const mk = marks.get(el.id)
+        const lost = mk.lost.length > 0
+        const title = [
+          ...mk.lost.map(t => `Lost: ${t}`), ...mk.unknown.map(t => `Unknown: ${t}`),
+        ].join('\n') + '\n(Constraint accounting in the Mappings tab)'
+        return (
+          <g key={`acc-${el.occurrenceId ?? el.id}`} data-status={lost ? 'lost' : 'unknown'} transform={`translate(${at.x},${at.y})`} style={{ cursor: 'help', pointerEvents: 'all' }}>
+            <title>{title}</title>
+            <circle r={7} fill={lost ? '#dc2626' : 'var(--bg-surface)'} stroke={lost ? '#dc2626' : 'var(--ink-muted)'} strokeWidth={1.2} />
+            <text textAnchor="middle" dy="0.35em" fontSize={10} fontWeight={700} fill={lost ? '#fff' : 'var(--ink-muted)'} style={{ userSelect: 'none' }}>{lost ? '!' : '?'}</text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}

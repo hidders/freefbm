@@ -11,7 +11,7 @@ import ConstraintNodes from './ConstraintNodes'
 import RoleConnectors, { MandatoryDots } from './RoleConnectors'
 import Minimap from './Minimap'
 import ErdView, { isErdDiagram } from './ErdView'
-import { MappingTints, MappingRules } from './MappingLayer'
+import { MappingTints, MappingRules, AccountingBadges } from './MappingLayer'
 import ContextMenu from './ContextMenu'
 import ConstraintMemberLabels from './ConstraintMemberLabels'
 import QueryAtoms from './QueryAtoms'
@@ -1526,6 +1526,7 @@ export default function Canvas() {
           </g>{/* end previewDim wrapper */}
           {/* Mapping diagrams: rules as nodes linked to their elements */}
           <MappingRules/>
+          <AccountingBadges/>
           {(qd || store.queryIndexHighlight) && <QueryAtoms
             mousePos={mousePos}
             onAtomClick={target => store.queryEditClick(target)}
