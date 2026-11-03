@@ -22,7 +22,8 @@ import { PatternText, IssueList, MAPPING_TOKEN_STYLE } from './MappingFormula.js
 // The open mapping rule editor, if any (store.mappingRuleEditor).
 export function MappingRuleEditorPanel() {
   const target = useOrmStore(s => s.mappingRuleEditor)
-  if (!target) return null
+  const advanced = useOrmStore(s => s.advancedMode)
+  if (!target || !advanced) return null
   return <MappingRuleEditor key={`${target.mappingId}:${target.ruleId}`} mappingId={target.mappingId} ruleId={target.ruleId} />
 }
 
