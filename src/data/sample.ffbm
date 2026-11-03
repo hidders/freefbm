@@ -7166,17 +7166,14 @@
       "P6"
     ],
     "ot_Building": [
-      "MAL",
-      "CLO"
+      "MAL"
     ],
     "ot_BuildingCode": [
-      "MAL",
-      "CLO"
+      "MAL"
     ],
     "ot_RoomNr": [
       "151",
-      "152",
-      "101"
+      "152"
     ],
     "ot_Room": [
       [
@@ -7186,10 +7183,6 @@
       [
         "MAL",
         "152"
-      ],
-      [
-        "CLO",
-        "101"
       ]
     ],
     "ot_Extension": [
