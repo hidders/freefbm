@@ -266,6 +266,10 @@ function stable(w, list) {
   if (!cache.has(k)) cache.set(k, list)
   return cache.get(k)
 }
+// Violations of constraints the chase does not apply (it adds no facts for
+// them), which still rule out a population that breaks them.
+const KILLING_KINDS = new Set(['exclusionViolation', 'ringViolation', 'valueRangeViolation', 'formulaViolated', 'valueComparisonViolation'])
+
 function issuesOf(w, pops, constraintId) {
   const active = new Set(Object.entries(pops.populations).filter(([, v]) => v.length).map(([k]) => k))
   const facts = w.els.facts.filter(f => pops.factPopulations[f.id]?.length || f.roles.some(r => active.has(r.objectTypeId)))
@@ -279,7 +283,7 @@ function issuesOf(w, pops, constraintId) {
   // Formula constraints are checked by evaluating their formula (over all of
   // the side's fact types, which the formula may name beyond those populated).
   const formulas = constraints.filter(isFormulaConstraint)
-  const formulaIssues = formulas.length ? formulaConstraintPopulationIssues({ ...data, facts: w.els.facts, constraints: formulas }) : []
+  const formulaIssues = formulas.length ? formulaConstraintPopulationIssues({ ...data, facts: w.els.facts, constraints: w.els.constraints }, formulas) : []
   return [...computePopulationIssues(data), ...formulaIssues]
     .filter(i => !NOISE.has(i.kind) && !onNull(i))
 }
@@ -968,7 +972,7 @@ function accountEntry(entry, A, B, run, fresh) {
     if (bad.length) {
       // I breaks a constraint the chase does not apply.
       const k = issueKey(bad[0])
-      if (['exclusionViolation', 'ringViolation', 'valueRangeViolation'].includes(bad[0].kind)) killedBy.push({ I0, ch: { ...ch, failed: k } })
+      if (KILLING_KINDS.has(bad[0].kind)) killedBy.push({ I0, ch: { ...ch, failed: k } })
       else undecided = 'A constraint of the other schema that is not checked yet is involved.'
       continue
     }

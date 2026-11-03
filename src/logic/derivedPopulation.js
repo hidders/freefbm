@@ -773,9 +773,11 @@ export function derivedFactPopulationIssues(data) {
 }
 
 // Population issues of formula constraints: the formula is false, with the
-// values of its leading ∀ variables for which it fails.
-export function formulaConstraintPopulationIssues(data) {
-  const fcs = (data.constraints ?? []).filter(c => isFormulaConstraint(c) && c.rule)
+// values of its leading ∀ variables for which it fails. With only (a list of
+// constraints), only those are checked; data.constraints still serves the
+// evaluator (preferred identifiers give the tuples of identifying facts).
+export function formulaConstraintPopulationIssues(data, only) {
+  const fcs = (only ?? data.constraints ?? []).filter(c => isFormulaConstraint(c) && c.rule)
   if (!fcs.length) return []
   const ev = makePopulationEvaluator(data)
   const ctx = makeContext(data)

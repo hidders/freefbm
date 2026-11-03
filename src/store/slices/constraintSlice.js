@@ -1284,6 +1284,23 @@ export function createConstraintSlice(set, get) {
       return c.id
     },
 
+    // A formula constraint of the shape ∀x̄ (φ → x op y) made into the value
+    // comparison constraint it is (vc from mapping/translate.js
+    // asValueComparison: φ becomes its join path). The id, name, position
+    // and occurrences stay.
+    formulaToValueComparison(id, vc) {
+      set(s => ({
+        constraints: s.constraints.map(c => {
+          if (c.id !== id) return c
+          const { rule, sqlCheck, roleSequences, ...keep } = c
+          const base = mkConstraint('valueComparison', c.x, c.y)
+          return { ...base, ...keep, constraintType: 'valueComparison', operator: vc.operator, sequences: [vc.sequence], queries: [vc.query],
+            targetObjectTypeId: null, exhaustive: base.exhaustive, exclusive: base.exclusive }
+        }),
+        isDirty: true,
+      }))
+    },
+
     updateConstraint(id, patch) {
       set(s => {
         const before = s.constraints.find(c => c.id === id)

@@ -2,7 +2,8 @@
 import { mkMapping, mkRule, ruleElements } from '../../mapping/mapping.js'
 import { withRunApplied } from '../../mapping/runMapping.js'
 import { foldChanges, addConstraint } from '../../mapping/fold.js'
-import { mkDiagram } from '../storeHelpers'
+import { mkDiagram, mkConstraint, mkConstraintOcc } from '../storeHelpers'
+import { formulaElements } from '../../logic/formulaConstraint.js'
 import { findRefMode } from '../../utils/refMode.js'
 
 const ADVANCED_KEY = 'freefbm.advancedMode'
@@ -302,6 +303,41 @@ export const createMappingSlice = (set, get) => {
 
     // Opens the rule editor on a rule; in Basic mode, shows the rule in the
     // Mappings tab instead.
+    // Adds a constraint carried through a mapping (mapping/translate.js) to a
+    // schema: a value comparison constraint when vc is given ({ sequence,
+    // query, operator }), else a formula constraint. It is drawn on the
+    // diagram of that schema that shows most of the fact types it names,
+    // under them. One undo step; returns the new constraint's id.
+    addCarriedConstraint(schemaId, { rule, deontic = false, name = '', vc = null }) {
+      const s = get()
+      const base = vc
+        ? { ...mkConstraint('valueComparison', 0, 0), operator: vc.operator, sequences: [vc.sequence], queries: [vc.query] }
+        : { ...mkConstraint('formula', 0, 0), rule }
+      const c = { ...base, schemaId, name, ...(deontic ? { deontic: true } : {}) }
+      const named = vc ? new Set(vc.sequence.map(m => m.factId)) : formulaElements(rule).facts
+      const shown = (d) => (d.occurrences ?? []).filter(o => named.has(o.schemaElementId))
+      const diagrams = s.diagrams.filter(d => d.schemaId === schemaId && !d.mappingId)
+      const best = [...diagrams].sort((a, b) => shown(b).length - shown(a).length
+        || (b.id === s.activeDiagramId) - (a.id === s.activeDiagramId))[0]
+      let x = 100, y = 100
+      const occs = best ? shown(best) : []
+      if (occs.length) {
+        // Right of the fact types and their players, level with the facts.
+        const players = new Set(occs.flatMap(o => Object.values(o.roleOccurrenceMap ?? {})))
+        const near = [...occs, ...(best.occurrences ?? []).filter(o => players.has(o.id))]
+        x = Math.max(...near.map(o => o.x)) + 120
+        y = occs.reduce((a, o) => a + o.y, 0) / occs.length
+      }
+      c.x = Math.round(x); c.y = Math.round(y)
+      set(st => ({
+        constraints: [...st.constraints, c],
+        diagrams: best ? st.diagrams.map(d => (d.id === best.id
+          ? { ...d, constraintOccurrences: [...(d.constraintOccurrences ?? []), mkConstraintOcc(c.id, c.x, c.y)] } : d)) : st.diagrams,
+        isDirty: true,
+      }))
+      return c.id
+    },
+
     openMappingRuleEditor(mappingId, ruleId) {
       if (get().advancedMode) { set({ mappingRuleEditor: { mappingId, ruleId } }); return }
       get().setBottomPanelCollapsed?.(false)
