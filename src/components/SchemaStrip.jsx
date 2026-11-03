@@ -16,12 +16,13 @@ export const PROFILE_LABELS = {
 // schema's diagrams, double-clicking renames it, and an empty schema can be
 // removed with its ✕.
 export default function SchemaStrip() {
-  const { schemas, activeId, counts, mappings, activeMappingId } = useOrmStore(useShallow(s => ({
+  const { schemas, activeId, counts, mappings, activeMappingId, broken } = useOrmStore(useShallow(s => ({
     schemas: s.schemas ?? [],
     activeId: activeSchemaIdOf(s),
     counts: countsKey(s),
     mappings: s.mappings ?? [],
     activeMappingId: s.diagrams.find(d => d.id === s.activeDiagramId)?.mappingId ?? null,
+    broken: brokenKey(s),
   })))
   const [editingId, setEditingId] = useState(null)
   const [draft, setDraft] = useState('')
@@ -32,6 +33,8 @@ export default function SchemaStrip() {
   }, [editingId])
 
   if (schemas.length <= 1 && !mappings.length) return null
+  // Rules with errors per mapping (from validation, category Mapping Rules).
+  const brokenRules = Object.fromEntries(broken.split('|').filter(Boolean).map(x => x.split('=')).map(([k, v]) => [k, +v]))
   const sizes = Object.fromEntries(counts.split('|').filter(Boolean).map(x => x.split('=')).map(([k, v]) => [k, +v]))
 
   const commit = () => {
@@ -120,7 +123,7 @@ export default function SchemaStrip() {
               data-mapping-id={m.id}
               className="mapping-chip"
               onClick={() => useOrmStore.getState().openMappingDiagram(m.id)}
-              title={`${nameOf(m.sourceSchemaId)} ⟺ ${nameOf(m.targetSchemaId)} · ${m.rules.length} rule${m.rules.length === 1 ? '' : 's'}. Click for its diagram.`}
+              title={`${nameOf(m.sourceSchemaId)} ⟺ ${nameOf(m.targetSchemaId)} · ${m.rules.length} rule${m.rules.length === 1 ? '' : 's'}${brokenRules[m.id] ? `, ${brokenRules[m.id]} broken (see Validation › Mapping Rules)` : ''}. Click for its diagram.`}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5,
                 height: 22, padding: '0 8px 0 3px', borderRadius: 11,
@@ -136,12 +139,28 @@ export default function SchemaStrip() {
                 background: 'linear-gradient(90deg, var(--map-source) 50%, var(--map-target) 50%)',
               }}>⟺</span>
               <span>{m.name}</span>
+              {brokenRules[m.id] > 0 && <span className="mapping-broken" style={{
+                fontSize: 9, fontWeight: 700, color: '#fff', background: 'var(--danger, #dc2626)', borderRadius: 7,
+                padding: '0 4px', lineHeight: '13px', minWidth: 13, textAlign: 'center',
+              }}>{brokenRules[m.id]}</span>}
             </div>
           )
         })}
       </>}
     </div>
   )
+}
+
+// "mappingId=n|..." the number of rules with errors per mapping, from the
+// validation results, as a string for the same reason as countsKey.
+function brokenKey(s) {
+  const rules = new Map()
+  for (const e of s.validationErrors ?? []) {
+    if (e.category !== 'mappingRules' || e.severity !== 'error') continue
+    if (!rules.has(e.mappingId)) rules.set(e.mappingId, new Set())
+    rules.get(e.mappingId).add(e.elementId)
+  }
+  return [...rules].map(([k, v]) => `${k}=${v.size}`).join('|')
 }
 
 // "schemaId=n|..." element counts per schema, as a string so the selector

@@ -9,6 +9,8 @@ import { derivationGraph, derivationCycles } from '../logic/derivationDependenci
 import { makeContext } from '../logic/constraintFormulas.js'
 import { isFormulaQuery, checkQuery, whyNoOuterJoin } from '../logic/query.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
+import { mappingRuleIssues, mappingCoverageIssues } from '../mapping/mappingIssues.js'
+import { readingName } from '../mapping/mapping.js'
 
 export const VALIDATION_CATEGORIES = {
   factTypeDefinition: {
@@ -50,6 +52,14 @@ export const VALIDATION_CATEGORIES = {
   schemaScope: {
     label: 'Schemas',
     description: 'Elements that refer to elements of another schema in the same file',
+  },
+  mappingRules: {
+    label: 'Mapping Rules',
+    description: 'Rules of a mapping that name deleted or changed elements, or that are ill-formed or not key-safe',
+  },
+  mappingCoverage: {
+    label: 'Mapping Coverage',
+    description: 'Entity and fact types that no rule of a mapping names, so the mapping does not carry them over',
   },
 }
 
@@ -776,6 +786,42 @@ export function runValidation(state, enabledCategories) {
         continue
       }
       push('not-sql', c, 'constraint', `${label} constraint: ${NOT_SQL}`, 'warning')
+    }
+  }
+
+  // ── Mappings ─────────────────────────────────────────────────────────────────
+  // Free edits of either schema of a mapping can break its rules (workbench
+  // step 11, mapping/mappingIssues.js). A rule's issue is listed under both
+  // schemas (schemaIds); clicking it opens the rule in the rule editor.
+  if ((state.mappings?.length ?? 0) && (enabledCategories.has('mappingRules') || enabledCategories.has('mappingCoverage'))) {
+    const cache = new Map()
+    if (enabledCategories.has('mappingRules')) {
+      mappingRuleIssues(state, cache).forEach((i, n) => errors.push({
+        id: `mapping-rule-${i.mapping.id}-${i.rule.id}-${n}`,
+        category: 'mappingRules',
+        elementId: i.rule.id,
+        elementKind: 'mappingRule',
+        mappingId: i.mapping.id,
+        schemaIds: [i.mapping.sourceSchemaId, i.mapping.targetSchemaId],
+        message: `${i.mapping.name}, ${i.rule.name || `Rule ${i.ruleIndex + 1}`}: ${i.text}`,
+        severity: i.severity,
+      }))
+    }
+    if (enabledCategories.has('mappingCoverage')) {
+      const otByIdAll = new Map(objectTypes.map(o => [o.id, o]))
+      for (const i of mappingCoverageIssues(state, cache)) {
+        const ot = i.kind === 'type' ? objectTypes.find(o => o.id === i.elementId) : null
+        const f = i.kind === 'fact' ? facts.find(x => x.id === i.elementId) : null
+        const what = ot ? `Entity type ${ot.name}` : `Fact type "${readingName(f, { otById: otByIdAll })}"`
+        errors.push({
+          id: `mapping-coverage-${i.mapping.id}-${i.elementId}`,
+          category: 'mappingCoverage',
+          elementId: i.elementId,
+          elementKind: ot ? 'objectType' : 'fact',
+          message: `${what} is not named by any rule of ${i.mapping.name}, so the mapping does not carry it over`,
+          severity: 'warning',
+        })
+      }
     }
   }
 
