@@ -514,6 +514,11 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
   const coccs = []
   const perRow = Math.max(1, Math.min(5, Math.ceil(Math.sqrt(tables.length))))
   const blockPos = new Map()
+  // A table with a one-column primary key has a reference mode. Its key column
+  // is drawn as a fact type like the other columns, so the entity is marked
+  // expanded and the key column's occurrences belong to it; otherwise the
+  // entity would also show the "(.ref)" shorthand.
+  const expandedRefModeOccs = []
   let y = 80, rowH = 0
   tables.forEach((t, i) => {
     const col = i % perRow
@@ -527,13 +532,16 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
     occs.push(eOcc)
     e.x = x; e.y = y + h / 2
     blockPos.set(t, { x, y, h })
+    const rm = findRefMode(e, facts, objectTypes)
+    if (rm) expandedRefModeOccs.push(eOcc.id)
     t.columns.forEach((c, j) => {
       const k = colKey(t, c.name)
       const f = factByKey.get(k)
       const vt = vtByKey.get(k)
       const fy = y + j * ROW_H
-      const vtOcc = mkOcc(vt.id, x + 330, fy)
-      const fOcc = mkOcc(f.id, x + 165, fy, { roleOccurrenceMap: { 0: eOcc.id, 1: vtOcc.id } })
+      const owned = rm?.factId === f.id ? { refModeOwnerOccId: eOcc.id } : {}
+      const vtOcc = mkOcc(vt.id, x + 330, fy, owned)
+      const fOcc = mkOcc(f.id, x + 165, fy, { roleOccurrenceMap: { 0: eOcc.id, 1: vtOcc.id }, ...owned })
       occs.push(fOcc, vtOcc)
       f.x = x + 165; f.y = fy
       if (!vt._placed) { vt.x = x + 330; vt.y = fy; vt._placed = true }
@@ -559,6 +567,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
   for (const vt of objectTypes) delete vt._placed
   diagram.occurrences = occs
   diagram.constraintOccurrences = coccs
+  diagram.expandedRefModeOccs = expandedRefModeOccs
 
   const stats = { tables: tables.length, columns: facts.length, valueTypes: objectTypes.length - tables.length,
     keys: constraints.filter(c => c.constraintType === 'uniqueness').length + facts.filter(f => f.uniqueness.length > 1).length,

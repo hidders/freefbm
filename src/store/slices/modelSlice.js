@@ -10,7 +10,7 @@ import {
   makeUniqueName, purgeOrphanedConstraints, closeUnderPrinciple3, computeCascadeRemove,
   identifiedIdForInternalPI, demoteOtherPIsFor, mkRefModePair, findMatchingRefModeFact,
   vtNameFromLabel, clearRefModePI, applyFreshRefMode,
-  findUniqueLCA, findPathDown, migrateRefModeExpansion, migrateSubtypeOccurrences,
+  findUniqueLCA, findPathDown, migrateRefModeExpansion, migrateSubtypeOccurrences, repairDrawnRefModes,
   migrateOldDiagram, nextRelationNumber, defaultReadingParts, subtypeKindOf,
   factTypeLabel, getConstraintDeps, getConstraintQueryDeps, eligibleConstraints,
   syncConstraints, computeConnectedIds, hasNoConnectors, runFactMergePass,
@@ -649,7 +649,7 @@ export function createModelSlice(set, get) {
           if (diag.constraintOccurrences) {
             // Phase 3 format: constraintOccurrences already split out
             const d3 = { ...diag, constraintOccurrences: diag.constraintOccurrences, implicitLinkPositions: diag.implicitLinkPositions ?? {}, multiSelectedIds: [], expandedRefModes: diag.expandedRefModes ?? [] }
-            return migrateSubtypeOccurrences(migrateRefModeExpansion(d3, parsedOts, facts), parsedSts)
+            return migrateSubtypeOccurrences(repairDrawnRefModes(migrateRefModeExpansion(d3, parsedOts, facts), parsedOts, facts), parsedSts)
           }
           if (diag.occurrences) {
             // Phase 1/2 format: occurrences exist but constraintOccurrences does not — split them
