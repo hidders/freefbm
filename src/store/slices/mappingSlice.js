@@ -5,6 +5,9 @@ import { foldChanges, addConstraint } from '../../mapping/fold.js'
 import { mkDiagram } from '../storeHelpers'
 import { findRefMode } from '../../utils/refMode.js'
 
+const ADVANCED_KEY = 'freefbm.advancedMode'
+const readAdvanced = () => { try { return localStorage.getItem(ADVANCED_KEY) === '1' } catch { return false } }
+
 // Gap between the source and the target side of a new mapping diagram.
 const SIDE_GAP = 260
 
@@ -26,6 +29,17 @@ export const createMappingSlice = (set, get) => {
   const mapRules = (mappingId, fn) =>
     mapMappings(ms => ms.map(m => (m.id === mappingId ? { ...m, rules: fn(m.rules) } : m)))
   return {
+    // Basic or Advanced mode (the switch at the top of the tool panel), kept
+    // per user. In Basic mode mapping rules come only from Generate, Guess
+    // and Fold, and are shown read-only.
+    advancedMode: readAdvanced(),
+    setAdvancedMode(v) {
+      try { localStorage.setItem(ADVANCED_KEY, v ? '1' : '0') } catch { /* not kept */ }
+      set({ advancedMode: !!v, ...(v ? {} : { mappingRuleEditor: null }) })
+    },
+    // The rule the Mappings tab shows highlighted (Basic mode's stand-in for
+    // the rule editor).
+    mappingRuleFocus: null,
     // Adds a mapping from one schema to another; returns its id.
     addMapping(sourceSchemaId, targetSchemaId, name) {
       const used = new Set((get().mappings ?? []).map(m => m.name))
@@ -286,7 +300,14 @@ export const createMappingSlice = (set, get) => {
       return ch
     },
 
-    openMappingRuleEditor(mappingId, ruleId) { set({ mappingRuleEditor: { mappingId, ruleId } }) },
+    // Opens the rule editor on a rule; in Basic mode, shows the rule in the
+    // Mappings tab instead.
+    openMappingRuleEditor(mappingId, ruleId) {
+      if (get().advancedMode) { set({ mappingRuleEditor: { mappingId, ruleId } }); return }
+      get().setBottomPanelCollapsed?.(false)
+      get().setBottomPanelTab?.('mappings')
+      set({ mappingRuleFocus: { mappingId, ruleId, at: Date.now() } })
+    },
     closeMappingRuleEditor() { set({ mappingRuleEditor: null }) },
   }
 }

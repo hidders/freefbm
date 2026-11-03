@@ -537,7 +537,8 @@ export function NoteConnectorIcon({ active }) {
 export default function ToolPanel() {
   const store = useOrmStoreIgnoring('pan', 'zoom')
   const tool = store.sequenceConstruction ? 'connectConstraint' : store.tool
-  const [advanced, setAdvanced] = useState(false)
+  const advanced = useOrmStore(s => s.advancedMode)
+  const setAdvanced = (f) => useOrmStore.getState().setAdvancedMode(f(advanced))
 
   return (
     <div style={{

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
 import { sideContext, sideTokens, checkRule, SIDES, sideSchemaId } from '../mapping/mapping.js'
@@ -12,8 +12,13 @@ export default function MappingsTab() {
   const state = useOrmStore(useShallow(s => ({
     schemas: s.schemas, objectTypes: s.objectTypes, facts: s.facts, constraints: s.constraints,
     subtypes: s.subtypes, mappings: s.mappings ?? [], editing: s.mappingRuleEditor,
-    accounting: s.mappingAccounting ?? {},
+    accounting: s.mappingAccounting ?? {}, advanced: s.advancedMode, focus: s.mappingRuleFocus,
   })))
+  const advanced = state.advanced
+  // Basic mode: a rule asked for (from the canvas or the Validation panel) is
+  // scrolled to and highlighted.
+  const focusRef = useRef(null)
+  useEffect(() => { focusRef.current?.scrollIntoView?.({ block: 'nearest' }) }, [state.focus])
   const act = useOrmStore.getState
   const schemas = state.schemas
   // The last run per mapping: { kind: 'run' | 'roundTrip', direction, result, ms } | { error }.
@@ -48,7 +53,11 @@ export default function MappingsTab() {
 
   return (
     <div style={{ fontSize: 12, color: 'var(--ink)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+      {!advanced && <div style={{ color: 'var(--ink-muted)', marginBottom: 10, lineHeight: 1.45 }}>
+        Mappings come from Tables generated from… and ORM2 schema guessed from… in the schema strip's + menu, and change by Fold:
+        derive the new types in a schema, then fold them in. Switch to Advanced mode (top of the tool panel) to write or edit rules by hand.
+      </div>}
+      {advanced && <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
         <span style={{ color: 'var(--ink-muted)' }}>New mapping from</span>
         <select aria-label="Source schema" value={srcId} onChange={e => setSrc(e.target.value)} style={select}>
           {schemas.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -59,7 +68,7 @@ export default function MappingsTab() {
         </select>
         <button style={btn} onClick={() => act().addMapping(srcId, tgtId, `${name(srcId)} to ${name(tgtId)}`)}>Add</button>
         {schemas.length < 2 && <span style={{ color: 'var(--ink-muted)' }}>A mapping usually relates two schemas: add one in the schema strip, or import PostgreSQL DDL.</span>}
-      </div>
+      </div>}
 
       {state.mappings.length === 0 && <div style={{ color: 'var(--ink-muted)' }}>
         No mappings yet. A mapping relates a source and a target schema by rules φ ⟺ ψ: whenever the source pattern φ matches with values $y, the target pattern ψ matches with the same values, and back.
@@ -84,7 +93,7 @@ export default function MappingsTab() {
               </span>
               <div style={{ flex: 1 }} />
               <button style={btn} title="Show this mapping as a diagram: both schemas side by side, each rule linked to its elements" onClick={() => act().openMappingDiagram(m.id)}>Diagram</button>
-              <button style={btn} onClick={() => act().addMappingRule(m.id)}>+ Rule</button>
+              {advanced && <button style={btn} onClick={() => act().addMappingRule(m.id)}>+ Rule</button>}
               <button style={btn} title={`Build the population of ${name(m.targetSchemaId)} from that of ${name(m.sourceSchemaId)}`} onClick={() => doRun(m, 'run', 'forward')}>Run →</button>
               <button style={btn} title={`Build the population of ${name(m.sourceSchemaId)} from that of ${name(m.targetSchemaId)}`} onClick={() => doRun(m, 'run', 'backward')}>Run ←</button>
               <button style={btn} title={`Run the mapping from ${name(m.sourceSchemaId)} there and back, and compare what comes back`} onClick={() => doRun(m, 'roundTrip', 'forward')}>Round trip</button>
@@ -98,11 +107,12 @@ export default function MappingsTab() {
             {state.accounting[m.id] && <AccountingReport acc={state.accounting[m.id]} mapping={m} name={name} />}
             {rules.length === 0 && <div style={{ padding: '6px 8px', color: 'var(--ink-muted)' }}>No rules yet.</div>}
             {rules.map(({ r, issues }, k) => {
-              const open = state.editing?.mappingId === m.id && state.editing.ruleId === r.id
+              const focused = !advanced && state.focus?.mappingId === m.id && state.focus.ruleId === r.id
+              const open = (advanced && state.editing?.mappingId === m.id && state.editing.ruleId === r.id) || focused
               const toks = SIDES.map(side => sideTokens(r[side], ctxs.get(sideSchemaId(m, side)) ?? sideContext(state, null)))
               return (
-                <div key={r.id} style={{ padding: '6px 8px', borderTop: k ? '1px solid var(--border-soft)' : 'none',
-                  background: open ? 'var(--bg-raised)' : 'transparent' }}>
+                <div key={r.id} ref={focused ? focusRef : null} style={{ padding: '6px 8px', borderTop: k ? '1px solid var(--border-soft)' : 'none',
+                  background: open ? 'var(--bg-raised)' : 'transparent', boxShadow: focused ? 'inset 3px 0 0 var(--accent)' : 'none' }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                     <span style={{ fontWeight: 600, minWidth: 60 }}>{r.name || `Rule ${k + 1}`}</span>
                     <div data-text-panel tabIndex={0} className="copyable" style={{ flex: 1, outline: 'none' }}>
@@ -110,10 +120,14 @@ export default function MappingsTab() {
                       <PatternText tokens={[{ text: '  ⟺  ', kind: 'op' }]} />
                       <PatternText tokens={toks[1]} />
                     </div>
-                    <button style={link} title="Move up" disabled={k === 0} onClick={() => act().moveMappingRule(m.id, r.id, -1)}>↑</button>
-                    <button style={link} title="Move down" disabled={k === rules.length - 1} onClick={() => act().moveMappingRule(m.id, r.id, 1)}>↓</button>
-                    <button style={btn} onClick={() => act().openMappingRuleEditor(m.id, r.id)}>Edit</button>
-                    <button style={link} title="Delete this rule" onClick={() => act().deleteMappingRule(m.id, r.id)}>×</button>
+                    {advanced && <>
+                      <button style={link} title="Move up" disabled={k === 0} onClick={() => act().moveMappingRule(m.id, r.id, -1)}>↑</button>
+                      <button style={link} title="Move down" disabled={k === rules.length - 1} onClick={() => act().moveMappingRule(m.id, r.id, 1)}>↓</button>
+                      <button style={btn} onClick={() => act().openMappingRuleEditor(m.id, r.id)}>Edit</button>
+                    </>}
+                    {advanced || issues.some(i => i.severity === 'error')
+                      ? <button style={advanced ? link : btn} title="Delete this rule" onClick={() => act().deleteMappingRule(m.id, r.id)}>{advanced ? '×' : 'Drop rule'}</button>
+                      : null}
                   </div>
                   {issues.length > 0 && <div data-text-panel tabIndex={0} className="copyable" style={{ marginTop: 3, marginLeft: 68, outline: 'none' }}>
                     <IssueList issues={issues} />
