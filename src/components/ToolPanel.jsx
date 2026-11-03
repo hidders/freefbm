@@ -24,7 +24,7 @@ const ALL_CONSTRAINT_TYPES = [
   { key: 'ring',              label: 'Ring',         short: null },
   { key: 'valueComparison',   label: 'Value Comparison', short: null },
   { key: 'frequency',         label: 'External Frequency', short: null },
-  { key: 'formula',           label: 'Formula',      short: 'φ', shortSize: 14 },
+  { key: 'formula',           label: 'Formula',      short: null },
 ]
 
 const BASIC_CONSTRAINT_TYPES    = ALL_CONSTRAINT_TYPES.slice(0, 4)
@@ -235,6 +235,17 @@ export function FrequencyConstraintIcon() {
       <circle cx={cx} cy={cy} r={r} fill="#ffffff" stroke={COL_CONSTRAINT} strokeWidth={1.5}/>
       <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
         fontSize={8} fill={COL_CONSTRAINT} fontFamily="var(--font-mono)" fontWeight={600}>≤3</text>
+    </svg>
+  )
+}
+
+export function FormulaConstraintIcon() {
+  const cx = 9, cy = 9, r = 7.2
+  return (
+    <svg width={22} height={22} viewBox="0 0 18 18" style={{ display: 'block', flexShrink: 0 }}>
+      <circle cx={cx} cy={cy} r={r} fill="#ffffff" stroke={COL_CONSTRAINT} strokeWidth={1.5}/>
+      <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
+        fontSize={10} fill={COL_CONSTRAINT} fontFamily="'Segoe UI', Helvetica, Arial, sans-serif">φ</text>
     </svg>
   )
 }
@@ -454,6 +465,8 @@ function ConstraintBtn({ ct, active, onClick }) {
             ? <RingConstraintIcon />
             : ct.key === 'frequency'
             ? <FrequencyConstraintIcon />
+            : ct.key === 'formula'
+            ? <FormulaConstraintIcon />
             : ct.key === 'subset'
             ? <SubsetConstraintIcon />
             : ct.key === 'equality'

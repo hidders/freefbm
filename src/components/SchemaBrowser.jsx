@@ -6,7 +6,7 @@ import { useDiagramElements } from '../hooks/useDiagramElements'
 import {
   EntityTypeIcon, ValueTypeIcon, NestedFactTypeIcon, FactTypeIcon, SubtypeIcon,
   UniquenessConstraintIcon, InclusiveOrConstraintIcon, ExclusionConstraintIcon, SubtypeConstraintIcon,
-  EqualityConstraintIcon, SubsetConstraintIcon, RingConstraintIcon, FrequencyConstraintIcon,
+  EqualityConstraintIcon, SubsetConstraintIcon, RingConstraintIcon, FrequencyConstraintIcon, FormulaConstraintIcon,
   ValueComparisonConstraintIcon, NoteIcon,
 } from './ToolPanel'
 import { queryElements } from '../logic/query.js'
@@ -33,6 +33,7 @@ const CONSTRAINT_ICON_MAP = {
   subset:          <SubsetConstraintIcon />,
   ring:            <RingConstraintIcon />,
   frequency:       <FrequencyConstraintIcon />,
+  formula:         <FormulaConstraintIcon />,
   valueComparison: <ValueComparisonConstraintIcon />,
 }
 
