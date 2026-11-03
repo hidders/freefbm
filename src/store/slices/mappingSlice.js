@@ -1,6 +1,7 @@
 // Schema mappings between two schemas of the file (mapping/mapping.js).
 import { mkMapping, mkRule, ruleElements } from '../../mapping/mapping.js'
 import { withRunApplied } from '../../mapping/runMapping.js'
+import { foldChanges, addConstraint } from '../../mapping/fold.js'
 import { mkDiagram } from '../storeHelpers'
 import { findRefMode } from '../../utils/refMode.js'
 
@@ -233,6 +234,56 @@ export const createMappingSlice = (set, get) => {
     applyMappingRun(run) {
       if (!run?.schemaId) return
       set(s => ({ ...withRunApplied(s, run), isDirty: true }))
+    },
+
+    // Fold (workbench step 12, mapping/fold.js): composes the rules of the
+    // derived elements of one schema with the mapping, promotes them, removes
+    // the fact types they replace and adds the constraints the mapping keeps
+    // for them, as one undo step. plan from planFold; fold, remove: the
+    // chosen element and fact type ids. Shows a report in the import log.
+    foldMapping(plan, { fold = null, remove = null } = {}) {
+      const st = get()
+      const m = st.mappings?.find(x => x.id === plan.mapping.id)
+      if (!m) return null
+      const ch = foldChanges(st, plan, { fold, remove })
+      const promote = new Set(ch.promote), removeIds = new Set(ch.remove)
+      const strip = (x) => { const { derivation, derivationRule, ...rest } = x; return rest }
+      const schemaId = plan.side === 'source' ? m.sourceSchemaId : m.targetSchemaId
+      set(s => ({ historyBatch: (s.historyBatch ?? 0) + 1 }))
+      try {
+        set(s => ({
+          mappings: s.mappings.map(x => (x.id === m.id ? ch.mapping : x)),
+          objectTypes: s.objectTypes.map(o => (promote.has(o.id) ? strip(o) : o)),
+          facts: s.facts.map(f => {
+            let g = promote.has(f.id) ? strip(f) : f
+            for (const a of ch.add) if (a.factId === f.id) g = addConstraint(g, a)
+            return g
+          }),
+          populations: ch.populations, factPopulations: ch.factPopulations,
+          isDirty: true,
+        }))
+        const before = get()
+        const players = new Set(before.facts.filter(f => removeIds.has(f.id)).flatMap(f => f.roles.map(r => r.objectTypeId)))
+        for (const c of before.constraints) {
+          if (!(c.sequences ?? []).some(q => (q ?? []).some(x => removeIds.has(x?.factId)))) continue
+          ch.report.push(`Check the ${c.constraintType ?? 'external'} constraint ${c.name ? `${c.name} ` : ''}on a removed fact type: it now has roles missing`)
+        }
+        for (const id of removeIds) get().deleteFact(id)
+        // Value types the removed fact types leave without a role.
+        const after = get()
+        const named = JSON.stringify(after.mappings ?? [])
+        for (const id of players) {
+          const o = after.objectTypes.find(x => x.id === id)
+          if (!o || o.kind !== 'value' || o.schemaId !== schemaId) continue
+          if (after.facts.some(f => f.roles.some(r => r.objectTypeId === id)) || named.includes(JSON.stringify(id))) continue
+          get().deleteObjectType(id)
+          ch.report.push(`Removed value type ${o.name}, which no fact type uses any more`)
+        }
+      } finally {
+        set(s => ({ historyBatch: Math.max(0, (s.historyBatch ?? 1) - 1) }))
+      }
+      get().setImportLog({ kind: 'fold', source: m.name, entries: ch.report.map(text => ({ level: /^(Not folded|Kept)/.test(text) ? 'warn' : 'note', text })) })
+      return ch
     },
 
     openMappingRuleEditor(mappingId, ruleId) { set({ mappingRuleEditor: { mappingId, ruleId } }) },

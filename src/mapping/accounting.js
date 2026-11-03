@@ -45,7 +45,7 @@ import { identifyingFactIds } from '../utils/refMode.js'
 import { isDeonticUniqueness, isDeonticMandatory } from '../logic/modality.js'
 import { relationalModel } from '../relational/relationalModel.js'
 import { prepareRun, executeRun, schemeOf } from './runMapping.js'
-import { sideContext, sideSchemaId, SIDES } from './mapping.js'
+import { sideContext, sideSchemaId, SIDES, expandSide, asSide } from './mapping.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
 
 const isFresh = (v) => typeof v === 'string' && v.startsWith('⊥')
@@ -764,6 +764,27 @@ function instantiate(w, pops, side, seed, t, fresh, S) {
     if (a.t === 'fact' && a.args.every(id => id != null && env.has(id))) addTuple(w, pops, a.factId, a.args.map(id => env.get(id)))
   }
   return true
+}
+
+// A population of a side's schema in which each pattern (one side of a rule)
+// holds, with labelled nulls for its values, closed under the schema's
+// constraints: what any population with those matches must contain. Used by
+// Fold (fold.js) to test whether a mapping still carries them. { pops } or
+// { error }.
+export function genericPopulation(w, patterns) {
+  let n = 0
+  const fresh = (typeId) => { const v = `⊥${++n}`; if (typeId) fresh.types.set(v, typeId); return v }
+  fresh.types = new Map()
+  const pops = emptyPops()
+  try {
+    for (const p of patterns) instantiate(w, pops, expandSide(asSide(p), w.ctx), { args: [] }, [], fresh, new Subst())
+    const r = chase(w, pops, fresh)
+    if (r.failed) return { error: 'the constraints of the other schema rule out such a population' }
+    return { pops: r.pops, exceeded: !!r.exceeded }
+  } catch (err) {
+    if (err instanceof Unsupported) return { error: err.message }
+    throw err
+  }
 }
 
 // Populations with one value outside a value range (of a role, or of a value

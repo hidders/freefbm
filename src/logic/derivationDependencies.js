@@ -20,7 +20,7 @@
 // positively: its population is then the least fixpoint of its rule over the
 // stored population.
 
-import { upgradeRule, childPaths, isDerived, directSupertypes, typeGraph, atomFact } from './derivationRule.js'
+import { upgradeRule, childPaths, isDerived, directSupertypes, typeGraph, atomFact, referenceParts } from './derivationRule.js'
 import { isDerivedFact, factRuleParts } from './factDerivation.js'
 import { valueAccess } from './values.js'
 
@@ -111,12 +111,28 @@ export function derivationGraph(state, ctx) {
     }
     return out
   }
-  const viaFact = (factId) => (isDerivedFact(ctx.factById.get(factId)) ? [factKey(factId)] : [])
+  // The identifying fact types of a fully derived entity type created through
+  // its reference scheme get their facts from its rule.
+  const identifiedBy = new Map()
+  for (const ot of (state.objectTypes ?? [])) {
+    if (ot.derivation !== 'derived' || directSupertypes(ot.id, state.subtypes).length) continue
+    for (const p of referenceParts(ot.id, state) ?? []) identifiedBy.set(p.factId, [...(identifiedBy.get(p.factId) ?? []), ot.id])
+  }
+  const viaFact = (factId) => [...(isDerivedFact(ctx.factById.get(factId)) ? [factKey(factId)] : []),
+    ...(identifiedBy.get(factId) ?? []).map(typeKey)]
 
   for (const ot of (state.objectTypes ?? [])) {
     if (!isDerived(ot) || !ot.derivationRule) continue
     const u = uses(upgradeRule(ot.derivationRule), ctx)
-    for (const s of directSupertypes(ot.id, state.subtypes)) u.types.add(s)
+    const supers = directSupertypes(ot.id, state.subtypes)
+    for (const s of supers) u.types.add(s)
+    // The reference values of a type created through its reference scheme
+    // are free variables, ranging over their types unless an atom binds them.
+    if (!supers.length) {
+      const refs = (referenceParts(ot.id, state) ?? []).map(p => ({ id: p.id, typeIds: [p.typeId] }))
+      const bound = boundByAtoms(upgradeRule(ot.derivationRule), refs, ctx)
+      for (const v of refs) if (!bound.has(v.id)) u.types.add(v.typeIds[0])
+    }
     const deps = [...[...u.facts].flatMap(viaFact), ...[...u.types].flatMap(viaType)]
     nodes.set(typeKey(ot.id), { key: typeKey(ot.id), kind: 'type', id: ot.id, name: ctx.typeName(ot.id),
       deps: ot.derivation === 'semiDerived' && !u.nonPositive.has(ot.id) ? deps.filter(k => k !== typeKey(ot.id)) : deps })

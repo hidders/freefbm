@@ -8,6 +8,7 @@ import { RuleEditorPanel } from './components/DerivationRuleEditor'
 import { MappingRuleEditorPanel } from './components/MappingRuleEditor'
 import ImportLogPanel from './components/ImportLogPanel'
 import GuessOrmDialog from './components/GuessOrmDialog'
+import FoldDialog from './components/FoldDialog'
 import StatusBar from './components/StatusBar'
 import WelcomeScreen from './components/WelcomeScreen'
 import DiagramTabs from './components/DiagramTabs'
@@ -348,6 +349,7 @@ export default function App() {
         <MappingRuleEditorPanel />
         <ImportLogPanel />
         <GuessOrmDialog />
+        <FoldDialog />
       </div>
     </ErrorBoundary>
   )

@@ -89,6 +89,7 @@ export default function MappingsTab() {
               <button style={btn} title={`Build the population of ${name(m.sourceSchemaId)} from that of ${name(m.targetSchemaId)}`} onClick={() => doRun(m, 'run', 'backward')}>Run ←</button>
               <button style={btn} title={`Run the mapping from ${name(m.sourceSchemaId)} there and back, and compare what comes back`} onClick={() => doRun(m, 'roundTrip', 'forward')}>Round trip</button>
               <button style={btn} title={`For each constraint of either schema, whether the other schema keeps it under this mapping: native, implied, lost (with a counterexample) or unknown`} onClick={() => runAccounting(m)}>Accounting</button>
+              <button style={btn} title="Fold the derived types and fact types of a schema into this mapping: each gets a mapping rule and becomes ordinary, and the fact types it replaces can go" onClick={() => useOrmStore.setState({ foldDialog: { mappingId: m.id } })}>Fold…</button>
               <button style={btn} title="Delete this mapping and its rules" onClick={() => act().deleteMapping(m.id)}>Delete</button>
             </div>
             {runs[m.id] && <RunReport run={runs[m.id]} mapping={m} name={name}

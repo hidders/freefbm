@@ -18,7 +18,7 @@ export default function ImportLogPanel() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
         borderBottom: '1px solid var(--border-soft)' }}>
         <span style={{ fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {log.kind === 'guess' ? 'Guessed from' : 'Imported from'} {log.source}
+          {log.kind === 'guess' ? 'Guessed from' : log.kind === 'fold' ? 'Fold:' : 'Imported from'} {log.source}
         </span>
         <button onClick={close} title="Close" style={{ border: 'none', background: 'none',
           cursor: 'pointer', color: 'var(--ink-3)', fontSize: 16, lineHeight: 1 }}>×</button>
@@ -37,6 +37,8 @@ export default function ImportLogPanel() {
           ? 'The tables are a new relational schema in this file; the .sql file is not changed.'
           : log.kind === 'guess'
             ? 'A new ORM2 schema and a mapping to it; the relational schema is not changed. Undo removes both.'
+          : log.kind === 'fold'
+            ? 'The fold is one step: Undo puts the derived elements, the originals and the rules back.'
             : 'This is a new, unsaved model. Save writes a .ffbm file; the .orm file is not changed.'}
       </div>
     </div>

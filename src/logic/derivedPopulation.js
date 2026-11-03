@@ -26,7 +26,7 @@ import { VALUE_KINDS, parseLiteral } from '../utils/datatypeValues.js'
 import { makeContext } from './constraintFormulas.js'
 import { valueAccess } from './values.js'
 import { makeTermEvaluator, valueText } from './dataOperators.js'
-import { SUBJECT, directSupertypes, checkRule, upgradeRule, typeGraph, atomFact } from './derivationRule.js'
+import { SUBJECT, directSupertypes, checkRule, upgradeRule, typeGraph, atomFact, referenceParts } from './derivationRule.js'
 import { checkFactRule, factRuleParts } from './factDerivation.js'
 
 // The ids of the variables a transitive closure's body refers to, other than
@@ -328,6 +328,7 @@ export function makePopulationEvaluator(rawData) {
     if (errors.length) return { error: `${errors[0].message}.` }
     const rule = upgradeRule(ot.derivationRule)
     const supers = directSupertypes(ot.id, subtypes)
+    if (!supers.length) return deriveByReference(ot, rule, typing)
     const superPops = supers.map(population)
     const bad = superPops.find(p => p.error)
     if (bad) return { error: bad.error }
@@ -363,6 +364,77 @@ export function makePopulationEvaluator(rawData) {
     }
     if (had) cache.set(ot.id, before)
     else cache.delete(ot.id)
+    return r
+  }
+
+  // An entity type created through its reference scheme: every answer of the
+  // rule (its free variables are the reference values) is an instance, the
+  // value itself for a reference mode, the list of the parts' cells for a
+  // composite identifier. A semi-derived one adds them to its stored
+  // population; when its rule uses itself, until nothing new follows.
+  const deriveByReference = (ot, rule, typing) => {
+    const parts = referenceParts(ot.id, data)
+    let body = rule
+    const bound = []
+    while (body?.t === 'exists') { bound.push({ id: body.v.id, typeIds: [body.v.typeId] }); body = body.body }
+    const once = () => {
+      const ev = makeEval(typing)
+      const envs = ev.solve(body, [...parts.map(p => ({ id: p.id, typeIds: [p.typeId] })), ...bound])
+      if (ev.state.failure) return { error: ev.state.failure }
+      return fromCells(envs.map(env => {
+        const cells = parts.map(p => env.get(p.id)?.cell)
+        return parts.length === 1 && parts[0].refMode ? cells[0] : cells
+      }))
+    }
+    if (ot.derivation !== 'semiDerived' || !JSON.stringify(rule).includes(JSON.stringify(ot.id))) return once()
+    const had = cache.has(ot.id), before = cache.get(ot.id)
+    let current = had ? before : storedPopulation(ot.id), r
+    for (;;) {
+      cache.set(ot.id, current)
+      r = once()
+      if (r.error) break
+      const next = fromCells([...current.instances, ...r.instances])
+      if (next.keys.size === current.keys.size) break
+      current = next
+    }
+    if (had) cache.set(ot.id, before)
+    else cache.delete(ot.id)
+    return r
+  }
+
+  // The tuples of an identifying fact type of a fully derived entity type
+  // created through its reference scheme, from the derived population.
+  const derivedIdentifier = new Map()   // fact id → [{ ot, parts }]
+  for (const ot of objectTypes) {
+    if (ot.derivation !== 'derived' || directSupertypes(ot.id, subtypes).length) continue
+    const parts = referenceParts(ot.id, data)
+    for (const fid of new Set((parts ?? []).map(p => p.factId)))
+      derivedIdentifier.set(fid, [...(derivedIdentifier.get(fid) ?? []), { ot, parts }])
+  }
+  const identTuplesCache = new Map()
+  const identTuples = (fact) => {
+    if (identTuplesCache.has(fact.id)) return identTuplesCache.get(fact.id)
+    const tuples = [], keys = new Set()
+    for (const { ot, parts } of derivedIdentifier.get(fact.id)) {
+      const p = population(ot.id)
+      if (p.error) return p
+      for (const cell of p.instances) {
+        const t = Array(fact.roles.length).fill(null)
+        parts.forEach((part, i) => {
+          if (part.factId !== fact.id) return
+          t[part.entityRoleIndex] = cell
+          t[part.roleIndex] = part.refMode ? cell : cell[i]
+        })
+        const ks = t.map(keyOf)
+        if (ks.some(k => k === null)) continue
+        const k = JSON.stringify(ks)
+        if (keys.has(k)) continue
+        keys.add(k)
+        tuples.push(t)
+      }
+    }
+    const r = { tuples, keys }
+    identTuplesCache.set(fact.id, r)
     return r
   }
 
@@ -500,6 +572,7 @@ export function makePopulationEvaluator(rawData) {
       return link ? linkTuples(link) : { tuples: [], keys: new Set() }
     }
     if (fact.derivation === 'derived') return derivedFact(factId)
+    if (derivedIdentifier.has(factId)) return identTuples(fact)
     return storedTuples(fact)
   }
 
