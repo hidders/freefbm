@@ -1380,12 +1380,14 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
   )
 }
 
-// A formula constraint (logic/formulaConstraint.js): a box with φ and its
-// name, linked by dotted lines to the fact types (nearest role) and object
-// types its formula names. Double-click opens the formula in the rule editor.
+// A formula constraint (logic/formulaConstraint.js): like the other external
+// constraints a white circle, here with φ, and a pill (as for external
+// frequency) when it has a name to show; linked by dotted lines to the fact
+// types (nearest role) and object types its formula names. Double-click opens
+// the formula in the rule editor.
 function FormulaBadge({ c, color, isSelected, factMap, otMap, store, onDragStart, onContextMenu, dim }) {
   const label = c.name ? `φ ${c.name}` : 'φ'
-  const w = Math.max(24, 8 * label.length + 12), h = 22
+  const w = freqStadiumW(label), h = EXTERNAL_CONSTRAINT_R * 2
   const { facts, types } = formulaElements(c.rule)
   const links = []
   for (const id of facts) {
@@ -1404,12 +1406,6 @@ function FormulaBadge({ c, color, isSelected, factMap, otMap, store, onDragStart
     const o = otMap[id]
     if (o) { const p = borderPoint(o, c.x, c.y); links.push({ key: `t:${id}`, x: p.x, y: p.y }) }
   }
-  // Where a line from the centre towards (x, y) leaves the box.
-  const edge = (x, y) => {
-    const dx = x - c.x, dy = y - c.y
-    const t = Math.min(dx ? (w / 2) / Math.abs(dx) : Infinity, dy ? (h / 2) / Math.abs(dy) : Infinity, 1)
-    return { x: c.x + dx * t, y: c.y + dy * t }
-  }
   return (
     <g className="selectable-group formula-constraint" data-constraint-id={c.id} opacity={dim ? 0.12 : 1}
       onMouseDown={(e) => {
@@ -1424,13 +1420,11 @@ function FormulaBadge({ c, color, isSelected, factMap, otMap, store, onDragStart
       onContextMenu={(e) => onContextMenu(c, e, c.constraintOccurrenceId ?? null)}
       style={{ cursor: 'grab' }}
       filter={isSelected ? 'url(#selectGlow)' : undefined}>
-      {links.map(l => {
-        const a = edge(l.x, l.y)
-        return <line key={l.key} x1={a.x} y1={a.y} x2={l.x} y2={l.y} stroke={color} strokeWidth={1.1} strokeDasharray="2 3" opacity={0.75} />
-      })}
-      <rect x={c.x - w / 2} y={c.y - h / 2} width={w} height={h} rx={4} fill="#ffffff" stroke={color} strokeWidth={isSelected ? 2 : 1.4} />
-      <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central" fontSize={12} fill={color}
-        fontFamily="var(--font-mono)" fontWeight={600} style={{ pointerEvents: 'none' }}>{label}</text>
+      {/* from the centre: the white pill drawn after them hides the inner part */}
+      {links.map(l => <line key={l.key} x1={c.x} y1={c.y} x2={l.x} y2={l.y} stroke={color} strokeWidth={1.1} strokeDasharray="2 3" opacity={0.75} />)}
+      <rect x={c.x - w / 2} y={c.y - h / 2} width={w} height={h} rx={h / 2} fill="#ffffff" stroke={color} strokeWidth={isSelected ? 2 : 1.5} />
+      <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central" fontSize={FREQ_FONT_SIZE} fill={color}
+        fontFamily="'Segoe UI', Helvetica, Arial, sans-serif" style={{ pointerEvents: 'none' }}>{label}</text>
     </g>
   )
 }
