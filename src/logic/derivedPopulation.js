@@ -28,6 +28,7 @@ import { valueAccess } from './values.js'
 import { makeTermEvaluator, valueText } from './dataOperators.js'
 import { SUBJECT, directSupertypes, checkRule, upgradeRule, typeGraph, atomFact, referenceParts } from './derivationRule.js'
 import { checkFactRule, factRuleParts } from './factDerivation.js'
+import { isFormulaConstraint, checkFormulaConstraint } from './formulaConstraint.js'
 
 // The ids of the variables a transitive closure's body refers to, other than
 // its own two: the parameters its steps depend on.
@@ -667,7 +668,25 @@ export function makePopulationEvaluator(rawData) {
     return { keys, values, counts, bindings }
   }
 
-  return { data, population, derived, derivedFact, factTuples, storedTuples, keyOf, ctx, queryResult }
+  // A closed formula (a formula constraint): { holds, counterexamples } or
+  // { error }. Its leading ∀ variables are solved for where the rest fails,
+  // which gives the counterexamples ([Map varId → cell], at most limit).
+  const closedFormula = (rule, typing = { sorts: new Map(), params: new Map() }, limit = 5) => {
+    const ev = makeEval(typing)
+    let body = rule
+    const vs = []
+    while (body?.t === 'forall') { vs.push(body.v); body = body.body }
+    if (!vs.length) {
+      const h = ev.holds(body, new Map())
+      return ev.state.failure ? { error: ev.state.failure } : { holds: h, counterexamples: [] }
+    }
+    const envs = ev.solve({ t: 'not', arg: body }, vs.map(v => ({ id: v.id, typeIds: [v.typeId] })))
+    if (ev.state.failure) return { error: ev.state.failure }
+    return { holds: envs.length === 0, total: envs.length, vars: vs,
+      counterexamples: envs.slice(0, limit).map(env => new Map(vs.map(v => [v.id, env.get(v.id)?.cell]))) }
+  }
+
+  return { data, population, derived, derivedFact, factTuples, storedTuples, keyOf, ctx, queryResult, closedFormula }
 }
 
 // The data with the populations of derived types and fact types replaced by
@@ -749,6 +768,35 @@ export function derivedFactPopulationIssues(data) {
         message: `${formatCell(t)} is derived by the rule, so it must be in the population`,
       })
     }
+  }
+  return issues
+}
+
+// Population issues of formula constraints: the formula is false, with the
+// values of its leading ∀ variables for which it fails.
+export function formulaConstraintPopulationIssues(data) {
+  const fcs = (data.constraints ?? []).filter(c => isFormulaConstraint(c) && c.rule)
+  if (!fcs.length) return []
+  const ev = makePopulationEvaluator(data)
+  const ctx = makeContext(data)
+  const issues = []
+  for (const c of fcs) {
+    const typing = { sorts: new Map(), params: new Map() }
+    if (checkFormulaConstraint(c, data, ctx, typing).some(i => i.severity === 'error')) continue
+    const rule = upgradeRule(c.rule)
+    const r = ev.closedFormula(rule, typing)
+    if (r.error || r.holds) continue
+    const name = c.name ? `Formula constraint ${c.name}` : 'The formula constraint'
+    if (!r.counterexamples.length) {
+      issues.push({ kind: 'formulaViolated', elementId: c.id, constraintId: c.id, message: `${name} does not hold for this population` })
+      continue
+    }
+    for (const ce of r.counterexamples) {
+      const vals = r.vars.map(v => `${ctx.typeName(v.typeId)} ${formatCell(ce.get(v.id))}`).join(', ')
+      issues.push({ kind: 'formulaViolated', elementId: c.id, constraintId: c.id, message: `${name} fails for ${vals}` })
+    }
+    if (r.total > r.counterexamples.length)
+      issues.push({ kind: 'formulaViolated', elementId: c.id, constraintId: c.id, message: `${name} fails ${r.total - r.counterexamples.length} more times` })
   }
   return issues
 }

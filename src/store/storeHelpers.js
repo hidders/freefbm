@@ -116,7 +116,10 @@ export function subtypeKindOf(id, objectTypes, facts) {
 }
 
 
-export const mkConstraint = (type, x, y) => ({
+export const mkConstraint = (type, x, y) => (type === 'formula'
+  // A formula constraint: a closed formula of the logic (logic/formulaConstraint.js).
+  ? { id: uid(), kind: 'constraint', constraintType: 'formula', x, y, name: '', rule: { t: 'hole' }, roleSequences: [], subtypeIds: [] }
+  : {
   id: uid(), kind: 'constraint',
   constraintType: type,
   x, y,

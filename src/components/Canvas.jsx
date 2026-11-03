@@ -879,8 +879,12 @@ export default function Canvas() {
     if (store.tool === 'addFact2')      { store.addFact(x, y, 2); store.setTool('select'); return }
     if (store.tool === 'addNestedFact')      { store.addNestedFact(x, y, 2); store.setTool('select'); return }
     if (store.tool.startsWith('addConstraint:') && store.tool !== 'addConstraint:valueRange' && store.tool !== 'addConstraint:cardinality') {
-      store.addConstraint(store.tool.split(':')[1], x, y)
-      store.setTool('select'); return
+      const type = store.tool.split(':')[1]
+      const id = store.addConstraint(type, x, y)
+      store.setTool('select')
+      // A formula constraint is written in the rule editor.
+      if (type === 'formula') store.openRuleEditor({ formulaId: id })
+      return
     }
     if (store.uniquenessConstruction) {
       store.abandonUniquenessConstruction()

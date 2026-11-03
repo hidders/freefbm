@@ -8,6 +8,7 @@ import { entityBounds, formatValueRange } from './ObjectTypeNode'
 import { EXTERNAL_CONSTRAINT_TYPES, RAKE_TOOTH, RAKE_STAGGER, RAKE_TOOTH_GAP } from '../constants.js'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { groupStyle } from '../utils/groups.js'
+import { isFormulaConstraint, formulaElements } from '../logic/formulaConstraint.js'
 
 const CONSTRAINT_R = 14        // radius of standard constraint circle
 const EXTERNAL_CONSTRAINT_R = 10 // radius of external constraint circle
@@ -603,6 +604,7 @@ const CONSTRAINT_COLOR = {
   ring:             'var(--col-ring)',
   frequency:        'var(--col-freq)',
   valueComparison:  'var(--col-constraint)',
+  formula:          'var(--col-constraint)',
 }
 
 const HIGHLIGHT_ARC_COLOR = '#e67e22'   // orange — used when table row/col/cell is pressed
@@ -898,6 +900,11 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
         const cgs = groupStyle(store.groups, c.id)
         const color = (c.deontic ? cgs?.deontic : cgs?.constraint) ?? cgs?.outline
           ?? (c.deontic ? 'var(--col-deontic)' : CONSTRAINT_COLOR[c.constraintType] || 'var(--ink-3)')
+        if (isFormulaConstraint(c)) return (
+          <FormulaBadge key={c.constraintOccurrenceId ?? c.id} c={c} color={color} isSelected={isSelected}
+            factMap={factMap} otMap={otMap} store={store} onDragStart={onDragStart} onContextMenu={onContextMenu}
+            dim={noteSubjectIds != null && !noteSubjectIds.has(c.id)} />
+        )
         const symbol = CONSTRAINT_SYMBOL[c.constraintType] || '?'
 
         // Draw arcs from constraint node — unified groups for subtype-like, roleGroups for others
@@ -1369,6 +1376,61 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
         )
       })}
 
+    </g>
+  )
+}
+
+// A formula constraint (logic/formulaConstraint.js): a box with φ and its
+// name, linked by dotted lines to the fact types (nearest role) and object
+// types its formula names. Double-click opens the formula in the rule editor.
+function FormulaBadge({ c, color, isSelected, factMap, otMap, store, onDragStart, onContextMenu, dim }) {
+  const label = c.name ? `φ ${c.name}` : 'φ'
+  const w = Math.max(24, 8 * label.length + 12), h = 22
+  const { facts, types } = formulaElements(c.rule)
+  const links = []
+  for (const id of facts) {
+    const f = factMap[id]
+    if (!f) continue
+    let best = null
+    f.roles.forEach((_, i) => {
+      const p = roleCenter(f, i)
+      const d = (p.x - c.x) ** 2 + (p.y - c.y) ** 2
+      if (!best || d < best.d) best = { ...p, d }
+    })
+    if (best) links.push({ key: `f:${id}`, x: best.x, y: best.y })
+  }
+  for (const id of types) {
+    if ([...facts].some(fid => factMap[fid]?.roles.some(r => r.objectTypeId === id))) continue
+    const o = otMap[id]
+    if (o) { const p = borderPoint(o, c.x, c.y); links.push({ key: `t:${id}`, x: p.x, y: p.y }) }
+  }
+  // Where a line from the centre towards (x, y) leaves the box.
+  const edge = (x, y) => {
+    const dx = x - c.x, dy = y - c.y
+    const t = Math.min(dx ? (w / 2) / Math.abs(dx) : Infinity, dy ? (h / 2) / Math.abs(dy) : Infinity, 1)
+    return { x: c.x + dx * t, y: c.y + dy * t }
+  }
+  return (
+    <g className="selectable-group formula-constraint" data-constraint-id={c.id} opacity={dim ? 0.12 : 1}
+      onMouseDown={(e) => {
+        e.stopPropagation()
+        if (e.button !== 0 || e.detail >= 2 || store.queryEditDraft) return
+        if (store.tool !== 'select') store.setTool('select')
+        if (e.shiftKey) { store.shiftSelect(c.id, c.constraintOccurrenceId ?? null); return }
+        store.select(c.id, 'constraint', c.constraintOccurrenceId ?? null)
+        onDragStart(c.id, 'constraint', e, c.constraintOccurrenceId)
+      }}
+      onDoubleClick={(e) => { e.stopPropagation(); store.openRuleEditor({ formulaId: c.id }) }}
+      onContextMenu={(e) => onContextMenu(c, e, c.constraintOccurrenceId ?? null)}
+      style={{ cursor: 'grab' }}
+      filter={isSelected ? 'url(#selectGlow)' : undefined}>
+      {links.map(l => {
+        const a = edge(l.x, l.y)
+        return <line key={l.key} x1={a.x} y1={a.y} x2={l.x} y2={l.y} stroke={color} strokeWidth={1.1} strokeDasharray="2 3" opacity={0.75} />
+      })}
+      <rect x={c.x - w / 2} y={c.y - h / 2} width={w} height={h} rx={4} fill="#ffffff" stroke={color} strokeWidth={isSelected ? 2 : 1.4} />
+      <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central" fontSize={12} fill={color}
+        fontFamily="var(--font-mono)" fontWeight={600} style={{ pointerEvents: 'none' }}>{label}</text>
     </g>
   )
 }
