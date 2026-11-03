@@ -798,6 +798,25 @@ export function genericPopulation(w, patterns) {
   }
 }
 
+// A population with one instance of an entity type (labelled nulls for its
+// reference values), closed under the schema's constraints: what any
+// population with such an instance must contain. { pops, cell } or { error }.
+export function genericInstance(w, typeId) {
+  let n = 0
+  const fresh = (t) => { const v = `⊥${++n}`; if (t) fresh.types.set(v, t); return v }
+  fresh.types = new Map()
+  const pops = emptyPops()
+  try {
+    const cell = freshCell(w, pops, typeId, fresh)
+    const r = chase(w, pops, fresh)
+    if (r.failed) return { error: 'the schema’s constraints rule out such a population' }
+    return { pops: r.pops, cell }
+  } catch (err) {
+    if (err instanceof Unsupported) return { error: err.message }
+    throw err
+  }
+}
+
 // Populations with one value outside a value range (of a role, or of a value
 // type, then in some fact type it plays a role in).
 function rangeViolations(key, w, fresh, match) {
@@ -842,7 +861,7 @@ const IDENTIFIED = 'It holds by how instances are identified (reference schemes)
 
 // Whether population b has every instance and fact of a. Instances of types
 // whose surrogates b invented (and their reference values) match any.
-function contains(w, b, a, invented = []) {
+export function contains(w, b, a, invented = []) {
   const wild = new Set()
   for (const { typeId } of invented) {
     wild.add(typeId)
