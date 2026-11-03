@@ -60,7 +60,15 @@ const dataOf = (state) => ({
 // frontier assignments { y → value | null }, without duplicates. Variables
 // range over the populations of their types; fact atoms over the fact types'
 // tuples (identifying ones included, as the evaluator gives them).
-function matchSide(side, ev, limit = 100000) {
+function matchSide(side, ev, limit = 100000, players = new Map()) {
+  // A variable's sort: a variable of a subtype bound at a role of its
+  // supertype holds only the subtype's instances.
+  const sortOf = new Map()
+  const collectVars = (vs, atoms) => {
+    for (const v of vs ?? []) sortOf.set(v.id, v.typeId)
+    for (const a of atoms ?? []) if (a.t === 'opt' || a.t === 'not') collectVars(a.vars, a.atoms)
+  }
+  collectVars(side.vars, side.atoms)
   const tupleCache = new Map()
   const tuplesOf = (factId) => {
     if (!tupleCache.has(factId)) {
@@ -144,7 +152,11 @@ function matchSide(side, ev, limit = 100000) {
           a.args.forEach((id, i) => {
             if (!ok || id == null) return
             if (next.has(id)) { if (keyOf(next.get(id)) !== k[i]) ok = false }
-            else next.set(id, t[i])
+            else {
+              const sort = sortOf.get(id)
+              if (sort && players.get(a.factId)?.[i] !== sort && !domainKeys(sort).has(k[i])) ok = false
+              else next.set(id, t[i])
+            }
           })
           if (ok) yield* solve(rest, vars, next, y)
         }
@@ -449,6 +461,7 @@ export function runMapping(state, mapping, direction = 'forward') {
   const ev = makePopulationEvaluator(data)
   const ctxs = { source: sideContext(state, mapping.sourceSchemaId), target: sideContext(state, mapping.targetSchemaId) }
   const ident = identifyingFactIds(data.facts, data.objectTypes, data.constraints)
+  const players = new Map(data.facts.map(f => [f.id, f.roles.map(r => r.objectTypeId)]))
   const pop = { types: new Map(), facts: new Map() }
   const log = []
   const rules = []
@@ -463,7 +476,7 @@ export function runMapping(state, mapping, direction = 'forward') {
     }
     const errors = checkRule(r, mapping, state, ctxs).filter(i => i.severity === 'error')
     if (errors.length) log.push({ level: 'warning', text: `${name}: run although it has ${errors.length === 1 ? 'an error' : `${errors.length} errors`} (${errors[0].text})` })
-    const m = matchSide(fromSide, ev)
+    const m = matchSide(fromSide, ev, undefined, players)
     for (const e of m.errors) log.push({ level: 'error', text: `${name}: ${e}` })
     if (m.truncated) log.push({ level: 'warning', text: `${name}: stopped after ${m.tuples.length} matches` })
     if (hasNot(toSide.atoms)) log.push({ level: 'note', text: `${name}: the negated part of the ${to} pattern is a condition; nothing is built for it` })

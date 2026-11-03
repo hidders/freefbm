@@ -356,7 +356,6 @@ export function guessOrmSchema(state, relSchemaId, { schemaId = null, surrogates
 const and = (parts) => (parts.length === 1 ? parts[0] : { t: 'and', args: parts })
 const exists = (vars, body) => vars.reduceRight((b, v) => ({ t: 'exists', v, body: b }), body)
 const factAtom = (factId, args) => ({ t: 'fact', factId, args })
-const typeAtom = (typeId, arg) => ({ t: 'type', typeId, arg })
 const bindAtom = (id, y) => ({ t: 'vcmp', op: '≈', left: { t: 'var', id }, right: { t: 'fv', y } })
 
 function buildRules(plan, info, objectTypes) {
@@ -434,7 +433,7 @@ function identify(sc, info, src, table, x, terms) {
   if (p.kind === 'subtype') {
     const t2 = new Map()
     p.superFk.from.forEach((c, i) => { if (terms.has(c)) t2.set(p.superFk.to[i], terms.get(c)) })
-    return [typeAtom(p.entity.id, x), ...identify(sc, info, src, p.superTable, x, t2)]
+    return identify(sc, info, src, p.superTable, x, t2)
   }
   const key = p.key ?? []
   if (key.some(c => !terms.has(c))) {
@@ -493,7 +492,8 @@ function entityRule(p, info) {
   const terms = rowTerms(sc, info, src, p)
   const x = sc.v(p.entity.id)
   const id = identify(sc, info, src, p.table, x.id, terms)
-  const tgt = exists([x], and(p.kind === 'subtype' ? id : [typeAtom(p.entity.id, x.id), ...id]))
+  // No type atom: x's sort (∃x:T) already says it is a T.
+  const tgt = exists([x], and(id))
   return { id: uid(), name: p.entity.name, source: sourceTree(src, relAtom(p.table, terms)), target: tgt }
 }
 
