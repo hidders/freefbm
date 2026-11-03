@@ -195,11 +195,15 @@ function matchSide(side, ev, limit = 100000) {
     switch (a.t) {
       case 'const': return env.has(a.v) ? 0 : 1
       case 'bind': return env.has(a.v) || y[a.y] != null ? 0 : 60
-      case 'type': return has(a.arg) ? 0 : 20 + Math.min(20, domain(a.typeId).length / 100)
+      // An atom joined to what is bound costs its fan-out; one that is not
+      // (a cross product with what is bound) comes after those.
+      case 'type': return has(a.arg) ? 0 : (env.size ? 32 : 20) + Math.min(15, domain(a.typeId).length / 100)
       case 'fact': {
-        const bound = a.args.filter(id => env.has(id)).length
-        if (bound === a.args.length) return 0
-        return (bound ? 5 : 10) + Math.min(30, tuplesOf(a.factId).rows.length / 100)
+        const bound = a.args.findIndex(id => id != null && env.has(id))
+        if (a.args.every(id => id == null || env.has(id))) return 0
+        const rows = tuplesOf(a.factId).rows.length
+        if (bound >= 0) return 5 + Math.min(25, rows / Math.max(1, indexOf(a.factId, bound).size))
+        return (env.size ? 30 : 10) + Math.min(15, rows / 100)
       }
       case 'opt': case 'not': {
         // After the variables of the part's surroundings are bound.
@@ -240,7 +244,14 @@ function matchSide(side, ev, limit = 100000) {
 // The reference scheme that identifies instances of an entity type (or an
 // objectified fact type): { kind: 'refMode', rm } | { kind: 'composite', parts }
 // with parts [{ factId, entityRoleIndex, roleIndex }] in identifier order.
+const schemeCache = new WeakMap()
 function schemeOf(typeId, data) {
+  let m = schemeCache.get(data)
+  if (!m) { m = new Map(); schemeCache.set(data, m) }
+  if (!m.has(typeId)) m.set(typeId, computeScheme(typeId, data))
+  return m.get(typeId)
+}
+function computeScheme(typeId, data) {
   const { facts, objectTypes, subtypes, constraints } = data
   const t = objectTypes.find(o => o.id === typeId) ?? facts.find(f => f.id === typeId)
   if (!t) return null
@@ -257,6 +268,55 @@ function schemeOf(typeId, data) {
   if (inh?.kind === 'refMode') return { kind: 'refMode', rm: inh.refMode }
   if (inh?.kind === 'compositePI') return fromCp(inh.cp, inh.supertype)
   return null
+}
+
+// An invented surrogate value, from the values of another key.
+const invent = (vals) => `⟨${vals.join(', ')}⟩`
+
+// The keys of an entity type other than its preferred identifier, as lists of
+// { factId, entityRi, valueRi }: a binary fact type with a uniqueness
+// constraint on its other role, or an external uniqueness constraint over
+// binary fact types. Fewest parts first.
+const altKeyCache = new WeakMap()
+function altKeysOf(typeId, data) {
+  let m = altKeyCache.get(data)
+  if (!m) { m = new Map(); altKeyCache.set(data, m) }
+  if (m.has(typeId)) return m.get(typeId)
+  const sch = schemeOf(typeId, data)
+  const pref = sch?.kind === 'refMode' ? sch.rm.factId : null
+  const keys = []
+  for (const f of data.facts) {
+    if (f.id === pref || f.roles?.length !== 2) continue
+    f.roles.forEach((r, i) => {
+      if (r.objectTypeId !== typeId) return
+      const o = 1 - i
+      if ((f.uniqueness ?? []).some(u => u.roles?.length === 1 && u.roles[0] === o)) keys.push([{ factId: f.id, entityRi: i, valueRi: o }])
+    })
+  }
+  const factById = lookups(data).factById
+  for (const c of data.constraints ?? []) {
+    if (c.constraintType !== 'uniqueness' || c.isPreferredIdentifier) continue
+    const seq = c.sequences?.[0] ?? []
+    const parts = seq.map(mm => {
+      const f = mm?.kind === 'role' && factById.get(mm.factId)
+      return f?.roles?.length === 2 && f.roles[1 - mm.roleIndex]?.objectTypeId === typeId ? { factId: f.id, entityRi: 1 - mm.roleIndex, valueRi: mm.roleIndex } : null
+    })
+    if (parts.length && parts.every(Boolean)) keys.push(parts)
+  }
+  keys.sort((a, b) => a.length - b.length)
+  m.set(typeId, keys)
+  return keys
+}
+
+// Id lookups over the data's element arrays, made once per data object.
+const lookupCache = new WeakMap()
+function lookups(data) {
+  let lk = lookupCache.get(data)
+  if (!lk) {
+    lk = { otIds: new Set(data.objectTypes.map(o => o.id)), factById: new Map(data.facts.map(f => [f.id, f])) }
+    lookupCache.set(data, lk)
+  }
+  return lk
 }
 
 // Adds to `pop` the population that one frontier tuple y makes the side's
@@ -279,7 +339,10 @@ function buildSide(side, y, data, pop, ident) {
     if (a.t === 'bind' && a.v && y[a.y] != null) env.set(a.v, y[a.y])
     if (a.t === 'const' && a.v) env.set(a.v, constValue(a.text))
   }
-  // Entity variables from their reference schemes, until nothing changes.
+  // Entity variables from their reference schemes, until nothing changes;
+  // then (below) values from the entities, and invented surrogates.
+  for (let outer = true; outer;) {
+  outer = false
   for (let changed = true; changed;) {
     changed = false
     for (const v of vars.values()) {
@@ -302,12 +365,58 @@ function buildSide(side, y, data, pop, ident) {
       if (cell !== undefined) { env.set(v.id, cell); changed = true }
     }
   }
+  // The value of a reference mode is the entity's cell, and the parts of a
+  // composite identifier are the cell's parts.
+  for (const a of atoms) {
+    if (a.t !== 'fact') continue
+    for (const v of vars.values()) {
+      if (!env.has(v.id)) continue
+      const sch = schemeOf(v.typeId, data)
+      const cell = env.get(v.id)
+      if (sch?.kind === 'refMode' && a.factId === sch.rm.factId && a.args[1 - sch.rm.vtRoleIndex] === v.id) {
+        const w = a.args[sch.rm.vtRoleIndex]
+        if (w && !env.has(w) && typeof cell === 'string') { env.set(w, cell); outer = true }
+      } else if (sch?.kind === 'composite' && Array.isArray(cell)) {
+        sch.parts.forEach((p, i) => {
+          if (a.factId !== p.factId || a.args[p.entityRoleIndex] !== v.id) return
+          const w = a.args[p.roleIndex]
+          if (w && !env.has(w) && cell[i] !== undefined) { env.set(w, cell[i]); outer = true }
+        })
+      }
+    }
+  }
+  if (outer) continue
+  // A surrogate (a reference mode whose value nothing gives) is invented from
+  // another key of the entity type, e.g. a natural key declared UNIQUE:
+  // ⟨its values⟩. Its value then fills the reference mode's value variable.
+  {
+    for (const v of vars.values()) {
+      if (env.has(v.id)) continue
+      const sch = schemeOf(v.typeId, data)
+      if (sch?.kind !== 'refMode') continue
+      for (const key of altKeysOf(v.typeId, data)) {
+        const vals = key.map(p => {
+          const a = atoms.find(x => x.t === 'fact' && x.factId === p.factId && x.args[p.entityRi] === v.id && env.has(x.args[p.valueRi]))
+          return a ? valueOf(env.get(a.args[p.valueRi])) : undefined
+        })
+        if (vals.some(x => x == null)) continue
+        env.set(v.id, invent(vals))
+        if (!pop.invented) pop.invented = new Map()
+        pop.invented.set(v.typeId, key)
+        outer = true
+        break
+      }
+      if (outer) break
+    }
+  }
+  }
   const unknown = [...vars.values()].filter(v => !env.has(v.id) && !v.synthetic)
   // Whatever it determines: instances of the variables' types, the type
   // atoms, and the tuples of fact types that identify nothing (identifying
   // ones follow from the entity populations).
+  const lk = lookups(data)
   const addInst = (typeId, cell) => {
-    if (!data.objectTypes.some(o => o.id === typeId)) return
+    if (!lk.otIds.has(typeId)) return
     const k = keyOf(cell)
     if (k === null) return
     if (!pop.types.has(typeId)) pop.types.set(typeId, new Map())
@@ -317,7 +426,7 @@ function buildSide(side, y, data, pop, ident) {
   for (const a of atoms) {
     if (a.t === 'type' && env.has(a.arg)) addInst(a.typeId, env.get(a.arg))
     if (a.t === 'fact' && a.args.every(id => env.has(id))) {
-      const f = data.facts.find(x => x.id === a.factId)
+      const f = lk.factById.get(a.factId)
       if (!f) continue
       // Players get the instances too (a variable may be of a subtype).
       a.args.forEach((id, i) => addInst(f.roles[i]?.objectTypeId, env.get(id)))
@@ -381,7 +490,12 @@ export function runMapping(state, mapping, direction = 'forward') {
     const n = factPopulations[f.id]?.length ?? 0
     if (n) counts.push({ id: f.id, name: readingName(f, ctxs[to]), kind: 'fact', n })
   }
-  return { from, to, schemaId: sideSchemaId(mapping, to), populations, factPopulations, rules, counts, log }
+  const invented = [...(pop.invented ?? new Map())].map(([typeId, key]) => ({ typeId, key }))
+  for (const { typeId } of invented) {
+    const t = ctxs[to].otById.get(typeId)
+    log.push({ level: 'note', text: `${t?.name ?? 'An entity type'}: its reference values were invented from another key (⟨…⟩), as nothing gives them` })
+  }
+  return { from, to, schemaId: sideSchemaId(mapping, to), populations, factPopulations, rules, counts, log, invented }
 }
 
 const hasNot = (atoms) => (atoms ?? []).some(a => a.t === 'not' || (a.t === 'opt' && hasNot(a.atoms)))
@@ -424,6 +538,7 @@ export function roundTrip(state, mapping, direction = 'forward') {
     walk(s.atoms)
   }
   const compare = []
+  const log = []
   const diff = (name, kind, before, after, show) => {
     const lost = [...before.keys()].filter(k => !after.has(k))
     const gained = [...after.keys()].filter(k => !before.has(k))
@@ -431,18 +546,22 @@ export function roundTrip(state, mapping, direction = 'forward') {
       examples: [...lost.slice(0, 3).map(k => `lost ${show(before.get(k))}`), ...gained.slice(0, 3).map(k => `new ${show(after.get(k))}`)] })
   }
   const showCell = (c) => (typeof c === 'string' ? c : JSON.stringify(c))
+  // Invented surrogates count as equal to the ones they stand for: the
+  // starting population is compared with its surrogates renamed.
+  const rename = surrogateRenaming(data, ev, back.invented ?? [])
   for (const id of typeIds) {
     const t = ctx.otById.get(id)
     if (!t) continue
-    const m = (p) => new Map((p.instances ?? []).map(c => [keyOf(c), c]))
-    diff(t.name, t.kind === 'value' ? 'value' : 'entity', m(ev.population(id)), m(evBack.population(id)), showCell)
+    const m = (p, r) => new Map((p.instances ?? []).map(c => (r ? r(c, id) : c)).map(c => [keyOf(c), c]))
+    diff(t.name, t.kind === 'value' ? 'value' : 'entity', m(ev.population(id), rename), m(evBack.population(id)), showCell)
   }
   for (const id of factIds) {
     const f = ctx.factById.get(id)
     if (!f) continue
-    const m = (r) => new Map((r.tuples ?? []).map(t => [JSON.stringify(t.map(keyOf)), t]))
-    diff(readingName(f, ctx), 'fact', m(ev.factTuples(id)), m(evBack.factTuples(id)), (t) => `(${t.map(showCell).join(', ')})`)
+    const m = (r, ren) => new Map((r.tuples ?? []).map(t => (ren ? t.map((c, i) => ren(c, f.roles[i]?.objectTypeId)) : t)).map(t => [JSON.stringify(t.map(keyOf)), t]))
+    diff(readingName(f, ctx), 'fact', m(ev.factTuples(id), rename), m(evBack.factTuples(id)), (t) => `(${t.map(showCell).join(', ')})`)
   }
+  if (back.invented?.length) log.push({ level: 'note', text: 'Invented surrogates are compared with the ones they stand for (up to renaming)' })
   // Elements with a population that no rule reads.
   const uncovered = []
   for (const o of ctx.objectTypes) {
@@ -455,7 +574,48 @@ export function roundTrip(state, mapping, direction = 'forward') {
     const n = ev.factTuples(f.id).tuples?.length ?? 0
     if (n) uncovered.push(`${readingName(f, ctx)} (${n})`)
   }
-  return { there, back, compare, uncovered, log: [...there.log, ...back.log] }
+  return { there, back, compare, uncovered, log: [...there.log, ...back.log, ...log] }
+}
+
+// A function renaming the cells of a population (cell, typeId) → cell so that
+// each surrogate of an entity type in `invented` becomes the value invented
+// for it from the same key, ⟨…⟩, wherever it occurs: as the entity, as the
+// reference mode's value, and inside composite identifiers. Null when there
+// is nothing to rename.
+function surrogateRenaming(data, ev, invented) {
+  if (!invented.length) return null
+  const byVt = new Map()   // vtId → Map(original → invented)
+  for (const { typeId, key } of invented) {
+    const sch = schemeOf(typeId, data)
+    if (sch?.kind !== 'refMode') continue
+    const index = key.map(p => {
+      const ix = new Map()
+      for (const t of ev.factTuples(p.factId).tuples ?? []) ix.set(keyOf(t[p.entityRi]), valueOf(t[p.valueRi]))
+      return ix
+    })
+    const ren = byVt.get(sch.rm.vtId) ?? new Map()
+    for (const c of ev.population(typeId).instances ?? []) {
+      const vals = index.map(ix => ix.get(keyOf(c)))
+      if (typeof c === 'string' && vals.every(v => v != null)) ren.set(c, invent(vals))
+    }
+    byVt.set(sch.rm.vtId, ren)
+  }
+  const renameCell = (cell, typeId, depth = 0) => {
+    if (cell == null || depth > 8) return cell
+    if (byVt.has(typeId) && typeof cell === 'string') return byVt.get(typeId).get(cell) ?? cell
+    const sch = schemeOf(typeId, data)
+    if (sch?.kind === 'refMode' && typeof cell === 'string') return byVt.get(sch.rm.vtId)?.get(cell) ?? cell
+    if (sch?.kind === 'composite' && Array.isArray(cell)) {
+      const factById = lookups(data).factById
+      return cell.map((c, i) => {
+        const p = sch.parts[i]
+        const player = p && factById.get(p.factId)?.roles[p.roleIndex]?.objectTypeId
+        return player ? renameCell(c, player, depth + 1) : c
+      })
+    }
+    return cell
+  }
+  return renameCell
 }
 
 export { SIDES }

@@ -18,7 +18,7 @@ export default function ImportLogPanel() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
         borderBottom: '1px solid var(--border-soft)' }}>
         <span style={{ fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          Imported from {log.source}
+          {log.kind === 'guess' ? 'Guessed from' : 'Imported from'} {log.source}
         </span>
         <button onClick={close} title="Close" style={{ border: 'none', background: 'none',
           cursor: 'pointer', color: 'var(--ink-3)', fontSize: 16, lineHeight: 1 }}>×</button>
@@ -35,7 +35,9 @@ export default function ImportLogPanel() {
       <div style={{ padding: '6px 10px', fontSize: 11, color: 'var(--ink-3)', borderTop: '1px solid var(--border-soft)' }}>
         {log.kind === 'ddl'
           ? 'The tables are a new relational schema in this file; the .sql file is not changed.'
-          : 'This is a new, unsaved model. Save writes a .ffbm file; the .orm file is not changed.'}
+          : log.kind === 'guess'
+            ? 'A new ORM2 schema and a mapping to it; the relational schema is not changed. Undo removes both.'
+            : 'This is a new, unsaved model. Save writes a .ffbm file; the .orm file is not changed.'}
       </div>
     </div>
   )

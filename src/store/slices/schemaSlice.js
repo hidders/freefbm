@@ -1,6 +1,7 @@
 import { mkSchema, mkDiagram, SCHEMA_PROFILES, activeSchemaIdOf } from '../storeHelpers'
 import { importPostgresDdl } from '../../relational/ddlImport.js'
 import { exportPostgresDdl } from '../../relational/ddlExport.js'
+import { guessOrmSchema } from '../../relational/guessOrm.js'
 
 // Several schemas in one file (workbench plan, step 2). The schemas are listed
 // in `schemas`; elements and diagrams point to theirs with `schemaId`. The
@@ -101,6 +102,48 @@ export const createSchemaSlice = (set, get) => ({
       ...built.sample.log,
     ] })
     return { schemaId: schema.id, stats: st }
+  },
+
+  // Guesses an ORM2 schema from a relational one (workbench step 9): a new
+  // ORM2 schema with one diagram, and the mapping from the relational schema
+  // to it, as one undo step. surrogates: { tableId: 'keep' | 'drop' } overrides
+  // the default per table. Returns { schemaId, mappingId, stats }.
+  guessOrmFromRelational(relSchemaId, { surrogates = {} } = {}) {
+    const st = get()
+    const rel = st.schemas.find(x => x.id === relSchemaId)
+    if (!rel) return null
+    const used = new Set(st.schemas.map(x => x.name))
+    let unique = `${rel.name} (ORM2)`
+    for (let i = 2; used.has(unique); i++) unique = `${rel.name} (ORM2) ${i}`
+    const schema = mkSchema(unique, 'orm2')
+    const built = guessOrmSchema(st, relSchemaId, { schemaId: schema.id, surrogates, mappingName: `${rel.name} to ${unique}` })
+    set(s => ({ historyBatch: (s.historyBatch ?? 0) + 1 }))
+    try {
+      set(s => ({
+        schemas: [...s.schemas, schema],
+        objectTypes: [...s.objectTypes, ...built.objectTypes],
+        facts: [...s.facts, ...built.facts],
+        subtypes: [...s.subtypes, ...built.subtypes],
+        constraints: [...s.constraints, ...built.constraints],
+        diagrams: [...s.diagrams, built.diagram],
+        mappings: [...(s.mappings ?? []), built.mapping],
+        isDirty: true,
+      }))
+      get().setActiveDiagram(built.diagram.id)
+      for (const c of built.constraints) get()._tryAutoGenerateQuery(c.id)
+    } finally {
+      set(s => ({ historyBatch: Math.max(0, (s.historyBatch ?? 1) - 1) }))
+    }
+    const n = built.stats
+    get().setImportLog({ kind: 'guess', source: `${rel.name} (guessed ORM2 schema)`, entries: [
+      { level: 'note', text: `Schema ${unique}: ${n.entityTypes} entity types, ${n.valueTypes} value types, ${n.factTypes} fact types${n.subtypes ? `, ${n.subtypes} subtypes` : ''}; ${n.junctions} junction tables became fact types${n.dropped ? `; ${n.dropped} surrogate keys dropped` : ''}` },
+      { level: 'note', text: `Mapping ${built.mapping.name}: ${n.rules} rules (Mappings tab: Run →, Round trip)` },
+      ...built.log,
+    ] })
+    const svg = typeof document !== 'undefined' ? document.querySelector('.canvas-bg')?.closest('svg') : null
+    const r = svg?.getBoundingClientRect()
+    get().fitToContent?.(r?.width || 1200, r?.height || 700)
+    return { schemaId: schema.id, mappingId: built.mapping.id, stats: n }
   },
 
   // The active relational schema as PostgreSQL DDL: { sql, warnings }.

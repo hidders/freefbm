@@ -375,7 +375,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
       // A serial column is an integer column with generated values; its value
       // type is the plain integer type (so referencing columns get it too) and
       // the serial is kept on the column's role.
-      let generated = c.identity ? 'identity' : null
+      let generated = c.identity ? 'identity' : c.defaultGenerated ?? null
       const plain = { serial: 'integer', bigserial: 'bigint', smallserial: 'smallint' }[assignment?.datatypeId]
       if (plain) { generated = assignment.datatypeId; assignment = { profileId: 'postgresql', datatypeId: plain } }
       if (type.array) { assignment = { profileId: 'postgresql', datatypeId: 'text' }; warn(`${tableName(t)}.${c.name}: the array type ${bare}[] is read as text`) }
