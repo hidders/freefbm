@@ -2,7 +2,7 @@ import React from 'react'
 import { TOKEN_STYLE } from './ConstraintsTab.jsx'
 
 // Token styles of mapping patterns (mapping.js sideTokens): frontier
-// variables ŷ stand out from the local variables.
+// variables $y stand out from the local variables.
 export const MAPPING_TOKEN_STYLE = {
   ...TOKEN_STYLE,
   fv: { color: 'var(--formula-fn)', fontWeight: 700 },

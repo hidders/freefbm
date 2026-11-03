@@ -1,13 +1,13 @@
 // Running a schema mapping on sample populations (workbench step 8).
 //
-// A rule φ ⟺ ψ means ∀ŷ [∃x̄ φ ↔ ∃z̄ ψ] (mapping.js). Running a mapping from
+// A rule φ ⟺ ψ means ∀$y [∃x̄ φ ↔ ∃z̄ ψ] (mapping.js). Running a mapping from
 // one side to the other
 //   1. matches each rule's pattern on the "from" side against that side's
-//      population, which gives the rule's frontier tuples ŷ (an optional part
-//      [ŷ](…) that doesn't match gives ŷ = NULL), and
+//      population, which gives the rule's frontier tuples $y (an optional part
+//      [$y](…) that doesn't match gives $y = NULL), and
 //   2. builds, for every frontier tuple, the smallest population of the "to"
 //      side in which the rule's other pattern holds: each variable bound by
-//      x ≈ ŷ or x ≈ 'c' takes that value, and each entity variable is created
+//      x ≈ $y or x ≈ 'c' takes that value, and each entity variable is created
 //      from its reference scheme (a reference mode, or a composite identifier
 //      made of the values of its identifying roles), as key-safety promises.
 //      Table rows (relational atoms) are spelt out in encoding B first.
@@ -36,7 +36,7 @@ const keyOf = (cell) => {
   const k = projCellKey(cell)
   return k === null ? null : JSON.stringify(k)
 }
-// The data value a cell stands for, as ŷ carries it: the string itself, or
+// The data value a cell stands for, as $y carries it: the string itself, or
 // for a composite identifier the JSON of its parts.
 const valueOf = (cell) => {
   const k = projCellKey(cell)
@@ -178,7 +178,7 @@ function matchSide(side, ev, limit = 100000, players = new Map()) {
         return
       }
       case 'opt': {
-        // [ŷ](P): ŷ is P's value when P holds, else NULL.
+        // [$y](P): $y is P's value when P holds, else NULL.
         const vals = new Set()
         for (const [, y2] of solve(a.atoms ?? [], [...vars, ...(a.vars ?? [])], env, a.y in y ? y : { ...y })) {
           vals.add(y2[a.y] ?? null)
@@ -486,7 +486,7 @@ export function runMapping(state, mapping, direction = 'forward') {
     }
     for (const v of unknown.values()) {
       const t = ctxs[to].otById.get(v.typeId) ?? data.facts.find(f => f.id === v.typeId)
-      log.push({ level: 'warning', text: `${name}: the ${t?.name ?? t?.objectifiedName ?? 'variable'} of the ${to} pattern is not determined by ŷ (no reference scheme reaches it), so it was not created` })
+      log.push({ level: 'warning', text: `${name}: the ${t?.name ?? t?.objectifiedName ?? 'variable'} of the ${to} pattern is not determined by $y (no reference scheme reaches it), so it was not created` })
     }
     rules.push({ id: r.id, name, matches: m.tuples.length })
   }

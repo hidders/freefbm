@@ -14,8 +14,8 @@ import { PatternText, IssueList, MAPPING_TOKEN_STYLE } from './MappingFormula.js
 // ── Mapping rule editor ─────────────────────────────────────────────────────
 // The derivation rule editor's syntax-directed way of editing, for the two
 // patterns of a mapping rule φ ⟺ ψ (mapping/mapping.js). A pattern is a rule
-// tree restricted to ∃, ∧ and atoms, with table rows, x ≈ ŷ bindings, optional
-// parts [ŷ](…) and negations ¬(…). Clicking a part selects it, and the panel
+// tree restricted to ∃, ∧ and atoms, with table rows, x ≈ $y bindings, optional
+// parts [$y](…) and negations ¬(…). Clicking a part selects it, and the panel
 // below offers what can go there or what to wrap it in. Edits apply to the
 // rule at once (and can be undone).
 
@@ -60,8 +60,8 @@ const anchorOf = (tree, path) => {
 
 const COL_KINDS = [
   { k: '', text: '_', title: 'any value' },
-  { k: 'fv', text: 'ŷ', title: 'the value is a frontier variable' },
-  { k: 'opt', text: 'ŷ?', title: 'the value, or NULL if the column has none' },
+  { k: 'fv', text: '$y', title: 'the value is a frontier variable' },
+  { k: 'opt', text: '$y?', title: 'the value, or NULL if the column has none' },
   { k: 'const', text: "'c'", title: 'a constant' },
   { k: 'absent', text: '−', title: 'the column has no value (NULL)' },
   { k: 'var', text: 'x', title: 'a variable of the pattern' },
@@ -159,9 +159,9 @@ function MappingRuleEditor({ mappingId, ruleId }) {
   // A frontier variable's name, typed in place.
   const fvInput = (side, path, value, onChange, optional = false) => (
     <span style={{ whiteSpace: 'nowrap' }}>
-      <span style={MAPPING_TOKEN_STYLE.fv}>ŷ</span>
+      <span style={MAPPING_TOKEN_STYLE.fv}>$</span>
       <input aria-label="Frontier variable" value={value ?? ''} placeholder="name" onClick={e => e.stopPropagation()}
-        onFocus={() => setSel({ side, path })} onChange={e => onChange(e.target.value.replace(/\s+/g, '_'))}
+        onFocus={() => setSel({ side, path })} onChange={e => onChange(e.target.value.replace(/^\$+/, '').replace(/\s+/g, '_'))}
         style={{ ...MAPPING_TOKEN_STYLE.fv, font: 'inherit', fontWeight: 700, background: 'transparent', border: 'none',
           borderBottom: '1px dashed var(--formula-fn)', padding: '0 1px', width: `${String(value ?? '').length ? String(value).length + 0.5 : 4}ch` }} />
       {optional && <span style={MAPPING_TOKEN_STYLE.fv}>?</span>}
@@ -309,7 +309,7 @@ function MappingRuleEditor({ mappingId, ruleId }) {
           <button style={btn()} title="Close (Esc); changes are kept" onClick={close}>×</button>
         </div>
         {!panel.folded && <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 2 }}>
-          For all values of the frontier variables ŷ: the source pattern matches if and only if the target pattern does. Every other variable should be determined by the ŷ and the keys.
+          For all values of the frontier variables $y: the source pattern matches if and only if the target pattern does. Every other variable should be determined by the $y and the keys.
         </div>}
       </div>
       {!panel.folded && <div style={{ padding: 14, overflow: 'auto', flex: 1 }}>
@@ -392,8 +392,8 @@ function Palette({ side, node, path, tree, scope, ctx, graph, replace }) {
   if (!node || node.t === 'hole') {
     rows.push(['Connective', <>
       <button style={btn()} onClick={() => replace(path, { t: 'and', args: [hole(), hole()] }, [...path, 'args', 0])}>□ ∧ □</button>
-      <button style={btn()} title="An optional part: ŷ is its value, or NULL when it does not match"
-        onClick={() => replace(path, { t: 'opt', y: '', body: hole() }, [...path, 'body'])}>[ŷ](□)</button>
+      <button style={btn()} title="An optional part: $y is its value, or NULL when it does not match"
+        onClick={() => replace(path, { t: 'opt', y: '', body: hole() }, [...path, 'body'])}>[$y](□)</button>
       <button style={btn()} title="No match for the part" onClick={() => replace(path, { t: 'not', arg: hole() }, [...path, 'arg'])}>¬ □</button>
     </>])
     rows.push(['Quantifier', <>
@@ -404,16 +404,16 @@ function Palette({ side, node, path, tree, scope, ctx, graph, replace }) {
     rows.push(['Fact type', factSelect('', (a) => replace(path, a))])
     rows.push(['Type', typeSelect('', (typeId) => replace(path, { t: 'type', typeId, arg: fitting(typeId) }), 'Is a type…')])
     rows.push(['Value', <>
-      <button style={btn()} title="The variable's value is the frontier variable ŷ"
-        onClick={() => replace(path, { t: 'vcmp', op: '≈', left: { t: 'var', id: lastVar }, right: { t: 'fv', y: '' } })}>□ ≈ ŷ</button>
+      <button style={btn()} title="The variable's value is the frontier variable $y"
+        onClick={() => replace(path, { t: 'vcmp', op: '≈', left: { t: 'var', id: lastVar }, right: { t: 'fv', y: '' } })}>□ ≈ $y</button>
       <button style={btn()} title="The variable's value is a constant"
         onClick={() => replace(path, { t: 'vcmp', op: '≈', left: { t: 'var', id: lastVar }, right: { t: 'const', text: '' } })}>□ ≈ 'c'</button>
     </>])
   } else {
     rows.push(['Wrap in', <>
       <button style={btn()} onClick={() => replace(path, { t: 'and', args: [node, hole()] }, [...path, 'args', 1])}>… ∧ □</button>
-      <button style={btn()} title="Make this part optional: ŷ is its value, or NULL when it does not match"
-        onClick={() => replace(path, { t: 'opt', y: '', body: node }, path)}>[ŷ](…)</button>
+      <button style={btn()} title="Make this part optional: $y is its value, or NULL when it does not match"
+        onClick={() => replace(path, { t: 'opt', y: '', body: node }, path)}>[$y](…)</button>
       <button style={btn()} onClick={() => replace(path, { t: 'not', arg: node }, path)}>¬ …</button>
       {typeSelect(qType, setQType)}
       <button style={btn()} disabled={!qType} onClick={() => replace(path, exists(node), path)}>∃ …</button>
@@ -426,7 +426,7 @@ function Palette({ side, node, path, tree, scope, ctx, graph, replace }) {
     if (node.t === 'vcmp') rows.push(['Value', (
       <select value={node.right?.t === 'fv' ? 'fv' : 'const'} style={selectStyle}
         onChange={e => replace(path, { ...node, right: e.target.value === 'fv' ? { t: 'fv', y: '' } : { t: 'const', text: '' } })}>
-        <option value="fv">a frontier variable ŷ</option>
+        <option value="fv">a frontier variable $y</option>
         <option value="const">a constant</option>
       </select>
     )])
@@ -468,7 +468,7 @@ function Palette({ side, node, path, tree, scope, ctx, graph, replace }) {
       <button style={btn()} onClick={() => replace(path, hole())}>Clear</button>
       {parent && ['and', 'exists', 'not', 'opt'].includes(parent.t) && (
         <button style={btn()} title="Replace the enclosing part by this part"
-          onClick={() => replace(parentPath, node, parentPath)}>Lift out of {{ and: '∧', exists: '∃', not: '¬', opt: '[ŷ]' }[parent.t]}</button>
+          onClick={() => replace(parentPath, node, parentPath)}>Lift out of {{ and: '∧', exists: '∃', not: '¬', opt: '[$y]' }[parent.t]}</button>
       )}
     </>])
   }

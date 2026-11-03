@@ -2,8 +2,8 @@
 //
 // A mapping relates a source and a target schema of the file by rules. A rule
 // φ ⟺ ψ pairs a source pattern φ with a target pattern ψ; the two share only
-// frontier variables ŷ, which carry data values (or NULL) between them. Its
-// meaning is ∀ŷ [∃x̄ φ ↔ ∃z̄ ψ].
+// frontier variables $y, which carry data values (or NULL) between them. Its
+// meaning is ∀$y [∃x̄ φ ↔ ∃z̄ ψ].
 //
 //   mapping: { id, name, sourceSchemaId, targetSchemaId, rules: [rule] }
 //   rule:    { id, name, source: pattern, target: pattern }
@@ -16,17 +16,17 @@
 //   { t: 'exists', v: { id, typeId }, body: P }
 //   { t: 'fact', factId, args: [varId | null] }        args in roles[] order
 //   { t: 'type', typeId, arg: varId | null }
-//   { t: 'vcmp', op: '≈', left: { t: 'var', id }, right: { t: 'fv', y } }    x ≈ ŷ
+//   { t: 'vcmp', op: '≈', left: { t: 'var', id }, right: { t: 'fv', y } }    x ≈ $y
 //   { t: 'vcmp', op: '≈', left: { t: 'var', id }, right: { t: 'const', text } }
 //   { t: 'rel', tableId, args: { [columnFactId]: arg } }
 //        relational atom R(…) over a table of encoding B; a column without
 //        an arg is _ (any value). arg:
-//          { k: 'fv', y }      the column's value is ŷ
-//          { k: 'opt', y }     ŷ?: the column's value, or NULL if it has none
+//          { k: 'fv', y }      the column's value is $y
+//          { k: 'opt', y }     $y?: the column's value, or NULL if it has none
 //          { k: 'const', text }
 //          { k: 'absent' }     −: the column has no value
 //          { k: 'var', v }     the column's value, as a variable of the pattern
-//   { t: 'opt', y, body: P }   [ŷ](…): an optional part, guarded by ŷ
+//   { t: 'opt', y, body: P }   [$y](…): an optional part, guarded by $y
 //   { t: 'not', arg: P }       ¬(…), usually ¬∃…
 //
 // The checks work on the flat form of a pattern (treeToSide):
@@ -68,10 +68,10 @@ export function treeToSide(tree) {
       case 'rel': atoms.push(n); return
       case 'vcmp': {
         const v = n.left?.t === 'var' ? n.left.id ?? null : null
-        if (n.op !== '≈' || (n.left && n.left.t !== 'var' && n.left.t !== 'hole')) problems.push('only x ≈ ŷ and x ≈ \'c\' compare values in a pattern')
+        if (n.op !== '≈' || (n.left && n.left.t !== 'var' && n.left.t !== 'hole')) problems.push('only x ≈ $y and x ≈ \'c\' compare values in a pattern')
         else if (n.right?.t === 'fv') atoms.push({ t: 'bind', v, y: n.right.y ?? '' })
         else if (n.right?.t === 'const') atoms.push({ t: 'const', v, text: n.right.text ?? '' })
-        else problems.push('a value comparison needs ŷ or a constant on its right')
+        else problems.push('a value comparison needs $y or a constant on its right')
         return
       }
       case 'opt': { const p = part(n.body); atoms.push({ t: 'opt', y: n.y ?? '', ...p }); return }
@@ -294,7 +294,7 @@ export function checkRule(rule, mapping, state, ctxs = null) {
           else {
             // (P2): a value, or an entity with a simple reference scheme.
             const t = ctx.otById.get(varType.get(a.v))
-            if (t?.kind === 'entity') err(`${t.name} is an entity type; bind its reference value, or a value type, to ŷ${a.y}`, 'warning')
+            if (t?.kind === 'entity') err(`${t.name} is an entity type; bind its reference value, or a value type, to $${a.y}`, 'warning')
           }
         } else if (a.t === 'const') {
           if (!a.v || !String(a.text ?? '').trim()) err('a constant needs a variable and a value')
@@ -310,7 +310,7 @@ export function checkRule(rule, mapping, state, ctxs = null) {
             else if (arg.k === 'var' && !typesMeet(varType.get(arg.v), col.vt.id, ctx)) err(`${tb.name}.${col.name} holds ${col.vt.name}, not ${ctx.otById.get(varType.get(arg.v))?.name ?? '?'}`)
           }
         } else if (a.t === 'opt') {
-          if (!a.y) err('an optional part needs a guard ŷ')
+          if (!a.y) err('an optional part needs a guard $y')
           scan(a.vars, a.atoms)
         } else if (a.t === 'not') scan(a.vars, a.atoms)
       }
@@ -322,10 +322,10 @@ export function checkRule(rule, mapping, state, ctxs = null) {
     const use = frontierUse(pat)
     uses[side] = use
     for (const [y, u] of use) {
-      if (u.guards > 1) err(`ŷ${y} guards more than one optional part`)
-      if (u.guards && u.top) err(`ŷ${y} guards an optional part, so it can't be bound outside it`)
-      if (!u.guards && !u.top && u.inner) err(`ŷ${y} is bound only inside an optional part it does not guard`)
-      if (!u.guards && !u.top && !u.inner && u.negated) err(`ŷ${y} is bound only inside a negation`)
+      if (u.guards > 1) err(`$${y} guards more than one optional part`)
+      if (u.guards && u.top) err(`$${y} guards an optional part, so it can't be bound outside it`)
+      if (!u.guards && !u.top && u.inner) err(`$${y} is bound only inside an optional part it does not guard`)
+      if (!u.guards && !u.top && !u.inner && u.negated) err(`$${y} is bound only inside a negation`)
     }
 
     // Key-safety: every local variable determined by the bindings and keys.
@@ -347,7 +347,7 @@ export function checkRule(rule, mapping, state, ctxs = null) {
       for (const a of atoms) {
         if (a.t !== 'opt') continue
         const inner = determined(a.vars, [...ex.atoms.filter(x => x.t === 'fact'), ...a.atoms], ctx, keys, Dctx)
-        for (const v of a.vars ?? []) if (!inner.has(v.id) && !v.synthetic) err(`${names.get(v.id) ?? 'a variable'} in the optional part [ŷ${a.y}] is not determined`, 'warning')
+        for (const v of a.vars ?? []) if (!inner.has(v.id) && !v.synthetic) err(`${names.get(v.id) ?? 'a variable'} in the optional part [$${a.y}] is not determined`, 'warning')
         walkOpt(a.atoms, inner)
       }
     }
@@ -355,8 +355,8 @@ export function checkRule(rule, mapping, state, ctxs = null) {
   }
   // Every frontier variable on both sides.
   const s = uses.source ?? new Map(), t = uses.target ?? new Map()
-  for (const y of s.keys()) if (!t.has(y)) issues.push({ severity: 'error', side: 'target', text: `ŷ${y} occurs in the source pattern only` })
-  for (const y of t.keys()) if (!s.has(y)) issues.push({ severity: 'error', side: 'source', text: `ŷ${y} occurs in the target pattern only` })
+  for (const y of s.keys()) if (!t.has(y)) issues.push({ severity: 'error', side: 'target', text: `$${y} occurs in the source pattern only` })
+  for (const y of t.keys()) if (!s.has(y)) issues.push({ severity: 'error', side: 'source', text: `$${y} occurs in the target pattern only` })
   return issues
 }
 
@@ -420,7 +420,7 @@ export function sideTokens(side, ctx) {
     } else if (a.t === 'type') {
       push(ctx.otById.get(a.typeId)?.name ?? '□', 'type'); push('('); push(vname(a.arg), 'var'); push(')')
     } else if (a.t === 'bind') {
-      push(vname(a.v), 'var'); push(' ≈ ', 'op'); push(`ŷ${a.y || '□'}`, 'fv')
+      push(vname(a.v), 'var'); push(' ≈ ', 'op'); push(`$${a.y || '□'}`, 'fv')
     } else if (a.t === 'const') {
       push(vname(a.v), 'var'); push(' ≈ ', 'op'); push(`'${a.text ?? ''}'`, 'const')
     } else if (a.t === 'rel') {
@@ -431,8 +431,8 @@ export function sideTokens(side, ctx) {
         if (i) push(', ')
         push(`${c.name}: `, 'reading')
         const arg = a.args[c.fact.id]
-        if (arg.k === 'fv') push(`ŷ${arg.y || '□'}`, 'fv')
-        else if (arg.k === 'opt') push(`ŷ${arg.y || '□'}?`, 'fv')
+        if (arg.k === 'fv') push(`$${arg.y || '□'}`, 'fv')
+        else if (arg.k === 'opt') push(`$${arg.y || '□'}?`, 'fv')
         else if (arg.k === 'const') push(`'${arg.text ?? ''}'`, 'const')
         else if (arg.k === 'absent') push('−', 'op')
         else if (arg.k === 'var') push(vname(arg.v), 'var')
@@ -440,7 +440,7 @@ export function sideTokens(side, ctx) {
       if (cols.length < (tb?.columns.length ?? 0)) push(cols.length ? ', …' : '…')
       push(')')
     } else if (a.t === 'opt' || a.t === 'not') {
-      if (a.t === 'opt') { push(`[ŷ${a.y || '□'}]`, 'fv'); push(' ') }
+      if (a.t === 'opt') { push(`[$${a.y || '□'}]`, 'fv'); push(' ') }
       else push('¬', 'op')
       if (a.vars?.length) { push('∃', 'op'); push(a.vars.map(v => vname(v.id)).join(', '), 'var'); push(' ') }
       push('(')
