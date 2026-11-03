@@ -45,27 +45,54 @@ export const createSchemaSlice = (set, get) => ({
     }))
   },
 
-  // Removes a schema that holds no elements, with its diagrams. Returns false
-  // (and changes nothing) for the last schema or one that still has elements:
-  // deleting a schema's contents is left to the ordinary delete commands.
-  deleteSchema(id) {
+  // Removes a schema with its diagrams, and the mappings to or from it with
+  // theirs. Without withContents only an empty schema goes; with it, its
+  // elements, their sample population and group memberships go too. One undo
+  // step. Returns false (and changes nothing) for the last schema.
+  deleteSchema(id, { withContents = false } = {}) {
     const s = get()
     if (s.schemas.length <= 1 || !s.schemas.some(x => x.id === id)) return false
     const owned = x => x.schemaId === id
-    if (s.objectTypes.some(owned) || s.facts.some(owned) || s.subtypes.some(owned) || s.constraints.some(owned)) return false
-    // Leave the schema first if it is active, so the active diagram never dangles.
-    // Mappings to or from the schema go too, with their diagrams.
+    if (!withContents && (s.objectTypes.some(owned) || s.facts.some(owned) || s.subtypes.some(owned) || s.constraints.some(owned))) return false
     const goneMappings = new Set((s.mappings ?? []).filter(m => m.sourceSchemaId === id || m.targetSchemaId === id).map(m => m.id))
     const dropped = d => owned(d) || goneMappings.has(d.mappingId)
-    if (dropped(s.diagrams.find(d => d.id === s.activeDiagramId) ?? {})) {
-      const target = s.diagrams.find(d => !dropped(d) && !d.mappingId)
-      if (target) get().setActiveDiagram(target.id)
+    // Everything a group or a population may name.
+    const gone = new Set()
+    for (const o of s.objectTypes.filter(owned)) gone.add(o.id)
+    for (const f of s.facts.filter(owned)) {
+      gone.add(f.id)
+      for (const r of f.roles ?? []) gone.add(r.id)
+      for (const u of f.uniqueness ?? []) if (u?.id) gone.add(u.id)
+      for (const r of f.roles ?? []) if (r.mandatoryId) gone.add(r.mandatoryId)
     }
-    set(st => ({
-      schemas: st.schemas.filter(x => x.id !== id), diagrams: st.diagrams.filter(d => !dropped(d)),
-      mappings: (st.mappings ?? []).filter(m => !goneMappings.has(m.id)),
-      isDirty: true,
-    }))
+    for (const x of [...s.subtypes.filter(owned), ...s.constraints.filter(owned)]) gone.add(x.id)
+    for (const d of s.diagrams.filter(dropped)) for (const n of d.notes ?? []) gone.add(n.id)
+    const keep = (obj) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => !gone.has(k)))
+    set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+    try {
+      // Leave the schema first if it is active, so the active diagram never dangles.
+      if (dropped(s.diagrams.find(d => d.id === s.activeDiagramId) ?? {})) {
+        const target = s.diagrams.find(d => !dropped(d) && !d.mappingId)
+        if (target) get().setActiveDiagram(target.id)
+      }
+      set(st => ({
+        schemas: st.schemas.filter(x => x.id !== id), diagrams: st.diagrams.filter(d => !dropped(d)),
+        mappings: (st.mappings ?? []).filter(m => !goneMappings.has(m.id)),
+        ...(gone.size ? {
+          objectTypes: st.objectTypes.filter(x => !owned(x)), facts: st.facts.filter(x => !owned(x)),
+          subtypes: st.subtypes.filter(x => !owned(x)), constraints: st.constraints.filter(x => !owned(x)),
+          groups: (st.groups ?? []).map(g => ({ ...g, members: (g.members ?? []).filter(m => !gone.has(m)) })),
+          populations: keep(st.populations), factPopulations: keep(st.factPopulations),
+          subtypeMappings: keep(st.subtypeMappings), nestedEntityMappings: keep(st.nestedEntityMappings),
+          selectedId: gone.has(st.selectedId) ? null : st.selectedId,
+        } : {}),
+        mappingAccounting: Object.fromEntries(Object.entries(st.mappingAccounting ?? {}).filter(([k]) => !goneMappings.has(k))),
+        mappingRuleEditor: goneMappings.has(st.mappingRuleEditor?.mappingId) ? null : st.mappingRuleEditor,
+        isDirty: true,
+      }))
+    } finally {
+      set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+    }
     return true
   },
 
