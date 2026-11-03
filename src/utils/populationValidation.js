@@ -60,12 +60,26 @@ function leafKindName(playerOtId, facts, objectTypes, subtypes) {
 // String-typed, untyped and unparseable leaves are left alone. Returns `data`
 // itself when nothing changes; the result is deterministic for the same data,
 // so separately computed issues and tables agree on the spelling.
+const schemaCacheRoot = new WeakMap()
+const NO_ARRAY = {}
+function schemaCaches(...arrays) {
+  let level = schemaCacheRoot
+  for (const a of arrays) {
+    const k = a && typeof a === 'object' ? a : NO_ARRAY
+    if (!level.has(k)) level.set(k, new WeakMap())
+    level = level.get(k)
+  }
+  if (!level.has(NO_ARRAY)) level.set(NO_ARRAY, { kindCache: new Map(), shapeCache: new Map() })
+  return level.get(NO_ARRAY)
+}
+
 export function canonicalizePopulationData(data) {
   const facts = data.facts || [], objectTypes = data.objectTypes || []
   const subtypes = data.subtypes || [], constraints = data.constraints
   const reps = new Map()       // kind name + value key → representative spelling
-  const kindCache = new Map()  // leaf player id → kind name | null
-  const shapeCache = new Map() // player id → nested cell shape
+  // leaf player id → kind name | null, and player id → nested cell shape: they
+  // depend on the schema arrays only, so they are kept per array combination.
+  const { kindCache, shapeCache } = schemaCaches(facts, objectTypes, subtypes, constraints)
   let changed = false
 
   const leafKind = (playerOtId) => {
@@ -2702,6 +2716,27 @@ function projCellDisplay(v) {
 }
 
 
+// Fact id → the entity types whose reference scheme it is part of, in the
+// order of objectTypes; per identifyingFactIds result.
+const identifiedByCache = new WeakMap()
+function identifiedBy(ident, objectTypes) {
+  const byTypes = identifiedByCache.get(ident) ?? identifiedByCache.set(ident, new WeakMap()).get(ident)
+  const key = objectTypes && typeof objectTypes === 'object' ? objectTypes : NO_ARRAY
+  if (byTypes.has(key)) return byTypes.get(key)
+  const m = new Map()
+  const add = (fid, ot) => { const l = m.get(fid) ?? m.set(fid, []).get(fid); if (l[l.length - 1] !== ot) l.push(ot) }
+  for (const ot of (objectTypes ?? [])) {
+    if (ot.kind !== 'entity') continue
+    const rm = ident.refModes.get(ot.id)
+    if (rm) add(rm.factId, ot)
+    const cp = ident.compositePIs.get(ot.id)
+    if (cp?.factId) add(cp.factId, ot)
+    for (const fid of cp?.factIds ?? []) add(fid, ot)
+  }
+  byTypes.set(key, m)
+  return m
+}
+
 function computeEffectiveFactTuples(fact, facts, factPopulations, objectTypes, populations, nestedEntityMappings, constraints) {
   // Helper: reconstruct one fact's tuple from a cross-fact PI tuple.
   // ci = index of this fact in cp.factIds; entityTuple = the entity's PI value.
@@ -2721,8 +2756,8 @@ function computeEffectiveFactTuples(fact, facts, factPopulations, objectTypes, p
   }
   // A fact type that identifies nothing has only its own population.
   if (!ident.entity.has(fact.id) && !ident.nested.has(fact.id)) return []
-  for (const ot of (objectTypes ?? [])) {
-    if (ot.kind !== 'entity') continue
+  // Only the entity types this fact type identifies (in schema order).
+  for (const ot of identifiedBy(ident, objectTypes).get(fact.id) ?? []) {
     const entityPop = populations?.[ot.id]
     if (!entityPop?.length) continue
     const arity = fact.arity ?? fact.roles?.length ?? 0
@@ -2753,6 +2788,7 @@ function computeEffectiveFactTuples(fact, facts, factPopulations, objectTypes, p
       }
     }
   }
+  if (!ident.nested.has(fact.id)) return []
   for (const nf of (facts ?? [])) {
     if (!nf.objectified || nf.objectifiedKind === 'value') continue
     const nfPop = nestedEntityMappings?.[nf.id]

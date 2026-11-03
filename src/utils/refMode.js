@@ -798,10 +798,14 @@ export function canBeExternalUniquenessPI(constraint, facts) {
 // its id: { refModes, compositePIs }. Cached per state arrays, since callers
 // ask for every fact and working it out per fact is quadratic in a large
 // schema.
-let identCache = null
+// Per array combination (compared by identity, as for the lookups above).
+const identCache = new WeakMap()
 export function identifyingFactIds(facts, objectTypes, constraints) {
-  if (identCache && identCache.facts === facts && identCache.objectTypes === objectTypes
-      && identCache.constraints === constraints) return identCache.ids
+  if (!facts || !objectTypes) return identifyingFactIds(facts ?? [], objectTypes ?? [], constraints)
+  const byFacts = identCache.get(facts) ?? identCache.set(facts, new WeakMap()).get(facts)
+  const byTypes = byFacts.get(objectTypes) ?? byFacts.set(objectTypes, new WeakMap()).get(objectTypes)
+  const cKey = constraints ?? NO_CONSTRAINTS
+  if (byTypes.has(cKey)) return byTypes.get(cKey)
   const refModes = new Map(), compositePIs = new Map()
   const add = (set, t) => {
     const rm = findRefMode(t, facts, objectTypes)
@@ -815,7 +819,7 @@ export function identifyingFactIds(facts, objectTypes, constraints) {
   for (const ot of objectTypes) if (ot.kind === 'entity') add(entity, ot)
   for (const f of facts) if (f.objectified && f.objectifiedKind !== 'value') add(nested, f)
   const ids = { entity, nested, refModes, compositePIs }
-  identCache = { facts, objectTypes, constraints, ids }
+  byTypes.set(cKey, ids)
   return ids
 }
 

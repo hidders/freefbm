@@ -57,7 +57,7 @@ class Unsupported extends Error {}
 // ── One schema ───────────────────────────────────────────────────────────────
 
 // Lookups for the schema of one side.
-function worldOf(state, schemaId) {
+export function worldOf(state, schemaId) {
   const ctx = sideContext(state, schemaId)
   const els = { objectTypes: ctx.objectTypes, facts: ctx.facts, subtypes: ctx.subtypes, constraints: ctx.constraints }
   const supers = new Map()
@@ -257,6 +257,14 @@ const onNull = (i) => (i.kind === 'valueRangeViolation' || i.kind === 'valueComp
 // that has instances, can have any, so the others are left out (populations
 // here are small, schemas may be large). With `constraintId`, of the external
 // constraints only that one is checked.
+// The same selection gives the same array, so that the lookups cached per
+// array (reference schemes, identifying facts) are not computed again.
+function stable(w, list) {
+  const cache = w.stable ?? (w.stable = new Map())
+  const k = list.map(x => x.id).join('\u0000')
+  if (!cache.has(k)) cache.set(k, list)
+  return cache.get(k)
+}
 function issuesOf(w, pops, constraintId) {
   const active = new Set(Object.entries(pops.populations).filter(([, v]) => v.length).map(([k]) => k))
   const facts = w.els.facts.filter(f => pops.factPopulations[f.id]?.length || f.roles.some(r => active.has(r.objectTypeId)))
@@ -265,7 +273,7 @@ function issuesOf(w, pops, constraintId) {
   const constraints = constraintId !== undefined
     ? w.els.constraints.filter(c => c.id === constraintId || c.isPreferredIdentifier)
     : w.els.constraints.filter(c => c.isPreferredIdentifier || (c.sequences ?? []).some(sq => (sq ?? []).some(m => factIds.has(m?.factId))) || active.has(c.targetObjectTypeId))
-  return computePopulationIssues({ ...w.els, facts, constraints, ...pops, nestedEntityMappings: {}, subtypeMappings: {} })
+  return computePopulationIssues({ ...w.els, facts: stable(w, facts), constraints: stable(w, constraints), ...pops, nestedEntityMappings: {}, subtypeMappings: {} })
     .filter(i => !NOISE.has(i.kind) && !onNull(i))
 }
 
@@ -407,7 +415,9 @@ function uniquenessOf(w) {
 // failed: key | null, exceeded, branching }. Constraints in `disabled` are
 // left out.
 function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds = 20, maxSize = 250 } = {}) {
-  let pops = clonePops(start)
+  // Closed first: instances of a subtype are instances of its supertypes (a
+  // run builds only the types its rules name).
+  let pops = applySubst(w, start, new Subst())
   const fired = new Set()
   let branching = false
   const ucs = uniquenessOf(w).filter(u => !disabled.has(u.key))
@@ -445,7 +455,7 @@ function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds =
       if (!S.changed) break
       pops = applySubst(w, pops, S)
     }
-    if (!tgds) break
+    if (!tgds) return { pops, fired, failed: null, branching }
     // Mandatory roles, subset and equality constraints: add what they ask for.
     const ev = evaluatorOf(w, pops)
     let added = false
@@ -503,7 +513,7 @@ function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds =
 const skipEntry = (e) => !e.formula || e.possible || /deriv|implied link/i.test(e.kind ?? '')
 
 // The constraints of a side, as the Constraints tab lists them for the whole schema.
-function entriesOf(state, schemaId) {
+export function entriesOf(state, schemaId) {
   const inSchema = (x) => x.schemaId === schemaId
   const scoped = {
     ...state,
@@ -517,7 +527,7 @@ function entriesOf(state, schemaId) {
 }
 
 // A constraint of a relational schema in table terms, or null.
-function relationalLabel(w, key) {
+export function relationalLabel(w, key) {
   const rm = w.relational
   if (!rm) return null
   const colName = (c) => `${c.table.name}.${c.name}`
@@ -905,9 +915,20 @@ function accountEntry(entry, A, B, run, fresh) {
     if (I0) { carried.push({ V, I0 }); continue }
     if (!withConsts(V)) notCarried++
   }
+  let bySubtypes = 0
   for (const { V, I0 } of carried.slice(0, 8)) {
+    // The other side's subtyping alone (its instances of a subtype are
+    // instances of the supertypes) may already remove the violation.
+    if (!violations(A, backOf(applySubst(B, I0, new Subst())), match).length) { bySubtypes++; continue }
     const ch = chase(B, I0, fresh)
-    if (ch.exceeded) { undecided = 'The other schema’s constraints keep adding facts (the chase stopped).'; continue }
+    if (ch.exceeded) {
+      // Uniqueness alone may still rule it out: the facts the chase would go
+      // on adding can only make more values equal.
+      const chU = chase(B, I0, fresh, { tgds: false })
+      if (!chU.exceeded && (chU.failed || !violations(A, backOf(chU.pops), match).length)) { killedBy.push({ I0, ch: chU, uOnly: true }); continue }
+      undecided = 'The other schema’s constraints keep adding facts (the chase stopped).'
+      continue
+    }
     if (ch.failed) { killedBy.push({ I0, ch }); continue }
     const bad = issuesOf(B, ch.pops)
     const back = backOf(ch.pops)
@@ -933,16 +954,27 @@ function accountEntry(entry, A, B, run, fresh) {
       reason: `A population of ${B.ctx.schema?.name ?? 'the other schema'} that satisfies its constraints maps to one that breaks this constraint.`,
       counterexample: { there: texts.slice(0, there.length), back: texts.slice(there.length) } }
   }
+  if (bySubtypes && !killedBy.length && !undecided) return { ...base, status: 'native', reason: `Kept by the subtyping of ${B.ctx.schema?.name ?? 'the other schema'}: the mapping builds instances of a subtype, which are instances of its supertypes.` }
   if (killedBy.length) {
     // Which of the constraints the chase used are needed: leave each out.
     const needed = new Set(), usedAll = new Set()
-    for (const { I0, ch } of killedBy.slice(0, 2)) {
+    for (const { I0, ch: ch0, uOnly } of killedBy.slice(0, 2)) {
+      // When uniqueness alone (no facts added) already rules the violation
+      // out, the constraints that add facts are not needed: only the
+      // uniqueness constraints are tried, which is quicker and says more.
+      let ch = ch0, tgds = !uOnly
+      if (tgds && ch0.fired.size > 1) {
+        const chU = chase(B, I0, fresh, { tgds: false })
+        if (!chU.exceeded && (chU.failed || !violations(A, backOf(chU.pops), match).length)) { ch = chU; tgds = false }
+      }
       const used = [...new Set([ch.failed, ...ch.fired].filter(Boolean))]
       used.forEach(k => usedAll.add(k))
       for (const k of used.slice(0, 14)) {
-        const ch2 = chase(B, I0, fresh, { disabled: new Set([k]) })
+        const ch2 = chase(B, I0, fresh, { disabled: new Set([k]), tgds })
         if (ch2.exceeded || ch2.failed) continue
-        const bad = issuesOf(B, ch2.pops).filter(i => issueKey(i) !== k)
+        // Without the facts the chase would add, only whether the violation
+        // comes back counts.
+        const bad = tgds ? issuesOf(B, ch2.pops).filter(i => issueKey(i) !== k) : []
         if (!bad.length && violations(A, backOf(ch2.pops), match).length) needed.add(k)
       }
     }
