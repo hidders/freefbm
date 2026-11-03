@@ -363,19 +363,29 @@ export function computePopulationIssues(rawData) {
   // Nested composite-PI players are walked recursively via getNestedCellShape
   // so sub-tuples are compared by JSON encoding at any depth.
   if (facts?.length && factPopulations) {
+    // The keys of each player's population, so a reference is looked up
+    // rather than searched for (sample data may run to many thousands of rows).
+    const popKeys = new Map()
+    const playerKeys = (player) => {
+      if (!popKeys.has(player.id)) popKeys.set(player.id, new Set(playerPopulation(player).map(v => JSON.stringify(v))))
+      return popKeys.get(player.id)
+    }
     for (const fact of facts) {
       if (isSkippableFact(fact)) continue
       const tuples = factPopulations[fact.id]
       if (!tuples?.length) continue
+      // Each role's player and cell shape, once per fact type.
+      const players = (fact.roles ?? []).map(role => (role?.objectTypeId
+        ? findRolePlayer(role.objectTypeId, objectTypes || [], facts || [])
+        : null))
+      const shapes = players.map(player => getNestedCellShape(player, facts || [], objectTypes || [], subtypes || [], constraints))
       tuples.forEach((tuple, ti) => {
         if (!Array.isArray(tuple)) return
         tuple.forEach((cell, ri) => {
           const role = fact.roles?.[ri]
           if (!role) return  // a stray cell past the fact's arity
-          const player = role?.objectTypeId
-            ? findRolePlayer(role.objectTypeId, objectTypes || [], facts || [])
-            : null
-          const shape = getNestedCellShape(player, facts || [], objectTypes || [], subtypes || [], constraints)
+          const player = players[ri]
+          const shape = shapes[ri]
           const norm = normalizeCellByShape(cell, shape)
           if (!norm.complete) {
             issues.push({
@@ -389,9 +399,7 @@ export function computePopulationIssues(rawData) {
             return
           }
           if (!player) return
-          const playerPop = playerPopulation(player)
-          const cellKey = JSON.stringify(norm.value)
-          const exists = playerPop.some(v => JSON.stringify(v) === cellKey)
+          const exists = playerKeys(player).has(JSON.stringify(norm.value))
           if (!exists) {
             const playerLabel = player.name || player.objectifiedName || 'the role player'
             issues.push({

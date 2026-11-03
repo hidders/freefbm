@@ -1,5 +1,6 @@
 // Schema mappings between two schemas of the file (mapping/mapping.js).
 import { mkMapping, mkRule, ruleElements } from '../../mapping/mapping.js'
+import { withRunApplied } from '../../mapping/runMapping.js'
 import { mkDiagram } from '../storeHelpers'
 import { findRefMode } from '../../utils/refMode.js'
 
@@ -225,6 +226,13 @@ export const createMappingSlice = (set, get) => {
         }),
         isDirty: true,
       }))
+    },
+
+    // Replaces the population of one schema with what running a mapping built
+    // (runMapping.js), as one undo step.
+    applyMappingRun(run) {
+      if (!run?.schemaId) return
+      set(s => ({ ...withRunApplied(s, run), isDirty: true }))
     },
 
     openMappingRuleEditor(mappingId, ruleId) { set({ mappingRuleEditor: { mappingId, ruleId } }) },
