@@ -3,6 +3,7 @@
 // is inconsistent with it.
 
 import { validateValueAgainstDatatype } from './datatypeValidation.js'
+import { isIndependentType, identifiedRoles } from './independence.js'
 import { hasGraph, isFormulaQuery, queryRule, queryTyping, outerJoinGroups } from '../logic/query.js'
 import { makePopulationEvaluator } from '../logic/derivedPopulation.js'
 import { isDeonticUniqueness, isDeonticMandatory } from '../logic/modality.js'
@@ -1681,13 +1682,16 @@ export function computePopulationIssues(rawData) {
     // Build the raw participation set from fact tuple cells.  Identifying facts
     // (ref-mode or composite PI, incl. external cross-fact PIs) have no stored
     // tuples; their effective tuples are derived from the entity population.
+    // Being identified (the entity's role in its preferred identifier) is not
+    // participation: Halpin's implicit participation asks for another role.
+    const identified = identifiedRoles({ facts, constraints })
     const participates = new Set()
     for (const fact of (facts || [])) {
       const tuples = effectiveFactTuples(fact)
       if (!tuples?.length) continue
       for (let ri = 0; ri < (fact.roles?.length ?? 0); ri++) {
         const otId = fact.roles[ri]?.objectTypeId
-        if (!otId) continue
+        if (!otId || identified.has(`${fact.id}:${ri}`)) continue
         for (const tuple of tuples) {
           if (!Array.isArray(tuple)) continue
           const cellKey = projCellKey(tuple[ri])
@@ -1766,7 +1770,7 @@ export function computePopulationIssues(rawData) {
 
     // Regular entity types
     for (const ot of (objectTypes || [])) {
-      if (ot.kind !== 'entity' || ot.isIndependent) continue
+      if (ot.kind !== 'entity' || isIndependentType(ot, rawData.schemas)) continue
       const pop = getEntityEffectivePopulation(ot.id, populations || {}, facts || [], objectTypes || [], subtypes || [], subtypeMappings || {})
       for (const inst of (pop || [])) {
         const cellKey = projCellKey(inst)
@@ -1776,7 +1780,7 @@ export function computePopulationIssues(rawData) {
             kind: 'nonIndependentNotPlaying',
             elementId: ot.id,
             otId: ot.id,
-            message: `${projCellDisplay(inst)} does not participate in any fact type (${ot.name || 'entity type'} is not independent)`,
+            message: `${projCellDisplay(inst)} plays no role besides its identification (${ot.name || 'entity type'} is not independent)`,
           })
       }
     }

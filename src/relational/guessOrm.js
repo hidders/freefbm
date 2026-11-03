@@ -29,6 +29,7 @@
 // guessOrmSchema(state, relSchemaId, { schemaId, surrogates, mappingName }) →
 //   { objectTypes, facts, subtypes, constraints, diagram, mapping, log, stats }
 
+import { identifiedRoles } from '../utils/independence.js'
 import { relationalModel } from './relationalModel.js'
 import { mkEntity, mkValue, mkFact, mkUniqueness, withMandatoryId, mkConstraint, mkDiagram, mkOcc,
   mkSubtype, uid, addOwnedRefModeOccsIfAbsent } from '../store/storeHelpers.js'
@@ -348,6 +349,15 @@ export function guessOrmSchema(state, relSchemaId, { schemaId = null, surrogates
     dropped: plan.filter(p => p.dropSurrogate).length, rules: mapping.rules.length,
   }
   for (const c of constraints) delete c._entity
+  // A table's rows may exist with only their key, so an entity type that
+  // plays no mandatory role besides its identification is independent
+  // (implicit participation would rule such rows out otherwise).
+  const identified = identifiedRoles({ facts, constraints })
+  const mandatoryOf = new Set()
+  for (const f of facts) f.roles.forEach((r, i) => { if (r.mandatory && !identified.has(`${f.id}:${i}`)) mandatoryOf.add(r.objectTypeId) })
+  let independent = 0
+  for (const o of objectTypes) if (o.kind === 'entity' && !mandatoryOf.has(o.id)) { o.isIndependent = true; independent++ }
+  if (independent) note(`${independent} entity type${independent === 1 ? ' is' : 's are'} independent (!): ${independent === 1 ? 'its' : 'their'} rows may have only a key`)
   return { objectTypes, facts, subtypes, constraints, diagram, mapping, log, stats, plan }
 }
 
