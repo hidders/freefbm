@@ -45,7 +45,7 @@ const elsOf = (ctx) => ({ objectTypes: ctx.objectTypes, facts: ctx.facts, subtyp
 
 // The value types at the leaves of a type's reference scheme, in order: the
 // type itself for a value type. Null when it has none we can follow.
-function keyLeaves(typeId, ctx, els, depth = 0) {
+export function keyLeaves(typeId, ctx, els, depth = 0) {
   const t = ctx.otById.get(typeId)
   if (!t || depth > 6) return null
   if (t.kind === 'value') return [typeId]
@@ -63,7 +63,7 @@ function keyLeaves(typeId, ctx, els, depth = 0) {
 }
 
 // The parts of a scheme with the range of leaves each covers.
-function schemeParts(typeId, ctx, els) {
+export function schemeParts(typeId, ctx, els) {
   const sch = schemeOf(typeId, els)
   if (sch?.kind === 'refMode') return [{ factId: sch.rm.factId, entityRoleIndex: 1 - sch.rm.vtRoleIndex, roleIndex: sch.rm.vtRoleIndex, player: sch.rm.vtId, from: 0, n: 1 }]
   if (sch?.kind !== 'composite') return null
@@ -75,6 +75,16 @@ function schemeParts(typeId, ctx, els) {
     from += n
     return out
   })
+}
+
+// All supertypes of a type.
+function supertypesOf(typeId, els) {
+  const out = new Set(), todo = [typeId]
+  while (todo.length) {
+    const t = todo.pop()
+    for (const st of els.subtypes ?? []) if (st.subId === t && !out.has(st.superId)) { out.add(st.superId); todo.push(st.superId) }
+  }
+  return out
 }
 
 // ── Atomic rules ─────────────────────────────────────────────────────────────
@@ -130,8 +140,10 @@ function atomicOf(side, ctx, els) {
   if (!content.length && types.length <= 1) {
     // One entity (or table row) and its identifier.
     const typed = types[0]
+    // (A subtype's instance plays its supertype's identifying role.)
+    const at = (typeId, playerId) => typeId === playerId || supertypesOf(typeId, els).has(playerId)
     const roots = typed ? [vars.get(typed.arg)] : ex.vars.filter(v => ctx.otById.get(v.typeId)?.kind === 'entity'
-      && !facts.some(a => used.has(a) && a.args.some((x, i) => x === v.id && ctx.factById.get(a.factId)?.roles[i]?.objectTypeId !== v.typeId)))
+      && !facts.some(a => used.has(a) && a.args.some((x, i) => x === v.id && !at(v.typeId, ctx.factById.get(a.factId)?.roles[i]?.objectTypeId))))
     if (roots.length !== 1 || !roots[0]) return null
     const key = keyOfVar(roots[0].id)
     return key ? { kind: 'entity', typeId: typed ? typed.typeId : roots[0].typeId, key } : null
@@ -141,7 +153,7 @@ function atomicOf(side, ctx, els) {
 
 // The atomic rules of a mapping for one side: { facts: Map(factId → [entry]),
 // types: Map(typeId → [entry]) } with entry { rule, atomic }.
-function atomicRules(mapping, side, ctx, els) {
+export function atomicRules(mapping, side, ctx, els) {
   const facts = new Map(), types = new Map()
   for (const rule of mapping.rules) {
     let a

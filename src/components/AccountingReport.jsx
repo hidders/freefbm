@@ -2,7 +2,8 @@ import React, { useState } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { accountingSteps } from '../mapping/accounting.js'
 import { SIDES } from '../mapping/mapping.js'
-import { Sentence } from './ConstraintsTab.jsx'
+import { Sentence, Formula } from './ConstraintsTab.jsx'
+import { proposeTranslation } from '../mapping/translate.js'
 import { useVerbalisation } from '../verbalisation/workbench.js'
 
 // Constraint accounting (workbench step 10, mapping/accounting.js): for each
@@ -99,7 +100,7 @@ export function AccountingReport({ acc, mapping, name }) {
               {!items.length && <div style={{ color: 'var(--ink-muted)', fontStyle: 'italic', marginBottom: 4 }}>
                 {r.sides[side].length ? `${sideName(other(side))} keeps every constraint of ${sideName(side)}.` : `${sideName(side)} has no constraints.`}
               </div>}
-              {items.map(x => <Item key={x.key} x={x} ctx={r.ctxs[side]} otherCtx={r.ctxs[other(side)]} language={language}
+              {items.map(x => <Item key={x.key} x={x} mapping={mapping} side={side} ctx={r.ctxs[side]} otherCtx={r.ctxs[other(side)]} language={language}
                 here={sideName(side)} there={sideName(other(side))} />)}
             </div>
           )
@@ -109,8 +110,19 @@ export function AccountingReport({ acc, mapping, name }) {
   )
 }
 
-function Item({ x, ctx, otherCtx, language, here, there }) {
+// An accounting item, kept by a constraint now added to the other schema.
+const markKept = (mappingId, side, key, status, reason) => useOrmStore.setState(s => {
+  const a = s.mappingAccounting?.[mappingId]
+  if (!a?.result) return {}
+  const sides = { ...a.result.sides, [side]: a.result.sides[side].map(e => (e.key === key ? { ...e, status, reason, by: [], counterexample: null } : e)) }
+  return { mappingAccounting: { ...s.mappingAccounting, [mappingId]: { ...a, result: { ...a.result, sides } } } }
+})
+
+const VC_NAME = { '=': 'equal to', '≠': 'different from', '<': 'less than', '≤': 'at most', '>': 'greater than', '≥': 'at least' }
+
+function Item({ x, mapping, side, ctx, otherCtx, language, here, there }) {
   const [open, setOpen] = useState(x.status === 'lost')
+  const [carry, setCarry] = useState(null)   // proposeTranslation's result, once asked
   const st = STATUS[x.status]
   const mono = { fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.5 }
   const Constraint = ({ label, entry, c }) => (label
@@ -129,7 +141,12 @@ function Item({ x, ctx, otherCtx, language, here, there }) {
           {(x.counterexample || x.by.length > 0) && <button type="button" onClick={() => setOpen(o => !o)}
             style={{ marginLeft: 6, fontSize: 11, border: 'none', background: 'none', color: 'var(--accent)', cursor: 'pointer', padding: 0 }}>
             {open ? 'less' : x.counterexample ? 'counterexample' : 'which'}</button>}
+          {x.status === 'lost' && !carry && <button type="button" title={`Write this constraint over ${there}, through the mapping's rules`}
+            onClick={() => setCarry(proposeTranslation(useOrmStore.getState(), mapping, x, side))}
+            style={{ marginLeft: 6, fontSize: 11, border: 'none', background: 'none', color: 'var(--accent)', cursor: 'pointer', padding: 0 }}>
+            translate</button>}
         </div>
+        {carry && <Carried carry={carry} x={x} mapping={mapping} side={side} language={language} there={there} onClose={() => setCarry(null)} />}
         {open && x.by.length > 0 && <div style={{ marginTop: 3, paddingLeft: 10, borderLeft: '2px solid var(--border-soft)' }}>
           {x.by.map(b => <Constraint key={b.key} label={b.label} entry={b.entry} c={otherCtx} />)}
         </div>}
@@ -139,6 +156,46 @@ function Item({ x, ctx, otherCtx, language, here, there }) {
           <div style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 2 }}>which the mapping turns into this in {here}:</div>
           {more(x.counterexample.back, 10).map((l, i) => <div key={i} style={mono}>{l}</div>)}
         </div>}
+      </div>
+    </div>
+  )
+}
+
+// A lost constraint, written over the other schema (mapping/translate.js).
+function Carried({ carry, x, mapping, side, language, there, onClose }) {
+  const [added, setAdded] = useState(false)
+  const link = { marginLeft: 6, fontSize: 11, border: 'none', background: 'none', color: 'var(--accent)', cursor: 'pointer', padding: 0 }
+  const btn = { fontSize: 11, padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg-surface)', color: 'var(--ink-2)', cursor: 'pointer' }
+  const frame = { marginTop: 4, paddingLeft: 10, borderLeft: '2px solid var(--accent)' }
+  const note = { fontSize: 11, color: 'var(--ink-2)' }
+  if (carry.error) return (
+    <div style={frame}><span style={note}>This constraint can't be written over {there} yet: {carry.error}.</span>
+      <button type="button" style={link} onClick={onClose}>close</button></div>
+  )
+  const kept = carry.status === 'native' || carry.status === 'implied'
+  const add = () => {
+    useOrmStore.getState().addCarriedConstraint(carry.schemaId, { rule: carry.rule, deontic: carry.deontic, vc: carry.vc })
+    markKept(mapping.id, side, x.key, carry.status ?? 'unknown',
+      kept ? `Kept by a constraint added to ${there} from this one.` : `A constraint was added to ${there} from this one; check again to see whether it keeps it.`)
+    setAdded(true)
+  }
+  return (
+    <div style={frame}>
+      <div style={note}>In {there} it would read{carry.vc ? `, as a value comparison constraint (${VC_NAME[carry.vc.operator] ?? carry.vc.operator})` : ', as a formula constraint'}:</div>
+      {carry.entry?.formula && <>
+        <Sentence formula={carry.entry.formula} ctx={carry.ctx} language={language} />
+        <div style={{ fontSize: 11.5 }}><Formula formula={carry.entry.formula} ctx={carry.ctx} /></div>
+      </>}
+      {carry.errors.length > 0 && <div style={{ ...note, color: '#dc2626' }}>{carry.errors.join('; ')}</div>}
+      <div style={{ ...note, marginTop: 2 }}>
+        {carry.errors.length ? 'It is not a valid constraint there.'
+          : kept ? `Checked: with it, ${there} keeps this constraint (${carry.status}).`
+          : `Checked: with it, the constraint is still ${carry.status ?? 'unknown'}${carry.reason ? ` (${carry.reason})` : ''}.`}
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+        {added ? <span style={{ ...note, color: 'var(--col-candidate)' }}>Added to {there}.</span>
+          : <button type="button" style={btn} disabled={carry.errors.length > 0} onClick={add}>Add to {there}</button>}
+        <button type="button" style={{ ...btn, border: 'none', background: 'none' }} onClick={onClose}>{added ? 'Close' : 'Cancel'}</button>
       </div>
     </div>
   )

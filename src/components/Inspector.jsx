@@ -11,10 +11,11 @@ import { constraintMaxSequences, suppressRolePosition } from '../utils/constrain
 import { PROFILES, PROFILE_MAP, getDatatypeById } from '../data/datatypeProfiles'
 import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
 import { VALIDATION_CATEGORIES } from '../utils/validation.js'
-import { DERIVATION_MODES, whyNotDerivableType, isDerived, checkRule } from '../logic/derivationRule.js'
+import { DERIVATION_MODES, whyNotDerivableType, isDerived, checkRule, upgradeRule } from '../logic/derivationRule.js'
 import { isDerivedFact, isComputedRole, checkFactRule, whyNotDerivable } from '../logic/factDerivation.js'
 import { makeContext } from '../logic/constraintFormulas.js'
 import { isFormulaConstraint, formulaConstraintEntry } from '../logic/formulaConstraint.js'
+import { asValueComparison } from '../mapping/translate.js'
 import { Formula } from './ConstraintsTab.jsx'
 import { isFormulaQuery, whyNotGraphical, whyNoOuterJoin } from '../logic/query.js'
 import { hasTextSelection } from '../utils/textPanel.js'
@@ -4210,6 +4211,7 @@ function FormulaConstraintInspector({ c }) {
   const store = useScopedStore()
   const ctx = makeContext(store)
   const entry = formulaConstraintEntry(c, store, ctx)
+  const vc = !c.deontic && c.rule && entry.formula ? asValueComparison(upgradeRule(c.rule)) : null
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>Formula Constraint</InspectorTitle>
@@ -4227,6 +4229,10 @@ function FormulaConstraintInspector({ c }) {
             : <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{entry.note}</span>}
         </div>
         <button style={{ marginTop: 6 }} onClick={() => store.openRuleEditor({ formulaId: c.id })}>Edit formula…</button>
+        {vc && <div style={{ marginTop: 8, fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.45 }}>
+          This formula has the shape ∀x̄ (φ → x {vc.operator} y), so it is a value comparison constraint with φ as its join path.
+          <div><button style={{ marginTop: 4 }} onClick={() => store.formulaToValueComparison(c.id, vc)}>Turn into value comparison</button></div>
+        </div>}
       </Row>
       <Row>
         <Label>Modality</Label>
