@@ -126,7 +126,7 @@ export const createSchemaSlice = (set, get) => ({
     }
     const st = built.stats
     get().setImportLog({ kind: 'ddl', source: `${name} (PostgreSQL DDL)`, entries: [
-      { level: 'note', text: `Read ${st.tables} tables with ${st.columns} columns into schema ${unique}: ${st.valueTypes} value types, ${st.keys} keys, ${st.foreignKeys} foreign keys` },
+      { level: 'note', text: `Read ${st.tables} tables with ${st.columns} columns into schema ${unique}: ${st.valueTypes} value types, ${st.keys} keys, ${st.foreignKeys} foreign keys${st.checks ? `, ${st.checks} CHECK constraint${st.checks === 1 ? '' : 's'} as formula constraints` : ''}` },
       ...built.log,
       ...built.sample.log,
     ] })

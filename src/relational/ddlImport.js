@@ -19,6 +19,7 @@
 //   { objectTypes, facts, constraints, diagram, log, stats }
 
 import { parseDdl, tokenize } from './ddlParse.js'
+import { checkToFormula } from './checkFormula.js'
 import { relationalModel } from './relationalModel.js'
 import { findRefMode, findCompositePI, identifyingFactIds } from '../utils/refMode.js'
 import { mkEntity, mkValue, mkFact, mkUniqueness, withMandatoryId, mkConstraint, mkDiagram, mkOcc, uid } from '../store/storeHelpers.js'
@@ -368,7 +369,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
         for (const ch of d.checks) {
           const r = checkToRange(ch)
           if (r && r.column === 'value') vtSpecs = r.specs
-          else extraChecks.push(`domain ${bare}: CHECK (${ch})`)
+          else extraChecks.push({ domain: bare, text: ch })
         }
       }
       let assignment = type.array ? null : pgAssignment(type)
@@ -456,6 +457,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
     const pk = t.primaryKey ?? []
     if (!pk.length) note(`Table ${e.name} has no primary key`)
     const singleUnique = new Set(t.uniques.filter(u => u.length === 1).map(u => u[0]))
+    const otherChecks = []
     for (const c of t.columns) {
       const k = colKey(t, c.name)
       const info = colInfo.get(k)
@@ -472,22 +474,48 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
       const isPk = pk.length === 1 && pk[0] === c.name
       if (isPk || singleUnique.has(c.name)) f.uniqueness.push(mkUniqueness([1]))
       if (isPk) f.preferredUniqueness = [[1]]
-      // Column CHECKs on this column alone become a value range on its role.
-      for (const ch of c.checks) {
+      // Column CHECKs on this column alone become a value range on its role;
+      // others become formula constraints, below.
+      c.checks.forEach((ch, i) => {
         const r = checkToRange(ch)
         if (r && r.column === c.name) f.roles[1] = { ...f.roles[1], valueRange: intersectSpecs(f.roles[1].valueRange, r.specs) }
-        else warn(`${e.name}.${c.name}: CHECK (${ch}) is not a list or range of values and is left out`)
-      }
-      for (const x of info.extraChecks) warn(`${e.name}.${c.name}: ${x} is left out`)
+        else otherChecks.push({ text: ch, name: c.checkNames?.[i] ?? null, where: `${e.name}.${c.name}`, column: c.name })
+      })
+      for (const x of info.extraChecks) otherChecks.push({ text: x.text, name: null, where: `${e.name}.${c.name}`, domain: x.domain, column: c.name })
       facts.push(f)
       factByKey.set(k, f)
     }
     // Table CHECKs: those on one column become value ranges.
-    for (const ch of t.checks) {
+    t.checks.forEach((ch, i) => {
       const r = checkToRange(ch)
       const f = r && factByKey.get(colKey(t, r.column))
       if (f) f.roles[1] = { ...f.roles[1], valueRange: intersectSpecs(f.roles[1].valueRange, r.specs) }
-      else warn(`${e.name}: CHECK (${ch}) is not a list or range of values of one column and is left out`)
+      else otherChecks.push({ text: ch, name: t.checkNames?.[i] ?? null, where: e.name })
+    })
+    // Other CHECKs: formula constraints over the table's rows (checkFormula.js).
+    const columns = new Map(t.columns.map(c => [c.name, { factId: factByKey.get(colKey(t, c.name)).id, vtId: vtByKey.get(colKey(t, c.name)).id }]))
+    const usedNames = new Set()
+    for (const ch of otherChecks) {
+      const cols = ch.domain ? new Map([...columns, ['value', columns.get(ch.column)]]) : columns
+      const res = checkToFormula(ch.text, cols, e.id)
+      const what = ch.domain ? `the CHECK (${ch.text}) of domain ${ch.domain}` : `CHECK (${ch.text})`
+      if (res.error) { warn(`${ch.where}: ${what} is left out: ${res.error} is not read yet`); continue }
+      // PostgreSQL's own name for an unnamed CHECK: table_column_check.
+      let name = ch.name
+      if (!name) {
+        const base = `${e.name}_${ch.column ?? res.columns.find(n => n !== 'value') ?? ''}_check`.replace('__', '_')
+        name = base
+        for (let k = 1; usedNames.has(name); k++) name = `${base}${k}`
+      }
+      usedNames.add(name)
+      // The SQL text is kept for the export, with the column of each name
+      // (renamed columns are renamed in the text) and the formula as read
+      // (an edited formula is no longer this CHECK).
+      const sqlText = ch.domain ? ch.text.replace(/\bvalue\b/gi, ch.column) : ch.text
+      const sqlColumns = Object.fromEntries(res.columns.map(n => [n === 'value' && ch.domain ? ch.column : n, cols.get(n).factId]))
+      constraints.push({ ...mkConstraint('formula', 0, 0), schemaId, name, rule: res.rule,
+        sqlCheck: { text: sqlText, columns: sqlColumns, rule: JSON.stringify(res.rule) }, _table: t })
+      note(`${ch.where}: ${what} is read as the formula constraint ${name}`)
     }
     // Composite keys: external uniqueness over the value roles.
     const composite = [...(pk.length > 1 ? [{ cols: pk, preferred: true }] : []),
@@ -519,11 +547,15 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
   // expanded and the key column's occurrences belong to it; otherwise the
   // entity would also show the "(.ref)" shorthand.
   const expandedRefModeOccs = []
+  // Formula constraints (CHECKs) stand right of their table's value types,
+  // so the blocks are wider when there are any.
+  const badgeW = Math.max(0, ...constraints.filter(c => c.constraintType === 'formula').map(c => 8 * (c.name.length + 2) + 12))
+  const blockW = BLOCK_W + (badgeW ? badgeW + 30 : 0)
   let y = 80, rowH = 0
   tables.forEach((t, i) => {
     const col = i % perRow
     if (col === 0 && i) { y += rowH + GAP_Y; rowH = 0 }
-    const x = 120 + col * BLOCK_W
+    const x = 120 + col * blockW
     const n = Math.max(1, t.columns.length)
     const h = (n - 1) * ROW_H
     rowH = Math.max(rowH, h + 40)
@@ -547,10 +579,16 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
       if (!vt._placed) { vt.x = x + 330; vt.y = fy; vt._placed = true }
     })
   })
+  const formulaCount = new Map()
   for (const c of constraints) {
     const b = blockPos.get(c._table)
     let cx, cy
-    if (c.constraintType === 'uniqueness') {
+    if (c.constraintType === 'formula') {
+      // Right of the table's value types, one under the other.
+      const k = formulaCount.get(c._table) ?? 0
+      formulaCount.set(c._table, k + 1)
+      cx = b.x + 490 + badgeW / 2; cy = b.y + k * 32
+    } else if (c.constraintType === 'uniqueness') {
       const ys = c.sequences[0].map(m => facts.find(f => f.id === m.factId).y)
       cx = b.x + 250; cy = ys.reduce((a, v) => a + v, 0) / ys.length
     } else {
@@ -571,7 +609,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
 
   const stats = { tables: tables.length, columns: facts.length, valueTypes: objectTypes.length - tables.length,
     keys: constraints.filter(c => c.constraintType === 'uniqueness').length + facts.filter(f => f.uniqueness.length > 1).length,
-    foreignKeys: fks.length }
+    foreignKeys: fks.length, checks: constraints.filter(c => c.constraintType === 'formula').length }
   for (const [kind, n] of parsed.skipped) note(`Skipped ${n} × ${kind}`)
   for (const p of parsed.problems) warn(p)
   return { objectTypes, facts, constraints, diagram, log, stats }
