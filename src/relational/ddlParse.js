@@ -404,7 +404,15 @@ function readColumnConstraints(s, col, table, problems) {
     if (s.eatWord('constraint')) { s.next(); continue }
     if (s.eatWord('not', 'null')) { col.notNull = true; continue }
     if (s.eatWord('null')) continue
-    if (s.eatWord('default')) { skipExpression(s); continue }
+    if (s.eatWord('default')) {
+      // A default from a sequence or a UUID generator makes a surrogate.
+      const start = s.i
+      skipExpression(s)
+      const words = s.tk.slice(start, s.i).filter(t => t.t === 'id').map(t => t.v)
+      if (words.includes('nextval')) col.defaultGenerated = 'sequence'
+      else if (words.some(w => /^(gen_random_uuid|uuid_generate\w*|uuidv\d)$/.test(w))) col.defaultGenerated = 'uuid'
+      continue
+    }
     if (s.eatWord('collate')) { s.qname(); continue }
     if (s.eatWord('generated')) {
       // GENERATED ALWAYS|BY DEFAULT AS IDENTITY [(...)] | AS (expr) STORED

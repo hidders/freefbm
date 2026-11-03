@@ -159,6 +159,7 @@ function countsKey(s) {
 export function NewSchemaMenu({ variant = 'strip' }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
+  const relSchemas = useOrmStore(useShallow(s => (s.schemas ?? []).filter(x => x.profile === 'relational')))
 
   useEffect(() => {
     if (!open) return
@@ -193,11 +194,27 @@ export function NewSchemaMenu({ variant = 'strip' }) {
       </div>
       {open && (
         <div style={{
-          position: 'fixed', zIndex: 50,
+          position: 'fixed', zIndex: 50, minWidth: 230,
           ...menuPosition(ref.current),
           background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 6,
-          boxShadow: 'var(--shadow-md)', padding: 4, minWidth: 170, fontFamily: FONT,
+          boxShadow: 'var(--shadow-md)', padding: 4, fontFamily: FONT,
         }}>
+          {relSchemas.map(sc => (
+            <div key={sc.id}
+              className="guess-orm-item"
+              onClick={() => { setOpen(false); useOrmStore.setState({ guessOrmDialog: { relSchemaId: sc.id } }) }}
+              title="A new ORM2 schema guessed from the tables, with the mapping between them"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 4, fontSize: 12, cursor: 'pointer', color: 'var(--ink-1)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+            >
+              <span style={{
+                fontSize: 9, fontWeight: 700, color: '#fff', background: PROFILE_LABELS.orm2.color,
+                borderRadius: 8, padding: '1px 5px', lineHeight: '12px',
+              }}>{PROFILE_LABELS.orm2.tag}</span>
+              ORM2 schema guessed from {sc.name}…
+            </div>
+          ))}
           {['orm2', 'relational'].map(p => (
             <div key={p}
               onClick={() => add(p)}
