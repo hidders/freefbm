@@ -13,7 +13,7 @@
 // col: { fact, table, vt, t (table role index), v (value role index), name,
 //        notNull, generated, pk, unique, fk }
 
-import { sqlCheckOf } from './checkFormula.js'
+import { sqlCheckOf, VC_SQL } from './checkFormula.js'
 
 const quoteName = (n) => (/^[a-z_][a-z0-9_$]*$/.test(n) ? n : `"${n.replace(/"/g, '""')}"`)
 
@@ -79,6 +79,17 @@ export function relationalModel(state, schemaId) {
         continue
       }
       notExported.push(`subset constraint ${c.id} (not between the columns of two tables)`)
+      continue
+    }
+    if (c.constraintType === 'valueComparison') {
+      // Two columns of one table compared: CHECK (a op b).
+      const cols = asColumns(c.sequences?.[0])
+      if (cols?.length === 2 && VC_SQL[c.operator ?? '=']) {
+        cols[0].table.checks.push({ name: c.name || null, constraintId: c.id,
+          text: `${quoteName(cols[0].name)} ${VC_SQL[c.operator ?? '=']} ${quoteName(cols[1].name)}` })
+        continue
+      }
+      notExported.push(`value comparison constraint ${c.name || c.id} (not between two columns of one table)`)
       continue
     }
     if (c.constraintType === 'formula') {

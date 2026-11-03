@@ -1,7 +1,7 @@
 // ORM2 schema validation rules, organised by category (matching NORMA's grouping).
 
 import { findIdentifierCycles, canBeExternalUniquenessPI, findCompositePI, findRefMode, findInheritedPI, findAllInheritedPIs } from './refMode.js'
-import { VALUE_KINDS, valueKindOf, parseLiteral } from './datatypeValues.js'
+import { VALUE_KINDS, valueKindOf, valueKindName, parseLiteral } from './datatypeValues.js'
 import { EXTERNAL_CONSTRAINT_TYPES } from '../constants.js'
 import { derivationIssues } from '../logic/derivationRule.js'
 import { factDerivationIssues, factLabel } from '../logic/factDerivation.js'
@@ -590,12 +590,17 @@ export function runValidation(state, enabledCategories) {
             const playerOtId = (ref) => factById.get(ref.factId)?.roles?.[ref.roleIndex]?.objectTypeId ?? null
             const ot0 = playerOtId(roleMembers[0])
             const ot1 = playerOtId(roleMembers[1])
-            if (ot0 && ot1 && ot0 !== ot1) {
+            // Different value types with values of the same kind compare
+            // fine (as in the logic: both sides need the same datatype),
+            // e.g. two date columns of a table.
+            const kindOf = (id) => { const o = otById.get(id); return o?.kind === 'value' ? valueKindName(o.datatypeAssignment) : null }
+            const sameKind = ot0 && ot1 && kindOf(ot0) && kindOf(ot0) === kindOf(ot1)
+            if (ot0 && ot1 && ot0 !== ot1 && !sameKind) {
               errors.push({
                 id: `vc-different-players-${c.id}`,
                 category: 'constraintStructure',
                 elementId: c.id, elementKind: 'constraint',
-                message: `${label} constraint: both roles must be played by the same value type`,
+                message: `${label} constraint: both roles must be played by the same value type, or by value types with the same kind of datatype`,
                 severity: 'warning',
               })
             } else if (ot0 && otById.get(ot0)?.kind !== 'value') {
@@ -796,6 +801,18 @@ export function runValidation(state, enabledCategories) {
         }))
         if (!members.length || tablesOf.has(null) || tablesOf.size !== 1)
           push('unique', c, 'constraint', `${label} constraint is not over the columns of one table, so it is not a UNIQUE or PRIMARY KEY constraint; ${NOT_SQL}`, 'warning')
+        continue
+      }
+      if (c.constraintType === 'valueComparison') {
+        // Two columns of one table: CHECK (a op b).
+        const seq = (c.sequences?.[0] ?? []).filter(Boolean)
+        const tables = new Set(seq.map(m => {
+          const t = m.kind === 'role' ? tableRole.get(m.factId) : undefined
+          if (t === undefined || m.roleIndex === t) return null
+          return facts.find(f => f.id === m.factId)?.roles[t].objectTypeId ?? null
+        }))
+        if (seq.length === 2 && !tables.has(null) && tables.size === 1) continue
+        push('not-sql', c, 'constraint', `${label} constraint is not between two columns of one table; ${NOT_SQL}`, 'warning')
         continue
       }
       if (c.constraintType === 'formula') {

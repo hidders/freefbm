@@ -57,8 +57,9 @@ class Parser {
     return args.length === 1 ? args[0] : { k: 'or', args }
   }
   and() {
-    const args = [this.not()]
-    while (this.eatWord('and')) args.push(this.not())
+    const arg = () => { const s0 = this.i; const a = this.not(); return { ...a, span: [s0, this.i] } }
+    const args = [arg()]
+    while (this.eatWord('and')) args.push(arg())
     return args.length === 1 ? args[0] : { k: 'and', args }
   }
   not() {
@@ -355,7 +356,10 @@ export function checkToFormula(text, columns, tableTypeId) {
 // The text of a CHECK with its column names replaced (renamed columns, for
 // the export): renames maps an old name to the new one.
 export function renameColumnsInCheck(text, renames, quote) {
-  const tks = tokenize(text)
+  return joinTokens(tokenize(text), renames, quote)
+}
+
+function joinTokens(tks, renames = new Map(), quote = (x) => x) {
   return tks.map((t, i) => {
     const prevDot = tks[i - 1]?.t === 'op' && tks[i - 1].v === '.'
     if ((t.t === 'id' || t.t === 'qid') && !prevDot && renames.has(t.v) && !(tks[i + 1]?.t === 'op' && tks[i + 1].v === '('))
@@ -384,4 +388,51 @@ export function sqlCheckOf(c, colName, quote) {
     if (now !== old) renames.set(old, now)
   }
   return { table: c.rule?.v?.typeId, name: c.name || null, text: renames.size ? renameColumnsInCheck(sc.text, renames, quote) : sc.text }
+}
+
+// ── Graphical forms ──────────────────────────────────────────────────────────
+//
+// Before a CHECK becomes a formula constraint, its conjuncts that have a
+// graphical form are taken out: a comparison of two columns of the row
+// (possibly with "c IS NULL" alternatives for those columns, which add
+// nothing) is a value comparison constraint over the two columns' value roles,
+// joined through the table. splitCheck(text) → { comparisons: [{ left, op,
+// right, text }], rest: [text] } (op as the value comparison constraint
+// stores it), or { error } when the condition is not read.
+
+const VC_OP = { '=': '=', '<>': '≠', '!=': '≠', '<': '<', '<=': '≤', '>': '>', '>=': '≥' }
+export const VC_SQL = { '=': '=', '≠': '<>', '<': '<', '≤': '<=', '>': '>', '≥': '>=' }
+
+export function splitCheck(text) {
+  let cond
+  const tks = tokenize(text)
+  try {
+    const p = new Parser(tks)
+    cond = p.or()
+    if (!p.done()) no(`"${p.peek().raw ?? p.peek().v}"`)
+  } catch (e) {
+    if (e instanceof Unsupported) return { error: e.message }
+    throw e
+  }
+  const conjuncts = cond.k === 'and' ? cond.args : [{ ...cond, span: [0, tks.length] }]
+  const comparisons = [], rest = []
+  for (const c of conjuncts) {
+    const cmp = columnComparison(c)
+    const ctext = joinTokens(tks.slice(...c.span))
+    if (cmp) comparisons.push({ ...cmp, text: ctext })
+    else rest.push(ctext)
+  }
+  return { comparisons, rest }
+}
+
+// a op b for two different columns, alone or with "a IS NULL"/"b IS NULL"
+// alternatives.
+function columnComparison(c) {
+  const atoms = c.k === 'or' ? c.args : [c]
+  const cmps = atoms.filter(a => a.k === 'cmp')
+  if (cmps.length !== 1) return null
+  const { l, r, op } = cmps[0]
+  if (l.k !== 'col' || r.k !== 'col' || l.name === r.name || !VC_OP[op]) return null
+  const ok = atoms.every(a => a === cmps[0] || (a.k === 'isnull' && !a.neg && a.e.k === 'col' && (a.e.name === l.name || a.e.name === r.name)))
+  return ok ? { left: l.name, op: VC_OP[op], right: r.name } : null
 }
