@@ -1,25 +1,19 @@
 // Writes a relational schema (encoding B, see ddlImport.js) as PostgreSQL DDL:
 // a CREATE TABLE per table with its columns, NOT NULL, PRIMARY KEY, UNIQUE and
 // CHECK (value ranges), then the foreign keys as ALTER TABLE statements, so the
-// tables can be created in any order. What has no SQL form here is listed in
-// comments at the end and returned as warnings.
+// tables can be created in any order. Other constraints are written from
+// their formulas (formulaSql.js): as a CHECK when they are about one row,
+// otherwise as a commented query that returns their violations. What has no
+// SQL form here is listed in comments at the end and returned as warnings.
 //
 // exportPostgresDdl(state, schemaId) → { sql, warnings }
 
 import { valueKindName } from '../utils/datatypeValues.js'
 import { relationalModel } from './relationalModel.js'
+import { quoteIdent } from './sqlNames.js'
+import { constraintsAsSql } from './formulaSql.js'
 
-const RESERVED = new Set(`all analyse analyze and any array as asc asymmetric both case cast check collate column
-constraint create current_catalog current_date current_role current_time current_timestamp current_user default
-deferrable desc distinct do else end except false fetch for foreign from grant group having in initially intersect
-into lateral leading limit localtime localtimestamp not null offset on only or order placing primary references
-returning select session_user some symmetric table then to trailing true union unique user using variadic when
-where window with`.split(/\s+/))
-
-export function quoteIdent(name) {
-  if (/^[a-z_][a-z0-9_$]*$/.test(name) && !RESERVED.has(name)) return name
-  return `"${String(name).replace(/"/g, '""')}"`
-}
+export { quoteIdent }
 
 const NUMERIC_KINDS = new Set(['integer', 'decimal', 'float'])
 
@@ -68,8 +62,21 @@ export function rangeSql(col, specs, numeric) {
 
 export function exportPostgresDdl(state, schemaId) {
   const inSchema = (x) => !schemaId || x.schemaId === schemaId
-  const { tables, fks, notColumns, notExported } = relationalModel(state, schemaId)
+  const model = relationalModel(state, schemaId)
+  const { tables, fks, notColumns } = model
   const warnings = []
+  // Constraints without a table form, written from their formulas.
+  const tableById = new Map(tables.map(t => [t.id, t]))
+  const queries = [], unwrittenNotes = []
+  constraintsAsSql(state, model).forEach(({ c, entries }, i) => {
+    const label = `${c.name ? `${c.name}: ` : ''}${entries[0]?.entry.kind ?? c.constraintType}`
+    for (const e of entries) {
+      if (e.check) tableById.get(e.check.tableId).checks.push({ name: entries.length === 1 ? c.name || null : null, text: e.check.text })
+      else if (e.query) queries.push({ label: e.entry.kind === entries[0].entry.kind ? label : `${label}, ${e.entry.kind}`, ...e })
+    }
+    const bad = entries.filter(e => !e.check && !e.query)
+    if (bad.length) unwrittenNotes.push(`${model.notExported[i]}: ${bad.map(e => e.error).join('; ')}`)
+  })
   for (const f of notColumns) warnings.push(`Fact type ${(f.readingParts ?? []).join(' ').trim() || f.id} is not a column and is not exported`)
   for (const t of tables) for (const col of t.columns)
     if (!col.singleValued) warnings.push(`${t.name}.${col.name} has no uniqueness constraint on the table's role; it is exported as an ordinary column`)
@@ -102,10 +109,18 @@ export function exportPostgresDdl(state, schemaId) {
       + ` REFERENCES ${q(fk.toTable.name)} (${fk.to.map(c => q(c.name)).join(', ')});`)
   }
   if (fks.length) lines.push('')
+  if (queries.length) {
+    lines.push('-- Constraints that PostgreSQL does not enforce here, as queries that return',
+      '-- the rows breaking them (none when the data satisfies them):', '')
+    for (const x of queries) {
+      lines.push(`-- ${x.label}${x.deontic ? ' (deontic: ought to hold)' : ''}`, `--   ${x.text}`,
+        ...`${x.query};`.split('\n').map(l => `-- ${l}`), '')
+    }
+  }
   const otById = new Map((state.objectTypes ?? []).map(o => [o.id, o]))
-  const notes = [...notExported]
+  const notes = [...unwrittenNotes]
   for (const s of (state.subtypes ?? []).filter(inSchema)) notes.push(`subtype ${otById.get(s.subId)?.name} of ${otById.get(s.superId)?.name}`)
   for (const n of notes) warnings.push(`Not exported: ${n}`)
   if (warnings.length) lines.push('-- Not written as SQL:', ...warnings.map(w => `--   ${w}`), '')
-  return { sql: lines.join('\n'), warnings }
+  return { sql: lines.join('\n'), warnings, queries: queries.length }
 }
