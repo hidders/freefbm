@@ -279,6 +279,10 @@ function computeScheme(typeId, data) {
   const inh = findInheritedPI(t, facts, objectTypes, subtypes, constraints)
   if (inh?.kind === 'refMode') return { kind: 'refMode', rm: inh.refMode }
   if (inh?.kind === 'compositePI') return fromCp(inh.cp, inh.supertype)
+  // An objectified fact type without an identifier of its own: its nesting
+  // instance is the tuple of its role players, reached through its implied
+  // links (roles: nested type, player).
+  if (t.objectified && Array.isArray(t.roles)) return { kind: 'composite', parts: t.roles.map((_, i) => ({ factId: `${t.id}_il_${i}`, entityRoleIndex: 0, roleIndex: 1 })) }
   return null
 }
 
@@ -438,6 +442,16 @@ function buildSide(side, y, data, pop, ident) {
     pop.types.get(typeId).set(k, cell)
   }
   for (const v of vars.values()) if (env.has(v.id)) addInst(v.typeId, env.get(v.id))
+  // A nesting instance is a fact of its objectified fact type.
+  for (const v of vars.values()) {
+    const f = lk.factById.get(v.typeId)
+    const cell = env.get(v.id)
+    if (!f?.objectified || !Array.isArray(cell) || cell.length !== f.roles.length) continue
+    f.roles.forEach((r, i) => addInst(r.objectTypeId, cell[i]))
+    const k = JSON.stringify(cell.map(keyOf))
+    if (!pop.facts.has(f.id)) pop.facts.set(f.id, new Map())
+    pop.facts.get(f.id).set(k, cell)
+  }
   for (const a of atoms) {
     if (a.t === 'type' && env.has(a.arg)) addInst(a.typeId, env.get(a.arg))
     if (a.t === 'fact' && a.args.every(id => env.has(id))) {

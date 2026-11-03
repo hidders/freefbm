@@ -102,7 +102,13 @@ export function sideContext(state, schemaId) {
   return {
     schemaId, schema, relational, objectTypes, facts, constraints, subtypes,
     otById: new Map(objectTypes.map(o => [o.id, o])),
-    factById: new Map(facts.map(f => [f.id, f])),
+    // Fact types, and the implied links '<factId>_il_<i>' of objectified ones
+    // (roles: the nested type, the player of role i), which patterns use to
+    // identify a nesting instance by its role players.
+    factById: new Map([...facts.map(f => [f.id, f]), ...facts.filter(f => f.objectified).flatMap(f => f.roles.map((r, i) => {
+      const id = `${f.id}_il_${i}`
+      return [id, { id, _link: true, arity: 2, roles: [{ objectTypeId: f.id }, { objectTypeId: r.objectTypeId }], readingParts: ['', 'involves', ''], uniqueness: [], preferredUniqueness: [] }]
+    }))]),
     tableById: new Map((rm?.tables ?? []).map(t => [t.id, t])),
     tables: rm?.tables ?? [],
   }
@@ -223,6 +229,12 @@ function keysOf(ctx) {
       parts.push({ factId: f.id, keyRole: m.roleIndex, joinRole: 1 - m.roleIndex })
     }
     if (ok) external.push(parts)
+  }
+  // A nesting instance (of an objectified fact type without an identifier of
+  // its own) is identified by its role players, through its implied links.
+  for (const f of ctx.facts) {
+    if (!f.objectified) continue
+    external.push(f.roles.map((_, i) => ({ factId: `${f.id}_il_${i}`, keyRole: 1, joinRole: 0 })))
   }
   return { internal, external }
 }
