@@ -10,6 +10,7 @@
 // Atoms use the fact type's primary reading (readingParts), whose slots follow
 // roles[] order, so fact atom arguments are always in roles[] order.
 
+import { isIndependentType, identifiedRoles } from '../utils/independence.js'
 import {
   mkVar, forall, exists, count, countRange, not, truth, implies, iff, and, or, tc,
   factAtom, typeAtom, cmp, vcmp, obligatory,
@@ -524,37 +525,12 @@ function subtypeEntry(st, ctx) {
 // Every type: object types and nested entity types (objectified fact types).
 function allTypes(state) {
   return [
-    ...(state.objectTypes ?? []).map(o => ({ id: o.id, kind: o.kind, independent: !!o.isIndependent })),
+    ...(state.objectTypes ?? []).map(o => ({ id: o.id, kind: o.kind, independent: isIndependentType(o, state.schemas) })),
     ...(state.facts ?? []).filter(f => f.objectified).map(f => ({
       id: f.id, kind: f.objectifiedKind === 'value' ? 'nestedValue' : 'nested', independent: !!f.isIndependent })),
   ]
 }
 
-// Roles in which the player is the type identified by a preferred identifier:
-// the one role outside an internal preferred uniqueness, and the roles outside
-// the sequence of an external preferred uniqueness. Returns "factId:roleIndex".
-function identifiedRoles(state) {
-  const out = new Set()
-  for (const f of (state.facts ?? [])) {
-    if (f.objectified && f.objectifiedKind !== 'value') continue
-    for (const u of (f.preferredUniqueness ?? [])) {
-      const others = f.roles.map((_, i) => i).filter(i => !u.includes(i))
-      if (others.length === 1) out.add(`${f.id}:${others[0]}`)
-    }
-  }
-  const factById = new Map((state.facts ?? []).map(f => [f.id, f]))
-  for (const c of (state.constraints ?? [])) {
-    if (c.constraintType !== 'uniqueness' || !c.isPreferredIdentifier) continue
-    const inSeq = new Set()
-    for (const seq of (c.sequences ?? []))
-      for (const m of seq) if (m.kind === 'role' && m.factId) inSeq.add(`${m.factId.split('_il_')[0]}:${m.roleIndex}`)
-    for (const key of inSeq) {
-      const fact = factById.get(key.split(':')[0])
-      fact?.roles.forEach((_, i) => { if (!inSeq.has(`${fact.id}:${i}`)) out.add(`${fact.id}:${i}`) })
-    }
-  }
-  return out
-}
 
 export function implicitEntries(state, ctx, typeIds) {
   const types = allTypes(state)

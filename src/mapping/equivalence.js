@@ -31,6 +31,7 @@ import { prepareRun, executeRun } from './runMapping.js'
 import { expandSide, asSide, readingName, SIDES } from './mapping.js'
 import { uncoveredElements } from './mappingIssues.js'
 import { translateEntry, asValueComparison } from './translate.js'
+import { isIndependentType } from '../utils/independence.js'
 
 const other = (side) => (side === 'source' ? 'target' : 'source')
 const dirFrom = (side) => (side === 'source' ? 'forward' : 'backward')
@@ -96,13 +97,11 @@ function instanceComesBack(wX, typeId, preps) {
 }
 
 // Whether an instance of an entity type may exist without playing any role
-// but its identifying ones. A table's rows may (encoding B); in ORM2 an entity
-// type that is not independent must play some other role it has (Halpin's
-// implicit disjunctive mandatory), so only independent types and types with
-// no other role are tested.
+// but its identifying ones: only when the type is independent (a table's
+// rows always are, see independence.js). Otherwise implicit participation
+// makes it play some other role, which the rules' round trips cover.
 function mayStandAlone(w, ot) {
-  if (w.ctx.relational || ot.isIndependent) return true
-  return !w.ctx.facts.some(f => !w.ident.entity.has(f.id) && !w.ident.nested.has(f.id) && f.roles.some(r => r.objectTypeId === ot.id))
+  return isIndependentType(ot, w.ctx.schema ? [w.ctx.schema] : [])
 }
 
 // Where a kept constraint's keepers live: graphical constraints (or the

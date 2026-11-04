@@ -48,6 +48,7 @@ import { relationalModel } from '../relational/relationalModel.js'
 import { prepareRun, executeRun, schemeOf } from './runMapping.js'
 import { sideContext, sideSchemaId, SIDES, expandSide, asSide } from './mapping.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
+import { isIndependentType, identifiedRoles } from '../utils/independence.js'
 
 const isFresh = (v) => typeof v === 'string' && v.startsWith('⊥')
 const keyOf = (cell) => JSON.stringify(projCellKey(cell))
@@ -279,7 +280,7 @@ function issuesOf(w, pops, constraintId) {
     ? w.els.constraints.filter(c => c.id === constraintId || c.isPreferredIdentifier)
     : w.els.constraints.filter(c => c.isPreferredIdentifier || (c.sequences ?? []).some(sq => (sq ?? []).some(m => factIds.has(m?.factId))) || active.has(c.targetObjectTypeId)
       || (isFormulaConstraint(c) && [...formulaElements(c.rule).facts].some(id => factIds.has(id))))
-  const data = { ...w.els, facts: stable(w, facts), constraints: stable(w, constraints), ...pops, nestedEntityMappings: {}, subtypeMappings: {} }
+  const data = { ...w.els, schemas: w.ctx.schema ? [w.ctx.schema] : [], facts: stable(w, facts), constraints: stable(w, constraints), ...pops, nestedEntityMappings: {}, subtypeMappings: {} }
   // Formula constraints are checked by evaluating their formula (over all of
   // the side's fact types, which the formula may name beyond those populated).
   const formulas = constraints.filter(isFormulaConstraint)
@@ -296,6 +297,7 @@ function issueKey(i) {
     case 'frequencyViolation': return `${i.factId}:freq:${i.internalFrequencyId}`
     case 'ringViolation': return `${i.constraintId}:${i.ringType}`
     case 'valueRangeViolation': return i.factId != null ? `${i.factId}:vr:${i.roleIndex}` : `${i.otId}:vr`
+    case 'nonIndependentNotPlaying': return `part:${i.otId}`
     default: return i.constraintId ?? i.elementId ?? i.kind
   }
 }
@@ -303,11 +305,12 @@ function issueKey(i) {
 // Whether an issue is a violation of the constraint of a formalise entry.
 function issueMatches(entry) {
   const m = issueMatcher(entry)
-  if (m) m.constraintId = /:(uc|mand|freq|vr)(:|$)/.test(entry.key) ? null : entry.key.split(':')[0]
+  if (m) m.constraintId = /:(uc|mand|freq|vr)(:|$)/.test(entry.key) || entry.key.startsWith('part:') ? null : entry.key.split(':')[0]
   return m
 }
 function issueMatcher(entry) {
   const k = entry.key
+  if (k.startsWith('part:')) { const t = k.slice(5); return (i) => i.kind === 'nonIndependentNotPlaying' && i.otId === t }
   const same = (a, b) => a.length === b.length && [...a].sort().join(',') === [...b].sort().join(',')
   let m
   if ((m = k.match(/^([^:]+):uc:([\d,]+)$/))) {
@@ -422,6 +425,37 @@ function uniquenessOf(w) {
   return out
 }
 
+// Implicit participation per entity type that is not independent: the roles
+// besides its identification that its instances may play (its own and its
+// supertypes' first), as { key: 'part:<typeId>', typeId, roles: [{ factId,
+// roleIndex }] }. Nested (objectified) types are left out.
+function participationOf(w) {
+  if (w.participation) return w.participation
+  const identified = identifiedRoles(w.els)
+  const ups = (id) => {
+    const seen = new Set([id]), todo = [id]
+    while (todo.length) for (const s of w.supers.get(todo.pop()) ?? []) if (!seen.has(s)) { seen.add(s); todo.push(s) }
+    return seen
+  }
+  const out = []
+  for (const t of w.ctx.objectTypes) {
+    if (t.kind !== 'entity' || isIndependentType(t, w.ctx.schema ? [w.ctx.schema] : [])) continue
+    const up = ups(t.id)
+    const roles = []
+    for (const f of w.ctx.facts) {
+      if (f.derivation === 'derived') continue
+      f.roles.forEach((r, i) => { if (up.has(r.objectTypeId) && !identified.has(`${f.id}:${i}`)) roles.push({ factId: f.id, roleIndex: i, own: r.objectTypeId === t.id }) })
+    }
+    roles.sort((a, b) => (b.own ? 1 : 0) - (a.own ? 1 : 0))
+    // Roles of subtypes also count; the chase only checks them, it adds facts
+    // with the type's own or inherited roles.
+    const sub = []
+    for (const [s, sups] of w.supers) if (sups.includes(t.id)) for (const f of w.ctx.facts) f.roles.forEach((r, i) => { if (r.objectTypeId === s && !identified.has(`${f.id}:${i}`)) sub.push({ factId: f.id, roleIndex: i }) })
+    out.push({ key: `part:${t.id}`, typeId: t.id, roles, also: sub })
+  }
+  return (w.participation = out)
+}
+
 // Closes a population under the side's constraints: { pops, fired: Set(key),
 // failed: key | null, exceeded, branching }. Constraints in `disabled` are
 // left out.
@@ -500,6 +534,27 @@ function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds =
         branching = added = true
       }
     }
+    for (const p of participationOf(w)) {
+      // Implicit participation: an instance of a type that is not independent
+      // plays some role besides its identification. With several roles it
+      // can play this is a disjunction, as for inclusive-or; with none, it
+      // can have no instances.
+      if (disabled.has(p.key)) continue
+      const played = new Set()
+      // From the facts as they are now (mandatory roles may just have added some).
+      for (const m of [...p.roles, ...p.also]) for (const t of pops.factPopulations[m.factId] ?? []) played.add(keyOf(t[m.roleIndex]))
+      for (const e of ev.population(p.typeId).instances ?? []) {
+        if (played.has(keyOf(e))) continue
+        if (!p.roles.length && !p.also.length) return { pops, fired: fired.add(p.key), failed: p.key }
+        if (!p.roles.length) { branching = true; continue }
+        const m = p.roles[0], f = w.ctx.factById.get(m.factId)
+        addTuple(w, pops, f.id, f.roles.map((q, j) => (j === m.roleIndex ? e : freshCell(w, pops, q.objectTypeId, fresh))))
+        played.add(keyOf(e))
+        fired.add(p.key)
+        added = true
+        if (p.roles.length > 1) branching = true
+      }
+    }
     for (const { c, a, b } of sets) {
       for (const [x, y] of c.constraintType === 'equality' ? [[a, b], [b, a]] : [[a, b]]) {
         const have = new Set(project(y, ev).map(vals => JSON.stringify(vals.map(keyOf))))
@@ -533,8 +588,12 @@ export function entriesOf(state, schemaId) {
     selectedId: null, multiSelectedIds: [], selectedMandatoryDot: null, selectedUniqueness: null,
     selectedInternalFrequency: null, selectedValueRange: null, selectedCardinalityRange: null,
   }
-  const { entries, ctx } = formalise(scoped, { wholeSchema: true })
-  return Object.assign(entries, { ctx })
+  const { entries, implicit, ctx } = formalise(scoped, { wholeSchema: true })
+  // Implicit participation of entity types that are not independent (value
+  // types and nested types are left out: no rule carries a lone value, and
+  // nested types are not checked yet).
+  const participation = (implicit?.participation ?? []).filter(e => e.formula && ctx.otById?.get(e.elementId)?.kind === 'entity')
+  return Object.assign([...entries, ...participation], { ctx })
 }
 
 // A constraint of a relational schema in table terms, or null.
@@ -1081,7 +1140,11 @@ export function* accountingSteps(state, mapping, { onlyKeys = null } = {}) {
     run.constants = constantsOf(run.there)
     sides[side] = []
     for (const e of todo[side]) {
-      const r = accountEntry(e, A, B, run, fresh)
+      let r
+      try { r = accountEntry(e, A, B, run, fresh) } catch (err) {
+        if (!(err instanceof Unsupported)) throw err
+        r = { key: e.key, entry: e, by: [], counterexample: null, status: 'unknown', reason: `Not checked yet: ${err.message}.` }
+      }
       r.label = relationalLabel(A, e.key)
       sides[side].push(r)
       yield { done: ++done, total }

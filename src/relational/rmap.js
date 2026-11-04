@@ -15,7 +15,8 @@
 //     constraint.
 //   - An entity type gets a table when something is absorbed into it, when it
 //     is independent, when it is a supertype or subtype, or when it plays no
-//     other role (so its instances are kept). A subtype's table has its
+//     other role and is not part of another type's identifier (so its instances
+//     are kept). A subtype's table has its
 //     supertype's key as primary key and foreign key (as guessOrm.js reads
 //     it back); facts of the subtype are absorbed into it.
 //   - Surrogate keys (decision Q4): never, for composite identifiers only, or
@@ -32,6 +33,7 @@
 // generateRelational(state, ormSchemaId, options) →
 //   { sql, built, mapping, plan, log }   (built: objectTypes, facts, constraints, diagram)
 
+import { identifiedRoles } from '../utils/independence.js'
 import { sideContext } from '../mapping/mapping.js'
 import { schemeOf } from '../mapping/runMapping.js'
 import { identifyingFactIds } from '../utils/refMode.js'
@@ -163,12 +165,22 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
 
   // ── Which entity types get a table ──
   const inFactTables = new Set(factTables.flatMap(f => f.roles.map(r => r.objectTypeId)))
+  for (const f of nested) for (const r of f.roles) inFactTables.add(r.objectTypeId)
   const inAbsorbed = new Set([...absorbed.values()].flat().flatMap(a => a.fact.roles.map(r => r.objectTypeId)))
+  // Types that are part of another type's identifier: their instances are
+  // kept in that type's key columns (a type that is not independent plays
+  // some role, so an instance of it is never only on its own).
+  const identified = identifiedRoles(ctx)
+  const inIdentifiers = new Set()
+  for (const f of ctx.facts) {
+    if (!f.roles.some((_, i) => identified.has(`${f.id}:${i}`))) continue
+    f.roles.forEach((r, i) => { if (!identified.has(`${f.id}:${i}`)) inIdentifiers.add(r.objectTypeId) })
+  }
   const hasTable = new Set()
   for (const t of ctx.objectTypes) {
     if (t.kind !== 'entity' || !keyOf(t.id)) continue
     if (t.derivation === 'derived') { note(`${t.name} is derived, so it gets no table`); continue }
-    if (absorbed.has(t.id) || t.isIndependent || supersOf(t.id).length || subsOf(t.id).length || (!inFactTables.has(t.id) && !inAbsorbed.has(t.id)))
+    if (absorbed.has(t.id) || t.isIndependent || supersOf(t.id).length || subsOf(t.id).length || (!inFactTables.has(t.id) && !inAbsorbed.has(t.id) && !inIdentifiers.has(t.id)))
       hasTable.add(t.id)
   }
   for (const f of nested) hasTable.add(f.id)
@@ -180,7 +192,7 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
   }
   for (const t of ctx.objectTypes) {
     if (t.kind === 'entity' && keyOf(t.id) && t.derivation !== 'derived' && !hasTable.has(t.id))
-      note(`${t.name} gets no table: its instances are kept only where they play a role; mark it independent to keep the others`)
+      note(`${t.name} gets no table: it is not independent, so each instance plays some role, and is kept there (mark it independent to give it a table)`)
   }
 
   // ── Table names ──
