@@ -2115,6 +2115,7 @@ export function computePopulationIssues(rawData) {
             elementId: c.id,
             constraintId: c.id,
             value: k,
+            count,
             message: count === 0
               ? `Exclusive-or violated: ${projCellDisplay(k)} does not appear in any of the constrained role sequences`
               : `Exclusive-or violated: ${projCellDisplay(k)} appears in ${count} role sequences (must be exactly one)`,

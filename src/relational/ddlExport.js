@@ -9,6 +9,7 @@
 // exportPostgresDdl(state, schemaId) → { sql, warnings }
 
 import { tableRulesOf, tableRuleAsMapping } from './derivedTables.js'
+import { tableViews, viewOrder } from './viewSql.js'
 import { sideContext, sideTokens, tokensText } from '../mapping/mapping.js'
 import { valueKindName } from '../utils/datatypeValues.js'
 import { relationalModel } from './relationalModel.js'
@@ -87,14 +88,34 @@ export function exportPostgresDdl(state, schemaId) {
   let ctxCache = null
   const sideCtx = () => (ctxCache ??= sideContext(state, schemaId))
   const lines = ['-- PostgreSQL DDL written by FreeFBM', '']
+  // Tables with rules: views (viewSql.js), over a stored <name>_base when
+  // some of their rows or columns are stored.
+  const views = tableViews(state, model, typeSql)
+  const storedName = (t) => { const v = views.get(t.id); return v?.kind === 'base' ? v.baseName : t.name }
   for (const t of tables) {
+    const view = views.get(t.id)
+    // Rules with no SQL form yet: the table is written, with its rules as comments.
+    if (view?.kind === 'table') {
+      for (const r of tableRulesOf(t.entity)) {
+        const ctx = sideCtx()
+        const text = `${tokensText(sideTokens(tableRuleAsMapping(t.entity, r).rule.target, ctx))} ${r.mode === 'semiDerived' ? '⟸' : '⟺'} ${tokensText(sideTokens(r.body, ctx))}`
+        lines.push(`-- ${r.kind === 'table' ? 'Rows' : 'Columns'} ${r.mode === 'semiDerived' ? 'semi-derived' : 'derived'} by: ${text.replace(/\s+/g, ' ')}`)
+      }
+      warnings.push(`${t.name}: its table rules are written as comments, not as a view (${view.error})`)
+    }
+    if (view?.kind === 'view') {
+      if (t.uniques.length || t.checks.length) warnings.push(`${t.name} is a view: its UNIQUE and CHECK constraints are not enforced`)
+      continue
+    }
+    const skip = view?.kind === 'base' ? view.derivedCols : new Set()
     const items = []
     for (const col of t.columns) {
+      if (skip.has(col.fact.id)) continue
       const role = col.fact.roles[col.v]
       let type = typeSql(col.vt.datatypeAssignment, col.generated)
       if (!type) { type = 'text'; warnings.push(`${t.name}.${col.name}: ${col.vt.name} has no PostgreSQL or SQL datatype; written as text`) }
       let line = `  ${q(col.name)} ${type}`
-      if (col.notNull) line += ' NOT NULL'
+      if (col.notNull && !view?.semiCols?.has(col.fact.id)) line += ' NOT NULL'
       const numeric = NUMERIC_KINDS.has(valueKindName(col.vt.datatypeAssignment) ?? '')
       for (const specs of [col.vt.valueRange, role.valueRange]) {
         const cond = specs?.length ? rangeSql(q(col.name), specs, numeric) : null
@@ -103,24 +124,27 @@ export function exportPostgresDdl(state, schemaId) {
       items.push(line)
     }
     if (t.pk) items.push(`  PRIMARY KEY (${t.pk.map(c => q(c.name)).join(', ')})`)
-    for (const u of t.uniques) items.push(`  UNIQUE (${u.map(c => q(c.name)).join(', ')})`)
+    const kept = (cols) => cols.every(c => !skip.has(c.fact.id))
+    for (const u of t.uniques) if (kept(u)) items.push(`  UNIQUE (${u.map(c => q(c.name)).join(', ')})`)
     for (const ch of t.checks) items.push(`  ${ch.name ? `CONSTRAINT ${q(ch.name)} ` : ''}CHECK (${ch.text})`)
     if (!t.columns.length) warnings.push(`Table ${t.name} has no columns`)
-    // Table rules (derivedTables.js) are not written as views yet: the table
-    // is written, with its rules as comments.
-    for (const r of tableRulesOf(t.entity)) {
-      const ctx = sideCtx()
-      const text = `${tokensText(sideTokens(tableRuleAsMapping(t.entity, r).rule.target, ctx))} ${r.mode === 'semiDerived' ? '⟸' : '⟺'} ${tokensText(sideTokens(r.body, ctx))}`
-      lines.push(`-- ${r.kind === 'table' ? 'Rows' : 'Columns'} ${r.mode === 'semiDerived' ? 'semi-derived' : 'derived'} by: ${text.replace(/\s+/g, ' ')}`)
-      warnings.push(`${t.name}: its ${r.kind === 'table' ? 'rows are' : 'columns are'} derived by a table rule, which is written as a comment, not as a view or trigger`)
-    }
-    lines.push(`CREATE TABLE ${q(t.name)} (`, items.join(',\n'), ');', '')
+    if (view?.kind === 'base') lines.push(`-- ${t.name} is a view (below) over its stored part ${storedName(t)}.`)
+    lines.push(`CREATE TABLE ${q(storedName(t))} (`, items.join(',\n'), ');', '')
   }
-  for (const fk of fks) {
-    lines.push(`ALTER TABLE ${q(fk.fromTable.name)} ADD FOREIGN KEY (${fk.from.map(c => q(c.name)).join(', ')})`
-      + ` REFERENCES ${q(fk.toTable.name)} (${fk.to.map(c => q(c.name)).join(', ')});`)
+  // Foreign keys between stored columns; a view's are not enforced.
+  const isStored = (t, cols) => views.get(t.id)?.kind !== 'view' && cols.every(c => !views.get(t.id)?.derivedCols?.has(c.fact.id))
+  const storedFks = fks.filter(fk => isStored(fk.fromTable, fk.from) && isStored(fk.toTable, fk.to))
+  for (const fk of fks) if (!storedFks.includes(fk)) warnings.push(`FOREIGN KEY ${fk.fromTable.name}(${fk.from.map(c => c.name).join(', ')}) → ${fk.toTable.name}(${fk.to.map(c => c.name).join(', ')}) is about a view or a derived column and is not enforced`)
+  for (const fk of storedFks) {
+    lines.push(`ALTER TABLE ${q(storedName(fk.fromTable))} ADD FOREIGN KEY (${fk.from.map(c => q(c.name)).join(', ')})`
+      + ` REFERENCES ${q(storedName(fk.toTable))} (${fk.to.map(c => q(c.name)).join(', ')});`)
   }
-  if (fks.length) lines.push('')
+  if (storedFks.length) lines.push('')
+  const order = viewOrder(views)
+  if (order.length) {
+    lines.push('-- Tables with derived rows or columns (table rules), as views:', '')
+    for (const id of order) lines.push(views.get(id).view, '')
+  }
   if (queries.length) {
     lines.push('-- Constraints that PostgreSQL does not enforce here, as queries that return',
       '-- the rows breaking them (none when the data satisfies them):', '')

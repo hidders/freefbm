@@ -270,6 +270,12 @@ function stable(w, list) {
 // Violations of constraints the chase does not apply (it adds no facts for
 // them), which still rule out a population that breaks them.
 const KILLING_KINDS = new Set(['exclusionViolation', 'ringViolation', 'valueRangeViolation', 'formulaViolated', 'valueComparisonViolation'])
+// An issue that no fact the chase could add removes: those kinds, and an
+// exclusive-or broken by an instance in more than one of its parts.
+// Constraints whose violations only facts can mend (a chase that stops
+// early has added a part of what they need).
+const POSITIVE_KINDS = /^(Mandatory|Inclusive-or|Participation|Subset|Equality)/
+const isKilling = (i) => KILLING_KINDS.has(i.kind) || (i.kind === 'exclusiveOrViolation' && i.count > 1)
 
 function issuesOf(w, pops, constraintId) {
   const active = new Set(Object.entries(pops.populations).filter(([, v]) => v.length).map(([k]) => k))
@@ -459,12 +465,22 @@ function participationOf(w) {
 // Closes a population under the side's constraints: { pops, fired: Set(key),
 // failed: key | null, exceeded, branching }. Constraints in `disabled` are
 // left out.
-function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds = 20, maxSize = 250 } = {}) {
+// A disjunction (inclusive-or, exclusive-or, implicit participation with
+// several roles) is a choice: `choices` picks the alternative at each choice
+// point in the order the chase meets them (0 when not given), and the result
+// lists the number of alternatives of each point met (`points`), so that
+// chaseBranches can go through them all.
+// `until(pops)`, when given, stops the chase after a round in which it holds
+// ({ stopped: true }).
+function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds = 20, maxSize = 250, choices = [], until = null } = {}) {
   // Closed first: instances of a subtype are instances of its supertypes (a
   // run builds only the types its rules name).
   let pops = applySubst(w, start, new Subst())
   const fired = new Set()
   let branching = false
+  const points = []
+  const choose = (n) => { const k = points.length; points.push(n); return Math.min(choices[k] ?? 0, n - 1) }
+  const subOf = new Map(w.ctx.subtypes.map(st => [st.id, st.subId]))
   const ucs = uniquenessOf(w).filter(u => !disabled.has(u.key))
   const sets = w.ctx.constraints.filter(c => !c.deontic && !disabled.has(c.id) && (c.constraintType === 'subset' || c.constraintType === 'equality') && c.sequences?.length === 2)
     .map(c => ({ c, a: seqShape(c.sequences[0], w), b: seqShape(c.sequences[1], w) })).filter(x => x.a && x.b)
@@ -485,14 +501,14 @@ function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds =
             const first = groups.get(g)
             for (let i = 0; i < tt.length; i++) {
               if (u.shape.roles.includes(i)) continue
-              if (!S.unify(first[i], tt[i])) return { pops, fired: fired.add(u.key), failed: u.key }
+              if (!S.unify(first[i], tt[i])) return { pops, fired: fired.add(u.key), failed: u.key, points }
             }
           }
         } else {
           for (const vals of project(u.shape, ev)) {
             const g = JSON.stringify(vals.map(v => keyOf(S.apply(v))))
             if (!groups.has(g)) { groups.set(g, vals.entity); continue }
-            if (!S.unify(S.apply(groups.get(g)), S.apply(vals.entity))) return { pops, fired: fired.add(u.key), failed: u.key }
+            if (!S.unify(S.apply(groups.get(g)), S.apply(vals.entity))) return { pops, fired: fired.add(u.key), failed: u.key, points }
           }
         }
         if (S.p.size > merged) fired.add(u.key)
@@ -500,7 +516,7 @@ function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds =
       if (!S.changed) break
       pops = applySubst(w, pops, S)
     }
-    if (!tgds) return { pops, fired, failed: null, branching }
+    if (!tgds) return { pops, fired, failed: null, branching, points }
     // Mandatory roles, subset and equality constraints: add what they ask for.
     const ev = evaluatorOf(w, pops)
     let added = false
@@ -519,19 +535,28 @@ function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds =
       })
     }
     for (const c of ors) {
-      // A disjunction: the chase takes the first role, so what it finds is one
-      // population among several.
-      const seqs = (c.sequences ?? []).map(s => s?.[0]).filter(m => m?.kind === 'role')
+      // A disjunction over roles or subtypes: each instance that plays none
+      // gets one of them (a choice point).
+      const seqs = (c.sequences ?? []).map(s => s?.[0]).filter(m => (m?.kind === 'role' && w.ctx.factById.get(m.factId)) || (m?.kind === 'subtype' && subOf.get(m.subtypeId)))
       if (!seqs.length) continue
       const played = new Set()
-      for (const m of seqs) for (const t of ev.factTuples(m.factId).tuples ?? []) played.add(keyOf(t[m.roleIndex]))
-      for (const e of ev.population(c.targetObjectTypeId).instances ?? []) {
+      for (const m of seqs) {
+        if (m.kind === 'role') for (const t of pops.factPopulations[m.factId] ?? []) played.add(keyOf(t[m.roleIndex]))
+        else for (const e of pops.populations[subOf.get(m.subtypeId)] ?? []) played.add(keyOf(e))
+      }
+      for (const m of seqs) if (m.kind === 'role') for (const t of ev.factTuples(m.factId).tuples ?? []) played.add(keyOf(t[m.roleIndex]))
+      for (const e of [...(ev.population(c.targetObjectTypeId).instances ?? []), ...(pops.populations[c.targetObjectTypeId] ?? [])]) {
         if (played.has(keyOf(e))) continue
-        const f = w.ctx.factById.get(seqs[0].factId)
-        if (!f) continue
-        addTuple(w, pops, f.id, f.roles.map((q, j) => (j === seqs[0].roleIndex ? e : freshCell(w, pops, q.objectTypeId, fresh))))
+        const m = seqs[seqs.length > 1 ? choose(seqs.length) : 0]
+        if (m.kind === 'subtype') addInst(w, pops, subOf.get(m.subtypeId), e)
+        else {
+          const f = w.ctx.factById.get(m.factId)
+          addTuple(w, pops, f.id, f.roles.map((q, j) => (j === m.roleIndex ? e : freshCell(w, pops, q.objectTypeId, fresh))))
+        }
+        played.add(keyOf(e))
         fired.add(c.id)
-        branching = added = true
+        added = true
+        if (seqs.length > 1) branching = true
       }
     }
     for (const p of participationOf(w)) {
@@ -542,13 +567,20 @@ function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds =
       if (disabled.has(p.key)) continue
       const played = new Set()
       // From the facts as they are now (mandatory roles may just have added some).
-      for (const m of [...p.roles, ...p.also]) for (const t of pops.factPopulations[m.factId] ?? []) played.add(keyOf(t[m.roleIndex]))
+      // (The evaluator gives the tuples of identifying facts too.)
+      for (const m of [...p.roles, ...p.also]) for (const t of [...(pops.factPopulations[m.factId] ?? []), ...(ev.factTuples(m.factId).tuples ?? [])]) played.add(keyOf(t[m.roleIndex]))
       for (const e of ev.population(p.typeId).instances ?? []) {
         if (played.has(keyOf(e))) continue
-        if (!p.roles.length && !p.also.length) return { pops, fired: fired.add(p.key), failed: p.key }
+        if (!p.roles.length && !p.also.length) return { pops, fired: fired.add(p.key), failed: p.key, points }
         if (!p.roles.length) { branching = true; continue }
-        const m = p.roles[0], f = w.ctx.factById.get(m.factId)
-        addTuple(w, pops, f.id, f.roles.map((q, j) => (j === m.roleIndex ? e : freshCell(w, pops, q.objectTypeId, fresh))))
+        const m = p.roles[p.roles.length > 1 ? choose(p.roles.length) : 0], f = w.ctx.factById.get(m.factId)
+        // A role in another type's composite identifier: a new instance of
+        // that type, identified with e.
+        const T = f.roles.length === 2 ? f.roles[1 - m.roleIndex].objectTypeId : null
+        const sch = T && isIdentifying(w, f.id) ? schemeOf(T, w.els) : null
+        if (sch?.kind === 'composite' && sch.parts.some(q => q.factId === f.id && q.roleIndex === m.roleIndex)) {
+          addInst(w, pops, T, sch.parts.map(q => (q.factId === f.id && q.roleIndex === m.roleIndex ? e : freshCell(w, pops, playerOf(w, q.factId, q.roleIndex), fresh))))
+        } else addTuple(w, pops, f.id, f.roles.map((q, j) => (j === m.roleIndex ? e : freshCell(w, pops, q.objectTypeId, fresh))))
         played.add(keyOf(e))
         fired.add(p.key)
         added = true
@@ -567,10 +599,30 @@ function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds =
         }
       }
     }
-    if (sizeOf(pops) > maxSize) return { pops, fired, exceeded: true }
-    if (!added) return { pops, fired, failed: null, branching }
+    if (added && until?.(pops)) return { pops, fired, failed: null, branching, points, stopped: true }
+    if (sizeOf(pops) > maxSize) return { pops, fired, exceeded: true, points }
+    if (!added) return { pops, fired, failed: null, branching, points }
   }
-  return { pops, fired, exceeded: true }
+  return { pops, fired, exceeded: true, points }
+}
+
+// Every way the chase can go at its choice points (at most `max` runs):
+// [result of chase]. With no disjunction met, one run.
+function chaseBranches(w, start, fresh, opts = {}, max = 64) {
+  const out = []
+  const todo = [[]]
+  while (todo.length && out.length < max) {
+    const prefix = todo.pop()
+    const r = chase(w, start, fresh, { ...opts, choices: prefix })
+    out.push(r)
+    // The alternatives at the points this run met past its prefix.
+    const met = r.points ?? []
+    for (let j = met.length - 1; j >= prefix.length; j--) {
+      const taken = met.slice(0, j).map((_, i) => (i < prefix.length ? prefix[i] : 0))
+      for (let a = 1; a < met[j]; a++) todo.push([...taken, a])
+    }
+  }
+  return Object.assign(out, { complete: !todo.length })
 }
 
 // ── Accounting ───────────────────────────────────────────────────────────────
@@ -1026,36 +1078,62 @@ function accountEntry(entry, A, B, run, fresh) {
     if (!withConsts(V)) notCarried++
   }
   let bySubtypes = 0
+  const positive = POSITIVE_KINDS.test(entry.kind ?? '')
   for (const { V, I0 } of carried.slice(0, 8)) {
     // The other side's subtyping alone (its instances of a subtype are
     // instances of the supertypes) may already remove the violation.
     if (!violations(A, backOf(applySubst(B, I0, new Subst())), match).length) { bySubtypes++; continue }
-    const ch = chase(B, I0, fresh)
-    if (ch.exceeded) {
-      // Uniqueness alone may still rule it out: the facts the chase would go
-      // on adding can only make more values equal.
-      const chU = chase(B, I0, fresh, { tgds: false })
-      if (!chU.exceeded && (chU.failed || !violations(A, backOf(chU.pops), match).length)) { killedBy.push({ I0, ch: chU, uOnly: true }); continue }
-      undecided = 'The other schema’s constraints keep adding facts (the chase stopped).'
-      continue
+    // Every way the other side's chase can go (a disjunction is a choice):
+    // the violation is ruled out only when it is in each of them.
+    // First what holds in every case: merges by uniqueness that fail, or a
+    // break that no added fact mends.
+    const chU = chase(B, I0, fresh, { tgds: false })
+    if (!chU.exceeded) {
+      if (chU.failed) { killedBy.push({ I0, ch: chU, uOnly: true }); continue }
+      const k = issuesOf(B, chU.pops).find(i => isKilling(i) && i.kind !== 'formulaViolated')
+      if (k) { killedBy.push({ I0, ch: { ...chU, failed: issueKey(k) }, uOnly: true }); continue }
+      // A violation that merges remove, of a constraint that forbids facts:
+      // facts added later only make more values equal.
+      if (!positive && !violations(A, backOf(chU.pops), match).length) { killedBy.push({ I0, ch: chU, uOnly: true }); continue }
     }
-    if (ch.failed) { killedBy.push({ I0, ch }); continue }
-    const bad = issuesOf(B, ch.pops)
-    const back = backOf(ch.pops)
-    const v = violations(A, back, match)
-    if (v.length && !bad.length) {
-      if (!lost) lost = { I: ch.pops, V, back, branching: ch.branching }
-      continue
-    }
-    if (bad.length) {
-      // I breaks a constraint the chase does not apply.
-      const k = issueKey(bad[0])
-      if (KILLING_KINDS.has(bad[0].kind)) killedBy.push({ I0, ch: { ...ch, failed: k } })
-      else undecided = 'A constraint of the other schema that is not checked yet is involved.'
-      continue
-    }
-    if (ch.branching) { undecided = 'A disjunctive mandatory constraint of the other schema is involved.'; continue }
-    killedBy.push({ I0, ch })
+    // For a constraint that asks for facts, a case can stop once they are
+    // there: more facts keep the violation gone.
+    const until = positive && run.monotoneBack ? (P) => !violations(A, backOf(P), match).length : null
+    const branches = chaseBranches(B, I0, fresh, { until })
+    const outs = branches.map(ch => {
+      if (ch.exceeded) {
+        // Uniqueness alone may still rule it out: the facts the chase would go
+        // on adding can only make more values equal.
+        const chU = chase(B, I0, fresh, { tgds: false })
+        if (!chU.exceeded && (chU.failed || !violations(A, backOf(chU.pops), match).length)) return { killed: { I0, ch: chU, uOnly: true } }
+        // A break that no fact the chase would go on adding can mend.
+        const k = issuesOf(B, ch.pops).find(i => isKilling(i) && i.kind !== 'formulaViolated')
+        if (k) return { killed: { I0, ch: { ...ch, failed: issueKey(k) } } }
+        // A constraint that asks for facts, gone already: more facts keep it
+        // gone, as long as the way back has no negation.
+        if (positive && run.monotoneBack && !violations(A, backOf(ch.pops), match).length) return { killed: { I0, ch } }
+        return { undecided: 'The other schema’s constraints keep adding facts (the chase stopped).' }
+      }
+      if (ch.failed || ch.stopped) return { killed: { I0, ch } }
+      const bad = issuesOf(B, ch.pops)
+      const back = backOf(ch.pops)
+      if (violations(A, back, match).length && !bad.length) return { lost: { I: ch.pops, V, back } }
+      if (bad.length) {
+        // I breaks a constraint the chase does not apply.
+        const k = bad.find(isKilling)
+        if (k) return { killed: { I0, ch: { ...ch, failed: issueKey(k) } } }
+        return { undecided: 'A constraint of the other schema that is not checked yet is involved.' }
+      }
+      return { killed: { I0, ch } }
+    })
+    const lostHere = outs.find(o => o.lost)
+    if (lostHere) { if (!lost) lost = lostHere.lost; continue }
+    const und = outs.find(o => o.undecided)
+    if (und) { undecided = und.undecided; continue }
+    if (!branches.complete) { undecided = 'A disjunctive constraint of the other schema leaves too many cases to check.'; continue }
+    // Ruled out in every case: the constraints of the first case that does
+    // not fail on its own are the ones reported.
+    killedBy.push(outs[0].killed)
   }
   if (lost) {
     const there = describe(B, lost.I), back = describe(A, lost.back)
@@ -1138,6 +1216,7 @@ export function* accountingSteps(state, mapping, { onlyKeys = null } = {}) {
     const A = worlds[side], B = worlds[other(side)]
     const run = side === 'source' ? { there: preps.forward, back: preps.backward } : { there: preps.backward, back: preps.forward }
     run.constants = constantsOf(run.there)
+    run.monotoneBack = !run.back.rules.some(r => !r.skipped && JSON.stringify(r.fromSide ?? {}).includes('"t":"not"'))
     sides[side] = []
     for (const e of todo[side]) {
       let r
