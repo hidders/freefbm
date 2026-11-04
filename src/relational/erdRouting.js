@@ -1,9 +1,13 @@
-// Layout and line routing for the ERD view (ErdView.jsx).
+// Layout and right-angled line routing for the ERD view (ErdView.jsx); the
+// default straight-line routing is in erdDirect.js.
 //
 // layeredLayout(boxes, ids, edges, originY) places boxes ({w, h}) in columns by
 //   foreign key depth: tables that reference nothing on the right, each table
 //   to the left of the tables it references, ordered in its column by where
 //   the tables it is joined to are. A tall column continues in a next column.
+//   Then a few sweeps re-sort each column by where the tables its tables are
+//   joined to are (keeping the order with the fewest crossings), and each
+//   table moves as near the height of those tables as the gaps allow.
 //
 // assignPorts gives each foreign key its own point on the facing side of both
 //   boxes, spread along that side.
@@ -13,6 +17,8 @@
 //   routed before, over a grid of lanes beside the boxes. Lines leave and enter
 //   a box square to its side, so the crow's foot markers sit on a straight
 //   stretch.
+
+import { spread1D } from './erdDirect.js'
 
 export const LANE = 16          // clearance kept between lines and boxes, and lane spacing
 export const LEAD = 2 * LANE    // straight stretch at both ends of a line
@@ -68,23 +74,97 @@ export function layeredLayout(boxes, ids, edges, originY = 0) {
 
   const totalArea = ids.reduce((s, id) => s + (boxes.get(id).w + COL_GAP) * (boxes.get(id).h + ROW_GAP), 0)
   const maxH = Math.max(700, Math.sqrt(totalArea) * 0.9)
+  const nbrs = (id) => [...out.get(id), ...inc.get(id)]
+  const mean = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length
+
+  // First order: each column by the mean height of the tables a table is
+  // joined to that are already placed (tables with none keep their order,
+  // after the others); a tall column continues in a next column.
   const centreY = new Map()
-  let x = 0
+  const stack = (col) => {
+    let y = originY
+    for (const id of col) { const b = boxes.get(id); centreY.set(id, y + b.h / 2); y += b.h + ROW_GAP }
+  }
+  const cols = []
   for (const layer of layers) {
-    // Order by the mean height of the tables a table is joined to that are
-    // already placed; tables with none keep their order, after the others.
     const key = (id) => {
-      const ys = [...out.get(id), ...inc.get(id)].filter(n => centreY.has(n)).map(n => centreY.get(n))
-      return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : Infinity
+      const ys = nbrs(id).filter(n => centreY.has(n)).map(n => centreY.get(n))
+      return ys.length ? mean(ys) : Infinity
     }
-    const sorted = layer.map((id, i) => ({ id, k: key(id), i })).sort((a, b) => a.k - b.k || a.i - b.i)
-    let y = originY, colW = 0
-    for (const { id } of sorted) {
+    const sorted = layer.map((id, i) => ({ id, k: key(id), i })).sort((a, b) => a.k - b.k || a.i - b.i).map(o => o.id)
+    const height = sorted.reduce((s, id) => s + boxes.get(id).h + ROW_GAP, 0)
+    const parts = Math.max(1, Math.ceil(height / maxH))
+    const per = Math.ceil(sorted.length / parts)
+    for (let k = 0; k < sorted.length; k += per) {
+      const col = sorted.slice(k, k + per)
+      stack(col)
+      cols.push(col)
+    }
+  }
+
+  // Then fewer crossings: sweeps that sort each column by the mean height of
+  // all the tables its tables are joined to, keeping the order with the
+  // fewest crossings of the lines between box middles.
+  const colOf = new Map()
+  cols.forEach((col, ci) => col.forEach(id => colOf.set(id, ci)))
+  const edgeList = []
+  for (const id of ids) for (const b of out.get(id)) if (colOf.has(b) && colOf.get(b) !== colOf.get(id)) edgeList.push([id, b])
+  const crossCount = () => {
+    const seg = edgeList.map(([a, b]) => {
+      const ca = colOf.get(a), cb = colOf.get(b)
+      return ca < cb ? [ca, centreY.get(a), cb, centreY.get(b)] : [cb, centreY.get(b), ca, centreY.get(a)]
+    })
+    let c = 0
+    for (let i = 0; i < seg.length; i++) for (let j = i + 1; j < seg.length; j++) {
+      const p = seg[i], q = seg[j]
+      const lo = Math.max(p[0], q[0]), hi = Math.min(p[2], q[2])
+      if (lo >= hi) continue
+      const at = (s, x) => s[1] + (s[3] - s[1]) * (x - s[0]) / (s[2] - s[0])
+      const d0 = at(p, lo) - at(q, lo), d1 = at(p, hi) - at(q, hi)
+      if (d0 * d1 < 0) c++
+    }
+    return c
+  }
+  let best = cols.map(c => [...c]), bestC = crossCount()
+  for (let round = 0; round < 8 && bestC > 0; round++) {
+    const seq = round % 2 ? [...cols.keys()].reverse() : [...cols.keys()]
+    for (const ci of seq) {
+      const col = cols[ci]
+      const k = new Map(col.map((id, i) => {
+        const ys = nbrs(id).filter(n => colOf.has(n) && colOf.get(n) !== ci).map(n => centreY.get(n))
+        return [id, ys.length ? mean(ys) : centreY.get(id)]
+      }))
+      col.sort((a, b) => k.get(a) - k.get(b))
+      stack(col)
+    }
+    const c = crossCount()
+    if (c < bestC) { bestC = c; best = cols.map(col => [...col]) }
+  }
+  best.forEach((col, ci) => { cols[ci] = col; stack(col) })
+
+  // Heights: each table as near the mean height of the tables it is joined
+  // to as the order and the gaps allow, in a few passes both ways.
+  for (let round = 0; round < 6; round++) {
+    const seq = round % 2 ? [...cols.keys()].reverse() : [...cols.keys()]
+    for (const ci of seq) {
+      const col = cols[ci]
+      const items = col.map(id => {
+        const ys = nbrs(id).filter(n => colOf.has(n) && colOf.get(n) !== ci).map(n => centreY.get(n))
+        return { d: ys.length ? mean(ys) : centreY.get(id), size: boxes.get(id).h }
+      })
+      const pos = spread1D(items, ROW_GAP)
+      col.forEach((id, i) => centreY.set(id, pos[i]))
+    }
+  }
+  let top = Infinity
+  for (const col of cols) for (const id of col) top = Math.min(top, centreY.get(id) - boxes.get(id).h / 2)
+
+  let x = 0
+  for (const col of cols) {
+    let colW = 0
+    for (const id of col) {
       const b = boxes.get(id)
-      if (y > originY && y + b.h > originY + maxH) { x += colW + COL_GAP; y = originY; colW = 0 }
-      b.x = x; b.y = y
-      centreY.set(id, y + b.h / 2)
-      y += b.h + ROW_GAP
+      b.x = x; b.y = Math.round(centreY.get(id) - b.h / 2 - top + originY)
       colW = Math.max(colW, b.w)
     }
     x += colW + COL_GAP

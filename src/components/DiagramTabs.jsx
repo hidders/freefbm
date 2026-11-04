@@ -314,6 +314,7 @@ export default function DiagramTabs() {
             onMouseLeave={e => { e.currentTarget.style.color = 'var(--ink-3)' }}
           >Auto layout</div>
         )}
+        {activeDiagram && isRelational && activeDiagram.notation === 'erd' && <ErdLinesSwitch diagram={activeDiagram} />}
         {activeDiagram && isRelational && <NotationSwitch diagram={activeDiagram} />}
         {/* With one schema the schema strip is hidden; a new schema starts here. */}
         {singleSchema && <NewSchemaMenu variant="tab" />}
@@ -322,6 +323,29 @@ export default function DiagramTabs() {
   )
 }
 
+
+// Diagonal | Right-angled switch for the foreign key lines of an ERD.
+function ErdLinesSwitch({ diagram }) {
+  const current = diagram.erdLines === 'orthogonal' ? 'orthogonal' : 'direct'
+  const opts = [
+    ['direct', 'Diagonal', 'Draw foreign keys as straight lines that bend at table corners, from the row of their column'],
+    ['orthogonal', 'Right-angled', 'Draw foreign keys as lines of horizontal and vertical stretches'],
+  ]
+  return (
+    <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 11, overflow: 'hidden', height: 20, marginRight: 8, flexShrink: 0 }}>
+      {opts.map(([id, label, title]) => (
+        <div key={id} title={title}
+          onClick={() => { if (id !== current) useOrmStore.getState().setErdLines(diagram.id, id) }}
+          style={{
+            padding: '0 9px', display: 'flex', alignItems: 'center', fontSize: 11, cursor: 'pointer', userSelect: 'none',
+            fontWeight: id === current ? 700 : 400,
+            background: id === current ? 'var(--ink-3)' : 'transparent',
+            color: id === current ? '#fff' : 'var(--ink-3)',
+          }}>{label}</div>
+      ))}
+    </div>
+  )
+}
 
 // ORM2 | ERD segmented switch for the active diagram of a relational schema.
 function NotationSwitch({ diagram }) {

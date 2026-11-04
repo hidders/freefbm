@@ -3,9 +3,11 @@
 // from relationalModel (the same reading the DDL export uses); a diagram shows
 // the tables whose entity type it shows. Box positions are kept per diagram in
 // diagram.erdPositions (top-left corners); tables without one are laid out in
-// columns by foreign key depth, and the foreign keys are drawn as right-angled
-// lines routed around the boxes (src/relational/erdRouting.js), each with its
-// own point on the box sides. Selecting a line (or a column) highlights the
+// columns by foreign key depth, and the foreign keys are drawn as lines routed
+// around the boxes: by default straight lines that bend at box corners and
+// leave a table at their column's row (src/relational/erdDirect.js), or, with
+// diagram.erdLines 'orthogonal', right-angled lines (src/relational/erdRouting.js),
+// each with its own point on the box sides. Selecting a line (or a column) highlights the
 // foreign key and its columns. A click selects the table (header) or the column (row) for the
 // Inspector; dragging a box moves it, as one undo step.
 
@@ -15,6 +17,7 @@ import { inDiag } from '../store/storeHelpers'
 import { relationalModel, isKey } from '../relational/relationalModel'
 import { typeSql } from '../relational/ddlExport'
 import { layeredLayout, routeLines, assignPorts, SIDES } from '../relational/erdRouting'
+import { assignRowPorts, routeDirect } from '../relational/erdDirect'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 const HEAD_H = 24, ROW_H = 19, PAD_X = 8, MARK_GAP = 6, GAP_TYPE = 18, MIN_W = 140
@@ -213,26 +216,38 @@ export default function ErdView() {
     useOrmStore.getState().select(c.fact.id, 'fact')
   }
 
-  const links = useMemo(() => model.fks.map(fk => ({ key: fk.constraintId, a: fk.fromTable.id, b: fk.toTable.id })), [model])
-  const routes = useMemo(() => routeLines(boxes, assignPorts(boxes, links, HEAD_H)), [links, boxes])
+  // Line ends at the column rows: the first column of the foreign key, and the
+  // column it references.
+  const rowY = (t, c) => HEAD_H + 3 + Math.max(0, t.columns.indexOf(c)) * ROW_H + ROW_H / 2
+  const links = useMemo(() => model.fks.map(fk => ({
+    key: fk.constraintId, a: fk.fromTable.id, b: fk.toTable.id,
+    ya: rowY(fk.fromTable, fk.from[0]), yb: rowY(fk.toTable, fk.to[0]),
+  })), [model])
+  const orthogonal = diagram?.erdLines === 'orthogonal'
+  const ports = (bx) => orthogonal ? assignPorts(bx, links, HEAD_H) : assignRowPorts(bx, links, HEAD_H)
+  const routes = useMemo(() => orthogonal ? routeLines(boxes, ports(boxes)) : routeDirect(boxes, ports(boxes)),
+    [links, boxes, orthogonal])
 
   const shown = drag
     ? new Map([...boxes].map(([id, b]) => [id, id === drag.id ? { ...b, x: b.x + drag.dx, y: b.y + drag.dy } : b]))
     : boxes
-  // While dragging only the dragged table's lines are routed again.
-  // Ports are assigned afresh for all lines (they spread along the sides), but
-  // only the lines whose ports moved are routed again.
+  // While dragging, ports are assigned afresh for all lines (they spread along
+  // the sides), but only the lines whose ports moved are routed again.
   const dragRoutes = useMemo(() => {
     if (!drag) return null
-    const ends = assignPorts(shown, links, HEAD_H)
-    const moved = ends.filter(e => {
+    const ends = ports(shown)
+    const isMoved = (e) => {
       const r = routes.get(e.key)
       if (!r) return true
       const [x1, y1] = r.points[0], [x2, y2] = r.points[r.points.length - 1]
       return x1 !== e.from.x || y1 !== e.from.y || x2 !== e.to.x || y2 !== e.to.y || r.s1 !== e.from.side || r.s2 !== e.to.side
-    })
-    return routeLines(shown, moved)
-  }, [drag, links, boxes, routes])
+    }
+    const moved = ends.filter(isMoved)
+    if (orthogonal) return routeLines(shown, moved)
+    const movedKeys = new Set(moved.map(e => e.key))
+    const fixed = new Map([...routes].filter(([k]) => !movedKeys.has(k)))
+    return routeDirect(shown, moved, { context: ends, fixed })
+  }, [drag, links, boxes, routes, orthogonal])
 
   // A selected foreign key (its subset constraint) is drawn in the accent
   // colour, with its columns in both tables; so are the foreign keys of a
