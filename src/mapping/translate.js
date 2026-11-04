@@ -215,7 +215,16 @@ export function translateEntry(state, mapping, entry, side) {
           const leaves = entry.atomic.roles.flat(), slots = args.flat()
           return withLeaves(leaves, slots, (front, extra) => andOf([instantiate(entry.rule[Y], front, 'a fact type'), ...extra]))
         }
-        case 'tc': return fail('it uses a transitive closure')
+        case 'tc': {
+          // [TC_{v,w} φ](s, t) over entities with one reference value each:
+          // the closure of φ's translation over those values.
+          const [sv, sw] = g.vars.map(bind)
+          if (sv.length !== 1 || sw.length !== 1) fail('it takes a transitive closure over entities with a composite identifier')
+          const body = tr(g.body)
+          const [s, t] = g.args.map(a => (a ? slotsOf(a) : fail('it uses a transitive closure with an open end')))
+          if (s.length !== 1 || t.length !== 1) fail('it takes a transitive closure over entities with a composite identifier')
+          return { t: 'tc', star: !!g.star, vars: declared([sv[0], sw[0]]), body, args: [s[0], t[0]] }
+        }
         default: return fail(`it uses ${g.t}`)
       }
     }
