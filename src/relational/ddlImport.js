@@ -33,7 +33,16 @@ export function importPostgresDdl(sql, opts) {
 
 // ── Sample rows ──────────────────────────────────────────────────────────────
 
-// The rows of the script's INSERT statements as the sample population of the
+// A value as the sample population writes it: booleans as true/false (COPY
+// writes t/f).
+const TRUE = new Set(['t', 'true', 'y', 'yes', 'on', '1']), FALSE = new Set(['f', 'false', 'n', 'no', 'off', '0'])
+function cellValue(col, v) {
+  if (col.vt.datatypeAssignment?.datatypeId !== 'boolean') return v
+  const l = v.toLowerCase()
+  return TRUE.has(l) ? 'true' : FALSE.has(l) ? 'false' : v
+}
+
+// The rows of the script's INSERT statements (and COPY blocks) as the sample population of the
 // built schema: { populations, factPopulations, rows, log }. A row is an
 // instance of its table's entity type, identified by its primary key (the
 // reference mode, or the composite identifier); every other column with a
@@ -59,9 +68,20 @@ export function samplePopulation(parsed, built) {
     obj[id].push(cell)
   }
   let rows = 0, dropped = 0, expr = 0
-  const noKey = new Set(), unknownCols = new Set()
+  const noKey = new Set(), unknownCols = new Set(), cut = new Map()
+  const tableOf = (ins) => byName.get(ins.table.name.toLowerCase()) ?? byName.get(`${ins.table.schema}_${ins.table.name}`.toLowerCase())
+  // At most MAX_ROWS rows in all, shared fairly: small tables are read whole
+  // (their rows are what the others refer to), large ones cut to an equal share.
+  const given = new Map()
+  for (const ins of inserts) { const t = tableOf(ins); if (t) given.set(t, (given.get(t) ?? 0) + ins.rows.length) }
+  const quota = new Map(given)
+  if ([...given.values()].reduce((a, b) => a + b, 0) > MAX_ROWS) {
+    let left = MAX_ROWS
+    const todo = [...given].sort((a, b) => a[1] - b[1])
+    todo.forEach(([t, n], i) => { const q = Math.min(n, Math.floor(left / (todo.length - i))); quota.set(t, q); left -= q })
+  }
   for (const ins of inserts) {
-    const table = byName.get(ins.table.name.toLowerCase()) ?? byName.get(`${ins.table.schema}_${ins.table.name}`.toLowerCase())
+    const table = tableOf(ins)
     if (!table) { dropped += ins.rows.length; continue }
     const cols = ins.columns ?? table.columns.map(c => c.name)
     const colOf = cols.map(n => {
@@ -75,12 +95,13 @@ export function samplePopulation(parsed, built) {
     const keyFacts = refMode ? [refMode.factId] : cp ? (cp.factIds ?? (cp.factId ? [cp.factId] : [])) : []
     if (!keyFacts.length) { noKey.add(table.name); dropped += ins.rows.length; continue }
     for (const row of ins.rows) {
-      if (rows >= MAX_ROWS) { dropped++; continue }
+      if (!(quota.get(table) > 0)) { dropped++; cut.set(table.name, (cut.get(table.name) ?? 0) + 1); continue }
+      quota.set(table, quota.get(table) - 1)
       const val = new Map()
       row.forEach((v, i) => {
         if (v === undefined) expr++
         // Leading and trailing spaces don't count in sample values.
-        if (colOf[i] && v != null && String(v).trim() !== '') val.set(colOf[i].fact.id, String(v).trim())
+        if (colOf[i] && v != null && String(v).trim() !== '') val.set(colOf[i].fact.id, cellValue(colOf[i], String(v).trim()))
       })
       const keyVals = keyFacts.map(fid => val.get(fid))
       if (keyVals.some(v => v == null)) { dropped++; continue }
@@ -97,8 +118,9 @@ export function samplePopulation(parsed, built) {
       }
     }
   }
-  if (rows) log.push({ level: 'note', text: `Read ${rows} rows of INSERT statements into the sample population` })
-  if (dropped) log.push({ level: 'warn', text: `Left out ${dropped} rows${noKey.size ? ` (no primary key: ${[...noKey].join(', ')})` : ''}${rows >= MAX_ROWS ? `; at most ${MAX_ROWS} rows are read` : ''}` })
+  const how = [inserts.some(i => !i.copy) && 'INSERT statements', inserts.some(i => i.copy) && 'COPY blocks'].filter(Boolean).join(' and ')
+  if (rows) log.push({ level: 'note', text: `Read ${rows} rows of ${how} into the sample population` })
+  if (dropped) log.push({ level: 'warn', text: `Left out ${dropped} rows${noKey.size ? ` (no primary key: ${[...noKey].join(', ')})` : ''}${cut.size ? `; at most ${MAX_ROWS} rows are read, so large tables are cut (${[...cut].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([n, k]) => `${n} −${k}`).join(', ')}${cut.size > 6 ? ', …' : ''}), and some of their foreign keys may point to rows that were left out` : ''}` })
   if (expr) log.push({ level: 'warn', text: `Left out ${expr} values that are not literals (expressions or function calls)` })
   if (unknownCols.size) log.push({ level: 'warn', text: `Columns not in the table: ${[...unknownCols].slice(0, 8).join(', ')}` })
   return { populations, factPopulations, rows, log }

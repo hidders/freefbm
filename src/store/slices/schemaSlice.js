@@ -1,5 +1,6 @@
 import { mkSchema, mkDiagram, SCHEMA_PROFILES, activeSchemaIdOf } from '../storeHelpers'
-import { importPostgresDdl } from '../../relational/ddlImport.js'
+import { importPostgresDdl, samplePopulation } from '../../relational/ddlImport.js'
+import { parseDdl } from '../../relational/ddlParse.js'
 import { exportPostgresDdl } from '../../relational/ddlExport.js'
 import { guessOrmSchema } from '../../relational/guessOrm.js'
 import { generateRelational } from '../../relational/rmap.js'
@@ -134,6 +135,30 @@ export const createSchemaSlice = (set, get) => ({
     return { schemaId: schema.id, stats: st }
   },
 
+  // The rows of a SQL script's INSERT statements and COPY blocks as the
+  // population of a relational schema (replacing the population it had), as
+  // one undo step. Returns { rows }.
+  loadSampleRows(schemaId, sql, name = 'SQL script') {
+    const st = get()
+    const inSchema = (x) => x.schemaId === schemaId
+    const built = { objectTypes: st.objectTypes.filter(inSchema), facts: st.facts.filter(inSchema), constraints: st.constraints.filter(inSchema) }
+    const parsed = parseDdl(sql)
+    const sample = samplePopulation(parsed, built)
+    const ids = new Set([...built.objectTypes, ...built.facts].map(x => x.id))
+    const keep = (pops) => Object.fromEntries(Object.entries(pops ?? {}).filter(([k]) => !ids.has(k)))
+    set(s => ({
+      populations: { ...keep(s.populations), ...sample.populations },
+      factPopulations: { ...keep(s.factPopulations), ...sample.factPopulations },
+      isDirty: true,
+    }))
+    const schema = st.schemas.find(x => x.id === schemaId)
+    get().setImportLog({ kind: 'ddl', source: `${name} (sample rows)`, entries: [
+      ...(sample.rows ? [] : [{ level: 'warn', text: `No rows of ${schema?.name ?? 'the schema'}'s tables in ${name} (INSERT … VALUES or COPY … FROM stdin)` }]),
+      ...sample.log,
+    ] })
+    return { rows: sample.rows }
+  },
+
   // Guesses an ORM2 schema from a relational one (workbench step 9): a new
   // ORM2 schema with one diagram, and the mapping from the relational schema
   // to it, as one undo step. surrogates: { tableId: 'keep' | 'drop' } overrides
@@ -166,7 +191,7 @@ export const createSchemaSlice = (set, get) => ({
     }
     const n = built.stats
     get().setImportLog({ kind: 'guess', source: `${rel.name} (guessed ORM2 schema)`, entries: [
-      { level: 'note', text: `Schema ${unique}: ${n.entityTypes} entity types, ${n.valueTypes} value types, ${n.factTypes} fact types${n.subtypes ? `, ${n.subtypes} subtypes` : ''}; ${n.junctions} junction tables became fact types${n.dropped ? `; ${n.dropped} surrogate keys dropped` : ''}` },
+      { level: 'note', text: `Schema ${unique}: ${n.entityTypes} entity types, ${n.valueTypes} value types, ${n.factTypes} fact types${n.subtypes ? `, ${n.subtypes} subtypes` : ''}; ${n.junctions} junction tables became fact types${n.flags ? `; ${n.flags} boolean columns became unary fact types` : ''}${n.dropped ? `; ${n.dropped} surrogate keys dropped` : ''}` },
       { level: 'note', text: `Mapping ${built.mapping.name}: ${n.rules} rules (Mappings tab: Run →, Round trip)` },
       ...built.log,
     ] })

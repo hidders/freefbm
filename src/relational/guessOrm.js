@@ -15,6 +15,14 @@
 //   junction table        → (all columns in its foreign keys, all in its key,
 //                           not referenced) an m:n (or n-ary) fact type
 //   other column          → fact type "Entity has Value", mandatory when NOT NULL
+//   boolean NOT NULL column → (a flag) unary fact type "Entity is active",
+//                           true when it holds, false when it doesn't
+//   table with only a one-column key, referenced → value type (its rows are
+//                           the values); columns referring to it play it
+//   type column           → (named type, kind, class, category or role, with
+//                           a list of values, declared or in the sample rows)
+//                           a derived subtype per value; a column filled only
+//                           in rows of one value moves to that subtype
 //   foreign key           → fact type between the two entity types, read from
 //                           the column name ("reports to", "has support rep")
 //   UNIQUE                → uniqueness constraint (internal or external)
@@ -73,6 +81,33 @@ function fkReading(fk, refWords) {
   return `has ${ws.join(' ')}`
 }
 
+// A flag: a boolean NOT NULL column outside keys and foreign keys. Its
+// reading: the column name without a flag/bool/ind suffix, with "is" in front
+// unless it starts with a verb ("is_active", "has_stock", "salariedflag" →
+// "is salaried").
+const isBooleanCol = (col) => /^bool/i.test(col.vt.datatypeAssignment?.datatypeId ?? '')
+function flagReading(name) {
+  let ws = words(name)
+  const last = ws.length - 1
+  if (ws.length > 1 && /^(flag|bool|ind|yn)$/.test(ws[last])) ws = ws.slice(0, -1)
+  else if (ws.length) ws[last] = ws[last].replace(/(.{3,})(flag|bool)$/, '$1')
+  if (!ws.length) ws = words(name)
+  return /^(is|has|can|does|was|allows|uses)$/.test(ws[0]) ? ws.join(' ') : `is ${ws.join(' ')}`
+}
+
+// A type column's values: its list of values, or (when it has none) the
+// distinct values of the sample rows when they are few; null when it is not one.
+const DISCRIMINATOR = /^(type|kind|class|category|role|discriminator)$/
+function discriminatorValues(state, col) {
+  const ws = words(col.name)
+  if (!ws.length || !DISCRIMINATOR.test(ws[ws.length - 1]) || isBooleanCol(col)) return null
+  const range = col.fact.roles[col.v]?.valueRange?.length ? col.fact.roles[col.v].valueRange : col.vt.valueRange ?? []
+  if (range.length) return range.every(r => r.type === 'single') && range.length >= 2 && range.length <= 12 ? range.map(r => String(r.value)) : null
+  const tuples = state.factPopulations?.[col.fact.id] ?? []
+  const vals = [...new Set(tuples.map(t => t[col.v]).filter(v => v != null))]
+  return vals.length >= 2 && vals.length <= 8 && tuples.length >= 2 * vals.length ? vals.sort() : null
+}
+
 // ── Analysis ─────────────────────────────────────────────────────────────────
 
 const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x))
@@ -82,10 +117,17 @@ const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x))
 // superTable, superFk }.
 export function analyseTables(state, relSchemaId, rm = relationalModel(state, relSchemaId)) {
   const referenced = new Set(rm.fks.map(fk => fk.toTable.id))
+  // Lookup tables: only a one-column key with given values, referenced and
+  // referencing nothing. Their values become a value type.
+  const lookups = new Set(rm.tables.filter(t => t.columns.length === 1 && t.pk?.length === 1 && t.pk[0] === t.columns[0] &&
+    !t.columns[0].generated && referenced.has(t.id) && !t.fks.length).map(t => t.id))
   const out = []
   for (const t of rm.tables) {
     const info = { table: t, kind: 'entity', name: pascal(entityWords(t.name)) || 'Entity',
-      surrogate: null, naturalKey: null, defaultSurrogate: null, superTable: null, superFk: null }
+      surrogate: null, naturalKey: null, defaultSurrogate: null, superTable: null, superFk: null,
+      // Foreign keys to entity tables (one to a lookup table is a plain column).
+      fks: t.fks.filter(fk => !lookups.has(fk.toTable.id)) }
+    if (lookups.has(t.id)) { info.kind = 'lookup'; info.name = pascal(entityWords(t.name)) || 'Value'; out.push(info); continue }
     const pk = t.pk
     // A surrogate: a one-column key whose values are generated.
     if (pk?.length === 1 && pk[0].generated) {
@@ -95,11 +137,11 @@ export function analyseTables(state, relSchemaId, rm = relationalModel(state, re
       info.naturalKey = nk ?? null
       info.defaultSurrogate = nk ? 'drop' : 'keep'
     }
-    const inFk = new Set(t.fks.flatMap(fk => fk.from))
-    const subFk = pk && t.fks.find(fk => fk.toTable !== t && sameSet(fk.from, pk) && fk.toTable.pk && sameSet(fk.to, fk.toTable.pk))
-    if (pk && !t.columns.some(c => c.generated) && t.fks.length >= 2 && t.columns.every(c => inFk.has(c)) &&
+    const inFk = new Set(info.fks.flatMap(fk => fk.from))
+    const subFk = pk && info.fks.find(fk => fk.toTable !== t && sameSet(fk.from, pk) && fk.toTable.pk && sameSet(fk.to, fk.toTable.pk))
+    if (pk && !t.columns.some(c => c.generated) && info.fks.length >= 2 && t.columns.every(c => inFk.has(c)) &&
         sameSet(pk, t.columns) && !referenced.has(t.id) &&
-        t.fks.reduce((n, fk) => n + fk.from.length, 0) === t.columns.length) {
+        info.fks.reduce((n, fk) => n + fk.from.length, 0) === t.columns.length) {
       info.kind = 'junction'
     } else if (subFk) {
       info.kind = 'subtype'
@@ -152,7 +194,7 @@ export function guessOrmSchema(state, relSchemaId, { schemaId = null, surrogates
   // Entity types first, so value types can avoid their names.
   const entityOf = new Map()   // table id → entity type
   for (const p of plan) {
-    if (p.kind === 'junction') continue
+    if (p.kind === 'junction' || p.kind === 'lookup') continue
     const e = { ...mkEntity(0, 0), name: uniqueName(p.name), schemaId }
     entityOf.set(p.table.id, e)
     p.entity = e
@@ -189,6 +231,16 @@ export function guessOrmSchema(state, relSchemaId, { schemaId = null, surrogates
     const n = pascal(words(col.name)) || 'Value'
     return [...entityOf.values()].some(e => e.name === n) ? `${n}Value` : n
   }
+  // A lookup table's values: a value type, played by the columns that refer to it.
+  for (const p of plan) {
+    if (p.kind !== 'lookup') continue
+    p.vt = valueType(p.name, p.table.columns[0], true)
+    note(`${p.table.name} only lists values: it became the value type ${p.vt.name}, and the columns that refer to it are its roles`)
+  }
+  const lookupVt = (t, col) => {
+    const fk = t.fks.find(k => k.from.length === 1 && k.from[0] === col && info.get(k.toTable.id)?.kind === 'lookup')
+    return fk ? info.get(fk.toTable.id).vt : null
+  }
   const roleRange = (col) => col.fact.roles[col.v]?.valueRange?.length ? { valueRange: col.fact.roles[col.v].valueRange } : {}
 
   // A binary fact type: role 0 played by `a`, role 1 by `b`.
@@ -204,22 +256,22 @@ export function guessOrmSchema(state, relSchemaId, { schemaId = null, surrogates
   // Per table: the fact type of each column and foreign key.
   //   p.colFact: col → { fact, role }   (the role holding the column's value)
   //   p.fkFact:  fk  → fact (role 1 = referenced entity)
-  for (const p of plan) { p.colFact = new Map(); p.fkFact = new Map() }
+  for (const p of plan) { p.colFact = new Map(); p.fkFact = new Map(); p.flagFact = new Map() }
 
   for (const p of plan) {
     const t = p.table, e = p.entity
-    if (p.kind === 'junction') continue
+    if (p.kind === 'junction' || p.kind === 'lookup') continue
     if (p.kind === 'subtype') {
       const st = { ...mkSubtype(e.id, entityOf.get(p.superTable.id).id), schemaId }
       subtypes.push(st)
     }
     const key = p.key ?? []
-    const keyFks = p.kind === 'subtype' ? [] : t.fks.filter(fk => fk.from.every(c => key.includes(c)))
+    const keyFks = p.kind === 'subtype' ? [] : p.fks.filter(fk => fk.from.every(c => key.includes(c)))
     const keyFkCols = new Set(keyFks.flatMap(fk => fk.from))
     const keyPlain = p.kind === 'subtype' ? [] : key.filter(c => !keyFkCols.has(c))
     p.keyFks = keyFks
     p.keyPlain = keyPlain
-    const inFk = new Set(t.fks.flatMap(fk => fk.from))
+    const inFk = new Set(p.fks.flatMap(fk => fk.from))
 
     // The reference scheme.
     if (p.kind !== 'subtype' && key.length === 1 && keyPlain.length === 1) {
@@ -228,7 +280,7 @@ export function guessOrmSchema(state, relSchemaId, { schemaId = null, surrogates
       let n = pascal(words(col.name))
       if (!n.startsWith(e.name)) n = e.name + n
       const surrogateKept = p.surrogate === col
-      const vt = surrogateKept || t.pk?.[0] === col ? valueType(n, col, true) : valueType(vtName(col), col, false, e)
+      const vt = lookupVt(t, col) ?? (surrogateKept || t.pk?.[0] === col ? valueType(n, col, true) : valueType(vtName(col), col, false, e))
       const f = binary(e, vt, 'has', { uniqueness: [mkUniqueness([1])], preferredUniqueness: [[1]],
         alternativeReadings: [{ roleOrder: [1, 0], parts: ['', 'refers to', ''] }] })
       f.roles[1] = { ...f.roles[1], ...roleRange(col) }
@@ -236,7 +288,7 @@ export function guessOrmSchema(state, relSchemaId, { schemaId = null, surrogates
     } else if (p.kind !== 'subtype' && key.length) {
       const members = []
       for (const col of keyPlain) {
-        const f = binary(e, valueType(vtName(col), col, false, e), 'has', { uniqueness: [mkUniqueness([0])] })
+        const f = binary(e, lookupVt(t, col) ?? valueType(vtName(col), col, false, e), 'has', { uniqueness: [mkUniqueness([0])] })
         setMandatory(f, 0)
         f.roles[1] = { ...f.roles[1], ...roleRange(col) }
         p.colFact.set(col, { fact: f, role: 1 })
@@ -266,13 +318,57 @@ export function guessOrmSchema(state, relSchemaId, { schemaId = null, surrogates
     for (const col of t.columns) {
       if (p.colFact.has(col) || inFk.has(col) || (p.dropSurrogate && col === p.surrogate)) continue
       if (p.kind === 'subtype' && key.includes(col)) continue
-      const f = binary(e, valueType(vtName(col), col, false, e), 'has', { uniqueness: [mkUniqueness([0])] })
+      if (isBooleanCol(col) && col.notNull && !col.generated && !key.includes(col)) {
+        // A flag: a unary fact type.
+        const f = { ...mkFact(0, 0, 1), schemaId, readingParts: ['', flagReading(col.name)] }
+        f.roles = [{ ...f.roles[0], objectTypeId: e.id }]
+        f.uniqueness = [mkUniqueness([0])]
+        facts.push(f)
+        p.flagFact.set(col, f)
+        continue
+      }
+      const f = binary(e, lookupVt(t, col) ?? valueType(vtName(col), col, false, e), 'has', { uniqueness: [mkUniqueness([0])] })
       if (col.notNull) setMandatory(f, 0)
       f.roles[1] = { ...f.roles[1], ...roleRange(col) }
       p.colFact.set(col, { fact: f, role: 1 })
     }
+    // Type columns: a derived subtype per value.
+    p.discSubs = []
+    for (const [col, cf] of p.colFact) {
+      if (key.includes(col) || p.discSubs.length) continue
+      const vals = discriminatorValues(state, col)
+      if (!vals) continue
+      const vt = cf.fact.roles[1].objectTypeId
+      const subOf = new Map()
+      for (const v of vals) {
+        const sub = { ...mkEntity(0, 0), name: uniqueName(`${pascal(words(v)) || 'Value'}${e.name}`), schemaId, derivation: 'derived',
+          derivationRule: { t: 'exists', v: { id: 'dv', typeId: vt }, body: { t: 'and', args: [
+            { t: 'fact', factId: cf.fact.id, args: ['subject', 'dv'] },
+            { t: 'vcmp', op: '≈', left: { t: 'var', id: 'dv' }, right: { t: 'const', text: v } }] } } }
+        objectTypes.push(sub)
+        subtypes.push({ ...mkSubtype(sub.id, e.id), schemaId })
+        subOf.set(v, sub)
+        p.discSubs.push(sub)
+      }
+      note(`${t.name}.${col.name} tells the rows apart: ${e.name} has the derived subtypes ${p.discSubs.map(x => x.name).join(', ')}`)
+      // A column filled only in rows of one value is about that subtype.
+      const kindOf = new Map((state.factPopulations?.[col.fact.id] ?? []).map(tp => [JSON.stringify(tp[col.t]), tp[col.v]]))
+      if (!kindOf.size) continue
+      const moved = []
+      for (const [c2, cf2] of p.colFact) {
+        if (c2 === col || c2.notNull || key.includes(c2)) continue
+        const rows = (state.factPopulations?.[c2.fact.id] ?? []).filter(tp => tp[c2.v] != null)
+        const kinds = new Set(rows.map(tp => kindOf.get(JSON.stringify(tp[c2.t]))))
+        if (rows.length && kinds.size === 1 && subOf.has([...kinds][0])) {
+          const sub = subOf.get([...kinds][0])
+          cf2.fact.roles[0] = { ...cf2.fact.roles[0], objectTypeId: sub.id }
+          moved.push(`${c2.name} → ${sub.name}`)
+        }
+      }
+      if (moved.length) note(`${t.name}: columns filled only for one ${col.name} in the sample rows belong to its subtype: ${moved.join(', ')}`)
+    }
     // Foreign keys.
-    for (const fk of t.fks) {
+    for (const fk of p.fks) {
       if (p.fkFact.has(fk) || fk === p.superFk) continue
       const ref = entityOf.get(fk.toTable.id)
       if (!ref) continue
@@ -287,13 +383,13 @@ export function guessOrmSchema(state, relSchemaId, { schemaId = null, surrogates
   for (const p of plan) {
     if (p.kind !== 'junction') continue
     const t = p.table
-    const players = t.fks.map(fk => entityOf.get(fk.toTable.id))
+    const players = p.fks.map(fk => entityOf.get(fk.toTable.id))
     if (players.some(x => !x)) { warn(`${t.name}: a junction table between tables without entity types is left out`); continue }
     const n = players.length
     const f = { ...mkFact(0, 0, n), schemaId }
     f.roles = f.roles.map((r, i) => ({ ...r, objectTypeId: players[i].id }))
     const ws = words(t.name)
-    const refWs = new Set(players.flatMap(x => words(x.name)).concat(t.fks.flatMap(fk => words(fk.toTable.name))))
+    const refWs = new Set(players.flatMap(x => words(x.name)).concat(p.fks.flatMap(fk => words(fk.toTable.name))))
     const own = ws.filter(w => !refWs.has(w) && !refWs.has(singular(w)))
     const verb = own.length ? own.join(' ') : 'has'
     f.readingParts = n === 2 ? ['', verb, ''] : ['', verb, ...Array(n - 2).fill('with'), '']
@@ -305,7 +401,7 @@ export function guessOrmSchema(state, relSchemaId, { schemaId = null, surrogates
 
   // Other uniqueness constraints.
   for (const p of plan) {
-    if (p.kind === 'junction' || p.kind === 'nokey') continue
+    if (p.kind === 'junction' || p.kind === 'nokey' || p.kind === 'lookup') continue
     const t = p.table
     const keys = [...t.uniques, ...(t.pk ? [t.pk] : [])]
     for (const u of keys) {
@@ -314,7 +410,7 @@ export function guessOrmSchema(state, relSchemaId, { schemaId = null, surrogates
       if (p.kind === 'subtype' && sameSet(u, t.pk)) continue
       const members = []
       const used = new Set()
-      for (const fk of t.fks) {
+      for (const fk of p.fks) {
         if (fk.from.every(c => u.includes(c)) && p.fkFact.has(fk) && !fk.from.some(c => used.has(c))) {
           members.push({ kind: 'role', factId: p.fkFact.get(fk).id, roleIndex: 1 })
           fk.from.forEach(c => used.add(c))
@@ -344,8 +440,8 @@ export function guessOrmSchema(state, relSchemaId, { schemaId = null, surrogates
   const diagram = layoutDiagram(plan, rm, { objectTypes, facts, subtypes, constraints, schemaId })
 
   const stats = {
-    entityTypes: entityOf.size, valueTypes: objectTypes.length - entityOf.size, factTypes: facts.length,
-    subtypes: subtypes.length, junctions: plan.filter(p => p.kind === 'junction' && p.fact).length,
+    entityTypes: entityOf.size, valueTypes: objectTypes.filter(o => o.kind === 'value').length, factTypes: facts.length,
+    subtypes: subtypes.length, flags: plan.reduce((n, p) => n + (p.flagFact?.size ?? 0), 0), junctions: plan.filter(p => p.kind === 'junction' && p.fact).length,
     dropped: plan.filter(p => p.dropSurrogate).length, rules: mapping.rules.length,
   }
   for (const c of constraints) delete c._entity
@@ -356,7 +452,7 @@ export function guessOrmSchema(state, relSchemaId, { schemaId = null, surrogates
   const mandatoryOf = new Set()
   for (const f of facts) f.roles.forEach((r, i) => { if (r.mandatory && !identified.has(`${f.id}:${i}`)) mandatoryOf.add(r.objectTypeId) })
   let independent = 0
-  for (const o of objectTypes) if (o.kind === 'entity' && !mandatoryOf.has(o.id)) { o.isIndependent = true; independent++ }
+  for (const o of objectTypes) if (o.kind === 'entity' && !o.derivation && !mandatoryOf.has(o.id)) { o.isIndependent = true; independent++ }
   if (independent) note(`${independent} entity type${independent === 1 ? ' is' : 's are'} independent (!): ${independent === 1 ? 'its' : 'their'} rows may have only a key`)
   return { objectTypes, facts, subtypes, constraints, diagram, mapping, log, stats, plan }
 }
@@ -374,6 +470,7 @@ function buildRules(plan, info, objectTypes) {
   for (const p of plan) {
     if (p.kind === 'nokey' || (p.kind === 'junction' && !p.fact)) continue
     if (p.kind === 'junction') { rules.push(junctionRule(p, info)); continue }
+    if (p.kind === 'lookup') { rules.push(lookupRule(p)); continue }
     rules.push(entityRule(p, info))
     for (const [col, cf] of p.colFact) {
       if ((p.key ?? []).includes(col)) continue
@@ -383,6 +480,7 @@ function buildRules(plan, info, objectTypes) {
       if (p.keyFks.includes(fk)) continue
       rules.push(fkRule(p, info, fk, f))
     }
+    for (const [col, f] of p.flagFact) rules.push(flagRule(p, info, col, f, true), flagRule(p, info, col, f, false))
   }
   return rules
 }
@@ -415,7 +513,7 @@ function droppedValue(info, table, col, seen = new Set()) {
     const i = p.superFk.from.indexOf(col)
     return droppedValue(info, p.superTable, p.superFk.to[i], seen)
   }
-  for (const fk of table.fks) {
+  for (const fk of p.fks) {
     const i = fk.from.indexOf(col)
     if (i >= 0 && (p.keyFks ?? []).includes(fk)) return droppedValue(info, fk.toTable, fk.to[i], seen)
   }
@@ -517,6 +615,29 @@ function attributeRule(p, info, col, cf) {
   return { id: uid(), name: factName(cf.fact), source: sourceTree(src, relAtom(p.table, terms)), target: tgt }
 }
 
+// A flag column: rows with true give the unary fact, rows with false an
+// entity that does not play it.
+function flagRule(p, info, col, f, value) {
+  const sc = ruleScope()
+  const src = { vars: [], atoms: [] }
+  const terms = rowTerms(sc, info, src, p)
+  const main = relAtom(p.table, terms)
+  main.args[col.fact.id] = { k: 'const', text: String(value) }
+  const x = sc.v(p.entity.id)
+  const atom = factAtom(f.id, [x.id])
+  const tgt = exists([x], and([...identify(sc, info, src, p.table, x.id, terms), value ? atom : { t: 'not', arg: atom }]))
+  return { id: uid(), name: `${factName(f)}${value ? '' : ': false'}`, source: sourceTree(src, main), target: tgt }
+}
+
+// A lookup table's rows are the values of its value type.
+function lookupRule(p) {
+  const sc = ruleScope()
+  const col = p.table.columns[0]
+  const y = sc.y(col.name), w = sc.v(p.vt.id)
+  return { id: uid(), name: p.vt.name, source: { t: 'rel', tableId: p.table.id, args: { [col.fact.id]: { k: 'fv', y } } },
+    target: exists([w], and([{ t: 'type', typeId: p.vt.id, arg: w.id }, bindAtom(w.id, y)])) }
+}
+
 function fkRule(p, info, fk, f) {
   const sc = ruleScope()
   const src = { vars: [], atoms: [] }
@@ -535,10 +656,10 @@ function junctionRule(p, info) {
   const src = { vars: [], atoms: [] }
   const t = p.table
   const terms = new Map()
-  for (const fk of t.fks) fk.from.forEach((c, i) => terms.set(c, termFor(sc, info, src, t, c, { table: fk.toTable, col: fk.to[i] })))
+  for (const fk of p.fks) fk.from.forEach((c, i) => terms.set(c, termFor(sc, info, src, t, c, { table: fk.toTable, col: fk.to[i] })))
   const zs = p.fact.roles.map(r => sc.v(r.objectTypeId))
   const parts = []
-  t.fks.forEach((fk, i) => {
+  p.fks.forEach((fk, i) => {
     const t2 = new Map(fk.from.map((c, j) => [fk.to[j], terms.get(c)]))
     parts.push(...identify(sc, info, src, fk.toTable, zs[i].id, t2))
   })
@@ -599,13 +720,15 @@ const ATTR_W = 330
 function layoutDiagram(plan, rm, { objectTypes, facts, subtypes, constraints, schemaId }) {
   const diagram = { ...mkDiagram('Main', schemaId), profileId: 'postgresql' }
   const otById = new Map(objectTypes.map(o => [o.id, o]))
-  const entities = plan.filter(p => p.entity)
-  // A block per entity type: the entity, with its attributes to the right.
+  // A block per entity type (derived subtypes of type columns too): the
+  // entity, with its attributes to the right.
+  const entities = [...plan.filter(p => p.entity).map(p => ({ entity: p.entity })), ...plan.flatMap(p => p.discSubs ?? []).map(entity => ({ entity }))]
   const attrFacts = new Map(entities.map(p => [p.entity.id, []]))
   const linkFacts = []
   for (const f of facts) {
     const players = f.roles.map(r => otById.get(r.objectTypeId))
-    if (f.roles.length === 2 && players[0]?.kind === 'entity' && players[1]?.kind === 'value') attrFacts.get(players[0].id)?.push(f)
+    // Attributes and unaries (flags) go in the entity's block.
+    if ((f.roles.length === 2 && players[0]?.kind === 'entity' && players[1]?.kind === 'value') || (f.roles.length === 1 && players[0]?.kind === 'entity')) attrFacts.get(players[0].id)?.push(f)
     else linkFacts.push(f)
   }
   const refModeOf = new Map()
@@ -631,6 +754,11 @@ function layoutDiagram(plan, rm, { objectTypes, facts, subtypes, constraints, sc
     const attrs = attrFacts.get(p.entity.id).filter(f => refModeOf.get(p.entity.id) !== f)
     attrs.forEach((f, i) => {
       const fy = Math.round(b.y + ROW_H / 2 + i * ROW_H)
+      if (f.roles.length === 1) {
+        occs.push(mkOcc(f.id, ex + 150, fy, { roleOccurrenceMap: { 0: o.id } }))
+        f.x = ex + 150; f.y = fy
+        return
+      }
       const vt = otById.get(f.roles[1].objectTypeId)
       const vo = mkOcc(vt.id, ex + 300, fy)
       occs.push(vo, mkOcc(f.id, ex + 150, fy, { roleOccurrenceMap: { 0: o.id, 1: vo.id } }))

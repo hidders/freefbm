@@ -6,7 +6,8 @@
 // ENUM, CREATE DOMAIN and CREATE UNIQUE INDEX on plain columns. Everything else
 // (views, functions, triggers, grants...) is counted and skipped. Rows of
 // INSERT INTO ... VALUES are read as sample data (step 8), with literal values
-// only.
+// only, as are the rows of COPY ... FROM stdin blocks (pg_dump's data
+// format: text, or CSV); rows of a partition count as rows of its table.
 //
 // parseDdl(sql) → { tables, enums, domains, inserts, skipped, problems }
 //   tables:  [{ name, qualified, columns: [{ name, type, notNull, checks: [text] }],
@@ -14,7 +15,7 @@
 //               refTable, refColumns | null }], checks: [text] }]
 //   enums:   Map(name → [label])
 //   domains: Map(name → { type, notNull, checks: [text] })
-//   inserts: [{ table: { name, schema }, columns: [name] | null, rows: [[value]] }]
+//   inserts: [{ table: { name, schema }, columns: [name] | null, rows: [[value]], copy? }]
 //            value: a string, null (NULL), or undefined (not a literal)
 //   skipped: Map(statement kind → count)
 //   problems:[text]
@@ -192,13 +193,15 @@ const TYPE_STOP = new Set(['constraint', 'not', 'null', 'default', 'primary', 'u
 
 // ── Statements ───────────────────────────────────────────────────────────────
 
-export function parseDdl(sql) {
+export function parseDdl(sql0) {
+  const { sql, copies } = extractCopies(sql0)
   const tables = new Map()   // key: qualified name
   const enums = new Map()
   const domains = new Map()
   const skipped = new Map()
   const inserts = []
   const problems = []
+  const parentOf = new Map()   // partition key → its table's qualified name
   const skip = (kind) => skipped.set(kind, (skipped.get(kind) ?? 0) + 1)
   const keyOf = (q) => `${q.schema ?? ''}.${q.name}`
   const findTable = (q) => tables.get(keyOf(q)) ?? [...tables.values()].find(t => t.name === q.name && (!q.schema || t.schema === q.schema))
@@ -212,7 +215,7 @@ export function parseDdl(sql) {
         s.eatWord('or', 'replace')
         s.eatWord('global'); s.eatWord('local')
         s.eatWord('temporary'); s.eatWord('temp'); s.eatWord('unlogged')
-        if (s.eatWord('table')) { parseCreateTable(s, tables, keyOf, problems, skip, defSchema); return }
+        if (s.eatWord('table')) { parseCreateTable(s, tables, keyOf, problems, skip, defSchema, parentOf); return }
         if (s.eatWord('schema')) {
           // CREATE SCHEMA name [AUTHORIZATION role] [schema elements...]
           s.eatWord('if', 'not', 'exists')
@@ -293,7 +296,7 @@ export function parseDdl(sql) {
         if (s.isWord('attach') && s.isWord('partition', 1)) {
           s.i += 2
           const child = qn()
-          if (child) partitions.add(keyOf(child))
+          if (child) { partitions.add(keyOf(child)); if (q) parentOf.set(keyOf(child), q) }
           return
         }
         const actions = splitCommas(s.tk.slice(s.i))
@@ -321,6 +324,17 @@ export function parseDdl(sql) {
   for (const tokens of statements(tokenize(sql))) handle(tokens, null)
   // Partitions of a partitioned table hold its rows; they are not tables of their own.
   for (const k of partitions) if (tables.delete(k)) skip('partition (ALTER TABLE ... ATTACH PARTITION)')
+  for (const c of copies) {
+    if (c.problem) { problems.push(c.problem); continue }
+    inserts.push({ table: c.table, columns: c.columns, rows: c.rows, copy: true })
+  }
+  // Rows of a partition are rows of its table.
+  for (const ins of inserts) {
+    let q = ins.table
+    for (let k = 0; k < 4 && (parentOf.has(keyOf(q)) || (!q.schema && [...parentOf.keys()].some(x => x.endsWith(`.${q.name}`)))); k++)
+      q = parentOf.get(keyOf(q)) ?? parentOf.get([...parentOf.keys()].find(x => x.endsWith(`.${q.name}`)))
+    ins.table = q
+  }
   return { tables: [...tables.values()], enums, domains, inserts, skipped, problems }
 }
 
@@ -344,12 +358,19 @@ function literalValue(tokens) {
   return undefined
 }
 
-function parseCreateTable(s, tables, keyOf, problems, skip, defSchema) {
+function parseCreateTable(s, tables, keyOf, problems, skip, defSchema, parentOf) {
   s.eatWord('if', 'not', 'exists')
   let q = s.qname()
   if (q && !q.schema && defSchema) q = { ...q, schema: defSchema }
   if (!q) throw new Error('no table name')
-  if (s.isWord('partition') && s.isWord('of', 1)) { skip('CREATE TABLE ... PARTITION OF'); return }
+  if (s.isWord('partition') && s.isWord('of', 1)) {
+    s.i += 2
+    let parent = s.qname()
+    if (parent && !parent.schema && defSchema) parent = { ...parent, schema: defSchema }
+    if (parent) parentOf.set(keyOf(q), parent)
+    skip('CREATE TABLE ... PARTITION OF')
+    return
+  }
   if (s.isWord('of')) { skip('CREATE TABLE ... OF type'); return }
   const body = s.group()
   if (!body) { skip('CREATE TABLE AS'); return }
@@ -567,4 +588,92 @@ function skipExpression(s) {
     if (t.t === 'op' && t.v === '(') { s.group(); continue }
     s.next()
   }
+}
+
+// ── COPY ... FROM stdin ──────────────────────────────────────────────────────
+
+// The COPY ... FROM stdin statements of a script and their data lines (up to
+// a line \.), taken out of the script so the tokenizer never sees the data:
+// { sql, copies: [{ table, columns, rows } | { problem }] }. Text format
+// (tab-separated, \N for NULL, backslash escapes) and CSV (quotes, an empty
+// unquoted field for NULL, HEADER skipped) are read.
+export function extractCopies(sql) {
+  if (!/\bcopy\b/i.test(sql)) return { sql, copies: [] }
+  const copies = []
+  const out = []
+  const lines = sql.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    // A COPY statement that ends on this line and reads from stdin.
+    if (!/^\s*copy\s/i.test(line) || !/\bfrom\s+stdin\b[^;]*;\s*$/i.test(line)) { out.push(line); continue }
+    out.push('')
+    const head = tokenize(line.replace(/;\s*$/, ''))
+    const s = new Stream(head)
+    s.eatWord('copy')
+    const table = s.qname()
+    let columns = null
+    if (s.isOp('(')) columns = nameList(s.group())
+    s.eatWord('from'); s.eatWord('stdin')
+    // Options: WITH (FORMAT csv, HEADER, DELIMITER ',', NULL '') or the old CSV HEADER DELIMITER AS ',' form.
+    const opt = { csv: false, header: false, delim: null, nul: null }
+    const words = s.tk.slice(s.i)
+    for (let k = 0; k < words.length; k++) {
+      const w = words[k]
+      const v = w.t === 'id' ? w.v : null
+      const nextVal = () => { let j = k + 1; if (words[j]?.t === 'id' && words[j].v === 'as') j++; k = j; return words[j]?.v }
+      if (v === 'csv') opt.csv = true
+      else if (v === 'format') opt.csv = nextVal() === 'csv'
+      else if (v === 'header') opt.header = !(words[k + 1]?.t === 'id' && words[k + 1].v === 'false')
+      else if (v === 'delimiter') opt.delim = nextVal()
+      else if (v === 'null') opt.nul = nextVal()
+    }
+    const delim = opt.delim ?? (opt.csv ? ',' : '\t')
+    const nul = opt.nul ?? (opt.csv ? '' : '\\N')
+    const data = []
+    let j = i + 1
+    for (; j < lines.length; j++) {
+      const l = lines[j].replace(/\r$/, '')
+      if (l === '\\.') break
+      data.push(l)
+      out.push('')
+    }
+    if (j < lines.length) out.push('')
+    i = j
+    if (!table) { copies.push({ problem: `Could not read: ${line.slice(0, 120)}` }); continue }
+    const rows = opt.csv ? csvRows(data, delim, nul) : data.filter(l => l !== '').map(l => l.split(delim).map(f => (f === nul ? null : unescapeCopy(f))))
+    if (opt.csv && opt.header) rows.shift()
+    copies.push({ table, columns, rows })
+  }
+  return { sql: out.join('\n'), copies }
+}
+
+const COPY_ESC = { b: '\b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' }
+function unescapeCopy(f) {
+  if (!f.includes('\\')) return f
+  return f.replace(/\\(x[0-9a-fA-F]{1,2}|[0-7]{1,3}|.)/g, (_, e) => {
+    if (e[0] === 'x' && e.length > 1) return String.fromCharCode(parseInt(e.slice(1), 16))
+    if (/^[0-7]+$/.test(e)) return String.fromCharCode(parseInt(e, 8))
+    return COPY_ESC[e] ?? e
+  })
+}
+
+// CSV rows (a quoted field may run over several lines).
+function csvRows(lines, delim, nul) {
+  const text = lines.join('\n')
+  const rows = []
+  let row = [], field = '', quoted = false, inQ = false
+  const end = () => { row.push(!quoted && field === nul ? null : field); field = ''; quoted = false }
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (inQ) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++ }
+      else if (c === '"') inQ = false
+      else field += c
+    } else if (c === '"') { inQ = true; quoted = true }
+    else if (c === delim) end()
+    else if (c === '\n') { end(); rows.push(row); row = [] }
+    else field += c
+  }
+  if (field !== '' || quoted || row.length) { end(); rows.push(row) }
+  return rows
 }
