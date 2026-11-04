@@ -43,6 +43,7 @@ import { computePopulationIssues, projCellKey } from '../utils/populationValidat
 import { makePopulationEvaluator, formulaConstraintPopulationIssues } from '../logic/derivedPopulation.js'
 import { isFormulaConstraint, formulaElements } from '../logic/formulaConstraint.js'
 import { identifyingFactIds } from '../utils/refMode.js'
+import { formulaToRule } from '../logic/formulaToRule.js'
 import { isDeonticUniqueness, isDeonticMandatory } from '../logic/modality.js'
 import { relationalModel } from '../relational/relationalModel.js'
 import { prepareRun, executeRun, schemeOf } from './runMapping.js'
@@ -67,8 +68,11 @@ export function worldOf(state, schemaId) {
     if (!supers.has(st.subId)) supers.set(st.subId, [])
     supers.get(st.subId).push(st.superId)
   }
+  let entries = null
   return {
     schemaId, ctx, els, supers,
+    // The side's constraint entries (formalised), when first asked for.
+    entries: () => entries ?? (entries = entriesOf(state, schemaId)),
     ident: identifyingFactIds(els.facts, els.objectTypes, els.constraints),
     relational: ctx.relational ? relationalModel(state, schemaId) : null,
   }
@@ -114,7 +118,15 @@ function addTuple(w, pops, factId, tuple) {
 // composite identifier a combination of them.
 function freshCell(w, pops, typeId, fresh, depth = 0) {
   const ot = w.ctx.otById.get(typeId)
-  if (!ot) throw new Unsupported('an objectified fact type plays a role here')
+  if (!ot) {
+    // An instance of an objectified fact type without an identifier of its
+    // own is the tuple it nests.
+    const f = w.ctx.factById.get(typeId)
+    if (!f?.objectified || schemeOf(typeId, w.els)?.kind !== 'composite' || depth >= 4) throw new Unsupported('an objectified fact type with an identifier of its own plays a role here')
+    const cell = f.roles.map(r => freshCell(w, pops, r.objectTypeId, fresh, depth + 1))
+    addTuple(w, pops, f.id, cell)
+    return cell
+  }
   let cell
   if (ot.kind === 'entity') {
     const sch = schemeOf(typeId, w.els)
@@ -172,6 +184,8 @@ function alternatives(f, cap = 8) {
       return acc.map(args => ({ t: 'and', args }))
     }
     case 'exists': case 'count': return alternatives(f.body, cap).map(body => ({ ...f, body }))
+    // A closure: paths of 1, 2 or 3 steps (0 too for the reflexive one).
+    case 'tc': return [...(f.star ? [0] : []), 1, 2, 3].map(len => ({ ...f, len }))
     default: return [f]
   }
 }
@@ -199,7 +213,7 @@ function buildViolations(X, w, fresh) {
           return
         case 'count': {
           const n = f.op === '>' ? f.n + 1 : f.op === '≤' ? 0 : f.n
-          if (n > 6) throw new Unsupported(`a count of ${n}`)
+          if (n > 12) throw new Unsupported(`a count of ${n}`)
           for (let k = 0; k < n; k++) {
             const e = new Map(env)
             for (const v of f.vars) e.set(v, freshCell(w, pops, v.typeId, fresh))
@@ -209,25 +223,32 @@ function buildViolations(X, w, fresh) {
         }
         case 'and': for (const a of f.args) build(a, env); return
         case 'fact': {
+          const il = /^(.*)_il_(\d+)$/.exec(f.factId)
+          if (il && w.ctx.factById.get(il[1])?.objectified) {
+            // An implied link: the nested instance's part.
+            const n = cellOf(env, f.args[0]), x = cellOf(env, f.args[1])
+            if (!Array.isArray(n) || !S.unify(n[+il[2]], x)) ok = false
+            return
+          }
           const fact = w.ctx.factById.get(f.factId)
           if (!fact) throw new Unsupported('a fact type of another schema')
           const cells = f.args.map(v => cellOf(env, v))
-          if (isIdentifying(w, fact.id)) {
-            // Its value is the identified instance's identifier (or part of it).
-            fact.roles.forEach((r, i) => {
-              const sch = schemeOf(r.objectTypeId, w.els)
-              if (sch?.kind === 'refMode' && sch.rm.factId === fact.id && 1 - sch.rm.vtRoleIndex === i) {
-                if (!S.unify(cells[i], cells[sch.rm.vtRoleIndex])) ok = false
-              } else if (sch?.kind === 'composite' && Array.isArray(cells[i])) {
-                sch.parts.forEach((p, k) => { if (p.factId === fact.id && p.entityRoleIndex === i && !S.unify(cells[i][k], cells[p.roleIndex])) ok = false })
-              }
-            })
-          }
+          if (!unifyIdentifying(w, fact.id, cells, S)) ok = false
           addTuple(w, pops, fact.id, cells)
           return
         }
         case 'type': addInst(w, pops, f.typeId, cellOf(env, f.arg)); return
         case 'not': case 'true': return
+        case 'tc': {
+          // A path of f.len steps (alternatives picks the lengths).
+          const [v, u] = f.vars
+          const ends = [cellOf(env, f.args[0]), cellOf(env, f.args[1])]
+          const len = f.len ?? 1
+          if (len === 0) { if (!S.unify(ends[0], ends[1])) ok = false; return }
+          const nodes = [ends[0], ...Array.from({ length: len - 1 }, () => freshCell(w, pops, v.typeId, fresh)), ends[1]]
+          for (let k = 0; k < len; k++) build(f.body, new Map([...env, [v, nodes[k]], [u, nodes[k + 1]]]))
+          return
+        }
         case 'cmp':
           if (f.op === '=' && !S.unify(cellOf(env, f.left), cellOf(env, f.right))) ok = false
           return
@@ -275,7 +296,18 @@ const KILLING_KINDS = new Set(['exclusionViolation', 'ringViolation', 'valueRang
 // Constraints whose violations only facts can mend (a chase that stops
 // early has added a part of what they need).
 const POSITIVE_KINDS = /^(Mandatory|Inclusive-or|Participation|Subset|Equality)/
-const isKilling = (i) => KILLING_KINDS.has(i.kind) || (i.kind === 'exclusiveOrViolation' && i.count > 1)
+const isKilling = (i, w) => KILLING_KINDS.has(i.kind) || (i.kind === 'exclusiveOrViolation' && i.count > 1) || (w && tooMany(i, w))
+// A frequency violation by more occurrences than any range allows: more
+// facts can't mend it (merges by uniqueness have been made already).
+function tooMany(i, w) {
+  if (i.kind !== 'frequencyViolation' || !(i.count > 0)) return false
+  const range = i.internalFrequencyId
+    ? w.ctx.factById.get(i.factId)?.internalFrequency?.find(q => q.id === i.internalFrequencyId)?.range
+    : w.ctx.constraints.find(c => c.id === i.constraintId)?.frequency
+  const specs = (Array.isArray(range) ? range : range ? [{ type: 'range', lower: range.min, upper: range.max }] : []).map(sp => (
+    sp.type === 'single' ? Number(sp.value) : sp.type === 'lower' ? null : Number(sp.upper)))
+  return specs.length > 0 && specs.every(hi => hi != null && Number.isFinite(hi) && i.count > hi)
+}
 
 function issuesOf(w, pops, constraintId) {
   const active = new Set(Object.entries(pops.populations).filter(([, v]) => v.length).map(([k]) => k))
@@ -310,6 +342,19 @@ function issueKey(i) {
 
 // Whether an issue is a violation of the constraint of a formalise entry.
 function issueMatches(entry) {
+  // Cardinality ranges: population validation doesn't check them, so their
+  // formula is evaluated.
+  if (/:card(:\d+)?$/.test(entry.key) && entry.formula) {
+    let rule
+    try { rule = formulaToRule(entry.formula.t === 'obligatory' ? entry.formula.arg : entry.formula) } catch { return null }
+    const m = () => true
+    m.constraintId = null
+    m.evaluate = (w, pops) => {
+      const r = evaluatorOf(w, pops).closedFormula(rule)
+      return r.error || r.holds ? [] : [{ kind: 'cardinalityViolation', key: entry.key }]
+    }
+    return m
+  }
   const m = issueMatcher(entry)
   if (m) m.constraintId = /:(uc|mand|freq|vr)(:|$)/.test(entry.key) || entry.key.startsWith('part:') ? null : entry.key.split(':')[0]
   return m
@@ -331,7 +376,7 @@ function issueMatcher(entry) {
   if ((m = k.match(/^([^:]+):([a-z]+)$/)) && entry.kind?.startsWith('Ring')) return (i) => i.kind === 'ringViolation' && i.constraintId === m[1] && i.ringType === m[2]
   return null
 }
-const violations = (w, pops, match) => issuesOf(w, pops, match.constraintId ?? null).filter(match)
+const violations = (w, pops, match) => (match.evaluate ? match.evaluate(w, pops) : issuesOf(w, pops, match.constraintId ?? null).filter(match))
 
 // ── The chase ────────────────────────────────────────────────────────────────
 
@@ -462,6 +507,82 @@ function participationOf(w) {
   return (w.participation = out)
 }
 
+// Constraints that ask for facts the shapes above don't cover, as rules
+// ∀ȳ (L → R) with L and R positive existential (rule trees): subset and
+// equality constraints whose join paths are not one fact type or a join of
+// binaries, and formula constraints of that shape. { key, rule, right }.
+const POSITIVE_PART = new Set(['true', 'fact', 'type', 'exists', 'and', 'vcmp'])
+const positivePart = (n) => !!n && POSITIVE_PART.has(n.t) && (n.t !== 'vcmp' || n.op === '≈')
+  && (n.t !== 'exists' || positivePart(n.body)) && (n.t !== 'and' || n.args.every(positivePart))
+const hasFormulaQueries = (c) => (c.queries ?? []).some(q => q && !q.atoms && q.body)
+function tgdsOf(w) {
+  if (w.tgds) return w.tgds
+  const out = []
+  const simple = (c) => (c.sequences ?? []).length === 2 && c.sequences.every(q => seqShape(q, w)) && !hasFormulaQueries(c)
+  const close = (vars, b) => vars.reduceRight((x, v) => ({ t: 'forall', v, body: x }), b)
+  for (const e of w.entries?.() ?? []) {
+    const c = w.ctx.constraints.find(x => x.id === e.elementId)
+    if (!c || c.deontic || !e.formula || e.formula.t === 'obligatory') continue
+    const isOr = c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr'
+    if (!(isFormulaConstraint(c) || ((c.constraintType === 'subset' || c.constraintType === 'equality') && !simple(c)) || (isOr && hasFormulaQueries(c)))) continue
+    let rule
+    try { rule = formulaToRule(withoutIff(e.formula)) } catch { continue }
+    const vars = []
+    let n = rule
+    while (n?.t === 'forall') { vars.push(n.v); n = n.body }
+    for (const part of n?.t === 'and' ? n.args : [n]) {
+      // L → R, L → R1 ∨ … ∨ Rn, or R1 ∨ … ∨ Rn (a choice of R).
+      const left = part?.t === 'implies' ? part.left : { t: 'true' }
+      const right = part?.t === 'implies' ? part.right : part
+      if (!positivePart(left)) continue
+      if (positivePart(right)) { out.push({ key: e.key, rule: close(vars, part), right }); continue }
+      if (right?.t === 'or' && right.args.every(positivePart)) out.push({ key: e.key, rule: close(vars, part), right, alts: right.args })
+    }
+  }
+  return (w.tgds = out)
+}
+// An identifying fact: its value is the identified instance's identifier
+// (or part of it). False when they can't be made equal.
+function unifyIdentifying(w, factId, cells, S) {
+  if (!isIdentifying(w, factId)) return true
+  const fact = w.ctx.factById.get(factId)
+  let ok = true
+  fact.roles.forEach((r, i) => {
+    const sch = schemeOf(r.objectTypeId, w.els)
+    if (sch?.kind === 'refMode' && sch.rm.factId === fact.id && 1 - sch.rm.vtRoleIndex === i) {
+      if (!S.unify(cells[i], cells[sch.rm.vtRoleIndex])) ok = false
+    } else if (sch?.kind === 'composite' && Array.isArray(cells[i])) {
+      sch.parts.forEach((p, k) => { if (p.factId === fact.id && p.entityRoleIndex === i && !S.unify(cells[i][k], cells[p.roleIndex])) ok = false })
+    }
+  })
+  return ok
+}
+// R built for one binding of its free variables (env: var id → cell): its ∃
+// variables fresh, its atoms added, its ≈ merged.
+function buildRight(w, pops, R, env0, fresh) {
+  const env = new Map(env0), S = new Subst()
+  const term = (t) => (t?.t === 'var' ? env.get(t.id) : t?.t === 'const' ? String(t.text ?? '').trim().replace(/^'(.*)'$/s, '$1') : undefined)
+  const go = (n) => {
+    switch (n?.t) {
+      case 'exists': env.set(n.v.id, freshCell(w, pops, n.v.typeId, fresh)); go(n.body); return
+      case 'and': n.args.forEach(go); return
+      case 'fact': {
+        const il = /^(.*)_il_(\d+)$/.exec(n.factId)
+        if (il) { const x = env.get(n.args[0]); if (Array.isArray(x)) S.unify(x[+il[2]], env.get(n.args[1])); return }
+        const cells = n.args.map(a => env.get(a))
+        unifyIdentifying(w, n.factId, cells, S)
+        addTuple(w, pops, n.factId, cells)
+        return
+      }
+      case 'type': addInst(w, pops, n.typeId, env.get(n.arg)); return
+      case 'vcmp': { const l = term(n.left), r = term(n.right); if (l !== undefined && r !== undefined) S.unify(l, r); return }
+      default: return
+    }
+  }
+  go(R)
+  return S.changed ? applySubst(w, pops, S) : pops
+}
+
 // Closes a population under the side's constraints: { pops, fired: Set(key),
 // failed: key | null, exceeded, branching }. Constraints in `disabled` are
 // left out.
@@ -484,7 +605,7 @@ function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds =
   const ucs = uniquenessOf(w).filter(u => !disabled.has(u.key))
   const sets = w.ctx.constraints.filter(c => !c.deontic && !disabled.has(c.id) && (c.constraintType === 'subset' || c.constraintType === 'equality') && c.sequences?.length === 2)
     .map(c => ({ c, a: seqShape(c.sequences[0], w), b: seqShape(c.sequences[1], w) })).filter(x => x.a && x.b)
-  const ors = w.ctx.constraints.filter(c => !c.deontic && !disabled.has(c.id) && (c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr') && c.targetObjectTypeId)
+  const ors = w.ctx.constraints.filter(c => !c.deontic && !disabled.has(c.id) && (c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr') && c.targetObjectTypeId && !hasFormulaQueries(c))
   for (let round = 0; round < maxRounds; round++) {
     // Uniqueness: merge, until nothing changes.
     for (let k = 0; k < 20; k++) {
@@ -598,6 +719,18 @@ function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds =
           added = true
         }
       }
+    }
+    for (const t of tgdsOf(w)) {
+      if (disabled.has(t.key)) continue
+      const r = ev.closedFormula(t.rule, undefined, 20)
+      if (r.error || r.holds) continue
+      for (const ce of r.counterexamples) {
+        if (!t.alts) { pops = buildRight(w, pops, t.right, ce, fresh); continue }
+        pops = buildRight(w, pops, t.alts[t.alts.length > 1 ? choose(t.alts.length) : 0], ce, fresh)
+        if (t.alts.length > 1) branching = true
+      }
+      fired.add(t.key)
+      added = true
     }
     if (added && until?.(pops)) return { pops, fired, failed: null, branching, points, stopped: true }
     if (sizeOf(pops) > maxSize) return { pops, fired, exceeded: true, points }
@@ -1001,6 +1134,19 @@ export function contains(w, b, a, invented = []) {
   return true
 }
 
+// φ ↔ ψ as (φ → ψ) ∧ (ψ → φ), which has a counterexample form.
+function withoutIff(f) {
+  if (!f || typeof f !== 'object' || Array.isArray(f) || !f.t) return f
+  if (f.t === 'iff') { const l = withoutIff(f.left), r = withoutIff(f.right); return { t: 'and', args: [{ t: 'implies', left: l, right: r }, { t: 'implies', left: r, right: l }] } }
+  const out = { ...f }
+  if (f.body) out.body = withoutIff(f.body)
+  if (f.arg) out.arg = withoutIff(f.arg)
+  if (f.left && f.t !== 'cmp' && f.t !== 'vcmp') out.left = withoutIff(f.left)
+  if (f.right && f.t !== 'cmp' && f.t !== 'vcmp') out.right = withoutIff(f.right)
+  if (Array.isArray(f.args) && f.t !== 'fact' && f.t !== 'dpred' && f.t !== 'fn') out.args = f.args.map(withoutIff)
+  return out
+}
+
 // The status of one constraint (entry) of world A with respect to world B.
 function accountEntry(entry, A, B, run, fresh) {
   const base = { key: entry.key, entry, by: [], counterexample: null }
@@ -1009,7 +1155,6 @@ function accountEntry(entry, A, B, run, fresh) {
   if (deontic) f = f.arg
   base.deontic = deontic
   const unknown = (reason) => ({ ...base, status: 'unknown', reason })
-  if (/cardinality/i.test(entry.kind ?? '')) return unknown('Cardinality ranges are not checked yet.')
   if (/:pi:|:exactlyOne$/.test(entry.key)) return { ...base, status: 'native', reason: IDENTIFIED }
   const match = issueMatches(entry)
   if (!match) return unknown('Constraints of this kind are not checked yet.')
@@ -1019,7 +1164,7 @@ function accountEntry(entry, A, B, run, fresh) {
     cands = rangeViolations(entry.key, A, fresh, match)
     if (!cands.length) return unknown('No value outside this range was found to test with.')
   } else {
-    const X = counterexample(f)
+    const X = counterexample(withoutIff(f))
     if (!X) return unknown('This constraint has no counterexample form.')
     try { cands = buildViolations(X, A, fresh) } catch (e) {
       if (e instanceof Unsupported) return unknown(`Not checked yet: ${e.message}.`)
@@ -1090,7 +1235,7 @@ function accountEntry(entry, A, B, run, fresh) {
     const chU = chase(B, I0, fresh, { tgds: false })
     if (!chU.exceeded) {
       if (chU.failed) { killedBy.push({ I0, ch: chU, uOnly: true }); continue }
-      const k = issuesOf(B, chU.pops).find(i => isKilling(i) && i.kind !== 'formulaViolated')
+      const k = issuesOf(B, chU.pops).find(i => isKilling(i, B) && i.kind !== 'formulaViolated')
       if (k) { killedBy.push({ I0, ch: { ...chU, failed: issueKey(k) }, uOnly: true }); continue }
       // A violation that merges remove, of a constraint that forbids facts:
       // facts added later only make more values equal.
@@ -1107,7 +1252,7 @@ function accountEntry(entry, A, B, run, fresh) {
         const chU = chase(B, I0, fresh, { tgds: false })
         if (!chU.exceeded && (chU.failed || !violations(A, backOf(chU.pops), match).length)) return { killed: { I0, ch: chU, uOnly: true } }
         // A break that no fact the chase would go on adding can mend.
-        const k = issuesOf(B, ch.pops).find(i => isKilling(i) && i.kind !== 'formulaViolated')
+        const k = issuesOf(B, ch.pops).find(i => isKilling(i, B) && i.kind !== 'formulaViolated')
         if (k) return { killed: { I0, ch: { ...ch, failed: issueKey(k) } } }
         // A constraint that asks for facts, gone already: more facts keep it
         // gone, as long as the way back has no negation.
@@ -1120,7 +1265,7 @@ function accountEntry(entry, A, B, run, fresh) {
       if (violations(A, back, match).length && !bad.length) return { lost: { I: ch.pops, V, back } }
       if (bad.length) {
         // I breaks a constraint the chase does not apply.
-        const k = bad.find(isKilling)
+        const k = bad.find(i => isKilling(i, B))
         if (k) return { killed: { I0, ch: { ...ch, failed: issueKey(k) } } }
         return { undecided: 'A constraint of the other schema that is not checked yet is involved.' }
       }

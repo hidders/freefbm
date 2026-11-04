@@ -24,6 +24,8 @@ import { keyLeaves, schemeParts, atomicRules } from './fold.js'
 import { accountingSteps } from './accounting.js'
 import { makeContext } from '../logic/constraintFormulas.js'
 import { checkFormulaConstraint, formulaConstraintEntry } from '../logic/formulaConstraint.js'
+import { asGraphical, graphicalFields } from './recognise.js'
+import { mkConstraint } from '../store/storeHelpers.js'
 
 const other = (side) => (side === 'source' ? 'target' : 'source')
 class TranslateError extends Error {}
@@ -270,34 +272,13 @@ export function simplify(rule) {
 
 // ── Recognising value comparisons ────────────────────────────────────────────
 
-const VC_OF = { '≈': '=', '≉': '≠', '<': '<', '≤': '≤', '>': '>', '≥': '≥' }
 
 // ∀x̄ (φ → x op y), with x and y variables that φ binds in fact atoms, as a
 // value comparison constraint: { sequence: [role, role], query, operator }
 // or null. The query is φ with x and y free (the others ∃-bound).
 export function asValueComparison(rule) {
-  const vars = []
-  let n = rule
-  while (n?.t === 'forall') { vars.push(n.v); n = n.body }
-  if (n?.t !== 'implies' || n.right?.t !== 'vcmp' || !VC_OF[n.right.op]) return null
-  const { left: a, right: b } = n.right
-  if (a?.t !== 'var' || b?.t !== 'var' || a.id === b.id) return null
-  const atoms = n.left.t === 'and' ? n.left.args : [n.left]
-  const roleOf = (id) => {
-    for (const at of atoms) {
-      if (at.t !== 'fact' || at.factId.includes('_il_')) continue
-      const i = at.args.indexOf(id)
-      if (i >= 0) return { kind: 'role', factId: at.factId, roleIndex: i }
-    }
-    return null
-  }
-  const ra = roleOf(a.id), rb = roleOf(b.id)
-  if (!ra || !rb) return null
-  const va = vars.find(v => v.id === a.id), vb = vars.find(v => v.id === b.id)
-  if (!va || !vb) return null
-  const rest = vars.filter(v => v !== va && v !== vb)
-  const query = { free: [{ id: va.id, typeId: va.typeId }, { id: vb.id, typeId: vb.typeId }], target: null, body: existsAll(rest, n.left) }
-  return { sequence: [ra, rb], query, operator: VC_OF[n.right.op] }
+  const g = asGraphical(rule)
+  return g?.constraintType === 'valueComparison' ? { sequence: g.sequences[0], query: g.queries[0], operator: g.operator } : null
 }
 
 // ── A proposal, checked ──────────────────────────────────────────────────────
@@ -326,7 +307,25 @@ export function proposeTranslation(state, mapping, x, side) {
       status = y?.status ?? null; reason = y?.reason ?? null
     } catch (e) { reason = `The check failed: ${e?.message ?? e}` }
   }
-  return { schemaId, rule: t.rule, deontic: t.deontic, vc: t.deontic ? null : asValueComparison(t.rule), entry, ctx, errors, status, reason }
+  // A graphical constraint that says the same, when it keeps the constraint
+  // too (its join paths are checked as such). Tried also when the formula's
+  // check is undecided: the chase knows graphical constraints better (a
+  // frequency that is broken needs no cases).
+  let graphical = null
+  const g = !t.deontic && !errors.length && status !== 'lost' ? asGraphical(t.rule) : null
+  if (g) {
+    try {
+      const gc = { ...mkConstraint(g.constraintType, 0, 0), id: '__carried', schemaId, name: '', ...graphicalFields(g) }
+      const state3 = { ...state, constraints: [...state.constraints, gc] }
+      const gen = accountingSteps(state3, mapping, { onlyKeys: new Set([x.key]) })
+      let r
+      do r = gen.next(); while (!r.done)
+      const y = r.value.sides[side].find(e => e.key === x.key)
+      if (['native', 'implied'].includes(y?.status)) { graphical = g; if (!['native', 'implied'].includes(status)) { status = y.status; reason = y.reason } }
+    } catch { graphical = null }
+  }
+  const vc = graphical?.constraintType === 'valueComparison' ? { sequence: graphical.sequences[0], query: graphical.queries[0], operator: graphical.operator } : null
+  return { schemaId, rule: t.rule, deontic: t.deontic, graphical, vc, entry, ctx, errors, status, reason }
 }
 
 export { SIDES }

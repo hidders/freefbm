@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useOrmStore } from '../store/ormStore'
+import { GRAPHICAL_NAME } from '../mapping/recognise.js'
 import { accountingSteps } from '../mapping/accounting.js'
 import { SIDES } from '../mapping/mapping.js'
 import { Sentence, Formula } from './ConstraintsTab.jsx'
@@ -174,14 +175,14 @@ function Carried({ carry, x, mapping, side, language, there, onClose }) {
   )
   const kept = carry.status === 'native' || carry.status === 'implied'
   const add = () => {
-    useOrmStore.getState().addCarriedConstraint(carry.schemaId, { rule: carry.rule, deontic: carry.deontic, vc: carry.vc })
+    useOrmStore.getState().addCarriedConstraint(carry.schemaId, { rule: carry.rule, deontic: carry.deontic, graphical: carry.graphical })
     markKept(mapping.id, side, x.key, carry.status ?? 'unknown',
       kept ? `Kept by a constraint added to ${there} from this one.` : `A constraint was added to ${there} from this one; check again to see whether it keeps it.`)
     setAdded(true)
   }
   return (
     <div style={frame}>
-      <div style={note}>In {there} it would read{carry.vc ? `, as a value comparison constraint (${VC_NAME[carry.vc.operator] ?? carry.vc.operator})` : ', as a formula constraint'}:</div>
+      <div style={note}>In {there} it would read{carry.vc ? `, as a value comparison constraint (${VC_NAME[carry.vc.operator] ?? carry.vc.operator})` : carry.graphical ? `, as ${GRAPHICAL_NAME[carry.graphical.constraintType]} with join paths` : ', as a formula constraint'}:</div>
       {carry.entry?.formula && <>
         <Sentence formula={carry.entry.formula} ctx={carry.ctx} language={language} />
         <div style={{ fontSize: 11.5 }}><Formula formula={carry.entry.formula} ctx={carry.ctx} /></div>

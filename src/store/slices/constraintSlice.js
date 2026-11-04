@@ -1284,18 +1284,18 @@ export function createConstraintSlice(set, get) {
       return c.id
     },
 
-    // A formula constraint of the shape ∀x̄ (φ → x op y) made into the value
-    // comparison constraint it is (vc from mapping/translate.js
-    // asValueComparison: φ becomes its join path). The id, name, position
-    // and occurrences stay.
-    formulaToValueComparison(id, vc) {
+    // A formula constraint made into the graphical constraint it is (g from
+    // mapping/recognise.js asGraphical: its parts become join paths). The id,
+    // name, position and occurrences stay.
+    formulaToGraphical(id, g) {
       set(s => ({
         constraints: s.constraints.map(c => {
           if (c.id !== id) return c
           const { rule, sqlCheck, roleSequences, ...keep } = c
-          const base = mkConstraint('valueComparison', c.x, c.y)
-          return { ...base, ...keep, constraintType: 'valueComparison', operator: vc.operator, sequences: [vc.sequence], queries: [vc.query],
-            targetObjectTypeId: null, exhaustive: base.exhaustive, exclusive: base.exclusive }
+          const base = mkConstraint(g.constraintType, c.x, c.y)
+          return { ...base, ...keep, constraintType: g.constraintType, sequences: g.sequences, queries: g.queries,
+            operator: g.operator ?? base.operator, frequency: g.frequency ?? base.frequency,
+            targetObjectTypeId: g.targetObjectTypeId ?? null, exhaustive: base.exhaustive, exclusive: base.exclusive }
         }),
         isDirty: true,
       }))
