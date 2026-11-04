@@ -66,6 +66,21 @@ export function useElectronMenu() {
       catch (err) { alert(`Failed to read the DDL.${err?.message ? `\n${err.message}` : ''}`) }
     })
 
+    // Sample rows (INSERT … VALUES, COPY … FROM stdin) of a SQL script, as
+    // the population of the active relational schema.
+    on('menu:loadSampleSql', async () => {
+      const s = useOrmStore.getState()
+      const schema = s.schemas.find(x => x.id === activeSchemaIdOf(s))
+      if (schema?.profile !== 'relational') {
+        alert('Load Sample Rows reads rows into a relational schema. Switch to a relational schema first.')
+        return
+      }
+      const result = await api.openSql()
+      if (!result) return
+      try { useOrmStore.getState().loadSampleRows(schema.id, result.content, result.path.split(/[\\/]/).pop()) }
+      catch (err) { alert(`Failed to read the rows.${err?.message ? `\n${err.message}` : ''}`) }
+    })
+
     on('menu:exportSql', async () => {
       const s = useOrmStore.getState()
       const schema = s.schemas.find(x => x.id === activeSchemaIdOf(s))

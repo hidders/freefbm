@@ -572,6 +572,9 @@ export function implicitEntries(state, ctx, typeIds) {
   const participation = []
   for (const t of types) {
     if (!typeIds.has(t.id) || t.independent || t.kind === 'nestedValue') continue
+    // A derived type whose rule has its subject play a role (outside the
+    // identifier) participates by its rule: nothing to say.
+    if (derivedPlays(state, t.id, identified)) continue
     const up = ancestors(t.id)
     const x = mkVar(t.id)
     const disjuncts = []
@@ -591,6 +594,22 @@ export function implicitEntries(state, ctx, typeIds) {
       : { ...base, note: 'It plays no role outside its preferred identifier, so its population must be empty.' })
   }
   return { disjointness, participation }
+}
+
+// Whether a fully derived type's rule says its subject plays a role outside
+// the identifier: a fact atom of the subject in its positive part (under ∃
+// and ∧ only).
+function derivedPlays(state, typeId, identified) {
+  const ot = (state.objectTypes ?? []).find(o => o.id === typeId)
+  if (ot?.derivation !== 'derived' || !ot.derivationRule) return false
+  const go = (n) => {
+    if (!n || typeof n !== 'object') return false
+    if (n.t === 'exists') return go(n.body)
+    if (n.t === 'and') return (n.args ?? []).some(go)
+    if (n.t !== 'fact' || String(n.factId).includes('_il_')) return false
+    return (n.args ?? []).some((a, i) => a === 'subject' && !identified.has(`${n.factId}:${i}`))
+  }
+  return go(ot.derivationRule)
 }
 
 // ── Default verbalisation: constraints that are not there ────────────────────

@@ -9,6 +9,7 @@ const KIND_TEXT = {
   subtype: 'subtype',
   junction: 'fact type (junction table)',
   nokey: 'entity type, no key',
+  lookup: 'value type',
 }
 
 // Guess ORM2 schema (workbench step 9): how each table of a relational schema
@@ -43,7 +44,9 @@ function Dialog({ relSchemaId }) {
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink-1)' }}>Guess an ORM2 schema from {schema?.name ?? 'this schema'}</div>
           <div style={{ fontSize: 12, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.45 }}>
             Makes a new ORM2 schema and a mapping to it. Tables become entity types, a primary key that is a foreign key makes a subtype,
-            junction tables become many-to-many fact types, and columns and foreign keys become fact types read from their names.
+            junction tables become many-to-many fact types, a table that only lists values becomes a value type, boolean NOT NULL
+            columns become unary fact types, a type column with a list of values gives derived subtypes, and other columns and
+            foreign keys become fact types read from their names.
           </div>
         </div>
         <div style={{ overflowY: 'auto', padding: '8px 14px', fontSize: 12 }}>
@@ -86,7 +89,8 @@ function Dialog({ relSchemaId }) {
                   <td style={{ padding: '3px 0', color: 'var(--ink-2)' }}>
                     {p.kind === 'junction' ? 'fact type (junction table)'
                       : p.kind === 'subtype' ? `${p.name}, subtype of the type of ${p.superTable.name}`
-                      : p.kind === 'nokey' ? `${p.name} (no key: no rules)` : p.name}
+                      : p.kind === 'nokey' ? `${p.name} (no key: no rules)`
+                      : p.kind === 'lookup' ? `value type ${p.name} (a list of values)` : p.name}
                   </td>
                 </tr>
               ))}

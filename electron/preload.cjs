@@ -25,7 +25,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const valid = [
       'menu:new', 'menu:open', 'menu:save', 'menu:saveAs',
       'menu:deleteSelected', 'menu:zoomIn', 'menu:zoomOut', 'menu:zoomReset',
-      'menu:exportPdf', 'menu:importSql', 'menu:exportSql',
+      'menu:exportPdf', 'menu:importSql', 'menu:exportSql', 'menu:loadSampleSql',
     ]
     if (!valid.includes(channel)) return
     ipcRenderer.on(channel, cb)
