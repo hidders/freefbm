@@ -31,7 +31,8 @@ function Dialog({ mappingId, side }) {
       return { error: `Fold could not be planned: ${err?.message ?? err}` }
     }
   }, [mappingId, side])
-  const [fold, setFold] = useState(() => new Set((plan?.items ?? []).filter(i => i.rule).map(i => i.id)))
+  const ok = (i) => !!(i.rule || i.constraint)
+  const [fold, setFold] = useState(() => new Set((plan?.items ?? []).filter(ok).map(i => i.id)))
   const [remove, setRemove] = useState(() => new Set((plan?.candidates ?? []).filter(c => c.recoverable).map(c => c.factId)))
   const toggle = (set, setter, id) => setter(() => { const n = new Set(set); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const candidates = (plan?.candidates ?? []).filter(c => c.usedBy.some(id => fold.has(id)))
@@ -55,25 +56,32 @@ function Dialog({ mappingId, side }) {
           <div style={{ fontSize: 12, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.45 }}>
             Each derived type or fact type gets a mapping rule, made by unfolding its derivation rule through the rules that map
             the elements it uses. It then becomes an ordinary element, keeping its population. The fact types it was derived from
-            can go when the rest of the mapping still carries everything they did.
+            can go when the rest of the mapping still carries everything they did. A semi-derived element becomes stored, holding
+            its stored and its derived rows, and its rule stays as a constraint.
           </div>
         </div>
         <div style={{ overflowY: 'auto', padding: '8px 14px', fontSize: 12 }}>
           {error && <div style={{ color: 'var(--danger)' }}>{error}</div>}
           {plan && !plan.items.length && (
             <div style={{ color: 'var(--ink-2)', lineHeight: 1.45 }}>
-              Neither schema has a derived type or fact type. Mark an element as derived, give it a rule over the schema
+              Neither schema has a derived or semi-derived type or fact type. Mark an element as derived, give it a rule over the schema
               (∃, ∧ and atoms), check its population, and fold it here.
             </div>
           )}
           {plan?.items.length > 0 && <div style={{ fontWeight: 600, color: 'var(--ink-1)', margin: '4px 0 4px' }}>Derived elements</div>}
           {plan?.items.map(i => (
             <div key={i.id} style={{ borderTop: '1px solid var(--border-soft)', padding: '5px 0' }}>
-              <label style={{ display: 'flex', gap: 6, alignItems: 'baseline', color: i.rule ? 'var(--ink-1)' : 'var(--ink-3)', cursor: i.rule ? 'pointer' : 'default' }}>
-                <input type="checkbox" disabled={!i.rule} checked={!!i.rule && fold.has(i.id)} onChange={() => toggle(fold, setFold, i.id)} style={{ width: 'auto' }}/>
-                <span><b style={{ fontWeight: 600 }}>{i.name}</b> <span style={{ color: 'var(--ink-3)' }}>({i.kind === 'fact' ? 'fact type' : 'type'})</span></span>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'baseline', color: ok(i) ? 'var(--ink-1)' : 'var(--ink-3)', cursor: ok(i) ? 'pointer' : 'default' }}>
+                <input type="checkbox" disabled={!ok(i)} checked={ok(i) && fold.has(i.id)} onChange={() => toggle(fold, setFold, i.id)} style={{ width: 'auto' }}/>
+                <span><b style={{ fontWeight: 600 }}>{i.name}</b> <span style={{ color: 'var(--ink-3)' }}>({i.semi ? 'semi-derived ' : ''}{i.kind === 'fact' ? 'fact type' : 'type'})</span></span>
               </label>
               {i.error && <div style={{ marginLeft: 22, color: 'var(--ink-2)' }}>Can't be folded: {i.error}.</div>}
+              {i.constraint && (
+                <div className="copyable" style={{ marginLeft: 22, marginTop: 2, fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.5 }}>
+                  <div>Stays as {i.constraint.graphical ? 'a subset constraint' : 'a formula constraint'}:</div>
+                  <div style={{ fontFamily: 'var(--font-mono, monospace)' }}>{i.constraint.text}</div>
+                </div>
+              )}
               {i.rule && (
                 <div className="copyable" style={{ marginLeft: 22, marginTop: 2, fontFamily: 'var(--font-mono, monospace)', fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.5 }}>
                   <div>{text(i.rule.source, 'source')}</div>

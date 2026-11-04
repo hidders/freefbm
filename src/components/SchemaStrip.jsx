@@ -191,9 +191,9 @@ export function NewSchemaMenu({ variant = 'strip' }) {
   const ref = useRef(null)
   const relSchemas = useOrmStore(useShallow(s => (s.schemas ?? []).filter(x => x.profile === 'relational')))
   const ormSchemas = useOrmStore(useShallow(s => (s.schemas ?? []).filter(x => x.profile !== 'relational')))
-  // Schemas with fully derived elements, which Refactor folds into a new version.
+  // Schemas with derived or semi-derived elements, which Refactor folds into a new version.
   const refactorable = useOrmStore(useShallow(s => (s.schemas ?? []).filter(x =>
-    (s.objectTypes ?? []).some(o => o.schemaId === x.id && o.derivation === 'derived') || (s.facts ?? []).some(f => f.schemaId === x.id && f.derivation === 'derived'))))
+    (s.objectTypes ?? []).some(o => o.schemaId === x.id && (o.derivation === 'derived' || o.derivation === 'semiDerived')) || (s.facts ?? []).some(f => f.schemaId === x.id && (f.derivation === 'derived' || f.derivation === 'semiDerived')))))
 
   useEffect(() => {
     if (!open) return

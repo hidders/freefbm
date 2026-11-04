@@ -522,9 +522,13 @@ function tgdsOf(w) {
   const close = (vars, b) => vars.reduceRight((x, v) => ({ t: 'forall', v, body: x }), b)
   for (const e of w.entries?.() ?? []) {
     const c = w.ctx.constraints.find(x => x.id === e.elementId)
-    if (!c || c.deontic || !e.formula || e.formula.t === 'obligatory') continue
-    const isOr = c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr'
-    if (!(isFormulaConstraint(c) || ((c.constraintType === 'subset' || c.constraintType === 'equality') && !simple(c)) || (isOr && hasFormulaQueries(c)))) continue
+    // The rule of a semi-derived element: its derived part must be there
+    // (∀ȳ (φ → E)), like a subset constraint.
+    const el = c ? null : w.ctx.otById.get(e.elementId) ?? w.ctx.factById.get(e.elementId)
+    const semi = el?.derivation === 'semiDerived' && /:derivation(:1)?$/.test(e.key)
+    if (!(c || semi) || c?.deontic || !e.formula || e.formula.t === 'obligatory') continue
+    const isOr = c?.constraintType === 'inclusiveOr' || c?.constraintType === 'exclusiveOr'
+    if (!semi && !(isFormulaConstraint(c) || ((c.constraintType === 'subset' || c.constraintType === 'equality') && !simple(c)) || (isOr && hasFormulaQueries(c)))) continue
     let rule
     try { rule = formulaToRule(withoutIff(e.formula)) } catch { continue }
     const vars = []

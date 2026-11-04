@@ -344,6 +344,10 @@ export const createMappingSlice = (set, get) => {
             for (const d of get().diagrams) if (!d.mappingId && d.schemaId === schemaId && [...tables].every(t => (d.occurrences ?? []).some(o => o.schemaElementId === t))) get().addElementToDiagram(c.id, d.id)
           }
         }
+        // Semi-derived elements made stored keep their rules as constraints.
+        for (const c of ch.constraints ?? []) {
+          get().addCarriedConstraint(schemaId, { rule: c.rule, graphical: c.graphical })
+        }
         const before = get()
         const players = new Set(before.facts.filter(f => removeIds.has(f.id)).flatMap(f => f.roles.map(r => r.objectTypeId)))
         for (const c of before.constraints) {
@@ -624,9 +628,11 @@ export const createMappingSlice = (set, get) => {
         if (d) {
         const plan = planFold(get(), m, { side: 'target' })
         const remove = new Set((d.remove ?? []).map(id => rf.idMap.get(id)).filter(Boolean))
-        const failed = plan.items.filter(i => !i.rule)
+        // Only the fully derived elements the transformation made; semi-
+        // derived ones the schema had stay as they are.
+        const failed = plan.items.filter(i => !i.rule && !i.semi)
         if (failed.length) throw new Error(`${failed.map(i => `${i.name}: ${i.error}`).join('; ')}`)
-        const ch = get().foldMapping(plan, { remove: plan.candidates.filter(c => remove.has(c.factId) && c.recoverable).map(c => c.factId), twins: rf.twins })
+        const ch = get().foldMapping(plan, { fold: plan.items.filter(i => i.rule).map(i => i.id), remove: plan.candidates.filter(c => remove.has(c.factId) && c.recoverable).map(c => c.factId), twins: rf.twins })
         report.push(...(ch?.report ?? []))
         for (const c of plan.candidates) if (remove.has(c.factId) && !c.recoverable) report.push(`Kept ${c.name}: ${c.reason}`)
         m = get().mappings.find(x => x.id === rf.mappingId)
