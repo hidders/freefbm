@@ -15,7 +15,7 @@ import { DERIVATION_MODES, whyNotDerivableType, isDerived, checkRule, upgradeRul
 import { isDerivedFact, isComputedRole, checkFactRule, whyNotDerivable } from '../logic/factDerivation.js'
 import { makeContext } from '../logic/constraintFormulas.js'
 import { isFormulaConstraint, formulaConstraintEntry } from '../logic/formulaConstraint.js'
-import { asValueComparison } from '../mapping/translate.js'
+import { asGraphical, GRAPHICAL_NAME } from '../mapping/recognise.js'
 import { tableRulesOf, checkTableRule } from '../relational/derivedTables.js'
 import { sideContext } from '../mapping/mapping.js'
 import { Formula } from './ConstraintsTab.jsx'
@@ -4270,7 +4270,7 @@ function FormulaConstraintInspector({ c }) {
   const store = useScopedStore()
   const ctx = makeContext(store)
   const entry = formulaConstraintEntry(c, store, ctx)
-  const vc = !c.deontic && c.rule && entry.formula ? asValueComparison(upgradeRule(c.rule)) : null
+  const g = !c.deontic && c.rule && entry.formula ? asGraphical(upgradeRule(c.rule)) : null
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>Formula Constraint</InspectorTitle>
@@ -4288,9 +4288,9 @@ function FormulaConstraintInspector({ c }) {
             : <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{entry.note}</span>}
         </div>
         <button style={{ marginTop: 6 }} onClick={() => store.openRuleEditor({ formulaId: c.id })}>Edit formula…</button>
-        {vc && <div style={{ marginTop: 8, fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.45 }}>
-          This formula has the shape ∀x̄ (φ → x {vc.operator} y), so it is a value comparison constraint with φ as its join path.
-          <div><button style={{ marginTop: 4 }} onClick={() => store.formulaToValueComparison(c.id, vc)}>Turn into value comparison</button></div>
+        {g && <div style={{ marginTop: 8, fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.45 }}>
+          This formula says what {GRAPHICAL_NAME[g.constraintType]} with join paths says.
+          <div><button style={{ marginTop: 4 }} onClick={() => store.formulaToGraphical(c.id, g)}>Turn into {GRAPHICAL_NAME[g.constraintType].replace(/^an? /, '')}</button></div>
         </div>}
       </Row>
       <Row>

@@ -4,6 +4,7 @@ import { withRunApplied, runMapping } from '../../mapping/runMapping.js'
 import { foldChanges, addConstraint, strip, planFold } from '../../mapping/fold.js'
 import { mkDiagram, mkConstraint, mkConstraintOcc } from '../storeHelpers'
 import { formulaElements } from '../../logic/formulaConstraint.js'
+import { graphicalFields, GRAPHICAL_NAME } from '../../mapping/recognise.js'
 import { findRefMode } from '../../utils/refMode.js'
 import { mkTableRule, tableRulesOf, compileTableRulesInto, newColumn, withPrimaryKey, bodyFrontier, withoutRuleElements } from '../../relational/derivedTables.js'
 import { sideContext, treeToSide, expandSide, checkRule } from '../../mapping/mapping.js'
@@ -27,8 +28,8 @@ function carryLost(get, m, schemaId, elementIds) {
     const what = x.label ?? x.entry.subject
     const p = proposeTranslation(get(), m, x, 'source')
     if (p.error || p.errors?.length || !['native', 'implied'].includes(p.status)) { out.push(`Kept by nothing in the new version: ${what}${p.error ? ` (${p.error})` : ''}; the Equivalence report says more`); continue }
-    get().addCarriedConstraint(m.targetSchemaId, { rule: p.rule, deontic: p.deontic, vc: p.vc })
-    out.push(`Added ${p.vc ? 'a value comparison' : 'a formula constraint'} to the new version for ${what}`)
+    get().addCarriedConstraint(m.targetSchemaId, { rule: p.rule, deontic: p.deontic, graphical: p.graphical })
+    out.push(`Added ${p.graphical ? GRAPHICAL_NAME[p.graphical.constraintType] : 'a formula constraint'} to the new version for ${what}`)
   }
   return out
 }
@@ -393,17 +394,19 @@ export const createMappingSlice = (set, get) => {
     // Opens the rule editor on a rule; in Basic mode, shows the rule in the
     // Mappings tab instead.
     // Adds a constraint carried through a mapping (mapping/translate.js) to a
-    // schema: a value comparison constraint when vc is given ({ sequence,
-    // query, operator }), else a formula constraint. It is drawn on the
+    // schema: a graphical constraint when graphical is given (recognise.js),
+    // a value comparison when vc is ({ sequence, query, operator }), else a
+    // formula constraint. It is drawn on the
     // diagram of that schema that shows most of the fact types it names,
     // under them. One undo step; returns the new constraint's id.
-    addCarriedConstraint(schemaId, { rule, deontic = false, name = '', vc = null }) {
+    addCarriedConstraint(schemaId, { rule, deontic = false, name = '', vc = null, graphical = null }) {
       const s = get()
-      const base = vc
-        ? { ...mkConstraint('valueComparison', 0, 0), operator: vc.operator, sequences: [vc.sequence], queries: [vc.query] }
+      if (!graphical && vc) graphical = { constraintType: 'valueComparison', operator: vc.operator, sequences: [vc.sequence], queries: [vc.query] }
+      const base = graphical
+        ? { ...mkConstraint(graphical.constraintType, 0, 0), ...graphicalFields(graphical) }
         : { ...mkConstraint('formula', 0, 0), rule }
       const c = { ...base, schemaId, name, ...(deontic ? { deontic: true } : {}) }
-      const named = vc ? new Set(vc.sequence.map(m => m.factId)) : formulaElements(rule).facts
+      const named = graphical ? new Set(graphical.sequences.flat().map(m => m?.factId)) : formulaElements(rule).facts
       const shown = (d) => (d.occurrences ?? []).filter(o => named.has(o.schemaElementId))
       const diagrams = s.diagrams.filter(d => d.schemaId === schemaId && !d.mappingId)
       const best = [...diagrams].sort((a, b) => shown(b).length - shown(a).length

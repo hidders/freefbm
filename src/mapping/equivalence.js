@@ -31,7 +31,8 @@ import { prepareRun, executeRun } from './runMapping.js'
 import { finiteCases } from './fold.js'
 import { expandSide, asSide, readingName, SIDES } from './mapping.js'
 import { uncoveredElements } from './mappingIssues.js'
-import { translateEntry, asValueComparison } from './translate.js'
+import { translateEntry } from './translate.js'
+import { asGraphical } from './recognise.js'
 import { isIndependentType } from '../utils/independence.js'
 
 const other = (side) => (side === 'source' ? 'target' : 'source')
@@ -182,7 +183,7 @@ export function* equivalenceSteps(state, mapping) {
         let fix
         try {
           const t = translateEntry(state, mapping, x.entry, X)
-          fix = t.error ? { kind: 'none', reason: t.error } : asValueComparison(t.rule) ? { kind: 'graphical' } : { kind: 'formula' }
+          fix = t.error ? { kind: 'none', reason: t.error } : !t.deontic && asGraphical(t.rule) ? { kind: 'graphical' } : { kind: 'formula' }
         } catch (err) { fix = { kind: 'none', reason: String(err?.message ?? err) } }
         out.lost.push({ ...x, fix })
       } else out.unknown.push(x)
