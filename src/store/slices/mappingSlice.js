@@ -1,7 +1,7 @@
 // Schema mappings between two schemas of the file (mapping/mapping.js).
 import { mkMapping, mkRule, ruleElements } from '../../mapping/mapping.js'
 import { withRunApplied } from '../../mapping/runMapping.js'
-import { foldChanges, addConstraint, strip } from '../../mapping/fold.js'
+import { foldChanges, addConstraint, strip, planFold } from '../../mapping/fold.js'
 import { mkDiagram, mkConstraint, mkConstraintOcc } from '../storeHelpers'
 import { formulaElements } from '../../logic/formulaConstraint.js'
 import { findRefMode } from '../../utils/refMode.js'
@@ -9,6 +9,7 @@ import { mkTableRule, tableRulesOf, compileTableRulesInto, newColumn, withPrimar
 import { sideContext, treeToSide, expandSide } from '../../mapping/mapping.js'
 import { mkEntity } from '../storeHelpers'
 import { cloneSchema, identityMapping } from '../../mapping/refactor.js'
+import { transformationById } from '../../mapping/transformations.js'
 
 const ADVANCED_KEY = 'freefbm.advancedMode'
 const readAdvanced = () => { try { return localStorage.getItem(ADVANCED_KEY) === '1' } catch { return false } }
@@ -301,6 +302,14 @@ export const createMappingSlice = (set, get) => {
         const players = new Set(before.facts.filter(f => removeIds.has(f.id)).flatMap(f => f.roles.map(r => r.objectTypeId)))
         for (const c of before.constraints) {
           if (!(c.sequences ?? []).some(q => (q ?? []).some(x => removeIds.has(x?.factId)))) continue
+          // A subset or equality constraint (a foreign key) of a removed column
+          // goes with it; the mapping keeps what it said (a transformation
+          // that moves the column adds it again where the column went).
+          if ((c.constraintType === 'subset' || c.constraintType === 'equality') && get().deleteConstraint) {
+            get().deleteConstraint(c.id)
+            ch.report.push(`Removed the ${c.constraintType} constraint ${c.name ? `${c.name} ` : ''}on a removed fact type`)
+            continue
+          }
           ch.report.push(`Check the ${c.constraintType ?? 'external'} constraint ${c.name ? `${c.name} ` : ''}on a removed fact type: it now has roles missing`)
         }
         for (const id of removeIds) get().deleteFact(id)
@@ -471,11 +480,18 @@ export const createMappingSlice = (set, get) => {
     // identity mapping from the old one, as one undo step; then the Fold
     // dialog for the new version's derived elements. Returns the mapping id.
     refactorSchema(schemaId) {
+      const r = get()._refactor(schemaId)
+      if (!r) return null
+      set({ foldDialog: { mappingId: r.mappingId, side: 'target', twins: r.twins } })
+      return r.mappingId
+    },
+    // The clone and the identity mapping: { mappingId, idMap, twins, schemaId }.
+    _refactor(schemaId, newName = null) {
       const s = get()
       const old = s.schemas.find(x => x.id === schemaId)
       if (!old) return null
       const used = new Set(s.schemas.map(x => x.name))
-      let name = `${old.name} (new)`
+      let name = newName && !used.has(newName) ? newName : `${old.name} (new)`
       for (let i = 2; used.has(name); i++) name = `${old.name} (new ${i})`
       const cl = cloneSchema(s, schemaId, name)
       let mappingId = null
@@ -510,8 +526,64 @@ export const createMappingSlice = (set, get) => {
         const el = s.objectTypes.find(x => x.id === o) ?? s.facts.find(x => x.id === o)
         if (el && el.derivation === 'derived') twins[n] = o
       }
-      set({ foldDialog: { mappingId, side: 'target', twins } })
-      return mappingId
+      return { mappingId, idMap: cl.idMap, twins, schemaId: cl.schema.id }
+    },
+    // A named transformation (mapping/transformations.js) of a schema, as one
+    // undo step: its derived elements in the schema, a new version with the
+    // mapping to it, and the fold. Returns { mappingId, schemaId, report } or
+    // { error }.
+    transformSchema(schemaId, transformationId, params, { name = null } = {}) {
+      const tr = transformationById(transformationId)
+      if (!tr) return { error: 'No such transformation.' }
+      const ctx0 = sideContext(get(), schemaId)
+      const problems = tr.check(params, ctx0)
+      if (problems.length) return { error: problems.join(' ') }
+      const api = { getState: get, setState: set }
+      const KEYS = ['schemas', 'objectTypes', 'facts', 'subtypes', 'constraints', 'diagrams', 'mappings', 'populations', 'factPopulations', 'activeDiagramId', 'importLog', 'foldDialog']
+      const before = Object.fromEntries(KEYS.map(k => [k, get()[k]]))
+      let out
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        const d = tr.derive(api, params, ctx0)
+        set({ mappingRuleEditor: null })
+        const rf = get()._refactor(schemaId, name)
+        let m = get().mappings.find(x => x.id === rf.mappingId)
+        // Rules the transformation adds by hand (cases its derived elements
+        // don't give, such as false for a boolean column).
+        const extra = d.rules?.(rf.idMap) ?? []
+        if (extra.length) {
+          set(st => ({ mappings: st.mappings.map(x => (x.id === m.id ? { ...x, rules: [...x.rules, ...extra] } : x)) }))
+          m = get().mappings.find(x => x.id === rf.mappingId)
+        }
+        const plan = planFold(get(), m, { side: 'target' })
+        const remove = new Set((d.remove ?? []).map(id => rf.idMap.get(id)).filter(Boolean))
+        const failed = plan.items.filter(i => !i.rule)
+        if (failed.length) throw new Error(`${failed.map(i => `${i.name}: ${i.error}`).join('; ')}`)
+        const ch = get().foldMapping(plan, { remove: plan.candidates.filter(c => remove.has(c.factId) && c.recoverable).map(c => c.factId), twins: rf.twins })
+        const report = [...(ch?.report ?? [])]
+        for (const c of plan.candidates) if (remove.has(c.factId) && !c.recoverable) report.push(`Kept ${c.name}: ${c.reason}`)
+        m = get().mappings.find(x => x.id === rf.mappingId)
+        d.post?.({ mapping: m, idMap: rf.idMap, report })
+        // What the new version has that no diagram of it shows (a new key, a
+        // moved foreign key): onto its first diagram.
+        const dg = get().diagrams.find(x => x.schemaId === rf.schemaId && !x.mappingId)
+        if (dg) {
+          const shown = new Set(get().diagrams.filter(x => x.schemaId === rf.schemaId).flatMap(x => [...(x.occurrences ?? []), ...(x.constraintOccurrences ?? [])].map(o => o.schemaElementId ?? o.schemaConstraintId)))
+          for (const c of get().constraints) if (c.schemaId === rf.schemaId && !shown.has(c.id)) { try { get().addElementToDiagram(c.id, dg.id) } catch { /* not drawable */ } }
+        }
+        get().setImportLog?.({ kind: 'fold', source: `${tr.label}: ${tr.describe(params, ctx0)}`, entries: [
+          { level: 'note', text: `${tr.describe(params, ctx0)} The new version is ${get().schemas.find(x => x.id === rf.schemaId)?.name}, with the mapping ${m.name} from the old one; its Equivalence button checks the change.` },
+          ...report.map(text => ({ level: /^Kept /.test(text) ? 'warn' : 'note', text })),
+        ] })
+        out = { mappingId: rf.mappingId, schemaId: rf.schemaId, report }
+      } catch (err) {
+        // Nothing half done stays: back to the state before.
+        set(before)
+        out = { error: String(err?.message ?? err) }
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+      return out
     },
     // A new table in a relational schema whose rows a rule derives; opens the
     // rule. Returns the table id.

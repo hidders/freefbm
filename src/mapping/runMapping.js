@@ -428,6 +428,18 @@ function buildSide(side, y, data, pop, ident) {
       if (outer) break
     }
   }
+  // Values nothing determines: labelled nulls, when the run makes them.
+  if (!outer && pop.fresh) {
+    for (const v of vars.values()) {
+      if (env.has(v.id) || schemeOf(v.typeId, data)) continue
+      const ot = data.objectTypes.find(o => o.id === v.typeId)
+      if (ot?.kind !== 'value') continue
+      const n = pop.fresh(v.typeId)
+      ;(pop.made ??= new Set()).add(n)
+      env.set(v.id, n)
+      outer = true
+    }
+  }
   }
   const unknown = [...vars.values()].filter(v => !env.has(v.id) && !v.synthetic)
   // Whatever it determines: instances of the variables' types, the type
@@ -555,15 +567,38 @@ function inventKeysOf(rules, data) {
   return out
 }
 
+// A fact with a labelled null the run made for an undetermined value, used
+// nowhere else, says no more than another fact that has some value there:
+// it goes (the core of the built population), and so does the null.
+function dropSubsumed(populations, factPopulations, made) {
+  const uses = new Map()
+  for (const ts of Object.values(factPopulations)) for (const t of ts) for (const c of t) if (made.has(c)) uses.set(c, (uses.get(c) ?? 0) + 1)
+  const gone = new Set()
+  for (const [id, ts] of Object.entries(factPopulations)) {
+    const isOwn = (c) => made.has(c) && uses.get(c) === 1
+    const keep = ts.filter(t => {
+      if (!t.some(isOwn)) return true
+      const sub = ts.some(u => u !== t && u.every((c, i) => isOwn(t[i]) || keyOf(c) === keyOf(t[i])))
+      if (sub) t.forEach(c => { if (isOwn(c)) gone.add(c) })
+      return !sub
+    })
+    factPopulations[id] = keep
+  }
+  if (gone.size) for (const [id, cs] of Object.entries(populations)) populations[id] = cs.filter(c => !gone.has(c))
+}
+
 // Runs prepared rules on the population in `pops` ({ populations,
 // factPopulations, … }, e.g. the store state): { populations,
 // factPopulations, matches: Map(ruleId → n), invented, log }.
-export function executeRun(prep, pops, { limit } = {}) {
+// With fresh (a function of a value type id giving a new labelled null), a
+// value of the built side that nothing determines is a labelled null instead
+// of leaving its facts out: the chase-style reading accounting and Fold use.
+export function executeRun(prep, pops, { limit, fresh = null } = {}) {
   const { ctxs, to } = prep
   const data = { ...prep.elements, populations: pops.populations ?? {}, factPopulations: pops.factPopulations ?? {},
     nestedEntityMappings: pops.nestedEntityMappings ?? {}, subtypeMappings: pops.subtypeMappings ?? {} }
   const ev = makePopulationEvaluator(data)
-  const pop = { types: new Map(), facts: new Map(), inventKeys: prep.inventKeys }
+  const pop = { types: new Map(), facts: new Map(), inventKeys: prep.inventKeys, fresh }
   const log = []
   const matches = new Map()
   for (const r of prep.rules) {
@@ -584,6 +619,7 @@ export function executeRun(prep, pops, { limit } = {}) {
   const populations = {}, factPopulations = {}
   for (const [id, m] of pop.types) populations[id] = [...m.values()]
   for (const [id, m] of pop.facts) factPopulations[id] = [...m.values()]
+  if (pop.made?.size) dropSubsumed(populations, factPopulations, pop.made)
   const invented = [...(pop.invented ?? new Map())].map(([typeId, key]) => ({ typeId, key }))
   return { populations, factPopulations, matches, invented, log }
 }

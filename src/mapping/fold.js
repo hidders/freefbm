@@ -36,6 +36,7 @@ import { factRuleParts, isDerivedFact } from '../logic/factDerivation.js'
 import { makePopulationEvaluator } from '../logic/derivedPopulation.js'
 import { projCellKey } from '../utils/populationValidation.js'
 import { uid, mkConstraint } from '../store/storeHelpers.js'
+import { valueKindName } from '../utils/datatypeValues.js'
 
 const other = (side) => (side === 'source' ? 'target' : 'source')
 const keyOf = (cell) => JSON.stringify(projCellKey(cell))
@@ -767,8 +768,7 @@ export function recoverable(state, mapping, X, factIds) {
   if (g.error) return { recoverable: false, reason: `could not be checked: ${g.error}`, dropped: dropped.map(r => r.id) }
   const rest = { ...mapping, rules: kept }
   const dirThere = Y === 'source' ? 'forward' : 'backward', dirBack = Y === 'source' ? 'backward' : 'forward'
-  const there = executeRun(prepareRun(state, rest, dirThere, { check: false }), g.pops)
-  const back = executeRun(prepareRun(state, rest, dirBack, { check: false }), there)
+  const prepThere = prepareRun(state, rest, dirThere, { check: false }), prepBack = prepareRun(state, rest, dirBack, { check: false })
   // Every fact of the other side that the dropped rules name must come back.
   const named = new Set()
   for (const r of dropped) {
@@ -776,7 +776,21 @@ export function recoverable(state, mapping, X, factIds) {
     for (const a of s.atoms) if (a.t === 'fact') named.add(a.factId)
   }
   const data = (p) => ({ ...wY.els, ...p, nestedEntityMappings: {}, subtypeMappings: {} })
-  const evG = makePopulationEvaluator(data(g.pops)), evB = makePopulationEvaluator(data(back))
+  // A value of a type with few values (a boolean, an enumeration) is tried
+  // with each of them, as the rules may treat each differently.
+  for (const pops of finiteCases(wY, g.pops)) {
+    let n = 0
+    const fresh = () => `⊥r${++n}`
+    const lost = lostFact(wY, named, data, pops, executeRun(prepBack, executeRun(prepThere, pops, { fresh }), { fresh }))
+    if (lost) return { ...lost, dropped: dropped.map(r => r.id) }
+  }
+  return { recoverable: true, reason: 'the other rules give back everything it carried', dropped: dropped.map(r => r.id) }
+}
+
+// The first fact of the generic population that does not come back, as
+// { recoverable: false, reason }, or null.
+function lostFact(wY, named, data, gPops, back) {
+  const evG = makePopulationEvaluator(data(gPops)), evB = makePopulationEvaluator(data(back))
   for (const fid of named) {
     const have = new Set((evB.factTuples(fid).tuples ?? []).map(t => JSON.stringify(t.map(keyOf))))
     const lost = (evG.factTuples(fid).tuples ?? []).find(t => !have.has(JSON.stringify(t.map(keyOf))))
@@ -785,10 +799,36 @@ export function recoverable(state, mapping, X, factIds) {
       const col = wY.relational?.tables.flatMap(t => t.columns.map(c => ({ t, c }))).find(x => x.c.fact.id === fid)
       const what = col ? `${col.t.name}.${col.c.name} would lose values such as ${show(lost[col.c.v])} (row ${show(lost[col.c.t])})`
         : `${wY.ctx.factById.get(fid) ? readingName(wY.ctx.factById.get(fid), wY.ctx) : 'a fact type'} would lose facts such as (${lost.map(show).join(', ')})`
-      return { recoverable: false, reason: `without it, ${what}`, dropped: dropped.map(r => r.id) }
+      return { recoverable: false, reason: `without it, ${what}` }
     }
   }
-  return { recoverable: true, reason: 'the other rules give back everything it carried', dropped: dropped.map(r => r.id) }
+  return null
+}
+
+// The values of a value type when there are only a few: a boolean's, or a
+// value range of single values. Null otherwise.
+function finiteValues(vt) {
+  if (!vt) return null
+  if (valueKindName(vt.datatypeAssignment) === 'boolean' || /^bool/i.test(vt.datatypeAssignment?.datatypeId ?? '')) return ['true', 'false']
+  const r = vt.valueRange ?? []
+  return r.length && r.length <= 8 && r.every(x => x.type === 'single') ? r.map(x => String(x.value)) : null
+}
+
+// The population with each labelled null of a value type with few values
+// replaced by each of them (at most 16 cases); the population itself when
+// there is none.
+function finiteCases(w, pops) {
+  const nulls = new Map()
+  for (const f of w.ctx.facts) for (const t of pops.factPopulations?.[f.id] ?? []) t.forEach((c, i) => {
+    if (typeof c !== 'string' || !c.startsWith('⊥') || nulls.has(c)) return
+    const vals = finiteValues(w.ctx.otById.get(f.roles[i]?.objectTypeId))
+    if (vals) nulls.set(c, vals)
+  })
+  if (!nulls.size) return [pops]
+  let cases = [[]]
+  for (const [n, vals] of nulls) cases = cases.flatMap(cs => vals.map(v => [...cs, [n, v]])).slice(0, 16)
+  const text = JSON.stringify(pops)
+  return cases.map(cs => JSON.parse(cs.reduce((s, [n, v]) => s.split(JSON.stringify(n)).join(JSON.stringify(v)), text)))
 }
 
 // What applying a plan changes, for the store: the new mapping (rules of the
