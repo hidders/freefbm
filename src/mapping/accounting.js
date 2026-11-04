@@ -1029,12 +1029,12 @@ function accountEntry(entry, A, B, run, fresh) {
     if (!cands.length) return { ...base, status: 'native', reason: IDENTIFIED }
   }
 
-  const backOf = (I) => executeRun(run.back, I)
+  const backOf = (I) => executeRun(run.back, I, { fresh })
   // The violation carried there and back, or only what it consists of (then
   // the other side's structure already rules it out), or not even that.
   let structural = false
   const carriedBack = (V) => {
-    const I0 = executeRun(run.there, V)
+    const I0 = executeRun(run.there, V, { fresh })
     const back = backOf(I0)
     if (violations(A, back, match).length) return I0
     if (contains(A, back, V, back.invented)) structural = true

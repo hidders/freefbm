@@ -265,6 +265,22 @@ export function NewSchemaMenu({ variant = 'strip' }) {
               Derived table in {sc.name}…
             </div>
           ))}
+          {relSchemas.map(sc => (
+            <div key={`transform-${sc.id}`}
+              className="transform-schema-item"
+              onClick={() => { setOpen(false); useOrmStore.setState({ transformDialog: { schemaId: sc.id } }) }}
+              title="A named transformation (split, absorb, foreign key to cross table, …): a new version of the schema, with the mapping from this one"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 4, fontSize: 12, cursor: 'pointer', color: 'var(--ink-1)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+            >
+              <span style={{
+                fontSize: 9, fontWeight: 700, color: '#fff', background: PROFILE_LABELS.relational.color,
+                borderRadius: 8, padding: '1px 5px', lineHeight: '12px',
+              }}>{PROFILE_LABELS.relational.tag}</span>
+              Transform {sc.name}…
+            </div>
+          ))}
           {refactorable.map(sc => (
             <div key={`refactor-${sc.id}`}
               className="refactor-schema-item"
