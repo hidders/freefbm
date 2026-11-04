@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { planRelational } from '../relational/rmap.js'
+import { handEdited } from '../mapping/regenerate.js'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
@@ -16,22 +17,30 @@ const MODE_TEXT = {
 // store.generateRelationalDialog = { ormSchemaId }.
 export default function GenerateRelationalDialog() {
   const ormSchemaId = useOrmStore(s => s.generateRelationalDialog?.ormSchemaId ?? null)
+  const regen = useOrmStore(s => s.generateRelationalDialog?.regenerate ?? null)
   if (!ormSchemaId) return null
-  return <Dialog ormSchemaId={ormSchemaId} />
+  return <Dialog ormSchemaId={ormSchemaId} regen={regen} />
 }
 
-function Dialog({ ormSchemaId }) {
+// With regen (a mapping id), the choices start as that mapping's generator
+// kept them, and the tables replace its target schema in place.
+function Dialog({ ormSchemaId, regen }) {
   const close = () => useOrmStore.setState({ generateRelationalDialog: null })
   const schema = useOrmStore(s => s.schemas.find(x => x.id === ormSchemaId))
-  const [mode, setMode] = useState('never')
-  const [overrides, setOverrides] = useState({})
+  const { kept, target, edited } = useMemo(() => {
+    const st = useOrmStore.getState()
+    const m = regen ? st.mappings.find(x => x.id === regen) : null
+    return { kept: m?.generator?.options ?? null, target: m ? st.schemas.find(x => x.id === m.targetSchemaId) : null, edited: m ? handEdited(st, m) : false }
+  }, [regen])
+  const [mode, setMode] = useState(kept?.surrogates ?? 'never')
+  const [overrides, setOverrides] = useState(kept?.overrides ?? {})
   const { plan, error } = useMemo(() => {
     try { return { plan: planRelational(useOrmStore.getState(), ormSchemaId, { surrogates: mode, overrides }) }
     } catch (err) { return { error: `The tables could not be planned: ${err?.message ?? err}` } }
   }, [ormSchemaId, mode, overrides])
   const go = () => {
     close()
-    useOrmStore.getState().generateRelationalFromOrm(ormSchemaId, { surrogates: mode, overrides })
+    useOrmStore.getState().generateRelationalFromOrm(ormSchemaId, { surrogates: mode, overrides, regenerate: regen })
   }
   const typeName = (id) => plan?.ctx.otById.get(id)?.name ?? plan?.ctx.factById.get(id)?.objectifiedName ?? '?'
   const entityOf = (t) => (t.typeId ? plan.entities.get(t.typeId) : null)
@@ -53,15 +62,22 @@ function Dialog({ ormSchemaId }) {
       <div className="generate-relational-dialog" style={{ width: 640, maxWidth: 'calc(100vw - 32px)', maxHeight: '80vh', display: 'flex', flexDirection: 'column',
         background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid var(--border-soft)' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink-1)' }}>Generate tables from {schema?.name ?? 'this schema'}</div>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink-1)' }}>{regen ? `Regenerate ${target?.name ?? 'the tables'} from` : 'Generate tables from'} {schema?.name ?? 'this schema'}</div>
           <div style={{ fontSize: 12, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.45 }}>
-            Makes a new relational schema and a mapping to it, the way Rmap does: functional fact types go into the table of
+            {regen ? 'Makes the tables again' : 'Makes a new relational schema and a mapping to it'}, the way Rmap does: functional fact types go into the table of
             the entity type they describe, other fact types get tables of their own, and a subtype's table shares its supertype's key.
             The population, if any, is carried over.
           </div>
         </div>
         <div style={{ overflowY: 'auto', padding: '8px 14px', fontSize: 12 }}>
           {error && <div style={{ color: 'var(--danger)' }}>{error}</div>}
+          {regen && <div style={{ color: 'var(--ink-2)', margin: '2px 0 8px', lineHeight: 1.45 }}>
+            Makes {target?.name ?? 'the schema'} again in place, with these choices: elements that come back keep their places on its diagram,
+            and other mappings and diagrams that name them still do.
+            {edited && <div style={{ color: '#b45309', marginTop: 4 }}>
+              ⚠ {target?.name ?? 'The schema'} or its mapping was changed by hand since it was generated. Regenerating replaces those changes.
+            </div>}
+          </div>}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 8px' }}>
             <span style={{ fontWeight: 600, color: 'var(--ink-1)' }}>Surrogate keys</span>
             <select value={mode} onChange={e => { setMode(e.target.value); setOverrides({}) }} style={{ fontSize: 12, fontFamily: FONT }}>
@@ -119,7 +135,7 @@ function Dialog({ ormSchemaId }) {
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 14px', borderTop: '1px solid var(--border-soft)' }}>
           <button onClick={close} style={btn(false)}>Cancel</button>
-          <button onClick={go} disabled={!plan?.tables.length} autoFocus style={{ ...btn(true), opacity: plan?.tables.length ? 1 : 0.5 }}>Generate tables</button>
+          <button onClick={go} disabled={!plan?.tables.length} autoFocus style={{ ...btn(true), opacity: plan?.tables.length ? 1 : 0.5 }}>{regen ? 'Regenerate' : 'Generate tables'}</button>
         </div>
       </div>
     </div>

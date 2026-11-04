@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { analyseTables } from '../relational/guessOrm.js'
+import { handEdited } from '../mapping/regenerate.js'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
@@ -17,19 +18,27 @@ const KIND_TEXT = {
 // key. Opened with store.guessOrmDialog = { relSchemaId }.
 export default function GuessOrmDialog() {
   const relSchemaId = useOrmStore(s => s.guessOrmDialog?.relSchemaId ?? null)
+  const regen = useOrmStore(s => s.guessOrmDialog?.regenerate ?? null)
   if (!relSchemaId) return null
-  return <Dialog relSchemaId={relSchemaId} />
+  return <Dialog relSchemaId={relSchemaId} regen={regen} />
 }
 
-function Dialog({ relSchemaId }) {
+// With regen (a mapping id), the choices start as that mapping's generator
+// kept them, and the guess replaces its target schema in place.
+function Dialog({ relSchemaId, regen }) {
   const close = () => useOrmStore.setState({ guessOrmDialog: null })
   const schema = useOrmStore(s => s.schemas.find(x => x.id === relSchemaId))
   const plan = useMemo(() => analyseTables(useOrmStore.getState(), relSchemaId), [relSchemaId])
-  const [choice, setChoice] = useState(() => Object.fromEntries(plan.filter(p => p.surrogate).map(p => [p.table.id, p.defaultSurrogate])))
+  const { kept, target, edited } = useMemo(() => {
+    const st = useOrmStore.getState()
+    const m = regen ? st.mappings.find(x => x.id === regen) : null
+    return { kept: m?.generator?.options ?? null, target: m ? st.schemas.find(x => x.id === m.targetSchemaId) : null, edited: m ? handEdited(st, m) : false }
+  }, [regen])
+  const [choice, setChoice] = useState(() => Object.fromEntries(plan.filter(p => p.surrogate).map(p => [p.table.id, kept?.surrogates?.[p.table.id] ?? p.defaultSurrogate])))
   const surrogates = plan.filter(p => p.surrogate)
   const go = () => {
     close()
-    useOrmStore.getState().guessOrmFromRelational(relSchemaId, { surrogates: choice })
+    useOrmStore.getState().guessOrmFromRelational(relSchemaId, { surrogates: choice, regenerate: regen })
   }
   const counts = plan.reduce((m, p) => ({ ...m, [p.kind]: (m[p.kind] ?? 0) + 1 }), {})
 
@@ -41,15 +50,22 @@ function Dialog({ relSchemaId }) {
       <div className="guess-orm-dialog" style={{ width: 560, maxWidth: 'calc(100vw - 32px)', maxHeight: '80vh', display: 'flex', flexDirection: 'column',
         background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)' }}>
         <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid var(--border-soft)' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink-1)' }}>Guess an ORM2 schema from {schema?.name ?? 'this schema'}</div>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink-1)' }}>{regen ? `Regenerate ${target?.name ?? 'the ORM2 schema'} from` : 'Guess an ORM2 schema from'} {schema?.name ?? 'this schema'}</div>
           <div style={{ fontSize: 12, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.45 }}>
-            Makes a new ORM2 schema and a mapping to it. Tables become entity types, a primary key that is a foreign key makes a subtype,
+            {regen ? 'Makes the ORM2 schema and its mapping again.' : 'Makes a new ORM2 schema and a mapping to it.'} Tables become entity types, a primary key that is a foreign key makes a subtype,
             junction tables become many-to-many fact types, a table that only lists values becomes a value type, boolean NOT NULL
             columns become unary fact types, a type column with a list of values gives derived subtypes, and other columns and
             foreign keys become fact types read from their names.
           </div>
         </div>
         <div style={{ overflowY: 'auto', padding: '8px 14px', fontSize: 12 }}>
+          {regen && <div style={{ color: 'var(--ink-2)', margin: '2px 0 8px', lineHeight: 1.45 }}>
+            Makes {target?.name ?? 'the schema'} again in place, with these choices: elements that come back keep their places on its diagram,
+            and other mappings and diagrams that name them still do.
+            {edited && <div style={{ color: '#b45309', marginTop: 4 }}>
+              ⚠ {target?.name ?? 'The schema'} or its mapping was changed by hand since it was generated. Regenerating replaces those changes.
+            </div>}
+          </div>}
           <div style={{ color: 'var(--ink-2)', marginBottom: 6 }}>
             {plan.length} tables: {Object.entries(counts).map(([k, n]) => `${n} ${KIND_TEXT[k]}${n === 1 ? '' : 's'}`).join(', ')}.
           </div>
@@ -99,7 +115,7 @@ function Dialog({ relSchemaId }) {
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 14px', borderTop: '1px solid var(--border-soft)' }}>
           <button onClick={close} style={btn(false)}>Cancel</button>
-          <button onClick={go} autoFocus style={btn(true)}>Guess schema</button>
+          <button onClick={go} autoFocus style={btn(true)}>{regen ? 'Regenerate' : 'Guess schema'}</button>
         </div>
       </div>
     </div>

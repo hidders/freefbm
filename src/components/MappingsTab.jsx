@@ -107,6 +107,12 @@ export default function MappingsTab() {
               <button className="mapping-lock" style={{ ...btn, whiteSpace: 'nowrap', ...(m.lock ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : {}) }} aria-pressed={!!m.lock}
                 title={m.lock ? `Unlock: ${name(m.sourceSchemaId)} and ${name(m.targetSchemaId)} can be edited freely again` : `Lock ${name(m.sourceSchemaId)} and ${name(m.targetSchemaId)} to new constraints only, and carry the constraints added to one to the other`}
                 onClick={() => act().lockMapping(m.id, !m.lock)}>{m.lock ? '✓ ' : ''}Constraints only</button>
+              {m.generator && schemas.some(s => s.id === m.targetSchemaId) && (
+                <button style={btn} disabled={!!m.lock} title={m.lock ? 'Unlock the mapping to regenerate' : `Make ${name(m.targetSchemaId)} again from ${name(m.sourceSchemaId)} in place, with the choices it was ${m.generator.kind === 'guess' ? 'guessed' : 'generated'} with (which can be changed); elements that come back keep their places`}
+                  onClick={() => useOrmStore.setState(m.generator.kind === 'guess'
+                    ? { guessOrmDialog: { relSchemaId: m.sourceSchemaId, regenerate: m.id } }
+                    : { generateRelationalDialog: { ormSchemaId: m.sourceSchemaId, regenerate: m.id } })}>Regenerate…</button>
+              )}
               <button style={btn} title="Delete this mapping and its rules" onClick={() => act().deleteMapping(m.id)}>Delete</button>
             </div>
             {runs[m.id] && <RunReport run={runs[m.id]} mapping={m} name={name}
