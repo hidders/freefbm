@@ -313,6 +313,37 @@ export function compileTableRulesInto(state, tableId) {
 }
 const strip = (x) => { delete x.tableRuleId; delete x.derivationRule; return x }
 
+// The table rules with the elements in `ids` (made ordinary, e.g. by Fold)
+// taken out: their columns leave the rows, a table whose rows are no longer
+// derived keeps the rule only for columns still derived, and a rule left
+// with nothing to derive goes. Returns { objectTypes, tableIds } (the tables
+// whose rules changed, to recompile).
+export function withoutRuleElements(state, ids) {
+  const set = new Set(ids)
+  const tableIds = []
+  const objectTypes = state.objectTypes.map(o => {
+    const rules = tableRulesOf(o)
+    if (!rules.length) return o
+    const tb = sideContext(state, o.schemaId).tableById.get(o.id)
+    const key = new Set((tb?.pk ?? []).map(c => c.fact.id))
+    let changed = false
+    const next = []
+    for (const r of rules) {
+      const head = Object.fromEntries(Object.entries(r.head ?? {}).filter(([fid]) => key.has(fid) || !set.has(fid)))
+      let kind = r.kind
+      if (kind === 'table' && set.has(o.id)) kind = 'columns'
+      const nonKey = Object.keys(head).filter(fid => !key.has(fid))
+      if (kind !== r.kind || Object.keys(head).length !== Object.keys(r.head ?? {}).length) changed = true
+      if (kind === 'columns' && !nonKey.length) { changed = true; continue }
+      next.push(kind === r.kind && head === r.head ? r : { ...r, kind, head })
+    }
+    if (!changed) return o
+    tableIds.push(o.id)
+    return { ...o, tableRules: next }
+  })
+  return { objectTypes, tableIds }
+}
+
 // A new column of a table for $y: a fact type from the table to valueTypeId
 // (or a new value type named after the column), as in DDL import. Returns
 // { facts, objectTypes, fact }.

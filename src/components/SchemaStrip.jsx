@@ -191,6 +191,9 @@ export function NewSchemaMenu({ variant = 'strip' }) {
   const ref = useRef(null)
   const relSchemas = useOrmStore(useShallow(s => (s.schemas ?? []).filter(x => x.profile === 'relational')))
   const ormSchemas = useOrmStore(useShallow(s => (s.schemas ?? []).filter(x => x.profile !== 'relational')))
+  // Schemas with fully derived elements, which Refactor folds into a new version.
+  const refactorable = useOrmStore(useShallow(s => (s.schemas ?? []).filter(x =>
+    (s.objectTypes ?? []).some(o => o.schemaId === x.id && o.derivation === 'derived') || (s.facts ?? []).some(f => f.schemaId === x.id && f.derivation === 'derived'))))
 
   useEffect(() => {
     if (!open) return
@@ -260,6 +263,22 @@ export function NewSchemaMenu({ variant = 'strip' }) {
                 borderRadius: 8, padding: '1px 5px', lineHeight: '12px',
               }}>{PROFILE_LABELS.relational.tag}</span>
               Derived table in {sc.name}…
+            </div>
+          ))}
+          {refactorable.map(sc => (
+            <div key={`refactor-${sc.id}`}
+              className="refactor-schema-item"
+              onClick={() => { setOpen(false); useOrmStore.getState().refactorSchema(sc.id) }}
+              title="A new version of the schema in which its derived types, fact types, tables and columns are stored, with the mapping from the old version (Fold)"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 4, fontSize: 12, cursor: 'pointer', color: 'var(--ink-1)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+            >
+              <span style={{
+                fontSize: 9, fontWeight: 700, color: '#fff', background: PROFILE_LABELS[sc.profile === 'relational' ? 'relational' : 'orm2'].color,
+                borderRadius: 8, padding: '1px 5px', lineHeight: '12px',
+              }}>{PROFILE_LABELS[sc.profile === 'relational' ? 'relational' : 'orm2'].tag}</span>
+              Refactor {sc.name}: new version with its derived elements folded…
             </div>
           ))}
           {ormSchemas.map(sc => (

@@ -1,13 +1,14 @@
 // Schema mappings between two schemas of the file (mapping/mapping.js).
 import { mkMapping, mkRule, ruleElements } from '../../mapping/mapping.js'
 import { withRunApplied } from '../../mapping/runMapping.js'
-import { foldChanges, addConstraint } from '../../mapping/fold.js'
+import { foldChanges, addConstraint, strip } from '../../mapping/fold.js'
 import { mkDiagram, mkConstraint, mkConstraintOcc } from '../storeHelpers'
 import { formulaElements } from '../../logic/formulaConstraint.js'
 import { findRefMode } from '../../utils/refMode.js'
-import { mkTableRule, tableRulesOf, compileTableRulesInto, newColumn, withPrimaryKey, bodyFrontier } from '../../relational/derivedTables.js'
+import { mkTableRule, tableRulesOf, compileTableRulesInto, newColumn, withPrimaryKey, bodyFrontier, withoutRuleElements } from '../../relational/derivedTables.js'
 import { sideContext, treeToSide, expandSide } from '../../mapping/mapping.js'
 import { mkEntity } from '../storeHelpers'
+import { cloneSchema, identityMapping } from '../../mapping/refactor.js'
 
 const ADVANCED_KEY = 'freefbm.advancedMode'
 const readAdvanced = () => { try { return localStorage.getItem(ADVANCED_KEY) === '1' } catch { return false } }
@@ -259,13 +260,13 @@ export const createMappingSlice = (set, get) => {
     // the fact types they replace and adds the constraints the mapping keeps
     // for them, as one undo step. plan from planFold; fold, remove: the
     // chosen element and fact type ids. Shows a report in the import log.
-    foldMapping(plan, { fold = null, remove = null } = {}) {
+    // twins: { folded element id → element of the old version to delete } (Refactor).
+    foldMapping(plan, { fold = null, remove = null, twins = null } = {}) {
       const st = get()
       const m = st.mappings?.find(x => x.id === plan.mapping.id)
       if (!m) return null
       const ch = foldChanges(st, plan, { fold, remove })
       const promote = new Set(ch.promote), removeIds = new Set(ch.remove)
-      const strip = (x) => { const { derivation, derivationRule, ...rest } = x; return rest }
       const schemaId = plan.side === 'source' ? m.sourceSchemaId : m.targetSchemaId
       set(s => ({ historyBatch: (s.historyBatch ?? 0) + 1 }))
       try {
@@ -274,12 +275,28 @@ export const createMappingSlice = (set, get) => {
           objectTypes: s.objectTypes.map(o => (promote.has(o.id) ? strip(o) : o)),
           facts: s.facts.map(f => {
             let g = promote.has(f.id) ? strip(f) : f
-            for (const a of ch.add) if (a.factId === f.id) g = addConstraint(g, a)
+            for (const a of ch.add) if (a.kind !== 'fk' && a.factId === f.id) g = addConstraint(g, a)
             return g
           }),
           populations: ch.populations, factPopulations: ch.factPopulations,
           isDirty: true,
         }))
+        // Table rules lose what was folded (derivedTables.js).
+        const tr = withoutRuleElements(get(), [...promote])
+        if (tr.tableIds.length) {
+          set({ objectTypes: tr.objectTypes })
+          for (const id of tr.tableIds) set(st => compileTableRulesInto(st, id))
+        }
+        // Foreign keys the folded tables get: drawn where both tables are.
+        const fks = ch.add.filter(a => a.kind === 'fk').map(a => a.constraint)
+        if (fks.length) {
+          set(st => ({ constraints: [...st.constraints, ...fks] }))
+          for (const c of fks) {
+            get()._tryAutoGenerateQuery?.(c.id)
+            const tables = new Set(c.sequences.flat().map(m => get().facts.find(f => f.id === m.factId)?.roles.find(r => get().objectTypes.find(o => o.id === r.objectTypeId)?.kind === 'entity')?.objectTypeId))
+            for (const d of get().diagrams) if (!d.mappingId && d.schemaId === schemaId && [...tables].every(t => (d.occurrences ?? []).some(o => o.schemaElementId === t))) get().addElementToDiagram(c.id, d.id)
+          }
+        }
         const before = get()
         const players = new Set(before.facts.filter(f => removeIds.has(f.id)).flatMap(f => f.roles.map(r => r.objectTypeId)))
         for (const c of before.constraints) {
@@ -296,6 +313,21 @@ export const createMappingSlice = (set, get) => {
           if (after.facts.some(f => f.roles.some(r => r.objectTypeId === id)) || named.includes(JSON.stringify(id))) continue
           get().deleteObjectType(id)
           ch.report.push(`Removed value type ${o.name}, which no fact type uses any more`)
+        }
+        if (twins) {
+          const gone = ch.promote.map(id => twins[id]).filter(Boolean)
+          if (gone.length) {
+            const tr = withoutRuleElements(get(), gone)
+            set({ objectTypes: tr.objectTypes })
+            for (const id of tr.tableIds) set(st => compileTableRulesInto(st, id))
+            for (const id of gone) {
+              if (get().facts.some(f => f.id === id)) { get().deleteFact(id); continue }
+              // A table goes with its columns.
+              for (const f of get().facts.filter(x => x.roles.some(r => r.objectTypeId === id))) get().deleteFact(f.id)
+              if (get().objectTypes.some(o => o.id === id)) get().deleteObjectType(id)
+            }
+            ch.report.push(`Removed from the old version the ${gone.length} derived element${gone.length === 1 ? '' : 's'} now stored in the new one; the mapping gives them`)
+          }
         }
       } finally {
         set(s => ({ historyBatch: Math.max(0, (s.historyBatch ?? 1) - 1) }))
@@ -434,6 +466,52 @@ export const createMappingSlice = (set, get) => {
       const t = get().objectTypes.find(o => o.id === tableId)
       if (!t) return
       get().updateTableRules(tableId, rs => rs, (st) => withPrimaryKey(st, t, columnFactIds))
+    },
+    // Refactor (mapping/refactor.js): a new version of the schema, with the
+    // identity mapping from the old one, as one undo step; then the Fold
+    // dialog for the new version's derived elements. Returns the mapping id.
+    refactorSchema(schemaId) {
+      const s = get()
+      const old = s.schemas.find(x => x.id === schemaId)
+      if (!old) return null
+      const used = new Set(s.schemas.map(x => x.name))
+      let name = `${old.name} (new)`
+      for (let i = 2; used.has(name); i++) name = `${old.name} (new ${i})`
+      const cl = cloneSchema(s, schemaId, name)
+      let mappingId = null
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        set(st => ({
+          schemas: [...st.schemas, cl.schema],
+          objectTypes: [...st.objectTypes, ...cl.objectTypes],
+          facts: [...st.facts, ...cl.facts],
+          subtypes: [...st.subtypes, ...cl.subtypes],
+          constraints: [...st.constraints, ...cl.constraints],
+          diagrams: [...st.diagrams, ...cl.diagrams],
+          populations: { ...st.populations, ...cl.populations },
+          factPopulations: { ...st.factPopulations, ...cl.factPopulations },
+          isDirty: true,
+        }))
+        const { mapping, skipped } = identityMapping(get(), schemaId, cl.schema.id, cl.idMap, `${old.name} → ${name}`)
+        mappingId = mapping.id
+        set(st => ({ mappings: [...(st.mappings ?? []), mapping] }))
+        if (cl.diagrams[0]) get().setActiveDiagram(cl.diagrams[0].id)
+        get().setImportLog?.({ kind: 'fold', source: `Refactor ${old.name}`, entries: [
+          { level: 'note', text: `Copied ${old.name} to ${name}, with the mapping ${mapping.name} (${mapping.rules.length} rules, one per entity type and fact type).` },
+          ...skipped.map(x => ({ level: 'warn', text: `No identity rule for ${x}: it has no identifier to map it by` })),
+        ] })
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+      // The old version's derived elements were the refactoring's plan: once
+      // folded, their twins go from it (foldMapping, twins).
+      const twins = {}
+      for (const [o, n] of cl.idMap) {
+        const el = s.objectTypes.find(x => x.id === o) ?? s.facts.find(x => x.id === o)
+        if (el && el.derivation === 'derived') twins[n] = o
+      }
+      set({ foldDialog: { mappingId, side: 'target', twins } })
+      return mappingId
     },
     // A new table in a relational schema whose rows a rule derives; opens the
     // rule. Returns the table id.
