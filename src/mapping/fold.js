@@ -807,23 +807,33 @@ function lostFact(wY, named, data, gPops, back) {
 
 // The values of a value type when there are only a few: a boolean's, or a
 // value range of single values. Null otherwise.
-function finiteValues(vt) {
+function finiteValues(vt, role = null) {
   if (!vt) return null
   if (valueKindName(vt.datatypeAssignment) === 'boolean' || /^bool/i.test(vt.datatypeAssignment?.datatypeId ?? '')) return ['true', 'false']
-  const r = vt.valueRange ?? []
+  const r = role?.valueRange?.length ? role.valueRange : vt.valueRange ?? []
   return r.length && r.length <= 8 && r.every(x => x.type === 'single') ? r.map(x => String(x.value)) : null
 }
 
 // The population with each labelled null of a value type with few values
 // replaced by each of them (at most 16 cases); the population itself when
 // there is none.
-function finiteCases(w, pops) {
+export function finiteCases(w, pops) {
   const nulls = new Map()
   for (const f of w.ctx.facts) for (const t of pops.factPopulations?.[f.id] ?? []) t.forEach((c, i) => {
     if (typeof c !== 'string' || !c.startsWith('⊥') || nulls.has(c)) return
-    const vals = finiteValues(w.ctx.otById.get(f.roles[i]?.objectTypeId))
+    const vals = finiteValues(w.ctx.otById.get(f.roles[i]?.objectTypeId), f.roles[i])
     if (vals) nulls.set(c, vals)
   })
+  // Rows of a table keyed by several columns: the key's values.
+  for (const [tid, rows] of Object.entries(pops.populations ?? {})) {
+    const pk = w.ctx.tableById?.get(tid)?.pk
+    if (!pk || pk.length < 2) continue
+    for (const row of rows) if (Array.isArray(row)) row.forEach((c, i) => {
+      if (typeof c !== 'string' || !c.startsWith('⊥') || nulls.has(c) || !pk[i]) return
+      const vals = finiteValues(pk[i].vt, pk[i].fact.roles[pk[i].v])
+      if (vals) nulls.set(c, vals)
+    })
+  }
   if (!nulls.size) return [pops]
   let cases = [[]]
   for (const [n, vals] of nulls) cases = cases.flatMap(cs => vals.map(v => [...cs, [n, v]])).slice(0, 16)

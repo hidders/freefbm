@@ -42,7 +42,7 @@ function Dialog({ schemaId }) {
     </select>
   )
   const nameInput = (fallback) => (
-    <input value={p.name ?? fallback ?? ''} onChange={e => setP({ name: e.target.value })} style={{ ...sel, width: 220 }} aria-label="Name of the new table" />
+    <input value={p.name ?? fallback ?? ''} onChange={e => setP({ name: e.target.value })} style={{ ...sel, width: 220 }} aria-label={tr?.nameLabel ?? 'Name'} />
   )
   // The params with a default name filled in.
   const withName = (fallback) => (p.name == null && fallback ? { ...p, name: fallback } : p)
@@ -76,23 +76,23 @@ function Dialog({ schemaId }) {
       {p.fromId && field('Into', tableSelect(effective.intoId, v => setP({ intoId: v }), targets))}
       {!from.length && <div style={{ color: 'var(--ink-2)' }}>No table's key is a foreign key to another table's key, so none can be absorbed.</div>}
     </>
-  } else if (kind === 'fkToTable' || kind === 'boolToTable') {
+  } else if (tr?.options) {
+    // A choice from the transformation's options, and a name when it asks for one.
     const opts = tr.options(ctx)
-    const key = (o) => `${o.tableId}|${o.columnId ?? o.columnIds?.join(',')}`
-    const cur = opts.find(o => o.tableId === p.tableId && (kind === 'boolToTable' ? o.columnId === p.columnId : JSON.stringify(o.columnIds) === JSON.stringify(p.columnIds)))
-    effective = withName(cur?.name)
+    const cur = opts.find(o => o.key === p.optionKey)
+    effective = cur ? { ...cur.params, name: p.name ?? cur.name, ...Object.fromEntries((tr.fields ?? []).map(f => [f.key, p[f.key] ?? cur.params[f.key]])) } : {}
     form = <>
-      {field(kind === 'fkToTable' ? 'Foreign key' : 'Boolean column', (
-        <select value={cur ? key(cur) : ''} style={sel} onChange={e => {
-          const o = opts.find(x => key(x) === e.target.value)
-          setP(o ? { tableId: o.tableId, columnId: o.columnId, columnIds: o.columnIds, name: null } : { tableId: null })
-        }}>
+      {field(tr.optionLabel ?? 'Apply to', (
+        <select value={cur?.key ?? ''} style={sel} onChange={e => setP({ optionKey: e.target.value || null, name: null, ...Object.fromEntries((tr.fields ?? []).map(f => [f.key, null])) })}>
           <option value="">Choose…</option>
-          {opts.map(o => <option key={key(o)} value={key(o)}>{o.label}</option>)}
+          {opts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
         </select>
       ))}
-      {!opts.length && <div style={{ color: 'var(--ink-2)' }}>{kind === 'fkToTable' ? 'The schema has no foreign key outside a primary key.' : 'The schema has no boolean column.'}</div>}
-      {cur && field('New table', nameInput(cur.name))}
+      {!opts.length && <div style={{ color: 'var(--ink-2)' }}>{tr.none}</div>}
+      {cur && tr.nameLabel && field(tr.nameLabel, nameInput(cur.name))}
+      {cur && (tr.fields ?? []).map(f => <React.Fragment key={f.key}>{field(f.label, (
+        <input value={effective[f.key] ?? ''} onChange={e => setP({ [f.key]: e.target.value })} style={{ ...sel, width: 220 }} aria-label={f.label} />
+      ))}</React.Fragment>)}
     </>
   }
   const effProblems = tr ? tr.check(effective, ctx) : []

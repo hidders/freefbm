@@ -28,6 +28,7 @@
 
 import { worldOf, genericPopulation, genericInstance, contains, accountingSteps } from './accounting.js'
 import { prepareRun, executeRun } from './runMapping.js'
+import { finiteCases } from './fold.js'
 import { expandSide, asSide, readingName, SIDES } from './mapping.js'
 import { uncoveredElements } from './mappingIssues.js'
 import { translateEntry, asValueComparison } from './translate.js'
@@ -63,12 +64,19 @@ function ruleComesBack(wX, rule, X, preps) {
   const g = genericPopulation(wX, [rule[X]])
   if (g.error) return { ok: null, reason: g.error }
   const named = namedBy(wX, rule[X])
-  const start = { populations: {}, factPopulations: {} }
-  for (const id of named.typeIds) if (g.pops.populations[id]) start.populations[id] = g.pops.populations[id]
-  for (const id of named.factIds) if (g.pops.factPopulations[id]) start.factPopulations[id] = g.pops.factPopulations[id]
-  const there = executeRun(preps.there, g.pops)
-  const back = executeRun(preps.back, there)
-  if (contains(wX, back, start, back.invented)) return { ok: true }
+  // A labelled null of a type with a few values (a boolean, a list): each
+  // of them in turn.
+  let start, back
+  for (const pops of finiteCases(wX, g.pops)) {
+    start = { populations: {}, factPopulations: {} }
+    for (const id of named.typeIds) if (pops.populations[id]) start.populations[id] = pops.populations[id]
+    for (const id of named.factIds) if (pops.factPopulations[id]) start.factPopulations[id] = pops.factPopulations[id]
+    const there = executeRun(preps.there, pops)
+    back = executeRun(preps.back, there)
+    if (!contains(wX, back, start, back.invented)) break
+    start = null
+  }
+  if (!start) return { ok: true }
   // What did not come back, for the message.
   const missing = []
   for (const id of named.factIds) {
@@ -89,11 +97,13 @@ function ruleComesBack(wX, rule, X, preps) {
 function instanceComesBack(wX, typeId, preps) {
   const g = genericInstance(wX, typeId)
   if (g.error) return { ok: null, reason: g.error }
-  const start = { populations: { [typeId]: g.pops.populations[typeId] ?? [] }, factPopulations: {} }
-  const there = executeRun(preps.there, g.pops)
-  const back = executeRun(preps.back, there)
-  return contains(wX, back, start, back.invented) ? { ok: true }
-    : { ok: false, reason: 'an instance that plays no other mapped role does not come back' }
+  for (const pops of finiteCases(wX, g.pops)) {
+    const start = { populations: { [typeId]: pops.populations[typeId] ?? [] }, factPopulations: {} }
+    const there = executeRun(preps.there, pops)
+    const back = executeRun(preps.back, there)
+    if (!contains(wX, back, start, back.invented)) return { ok: false, reason: 'an instance that plays no other mapped role does not come back' }
+  }
+  return { ok: true }
 }
 
 // Whether an instance of an entity type may exist without playing any role
