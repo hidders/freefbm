@@ -10,7 +10,8 @@
 //     ∧ p(v)) is "c IS NOT NULL AND p(c)";
 //   - any other formula becomes a query that returns its violations: for
 //     ∀x̄ (φ → ψ) the x̄ for which φ holds and ψ does not, with each quantifier
-//     an EXISTS over the tables its variables range over.
+//     an EXISTS over the tables its variables range over, and a transitive
+//     closure [TC_{v,w} φ](s, t) a WITH RECURSIVE query of what s reaches.
 //
 // Values bound to variables are never NULL, so every condition written here
 // is true or false, never unknown (SQL's third value): where a negation could
@@ -178,6 +179,8 @@ export function formulaToSql(formula, model, names = () => null) {
     }
     return no('this term')
   }
+  // The SQL values that stand for a variable: its value, or its row's key.
+  const partsOf = (x, env) => { const b = env.get(x) ?? no('a variable is used outside its quantifier'); return b.sql != null ? [b.sql] : keyOf(b) }
   const tupleOf = (vars, env) => {
     const parts = vars.flatMap(v => { const b = env.get(v); return b.sql != null ? [b.sql] : keyOf(b) })
     return parts.length === 1 ? parts[0] : `(${parts.join(', ')})`
@@ -318,7 +321,27 @@ export function formulaToSql(formula, model, names = () => null) {
         }
         return no(`the predicate ${g.op}`)
       }
-      case 'tc': return no('a transitive closure')
+      case 'tc': {
+        // [TC_{v,w} φ](s, t): t is reached from s in one or more φ steps. The
+        // w reached from s, as a recursive query that starts at s (UNION
+        // stops on cycles); TC* also holds when s and t are the same.
+        const [v, w] = g.vars
+        const [s, t] = g.args
+        if (!s || !t) no('a transitive closure with an open end')
+        const sP = partsOf(s, env), tP = partsOf(t, env)
+        const name = `tc${++n}`
+        const step = (from) => {
+          const b = bind([v, w], conjuncts(g.body), env)
+          const vP = partsOf(v, b.env), wP = partsOf(w, b.env)
+          if (vP.length !== sP.length || wP.length !== tP.length) no('a transitive closure over rows and values')
+          const start = from ? vP.map((p, i) => `${p} = ${name}.r${i + 1}`) : vP.map((p, i) => `${p} = ${sP[i]}`)
+          const where = [...b.where.map(x => x.sql), ...b.rest.map(a => cond(a, b.env)), ...start]
+          return select(wP.join(', '), { from: [...(from ? [name] : []), ...b.from], where: where.map(sql => ({ sql })) })
+        }
+        const cols = tP.map((_, i) => `r${i + 1}`)
+        const reach = `EXISTS (WITH RECURSIVE ${name}(${cols.join(', ')}) AS (${step(false)} UNION ${step(true)}) SELECT 1 FROM ${name} WHERE ${conj(tP.map((p, i) => `${name}.${cols[i]} = ${p}`))})`
+        return g.star ? disj([conj(sP.map((p, i) => `${p} = ${tP[i]}`)), reach]) : reach
+      }
     }
     return no(`a ${g.t}`)
   }
