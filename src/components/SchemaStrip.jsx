@@ -246,6 +246,22 @@ export function NewSchemaMenu({ variant = 'strip' }) {
               ORM2 schema guessed from {sc.name}…
             </div>
           ))}
+          {relSchemas.map(sc => (
+            <div key={`derived-${sc.id}`}
+              className="derived-table-item"
+              onClick={() => { setOpen(false); useOrmStore.getState().addDerivedTable(sc.id) }}
+              title="A new table of the relational schema whose rows a query over the schema gives (a view)"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 4, fontSize: 12, cursor: 'pointer', color: 'var(--ink-1)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+            >
+              <span style={{
+                fontSize: 9, fontWeight: 700, color: '#fff', background: PROFILE_LABELS.relational.color,
+                borderRadius: 8, padding: '1px 5px', lineHeight: '12px',
+              }}>{PROFILE_LABELS.relational.tag}</span>
+              Derived table in {sc.name}…
+            </div>
+          ))}
           {ormSchemas.map(sc => (
             <div key={sc.id}
               className="generate-relational-item"

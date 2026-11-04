@@ -14,6 +14,7 @@ import { isFormulaConstraint, checkFormulaConstraint } from '../logic/formulaCon
 import { isFormulaQuery, checkQuery, whyNoOuterJoin } from '../logic/query.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
 import { mappingRuleIssues, mappingCoverageIssues } from '../mapping/mappingIssues.js'
+import { tableRuleIssues } from '../relational/derivedTables.js'
 import { readingName } from '../mapping/mapping.js'
 
 export const VALIDATION_CATEGORIES = {
@@ -331,20 +332,33 @@ export function runValidation(state, enabledCategories) {
   // ── Derivation Rules ─────────────────────────────────────────────────────────
   if (enabledCategories.has('derivationRules')) {
     const dctx = makeContext(state)
-    derivationIssues(state, dctx).forEach((i, n) => errors.push({
+    // Rules compiled from a table rule (relational/derivedTables.js) are
+    // reported through it; only their errors are listed, as they would be a
+    // fault of the compilation.
+    const compiled = (el, i) => !el.tableRuleId || i.severity === 'error'
+    const viaTable = (el) => (el.tableRuleId ? 'Derivation rule compiled from a table rule' : 'Derivation rule')
+    derivationIssues(state, dctx).filter(i => compiled(i.ot, i)).forEach((i, n) => errors.push({
       id: `derivation-${i.ot.id}-${n}`,
       category: 'derivationRules',
       elementId: i.ot.id,
       elementKind: i.ot.kind,
-      message: `Derivation rule: ${i.message}`,
+      message: `${viaTable(i.ot)}: ${i.message}`,
       severity: i.severity,
     }))
-    factDerivationIssues(state, dctx).forEach((i, n) => errors.push({
+    factDerivationIssues(state, dctx).filter(i => compiled(i.fact, i)).forEach((i, n) => errors.push({
       id: `derivation-${i.fact.id}-${n}`,
       category: 'derivationRules',
       elementId: i.fact.id,
       elementKind: 'fact',
-      message: `Derivation rule: ${i.message}`,
+      message: `${viaTable(i.fact)}: ${i.message}`,
+      severity: i.severity,
+    }))
+    tableRuleIssues(state).forEach((i, n) => errors.push({
+      id: `table-rule-${i.table.id}-${i.rule.id}-${n}`,
+      category: 'derivationRules',
+      elementId: i.table.id,
+      elementKind: 'entity',
+      message: `Table rule${i.rule.name ? ` ${i.rule.name}` : ''} of ${i.table.name}: ${i.text}`,
       severity: i.severity,
     }))
     // The rules must not depend on each other in a cycle.
