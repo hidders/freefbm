@@ -35,7 +35,7 @@ import { upgradeRule, directSupertypes, referenceParts, SUBJECT } from '../logic
 import { factRuleParts, isDerivedFact } from '../logic/factDerivation.js'
 import { makePopulationEvaluator } from '../logic/derivedPopulation.js'
 import { projCellKey } from '../utils/populationValidation.js'
-import { uid } from '../store/storeHelpers.js'
+import { uid, mkConstraint } from '../store/storeHelpers.js'
 
 const other = (side) => (side === 'source' ? 'target' : 'source')
 const keyOf = (cell) => JSON.stringify(projCellKey(cell))
@@ -46,7 +46,8 @@ const elsOf = (ctx) => ({ objectTypes: ctx.objectTypes, facts: ctx.facts, subtyp
 // The value types at the leaves of a type's reference scheme, in order: the
 // type itself for a value type. Null when it has none we can follow.
 export function keyLeaves(typeId, ctx, els, depth = 0) {
-  const t = ctx.otById.get(typeId)
+  // (An objectified fact type is identified through its implied links.)
+  const t = ctx.otById.get(typeId) ?? (ctx.factById.get(typeId)?.objectified ? ctx.factById.get(typeId) : null)
   if (!t || depth > 6) return null
   if (t.kind === 'value') return [typeId]
   const sch = schemeOf(typeId, els)
@@ -215,6 +216,9 @@ function fragmentOf(el, kind, ctx) {
       case 'vcmp':
         if (n.op === '≈' && n.left?.t === 'var' && n.right?.t === 'const') { atoms.push({ t: 'const', v: n.left.id, text: n.right.text }); return }
         if (n.op === '≈' && n.right?.t === 'var' && n.left?.t === 'const') { atoms.push({ t: 'const', v: n.right.id, text: n.left.text }); return }
+        // Two values that are equal (a table rule's join on $y, table rules
+        // compile it so when the variables' types differ).
+        if (n.op === '≈' && n.left?.t === 'var' && n.right?.t === 'var') { atoms.push({ t: 'veq', a: n.left.id, b: n.right.id }); return }
         throw new FoldError('its rule compares values in a way a mapping rule can\'t (only x ≈ \'c\')')
       case 'hole': case undefined: throw new FoldError('its rule is not complete')
       default: {
@@ -303,6 +307,12 @@ function unfold(el, kind, X, Y, ctxs, atomics) {
   }
   for (const a of frag.atoms) {
     if (a.t === 'const') { slotsOf(a.v).forEach(s => S.setConst(s, String(a.text ?? '').trim().replace(/^'(.*)'$/s, '$1'))); continue }
+    if (a.t === 'veq') {
+      const sa = slotsOf(a.a), sb = slotsOf(a.b)
+      if (sa.length !== sb.length) throw new FoldError('its rule equates values with different identifiers')
+      sa.forEach((x, i) => S.union(x, sb[i]))
+      continue
+    }
     if (a.t === 'type') {
       const t = ctxX.otById.get(a.typeId)
       if (!t || t.kind === 'value') continue
@@ -465,6 +475,7 @@ function finishOther(parts, S, frontier, ctx) {
     atoms = atoms.filter(a => { const k = JSON.stringify(a); if (seen.has(k)) return false; seen.add(k); return true })
   }
   atoms = dropRedundantRows(atoms)
+  atoms = dropBareIdentifiers(atoms, ctx)
   // A constant for a column: written in the row.
   for (const c of atoms.filter(a => a.t === 'const')) {
     const refs = atoms.filter(a => a !== c && JSON.stringify(a).includes(JSON.stringify(c.v)))
@@ -514,9 +525,37 @@ function dropRedundantRows(atoms) {
   return out
 }
 
+// Identifying facts whose value is used nowhere else: every entity has its
+// identifier, so ∃v (E has v) adds nothing when E is otherwise in the rule.
+function dropBareIdentifiers(atoms, ctx) {
+  const els = elsOf(ctx)
+  const uses = new Map()
+  const count = (v) => uses.set(v, (uses.get(v) ?? 0) + 1)
+  for (const a of atoms) {
+    if (a.t === 'fact') a.args.forEach(count)
+    if (a.t === 'type') count(a.arg)
+    if (a.t === 'bind' || a.t === 'const') count(a.v)
+    if (a.t === 'rel') Object.values(a.args).forEach(x => x.k === 'var' && count(x.v))
+  }
+  return atoms.filter(a => {
+    if (a.t !== 'fact') return true
+    const f = ctx.factById.get(a.factId)
+    if (f?.roles.length !== 2) return true
+    for (let e = 0; e < 2; e++) {
+      const parts = schemeParts(f.roles[e].objectTypeId, ctx, els)
+      if (!parts?.some(p => p.factId === f.id && p.entityRoleIndex === e)) continue
+      // The entity must be in the rule some other way, its value nowhere else.
+      if (uses.get(a.args[1 - e]) === 1 && (uses.get(a.args[e]) ?? 0) > 1) return false
+    }
+    return true
+  })
+}
+
 // The pattern of a derived element over the frontier names of its variables'
 // reference values, the way generated rules write it.
 function ownPattern(el, kind, ctx, els, rootNames) {
+  const row = ctx.relational ? ownRow(el, kind, ctx, rootNames) : null
+  if (row) return row
   let n = 0
   const vars = [], atoms = []
   const mk = (typeId) => { const v = { id: `d${++n}`, typeId }; vars.push(v); return v.id }
@@ -546,6 +585,30 @@ function ownPattern(el, kind, ctx, els, rootNames) {
     if (directSupertypes(el.id, ctx.subtypes).length) atoms.push({ t: 'type', typeId: el.id, arg: e })
   }
   return { vars, atoms }
+}
+
+// On a relational side: a table, or a column, as a row of its table keyed by
+// its primary key, the way generated rules write it; null when it isn't one.
+function ownRow(el, kind, ctx, rootNames) {
+  const tb = kind === 'type' ? ctx.tableById.get(el.id)
+    : ctx.tables.find(t => t.columns.some(c => c.fact.id === el.id))
+  const pk = tb?.pk
+  if (!pk?.length) return null
+  const args = {}
+  if (kind === 'type') {
+    const names = rootNames.flat()
+    const parts = referenceParts(tb.id, elsOf(ctx)) ?? []
+    if (parts.length !== pk.length || names.length !== pk.length) return null
+    parts.forEach((p, i) => { args[p.factId] = { k: 'fv', y: names[i] } })
+  } else {
+    const col = tb.columns.find(c => c.fact.id === el.id)
+    const keyNames = rootNames[col.t], valName = rootNames[col.v]?.[0]
+    const parts = referenceParts(tb.id, elsOf(ctx)) ?? []
+    if (!valName || parts.length !== pk.length || keyNames?.length !== pk.length) return null
+    parts.forEach((p, i) => { args[p.factId] = { k: 'fv', y: keyNames[i] } })
+    args[el.id] = { k: 'fv', y: valName }
+  }
+  return { vars: [], atoms: [{ t: 'rel', tableId: tb.id, args }] }
 }
 
 // A flat side as a pattern tree.
@@ -648,7 +711,6 @@ function promoted(state, ids) {
     const r = ev.factTuples(f.id)
     if (!r.error) factPopulations[f.id] = r.tuples
   }
-  const strip = (x) => { const { derivation, derivationRule, ...rest } = x; return rest }
   return {
     ...state,
     objectTypes: (state.objectTypes ?? []).map(o => (set.has(o.id) ? strip(o) : o)),
@@ -764,6 +826,13 @@ export function foldChanges(state, plan, { fold = null, remove = null } = {}) {
     changes.add = sug
     for (const c of sug) report.push(`Added ${c.label} (${c.status}: ${c.reason})`)
   }
+  // Foreign keys of folded tables, to and from the tables with the same key.
+  const tables = chosen.filter(i => i.kind === 'type').map(i => i.id)
+  if (tables.length) {
+    const fks = suggestedForeignKeys(foldedState(state, changes), mapping, plan.side, tables)
+    changes.add = [...changes.add, ...fks]
+    for (const c of fks) report.push(`Added ${c.label} (${c.status}: ${c.reason})`)
+  }
   return changes
 }
 
@@ -771,18 +840,69 @@ export function foldChanges(state, plan, { fold = null, remove = null } = {}) {
 // checks; the store applies the same changes with its own actions).
 export function foldedState(state, changes) {
   const promote = new Set(changes.promote), remove = new Set(changes.remove)
-  const strip = (x) => { const { derivation, derivationRule, ...rest } = x; return rest }
   let facts = (state.facts ?? []).filter(f => !remove.has(f.id)).map(f => (promote.has(f.id) ? strip(f) : f))
-  for (const a of changes.add ?? []) facts = facts.map(f => (f.id !== a.factId ? f : addConstraint(f, a)))
+  for (const a of changes.add ?? []) if (a.kind !== 'fk') facts = facts.map(f => (f.id !== a.factId ? f : addConstraint(f, a)))
+  const fks = (changes.add ?? []).filter(a => a.kind === 'fk').map(a => a.constraint)
   const factPopulations = Object.fromEntries(Object.entries(changes.factPopulations ?? state.factPopulations ?? {}).filter(([id]) => !remove.has(id)))
   return {
     ...state,
     mappings: (state.mappings ?? []).map(m => (m.id === changes.mapping.id ? changes.mapping : m)),
     objectTypes: (state.objectTypes ?? []).map(o => (promote.has(o.id) ? strip(o) : o)),
     facts, populations: changes.populations ?? state.populations, factPopulations,
-    constraints: (state.constraints ?? []).map(c => (c.sequences ? { ...c, sequences: c.sequences.map(q => (q ?? []).filter(m => !remove.has(m?.factId))) } : c)),
+    constraints: [...(state.constraints ?? []).map(c => (c.sequences ? { ...c, sequences: c.sequences.map(q => (q ?? []).filter(m => !remove.has(m?.factId))) } : c)), ...fks],
   }
 }
+
+// Foreign keys a folded table of a relational side X can have, that the
+// mapping keeps: from its primary key to another table's primary key of the
+// same value types, and back (a vertical split gives both).
+// [{ kind: 'fk', constraint, key, label, status, reason }].
+export function suggestedForeignKeys(state, mapping, X, tableIds) {
+  const ctx = sideContext(state, sideSchemaId(mapping, X))
+  if (!ctx.relational) return []
+  const keyOfTable = (t) => {
+    const parts = referenceParts(t.id, elsOf(ctx))
+    const cols = parts?.map(p => t.columns.find(c => c.fact.id === p.factId))
+    return cols?.length && cols.every(Boolean) ? cols : null
+  }
+  const props = []
+  const seq = (cols) => cols.map(c => ({ kind: 'role', factId: c.fact.id, roleIndex: c.v }))
+  const has = (from, to) => ctx.constraints.some(c => c.constraintType === 'subset'
+    && JSON.stringify(c.sequences?.[0]?.map(m => m.factId)) === JSON.stringify(from.map(x => x.fact.id))
+    && JSON.stringify(c.sequences?.[1]?.map(m => m.factId)) === JSON.stringify(to.map(x => x.fact.id)))
+  for (const id of tableIds) {
+    const t = ctx.tableById.get(id)
+    const k = t && keyOfTable(t)
+    if (!k) continue
+    for (const u of ctx.tables) {
+      if (u.id === id) continue
+      const ku = keyOfTable(u)
+      if (!ku || ku.length !== k.length || ku.some((c, i) => c.vt.id !== k[i].vt.id)) continue
+      for (const [a, b, A, B] of [[k, ku, t, u], [ku, k, u, t]]) {
+        if (has(a, b)) continue
+        const c = { ...mkSubset(ctx.schemaId), sequences: [seq(a), seq(b)], queries: [null, null] }
+        props.push({ kind: 'fk', constraint: c, key: c.id,
+          label: `FOREIGN KEY ${A.name}(${a.map(x => x.name).join(', ')}) → ${B.name}(${b.map(x => x.name).join(', ')})` })
+      }
+    }
+  }
+  if (!props.length) return []
+  const st = { ...state, constraints: [...state.constraints, ...props.map(p => p.constraint)] }
+  const steps = accountingSteps(st, mapping, { onlyKeys: new Set(props.map(p => p.key)) })
+  let r
+  for (;;) { const x = steps.next(); if (x.done) { r = x.value; break } }
+  const byKey = new Map(r.sides[X].map(e => [e.key, e]))
+  return props.filter(p => ['native', 'implied'].includes(byKey.get(p.key)?.status)).map(p => {
+    const e = byKey.get(p.key)
+    const wY = worldOf(state, sideSchemaId(mapping, other(X)))
+    const by = [...new Set(e.by.map(b => relationalLabel(wY, b.key) ?? (b.entry ? `${b.entry.kind}: ${b.entry.subject}` : null)).filter(Boolean))]
+    return { ...p, status: e.status, reason: by.length ? `kept by ${by.join('; ')}` : e.reason }
+  })
+}
+const mkSubset = (schemaId) => ({ ...mkConstraint('subset', 0, 0), schemaId })
+
+// An element made ordinary: no derivation rule, nor a table rule it came from.
+export const strip = (x) => { const { derivation, derivationRule, tableRuleId, ...rest } = x; return rest }
 
 export function addConstraint(f, a) {
   if (a.kind === 'mand') return { ...f, roles: f.roles.map((r, i) => (i === a.roleIndex ? { ...r, mandatory: true } : r)) }
@@ -822,4 +942,4 @@ export function suggestedConstraints(state, mapping, X, factIds) {
   })
 }
 
-export { atomicOf, treeToSide }
+export { atomicOf, treeToSide, ownPattern, elsOf, snake }

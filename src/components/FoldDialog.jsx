@@ -10,31 +10,34 @@ const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 // replace with whether each can go. Opened with store.foldDialog = { mappingId }.
 export default function FoldDialog() {
   const mappingId = useOrmStore(s => s.foldDialog?.mappingId ?? null)
+  const side = useOrmStore(s => s.foldDialog?.side ?? null)
   if (!mappingId) return null
-  return <Dialog mappingId={mappingId} />
+  return <Dialog mappingId={mappingId} side={side} />
 }
 
-function Dialog({ mappingId }) {
+function Dialog({ mappingId, side }) {
   const close = () => useOrmStore.setState({ foldDialog: null })
+  // Set by Refactor: the old version's elements to delete once folded.
+  const twins = useOrmStore(s => s.foldDialog?.twins ?? null)
   const { plan, ctxs, schemaName, mapping, error } = useMemo(() => {
     const st = useOrmStore.getState()
     const m = st.mappings?.find(x => x.id === mappingId)
     if (!m) return { error: 'The mapping no longer exists.' }
     try {
-      const p = planFold(st, m)
+      const p = planFold(st, m, { side })
       const ctxs = { source: sideContext(st, m.sourceSchemaId), target: sideContext(st, m.targetSchemaId) }
       return { plan: p, ctxs, mapping: m, schemaName: ctxs[p.side].schema?.name ?? 'the schema' }
     } catch (err) {
       return { error: `Fold could not be planned: ${err?.message ?? err}` }
     }
-  }, [mappingId])
+  }, [mappingId, side])
   const [fold, setFold] = useState(() => new Set((plan?.items ?? []).filter(i => i.rule).map(i => i.id)))
   const [remove, setRemove] = useState(() => new Set((plan?.candidates ?? []).filter(c => c.recoverable).map(c => c.factId)))
   const toggle = (set, setter, id) => setter(() => { const n = new Set(set); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const candidates = (plan?.candidates ?? []).filter(c => c.usedBy.some(id => fold.has(id)))
   const go = () => {
     close()
-    useOrmStore.getState().foldMapping(plan, { fold: [...fold], remove: candidates.filter(c => remove.has(c.factId)).map(c => c.factId) })
+    useOrmStore.getState().foldMapping(plan, { fold: [...fold], remove: candidates.filter(c => remove.has(c.factId)).map(c => c.factId), twins })
   }
   const text = (tree, side) => { try { return tokensText(sideTokens(tree, ctxs[side])) } catch { return '…' } }
 
