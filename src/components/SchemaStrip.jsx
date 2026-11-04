@@ -265,11 +265,11 @@ export function NewSchemaMenu({ variant = 'strip' }) {
               Derived table in {sc.name}…
             </div>
           ))}
-          {relSchemas.map(sc => (
+          {[...relSchemas, ...ormSchemas].map(sc => (
             <div key={`transform-${sc.id}`}
               className="transform-schema-item"
               onClick={() => { setOpen(false); useOrmStore.setState({ transformDialog: { schemaId: sc.id } }) }}
-              title="A named transformation (split, absorb, foreign key to cross table, …): a new version of the schema, with the mapping from this one"
+              title="A named transformation (split, absorb, keys, partitioning, subtypes, unaries, …): a new version of the schema, with the mapping from this one"
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', borderRadius: 4, fontSize: 12, cursor: 'pointer', color: 'var(--ink-1)' }}
               onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}

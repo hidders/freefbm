@@ -15,8 +15,10 @@
 // context, report: [text] }.
 
 import { sideContext } from './mapping.js'
-import { uid, mkConstraint, mkEntity } from '../store/storeHelpers.js'
+import { entriesOf } from './accounting.js'
+import { uid, mkConstraint, mkEntity, mkValue, mkFact, mkUniqueness, mkSubtype, mkImplicitLink, withMandatoryId } from '../store/storeHelpers.js'
 import { valueKindName } from '../utils/datatypeValues.js'
+import { defaultFrequencyPos } from '../utils/frequencyPlacement.js'
 import { newColumn, withPrimaryKey, tableRulesOf } from '../relational/derivedTables.js'
 
 const isBoolean = (c) => valueKindName(c?.vt?.datatypeAssignment) === 'boolean' || /^bool/i.test(c?.vt?.datatypeAssignment?.datatypeId ?? '')
@@ -1010,5 +1012,858 @@ const toSubtypeTables = {
   },
 }
 
-export const TRANSFORMATIONS = [split, absorb, fkToTable, boolToTable, toSurrogate, toNatural, partition, merge, toTypeColumn, toSubtypeTables]
+// ── ORM2 transformations ────────────────────────────────────────────────────
+// The same way as the relational ones that edit: the new version is edited
+// directly and the identity mapping's rules are rewritten with it. Patterns
+// on the ORM2 side are ∃ over typed variables, fact atoms (args: variable
+// ids), type atoms and x ≈ $y / x ≈ 'c'.
+
+// The tree with each fact or type atom replaced by fn(atom).
+function mapAtoms(tree, fn) {
+  if (!tree || typeof tree !== 'object') return tree
+  if (Array.isArray(tree)) return tree.map(x => mapAtoms(x, fn))
+  if (tree.t === 'fact' || tree.t === 'type') return fn(tree)
+  const out = {}
+  for (const [k, v] of Object.entries(tree)) out[k] = v && typeof v === 'object' && (Array.isArray(v) || v.t) ? mapAtoms(v, fn) : v
+  return out
+}
+// Variables of type `from` get type `to` (or `to(varId)` decides).
+function retype(tree, from, to) {
+  if (!tree || typeof tree !== 'object') return tree
+  if (Array.isArray(tree)) return tree.map(x => retype(x, from, to))
+  const out = {}
+  for (const [k, v] of Object.entries(tree)) out[k] = v && typeof v === 'object' ? retype(v, from, to) : v
+  if (['exists', 'forall', 'count'].includes(tree.t) && tree.v?.typeId === from) out.v = { ...tree.v, typeId: typeof to === 'function' ? to(tree.v.id) : to }
+  return out
+}
+const varsOf = (tree, out = new Map()) => {
+  if (!tree || typeof tree !== 'object') return out
+  if (Array.isArray(tree)) { tree.forEach(x => varsOf(x, out)); return out }
+  if (['exists', 'forall', 'count'].includes(tree.t) && tree.v) out.set(tree.v.id, tree.v.typeId)
+  for (const v of Object.values(tree)) if (v && typeof v === 'object') varsOf(v, out)
+  return out
+}
+// The pattern with more atoms about its first variable of type typeId,
+// conjoined under its ∃s.
+function conjoin(tree, typeId, extra) {
+  const chain = []
+  let node = tree
+  while (node?.t === 'exists') { chain.push(node.v); node = node.body }
+  const v = chain.find(x => x.typeId === typeId)
+  if (!v) return null
+  const body = andOf([...(node.t === 'and' ? node.args : [node]), ...extra(v.id)])
+  return chain.reduceRight((b, x) => ({ t: 'exists', v: x, body: b }), body)
+}
+const factAtomOf = (factId, args) => ({ t: 'fact', factId, args })
+const constIs = (id, text) => ({ t: 'vcmp', op: '≈', left: { t: 'var', id }, right: { t: 'const', text: String(text) } })
+// The identity rule of an entity type: the smallest rule whose patterns
+// start with a variable of that type.
+function typeRuleOf(m, typeId) {
+  return m.rules.filter(r => [...varsOf(r.source).values()][0] === typeId)
+    .sort((a, b) => JSON.stringify(a.source).length - JSON.stringify(b.source).length)[0] ?? null
+}
+const pascal = (s) => String(s ?? '').trim().split(/[^A-Za-z0-9]+/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join('')
+const readingOf = (f) => (f.readingParts ?? []).filter(Boolean).join(' … ')
+
+// A new fact type of schema S, drawn next to the given object type on the
+// diagrams that show it.
+function addFactType(api, S, { roles, readingParts, uniqueness = [], mandatory = [] }, nearTypeId) {
+  const s = api.getState()
+  const f = { ...mkFact(0, 0, roles.length), schemaId: S, readingParts }
+  f.roles = f.roles.map((r, i) => withMandatoryId({ ...r, objectTypeId: roles[i], mandatory: mandatory.includes(i) }))
+  f.uniqueness = uniqueness.map(u => mkUniqueness(u))
+  api.setState({ facts: [...s.facts, f], isDirty: true })
+  for (const d of api.getState().diagrams) {
+    const occ = (d.occurrences ?? []).find(o => o.schemaElementId === nearTypeId)
+    if (!occ || d.schemaId !== S) continue
+    try { api.getState().addElementToDiagram(f.id, d.id) } catch { continue }
+    const n = (placedFacts.get(occ.id) ?? 0) + 1
+    placedFacts.set(occ.id, n)
+    api.setState(st => ({ diagrams: st.diagrams.map(x => (x.id !== d.id ? x : { ...x, occurrences: x.occurrences.map(o => (o.schemaElementId === f.id ? { ...o, x: occ.x - 40, y: occ.y + 70 + 50 * n } : o)) })) }))
+  }
+  return f.id
+}
+const placedFacts = new Map()
+// Internal frequency markers of a fact type next to its first occurrence.
+function placeFrequencies(api, S, factId) {
+  const st = api.getState(), g = st.facts.find(x => x.id === factId)
+  if (!g?.internalFrequency?.length) return
+  const occ = st.diagrams.filter(d => d.schemaId === S).flatMap(d => d.occurrences ?? []).find(o => o.schemaElementId === factId)
+  const at = { ...g, ...(occ ? { x: occ.x, y: occ.y } : {}) }
+  api.setState(s2 => ({ facts: s2.facts.map(x => (x.id !== factId ? x : { ...x, internalFrequency: x.internalFrequency.map(q => ({ ...q, ...defaultFrequencyPos(at, q.roles) })) })) }))
+}
+// A fact type's occurrences moved halfway between the given types' (on the
+// diagrams of schema S that show all three).
+function placeBetween(api, S, factId, a, b) {
+  api.setState(st => ({ diagrams: st.diagrams.map(d => {
+    if (d.schemaId !== S) return d
+    const occ = (id) => (d.occurrences ?? []).find(o => o.schemaElementId === id)
+    const fo = occ(factId), ao = occ(a), bo = occ(b)
+    if (!fo || !ao || !bo) return d
+    return { ...d, occurrences: d.occurrences.map(o => (o.id === fo.id ? { ...o, x: Math.round((ao.x + bo.x) / 2), y: Math.round((ao.y + bo.y) / 2) } : o)) }
+  }) }))
+}
+function addRoleConstraint(api, S, type, a, b) {
+  const c = { ...mkConstraint(type, 0, 0), schemaId: S, sequences: [[a], [b]].map(q => q.map(([factId, roleIndex]) => ({ kind: 'role', factId, roleIndex }))), queries: [null, null] }
+  api.setState(s => ({ constraints: [...s.constraints, c] }))
+  api.getState()._tryAutoGenerateQuery?.(c.id)
+  return c.id
+}
+const isFinite2 = (vt, role) => {
+  if (!vt) return null
+  if (valueKindName(vt.datatypeAssignment) === 'boolean' || /^bool/i.test(vt.datatypeAssignment?.datatypeId ?? '')) return ['true', 'false']
+  const r = role?.valueRange?.length ? role.valueRange : vt.valueRange ?? []
+  return r.length === 2 && r.every(x => x.type === 'single') ? r.map(x => String(x.value)) : null
+}
+const identifiedTypes = (ctx) => new Set(ctx.objectTypes.filter(o => o.kind === 'entity').map(o => o.id))
+
+// ── Unary fact type to a boolean ────────────────────────────────────────────
+// "E smokes" becomes "E has Smokes" with Smokes ∈ {true, false}, mandatory
+// and one per E: true for the E that smoked, false for the others.
+
+// ── Formula constraints through an ORM2 edit ────────────────────────────────
+// A formalised constraint (formula.js) as a rule tree (derivationRule.js
+// format), so that it can be rewritten like the rules and kept as a formula
+// constraint.
+function formulaToRule(f) {
+  const ids = new Map()
+  const vid = (x) => { if (!x) return null; if (!ids.has(x)) ids.set(x, `c${ids.size + 1}`); return ids.get(x) }
+  const decl = (x) => ({ id: vid(x), typeId: x.typeId })
+  const term = (t) => {
+    if (t && !t.t && t.typeId) return { t: 'var', id: vid(t) }
+    switch (t?.t) {
+      case 'const': return { t: 'const', text: t.text }
+      case 'fn': return { t: 'op', op: t.op, args: t.args.map(term) }
+      case 'ite': return { t: 'if', cond: go(t.cond), then: term(t.then), else: term(t.else) }
+      case 'agg': return { t: 'agg', fn: t.fn, distinct: t.distinct, vars: t.vars.map(decl), cond: go(t.cond), term: term(t.term) }
+    }
+    throw new Error('a term that has no rule form')
+  }
+  const go = (g) => {
+    switch (g.t) {
+      case 'true': return { t: 'true' }
+      case 'not': return { t: 'not', arg: go(g.arg) }
+      case 'and': case 'or': return { t: g.t, args: g.args.map(go) }
+      case 'implies': case 'iff': return { t: g.t, left: go(g.left), right: go(g.right) }
+      case 'forall': case 'exists': { const vs = g.vars.map(decl); return vs.reduceRight((b, v) => ({ t: g.t, v, body: b }), go(g.body)) }
+      case 'count': {
+        if (g.vars.length !== 1) throw new Error('a count of several variables')
+        const v = decl(g.vars[0])
+        return g.op === '..' ? { t: 'count', op: '..', n: g.n, m: g.m, v, body: go(g.body) } : { t: 'count', op: g.op, n: g.n, v, body: go(g.body) }
+      }
+      case 'tc': return { t: 'tc', star: !!g.star, vars: g.vars.map(decl), body: go(g.body), args: g.args.map(vid) }
+      case 'fact': return { t: 'fact', factId: g.factId, args: g.args.map(vid) }
+      case 'type': return { t: 'type', typeId: g.typeId, arg: vid(g.arg) }
+      case 'cmp': return { t: 'cmp', op: g.op, left: vid(g.left), right: vid(g.right) }
+      case 'vcmp': return { t: 'vcmp', op: g.op, left: term(g.left), right: term(g.right) }
+      case 'dpred': return { t: 'dpred', op: g.op, args: g.args.map(term) }
+    }
+    throw new Error(`a ${g.t} part`)
+  }
+  return go(f)
+}
+// Element ids of the old version replaced by the new version's.
+function renameIds(tree, idMap) {
+  if (!tree || typeof tree !== 'object') return tree
+  if (Array.isArray(tree)) return tree.map(x => renameIds(x, idMap))
+  const out = {}
+  for (const [k, v] of Object.entries(tree)) {
+    if (k === 'typeId' && typeof v === 'string') out[k] = idMap.get(v) ?? v
+    else if (k === 'factId' && typeof v === 'string') { const [f, il] = v.split('_il_'); out[k] = (idMap.get(f) ?? f) + (il != null ? `_il_${il}` : '') }
+    else out[k] = renameIds(v, idMap)
+  }
+  return out
+}
+// The quantifiers of the given variables guarded: ∀v (g(v) → φ), ∃v (g(v) ∧ φ).
+function guardVars(tree, vars, guard) {
+  if (!tree || typeof tree !== 'object') return tree
+  if (Array.isArray(tree)) return tree.map(x => guardVars(x, vars, guard))
+  const out = {}
+  for (const [k, v] of Object.entries(tree)) out[k] = v && typeof v === 'object' ? guardVars(v, vars, guard) : v
+  if (!['forall', 'exists', 'count'].includes(tree.t) || !vars.has(tree.v?.id)) return out
+  const g = guard(tree.v.id)
+  out.body = tree.t !== 'forall' ? andOf([g, out.body])
+    : out.body.t === 'implies' ? { ...out.body, left: andOf([g, out.body.left]) } : { t: 'implies', left: g, right: out.body }
+  return out
+}
+// Formula constraints of the new version rewritten by rw.
+function rewriteFormulas(api, S, rw) {
+  api.setState(st => ({ constraints: st.constraints.map(c => (c.schemaId !== S || c.constraintType !== 'formula' || !c.rule ? c : { ...c, rule: rw(c.rule) })) }))
+}
+// The constraints `ids` of the old version, which the edit drops, added to
+// the new version as formula constraints: their formulas with rw applied.
+function carryFormulas(api, run, ids, rw) {
+  if (!ids.length) return
+  const keep = new Set(ids)
+  for (const e of entriesOf(api.getState(), run.mapping.sourceSchemaId)) {
+    if (e.possible || !keep.has(e.elementId) || !e.formula) continue
+    const deontic = e.formula.t === 'obligatory'
+    let rule
+    try { rule = rw(renameIds(formulaToRule(deontic ? e.formula.arg : e.formula), run.idMap)) } catch (err) { run.report.push(`Not carried over: ${e.subject ?? e.kind} (${err.message})`); continue }
+    api.getState().addCarriedConstraint(run.mapping.targetSchemaId, { rule, deontic })
+    run.report.push(`Added a formula constraint for ${e.label ?? e.kind}${e.subject ? `: ${e.subject}` : ''}`)
+  }
+}
+
+// Formula constraints ∀x (∃ȳ F(…x…ȳ…) → U(x)) about the unary U turned back
+// into subset constraints from F's role into U's.
+function formulasToSubsets(api, S, u) {
+  for (const c of api.getState().constraints.filter(x => x.schemaId === S && x.constraintType === 'formula' && !x.deontic)) {
+    const r = c.rule
+    if (r?.t !== 'forall' || r.body?.t !== 'implies') continue
+    const x = r.v.id, right = r.body.right
+    if (right?.t !== 'fact' || right.factId !== u || right.args[0] !== x) continue
+    let left = r.body.left
+    const own = []
+    while (left?.t === 'exists') { own.push(left.v.id); left = left.body }
+    if (left?.t !== 'fact' || left.factId.includes('_il_')) continue
+    const args = left.args
+    const at = args.indexOf(x)
+    if (at < 0 || args.filter(a => a === x).length !== 1 || args.length !== own.length + 1 || !own.every(v => args.includes(v))) continue
+    api.getState().deleteConstraint(c.id)
+    addRoleConstraint(api, S, 'subset', [left.factId, at], [u, 0])
+  }
+}
+
+// Constraints whose role sequences name a fact type.
+const namingConstraints = (ctx, fid) => ctx.constraints.filter(c => (c.sequences ?? []).some(q => (q ?? []).some(m => m?.factId === fid))).map(c => c.id)
+// "is a student" → IsStudent; "smokes" → Smokes.
+const flagName = (reading) => pascal(reading.replace(/^(is|has)\s+(an?|the)\s+/i, '$1 ')) || 'Flag'
+// IsStudent → "is student"; Smoker → "is smoker".
+const unaryReading = (name) => {
+  const w = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/_/g, ' ').toLowerCase().trim()
+  return /^(is|has|can|does)\b/.test(w) ? w : `is ${w}`
+}
+
+const unaryToBoolean = {
+  id: 'unaryToBoolean',
+  label: 'Unary fact type → boolean',
+  profile: 'orm2',
+  optionLabel: 'Unary fact type',
+  none: 'The schema has no unary fact type.',
+  nameLabel: 'Value type',
+  options: (ctx) => ctx.facts.filter(f => f.roles.length === 1 && !f.derivation && ctx.otById.get(f.roles[0].objectTypeId)?.kind === 'entity').map(f => ({
+    key: f.id, params: { factId: f.id }, label: `${ctx.otById.get(f.roles[0].objectTypeId).name} ${readingOf(f)}`, name: flagName(readingOf(f)) })),
+  describe: (p, ctx) => {
+    const f = ctx.factById.get(p.factId), e = f && ctx.otById.get(f.roles[0].objectTypeId)
+    return f ? `Replace "${e.name} ${readingOf(f)}" by "${e.name} has ${p.name || '…'}", true or false for every ${e.name}.` : 'Choose a unary fact type.'
+  },
+  check: (p, ctx) => {
+    const f = ctx.factById.get(p.factId)
+    if (!f || f.roles.length !== 1) return ['Choose a unary fact type.']
+    const out = []
+    if (f.objectified) out.push('The fact type is objectified.')
+    if (f.derivation) out.push('The fact type is derived.')
+    const n = p.name?.trim()
+    if (!n) out.push('Name the value type.')
+    else if (ctx.objectTypes.some(o => o.name === n && !(o.kind === 'value' && isFinite2(o)))) out.push(`There is already an object type ${n}.`)
+    return out
+  },
+  edit(api, p, ctx, run) {
+    const S = run.mapping.targetSchemaId, id = (x) => run.idMap.get(x)
+    const f = ctx.factById.get(p.factId), e = ctx.otById.get(f.roles[0].objectTypeId)
+    const uN = id(f.id), eN = id(e.id)
+    const name = p.name.trim()
+    let vt = api.getState().objectTypes.find(o => o.schemaId === S && o.kind === 'value' && o.name === name)
+    if (!vt) {
+      vt = { ...mkValue(0, 0), name, schemaId: S, valueRange: [{ type: 'single', value: 'true' }, { type: 'single', value: 'false' }] }
+      api.setState(s => ({ objectTypes: [...s.objectTypes, vt] }))
+    }
+    const b = addFactType(api, S, { roles: [eN, vt.id], readingParts: ['', 'has', ''], uniqueness: [[0]], mandatory: [0] }, eN)
+    const m = api.getState().mappings.find(x => x.id === run.mapping.id)
+    const eRule = typeRuleOf(m, e.id)
+    if (!eRule) throw new Error(`${e.name} has no identity rule`)
+    let n = 0
+    // U(x) is ∃v (x has v ∧ v ≈ true).
+    const rw = (tree) => mapAtoms(tree, (a) => {
+      if (a.t !== 'fact' || a.factId !== uN) return a
+      const v = { id: `ub${++n}`, typeId: vt.id }
+      return existsOf([v], andOf([factAtomOf(b, [a.args[0], v.id]), constIs(v.id, 'true')]))
+    })
+    setRules(api, run.mapping.id, (rule) => {
+      const target = rw(rule.target)
+      return target === rule.target ? rule : { ...rule, target }
+    })
+    rewriteFormulas(api, S, rw)
+    carryFormulas(api, run, namingConstraints(ctx, f.id), rw)
+    // false: an E that does not play the unary.
+    const falseRule = { id: uid(), name: `${e.name} ${readingOf(f)}: false`,
+      source: conjoin(eRule.source, e.id, (x) => [{ t: 'not', arg: factAtomOf(f.id, [x]) }]),
+      target: conjoin(eRule.target, eN, (x) => { const v = { id: 'ubf', typeId: vt.id }; return [existsOf([v], andOf([factAtomOf(b, [x, v.id]), constIs(v.id, 'false')]))] }) }
+    api.setState(s => ({ mappings: s.mappings.map(x => (x.id === run.mapping.id ? { ...x, rules: [...x.rules, falseRule] } : x)) }))
+    dropColumn(api, uN)
+    run.report.push(`Replaced ${e.name} ${readingOf(f)} by ${e.name} has ${name} (true or false, mandatory)`)
+    return { carry: [f.id] }
+  },
+}
+
+// ── Boolean to a unary fact type ────────────────────────────────────────────
+// "E has Flag" with two values, mandatory and one per E, becomes the unary
+// "E <reading>": the E with the chosen value.
+const booleanToUnary = {
+  id: 'booleanToUnary',
+  label: 'Boolean → unary fact type',
+  profile: 'orm2',
+  optionLabel: 'Fact type',
+  none: 'No fact type gives each entity one of two values (a boolean or two values), mandatory.',
+  nameLabel: 'Unary reading',
+  fields: [{ key: 'value', label: 'For the value' }],
+  options: (ctx) => ctx.facts.flatMap(f => {
+    if (f.roles.length !== 2 || f.derivation || f.objectified) return []
+    const i = f.roles.findIndex(r => ctx.otById.get(r.objectTypeId)?.kind === 'entity')
+    const vi = 1 - i, vt = ctx.otById.get(f.roles[vi]?.objectTypeId)
+    const vals = i >= 0 && vt?.kind === 'value' ? isFinite2(vt, f.roles[vi]) : null
+    if (!vals || !f.roles[i].mandatory || !(f.uniqueness ?? []).some(u => u.roles?.length === 1 && u.roles[0] === i)) return []
+    const e = ctx.otById.get(f.roles[i].objectTypeId)
+    return [{ key: f.id, params: { factId: f.id, value: vals[0] }, label: `${e.name} ${readingOf(f)} ${vt.name} (${vals.join(', ')})`, name: unaryReading(vt.name) }]
+  }),
+  describe: (p, ctx) => {
+    const f = ctx.factById.get(p.factId)
+    if (!f) return 'Choose a fact type.'
+    const i = f.roles.findIndex(r => ctx.otById.get(r.objectTypeId)?.kind === 'entity'), e = ctx.otById.get(f.roles[i].objectTypeId)
+    return `Replace it by the unary "${e.name} ${p.name || '…'}", true for the ${e.name} with ${p.value ?? '…'}.`
+  },
+  check: (p, ctx) => {
+    const f = ctx.factById.get(p.factId)
+    if (!f) return ['Choose a fact type.']
+    const i = f.roles.findIndex(r => ctx.otById.get(r.objectTypeId)?.kind === 'entity')
+    const vals = isFinite2(ctx.otById.get(f.roles[1 - i]?.objectTypeId), f.roles[1 - i])
+    const out = []
+    if (!vals) out.push('The value type does not have exactly two values.')
+    else if (!vals.includes(String(p.value))) out.push(`Choose one of ${vals.join(', ')}.`)
+    if (!f.roles[i]?.mandatory) out.push('The entity\'s role is not mandatory, so a missing value could not be told from the other value.')
+    if (!p.name?.trim()) out.push('Give the unary a reading.')
+    return out
+  },
+  edit(api, p, ctx, run) {
+    const S = run.mapping.targetSchemaId, id = (x) => run.idMap.get(x)
+    const f = ctx.factById.get(p.factId)
+    const i = f.roles.findIndex(r => ctx.otById.get(r.objectTypeId)?.kind === 'entity')
+    const e = ctx.otById.get(f.roles[i].objectTypeId), vt = ctx.otById.get(f.roles[1 - i].objectTypeId)
+    const vals = isFinite2(vt, f.roles[1 - i]), other = vals.find(v => v !== String(p.value))
+    const eN = id(e.id), bN = id(f.id)
+    const u = addFactType(api, S, { roles: [eN], readingParts: ['', p.name.trim()], uniqueness: [[0]] }, eN)
+    const m = api.getState().mappings.find(x => x.id === run.mapping.id)
+    const eRule = typeRuleOf(m, e.id)
+    if (!eRule) throw new Error(`${e.name} has no identity rule`)
+    const withValue = (x, val) => { const v = { id: 'bv', typeId: vt.id }; const args = [null, null]; args[i] = x; args[1 - i] = v.id; return [existsOf([v], andOf([factAtomOf(f.id, args), constIs(v.id, val)]))] }
+    const rules = [
+      { id: uid(), name: `${e.name} ${p.name.trim()}`, source: conjoin(eRule.source, e.id, (x) => withValue(x, p.value)), target: conjoin(eRule.target, eN, (x) => [factAtomOf(u, [x])]) },
+      { id: uid(), name: `${e.name} ${readingOf(f)} ${other}`, source: conjoin(eRule.source, e.id, (x) => withValue(x, other)), target: conjoin(eRule.target, eN, (x) => [{ t: 'not', arg: factAtomOf(u, [x]) }]) },
+    ]
+    replaceRules(api, run, (r) => JSON.stringify(r.target).includes(`"${bN}"`), rules)
+    // In formulas: ∃v (x has v ∧ v ≈ c) is U(x) or ¬U(x); any other x has v
+    // is (U(x) ∧ v ≈ value) ∨ (¬U(x) ∧ v ≈ other).
+    const vtN = id(vt.id)
+    const isB = (a) => a?.t === 'fact' && a.factId === bN
+    const conj = (x) => (x?.t === 'and' ? x.args : [x])
+    const holds = (x, val) => (String(val) === String(p.value) ? factAtomOf(u, [x]) : { t: 'not', arg: factAtomOf(u, [x]) })
+    const fold = (tree) => {
+      if (!tree || typeof tree !== 'object') return tree
+      if (Array.isArray(tree)) return tree.map(fold)
+      const out = {}
+      for (const [k, v] of Object.entries(tree)) out[k] = v && typeof v === 'object' ? fold(v) : v
+      if (out.t !== 'exists') return out
+      const v = out.v.id, parts = conj(out.body)
+      const b = parts.find(a => isB(a) && a.args[1 - i] === v)
+      const c = parts.find(a => a?.t === 'vcmp' && a.op === '≈' && a.left?.t === 'var' && a.left.id === v && a.right?.t === 'const')
+      if (!b || !c) return out
+      const rest = parts.filter(a => a !== b && a !== c)
+      if (JSON.stringify(rest).match(new RegExp(`"(id|arg)":"${v}"|"${v}"[,\\]]`))) return out
+      return andOf([...rest, holds(b.args[i], c.right.text)])
+    }
+    const rw = (tree) => mapAtoms(fold(tree), (a) => (!isB(a) ? a : { t: 'or', args: [
+      andOf([factAtomOf(u, [a.args[i]]), { t: 'vcmp', op: '≈', left: { t: 'var', id: a.args[1 - i] }, right: { t: 'const', text: String(p.value) } }]),
+      andOf([{ t: 'not', arg: factAtomOf(u, [a.args[i]]) }, { t: 'vcmp', op: '≈', left: { t: 'var', id: a.args[1 - i] }, right: { t: 'const', text: other } }]),
+    ] }))
+    rewriteFormulas(api, S, rw)
+    carryFormulas(api, run, namingConstraints(ctx, f.id), rw)
+    formulasToSubsets(api, S, u)
+    const stillVt = JSON.stringify(api.getState().constraints.filter(c => c.schemaId === S && c.constraintType === 'formula').map(c => c.rule)).includes(`"${vtN}"`)
+    dropColumn(api, bN)
+    if (stillVt && !api.getState().objectTypes.some(o => o.id === vtN)) api.setState(st => ({ objectTypes: [...st.objectTypes, { ...vt, id: vtN, schemaId: S }] }))
+    run.report.push(`Replaced ${e.name} ${readingOf(f)} ${vt.name} by the unary ${e.name} ${p.name.trim()} (${p.value}; ${other} when it does not hold)`)
+    return { carry: [f.id] }
+  },
+}
+
+// ── Subtype to a unary fact type ────────────────────────────────────────────
+// Subtype S of E becomes the unary "E is a S"; S's roles go to E, each with
+// a subset constraint into the unary (an equality when it was mandatory).
+const subtypeToUnary = {
+  id: 'subtypeToUnary',
+  label: 'Subtype → unary fact type',
+  profile: 'orm2',
+  optionLabel: 'Subtype',
+  none: 'The schema has no subtype with one supertype and no subtypes of its own.',
+  nameLabel: 'Unary reading',
+  options: (ctx) => ctx.subtypes.filter(st => okSubtype(ctx, st.subId)).map(st => {
+    const s = ctx.otById.get(st.subId), e = ctx.otById.get(st.superId)
+    return { key: st.id, params: { subtypeId: st.subId }, label: `${s.name} (of ${e.name})`, name: `is a ${s.name.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()}` }
+  }),
+  describe: (p, ctx) => {
+    const s = ctx.otById.get(p.subtypeId), st = ctx.subtypes.find(x => x.subId === p.subtypeId), e = st && ctx.otById.get(st.superId)
+    return s && e ? `Replace the subtype ${s.name} by the unary "${e.name} ${p.name || '…'}"; ${s.name}'s roles go to ${e.name}, only for those it holds for.` : 'Choose a subtype.'
+  },
+  check: (p, ctx) => {
+    const s = ctx.otById.get(p.subtypeId)
+    if (!s) return ['Choose a subtype.']
+    const out = []
+    if (!okSubtype(ctx, s.id)) out.push(`${s.name} must have one supertype, no subtypes of its own, its supertype's identifier, and no derivation rule.`)
+    if (!p.name?.trim()) out.push('Give the unary a reading.')
+    return out
+  },
+  edit(api, p, ctx, run) {
+    const S = run.mapping.targetSchemaId, id = (x) => run.idMap.get(x)
+    const s = ctx.otById.get(p.subtypeId), st = ctx.subtypes.find(x => x.subId === s.id), e = ctx.otById.get(st.superId)
+    const sN = id(s.id), eN = id(e.id), stN = id(st.id)
+    const u = addFactType(api, S, { roles: [eN], readingParts: ['', p.name.trim()], uniqueness: [[0]] }, eN)
+    // S's roles: to E, inside the unary.
+    const moved = []
+    for (const f of api.getState().facts.filter(x => x.schemaId === S && x.id !== u)) f.roles.forEach((r, i) => { if (r.objectTypeId === sN) moved.push({ f, i, mandatory: !!r.mandatory }) })
+    api.setState(s2 => ({ facts: s2.facts.map(f => (moved.some(x => x.f.id === f.id) ? { ...f, roles: f.roles.map(r => (r.objectTypeId === sN ? withMandatoryId({ ...r, objectTypeId: eN, mandatory: false }) : r)) } : f)) }))
+    for (const x of moved) addRoleConstraint(api, S, x.mandatory ? 'equality' : 'subset', [x.f.id, x.i], [u, 0])
+    // Constraints over the subtype link (an inclusive- or exclusive-or of
+    // subtypes) name the unary instead.
+    swapMembers(api, S, (m) => m?.kind === 'subtype' && m.subtypeId === stN, { kind: 'role', factId: u, roleIndex: 0 })
+    // The diagrams: the unary where S was drawn; S's occurrences give way to E's.
+    api.setState(st2 => ({ diagrams: st2.diagrams.map(d => {
+      const so = d.schemaId === S && (d.occurrences ?? []).find(o => o.schemaElementId === sN)
+      return !so ? d : { ...d, occurrences: d.occurrences.map(o => (o.schemaElementId === u ? { ...o, x: so.x, y: so.y } : o)) }
+    }) }))
+    redirectOccurrences(api, S, sN, eN, stN)
+    api.getState().deleteObjectType(sN)
+    let n = 0
+    rewriteFormulas(api, S, (tree) => {
+      const was = new Set([...varsOf(tree)].filter(([, t]) => t === sN).map(([v]) => v))
+      return guardVars(retype(mapAtoms(tree, (a) => (a.t === 'type' && a.typeId === sN ? factAtomOf(u, [a.arg]) : a)), sN, eN), was, (v) => factAtomOf(u, [v]))
+    })
+    setRules(api, run.mapping.id, (rule) => {
+      let target = mapAtoms(rule.target, (a) => (a.t === 'type' && a.typeId === sN ? factAtomOf(u, [a.arg]) : a))
+      // A variable that was an S is an E for which the unary holds.
+      const was = [...varsOf(rule.target)].filter(([, t]) => t === sN).map(([v]) => v)
+      target = retype(target, sN, eN)
+      for (const v of was) if (!JSON.stringify(target).includes(`"factId":"${u}","args":["${v}"]`)) target = conjoin(target, eN, () => [factAtomOf(u, [v])]) ?? target
+      return target === rule.target ? rule : { ...rule, target }
+    })
+    run.report.push(`Replaced the subtype ${s.name} by ${e.name} ${p.name.trim()}; ${moved.length} role${moved.length === 1 ? '' : 's'} of ${s.name} moved to ${e.name} with a subset or equality constraint into it`)
+    // A moved fact type that now reads like another of E's.
+    const sig = (g) => JSON.stringify([g.roles.map(r => r.objectTypeId), (g.readingParts ?? []).map(x => (x ?? '').trim())])
+    const facts = api.getState().facts.filter(g => g.schemaId === S)
+    for (const x of moved) {
+      const g = facts.find(y => y.id === x.f.id)
+      if (g && facts.some(y => y.id !== g.id && sig(y) === sig(g))) run.report.push(`${e.name} ${readingOf(g)} now reads like another fact type of ${e.name}; rename one of them`)
+    }
+    return { carry: [s.id, ...ctx.constraints.filter(c => (c.subtypeIds ?? []).includes(st.id)).map(c => c.id)] }
+  },
+}
+// Members of constraint sequences that match `is` replaced by `by`.
+function swapMembers(api, S, is, by, only = () => true) {
+  const changed = []
+  api.setState(st => ({ constraints: st.constraints.map(c => {
+    if (c.schemaId !== S || !only(c) || !(c.sequences ?? []).some(q => (q ?? []).some(is))) return c
+    changed.push(c.id)
+    const sequences = c.sequences.map(q => (q ?? []).map(m => (is(m) ? (typeof by === 'function' ? by(m) : by) : m)))
+    // Join paths name the old members: made again from the new ones.
+    return { ...c, sequences, queries: (c.queries ?? sequences.map(() => null)).map((x, i) => ((c.sequences[i] ?? []).some(is) ? null : x)) }
+  }) }))
+  for (const id of changed) api.getState()._tryAutoGenerateQuery?.(id)
+}
+// A constraint whose sequences are single members: a unary's role and the
+// subtype it becomes may stand for each other in it.
+const swappable = (c) => !!c && (c.sequences ?? []).every(q => (q ?? []).length <= 1)
+function okSubtype(ctx, sid) {
+  const ups = ctx.subtypes.filter(x => x.subId === sid)
+  const s = ctx.otById.get(sid)
+  return ups.length === 1 && !ctx.subtypes.some(x => x.superId === sid) && !s?.derivation && ups[0].inheritsPreferredIdentifier !== false
+    && ctx.otById.get(ups[0].superId)?.kind === 'entity'
+}
+// On every diagram of schema S, occurrences of `from` are replaced by one of
+// `to` (the supertype end of the subtype link when drawn, else any, else a
+// new one), and the roles drawn to them follow.
+function redirectOccurrences(api, S, from, to, subtypeId) {
+  for (const d of api.getState().diagrams.filter(x => x.schemaId === S)) {
+    const occs = (d.occurrences ?? []).filter(o => o.schemaElementId === from)
+    if (!occs.length) continue
+    let target = d.subtypeEndpointOccs?.[subtypeId]?.[0]?.superOccId ?? d.occurrences.find(o => o.schemaElementId === to)?.id
+    if (!target) {
+      try { api.getState().addElementToDiagram(to, d.id) } catch { continue }
+      target = api.getState().diagrams.find(x => x.id === d.id).occurrences.find(o => o.schemaElementId === to)?.id
+    }
+    const ids = new Set(occs.map(o => o.id))
+    api.setState(st => ({ diagrams: st.diagrams.map(x => (x.id !== d.id ? x : { ...x, occurrences: x.occurrences.map(o => (o.roleOccurrenceMap
+      ? { ...o, roleOccurrenceMap: Object.fromEntries(Object.entries(o.roleOccurrenceMap).map(([k, v]) => [k, ids.has(v) ? target : v])) } : o)) })) }))
+  }
+}
+
+// ── Objectified fact type to an entity type (flatten) ───────────────────────
+// The objectified F(A1, …, An), nested as N, becomes the entity type N with
+// the binaries "N involves Ai" (N's role mandatory and unique), N identified
+// by the roles of F's preferred (else first) uniqueness constraint. F's other
+// constraints move to the Ai roles of the binaries; those over several of
+// F's roles at once become formula constraints.
+const ilOf = (fid) => { const m = /^(.*)_il_(\d+)$/.exec(fid ?? ''); return m ? { factId: m[1], i: +m[2] } : null }
+function keyUcOf(f) {
+  const pref = (f.preferredUniqueness ?? [])[0]
+  const same = (a, b) => a.length === b.length && a.every(x => b.includes(x))
+  return (pref && f.uniqueness.find(u => same(u.roles, pref))) ?? f.uniqueness?.[0] ?? null
+}
+const ownIdentifier = (ctx, typeId) => ctx.facts.some(g => (g.preferredUniqueness ?? []).length && g.roles.length === 2 && g.roles.some((r, i) => r.objectTypeId === typeId && (g.preferredUniqueness ?? []).some(u => u.length === 1 && u[0] === 1 - i)))
+  || ctx.constraints.some(c => c.constraintType === 'uniqueness' && c.isPreferredIdentifier && c.targetObjectTypeId === typeId)
+function flattenProblems(ctx, f) {
+  const out = []
+  if (!f?.objectified || f.objectifiedKind === 'value') return ['Choose an objectified fact type.']
+  if (f.derivation || f.derivationRule) out.push('The fact type is derived.')
+  if (!keyUcOf(f)) out.push('The fact type has no uniqueness constraint.')
+  if (f.roles.some(r => !r.objectTypeId || r.objectTypeId === f.id)) out.push('A role has no player, or the nested type plays a role of its own fact type.')
+  if (ownIdentifier(ctx, f.id)) out.push(`${f.objectifiedName} has an identifier of its own.`)
+  if ((f.internalFrequency ?? []).some(q => q.roles.length > 1)) out.push('A frequency constraint spans several roles.')
+  return out
+}
+const flatten = {
+  id: 'flatten',
+  label: 'Objectified fact type → entity type',
+  profile: 'orm2',
+  optionLabel: 'Objectified fact type',
+  none: 'The schema has no objectified fact type that could become an entity type.',
+  options: (ctx) => ctx.facts.filter(f => f.objectified && !flattenProblems(ctx, f).length).map(f => ({
+    key: f.id, params: { factId: f.id }, label: `${f.objectifiedName} (${f.roles.map(r => ctx.otById.get(r.objectTypeId)?.name ?? ctx.factById.get(r.objectTypeId)?.objectifiedName).join(' ' + readingOf(f) + ' ')})` })),
+  describe: (p, ctx) => {
+    const f = ctx.factById.get(p.factId)
+    if (!f) return 'Choose an objectified fact type.'
+    const k = keyUcOf(f)
+    const nm = (i) => ctx.otById.get(f.roles[i].objectTypeId)?.name ?? ctx.factById.get(f.roles[i].objectTypeId)?.objectifiedName
+    return `Replace the objectified fact type ${f.objectifiedName} by an entity type with ${f.roles.length} fact types "${f.objectifiedName} involves …", identified by its ${k ? k.roles.map(nm).join(' and ') : '…'}.`
+  },
+  check: (p, ctx) => flattenProblems(ctx, ctx.factById.get(p.factId)),
+  edit(api, p, ctx, run) {
+    const S = run.mapping.targetSchemaId, id = (x) => run.idMap.get(x)
+    const f = ctx.factById.get(p.factId), fN = id(f.id)
+    const fNew = api.getState().facts.find(x => x.id === fN)
+    const n = { ...mkEntity(0, 0), name: f.objectifiedName, schemaId: S, ...(fNew.isIndependent ? { isIndependent: true } : {}),
+      ...(fNew.cardinalityRange ? { cardinalityRange: fNew.cardinalityRange } : {}),
+      ...(fNew.lexicon ? { lexicon: Object.fromEntries(Object.entries(fNew.lexicon).map(([l, x]) => [l, Object.fromEntries(Object.entries(x).filter(([k]) => k !== 'readings'))])) } : {}) }
+    api.setState(st => ({ objectTypes: [...st.objectTypes, n], isDirty: true }))
+    // N where F is drawn.
+    const occOf = new Map()   // diagram id → [F's occurrence id, N's]
+    for (const d of api.getState().diagrams.filter(x => x.schemaId === S)) {
+      const fo = (d.occurrences ?? []).find(o => o.schemaElementId === fN)
+      if (!fo) continue
+      try { api.getState().addElementToDiagram(n.id, d.id) } catch { continue }
+      const no = api.getState().diagrams.find(x => x.id === d.id).occurrences.find(o => o.schemaElementId === n.id)
+      occOf.set(d.id, [fo.id, no.id])
+      api.setState(st => ({ diagrams: st.diagrams.map(x => (x.id !== d.id ? x : { ...x, occurrences: x.occurrences.map(o => (o.id === no.id ? { ...o, x: fo.x, y: fo.y } : o)) })) }))
+    }
+    // Roles played by N, subtype links of N: to the entity type.
+    api.setState(st => ({
+      facts: st.facts.map(g => (g.schemaId !== S || !g.roles.some(r => r.objectTypeId === fN) ? g : { ...g, roles: g.roles.map(r => (r.objectTypeId === fN ? { ...r, objectTypeId: n.id } : r)) })),
+      subtypes: st.subtypes.map(x => (x.schemaId !== S ? x : { ...x, ...(x.superId === fN ? { superId: n.id } : {}), ...(x.subId === fN ? { subId: n.id } : {}) })),
+      diagrams: st.diagrams.map(d => {
+        const oo = occOf.get(d.id)
+        return !oo ? d : { ...d, occurrences: d.occurrences.map(o => (o.roleOccurrenceMap && o.schemaElementId !== fN
+          ? { ...o, roleOccurrenceMap: Object.fromEntries(Object.entries(o.roleOccurrenceMap).map(([k, v]) => [k, v === oo[0] ? oo[1] : v])) } : o)) }
+      }),
+    }))
+    // The binaries.
+    const key = keyUcOf(fNew)
+    const L = fNew.roles.map((r, i) => {
+      const il = fNew.implicitLinks?.[i]
+      const single = (fNew.uniqueness ?? []).some(u => u.roles.length === 1 && u.roles[0] === i)
+      const lid = addFactType(api, S, { roles: [n.id, r.objectTypeId], readingParts: il?.readingParts ?? ['', 'involves', ''], uniqueness: [[0], ...(single ? [[1]] : [])], mandatory: [0, ...(r.mandatory ? [1] : [])] }, n.id)
+      const freq = (fNew.internalFrequency ?? []).filter(q => q.roles.length === 1 && q.roles[0] === i)
+      api.setState(st => ({ facts: st.facts.map(g => (g.id !== lid ? g : {
+        ...g, alternativeReadings: il?.alternativeReadings ?? [], ...(il?.lexicon ? { lexicon: il.lexicon } : {}),
+        roles: g.roles.map((x, j) => (j === 1 ? { ...x, ...(r.valueRange ? { valueRange: r.valueRange } : {}), ...(r.roleName ? { roleName: r.roleName } : {}) } : x)),
+        internalFrequency: freq.map(q => ({ ...q, id: uid(), roles: [1] })),
+        ...(key?.roles.length === 1 && key.roles[0] === i ? { preferredUniqueness: [[1]] } : {}),
+      })) }))
+      placeBetween(api, S, lid, n.id, r.objectTypeId)
+      placeFrequencies(api, S, lid)
+      return lid
+    })
+    // Uniqueness over several roles: external, over the binaries' Ai roles.
+    for (const u of fNew.uniqueness ?? []) {
+      if (u.roles.length < 2) continue
+      const c = { ...mkConstraint('uniqueness', 0, 0), schemaId: S, isPreferredIdentifier: u === key, targetObjectTypeId: n.id,
+        sequences: [u.roles.map(i => ({ kind: 'role', factId: L[i], roleIndex: 1 }))], queries: [null] }
+      api.setState(st => ({ constraints: [...st.constraints, c] }))
+      api.getState()._tryAutoGenerateQuery?.(c.id)
+    }
+    // Constraints on F's roles: on the binaries' (one role at a time), else
+    // carried as formulas.
+    const names = (c) => (c.sequences ?? []).some(q => (q ?? []).some(m => m?.factId === fN || ilOf(m?.factId)?.factId === fN))
+    const several = (c) => (c.sequences ?? []).some(q => (q ?? []).length > 1 && q.some(m => m?.factId === fN))
+    const tgt = api.getState().constraints.filter(c => c.schemaId === S && names(c))
+    const carried = tgt.filter(several)
+    for (const c of carried) api.getState().deleteConstraint(c.id)
+    swapMembers(api, S, (m) => m?.factId === fN || ilOf(m?.factId)?.factId === fN,
+      (m) => (m.factId === fN ? { kind: 'role', factId: L[m.roleIndex], roleIndex: 1 } : { kind: 'role', factId: L[ilOf(m.factId).i], roleIndex: m.roleIndex }))
+    // Rules and formulas: F(x̄) is ∃n (n involves x1 ∧ … ∧ n involves xn).
+    let k = 0
+    const rw = (tree) => retype(mapAtoms(tree, (a) => {
+      if (a.t === 'type') return a.typeId === fN ? { ...a, typeId: n.id } : a
+      if (a.factId === fN) { const v = { id: `fl${++k}`, typeId: n.id }; return existsOf([v], andOf(a.args.map((x, i) => factAtomOf(L[i], [v.id, x])))) }
+      const il = ilOf(a.factId)
+      return il?.factId === fN ? factAtomOf(L[il.i], a.args) : a
+    }), fN, n.id)
+    setRules(api, run.mapping.id, (rule) => { const target = rw(rule.target); return JSON.stringify(target) === JSON.stringify(rule.target) ? rule : { ...rule, target } })
+    rewriteFormulas(api, S, rw)
+    api.setState(st => ({
+      facts: st.facts.map(g => (g.schemaId === S && g.derivationRule ? { ...g, derivationRule: rw(g.derivationRule) } : g)),
+      objectTypes: st.objectTypes.map(o => (o.schemaId === S && o.derivationRule ? { ...o, derivationRule: rw(o.derivationRule) } : o)),
+    }))
+    carryFormulas(api, run, carried.map(c => [...run.idMap].find(([, v]) => v === c.id)?.[0]).filter(Boolean), rw)
+    api.getState().deleteFact(fN)
+    run.report.push(`Replaced the objectified fact type ${f.objectifiedName} by the entity type ${n.name} with ${L.length} fact types involving ${fNew.roles.map(r => api.getState().objectTypes.find(o => o.id === r.objectTypeId)?.name ?? '?').join(', ')}`)
+    return { carry: [f.id] }
+  },
+}
+
+// ── Entity type to an objectified fact type (objectify) ─────────────────────
+// The reverse of flatten: an entity type N identified by an external
+// uniqueness constraint over the far roles of binaries "N involves Ai"
+// (N's role mandatory and unique) becomes the objectified fact type
+// F(A1, …, An) nested as N; the binaries are F's implied links.
+function objectifyPlan(ctx, typeId) {
+  const n = ctx.otById.get(typeId)
+  if (!n || n.kind !== 'entity' || n.derivationRule) return null
+  const pi = ctx.constraints.find(c => c.constraintType === 'uniqueness' && c.isPreferredIdentifier && c.targetObjectTypeId === typeId && c.sequences?.length === 1)
+  const members = pi?.sequences[0] ?? []
+  if (members.length < 2) return null
+  const parts = members.map(m => {
+    const f = ctx.factById.get(m?.factId)
+    if (!f || f.roles.length !== 2 || f.derivationRule || f.objectified) return null
+    const ni = 1 - m.roleIndex
+    const r = f.roles[ni]
+    if (r.objectTypeId !== typeId || !r.mandatory || !(f.uniqueness ?? []).some(u => u.roles.length === 1 && u.roles[0] === ni)) return null
+    if (f.roles[m.roleIndex].objectTypeId === typeId) return null
+    return { f, ni, ai: m.roleIndex }
+  })
+  if (parts.some(x => !x) || new Set(parts.map(x => x.f.id)).size !== parts.length) return null
+  return { n, pi, parts }
+}
+const objectify = {
+  id: 'objectify',
+  label: 'Entity type → objectified fact type',
+  profile: 'orm2',
+  optionLabel: 'Entity type',
+  none: 'No entity type is identified by fact types "… involves …" with its role mandatory and unique.',
+  nameLabel: 'Reading (… for each role)',
+  options: (ctx) => ctx.objectTypes.filter(o => o.kind === 'entity').map(o => objectifyPlan(ctx, o.id)).filter(Boolean).map(pl => ({
+    key: pl.n.id, params: { typeId: pl.n.id }, label: `${pl.n.name} (${pl.parts.map(x => ctx.otById.get(x.f.roles[x.ai].objectTypeId)?.name ?? ctx.factById.get(x.f.roles[x.ai].objectTypeId)?.objectifiedName).join(', ')})`,
+    name: pl.parts.length === 2 ? '… with …' : pl.parts.map(() => '…').join(' with ') })),
+  describe: (p, ctx) => {
+    const pl = objectifyPlan(ctx, p.typeId)
+    return pl ? `Replace ${pl.n.name} and its ${pl.parts.length} identifying fact types by the objectified fact type "${p.name || '…'}", nested as ${pl.n.name}.` : 'Choose an entity type.'
+  },
+  check: (p, ctx) => {
+    const pl = objectifyPlan(ctx, p.typeId)
+    if (!pl) return ['Choose an entity type identified by fact types "… involves …" with its role mandatory and unique.']
+    const out = []
+    if ((p.name ?? '').split('…').length !== pl.parts.length + 1) out.push(`Write the reading with ${pl.parts.length} … (one for each role).`)
+    if (ctx.subtypes.some(st => st.subId === pl.n.id)) out.push(`${pl.n.name} is a subtype.`)
+    return out
+  },
+  edit(api, p, ctx, run) {
+    const S = run.mapping.targetSchemaId, id = (x) => run.idMap.get(x)
+    const pl = objectifyPlan(ctx, p.typeId)
+    const nN = id(pl.n.id), nNew = api.getState().objectTypes.find(o => o.id === nN)
+    const Ls = pl.parts.map(x => ({ ...x, id: id(x.f.id), g: api.getState().facts.find(g => g.id === id(x.f.id)) }))
+    const k = Ls.length
+    // F, with the binaries' far roles.
+    const f = { ...mkFact(0, 0, k), schemaId: S }
+    f.readingParts = p.name.split('…').map(x => x.trim())
+    f.roles = f.roles.map((r, j) => {
+      const a = Ls[j].g.roles[Ls[j].ai]
+      return withMandatoryId({ ...r, objectTypeId: a.objectTypeId, mandatory: !!a.mandatory, linkReadingParts: ['', 'involves', ''],
+        ...(a.valueRange ? { valueRange: a.valueRange } : {}), ...(a.roleName ? { roleName: a.roleName } : {}) })
+    })
+    const all = Array.from({ length: k }, (_, j) => j)
+    f.uniqueness = [mkUniqueness(all)]
+    Ls.forEach((x, j) => { if ((x.g.uniqueness ?? []).some(u => u.roles.length === 1 && u.roles[0] === x.ai)) f.uniqueness.push(mkUniqueness([j])) })
+    f.internalFrequency = Ls.flatMap((x, j) => (x.g.internalFrequency ?? []).filter(q => q.roles.length === 1 && q.roles[0] === x.ai).map(q => ({ ...q, id: uid(), roles: [j] })))
+    f.objectified = true; f.objectifiedKind = 'entity'; f.objectifiedName = nNew.name; f.nestedReading = false
+    if (nNew.isIndependent) f.isIndependent = true
+    if (nNew.cardinalityRange) f.cardinalityRange = nNew.cardinalityRange
+    if (nNew.lexicon) f.lexicon = nNew.lexicon
+    f.implicitLinks = Ls.map((x, j) => ({ ...mkImplicitLink(j), ...(x.ni === 0 && x.g.readingParts ? { readingParts: x.g.readingParts, alternativeReadings: x.g.alternativeReadings ?? [] } : {}), ...(x.g.lexicon ? { lexicon: x.g.lexicon } : {}) }))
+    api.setState(st => ({ facts: [...st.facts, f], isDirty: true }))
+    // Other external uniqueness constraints over the far roles: internal.
+    const far = (m) => Ls.findIndex(x => x.id === m?.factId && x.ai === m.roleIndex)
+    for (const c of api.getState().constraints.filter(c => c.schemaId === S && c.constraintType === 'uniqueness' && c.sequences?.length === 1 && c.sequences[0].length > 1)) {
+      const js = c.sequences[0].map(far)
+      if (js.some(j => j < 0)) continue
+      if (js.length < k && !f.uniqueness.some(u => u.roles.length === js.length && js.every(j => u.roles.includes(j)))) f.uniqueness.push(mkUniqueness(js))
+      api.getState().deleteConstraint(c.id)
+    }
+    api.setState(st => ({ facts: st.facts.map(g => (g.id === f.id ? { ...g, uniqueness: f.uniqueness } : g)) }))
+    // Where N is drawn: F.
+    const occOf = new Map()
+    for (const d of api.getState().diagrams.filter(x => x.schemaId === S)) {
+      const no = (d.occurrences ?? []).find(o => o.schemaElementId === nN)
+      if (!no) continue
+      try { api.getState().addElementToDiagram(f.id, d.id) } catch { continue }
+      const fo = api.getState().diagrams.find(x => x.id === d.id).occurrences.find(o => o.schemaElementId === f.id)
+      occOf.set(d.id, [no.id, fo.id])
+      api.setState(st => ({ diagrams: st.diagrams.map(x => (x.id !== d.id ? x : { ...x, occurrences: x.occurrences.map(o => (o.id === fo.id ? { ...o, x: no.x, y: no.y + 40 } : o)) })) }))
+    }
+    placeFrequencies(api, S, f.id)
+    const Lids = new Set(Ls.map(x => x.id))
+    api.setState(st => ({
+      facts: st.facts.map(g => (g.schemaId !== S || Lids.has(g.id) || !g.roles.some(r => r.objectTypeId === nN) ? g : { ...g, roles: g.roles.map(r => (r.objectTypeId === nN ? { ...r, objectTypeId: f.id } : r)) })),
+      subtypes: st.subtypes.map(x => (x.schemaId !== S || x.superId !== nN ? x : { ...x, superId: f.id })),
+      diagrams: st.diagrams.map(d => {
+        const oo = occOf.get(d.id)
+        return !oo ? d : { ...d, occurrences: d.occurrences.map(o => (o.roleOccurrenceMap && !Lids.has(o.schemaElementId)
+          ? { ...o, roleOccurrenceMap: Object.fromEntries(Object.entries(o.roleOccurrenceMap).map(([kk, v]) => [kk, v === oo[0] ? oo[1] : v])) } : o)) }
+      }),
+    }))
+    // Constraints on the binaries: on F's roles and implied links, one
+    // role at a time; else carried as formulas.
+    const onL = (m) => Lids.has(m?.factId)
+    const names = (c) => (c.sequences ?? []).some(q => (q ?? []).some(onL))
+    const several = (c) => (c.sequences ?? []).some(q => (q ?? []).length > 1 && q.some(onL))
+    const carried = api.getState().constraints.filter(c => c.schemaId === S && names(c) && several(c))
+    for (const c of carried) api.getState().deleteConstraint(c.id)
+    swapMembers(api, S, onL, (m) => {
+      const j = Ls.findIndex(x => x.id === m.factId), x = Ls[j]
+      return m.roleIndex === x.ai ? { kind: 'role', factId: f.id, roleIndex: j } : { kind: 'role', factId: `${f.id}_il_${j}`, roleIndex: 0 }
+    })
+    // Rules and formulas: N involves Ai is F's implied link; ∃n with every
+    // implied link of n and nothing else is F(…).
+    const conj = (x) => (x?.t === 'and' ? x.args : [x])
+    const uses = (tree, v) => JSON.stringify(tree ?? null).match(new RegExp(`"(id|arg)":"${v}"|"${v}"[,\\]]`))
+    const fold = (tree) => {
+      if (!tree || typeof tree !== 'object') return tree
+      if (Array.isArray(tree)) return tree.map(fold)
+      const out = {}
+      for (const [kk, v] of Object.entries(tree)) out[kk] = v && typeof v === 'object' ? fold(v) : v
+      if (out.t !== 'exists' || out.v?.typeId !== f.id) return out
+      const v = out.v.id, chain = []
+      let node = out.body
+      while (node?.t === 'exists') { chain.push(node.v); node = node.body }
+      const parts = conj(node)
+      const links = Ls.map((_, j) => parts.find(a => a?.t === 'fact' && a.factId === `${f.id}_il_${j}` && a.args[0] === v))
+      if (links.some(a => !a)) return out
+      const rest = parts.filter(a => !links.includes(a))
+      if (uses(rest, v)) return out
+      return existsOf(chain, andOf([...rest, factAtomOf(f.id, links.map(a => a.args[1]))]))
+    }
+    const rw = (tree) => fold(retype(mapAtoms(tree, (a) => {
+      if (a.t === 'type') return a.typeId === nN ? { ...a, typeId: f.id } : a
+      const j = Ls.findIndex(x => x.id === a.factId)
+      if (j < 0) return a
+      const x = Ls[j]
+      return factAtomOf(`${f.id}_il_${j}`, [a.args[x.ni], a.args[x.ai]])
+    }), nN, f.id))
+    setRules(api, run.mapping.id, (rule) => { const target = rw(rule.target); return JSON.stringify(target) === JSON.stringify(rule.target) ? rule : { ...rule, target } })
+    rewriteFormulas(api, S, rw)
+    api.setState(st => ({
+      facts: st.facts.map(g => (g.schemaId === S && g.derivationRule ? { ...g, derivationRule: rw(g.derivationRule) } : g)),
+      objectTypes: st.objectTypes.map(o => (o.schemaId === S && o.derivationRule ? { ...o, derivationRule: rw(o.derivationRule) } : o)),
+    }))
+    carryFormulas(api, run, carried.map(c => [...run.idMap].find(([, v]) => v === c.id)?.[0]).filter(Boolean), rw)
+    for (const x of Ls) api.getState().deleteFact(x.id)
+    api.getState().deleteConstraint(id(pl.pi.id))
+    api.getState().deleteObjectType(nN)
+    run.report.push(`Replaced ${pl.n.name} and its identifying fact types by the objectified fact type ${f.roles.map((r, j) => [f.readingParts[j], api.getState().objectTypes.find(o => o.id === r.objectTypeId)?.name ?? '?'].filter(Boolean).join(' ')).join(' ')}${f.readingParts[k] ? ' ' + f.readingParts[k] : ''}, nested as ${pl.n.name}`)
+    return { carry: [pl.n.id, ...pl.parts.map(x => x.f.id)] }
+  },
+}
+
+// ── Unary fact type to a subtype ────────────────────────────────────────────
+// The unary "E is a S" becomes the subtype S of E; roles of E with a subset
+// (or equality) constraint into the unary become roles of S (mandatory for
+// an equality).
+const unaryToSubtype = {
+  id: 'unaryToSubtype',
+  label: 'Unary fact type → subtype',
+  profile: 'orm2',
+  optionLabel: 'Unary fact type',
+  none: 'The schema has no unary fact type.',
+  nameLabel: 'Subtype',
+  options: (ctx) => ctx.facts.filter(f => f.roles.length === 1 && !f.derivation && !f.objectified && ctx.otById.get(f.roles[0].objectTypeId)?.kind === 'entity').map(f => ({
+    key: f.id, params: { factId: f.id }, label: `${ctx.otById.get(f.roles[0].objectTypeId).name} ${readingOf(f)}`, name: pascal(readingOf(f).replace(/^(is|are)\s+(an?\s+)?/i, '')) || 'Subtype' })),
+  describe: (p, ctx) => {
+    const f = ctx.factById.get(p.factId), e = f && ctx.otById.get(f.roles[0].objectTypeId)
+    if (!f) return 'Choose a unary fact type.'
+    const inside = rolesInside(ctx, f)
+    return `Replace "${e.name} ${readingOf(f)}" by the subtype ${p.name || '…'} of ${e.name}${inside.length ? `; ${inside.map(x => readingOf(x.f)).join(', ')} become${inside.length === 1 ? 's' : ''} ${p.name || '…'}'s` : ''}.`
+  },
+  check: (p, ctx) => {
+    const f = ctx.factById.get(p.factId)
+    if (!f || f.roles.length !== 1) return ['Choose a unary fact type.']
+    const n = p.name?.trim()
+    const out = []
+    if (!n) out.push('Name the subtype.')
+    else if (ctx.objectTypes.some(o => o.name === n)) out.push(`There is already an object type ${n}.`)
+    return out
+  },
+  edit(api, p, ctx, run) {
+    const S = run.mapping.targetSchemaId, id = (x) => run.idMap.get(x)
+    const f = ctx.factById.get(p.factId), e = ctx.otById.get(f.roles[0].objectTypeId)
+    const uN = id(f.id), eN = id(e.id)
+    const inside = rolesInside(ctx, f)
+    const s = { ...mkEntity(0, 0), name: p.name.trim(), schemaId: S }
+    const st = { ...mkSubtype(s.id, eN), schemaId: S }
+    api.setState(x => ({ objectTypes: [...x.objectTypes, s], subtypes: [...x.subtypes, st], isDirty: true }))
+    for (const d of api.getState().diagrams.filter(x => x.schemaId === S && (x.occurrences ?? []).some(o => o.schemaElementId === eN))) {
+      const eo = d.occurrences.find(o => o.schemaElementId === eN)
+      try { api.getState().addElementToDiagram(st.id, d.id) } catch { continue }
+      api.setState(x => ({ diagrams: x.diagrams.map(dd => (dd.id !== d.id ? dd : { ...dd, occurrences: dd.occurrences.map(o => (o.schemaElementId === s.id ? { ...o, x: eo.x, y: eo.y + 140 } : o)) })) }))
+    }
+    // The roles inside the unary: to S.
+    const movedFacts = new Map(inside.map(x => [id(x.f.id), x]))
+    for (const x of inside) api.getState().deleteConstraint(id(x.c.id))
+    swapMembers(api, S, (m) => m?.kind === 'role' && m.factId === uN, { kind: 'subtype', subtypeId: st.id }, swappable)
+    api.setState(x => ({ facts: x.facts.map(g => {
+      const mv = movedFacts.get(g.id)
+      return mv ? { ...g, roles: g.roles.map((r, i) => (i === mv.i ? withMandatoryId({ ...r, objectTypeId: s.id, mandatory: r.mandatory || mv.c.constraintType === 'equality' }) : r)) } : g
+    }) }))
+    for (const d of api.getState().diagrams.filter(x => x.schemaId === S)) {
+      const so = d.occurrences?.find(o => o.schemaElementId === s.id)
+      if (!so) continue
+      api.setState(x => ({ diagrams: x.diagrams.map(dd => (dd.id !== d.id ? dd : { ...dd, occurrences: dd.occurrences.map(o => {
+        const mv = movedFacts.get(o.schemaElementId)
+        return mv && o.roleOccurrenceMap ? { ...o, roleOccurrenceMap: { ...o.roleOccurrenceMap, [mv.i]: so.id } } : o
+      }) })) }))
+    }
+    // The rules: the unary is the subtype's type atom; a variable at a moved
+    // role is an S.
+    const rw = (tree) => {
+      const at = new Set()
+      mapAtoms(tree, (a) => { const mv = a.t === 'fact' && movedFacts.get(a.factId); if (mv) at.add(a.args[mv.i]); return a })
+      let out = mapAtoms(tree, (a) => (a.t === 'fact' && a.factId === uN ? { t: 'type', typeId: s.id, arg: a.args[0] } : a))
+      if (at.size) out = retype(out, eN, (v) => (at.has(v) ? s.id : eN))
+      return out
+    }
+    setRules(api, run.mapping.id, (rule) => {
+      const target = rw(rule.target)
+      return JSON.stringify(target) === JSON.stringify(rule.target) ? rule : { ...rule, target }
+    })
+    rewriteFormulas(api, S, rw)
+    const handled = new Set([...inside.map(x => x.c.id)])
+    carryFormulas(api, run, namingConstraints(ctx, f.id).filter(c => !handled.has(c) && !swappable(ctx.constraints.find(x => x.id === c))), rw)
+    dropColumn(api, uN)
+    run.report.push(`Replaced ${e.name} ${readingOf(f)} by the subtype ${s.name}${inside.length ? `; ${inside.map(x => readingOf(x.f)).join(', ')} moved to it` : ''}`)
+    return { carry: [f.id] }
+  },
+}
+// The roles of a unary's player with a subset or equality constraint into
+// it: { f, i, c }.
+function rolesInside(ctx, u) {
+  const out = []
+  for (const c of ctx.constraints) {
+    if (!['subset', 'equality'].includes(c.constraintType) || c.sequences?.length !== 2) continue
+    const [a, b] = c.sequences
+    if (a?.length !== 1 || b?.length !== 1) continue
+    const pick = (x, y) => (y[0]?.factId === u.id && x[0]?.factId !== u.id ? x[0] : null)
+    const m = pick(a, b) ?? (c.constraintType === 'equality' ? pick(b, a) : null)
+    const f = m && ctx.factById.get(m.factId)
+    if (f && f.roles[m.roleIndex]?.objectTypeId === u.roles[0].objectTypeId && !out.some(x => x.f.id === f.id)) out.push({ f, i: m.roleIndex, c })
+  }
+  return out
+}
+
+export const TRANSFORMATIONS = [split, absorb, fkToTable, boolToTable, toSurrogate, toNatural, partition, merge, toTypeColumn, toSubtypeTables, unaryToBoolean, booleanToUnary, subtypeToUnary, unaryToSubtype, flatten, objectify]
 export const transformationById = (id) => TRANSFORMATIONS.find(x => x.id === id)

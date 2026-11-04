@@ -407,7 +407,7 @@ export function variableNames(side, ctx) {
     for (const a of atoms ?? []) if (a.t === 'opt' || a.t === 'not') collect(a.vars, a.atoms)
   }
   collect(side.vars, side.atoms)
-  const base = (v) => (ctx.otById.get(v.typeId)?.name ?? '').replace(/\s+/g, '') || 'x'
+  const base = (v) => (ctx.otById.get(v.typeId)?.name ?? ctx.factById?.get(v.typeId)?.objectifiedName ?? '').replace(/\s+/g, '') || 'x'
   const count = new Map()
   for (const v of all) count.set(base(v), (count.get(base(v)) ?? 0) + 1)
   const seen = new Map(), out = new Map()
@@ -425,7 +425,7 @@ export function readingName(f, ctx) {
   const words = []
   f.roles.forEach((r, i) => {
     if (parts[i]?.trim()) words.push(parts[i].trim())
-    words.push(ctx.otById.get(r.objectTypeId)?.name ?? '?')
+    words.push(ctx.otById.get(r.objectTypeId)?.name ?? ctx.factById?.get(r.objectTypeId)?.objectifiedName ?? '?')
   })
   if (parts[f.roles.length]?.trim()) words.push(parts[f.roles.length].trim())
   return words.join(' ')
