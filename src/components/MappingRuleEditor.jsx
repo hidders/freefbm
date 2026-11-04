@@ -10,6 +10,7 @@ import { handleTextPanelKey } from '../utils/textPanel.js'
 import { TOKEN_STYLE } from './ConstraintsTab.jsx'
 import { VarSelect, ConstInput, btn, selectStyle, sectionLabel } from './DerivationRuleEditor.jsx'
 import { PatternText, IssueList, MAPPING_TOKEN_STYLE } from './MappingFormula.jsx'
+import { tableRulesOf, tableRuleAsMapping, checkTableRule, bodyFrontier, TABLE_RULE_KINDS } from '../relational/derivedTables.js'
 
 // ── Mapping rule editor ─────────────────────────────────────────────────────
 // The derivation rule editor's syntax-directed way of editing, for the two
@@ -23,8 +24,38 @@ import { PatternText, IssueList, MAPPING_TOKEN_STYLE } from './MappingFormula.js
 export function MappingRuleEditorPanel() {
   const target = useOrmStore(s => s.mappingRuleEditor)
   const advanced = useOrmStore(s => s.advancedMode)
-  if (!target || !advanced) return null
+  if (!target) return null
+  // A table's rule (derived tables and columns) is part of its schema, so it
+  // opens in Basic mode too.
+  if (target.tableId) return <TableRuleEditor key={`table:${target.tableId}:${target.ruleId}`} tableId={target.tableId} ruleId={target.ruleId} />
+  if (!advanced) return null
   return <MappingRuleEditor key={`${target.mappingId}:${target.ruleId}`} mappingId={target.mappingId} ruleId={target.ruleId} />
+}
+
+function MappingRuleEditor({ mappingId, ruleId }) {
+  const mapping = useOrmStore(s => s.mappings?.find(m => m.id === mappingId))
+  const update = useOrmStore(s => s.updateMappingRule)
+  const rule = mapping?.rules.find(r => r.id === ruleId)
+  if (!mapping || !rule) return null
+  return <RuleEditor mapping={mapping} rule={rule} onUpdate={(patch) => update(mapping.id, rule.id, patch)} />
+}
+
+// A table rule T(…) ⟺ φ, edited as a mapping rule of the table's schema onto
+// itself: the query φ is the source side, the row the target side (only its
+// columns can be chosen).
+function TableRuleEditor({ tableId, ruleId }) {
+  const table = useOrmStore(s => s.objectTypes.find(o => o.id === tableId))
+  const updateTableRule = useOrmStore(s => s.updateTableRule)
+  const rule = tableRulesOf(table).find(r => r.id === ruleId)
+  const as = useMemo(() => (table && rule ? tableRuleAsMapping(table, rule) : null), [table, rule])
+  if (!as) return null
+  const onUpdate = (patch) => updateTableRule(tableId, ruleId, r => {
+    if (typeof patch !== 'function') return { ...r, ...patch }
+    const next = patch(tableRuleAsMapping(table, r).rule)
+    const head = next.target?.t === 'rel' && next.target.tableId === tableId ? next.target.args ?? {} : r.head
+    return { ...r, name: next.name ?? r.name, body: next.source, head }
+  })
+  return <RuleEditor mapping={as.mapping} rule={as.rule} onUpdate={onUpdate} table={table} tableRule={rule} />
 }
 
 const PANEL_KEY = 'freefbm.mappingEditor.panel'
@@ -68,19 +99,17 @@ const COL_KINDS = [
   { k: 'var', text: 'x', title: 'a variable of the pattern' },
 ]
 
-function MappingRuleEditor({ mappingId, ruleId }) {
+function RuleEditor({ mapping, rule, onUpdate, table = null, tableRule = null }) {
   const state = useOrmStore(useShallow(s => ({
     schemas: s.schemas, objectTypes: s.objectTypes, facts: s.facts, constraints: s.constraints,
     subtypes: s.subtypes, mappings: s.mappings ?? [],
   })))
   const close = useOrmStore(s => s.closeMappingRuleEditor)
-  const update = useOrmStore(s => s.updateMappingRule)
-  const mapping = state.mappings.find(m => m.id === mappingId)
-  const rule = mapping?.rules.find(r => r.id === ruleId)
-  const ctxs = useMemo(() => (mapping ? {
-    source: sideContext(state, mapping.sourceSchemaId),
-    target: sideContext(state, mapping.targetSchemaId),
-  } : null), [state, mapping])
+  const ctxs = useMemo(() => {
+    if (!mapping) return null
+    const source = sideContext(state, mapping.sourceSchemaId)
+    return { source, target: mapping.targetSchemaId === mapping.sourceSchemaId ? source : sideContext(state, mapping.targetSchemaId) }
+  }, [state, mapping.sourceSchemaId, mapping.targetSchemaId])
   const graphs = useMemo(() => (ctxs ? {
     source: typeGraph({ subtypes: ctxs.source.subtypes, constraints: ctxs.source.constraints }),
     target: typeGraph({ subtypes: ctxs.target.subtypes, constraints: ctxs.target.constraints }),
@@ -88,7 +117,8 @@ function MappingRuleEditor({ mappingId, ruleId }) {
   const names = useMemo(() => (rule ? {
     source: variableNames(rule.source, ctxs.source), target: variableNames(rule.target, ctxs.target),
   } : null), [rule, ctxs])
-  const issues = useMemo(() => (rule ? checkRule(rule, mapping, state, ctxs) : []), [rule, mapping, state, ctxs])
+  const issues = useMemo(() => (table ? checkTableRule(state, table, tableRule, ctxs.source)
+    : rule ? checkRule(rule, mapping, state, ctxs) : []), [rule, mapping, state, ctxs, table, tableRule])
   const [sel, setSel] = useState({ side: 'source', path: [] })
 
   // ── Panel position, size and folding ──
@@ -119,7 +149,7 @@ function MappingRuleEditor({ mappingId, ruleId }) {
   const schemaName = (id) => state.schemas.find(s => s.id === id)?.name ?? '?'
 
   // Edits of one side's tree.
-  const setTree = (side, fn) => update(mapping.id, rule.id, r => ({ ...r, [side]: fn(r[side] ?? hole()) }))
+  const setTree = (side, fn) => onUpdate(r => ({ ...r, [side]: fn(r[side] ?? hole()) }))
   const replace = (side, path, node, nextPath = path) => { setTree(side, t => setAt(t, path, node)); setSel({ side, path: nextPath }) }
 
   const onKeyDown = (e) => {
@@ -301,23 +331,28 @@ function MappingRuleEditor({ mappingId, ruleId }) {
         title="Drag to move · double-click to fold"
         style={{ padding: '10px 14px', borderBottom: panel.folded ? 'none' : '1px solid var(--border-soft)', cursor: 'move', userSelect: 'none', background: 'var(--bg-raised)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Mapping rule</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{table ? (tableRule.kind === 'table' ? 'Derived table' : 'Derived columns') : 'Mapping rule'}</div>
           <input aria-label="Rule name" value={rule.name} placeholder="name"
-            onChange={e => update(mapping.id, rule.id, { name: e.target.value })} style={{ ...selectStyle, width: 150 }} />
-          <div style={{ flex: 1, fontSize: 12, color: 'var(--ink-muted)' }}>of {mapping.name} ({schemaName(mapping.sourceSchemaId)} → {schemaName(mapping.targetSchemaId)})</div>
+            onChange={e => onUpdate({ name: e.target.value })} style={{ ...selectStyle, width: 150 }} />
+          <div style={{ flex: 1, fontSize: 12, color: 'var(--ink-muted)' }}>{table
+            ? <>of table {table.name} ({schemaName(table.schemaId)})</>
+            : <>of {mapping.name} ({schemaName(mapping.sourceSchemaId)} → {schemaName(mapping.targetSchemaId)})</>}</div>
           <button style={btn()} title={panel.folded ? 'Unfold' : 'Fold to the title bar'}
             onClick={() => setPanel(p => ({ ...p, folded: !p.folded }))}>{panel.folded ? '▸' : '▾'}</button>
           <button style={btn()} title="Close (Esc); changes are kept" onClick={close}>×</button>
         </div>
         {!panel.folded && <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 2 }}>
-          For all values of the frontier variables $y: the source pattern matches if and only if the target pattern does. Every other variable should be determined by the $y and the keys.
+          {table ? (tableRule.kind === 'table'
+            ? `The rows of ${table.name} are the key values the query gives; each other column of the row takes the value the query gives with them ($y? : NULL when its optional part does not match).`
+            : `For each row of ${table.name}, the columns of the row take the values the query gives for its key ($y? : NULL when its optional part does not match).`)
+            : 'For all values of the frontier variables $y: the source pattern matches if and only if the target pattern does. Every other variable should be determined by the $y and the keys.'}
         </div>}
       </div>
       {!panel.folded && <div style={{ padding: 14, overflow: 'auto', flex: 1 }}>
-        {SIDES.map((side, i) => (
+        {(table ? ['target', 'source'] : SIDES).map((side, i) => (
           <React.Fragment key={side}>
-            {i === 1 && <div style={{ ...MAPPING_TOKEN_STYLE.op, fontSize: 18, margin: '4px 0' }}>⟺</div>}
-            <div style={sectionLabel}>{side === 'source' ? 'Source' : 'Target'} · {schemaName(sideSchemaId(mapping, side))}</div>
+            {i === 1 && <div style={{ ...MAPPING_TOKEN_STYLE.op, fontSize: 18, margin: '4px 0' }}>{table && tableRule.mode === 'semiDerived' ? '⟸' : '⟺'}</div>}
+            <div style={sectionLabel}>{table ? (side === 'target' ? `Row of ${table.name}` : 'Query') : `${side === 'source' ? 'Source' : 'Target'} · ${schemaName(sideSchemaId(mapping, side))}`}</div>
             <div tabIndex={0} onClick={() => setSel({ side, path: [] })} className="text-panel" style={{
               fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 2, minHeight: 30, outline: 'none',
               padding: '2px 6px', borderRadius: 3, background: sel.side === side ? 'var(--bg-raised)' : undefined,
@@ -329,17 +364,26 @@ function MappingRuleEditor({ mappingId, ruleId }) {
 
         <Palette key={keyOf(sel)} side={sel.side} node={selNode} path={sel.path} tree={selTree}
           scope={scopeAt(selTree, sel.path)} ctx={ctxs[sel.side]} graph={graphs[sel.side]}
+          headOnly={!!table && sel.side === 'target'} label={table ? (sel.side === 'target' ? 'Row' : 'Query') : null}
           replace={(path, node, next) => replace(sel.side, path, node, next)} />
+
+        {table && <TableRuleControls table={table} rule={tableRule} ctx={ctxs.source} />}
 
         <div style={{ ...sectionLabel, marginTop: 12 }}>Checks</div>
         <div data-text-panel tabIndex={0} className="copyable" style={{ outline: 'none' }}>
-          <IssueList issues={issues} ok="This rule is well formed and key-safe." />
+          <IssueList issues={issues} ok={table ? 'This rule is well formed: the table and its columns are derived by it.' : 'This rule is well formed and key-safe.'} />
         </div>
-        <div style={{ ...sectionLabel, marginTop: 12 }}>As listed in the Mappings tab</div>
+        <div style={{ ...sectionLabel, marginTop: 12 }}>{table ? 'As a formula' : 'As listed in the Mappings tab'}</div>
         <div data-text-panel tabIndex={0} className="copyable" style={{ outline: 'none' }}>
-          <PatternText tokens={sideTokens(rule.source, ctxs.source)} />
-          <PatternText tokens={[{ text: '  ⟺  ', kind: 'op' }]} />
-          <PatternText tokens={sideTokens(rule.target, ctxs.target)} />
+          {table ? <>
+            <PatternText tokens={sideTokens(rule.target, ctxs.target)} />
+            <PatternText tokens={[{ text: tableRule.mode === 'semiDerived' ? '  ⟸  ' : '  ⟺  ', kind: 'op' }]} />
+            <PatternText tokens={sideTokens(rule.source, ctxs.source)} />
+          </> : <>
+            <PatternText tokens={sideTokens(rule.source, ctxs.source)} />
+            <PatternText tokens={[{ text: '  ⟺  ', kind: 'op' }]} />
+            <PatternText tokens={sideTokens(rule.target, ctxs.target)} />
+          </>}
         </div>
       </div>}
       {!panel.folded && <div style={{ padding: '6px 14px', borderTop: '1px solid var(--border-soft)', fontSize: 11, color: 'var(--ink-muted)' }}>
@@ -352,7 +396,7 @@ function MappingRuleEditor({ mappingId, ruleId }) {
 
 // ── Palette: what can go in, or be done with, the selected part ────────────
 
-function Palette({ side, node, path, tree, scope, ctx, graph, replace }) {
+function Palette({ side, node, path, tree, scope, ctx, graph, replace, headOnly = false, label = null }) {
   const types = useMemo(() => [...ctx.objectTypes].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')), [ctx])
   const facts = useMemo(() => ctx.facts.map(f => ({ id: f.id, label: readingName(f, ctx) }))
     .sort((a, b) => a.label.localeCompare(b.label)), [ctx])
@@ -390,7 +434,15 @@ function Palette({ side, node, path, tree, scope, ctx, graph, replace }) {
   const exists = (body) => ({ t: 'exists', v: { id: newVarId(), typeId: qType }, body })
 
   const rows = []
-  if (!node || node.t === 'hole') {
+  const kinds = headOnly ? COL_KINDS.filter(o => ['', 'fv', 'opt'].includes(o.k)) : COL_KINDS
+  if (headOnly) {
+    // The row of a table rule: only which columns it gives, and how.
+    node = getAt(tree, [])
+    path = []
+  }
+  if (headOnly && node?.t !== 'rel') {
+    rows.push(['Row', <span style={{ color: 'var(--ink-muted)', fontSize: 12 }}>The row is not a row of the table.</span>])
+  } else if (!headOnly && (!node || node.t === 'hole')) {
     rows.push(['Connective', <>
       <button style={btn()} onClick={() => replace(path, { t: 'and', args: [hole(), hole()] }, [...path, 'args', 0])}>□ ∧ □</button>
       <button style={btn()} title="An optional part: $y is its value, or NULL when it does not match"
@@ -411,7 +463,7 @@ function Palette({ side, node, path, tree, scope, ctx, graph, replace }) {
         onClick={() => replace(path, { t: 'vcmp', op: '≈', left: { t: 'var', id: lastVar }, right: { t: 'const', text: '' } })}>□ ≈ 'c'</button>
     </>])
   } else {
-    rows.push(['Wrap in', <>
+    if (!headOnly) rows.push(['Wrap in', <>
       <button style={btn()} onClick={() => replace(path, { t: 'and', args: [node, hole()] }, [...path, 'args', 1])}>… ∧ □</button>
       <button style={btn()} title="Make this part optional: $y is its value, or NULL when it does not match"
         onClick={() => replace(path, { t: 'opt', y: '', body: node }, path)}>[$y](…)</button>
@@ -419,7 +471,7 @@ function Palette({ side, node, path, tree, scope, ctx, graph, replace }) {
       {typeSelect(qType, setQType)}
       <button style={btn()} disabled={!qType} onClick={() => replace(path, exists(node), path)}>∃ …</button>
     </>])
-    if (node.t === 'and') rows.push(['Operands',
+    if (!headOnly && node.t === 'and') rows.push(['Operands',
       <button style={btn()} onClick={() => replace(path, { ...node, args: [...node.args, hole()] }, [...path, 'args', node.args.length])}>Add operand</button>])
     if (node.t === 'exists') rows.push(['Variable', typeSelect(node.v.typeId, (typeId) => replace(path, { ...node, v: { ...node.v, typeId } }))])
     if (node.t === 'fact') rows.push(['Fact type', factSelect(node.factId, (a) => replace(path, a))])
@@ -433,7 +485,7 @@ function Palette({ side, node, path, tree, scope, ctx, graph, replace }) {
     )])
     if (node.t === 'rel') {
       const tb = ctx.tableById.get(node.tableId)
-      rows.push(['Table', tableSelect(node.tableId, (tableId) => replace(path, { t: 'rel', tableId, args: {} }))])
+      if (!headOnly) rows.push(['Table', tableSelect(node.tableId, (tableId) => replace(path, { t: 'rel', tableId, args: {} }))])
       if (tb) rows.push(['Columns', (
         <div style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr', gap: '2px 8px', alignItems: 'center', fontSize: 12 }}>
           {tb.columns.map(col => {
@@ -456,16 +508,16 @@ function Palette({ side, node, path, tree, scope, ctx, graph, replace }) {
                     else if (k === 'var') setArg({ k, v: fitting(col.vt.id) })
                     else setArg({ k })
                   }}>
-                  {COL_KINDS.map(o => <option key={o.k} value={o.k} title={o.title}>{o.text}</option>)}
+                  {kinds.map(o => <option key={o.k} value={o.k} title={o.title}>{o.text}</option>)}
                 </select>
-                <span style={{ color: 'var(--ink-muted)' }}>{COL_KINDS.find(o => o.k === (arg?.k ?? ''))?.title}</span>
+                <span style={{ color: 'var(--ink-muted)' }}>{headOnly && !arg ? (col.pk ? 'key column: give it $y' : 'not given by this rule') : COL_KINDS.find(o => o.k === (arg?.k ?? ''))?.title}</span>
               </React.Fragment>
             )
           })}
         </div>
       )])
     }
-    rows.push(['Remove', <>
+    if (!headOnly) rows.push(['Remove', <>
       <button style={btn()} onClick={() => replace(path, hole())}>Clear</button>
       {parent && ['and', 'exists', 'not', 'opt'].includes(parent.t) && (
         <button style={btn()} title="Replace the enclosing part by this part"
@@ -477,7 +529,7 @@ function Palette({ side, node, path, tree, scope, ctx, graph, replace }) {
   return (
     <div style={{ marginTop: 12, padding: 10, background: 'var(--bg-raised)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-soft)' }}>
       <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
-        {side === 'source' ? 'Source' : 'Target'}: {!node || node.t === 'hole' ? 'fill in the selected □' : 'selected part'}
+        {label ?? (side === 'source' ? 'Source' : 'Target')}: {headOnly ? 'its columns' : !node || node.t === 'hole' ? 'fill in the selected □' : 'selected part'}
       </div>
       {rows.map(([label, content]) => (
         <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 5 }}>
@@ -485,6 +537,58 @@ function Palette({ side, node, path, tree, scope, ctx, graph, replace }) {
           {content}
         </div>
       ))}
+    </div>
+  )
+}
+
+// ── Table rules: mode, and columns for the query's $y ───────────────────────
+
+function TableRuleControls({ table, rule, ctx }) {
+  const updateTableRule = useOrmStore(s => s.updateTableRule)
+  const addColumn = useOrmStore(s => s.addTableRuleColumn)
+  const [names, setNames] = useState({})
+  const tb = ctx.tableById.get(table.id)
+  const inRow = new Set(Object.values(rule.head ?? {}).map(a => a?.y).filter(Boolean))
+  const free = [...bodyFrontier(rule).keys()].filter(y => y && !inRow.has(y))
+  const pk = tb?.pk ?? []
+  const used = new Set((tb?.columns ?? []).map(c => c.name))
+  const nameOf = (y) => names[y] ?? y
+  return (
+    <div style={{ marginTop: 12, padding: 10, background: 'var(--bg-raised)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-soft)' }}>
+      <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+        {TABLE_RULE_KINDS.find(k => k.id === rule.kind)?.label ?? 'Rule'}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 5 }}>
+        <span style={{ width: 84, fontSize: 11, color: 'var(--ink-3)' }}>Mode</span>
+        <select value={rule.mode} style={{ ...selectStyle, width: 'auto', maxWidth: '100%' }} onChange={e => updateTableRule(table.id, rule.id, { mode: e.target.value })}>
+          <option value="derived">Derived: exactly what the query gives (⟺)</option>
+          <option value="semiDerived">Semi-derived: what the query gives, and stored values (⟸)</option>
+        </select>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 5 }}>
+        <span style={{ width: 84, fontSize: 11, color: 'var(--ink-3)' }}>Key</span>
+        <span style={{ fontSize: 12, color: pk.length ? 'var(--ink-2)' : '#dc2626' }}>
+          {pk.length ? pk.map(c => c.name).join(', ') : `${table.name} has no primary key yet${rule.kind === 'table' ? ': add a key column below' : ''}`}
+        </span>
+      </div>
+      {free.length > 0 && <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, flexWrap: 'wrap' }}>
+        <span style={{ width: 84, fontSize: 11, color: 'var(--ink-3)', paddingTop: 4 }}>New column</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto auto auto auto', gap: '3px 8px', alignItems: 'center', fontSize: 12 }}>
+          {free.map(y => (
+            <React.Fragment key={y}>
+              <span style={MAPPING_TOKEN_STYLE.fv}>${y}</span>
+              <input aria-label={`Name of the column for $${y}`} value={nameOf(y)} onChange={e => setNames(n => ({ ...n, [y]: e.target.value.trim() }))}
+                style={{ ...selectStyle, width: 130, borderColor: used.has(nameOf(y)) ? '#dc2626' : undefined }} title={used.has(nameOf(y)) ? 'The table has a column of this name' : 'The column name'} />
+              <button style={btn()} disabled={!nameOf(y) || used.has(nameOf(y))} title={`Add a column ${nameOf(y)} to ${table.name} and give it $${y} in the row`}
+                onClick={() => addColumn(table.id, rule.id, y, { name: nameOf(y) })}>Add column</button>
+              {rule.kind === 'table'
+                ? <button style={btn()} disabled={!nameOf(y) || used.has(nameOf(y))} title="Add it as a column of the primary key"
+                    onClick={() => addColumn(table.id, rule.id, y, { name: nameOf(y), key: true })}>Add key column</button>
+                : <span />}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>}
     </div>
   )
 }

@@ -223,6 +223,16 @@ export function makePopulationEvaluator(rawData) {
         case 'implies': return !holds(n.left, env) || holds(n.right, env)
         case 'iff': return holds(n.left, env) === holds(n.right, env)
         case 'forall': case 'exists': case 'count': {
+          // ∃x̄ over a conjunction with fact atoms: bind x̄ from the facts'
+          // tuples (solve) rather than trying every instance of their types.
+          if (n.t === 'exists') {
+            const vs = []
+            let b = n
+            while (b.t === 'exists') { vs.push({ id: b.v.id, typeIds: [b.v.typeId] }); b = b.body }
+            const conjuncts = b.t === 'and' ? b.args : [b]
+            if (conjuncts.some(c => c.t === 'fact' && atomFact(ctx, c.factId) && c.args.some(id => vs.some(v => v.id === id))))
+              return solve(b, vs, env, 1).length > 0
+          }
           let count = 0
           for (const cell of domain(n.v.typeId)) {
             const inner = new Map(env).set(n.v.id, { cell, key: keyOf(cell), typeIds: [n.v.typeId] })
@@ -275,13 +285,14 @@ export function makePopulationEvaluator(rawData) {
     // formula holds. The positive fact atoms of a conjunction bind their
     // variables from the fact type's tuples; other variables range over
     // their type.
-    const solve = (formula, vs, env0 = new Map()) => {
+    // With limit, it stops after that many.
+    const solve = (formula, vs, env0 = new Map(), limit = 0) => {
       const conjuncts = formula.t === 'and' ? formula.args : [formula]
       const atoms = conjuncts.filter(c => c.t === 'fact' && atomFact(ctx, c.factId))
       const out = []
       const typeIdsOf = new Map(vs.map(v => [v.id, v.typeIds]))
       const go = (env) => {
-        if (state.failure) return
+        if (state.failure || (limit && out.length >= limit)) return
         const open = vs.filter(v => !env.has(v.id))
         if (!open.length) { if (holds(formula, env)) out.push(env); return }
         const atom = atoms.find(a => a.args.some(id => typeIdsOf.has(id) && !env.has(id)))

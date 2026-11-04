@@ -16,6 +16,8 @@ import { isDerivedFact, isComputedRole, checkFactRule, whyNotDerivable } from '.
 import { makeContext } from '../logic/constraintFormulas.js'
 import { isFormulaConstraint, formulaConstraintEntry } from '../logic/formulaConstraint.js'
 import { asValueComparison } from '../mapping/translate.js'
+import { tableRulesOf, checkTableRule } from '../relational/derivedTables.js'
+import { sideContext } from '../mapping/mapping.js'
 import { Formula } from './ConstraintsTab.jsx'
 import { isFormulaQuery, whyNotGraphical, whyNoOuterJoin } from '../logic/query.js'
 import { hasTextSelection } from '../utils/textPanel.js'
@@ -1256,7 +1258,8 @@ function ObjectTypeInspector({ ot }) {
       <TypeLexiconSection name={ot.name} lexicon={ot.lexicon}
         onChange={lexicon => store.updateObjectType(ot.id, { lexicon })}/>
 
-      {ot.kind === 'entity' && <DerivationSection ot={ot} store={store}/>}
+      {ot.kind === 'entity' && store.schemas?.find(x => x.id === ot.schemaId)?.profile === 'relational' && <TableRulesSection ot={ot} store={store}/>}
+      {ot.kind === 'entity' && (ot.tableRuleId ? null : <DerivationSection ot={ot} store={store}/>)}
 
       <Section title="Constraints">
         {ot.kind === 'value' && (
@@ -1332,6 +1335,62 @@ function DerivationSection({ ot, store }) {
             : 'The rule is valid'}
         </div>
       )}
+    </Section>
+  )
+}
+
+// ── Rules of a table (relational/derivedTables.js) ────────────────────────────
+// A table of a relational schema can have its rows, or some of its columns,
+// derived by a query; the rule compiles to the table's and the columns'
+// derivation rules, which are then shown as coming from it.
+function TableRulesSection({ ot, store }) {
+  const rules = tableRulesOf(ot)
+  const ctx = sideContext(store, ot.schemaId)
+  const hasRows = rules.some(r => r.kind === 'table')
+  const ownRule = !ot.tableRuleId && isDerived(ot)
+  const small = { fontSize: 11, padding: '2px 8px', borderRadius: 3, border: '1px solid var(--border)', background: 'var(--bg-raised)', color: 'var(--ink-2)', cursor: 'pointer' }
+  return (
+    <Section title="Table rules">
+      {rules.map(r => {
+        const issues = checkTableRule(store, ot, r, ctx)
+        const nErr = issues.filter(i => i.severity === 'error').length
+        return (
+          <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 4 }}>
+            <span style={{ flex: 1, color: 'var(--ink-2)' }}>
+              {r.name || (r.kind === 'table' ? 'Rows' : 'Columns')}
+              <span style={{ color: 'var(--ink-muted)' }}> · {r.kind === 'table' ? 'rows' : 'columns'}, {r.mode === 'semiDerived' ? 'semi-derived' : 'derived'}</span>
+              {nErr > 0 && <span style={{ color: 'var(--danger)' }}> · {nErr} problem{nErr > 1 ? 's' : ''}</span>}
+            </span>
+            <button style={small} onClick={() => store.openTableRuleEditor(ot.id, r.id)}>Edit…</button>
+            <button style={small} title="Remove the rule; the table and its columns are no longer derived by it" onClick={() => store.deleteTableRule(ot.id, r.id)}>✕</button>
+          </div>
+        )
+      })}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <button style={{ ...small, opacity: hasRows || ownRule ? 0.5 : 1, cursor: hasRows || ownRule ? 'not-allowed' : 'pointer' }} disabled={hasRows || ownRule}
+          title={hasRows ? 'The table has a rule for its rows' : ownRule ? 'The table has a derivation rule of its own' : 'Derive the rows of the table by a query over the schema'}
+          onClick={() => store.addTableRule(ot.id, 'table')}>Derive rows…</button>
+        <button style={small} title="Derive some columns of the table's rows by a query over the schema"
+          onClick={() => store.addTableRule(ot.id, 'columns')}>Derive columns…</button>
+      </div>
+      {!(ctx.tableById.get(ot.id)?.pk?.length) && rules.length === 0 && (
+        <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 4 }}>A rule needs the table's primary key.</div>
+      )}
+    </Section>
+  )
+}
+
+// A column a table rule derives: its derivation comes from the rule.
+function ColumnRuleNote({ fact, store }) {
+  const table = store.objectTypes.find(o => tableRulesOf(o).some(r => r.id === fact.tableRuleId))
+  const rule = tableRulesOf(table).find(r => r.id === fact.tableRuleId)
+  return (
+    <Section title="Derivation">
+      <div style={{ fontSize: 12, color: 'var(--ink-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ flex: 1 }}>{fact.derivation === 'semiDerived' ? 'Semi-derived' : 'Derived'} by the rule {rule?.name ? `“${rule.name}” ` : ''}of table {table?.name ?? '?'}</span>
+        {table && rule && <button onClick={() => store.openTableRuleEditor(table.id, rule.id)}
+          style={{ fontSize: 11, padding: '2px 8px', borderRadius: 3, border: '1px solid var(--border)', background: 'var(--bg-raised)', color: 'var(--ink-2)', cursor: 'pointer' }}>Edit rule…</button>}
+      </div>
     </Section>
   )
 }
@@ -2867,7 +2926,7 @@ function FactInspector({ fact }) {
           onChange={lexicon => store.updateFact(fact.id, { lexicon })}/>
       )}
 
-      {!fact.objectified && <FactDerivationSection fact={fact} store={store}/>}
+      {!fact.objectified && (fact.tableRuleId ? <ColumnRuleNote fact={fact} store={store}/> : <FactDerivationSection fact={fact} store={store}/>)}
 
       <FactPresentationSubsection fact={fact} store={store} />
       <FactConstraintsSubsection fact={fact} store={store} />

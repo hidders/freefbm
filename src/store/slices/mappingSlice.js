@@ -5,6 +5,9 @@ import { foldChanges, addConstraint } from '../../mapping/fold.js'
 import { mkDiagram, mkConstraint, mkConstraintOcc } from '../storeHelpers'
 import { formulaElements } from '../../logic/formulaConstraint.js'
 import { findRefMode } from '../../utils/refMode.js'
+import { mkTableRule, tableRulesOf, compileTableRulesInto, newColumn, withPrimaryKey, bodyFrontier } from '../../relational/derivedTables.js'
+import { sideContext, treeToSide, expandSide } from '../../mapping/mapping.js'
+import { mkEntity } from '../storeHelpers'
 
 const ADVANCED_KEY = 'freefbm.advancedMode'
 const readAdvanced = () => { try { return localStorage.getItem(ADVANCED_KEY) === '1' } catch { return false } }
@@ -36,7 +39,7 @@ export const createMappingSlice = (set, get) => {
     advancedMode: readAdvanced(),
     setAdvancedMode(v) {
       try { localStorage.setItem(ADVANCED_KEY, v ? '1' : '0') } catch { /* not kept */ }
-      set({ advancedMode: !!v, ...(v ? {} : { mappingRuleEditor: null }) })
+      set(st => ({ advancedMode: !!v, ...(v || st.mappingRuleEditor?.tableId ? {} : { mappingRuleEditor: null }) }))
     },
     // The rule the Mappings tab shows highlighted (Basic mode's stand-in for
     // the rule editor).
@@ -345,5 +348,115 @@ export const createMappingSlice = (set, get) => {
       set({ mappingRuleFocus: { mappingId, ruleId, at: Date.now() } })
     },
     closeMappingRuleEditor() { set({ mappingRuleEditor: null }) },
+
+    // ── Derived tables and columns (relational/derivedTables.js) ───────────
+    // A table's rules live on its entity type (tableRules) and are compiled
+    // into derivation rules of the table and its columns on every change, in
+    // the same step, so one edit is one undo step. They open in the mapping
+    // rule editor (store.mappingRuleEditor = { tableId, ruleId }), in Basic
+    // mode too: they are part of the schema, not of a mapping.
+
+    // Adds a rule of the given kind ('table' | 'columns') and opens it.
+    addTableRule(tableId, kind = 'table') {
+      const t = get().objectTypes.find(o => o.id === tableId)
+      if (!t) return null
+      const r = mkTableRule(kind, kind === 'table' ? 'Rows' : `Columns ${tableRulesOf(t).filter(x => x.kind === 'columns').length + 1}`)
+      get().updateTableRules(tableId, rs => [...rs, r])
+      set({ mappingRuleEditor: { tableId, ruleId: r.id } })
+      return r.id
+    },
+    // fn: the table's rules → the new rules. Compiles them in the same step.
+    updateTableRules(tableId, fn, extra = null) {
+      set(st => {
+        const more = extra ? extra(st) : {}
+        const base = { ...st, ...more }
+        const objectTypes = base.objectTypes.map(o => (o.id === tableId ? { ...o, tableRules: fn(tableRulesOf(o)) } : o))
+        const c = compileTableRulesInto({ ...base, objectTypes }, tableId)
+        return { ...more, objectTypes: c.objectTypes, facts: c.facts, isDirty: true }
+      })
+    },
+    // patch: fields of the rule, or a function of the rule giving the new rule.
+    updateTableRule(tableId, ruleId, patch) {
+      get().updateTableRules(tableId, rs => rs.map(r => (r.id === ruleId ? (typeof patch === 'function' ? patch(r) : { ...r, ...patch }) : r)))
+    },
+    deleteTableRule(tableId, ruleId) {
+      get().updateTableRules(tableId, rs => rs.filter(r => r.id !== ruleId))
+      const ed = get().mappingRuleEditor
+      if (ed?.tableId === tableId && ed.ruleId === ruleId) set({ mappingRuleEditor: null })
+    },
+    openTableRuleEditor(tableId, ruleId) { set({ mappingRuleEditor: { tableId, ruleId } }) },
+
+    // Adds a column for $y to the table and to the rule's row, as one undo
+    // step: its value type is the type of the query's variable bound to $y
+    // when that is a value type, else a new text value type. With key, the
+    // column joins the primary key.
+    addTableRuleColumn(tableId, ruleId, y, { name = y, key = false } = {}) {
+      const s = get()
+      const t = s.objectTypes.find(o => o.id === tableId)
+      const rule = tableRulesOf(t).find(r => r.id === ruleId)
+      if (!t || !rule) return null
+      const ctx = sideContext(s, t.schemaId)
+      const ex = expandSide(treeToSide(rule.body).side, ctx)
+      const vt = (() => {
+        const types = new Map()
+        const scan = (vars, atoms) => { for (const v of vars ?? []) types.set(v.id, v.typeId); for (const a of atoms ?? []) if (a.t === 'opt' || a.t === 'not') scan(a.vars, a.atoms) }
+        scan(ex.vars, ex.atoms)
+        const find = (atoms) => { for (const a of atoms ?? []) { if (a.t === 'bind' && a.y === y) return a.v; if (a.t === 'opt') { const v = find(a.atoms); if (v) return v } } return null }
+        const v = find(ex.atoms)
+        const ot = v && s.objectTypes.find(o => o.id === types.get(v))
+        return ot?.kind === 'value' ? ot.id : null
+      })()
+      const use = bodyFrontier(rule).get(y)
+      const nullable = !!use?.guards
+      const occ = s.diagrams.find(d => d.id === s.activeDiagramId)?.occurrences?.find(o => o.schemaElementId === tableId)
+      const nCols = ctx.tableById.get(tableId)?.columns.length ?? 0
+      const at = { ...t, x: (occ?.x ?? t.x ?? 0) + 180, y: (occ?.y ?? t.y ?? 0) + 50 * nCols }
+      const col = newColumn(s, at, name, vt, { notNull: !nullable || key })
+      const fact = { ...col.fact, x: at.x, y: at.y }
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        set({ objectTypes: col.objectTypes, facts: [...s.facts, fact], isDirty: true })
+        if (key) {
+          const s2 = get()
+          const tb = sideContext(s2, t.schemaId).tableById.get(tableId)
+          const k = withPrimaryKey(s2, t, [...(tb?.pk ?? []).map(c => c.fact.id), fact.id])
+          set({ facts: k.facts, constraints: k.constraints })
+        }
+        get().updateTableRule(tableId, ruleId, r => ({ ...r, head: { ...r.head, [fact.id]: { k: nullable && !key ? 'opt' : 'fv', y } } }))
+        for (const d of get().diagrams) if ((d.occurrences ?? []).some(o => o.schemaElementId === tableId)) get().addElementToDiagram(fact.id, d.id)
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+      return fact.id
+    },
+    // Sets the table's primary key to these columns (in order), recompiling its rules.
+    setTablePrimaryKey(tableId, columnFactIds) {
+      const t = get().objectTypes.find(o => o.id === tableId)
+      if (!t) return
+      get().updateTableRules(tableId, rs => rs, (st) => withPrimaryKey(st, t, columnFactIds))
+    },
+    // A new table in a relational schema whose rows a rule derives; opens the
+    // rule. Returns the table id.
+    addDerivedTable(schemaId, name = 'derived_table') {
+      const s = get()
+      const used = new Set(s.objectTypes.filter(o => o.schemaId === schemaId).map(o => o.name))
+      let unique = name
+      for (let i = 2; used.has(unique); i++) unique = `${name}_${i}`
+      const d = s.diagrams.find(x => x.id === s.activeDiagramId && x.schemaId === schemaId && !x.mappingId)
+        ?? s.diagrams.find(x => x.schemaId === schemaId && !x.mappingId)
+      const pos = { x: 120, y: 120 }
+      if (d?.occurrences?.length) { pos.x = Math.max(...d.occurrences.map(o => o.x ?? 0)) + 260; pos.y = Math.min(...d.occurrences.map(o => o.y ?? 0)) }
+      const e = { ...mkEntity(pos.x, pos.y), name: unique, schemaId }
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        set(st => ({ objectTypes: [...st.objectTypes, e], isDirty: true }))
+        if (d) get().addElementToDiagram(e.id, d.id)
+        get().addTableRule(e.id, 'table')
+        get().select?.(e.id, 'entity')
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+      return e.id
+    },
   }
 }

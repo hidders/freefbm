@@ -8,6 +8,8 @@
 //
 // exportPostgresDdl(state, schemaId) → { sql, warnings }
 
+import { tableRulesOf, tableRuleAsMapping } from './derivedTables.js'
+import { sideContext, sideTokens, tokensText } from '../mapping/mapping.js'
 import { valueKindName } from '../utils/datatypeValues.js'
 import { relationalModel } from './relationalModel.js'
 import { quoteIdent } from './sqlNames.js'
@@ -82,6 +84,8 @@ export function exportPostgresDdl(state, schemaId) {
     if (!col.singleValued) warnings.push(`${t.name}.${col.name} has no uniqueness constraint on the table's role; it is exported as an ordinary column`)
 
   const q = quoteIdent
+  let ctxCache = null
+  const sideCtx = () => (ctxCache ??= sideContext(state, schemaId))
   const lines = ['-- PostgreSQL DDL written by FreeFBM', '']
   for (const t of tables) {
     const items = []
@@ -102,6 +106,14 @@ export function exportPostgresDdl(state, schemaId) {
     for (const u of t.uniques) items.push(`  UNIQUE (${u.map(c => q(c.name)).join(', ')})`)
     for (const ch of t.checks) items.push(`  ${ch.name ? `CONSTRAINT ${q(ch.name)} ` : ''}CHECK (${ch.text})`)
     if (!t.columns.length) warnings.push(`Table ${t.name} has no columns`)
+    // Table rules (derivedTables.js) are not written as views yet: the table
+    // is written, with its rules as comments.
+    for (const r of tableRulesOf(t.entity)) {
+      const ctx = sideCtx()
+      const text = `${tokensText(sideTokens(tableRuleAsMapping(t.entity, r).rule.target, ctx))} ${r.mode === 'semiDerived' ? '⟸' : '⟺'} ${tokensText(sideTokens(r.body, ctx))}`
+      lines.push(`-- ${r.kind === 'table' ? 'Rows' : 'Columns'} ${r.mode === 'semiDerived' ? 'semi-derived' : 'derived'} by: ${text.replace(/\s+/g, ' ')}`)
+      warnings.push(`${t.name}: its ${r.kind === 'table' ? 'rows are' : 'columns are'} derived by a table rule, which is written as a comment, not as a view or trigger`)
+    }
     lines.push(`CREATE TABLE ${q(t.name)} (`, items.join(',\n'), ');', '')
   }
   for (const fk of fks) {
