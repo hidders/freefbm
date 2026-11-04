@@ -189,6 +189,15 @@ export function createDiagramSlice(set, get) {
       }))
     },
 
+    // How an ERD draws its foreign key lines: 'direct' (straight lines that bend
+    // at box corners, the default) or 'orthogonal' (right-angled).
+    setErdLines(id, erdLines) {
+      set(s => ({
+        diagrams: s.diagrams.map(d => d.id === id ? { ...d, erdLines } : d),
+        isDirty: true,
+      }))
+    },
+
     // Forgets the ERD box positions, so the tables are laid out afresh.
     resetErdPositions(id) {
       set(s => ({
