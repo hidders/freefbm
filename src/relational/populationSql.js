@@ -18,7 +18,7 @@ const NUMERIC = new Set(['integer', 'decimal', 'float'])
 // Tables in an order where every table comes after the tables its foreign
 // keys refer to (a cycle is broken where it is met; such scripts need
 // deferred constraints, which the result's notes say).
-function fkOrder(tables) {
+export function fkOrder(tables) {
   const out = [], state = new Map()
   let cyclic = false
   const visit = (t) => {

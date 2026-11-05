@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
 import { withRunApplied } from '../mapping/runMapping.js'
 import { populationSql } from '../relational/populationSql.js'
+import { composeExchangeSql } from '../mapping/composeSql.js'
 import { checkExchange, exchangeSchemas, nextSteps, runExchange, stepMapping, issueLines, groupedLines } from '../mapping/exchanges.js'
 
 // The exchanges of the file (mapping/exchanges.js), under the views in the
@@ -58,6 +59,8 @@ function ExchangeBox({ ex, name, run, styles, onRun, onApplied, onCloseRun }) {
   const end = schemas.length ? schemas[schemas.length - 1] : null
   const options = useMemo(() => nextSteps(state, end), [state, end])
   const [pick, setPick] = useState('')
+  const [script, setScript] = useState(false)
+  const relationalEnds = schemas.length > 1 && [schemas[0], end].every(id => state.schemas.find(x => x.id === id)?.profile === 'relational')
   const add = (key) => {
     const o = options.find(x => `${x.mappingId}:${x.direction}` === key)
     if (o) act().addExchangeStep(ex.id, o)
@@ -78,8 +81,12 @@ function ExchangeBox({ ex, name, run, styles, onRun, onApplied, onCloseRun }) {
           </option>)}
         </select>
         <button style={btn} disabled={!errorFree} title={`Carry the population of ${name(schemas[0])} along the chain to ${name(end)}`} onClick={onRun}>Run</button>
+        <button style={btn} disabled={!errorFree || !relationalEnds}
+          title={relationalEnds ? `The whole chain as one SQL script: INSERT … SELECT statements that fill the tables of ${name(end)} from those of ${name(schemas[0])}` : 'Needs a chain from a relational schema to a relational schema'}
+          onClick={() => setScript(x => !x)}>SQL script…</button>
         <button style={btn} title="Delete this exchange (its mappings and views stay)" onClick={() => act().deleteExchange(ex.id)}>Delete</button>
       </div>
+      {script && <ComposedScript ex={ex} name={name} first={schemas[0]} end={end} onClose={() => setScript(false)} />}
       {run && <ExchangeRunReport run={run} ex={ex} name={name} end={end} onApplied={onApplied} onClose={onCloseRun} />}
       {ex.steps.map((s, i) => {
         const sm = stepMapping(state, s)
@@ -152,6 +159,56 @@ function ExchangeRunReport({ run, ex, name, end, onApplied, onClose }) {
         {exported.notes.map((n, i) => <div key={i} style={{ color: '#d97706' }}>! {n}</div>)}
       </div>}
       {out.steps.map(s => <StepReport key={s.index} step={s} name={name} levelColor={levelColor} />)}
+    </div>
+  )
+}
+
+// The chain as one SQL script (composeSql.js), to run on the database of
+// the first schema with the tables of the last one in a schema of their own.
+const sqlSchemaName = (n) => (n ?? '').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'target'
+function ComposedScript({ ex, name, first, end, onClose }) {
+  const box = { padding: '6px 8px 8px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg-text-panel)' }
+  const btn = { fontSize: 11, padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg-surface)', color: 'var(--ink-2)', cursor: 'pointer' }
+  const input = { fontSize: 11, padding: '1px 4px', border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg-surface)', color: 'var(--ink)', width: 120 }
+  const state = useOrmStore(useShallow(s => ({ schemas: s.schemas, mappings: s.mappings, views: s.views, objectTypes: s.objectTypes, facts: s.facts, constraints: s.constraints, subtypes: s.subtypes })))
+  const [src, setSrc] = useState('public')
+  const [tgt, setTgt] = useState(() => sqlSchemaName(name(end)))
+  const [saved, setSaved] = useState(null)
+  const header = `The exchange ${ex.name} as one script, written by FreeFBM: it fills the tables of ${name(end)}\n`
+    + `from those of ${name(first)}. Run it on the database of ${name(first)}${src ? ` (its tables in schema ${src})` : ''},\n`
+    + `with the tables of ${name(end)} made by their DDL${tgt ? ` in schema ${tgt}` : ''} and empty.`
+  const res = useMemo(() => composeExchangeSql({ ...useOrmStore.getState(), ...state }, ex, { header, sourceSchema: src.trim(), targetSchema: tgt.trim() }), [state, ex, header, src, tgt])
+  const save = async () => {
+    const fileName = `${ex.name.replace(/[^A-Za-z0-9_-]+/g, '_') || 'exchange'}.sql`
+    const api = window.electronAPI
+    let path = fileName
+    if (api?.saveSql) path = await api.saveSql({ defaultPath: fileName, content: res.sql })
+    else {
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(new Blob([res.sql], { type: 'text/plain' })); a.download = fileName; a.click()
+    }
+    if (path) setSaved(path)
+  }
+  return (
+    <div className="exchange-sql" data-text-panel tabIndex={0} style={{ ...box, outline: 'none' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+        <b>SQL script</b>
+        <label style={{ color: 'var(--ink-muted)' }}>{name(first)} tables in schema <input style={input} value={src} onChange={e => setSrc(e.target.value)} placeholder="(none)" /></label>
+        <label style={{ color: 'var(--ink-muted)' }}>{name(end)} tables in schema <input style={input} value={tgt} onChange={e => setTgt(e.target.value)} placeholder="(none)" /></label>
+        <div style={{ flex: 1 }} />
+        {!res.error && <button style={btn} disabled={!res.tables.length} title="Save the script as a .sql file" onClick={save}>Save…</button>}
+        <button style={{ ...btn, border: 'none', background: 'none', color: 'var(--ink-muted)' }} title="Close" onClick={onClose}>×</button>
+      </div>
+      {res.error
+        ? <div style={{ color: '#dc2626' }}>The chain can't be written as SQL: {res.error}.</div>
+        : <>
+          <div style={{ color: 'var(--ink-muted)', marginBottom: 4 }}>
+            {res.tables.length ? `Fills ${res.tables.map(t => t.name).join(', ')}.` : 'No table gets rows.'}
+            {saved && <span style={{ color: 'var(--col-candidate)' }}> ✓ Saved to {saved}</span>}
+          </div>
+          {res.notes.map((n, i) => <div key={i} style={{ color: '#d97706' }}>! {n}</div>)}
+          {res.tables.length > 0 && <pre style={{ margin: '4px 0 0', maxHeight: 320, overflow: 'auto', fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.4, padding: 6, border: '1px solid var(--border-soft)', borderRadius: 3, background: 'var(--bg-surface)' }}>{res.sql}</pre>}
+        </>}
     </div>
   )
 }
