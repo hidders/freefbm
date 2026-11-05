@@ -19,7 +19,8 @@
 //
 // formulaToSql(formula, model, names) → { check: { tableId, text } } |
 //   { query: text, deontic } | { error }, with model from relationalModel
-//   and names(Var) → a display name for a column of the query's result.
+//   and names(Var) → a display name for a column of the query's result;
+//   qualify(table) → the table's name as written in FROM (default: quoted).
 
 import { quoteIdent } from './sqlNames.js'
 import { makeContext, constraintEntries } from '../logic/constraintFormulas.js'
@@ -131,8 +132,9 @@ const merged = (g) => {
   return { ...g, vars, body }
 }
 
-export function formulaToSql(formula, model, names = () => null) {
+export function formulaToSql(formula, model, names = () => null, { qualify = null } = {}) {
   const q = quoteIdent
+  const tableName = (table) => (qualify ? qualify(table) : q(table.name))
   const tableById = new Map(model.tables.map(t => [t.id, t]))
   let f = formula
   const deontic = f?.t === 'obligatory'
@@ -210,7 +212,7 @@ export function formulaToSql(formula, model, names = () => null) {
       const table = tableById.get(v.typeId)
       if (!table) continue
       const alias = `${table.name.replace(/[^A-Za-z]/g, '').slice(0, 1).toLowerCase() || 't'}${++n}`
-      from.push(`${q(table.name)} ${alias}`)
+      from.push(`${tableName(table)} ${alias}`)
       env.set(v, { row: alias, table })
       pending.delete(v)
     }
