@@ -1,6 +1,7 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useOrmStore, useOrmStoreIgnoring, subtypeKindOf } from '../store/ormStore'
+import { mappingOfDiagram } from '../store/storeHelpers'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { useContextMenuHandlers } from '../hooks/useContextMenuHandlers'
 import ObjectTypeNode, { computeOtSize, entityBounds, collapsedRefValueRole } from './ObjectTypeNode'
@@ -493,7 +494,7 @@ function GridPatterns() {
 
 export default function Canvas() {
   const store = useOrmStoreIgnoring('pan')
-  const { objectTypes: visibleOts, facts: visibleFacts, constraints: visibleConstraints, subtypes: visibleSubtypes } = useDiagramElements()
+  const { objectTypes: visibleOts, facts: visibleFacts, constraints: visibleConstraints, subtypes: visibleSubtypes, erdSchemaIds } = useDiagramElements()
   const sharedIds = store.getSharedIds?.() ?? new Set()
   const activeDiagram = store.diagrams.find(d => d.id === store.activeDiagramId)
   const visibleNotes = activeDiagram?.notes ?? []
@@ -1381,6 +1382,11 @@ export default function Canvas() {
           {!erd && <>
           {/* Mapping diagrams: each element tinted by its schema's side */}
           <MappingTints/>
+          {/* Mapping diagrams: a relational side's tables as ERD boxes */}
+          {(erdSchemaIds ?? []).map(sid => {
+            const m = mappingOfDiagram(store, activeDiagram)
+            return <ErdView key={sid} schemaId={sid} tint={m && m.sourceSchemaId !== m.targetSchemaId ? (sid === m.targetSchemaId ? 'target' : 'source') : null}/>
+          })}
           {/* Note connectors — rendered below notes so notes sit on top */}
           {visibleNotes.flatMap(note => (note.connectors ?? []).map(conn => {
             let tx, ty

@@ -5,7 +5,7 @@ import { useOrmStore } from '../store/ormStore'
 import { scopeToSchema } from '../store/storeHelpers'
 import { makeContext, readingText, constraintEntry, CONSTRAINT_LABELS } from '../logic/constraintFormulas.js'
 import {
-  SUBJECT, hole, getAt, setAt, directSupertypes, typeGraph, allTypeOptions,
+  SUBJECT, hole, getAt, setAt, directSupertypes, typeGraph, allTypeOptions, withSchemaNames,
   ruleVariables, formulaVariables, ruleRoots, checkRule, derivationEntry, derivationHeading, upgradeRule, isTermSlot, atomFact,
 } from '../logic/derivationRule.js'
 import { editableQuery, queryRoots, checkQuery, ruleBodyToGraph, graphToRuleBody } from '../logic/query.js'
@@ -19,6 +19,7 @@ import { TOKEN_STYLE, Formula } from './ConstraintsTab.jsx'
 import { handleTextPanelKey, hasTextSelection } from '../utils/textPanel.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
 import { checkFormulaConstraint, formulaConstraintEntry } from '../logic/formulaConstraint.js'
+import { checkViewRule, viewRuleEntries, schemaRolesOf } from '../mapping/views.js'
 
 // ── Derivation rule editor ──────────────────────────────────────────────────
 // A syntax-directed editor for the derivation rule of a derived or
@@ -64,9 +65,9 @@ export function RuleEditorPanel() {
   const target = useOrmStore(s => s.ruleEditor)
   const close = useOrmStore(s => s.closeRuleEditor)
   if (!target) return null
-  return <DerivationRuleEditor key={target.otId ?? target.factId ?? (target.formulaId ? `formula:${target.formulaId}` : `${target.constraintId}:${target.sequenceIndex}`)}
+  return <DerivationRuleEditor key={target.viewId ? `view:${target.viewId}:${target.ruleId}` : target.otId ?? target.factId ?? (target.formulaId ? `formula:${target.formulaId}` : `${target.constraintId}:${target.sequenceIndex}`)}
     otId={target.otId} factId={target.factId} constraintId={target.constraintId} sequenceIndex={target.sequenceIndex}
-    formulaId={target.formulaId} onClose={close} />
+    formulaId={target.formulaId} viewId={target.viewId} ruleId={target.ruleId} onClose={close} />
 }
 
 // The types of every variable of a rule: the free ones (roots) and those of
@@ -122,9 +123,20 @@ const memberText = (m, ctx) => {
   return f ? `plays role ${m.roleIndex + 1} of ${readingText(f, ctx) || 'an unnamed fact type'}` : 'a deleted role'
 }
 
-export default function DerivationRuleEditor({ otId, factId, constraintId, sequenceIndex, formulaId, onClose }) {
+export default function DerivationRuleEditor({ otId, factId, constraintId, sequenceIndex, formulaId, viewId, ruleId, onClose }) {
+  // A rule of a view mapping (mapping/views.js): it defines an element of the
+  // view's target by a query over its source, so both schemas are offered.
+  const view = useOrmStore(s => (viewId ? s.views?.find(v => v.id === viewId) ?? null : null))
+  const vrule = view?.rules.find(r => r.id === ruleId) ?? null
+  const forView = viewId != null
   // The rule is in the active schema, so only its types and facts are offered.
   const state = useOrmStore(useShallow(st => {
+    if (forView) {
+      const v = st.views?.find(x => x.id === viewId)
+      const ids = new Set([v?.sourceSchemaId, v?.targetSchemaId])
+      const of = (k) => (st[k] ?? []).filter(x => ids.has(x.schemaId))
+      return { objectTypes: of('objectTypes'), facts: of('facts'), subtypes: of('subtypes'), constraints: of('constraints'), schemas: st.schemas, schemaRoles: v ? schemaRolesOf(v) : null }
+    }
     const s = scopeToSchema(st)
     return { objectTypes: s.objectTypes, facts: s.facts, subtypes: s.subtypes, constraints: s.constraints }
   }))
@@ -137,13 +149,16 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
   // A formula constraint: a closed formula (logic/formulaConstraint.js).
   const forFormula = formulaId != null
   const formulaC = forFormula ? state.constraints.find(c => c.id === formulaId) : null
-  const ot = forFact || forQuery || forFormula ? null : state.objectTypes.find(o => o.id === otId)
-  const fact = forFact ? state.facts.find(f => f.id === factId) : null
+  // A view's rule is read as the element's derivation rule.
+  const asViewHead = (x) => (x && forView ? { ...x, derivation: 'derived', derivationRule: vrule?.rule } : x)
+  const ot = forFact || forQuery || forFormula ? null : asViewHead(state.objectTypes.find(o => o.id === otId))
+  const fact = forFact ? asViewHead(state.facts.find(f => f.id === factId)) : null
   const constraint = forQuery ? state.constraints.find(c => c.id === constraintId) : null
   const seq = constraint?.sequences?.[sequenceIndex] ?? []
   // The query's free variables are fixed: the positions and the target.
   const [query] = useState(() => (constraint ? editableQuery(constraint, sequenceIndex, makeContext(state)) : null))
-  const stored = forFormula ? upgradeRule(formulaC?.rule) ?? hole()
+  const stored = forView ? (forFact ? factDraft(vrule?.rule) : upgradeRule(vrule?.rule) ?? hole())
+    : forFormula ? upgradeRule(formulaC?.rule) ?? hole()
     : forQuery ? query?.body ?? hole()
     : forFact ? factDraft(fact?.derivationRule) : upgradeRule(ot?.derivationRule) ?? hole()
   const [draft, setDraft] = useState(stored)
@@ -161,10 +176,11 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
   const { nameOf } = useMemo(() => (forQuery || forFormula ? formulaVariables(draft, roots, ctx)
     : forFact ? (fact ? factRuleVariables(fact, ctx, draft) : { nameOf: new Map() })
     : supers.length ? ruleVariables(draft, supers, ctx) : formulaVariables(draft, roots, ctx)), [forQuery, forFormula, roots, forFact, fact, draft, supers, ctx])
-  const issues = useMemo(() => (forFormula ? (formulaC ? checkFormulaConstraint(formulaC, state, ctx, undefined, draft) : [])
+  const issues = useMemo(() => (forView ? (view && vrule ? checkViewRule(state, view, vrule, draft) : [])
+    : forFormula ? (formulaC ? checkFormulaConstraint(formulaC, state, ctx, undefined, draft) : [])
     : forQuery ? (query ? checkQuery({ ...query, body: draft }, seq, state, ctx) : [])
     : forFact ? (fact ? checkFactRule(fact, state, ctx, undefined, draft) : [])
-    : checkRule(draft, otId, state, ctx)), [forFormula, formulaC, forQuery, query, seq, forFact, fact, draft, otId, state, ctx])
+    : checkRule(draft, otId, state, ctx)), [forView, view, vrule, forFormula, formulaC, forQuery, query, seq, forFact, fact, draft, otId, state, ctx])
   const severityAt = useMemo(() => {
     const m = new Map()
     for (const i of issues) if (m.get(keyOf(i.path)) !== 'error') m.set(keyOf(i.path), i.severity)
@@ -173,6 +189,7 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
   const errors = issues.filter(i => i.severity === 'error')
   const preview = useMemo(() => {
     if (errors.length) return []
+    if (forView) return view && vrule ? viewRuleEntries(state, view, { ...vrule, rule: draft }) : []
     if (forFormula) return formulaC ? [formulaConstraintEntry(formulaC, state, ctx, draft)] : []
     if (forQuery) {
       if (!constraint) return []
@@ -182,7 +199,7 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
     }
     if (forFact) return fact ? factDerivationEntries(fact, state, ctx, draft) : []
     return ot ? [derivationEntry({ ...ot, derivationRule: draft }, state, ctx)] : []
-  }, [forFormula, formulaC, forQuery, constraint, sequenceIndex, query, forFact, fact, ot, draft, state, ctx, errors.length])
+  }, [forView, view, vrule, forFormula, formulaC, forQuery, constraint, sequenceIndex, query, forFact, fact, ot, draft, state, ctx, errors.length])
   const types = useMemo(() => allTypeOptions(state), [state])
 
   // ── Drawing the condition on the diagram ──
@@ -198,13 +215,14 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
   const otherDrawing = useOrmStore(s => !!s.queryEditDraft && s.queryEditDraft.ruleKey !== ruleKey)
   const drawn = useMemo(() => {
     if (forQuery || forFormula) return null
+    if (forView) return { error: 'a view\'s rule reads another schema, which the diagram can\'t show' }
     if (forFact && parts?.computed.length) return { error: 'its computed roles need terms, which the diagram can\'t show' }
     if (!forFact && !roots.length) return { error: 'the type is not a subtype and has no reference scheme' }
     const graphRoots = forFact
       ? [...(parts?.selected ?? []), ...(parts?.extra ?? [])].map(r => ({ id: r.id, typeId: r.typeIds[0], label: nameOf.get(r.id) }))
       : roots.map(r => ({ id: r.id, typeId: r.typeIds[0], label: nameOf.get(r.id) }))
     return ruleBodyToGraph(forFact ? draft.body : draft, graphRoots, ctx)
-  }, [forQuery, forFormula, forFact, parts, roots, nameOf, draft, ctx])
+  }, [forView, forQuery, forFormula, forFact, parts, roots, nameOf, draft, ctx])
   useEffect(() => {
     if (!graphResult || graphResult.ruleKey !== ruleKey) return
     const r = graphToRuleBody(graphResult, ctx)
@@ -253,13 +271,15 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
     if (w !== panel.w || h !== panel.h) setPanel(p => ({ ...p, w, h }))
   }
 
+  if (forView && !vrule) return null
   if (forFormula ? !formulaC : forQuery ? !constraint || !query : forFact ? !fact : !ot) return null
   const changed = JSON.stringify(draft) !== JSON.stringify(stored)
   const semi = !forQuery && !forFormula && (forFact ? fact : ot).derivation === 'semiDerived'
 
   const replace = (path, node, nextSel = path) => { setDraft(d => setAt(d, path, node)); setSel(nextSel) }
   const save = () => {
-    if (forFormula) updateConstraint(formulaId, { rule: draft })
+    if (forView) useOrmStore.getState().updateViewRule(viewId, ruleId, { rule: draft })
+    else if (forFormula) updateConstraint(formulaId, { rule: draft })
     else if (forQuery) setConstraintQuery(constraintId, sequenceIndex, { free: query.free, target: query.target, body: draft })
     else if (forFact) updateFact(factId, { derivationRule: draft })
     else updateObjectType(otId, { derivationRule: draft })
@@ -593,7 +613,7 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
               {forFormula ? `Formula constraint${formulaC.name ? ` ${formulaC.name}` : ''}`
                 : forQuery ? `Query of S${sequenceIndex + 1} of ${constraint.name || constraint.label
                   || `the ${(CONSTRAINT_LABELS[constraint.constraintType] ?? '').toLowerCase()} constraint`}`
-                : <>{semi ? 'Semi-derivation rule' : 'Derivation rule'} of {forFact ? factLabel(fact, ctx) : ot.name || 'Unnamed'}</>}
+                : <>{forView ? `View ${view.name}: rule` : semi ? 'Semi-derivation rule' : 'Derivation rule'} of {forFact ? factLabel(fact, ctx) : ot.name || 'Unnamed'}</>}
               {changed && <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--ink-muted)' }}> · not saved</span>}
             </div>
             <button style={foldBtn} title={panel.folded ? 'Unfold' : 'Fold to the title bar'}
@@ -730,9 +750,10 @@ function DrawingBanner({ draft, onCancel }) {
 function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace }) {
   const types = useMemo(() => allTypeOptions(state), [state])
   // The fact types, and the implied links of the nested ones.
-  const facts = useMemo(() => [...(state.facts ?? []), ...ctx.linkById.values()]
-    .map(f => ({ id: f.id, roles: f.roles, label: readingText(f, ctx) || 'Unnamed fact type' }))
-    .sort((a, b) => a.label.localeCompare(b.label)), [state.facts, ctx])
+  const facts = useMemo(() => withSchemaNames([...(state.facts ?? []), ...ctx.linkById.values()]
+    .map(f => ({ id: f.id, roles: f.roles, label: readingText(f, ctx) || 'Unnamed fact type', schemaId: f.schemaId ?? ctx.factById.get(String(f.id).split('_il_')[0])?.schemaId })),
+  state.schemas, f => f.label, (f, label) => ({ ...f, label }), state.schemaRoles)
+    .sort((a, b) => a.label.localeCompare(b.label)), [state.facts, state.schemas, ctx])
   // A fact type is relevant here when a variable in scope can fill one of its
   // roles: its type is the player, a subtype of it or a supertype of it.
   const relevant = useMemo(() => {

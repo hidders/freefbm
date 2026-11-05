@@ -4,6 +4,7 @@ import { nearestSubtypeEnds } from '../utils/subtypeEnds'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds, computeOtSize } from './ObjectTypeNode'
 import { factBounds, nestedFactBounds, ROLE_W, ROLE_H, ROLE_GAP } from './FactTypeNode'
+import { mappingErdBoxes } from './ErdView'
 
 const MM_W  = 170
 const MM_H  = 110
@@ -12,7 +13,13 @@ const HDR_H = 24   // header bar height
 
 export default function Minimap() {
   const store = useOrmStore()
-  const { objectTypes: visOts, facts: visFacts, constraints: visCons, subtypes: visSubs } = useDiagramElements()
+  const { objectTypes: visOts, facts: visFacts, constraints: visCons, subtypes: visSubs, diagram, erdSchemaIds } = useDiagramElements()
+  // A mapping diagram's ERD tables (a relational side, ErdView).
+  const erdBoxes = useMemo(() => {
+    if (!diagram || !erdSchemaIds?.length) return []
+    const st = useOrmStore.getState()
+    return erdSchemaIds.flatMap(sid => [...mappingErdBoxes(st, diagram, sid).boxes.values()])
+  }, [diagram, erdSchemaIds?.join(), store.objectTypes, store.facts, store.constraints])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const [collapsed,  setCollapsed]  = useState(false)
   const [expandFrom, setExpandFrom] = useState(null)  // { x, y } pill coords held during expand start
@@ -126,6 +133,7 @@ export default function Minimap() {
       ...visCons.map(c => ({
         minX: c.x - 20, minY: c.y - 20, maxX: c.x + 20, maxY: c.y + 20,
       })),
+      ...erdBoxes.map(b => ({ minX: b.x, minY: b.y, maxX: b.x + b.w, maxY: b.y + b.h })),
     ]
     if (!all.length) return { minX: 0, minY: 0, maxX: 800, maxY: 600 }
     return {
@@ -134,7 +142,7 @@ export default function Minimap() {
       maxX: Math.max(...all.map(b => b.maxX)) + PAD,
       maxY: Math.max(...all.map(b => b.maxY)) + PAD,
     }
-  }, [visOts, visFacts, visCons])
+  }, [visOts, visFacts, visCons, erdBoxes])
 
   const worldW = bounds.maxX - bounds.minX || 800
   const worldH = bounds.maxY - bounds.minY || 600
@@ -299,6 +307,13 @@ export default function Minimap() {
             )
           })
         })()}
+
+        {/* ERD tables of a mapping diagram */}
+        {erdBoxes.map(b => (
+          <rect key={`erd-${b.table.id}`} x={wx(b.x)} y={wy(b.y)} width={Math.max(4, b.w * scale)} height={Math.max(3, b.h * scale)} rx={1.5}
+            fill={store.selectedId === b.table.id ? 'var(--accent)' : 'var(--bg-raised)'} fillOpacity={store.selectedId === b.table.id ? 0.5 : 1}
+            stroke="var(--col-schema-relational)" strokeWidth={0.8}/>
+        ))}
 
         {/* Entity / value types */}
         {visOts.map(ot => {

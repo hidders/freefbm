@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
-import { activeSchemaIdOf } from '../store/storeHelpers'
+import { activeSchemaIdOf, mappingOfDiagram, isViewMapping } from '../store/storeHelpers'
 import { NewSchemaMenu } from './SchemaStrip'
+import { isErdDiagram } from './ErdView'
 
 export default function DiagramTabs() {
   const store = useOrmStoreIgnoring('pan', 'zoom')
@@ -12,11 +13,12 @@ export default function DiagramTabs() {
   const activeSchemaId  = activeSchemaIdOf(store)
   const activeDiagramId = store.activeDiagramId
   const activeDiagram   = allDiagrams.find(d => d.id === activeDiagramId)
-  const mapping         = activeDiagram?.mappingId ? store.mappings?.find(m => m.id === activeDiagram.mappingId) : null
+  const mapping         = mappingOfDiagram(store, activeDiagram)
+  const isView          = isViewMapping(store, mapping)
   const diagrams        = mapping
     ? allDiagrams.filter(d => d.mappingId === mapping.id)
     : allDiagrams.filter(d => (!activeSchemaId || d.schemaId === activeSchemaId) && !d.mappingId)
-  const singleSchema    = (store.schemas?.length ?? 1) <= 1 && !(store.mappings?.length)
+  const singleSchema    = (store.schemas?.length ?? 1) <= 1 && !(store.mappings?.length) && !(store.views?.length)
   const isRelational    = !mapping && store.schemas?.find(x => x.id === activeDiagram?.schemaId)?.profile === 'relational'
   const schemaName      = (id) => store.schemas?.find(x => x.id === id)?.name ?? '?'
 
@@ -291,9 +293,9 @@ export default function DiagramTabs() {
         {mapping && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--ink-3)', whiteSpace: 'nowrap', marginRight: 8 }}>
             <span title="This diagram draws a mapping: elements of both schemas, and each rule as a node linked to the elements its patterns name">
-              Mapping <b style={{ color: 'var(--ink-1)', fontWeight: 600 }}>{mapping.name}</b>:{' '}
+              {isView ? 'View' : 'Mapping'} <b style={{ color: 'var(--ink-1)', fontWeight: 600 }}>{mapping.name}</b>:{' '}
               <span style={{ color: 'var(--map-source)', fontWeight: 600 }}>{schemaName(mapping.sourceSchemaId)}</span>
-              {' ⟺ '}
+              {isView ? ' ⇒ ' : ' ⟺ '}
               <span style={{ color: 'var(--map-target)', fontWeight: 600 }}>{schemaName(mapping.targetSchemaId)}</span>
             </span>
             <span title="Add the elements the rules name that this diagram doesn't show yet"
@@ -305,8 +307,8 @@ export default function DiagramTabs() {
             >Add rule elements</span>
           </div>
         )}
-        {/* A relational schema's diagram can be drawn as ORM2 or as an ERD. */}
-        {activeDiagram && isRelational && activeDiagram.notation === 'erd' && (
+        {/* A relational schema shows tables (an ERD), or in Advanced mode its logical (ORM2) view. */}
+        {activeDiagram && isRelational && isErdDiagram(store, activeDiagram) && (
           <div title="Lay the tables out afresh (forgets the positions of moved tables)"
             onClick={() => useOrmStore.getState().resetErdPositions(activeDiagram.id)}
             style={{ fontSize: 11, color: 'var(--ink-3)', cursor: 'pointer', userSelect: 'none', padding: '0 4px', whiteSpace: 'nowrap' }}
@@ -314,8 +316,8 @@ export default function DiagramTabs() {
             onMouseLeave={e => { e.currentTarget.style.color = 'var(--ink-3)' }}
           >Auto layout</div>
         )}
-        {activeDiagram && isRelational && activeDiagram.notation === 'erd' && <ErdLinesSwitch diagram={activeDiagram} />}
-        {activeDiagram && isRelational && <NotationSwitch diagram={activeDiagram} />}
+        {activeDiagram && isRelational && isErdDiagram(store, activeDiagram) && <ErdLinesSwitch diagram={activeDiagram} />}
+        {activeDiagram && isRelational && store.advancedMode && <FaceSwitch schemaId={activeDiagram.schemaId} logical={!!store.logicalViews?.[activeDiagram.schemaId]} />}
         {/* With one schema the schema strip is hidden; a new schema starts here. */}
         {singleSchema && <NewSchemaMenu variant="tab" />}
       </div>
@@ -347,15 +349,20 @@ function ErdLinesSwitch({ diagram }) {
   )
 }
 
-// ORM2 | ERD segmented switch for the active diagram of a relational schema.
-function NotationSwitch({ diagram }) {
-  const current = diagram.notation === 'erd' ? 'erd' : 'orm2'
-  const opts = [['orm2', 'ORM2', 'Draw this diagram in ORM2'], ['erd', 'ERD', "Draw this diagram as an entity-relationship diagram (crow's foot, read-only)"]]
+// Tables | Logical switch for a relational schema (Advanced mode): its
+// relational face, or its logical view, the ORM2 schema that stores it, in
+// the diagrams, the schema browser, the Inspector and the tool panel.
+function FaceSwitch({ schemaId, logical }) {
+  const current = logical ? 'logical' : 'tables'
+  const opts = [
+    ['tables', 'Tables', "Show this schema as tables, keys and constraints (diagrams as crow's foot ERDs)"],
+    ['logical', 'Logical', 'Show the ORM2 schema that stores this relational schema (its logical view)'],
+  ]
   return (
     <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 11, overflow: 'hidden', height: 20, marginRight: 8, flexShrink: 0 }}>
       {opts.map(([id, label, title]) => (
         <div key={id} title={title}
-          onClick={() => { if (id !== current) useOrmStore.getState().setDiagramNotation(diagram.id, id) }}
+          onClick={() => { if (id !== current) useOrmStore.getState().setSchemaLogicalView(schemaId, id === 'logical') }}
           style={{
             padding: '0 9px', display: 'flex', alignItems: 'center', fontSize: 11, cursor: 'pointer', userSelect: 'none',
             fontWeight: id === current ? 700 : 400,

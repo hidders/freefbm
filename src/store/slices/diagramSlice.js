@@ -3,8 +3,9 @@ import {
   mkDiagram, occOf, inDiag, cInDiag, cOccOf,
   addOccIfAbsent, addOwnedRefModeOccsIfAbsent, mkOcc,
   normalizeStEps, syncConstraints, computeCascadeRemove, rmCOcc,
-  mkUniqueness, withMandatoryId,
+  mkUniqueness, withMandatoryId, mappingOfDiagram,
 } from '../storeHelpers'
+import { diagramUnits, tableCompanions, tableRemoval, completeTables, withTableConstraints } from '../../relational/tableUnits.js'
 
 // Module-level variable for pan animation — only used by centerOnElement/centerOnOccurrence
 let _panAnimId = null
@@ -302,7 +303,7 @@ export function createDiagramSlice(set, get) {
         const el = s.objectTypes.find(o => o.id === baseId) ?? s.facts.find(f => f.id === baseId)
           ?? s.subtypes.find(st => st.id === baseId) ?? s.constraints.find(c => c.id === baseId)
         // A mapping diagram shows both schemas of its mapping.
-        const m = target?.mappingId ? s.mappings?.find(x => x.id === target.mappingId) : null
+        const m = mappingOfDiagram(s, target)
         const allowed = m ? [m.sourceSchemaId, m.targetSchemaId] : [target?.schemaId]
         if (target && el && el.schemaId && target.schemaId && !allowed.includes(el.schemaId)) return
       }
@@ -315,6 +316,8 @@ export function createDiagramSlice(set, get) {
         // • Constraint          → queue all referenced facts (including implied link parent facts),
         //                         subtype endpoints, target OT; constraint itself added by syncConstraints
         // • Implied link factId → parse "factId_il_roleIndex", queue parent fact, mark implied link shown
+        // A relational schema's diagram shows tables whole (tableUnits.js).
+        const units = diagramUnits(s, s.diagrams.find(d => d.id === diagramId))
         const idsToAdd = new Set()
         const subtypeIdsToAdd = new Set()
         const impliedLinksToShow = new Set() // "factId:roleIndex"
@@ -377,6 +380,7 @@ export function createDiagramSlice(set, get) {
           const el   = fact ?? s.objectTypes.find(o => o.id === id)
           if (el) {
             idsToAdd.add(id)
+            for (const p of tableCompanions(units, id)) if (!visited.has(p)) queue.push(p)
             if (fact)
               for (const r of fact.roles)
                 if (r.objectTypeId && !visited.has(r.objectTypeId)) queue.push(r.objectTypeId)
@@ -452,7 +456,9 @@ export function createDiagramSlice(set, get) {
 
         // Select all newly added OT/fact IDs as multi-selection (including synced constraints)
         const newlyAdded = [...idsToAdd].filter(id => !existingIds.has(id))
-        const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
+        let syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, s.facts)
+        // A table comes with its keys and CHECKs, and foreign keys between shown tables.
+        if (units) syncedDiagrams = syncedDiagrams.map(d => (d.id === diagramId ? withTableConstraints(s, d) : d))
         const syncedTarget = syncedDiagrams.find(d => d.id === diagramId)
         const existingConstraintIds = new Set((s.diagrams.find(d => d.id === diagramId)?.constraintOccurrences ?? []).map(co => co.schemaConstraintId))
         const newConstraintIds = (syncedTarget?.constraintOccurrences ?? [])
@@ -469,6 +475,15 @@ export function createDiagramSlice(set, get) {
         }
       })
       get().expandBlockedRefModes()
+    },
+
+    // Tables shown in part on diagrams of relational schemas completed, e.g.
+    // after a transformation gave a table new columns (tableUnits.js).
+    completeTableDiagrams() {
+      set(s => {
+        const c = completeTables(s, s.diagrams)
+        return c === s.diagrams ? {} : { diagrams: syncConstraints(c, s.constraints, s.subtypes, s.facts) }
+      })
     },
 
     removeElementFromDiagram(elementId, diagramId) {
@@ -497,7 +512,10 @@ export function createDiagramSlice(set, get) {
 
         // Cascade: removing an OT also removes every fact that has it as a role player,
         // and recursively any further OTs/facts linked through objectified facts.
-        const toRemove = computeCascadeRemove(elementId, s.facts)
+        // In a relational schema's diagram a table goes whole (tableUnits.js).
+        const diag = s.diagrams.find(d => d.id === diagramId)
+        const units = diagramUnits(s, diag)
+        const toRemove = units ? tableRemoval(s, diag, units, [elementId]) : computeCascadeRemove(elementId, s.facts)
 
         const updatedDiagrams = s.diagrams.map(d => {
           if (d.id !== diagramId) return d
@@ -543,7 +561,8 @@ export function createDiagramSlice(set, get) {
         let finalOccs = remainingOccs
         if (!stillPresent) {
           // Last occurrence of this element — cascade-remove dependent facts/OTs
-          const toRemove = computeCascadeRemove(schemaElementId, s.facts)
+          const units = diagramUnits(s, diag)
+          const toRemove = units ? tableRemoval(s, diag, units, [schemaElementId]) : computeCascadeRemove(schemaElementId, s.facts)
           toRemove.delete(schemaElementId)
           finalOccs = remainingOccs.filter(o => !toRemove.has(o.schemaElementId))
         }
@@ -623,11 +642,11 @@ export function createDiagramSlice(set, get) {
         const directConstraintIds = new Set(multiSelectedIds.filter(id => constraintIdSetLocal.has(id)))
         // Directly selected subtype IDs (to remove from subtypeOccurrences)
         const directSubtypeIds = new Set(multiSelectedIds.filter(id => subtypeIdSetLocal.has(id)))
-        for (const id of multiSelectedIds) {
-          if (!constraintIdSetLocal.has(id) && !subtypeIdSetLocal.has(id)) {
-            computeCascadeRemove(id, s.facts).forEach(cid => cascaded.add(cid))
-          }
-        }
+        const diag = s.diagrams.find(d => d.id === diagramId)
+        const units = diagramUnits(s, diag)
+        const elementIds = multiSelectedIds.filter(id => !constraintIdSetLocal.has(id) && !subtypeIdSetLocal.has(id))
+        if (units) tableRemoval(s, diag, units, elementIds).forEach(cid => cascaded.add(cid))
+        else for (const id of elementIds) computeCascadeRemove(id, s.facts).forEach(cid => cascaded.add(cid))
 
         const updatedDiagrams = s.diagrams.map(d => {
           if (d.id !== diagramId) return d

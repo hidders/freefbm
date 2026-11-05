@@ -46,6 +46,8 @@ import { identifyingFactIds } from '../utils/refMode.js'
 import { formulaToRule } from '../logic/formulaToRule.js'
 import { isDeonticUniqueness, isDeonticMandatory } from '../logic/modality.js'
 import { relationalModel } from '../relational/relationalModel.js'
+import { relationalView, rmObjectOfKey } from '../relational/relationalView.js'
+import { rmSentence } from '../relational/rmText.js'
 import { prepareRun, executeRun, schemeOf } from './runMapping.js'
 import { sideContext, sideSchemaId, SIDES, expandSide, asSide } from './mapping.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
@@ -75,6 +77,8 @@ export function worldOf(state, schemaId) {
     entries: () => entries ?? (entries = entriesOf(state, schemaId)),
     ident: identifyingFactIds(els.facts, els.objectTypes, els.constraints),
     relational: ctx.relational ? relationalModel(state, schemaId) : null,
+    // The relational face (relationalView), when first asked for.
+    view: ctx.relational ? () => relationalView(state, schemaId) : null,
   }
 }
 
@@ -789,6 +793,8 @@ export function entriesOf(state, schemaId) {
 export function relationalLabel(w, key) {
   const rm = w.relational
   if (!rm) return null
+  const o = w.view ? rmObjectOfKey(w.view(), w.ctx.facts, key) : null
+  if (o) return o.label
   const colName = (c) => `${c.table.name}.${c.name}`
   let m
   if ((m = key.match(/^([^:]+):mand:(\d+)$/))) {
@@ -1316,7 +1322,7 @@ function accountEntry(entry, A, B, run, fresh) {
       }
     }
     const keys = needed.size ? [...needed] : [...usedAll]
-    const by = keys.map(k => ({ key: k, label: relationalLabel(B, k) }))
+    const by = keys.map(k => ({ key: k, label: relationalLabel(B, k), sentence: relationalSentence(B, k), rm: relationalRef(B, k) }))
     if (!keys.length) return { ...base, status: 'native', by, reason: `Kept by the structure of ${B.ctx.schema?.name ?? 'the other schema'}: the mapping cannot build a population that breaks it.` }
     if (needed.size === 1) return { ...base, status: 'native', by, reason: `Kept by one constraint of ${B.ctx.schema?.name ?? 'the other schema'}.` }
     return { ...base, status: 'implied', by,
@@ -1374,6 +1380,8 @@ export function* accountingSteps(state, mapping, { onlyKeys = null } = {}) {
         r = { key: e.key, entry: e, by: [], counterexample: null, status: 'unknown', reason: `Not checked yet: ${err.message}.` }
       }
       r.label = relationalLabel(A, e.key)
+      r.sentence = relationalSentence(A, e.key)
+      r.rm = relationalRef(A, e.key)
       sides[side].push(r)
       yield { done: ++done, total }
     }
@@ -1387,3 +1395,159 @@ export function* accountingSteps(state, mapping, { onlyKeys = null } = {}) {
 }
 
 export const STATUS_ORDER = ['lost', 'unknown', 'implied', 'native']
+
+// The table sentence of a constraint entry of a relational side (rmText.js),
+// or null.
+export function relationalSentence(w, key) {
+  if (!w.view) return null
+  const view = w.view()
+  const o = rmObjectOfKey(view, w.ctx.facts, key)
+  return o && o.kind !== 'assertion' ? rmSentence(view, o) : null
+}
+
+// Where a constraint entry of a relational side is in its relational face:
+// { schemaId, rmId }, or null.
+export function relationalRef(w, key) {
+  if (!w.view) return null
+  const o = rmObjectOfKey(w.view(), w.ctx.facts, key)
+  return o ? { schemaId: w.schemaId, rmId: o.rmId } : null
+}
+
+// ── Contracts (data exchange, step 4) ───────────────────────────────────────
+//
+// The contract check of a view mapping (contract.js) asks of each constraint
+// χ of the view's target whether every population of the source that meets
+// the source's constraints gives, through the views, a population that
+// meets χ. It works in one world W holding both schemas, whose constraints
+// are the source's plus the view rules as formula constraints (both ways:
+// a target fact holds iff its rule's body does); the target's own
+// constraints are in W too, so that their violations can be recognised, but
+// the chase leaves them out (`targetKeys`). The smallest violation of χ is
+// closed under W's constraints by the chase: if that removes it in every
+// case, the source's constraints and the views guarantee χ (with the source
+// constraints the chase needed); if it stays in a case whose population
+// meets the source's constraints, that population (its source part) is a
+// counterexample: what the supplier must also guarantee. View rules with
+// negation, aggregates or computed values are applied only as far as the
+// chase can (their positive parts), so a counterexample is checked once more
+// by running the views on it (`confirm`), and is only reported when that
+// agrees.
+//
+// contractEntry(entry, W, { sourceKeys, targetKeys, viewKeys, sourceIds, confirm }, fresh) →
+//   { key, entry, status: 'guaranteed' | 'mustGuarantee' | 'unknown', reason,
+//     by: [{ key, label, sentence }], viaViews, counterexample: { source: [text], target: [text] } | null }
+export function contractEntry(entry, W, { sourceKeys, targetKeys, viewKeys, sourceIds, confirm, empty = new Set(), uniqueKeys = new Set() }, fresh) {
+  const base = { key: entry.key, entry, by: [], counterexample: null }
+  let f = entry.formula
+  if (f?.t === 'obligatory') f = f.arg
+  const unknown = (reason) => ({ ...base, status: 'unknown', reason })
+  if (/:pi:|:exactlyOne$/.test(entry.key)) return { ...base, status: 'guaranteed', reason: IDENTIFIED }
+  const match = issueMatches(entry)
+  if (!match) return unknown('Constraints of this kind are not checked yet.')
+  let cands
+  if (/:vr(:\d+)?$/.test(entry.key)) {
+    cands = rangeViolations(entry.key, W, fresh, match)
+    if (!cands.length) return unknown('No value outside this range was found to test with.')
+  } else {
+    const X = counterexample(withoutIff(f))
+    if (!X) return unknown('This constraint has no counterexample form.')
+    try { cands = buildViolations(X, W, fresh) } catch (e) {
+      if (e instanceof Unsupported) return unknown(`Not checked yet: ${e.message}.`)
+      throw e
+    }
+    cands = cands.filter(V => violations(W, V, match).length)
+    if (!cands.length) return { ...base, status: 'guaranteed', reason: IDENTIFIED }
+  }
+  // A violation with facts or instances of an element the views leave
+  // empty cannot happen.
+  const emptyIn = (V) => [...Object.entries(V.populations), ...Object.entries(V.factPopulations)].filter(([id, v]) => v.length && empty.has(id)).map(([id]) => id)
+  const emptied = new Set()
+  cands = cands.filter(V => { const e = emptyIn(V); e.forEach(id => emptied.add(id)); return !e.length })
+  if (!cands.length) {
+    const names = [...emptied].map(id => W.ctx.otById.get(id)?.name ?? factName(W, id))
+    return { ...base, status: 'guaranteed', viaViews: true, reason: `Guaranteed: the views leave ${names.join(', ')} empty.` }
+  }
+  const disabled = new Set(targetKeys)
+  // First only what the views say and the source's uniqueness constraints
+  // (merges): that alone often rules a violation out, before the source's
+  // other constraints make the chase large.
+  const smallOff = new Set([...targetKeys, ...[...sourceKeys].filter(k => !uniqueKeys.has(k))])
+  const sourceOnly = (pops) => ({
+    populations: Object.fromEntries(Object.entries(pops.populations).filter(([k]) => sourceIds.has(k))),
+    factPopulations: Object.fromEntries(Object.entries(pops.factPopulations).filter(([k]) => sourceIds.has(k))),
+  })
+  const sourceIssues = (pops) => issuesOf(W, pops).filter(i => sourceKeys.has(issueKey(i)) || sourceKeys.has(String(issueKey(i)).split(':')[0]))
+  const killed = []
+  let must = null, undecided = null
+  for (const V of cands.slice(0, 4)) {
+    const small = chaseBranches(W, V, fresh, { disabled: smallOff })
+    if (small.complete && small.every(ch => !ch.exceeded && (ch.failed || !violations(W, ch.pops, match).length))) { killed.push({ V, ch: { ...small[0], small: true } }); continue }
+    const branches = chaseBranches(W, V, fresh, { disabled })
+    const outs = branches.map(ch => {
+      if (ch.failed || ch.stopped) return { killed: ch }
+      if (ch.exceeded) return { undecided: 'The constraints keep adding facts (the chase stopped).' }
+      if (!violations(W, ch.pops, match).length) return { killed: ch }
+      const bad = sourceIssues(ch.pops)
+      if (bad.length) {
+        if (bad.some(i => isKilling(i, W))) return { killed: { ...ch, failed: issueKey(bad.find(i => isKilling(i, W))) } }
+        return { undecided: 'A constraint of the source that is not checked yet is involved.' }
+      }
+      return { must: ch }
+    })
+    const m = outs.find(o => o.must)
+    if (m) {
+      const src = sourceOnly(m.must.pops)
+      const ok = confirm ? confirm(src, match) : true
+      if (ok === true) { must ??= { I: m.must.pops, src }; continue }
+      undecided = ok === false
+        ? 'Not decided: the check found a population of the source that might break it, but the views do not break it on that population (the check applies rules with negation, aggregates or computed values only in part).'
+        : 'Not decided: the views could not be run on the population the check found.'
+      continue
+    }
+    const u = outs.find(o => o.undecided)
+    if (u) { undecided = u.undecided; continue }
+    if (!branches.complete) { undecided = 'A disjunctive constraint leaves too many cases to check.'; continue }
+    killed.push({ V, ch: outs[0].killed })
+  }
+  if (must) {
+    const tgt = { populations: {}, factPopulations: {} }
+    for (const k of ['populations', 'factPopulations']) for (const [id, v] of Object.entries(must.I[k])) if (!sourceIds.has(id)) tgt[k][id] = v
+    const s = describe(W, must.src), t = describe(W, tgt)
+    const texts = renumber([...s, ...t])
+    return { ...base, status: 'mustGuarantee',
+      reason: 'A population of the source that meets the source’s constraints gives, through the views, one that breaks this constraint.',
+      counterexample: { source: texts.slice(0, s.length), target: texts.slice(s.length) } }
+  }
+  if (undecided && !killed.length) return unknown(undecided)
+  if (!killed.length) return unknown(undecided ?? 'No violation could be checked.')
+  // Which source constraints the chase needed: leave each out.
+  const needed = new Set(), used = new Set()
+  let views = false
+  for (const { V, ch } of killed.slice(0, 2)) {
+    const keys = [...new Set([ch.failed, ...ch.fired].filter(Boolean))]
+    for (const k of keys) {
+      if (viewKeys.has(k)) { views = true; continue }
+      if (!sourceKeys.has(k) && !sourceKeys.has(String(k).split(':')[0])) continue
+      used.add(k)
+      const ch2 = chase(W, V, fresh, { disabled: new Set([...(ch.small ? smallOff : disabled), k]) })
+      if (ch2.exceeded || ch2.failed) continue
+      if (violations(W, ch2.pops, match).length && !sourceIssues(ch2.pops).filter(i => issueKey(i) !== k).length) needed.add(k)
+    }
+  }
+  const keys = needed.size ? [...needed] : [...used]
+  const by = keys.map(k => ({ key: k, label: relationalLabel(W, k), sentence: relationalSentence(W, k) }))
+  return { ...base, status: 'guaranteed', by, viaViews: views,
+    reason: keys.length
+      ? (keys.length === 1 ? 'Guaranteed by one constraint of the source, through the views.' : 'Guaranteed by these constraints of the source together, through the views.')
+      : 'Guaranteed by the views themselves: what they build always meets it.' }
+}
+
+function factName(w, id) {
+  const f = w.ctx.factById.get(id)
+  if (!f) return 'an element'
+  const parts = plainParts(f.readingParts ?? [], f.roles.length)
+  const words = []
+  f.roles.forEach((r, i) => { if (parts[i]?.trim()) words.push(parts[i].trim()); words.push(w.ctx.otById.get(r.objectTypeId)?.name ?? '?') })
+  if (parts[f.roles.length]?.trim()) words.push(parts[f.roles.length].trim())
+  return words.join(' ')
+}

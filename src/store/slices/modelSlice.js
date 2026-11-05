@@ -1,3 +1,5 @@
+import { loadViews } from '../../mapping/views.js'
+import { loadExchanges } from '../../mapping/exchanges.js'
 import { runValidation as runValidationRules, DEFAULT_VALIDATION_CATEGORIES } from '../../utils/validation.js'
 import { computePopulationIssues } from '../../utils/populationValidation.js'
 import { withDerivedPopulations, semiDerivedPopulationIssues, derivedFactPopulationIssues, formulaConstraintPopulationIssues } from '../../logic/derivedPopulation.js'
@@ -23,6 +25,7 @@ import { withRuleForms } from '../../logic/query.js'
 import { mkGroup, loadGroups, pruneGroups } from '../../utils/groups.js'
 import { mkPropertyDefinition, loadPropertyDefinitions, dropPropertyValues } from '../../utils/customProperties.js'
 import { loadMappings } from '../../mapping/mapping.js'
+import { completeTables } from '../../relational/tableUnits.js'
 
 // The clipboard holds elements of the schema it was copied in; they may only be
 // pasted or duplicated into a diagram of that same schema, because they refer
@@ -770,13 +773,18 @@ export function createModelSlice(set, get) {
       })
 
       // A mapping diagram whose mapping is gone becomes an ordinary diagram.
-      const mappings = loadMappings(d.schema?.mappings, new Set(scoped.schemas.map(x => x.id)))
-      const mappingIds = new Set(mappings.map(m => m.id))
+      const mappings = loadMappings(d.schema?.mappings, new Set(scoped.schemas.map(x => x.id)), scoped)
+      const views = loadViews(d.schema?.views, new Set(scoped.schemas.map(x => x.id)))
+      const mappingIds = new Set([...mappings, ...views].map(m => m.id))
       scoped.diagrams = scoped.diagrams.map(dg => {
         if (!dg.mappingId || mappingIds.has(dg.mappingId)) return dg
         const { mappingId: _gone, ...rest } = dg
         return rest
       })
+      // Diagrams of relational schemas show tables whole (tableUnits.js).
+      const completed = completeTables(scoped, scoped.diagrams)
+      if (completed !== scoped.diagrams)
+        scoped.diagrams = syncConstraints(completed, scoped.constraints, scoped.subtypes, scoped.facts)
 
       const activeDiag = diagrams.find(d => d.id === activeDiagramId)
       const diagDS = activeDiag?.displaySettings ?? {}
@@ -787,6 +795,8 @@ export function createModelSlice(set, get) {
         languages: Array.isArray(d.schema?.languages) ? d.schema.languages.filter(l => typeof l === 'string') : [],
         propertyDefinitions: loadPropertyDefinitions(d.schema?.propertyDefinitions),
         mappings,
+        views,
+        exchanges: loadExchanges(d.schema?.exchanges, mappingIds),
         mappingRuleEditor: null,
         groups: pruneGroups(loadGroups(d.schema?.groups ?? d.groups), { objectTypes: parsedOts, facts, subtypes: parsedSts, constraints, diagrams }),
         activeDiagramId,
@@ -840,7 +850,7 @@ export function createModelSlice(set, get) {
         pan, zoom,
         mandatoryDotPosition, showReferenceMode, showRoleNames,
         showSequenceMembership, showConstraintQueries,
-        showMinimap, minimapPos, languages, groups, propertyDefinitions, schemas, mappings,
+        showMinimap, minimapPos, languages, groups, propertyDefinitions, schemas, mappings, views, exchanges,
       } = state
       // Strip in-memory-only selection state; flush current pan/zoom + display settings into diagrams
       const cleanDiagrams = diagrams.map(({ multiSelectedIds: _, ...d }) => ({
@@ -881,6 +891,8 @@ export function createModelSlice(set, get) {
           ...(groups?.length && { groups: pruneGroups(groups, state) }),
           ...(propertyDefinitions?.length && { propertyDefinitions }),
           ...(mappings?.length && { mappings }),
+          ...(views?.length && { views }),
+          ...(exchanges?.length && { exchanges }),
           displaySettings: {
             mandatoryDotPosition,
             showReferenceMode,

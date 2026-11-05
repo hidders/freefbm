@@ -272,11 +272,25 @@ export function typeGraph(state) {
 
 // Every type a variable can range over: object types and objectified fact types.
 export function allTypeOptions(state) {
-  return [
-    ...(state.objectTypes ?? []).map(o => ({ id: o.id, name: o.name || 'Unnamed', kind: o.kind })),
+  const out = [
+    ...(state.objectTypes ?? []).map(o => ({ id: o.id, name: o.name || 'Unnamed', kind: o.kind, schemaId: o.schemaId })),
     ...(state.facts ?? []).filter(f => f.objectified)
-      .map(f => ({ id: f.id, name: f.objectifiedName || 'Unnamed', kind: 'nested' })),
-  ].sort((a, b) => a.name.localeCompare(b.name))
+      .map(f => ({ id: f.id, name: f.objectifiedName || 'Unnamed', kind: 'nested', schemaId: f.schemaId })),
+  ]
+  return withSchemaNames(out, state.schemas, x => x.name, (x, name) => ({ ...x, name }), state.schemaRoles)
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+// Items of several schemas (a view's rule reads two), with the schema's name
+// after the label of each whose label occurs in another schema too; for a
+// view (roles: schema id → 'source' | 'target') that word in brackets.
+export function withSchemaNames(items, schemas, labelOf, withLabel, roles = null) {
+  if (!schemas?.length || new Set(items.map(x => x.schemaId)).size < 2) return items
+  const where = new Map()
+  for (const x of items) where.set(labelOf(x), (where.get(labelOf(x)) ?? new Set()).add(x.schemaId))
+  const sname = (id) => schemas.find(s => s.id === id)?.name ?? '?'
+  return items.map(x => (where.get(labelOf(x)).size <= 1 ? x
+    : withLabel(x, roles?.[x.schemaId] ? `${labelOf(x)} (${roles[x.schemaId]})` : `${labelOf(x)} · ${sname(x.schemaId)}`)))
 }
 
 // ── Display names ────────────────────────────────────────────────────────────

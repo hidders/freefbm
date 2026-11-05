@@ -14,6 +14,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { inDiag } from '../store/storeHelpers'
+import { isRelationalFace } from '../relational/face'
 import { relationalModel, isKey } from '../relational/relationalModel'
 import { typeSql } from '../relational/ddlExport'
 import { layeredLayout, routeLines, assignPorts, SIDES } from '../relational/erdRouting'
@@ -23,12 +24,11 @@ const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 const HEAD_H = 24, ROW_H = 19, PAD_X = 8, MARK_GAP = 6, GAP_TYPE = 18, MIN_W = 140
 const GAP_Y = 70
 
-// Whether the diagram is drawn as an ERD: its schema is relational and the
-// notation switch is on.
+// Whether the diagram is drawn as an ERD: its schema is relational and shows
+// its relational face (relational/face.js: not its logical view).
 export function isErdDiagram(state, diagram) {
-  if (diagram?.notation !== 'erd') return false
-  if (diagram.mappingId) return false   // mapping diagrams are drawn in ORM2
-  return state.schemas?.find(s => s.id === diagram.schemaId)?.profile === 'relational'
+  if (!diagram || diagram.mappingId) return false   // mapping diagrams are drawn in ORM2
+  return isRelationalFace(state, diagram.schemaId)
 }
 
 let _canvas = null
@@ -51,7 +51,7 @@ function columnMarks(col) {
 
 // Box sizes, and positions for tables that have none stored: columns by
 // foreign key depth, referenced tables left (see layeredLayout).
-export function erdLayout(model, diagram) {
+export function erdLayout(model, diagram, origin = null) {
   const shown = model.tables.filter(t => inDiag(diagram, t.id))
   const boxes = new Map()
   for (const t of shown) {
@@ -71,9 +71,21 @@ export function erdLayout(model, diagram) {
   }
   if (missing.length) {
     const edges = model.fks.map(fk => [fk.fromTable.id, fk.toTable.id])
-    layeredLayout(boxes, missing.map(t => t.id), edges, originY)
+    layeredLayout(boxes, missing.map(t => t.id), edges, origin && !Object.keys(stored).some(id => boxes.has(id)) ? origin.y : originY)
+    // In a mapping diagram, where that side's elements were.
+    if (origin) for (const t of missing) boxes.get(t.id).x += origin.x
   }
   return boxes
+}
+
+// The table boxes of a relational schema in a mapping diagram: laid out from
+// where the schema's elements are (the top-left of their occurrences).
+export function mappingErdBoxes(state, diagram, schemaId) {
+  const model = relationalModel(state, schemaId)
+  const ids = new Set([...state.objectTypes, ...state.facts].filter(x => x.schemaId === schemaId).map(x => x.id))
+  const occs = (diagram.occurrences ?? []).filter(o => ids.has(o.schemaElementId))
+  const origin = occs.length ? { x: Math.min(...occs.map(o => o.x)) - 60, y: Math.min(...occs.map(o => o.y)) - 20 } : { x: 0, y: 0 }
+  return { model, boxes: erdLayout(model, diagram, origin) }
 }
 
 // Crow's foot end marker at (x, y) on a box side; (dx, dy) is the direction
@@ -115,14 +127,17 @@ function FkLine({ fk, route, selected, onDown }) {
   )
 }
 
-function TableBox({ box, selectedId, highlighted, onHeaderDown, onRowDown }) {
+function TableBox({ box, selectedId, highlighted, onHeaderDown, onRowDown, tint = null, ruleHl = null }) {
   const { table: t, x, y, w, h } = box
   const sel = selectedId === t.id
+  const hot = !!ruleHl?.typeIds?.includes(t.id)
   const head = 'var(--col-schema-relational)'
   return (
-    <g style={{ fontFamily: FONT }}>
+    <g style={{ fontFamily: FONT }} data-table={t.name}>
+      {tint && <rect x={x - 6} y={y - 6} width={w + 12} height={h + 12} rx={9} fill={`var(--map-${tint}-bg)`}
+        stroke={`var(--map-${tint})`} strokeOpacity={0.35} strokeWidth={1} style={{ pointerEvents: 'none' }}/>}
       <rect x={x} y={y} width={w} height={h} rx={4} fill="var(--bg-text-panel)"
-        stroke={sel ? 'var(--accent)' : 'var(--border-dark)'} strokeWidth={sel ? 2.2 : 1.2}
+        stroke={sel || hot ? 'var(--accent)' : 'var(--border-dark)'} strokeWidth={sel || hot ? 2.2 : 1.2}
         filter={sel ? 'url(#selectGlow)' : undefined}/>
       <g onMouseDown={e => onHeaderDown(e, t)} style={{ cursor: 'move' }}>
         <path d={`M ${x} ${y + HEAD_H} L ${x} ${y + 4} Q ${x} ${y} ${x + 4} ${y} L ${x + w - 4} ${y} Q ${x + w} ${y} ${x + w} ${y + 4} L ${x + w} ${y + HEAD_H} Z`}
@@ -133,7 +148,7 @@ function TableBox({ box, selectedId, highlighted, onHeaderDown, onRowDown }) {
       {t.columns.map((c, i) => {
         const ry = y + HEAD_H + 3 + i * ROW_H
         const csel = selectedId === c.fact.id
-        const hl = highlighted.has(c)
+        const hl = highlighted.has(c) || !!ruleHl?.factIds?.includes(c.fact.id)
         return (
           <g key={c.fact.id} onMouseDown={e => onRowDown(e, t, c)} style={{ cursor: 'pointer' }}>
             <rect x={x + 1} y={ry} width={w - 2} height={ROW_H} fill={hl ? 'rgba(180,83,9,0.28)' : csel ? 'var(--selection)' : 'transparent'}/>
@@ -156,17 +171,23 @@ function TableBox({ box, selectedId, highlighted, onHeaderDown, onRowDown }) {
   )
 }
 
-export default function ErdView() {
+// schemaId: in a mapping diagram, the relational side to draw (tinted as
+// side `tint`); else the diagram's own schema.
+export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) {
   const objectTypes = useOrmStore(s => s.objectTypes)
   const facts       = useOrmStore(s => s.facts)
   const constraints = useOrmStore(s => s.constraints)
   const diagram     = useOrmStore(s => s.diagrams.find(d => d.id === s.activeDiagramId))
   const selectedId  = useOrmStore(s => s.selectedId)
-  const schemaId    = diagram?.schemaId
+  const ruleHl      = useOrmStore(s => (sideSchemaId ? s.ruleHighlight : null))
+  const schemaId    = sideSchemaId ?? diagram?.schemaId
 
-  const model = useMemo(() => relationalModel({ objectTypes, facts, constraints }, schemaId),
-    [objectTypes, facts, constraints, schemaId])
-  const boxes = useMemo(() => diagram ? erdLayout(model, diagram) : new Map(), [model, diagram])
+  const { model, boxes } = useMemo(() => {
+    const st = { objectTypes, facts, constraints }
+    if (sideSchemaId && diagram) return mappingErdBoxes(st, diagram, sideSchemaId)
+    const model = relationalModel(st, schemaId)
+    return { model, boxes: diagram ? erdLayout(model, diagram) : new Map() }
+  }, [objectTypes, facts, constraints, schemaId, diagram, sideSchemaId])
 
   // While a box is dragged its offset is local; it is stored on mouse up.
   const [drag, setDrag] = useState(null)  // { id, dx, dy }
@@ -264,13 +285,13 @@ export default function ErdView() {
   }
 
   return (
-    <g className="erd-view">
+    <g className={sideSchemaId ? 'mapping-erd' : 'erd-view'}>
       {[...model.fks].sort((p, q) => selectedFks.has(p) - selectedFks.has(q)).map(fk => (
         <FkLine key={fk.constraintId} fk={fk} selected={selectedFks.has(fk)} onDown={selectFk}
           route={dragRoutes?.get(fk.constraintId) ?? routes.get(fk.constraintId)}/>
       ))}
       {[...shown.values()].map(b => (
-        <TableBox key={b.table.id} box={b} selectedId={selectedId} highlighted={highlighted}
+        <TableBox key={b.table.id} box={b} selectedId={selectedId} highlighted={highlighted} tint={tint} ruleHl={ruleHl}
           onHeaderDown={startDrag} onRowDown={selectColumn}/>
       ))}
     </g>

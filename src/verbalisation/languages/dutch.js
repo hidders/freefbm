@@ -326,7 +326,7 @@ const OPERATION = {
   floor: '{0} naar beneden afgerond', ceiling: '{0} naar boven afgerond',
   power: '{0} tot de macht {1}', sqrt: 'de wortel van {0}',
   concat: '{0} gevolgd door {1}', length: 'de lengte van {0}',
-  upper: '{0} in hoofdletters', lower: '{0} in kleine letters', toText: '{0} als tekst',
+  upper: '{0} in hoofdletters', lower: '{0} in kleine letters', toText: '{0} als tekst', asInteger: '{0} als geheel getal', asDecimal: '{0} als decimaal getal', asFloat: '{0} als drijvendekommagetal', asBoolean: '{0} als booleaanse waarde', asDate: '{0} als datum', asDatetime: '{0} als datum en tijd', asTime: '{0} als tijd',
   year: 'het jaar van {0}', month: 'de maand van {0}', day: 'de dag van de maand van {0}',
   yearsBetween: 'het aantal hele jaren van {0} tot {1}',
 }

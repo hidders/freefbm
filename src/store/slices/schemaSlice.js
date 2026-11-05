@@ -34,6 +34,16 @@ export const createSchemaSlice = (set, get) => ({
     set(s => ({ schemas: s.schemas.map(x => x.id === id ? { ...x, name: trimmed } : x), isDirty: true }))
   },
 
+  // A relational schema's logical view: its ORM2 form in every panel and
+  // diagram instead of tables (Advanced mode only; relational/face.js). A view
+  // setting for this session: not saved, not undone.
+  setSchemaLogicalView(id, on) {
+    set(s => {
+      const { [id]: _, ...rest } = s.logicalViews ?? {}
+      return { logicalViews: on ? { ...rest, [id]: true } : rest }
+    })
+  },
+
   setSchemaProfile(id, profile) {
     if (!SCHEMA_PROFILES.includes(profile)) return
     // A schema made relational gets PostgreSQL datatypes on its diagrams that
@@ -55,7 +65,7 @@ export const createSchemaSlice = (set, get) => ({
     if (s.schemas.length <= 1 || !s.schemas.some(x => x.id === id)) return false
     const owned = x => x.schemaId === id
     if (!withContents && (s.objectTypes.some(owned) || s.facts.some(owned) || s.subtypes.some(owned) || s.constraints.some(owned))) return false
-    const goneMappings = new Set((s.mappings ?? []).filter(m => m.sourceSchemaId === id || m.targetSchemaId === id).map(m => m.id))
+    const goneMappings = new Set([...(s.mappings ?? []), ...(s.views ?? [])].filter(m => m.sourceSchemaId === id || m.targetSchemaId === id).map(m => m.id))
     const dropped = d => owned(d) || goneMappings.has(d.mappingId)
     // Everything a group or a population may name.
     const gone = new Set()
@@ -79,6 +89,7 @@ export const createSchemaSlice = (set, get) => ({
       set(st => ({
         schemas: st.schemas.filter(x => x.id !== id), diagrams: st.diagrams.filter(d => !dropped(d)),
         mappings: (st.mappings ?? []).filter(m => !goneMappings.has(m.id)),
+        views: (st.views ?? []).filter(v => v.sourceSchemaId !== id && v.targetSchemaId !== id),
         ...(gone.size ? {
           objectTypes: st.objectTypes.filter(x => !owned(x)), facts: st.facts.filter(x => !owned(x)),
           subtypes: st.subtypes.filter(x => !owned(x)), constraints: st.constraints.filter(x => !owned(x)),

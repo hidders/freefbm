@@ -111,6 +111,7 @@ export function sideContext(state, schemaId) {
     }))]),
     tableById: new Map((rm?.tables ?? []).map(t => [t.id, t])),
     tables: rm?.tables ?? [],
+    columnByFact: rm?.columnByFact ?? null,
   }
 }
 
@@ -177,6 +178,89 @@ export function expandSide(side, ctx) {
     return { vars: outVars, atoms: outAtoms }
   }
   return { ...expandList(side.vars, side.atoms), origin }
+}
+
+// ── Table rows from encoding B ──────────────────────────────────────────────
+
+// The inverse of expandSide on a pattern tree of a relational schema: a row
+// variable of a table that only its type atom and column fact atoms use
+// becomes a table row R(…); a column value variable used only there and in
+// one x ≈ $y or x ≈ 'c' becomes that argument, an optional part
+// [$y](∃c col(row, c) ∧ c ≈ $y) becomes $y?, and ¬∃c col(row, c) becomes −.
+// Anything else stays as it is. Returns the same tree when nothing changes.
+export function toRowAtoms(tree, ctx) {
+  if (!ctx?.relational || !tree) return tree
+  const out = rowsIn(tree, ctx)
+  return JSON.stringify(out) === JSON.stringify(tree) ? tree : out
+}
+
+// A node as ∃vars (parts…): exists and and merged.
+function scopeOf(node, vars = [], parts = []) {
+  if (node?.t === 'exists') { vars.push(node.v); scopeOf(node.body, vars, parts) }
+  else if (node?.t === 'and') for (const a of node.args ?? []) scopeOf(a, vars, parts)
+  else if (node) parts.push(node)
+  return { vars, parts }
+}
+const buildScope = (vars, parts) => {
+  let body = parts.length === 0 ? { t: 'and', args: [] } : parts.length === 1 ? parts[0] : { t: 'and', args: parts }
+  for (const v of [...vars].reverse()) body = { t: 'exists', v, body }
+  return body
+}
+const mentions = (node, id) => JSON.stringify(node).includes(JSON.stringify(id))
+const vcmpOf = (p, id) => p?.t === 'vcmp' && p.op === '≈' && p.left?.t === 'var' && p.left.id === id && (p.right?.t === 'fv' || p.right?.t === 'const')
+
+function rowsIn(node, ctx) {
+  if (!node || typeof node !== 'object') return node
+  if (node.t === 'opt') return { ...node, body: rowsIn(node.body, ctx) }
+  if (node.t === 'not') return { ...node, arg: rowsIn(node.arg, ctx) }
+  if (node.t !== 'exists' && node.t !== 'and') return node
+  const { vars, parts: raw } = scopeOf(node)
+  let parts = raw.map(p => rowsIn(p, ctx))
+  let keep = [...vars]
+  for (const v of vars) {
+    const table = ctx.tableById.get(v.typeId)
+    if (!table) continue
+    const colOf = new Map(table.columns.map(c => [c.fact.id, c]))
+    const args = {}, used = new Set(), drop = new Set()
+    let ok = true
+    const local = (id) => keep.some(x => x.id === id)
+    for (const p of parts) {
+      if (!mentions(p, v.id)) continue
+      if (p.t === 'type' && p.typeId === v.typeId && p.arg === v.id) { used.add(p); continue }
+      const col = p.t === 'fact' ? colOf.get(p.factId) : null
+      if (col && p.args?.[col.t] === v.id && p.args[col.v] && p.args[col.v] !== v.id && !args[col.fact.id]) {
+        const w = p.args[col.v]
+        const others = parts.filter(q => q !== p && mentions(q, w))
+        if (local(w) && others.length === 1 && vcmpOf(others[0], w)) {
+          const r = others[0].right
+          args[col.fact.id] = r.t === 'fv' ? { k: 'fv', y: r.y } : { k: 'const', text: r.text }
+          used.add(p); used.add(others[0]); drop.add(w)
+        } else { args[col.fact.id] = { k: 'var', v: w }; used.add(p) }
+        continue
+      }
+      // [$y](∃c col(v, c) ∧ c ≈ $y) and ¬∃c col(v, c).
+      const inner = p.t === 'opt' ? scopeOf(p.body) : p.t === 'not' ? scopeOf(p.arg) : null
+      if (inner && inner.vars.length === 1) {
+        const c = inner.vars[0]
+        const f = inner.parts.find(q => q.t === 'fact')
+        const fc = f && colOf.get(f.factId)
+        if (fc && f.args[fc.t] === v.id && f.args[fc.v] === c.id && !args[fc.fact.id]) {
+          if (p.t === 'opt' && inner.parts.length === 2 && inner.parts.some(q => vcmpOf(q, c.id) && q.right.t === 'fv' && q.right.y === p.y)) {
+            args[fc.fact.id] = { k: 'opt', y: p.y }; used.add(p); continue
+          }
+          if (p.t === 'not' && inner.parts.length === 1) { args[fc.fact.id] = { k: 'absent' }; used.add(p); continue }
+        }
+      }
+      ok = false
+      break
+    }
+    if (!ok || !used.size) continue
+    const rel = { t: 'rel', tableId: table.id, args }
+    const first = parts.findIndex(p => used.has(p))
+    parts = parts.flatMap((p, i) => (i === first ? [rel] : used.has(p) ? [] : [p]))
+    keep = keep.filter(x => x.id !== v.id && !drop.has(x.id))
+  }
+  return buildScope(keep, parts)
 }
 
 // ── Frontier variables ───────────────────────────────────────────────────────
@@ -421,6 +505,9 @@ export function variableNames(side, ctx) {
 }
 
 export function readingName(f, ctx) {
+  // A column of a relational schema goes by its table and name.
+  const col = ctx.columnByFact?.get(f.id)
+  if (col) return `${col.table.name}.${col.name}`
   const parts = plainParts(f.readingParts ?? [], f.roles.length)
   const words = []
   f.roles.forEach((r, i) => {
@@ -494,16 +581,26 @@ export const tokensText = (tokens) => tokens.map(t => t.text).join('')
 // ── Store maintenance ────────────────────────────────────────────────────────
 
 // Mappings read from a file: well-formed objects only.
-export function loadMappings(raw, schemaIds) {
+// state (optional): the loaded elements, to write rules over relational
+// schemas with table rows (toRowAtoms).
+export function loadMappings(raw, schemaIds, state = null) {
   if (!Array.isArray(raw)) return []
+  const ctxs = new Map()
+  const rows = (p, sid) => {
+    if (!state || state.schemas?.find(x => x.id === sid)?.profile !== 'relational') return p
+    if (!ctxs.has(sid)) ctxs.set(sid, sideContext(state, sid))
+    try { return toRowAtoms(p, ctxs.get(sid)) } catch { return p }
+  }
   return raw.filter(m => m && typeof m === 'object' && schemaIds.has(m.sourceSchemaId) && schemaIds.has(m.targetSchemaId))
     .map(m => ({
       id: String(m.id ?? uid()), name: String(m.name ?? 'Mapping'),
       sourceSchemaId: m.sourceSchemaId, targetSchemaId: m.targetSchemaId,
       rules: (Array.isArray(m.rules) ? m.rules : []).filter(r => r && typeof r === 'object').map(r => ({
         id: String(r.id ?? uid()), name: String(r.name ?? ''),
-        source: normPattern(r.source), target: normPattern(r.target),
+        source: rows(normPattern(r.source), m.sourceSchemaId), target: rows(normPattern(r.target), m.targetSchemaId),
       })),
+      // Constraints only (pairLock.js).
+      ...(m.lock && typeof m.lock === 'object' && m.lock.base ? { lock: m.lock } : {}),
     }))
 }
 const normPattern = (p) => (p && typeof p === 'object' && typeof p.t === 'string' ? p : { t: 'hole' })

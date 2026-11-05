@@ -13,6 +13,13 @@ import { cloneSchema, identityMapping } from '../../mapping/refactor.js'
 import { entriesOf, accountingSteps } from '../../mapping/accounting.js'
 import { proposeTranslation } from '../../mapping/translate.js'
 import { transformationById } from '../../mapping/transformations.js'
+import { mkLock } from '../../mapping/pairLock.js'
+import { withSimple } from '../../mapping/carry.js'
+import { withTableConstraints } from '../../relational/tableUnits.js'
+import { relationalView, rmLabel } from '../../relational/relationalView.js'
+import { uid, mappingOfDiagram, isViewMapping } from '../storeHelpers'
+import { numberInvented } from '../../mapping/exchanges.js'
+import { viewRuleElements } from '../../mapping/views.js'
 
 // The constraints of the old version (schemaId) about the given elements
 // that the mapping m loses, each added to the new version as its
@@ -39,22 +46,6 @@ function hasPopulation(st, schemaId) {
   const ids = new Set([...st.objectTypes, ...st.facts].filter(x => x.schemaId === schemaId).map(x => x.id))
   return Object.entries(st.populations ?? {}).some(([k, v]) => ids.has(k) && v?.length)
     || Object.entries(st.factPopulations ?? {}).some(([k, v]) => ids.has(k) && v?.length)
-}
-
-// Values a run invented (⟨…⟩) for generated columns of a schema: numbered
-// 1, 2, … per value type, the same number for the same value everywhere.
-function numberInvented(st, schemaId) {
-  const gen = new Set(st.facts.filter(f => f.schemaId === schemaId).flatMap(f => f.roles.filter(r => r.sqlGenerated).map(r => r.objectTypeId)))
-  if (!gen.size) return {}
-  const ids = new Set([...st.objectTypes, ...st.facts].filter(x => x.schemaId === schemaId).map(x => x.id))
-  const num = new Map()
-  const map = (x) => {
-    if (typeof x !== 'string' || !x.startsWith('⟨')) return Array.isArray(x) ? x.map(map) : x
-    if (!num.has(x)) num.set(x, String(num.size + 1))
-    return num.get(x)
-  }
-  const walk = (obj) => Object.fromEntries(Object.entries(obj ?? {}).map(([k, v]) => [k, ids.has(k) && Array.isArray(v) ? v.map(map) : v]))
-  return { populations: walk(st.populations), factPopulations: walk(st.factPopulations) }
 }
 
 const ADVANCED_KEY = 'freefbm.advancedMode'
@@ -100,6 +91,33 @@ export const createMappingSlice = (set, get) => {
       const m = mkMapping(unique, sourceSchemaId, targetSchemaId)
       mapMappings(ms => [...ms, m])
       return m.id
+    },
+    // Constraints only (mapping/pairLock.js): on locks both schemas of the
+    // mapping to new constraints, recording what they have now; off unlocks.
+    lockMapping(id, on) {
+      const s = get()
+      const m = s.mappings.find(x => x.id === id)
+      if (!m) return
+      mapMappings(ms => ms.map(x => {
+        if (x.id !== id) return x
+        if (on) return { ...x, lock: mkLock(s, m) }
+        const { lock: _off, ...rest } = x
+        return rest
+      }))
+    },
+    // A plain constraint carried across a locked mapping (mapping/carry.js):
+    // a mandatory role, a single-role uniqueness or a foreign key (a subset
+    // constraint between two columns), as one undo step. Returns its id.
+    addSimpleConstraint(schemaId, simple) {
+      const id = uid()
+      set(st => {
+        const r = withSimple(st, simple, id)
+        const out = { facts: r.state.facts, constraints: r.state.constraints, isDirty: true }
+        if (simple.kind === 'fk')
+          out.diagrams = st.diagrams.map(d => (d.schemaId === schemaId && !d.mappingId ? withTableConstraints(r.state, d) : d))
+        return out
+      })
+      return id
     },
     updateMapping(id, patch) {
       mapMappings(ms => ms.map(m => (m.id === id ? { ...m, ...patch } : m)))
@@ -160,7 +178,8 @@ export const createMappingSlice = (set, get) => {
     // rules name if it has none yet. Returns the diagram id.
     openMappingDiagram(mappingId) {
       const s = get()
-      const m = s.mappings?.find(x => x.id === mappingId)
+      // A view's diagram too (mapping/views.js): diagram.mappingId is the view's id.
+      const m = s.mappings?.find(x => x.id === mappingId) ?? s.views?.find(x => x.id === mappingId)
       if (!m) return null
       const existing = s.diagrams.find(d => d.mappingId === mappingId)
       if (existing) { get().setActiveDiagram(existing.id); return existing.id }
@@ -188,13 +207,14 @@ export const createMappingSlice = (set, get) => {
     addMappingRuleElements(diagramId) {
       const s0 = get()
       const diag = s0.diagrams.find(d => d.id === diagramId)
-      const m = s0.mappings?.find(x => x.id === diag?.mappingId)
+      const m = mappingOfDiagram(s0, diag)
       if (!diag || !m) return 0
+      const view = isViewMapping(s0, m)
       const schemaOf = new Map()
       for (const k of ['objectTypes', 'facts', 'constraints']) for (const x of s0[k]) schemaOf.set(x.id, x.schemaId)
       const wanted = { source: new Set(), target: new Set() }
       for (const r of m.rules) {
-        const els = ruleElements(r)
+        const els = view ? viewRuleElements(s0, m, r) : ruleElements(r)
         for (const side of ['source', 'target']) {
           const e = els[side]
           for (const id of [...e.typeIds, ...e.factIds, ...e.tableIds]) wanted[side].add(id)
@@ -350,6 +370,9 @@ export const createMappingSlice = (set, get) => {
         }
         const before = get()
         const players = new Set(before.facts.filter(f => removeIds.has(f.id)).flatMap(f => f.roles.map(r => r.objectTypeId)))
+        // A relational schema names its foreign keys and columns (relationalView).
+        const rmView = before.schemas.find(x => x.id === schemaId)?.profile === 'relational' ? relationalView(before, schemaId) : null
+        const rmName = (id) => (rmView ? rmLabel(rmView, id) : null)
         for (const c of before.constraints) {
           if (!(c.sequences ?? []).some(q => (q ?? []).some(x => removeIds.has(x?.factId)))) continue
           // A subset or equality constraint (a foreign key) of a removed column
@@ -357,10 +380,10 @@ export const createMappingSlice = (set, get) => {
           // that moves the column adds it again where the column went).
           if ((c.constraintType === 'subset' || c.constraintType === 'equality') && get().deleteConstraint) {
             get().deleteConstraint(c.id)
-            ch.report.push(`Removed the ${c.constraintType} constraint ${c.name ? `${c.name} ` : ''}on a removed fact type`)
+            ch.report.push(rmName(c.id) ? `Removed ${rmName(c.id)}, of a removed column` : `Removed the ${c.constraintType} constraint ${c.name ? `${c.name} ` : ''}on a removed fact type`)
             continue
           }
-          ch.report.push(`Check the ${c.constraintType ?? 'external'} constraint ${c.name ? `${c.name} ` : ''}on a removed fact type: it now has roles missing`)
+          ch.report.push(rmName(c.id) ? `Check ${rmName(c.id)}: a column it names was removed` : `Check the ${c.constraintType ?? 'external'} constraint ${c.name ? `${c.name} ` : ''}on a removed fact type: it now has roles missing`)
         }
         for (const id of removeIds) get().deleteFact(id)
         // Value types the removed fact types leave without a role.
@@ -371,7 +394,7 @@ export const createMappingSlice = (set, get) => {
           if (!o || o.kind !== 'value' || o.schemaId !== schemaId) continue
           if (after.facts.some(f => f.roles.some(r => r.objectTypeId === id)) || named.includes(JSON.stringify(id))) continue
           get().deleteObjectType(id)
-          ch.report.push(`Removed value type ${o.name}, which no fact type uses any more`)
+          ch.report.push(rmView ? `Removed the column type ${o.name}, which no column uses any more` : `Removed value type ${o.name}, which no fact type uses any more`)
         }
         if (twins) {
           const gone = ch.promote.map(id => twins[id]).filter(Boolean)
@@ -638,6 +661,8 @@ export const createMappingSlice = (set, get) => {
         m = get().mappings.find(x => x.id === rf.mappingId)
         d.post?.({ mapping: m, idMap: rf.idMap, report })
         }
+        // A table with new columns shows them on every diagram showing it.
+        get().completeTableDiagrams()
         // What the new version has that no diagram of it shows (a new key, a
         // moved foreign key): onto its first diagram.
         // Each on the diagrams that show all its fact types, between them.

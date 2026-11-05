@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
-import { mappingOfDiagram } from '../store/storeHelpers'
+import { mappingOfDiagram, isViewMapping } from '../store/storeHelpers'
+import { viewRuleElements, checkViewRule, viewRuleText, headId, elementName } from '../mapping/views.js'
 import { entityBounds } from './ObjectTypeNode'
 import { factBounds } from './FactTypeNode'
+import { mappingErdBoxes } from './ErdView'
 import { ruleElements, checkRule, sideContext, sideTokens, tokensText, SIDES, sideSchemaId } from '../mapping/mapping.js'
 
 // ── Mapping diagrams ────────────────────────────────────────────────────────
@@ -25,7 +27,7 @@ function useActiveMapping() {
 }
 
 // Bounds of a shown object type or fact type occurrence.
-const boundsOf = (el) => (el.arity != null && el.roles ? factBounds(el) : entityBounds(el))
+const boundsOf = (el) => (el._bounds ?? (el.arity != null && el.roles ? factBounds(el) : entityBounds(el)))
 
 // Tints each element by its side: source blue, target green.
 export function MappingTints() {
@@ -71,11 +73,15 @@ const centroid = (pts) => (pts.length
 // The rules of the active mapping diagram as nodes with connectors.
 export function MappingRules() {
   const mapping = useActiveMapping()
-  const { objectTypes, facts, diagram, collapsedRefFacts } = useDiagramElements()
+  const { objectTypes, facts, diagram, collapsedRefFacts, erdSchemaIds } = useDiagramElements()
   const state = useOrmStore(useShallow(s => ({
     schemas: s.schemas, objectTypes: s.objectTypes, facts: s.facts, constraints: s.constraints, subtypes: s.subtypes,
-    editing: s.mappingRuleEditor,
+    editing: s.mappingRuleEditor, ruleEditor: s.ruleEditor,
   })))
+  // A view's diagram (mapping/views.js): each rule defines one element of the
+  // target (its head) from elements of the source, and opens in the
+  // derivation rule editor.
+  const isView = useOrmStore(s => isViewMapping(s, mapping))
   const [hoverId, setHoverId] = useState(null)
   const [drag, setDrag] = useState(null)   // { ruleId, x, y }
   const setByUs = useRef(false)
@@ -85,6 +91,21 @@ export function MappingRules() {
     target: sideContext(state, mapping.targetSchemaId),
   } : null), [state, mapping])
 
+  // A relational side drawn as ERD tables: its table boxes, as link ends.
+  const erdKey = (erdSchemaIds ?? []).join()
+  const erd = useMemo(() => {
+    const out = {}
+    if (!mapping || !diagram) return out
+    for (const side of SIDES) {
+      const sid = sideSchemaId(mapping, side)
+      if (!(erdSchemaIds ?? []).includes(sid)) continue
+      const { model, boxes } = mappingErdBoxes(state, diagram, sid)
+      const end = new Map([...boxes].map(([id, b]) => [id, { id, x: b.x + b.w / 2, y: b.y + b.h / 2, _bounds: { left: b.x, right: b.x + b.w, top: b.y, bottom: b.y + b.h } }]))
+      out[side] = { end, tableOfColumn: (fid) => model.columnByFact.get(fid)?.table.id ?? null }
+    }
+    return out
+  }, [mapping, diagram, state, erdKey])   // eslint-disable-line react-hooks/exhaustive-deps
+
   // Per rule: its elements, the shown occurrences they link to, and checks.
   const rules = useMemo(() => {
     if (!mapping || !ctxs) return []
@@ -92,11 +113,21 @@ export function MappingRules() {
     for (const o of objectTypes) { if (!otsById.has(o.id)) otsById.set(o.id, []); otsById.get(o.id).push(o) }
     for (const f of facts) { if (f._implicit) continue; if (!factsById.has(f.id)) factsById.set(f.id, []); factsById.get(f.id).push(f) }
     return mapping.rules.map((r, k) => {
-      const els = ruleElements(r)
+      const els = isView ? viewRuleElements(state, mapping, r) : ruleElements(r)
       const ends = {}
+      const namedErd = {}
       for (const side of SIDES) {
         const e = els[side]
         const groups = []
+        if (erd[side]) {
+          // Tables: of table rows, type atoms and the columns fact atoms name.
+          const tables = new Set([...e.typeIds, ...e.tableIds, ...e.factIds.map(erd[side].tableOfColumn)].filter(Boolean))
+          const real = [...tables].filter(id => state.objectTypes.some(o => o.id === id && o.kind === 'entity'))
+          namedErd[side] = real.length
+          for (const id of real) if (erd[side].end.has(id)) groups.push([erd[side].end.get(id)])
+          ends[side] = groups
+          continue
+        }
         for (const id of [...new Set([...e.typeIds, ...e.tableIds])]) {
           const occs = [...(otsById.get(id) ?? []), ...(factsById.get(id) ?? []).filter(f => f.objectified)]
           if (occs.length) groups.push(occs)
@@ -107,17 +138,18 @@ export function MappingRules() {
         }
         ends[side] = groups
       }
-      const issues = checkRule(r, mapping, state, ctxs)
-      const formula = SIDES.map(side => tokensText(sideTokens(r[side], ctxs[side]))).join('  ⟺  ')
+      const issues = isView ? checkViewRule(state, mapping, r).map(i => ({ severity: i.severity, text: i.message })) : checkRule(r, mapping, state, ctxs)
+      const formula = isView ? viewRuleText(state, mapping, r) : SIDES.map(side => tokensText(sideTokens(r[side], ctxs[side]))).join('  ⟺  ')
+      const name = isView ? r.name || elementName(state.objectTypes.find(o => o.id === headId(r)) ?? state.facts.find(f => f.id === headId(r)), state) : null
       const highlight = {
         typeIds: SIDES.flatMap(side => [...els[side].typeIds, ...els[side].tableIds, ...els[side].varTypeIds]),
         factIds: [...els.source.factIds, ...els.source.columnFactIds, ...els.target.factIds, ...els.target.columnFactIds],
       }
-      const named = SIDES.reduce((n, side) => n + els[side].typeIds.length + els[side].tableIds.length + els[side].factIds.length, 0)
+      const named = SIDES.reduce((n, side) => n + (side in namedErd ? namedErd[side] : els[side].typeIds.length + els[side].tableIds.length + els[side].factIds.length), 0)
       const linked = ends.source.length + ends.target.length
-      return { r, k, ends, issues, formula, highlight, missing: Math.max(0, named - linked) }
+      return { r, k, ends, issues, formula, highlight, name, missing: Math.max(0, named - linked) }
     })
-  }, [mapping, ctxs, objectTypes, facts, collapsedRefFacts, state])
+  }, [mapping, isView, ctxs, objectTypes, facts, collapsedRefFacts, state, erd])
 
   // Node positions: stored, or between the two sides' elements; default
   // positions that would overlap are stacked downwards.
@@ -140,7 +172,9 @@ export function MappingRules() {
   }, [rules, diagram?.mappingRulePositions])
 
   // The hovered rule's elements are highlighted; else the rule open in the editor.
-  const editingRule = mapping && state.editing?.mappingId === mapping.id ? state.editing.ruleId : null
+  const editingRule = !mapping ? null
+    : isView ? (state.ruleEditor?.viewId === mapping.id ? state.ruleEditor.ruleId : null)
+    : state.editing?.mappingId === mapping.id ? state.editing.ruleId : null
   const hlRule = placed.find(p => p.r.id === hoverId) ?? placed.find(p => p.r.id === editingRule)
   const hlKey = hlRule ? JSON.stringify(hlRule.highlight) : ''
   useEffect(() => {
@@ -171,6 +205,7 @@ export function MappingRules() {
       setDrag(null)
       const st = useOrmStore.getState()
       if (moved) st.setMappingRulePosition(diagram.id, info.r.id, last)
+      else if (isView) st.openViewRuleEditor(mapping.id, info.r.id)
       else st.openMappingRuleEditor(mapping.id, info.r.id)
     }
     window.addEventListener('mousemove', onMove)
@@ -182,7 +217,7 @@ export function MappingRules() {
       {placed.map(info => {
         const x = drag?.ruleId === info.r.id ? drag.x : info.x
         const y = drag?.ruleId === info.r.id ? drag.y : info.y
-        const label = info.r.name || `Rule ${info.k + 1}`
+        const label = info.name ?? (info.r.name || `Rule ${info.k + 1}`)
         const w = Math.max(58, 26 + label.length * 6.6)
         const errors = info.issues.filter(i => i.severity === 'error').length
         const warnings = info.issues.length - errors
@@ -225,7 +260,7 @@ export function MappingRules() {
                 style={{ filter: hot ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.25))' : 'none' }} />
               <text x={-w / 2 + 10} y={0.5} dominantBaseline="middle" fontSize={12} fill="var(--map-rule)"
                 fontFamily="'Segoe UI', Helvetica, Arial, sans-serif" style={{ userSelect: 'none' }}>
-                <tspan fill="var(--map-source)" fontWeight={700}>⟺</tspan>
+                <tspan fill="var(--map-source)" fontWeight={700}>{isView ? '⇒' : '⟺'}</tspan>
                 <tspan dx={5}>{label}</tspan>
               </text>
               {(errors > 0 || warnings > 0 || info.missing > 0) && (

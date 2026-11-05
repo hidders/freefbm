@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
-import { sideContext, sideTokens, checkRule, variableNames, readingName, newVarId, SIDES, sideSchemaId } from '../mapping/mapping.js'
+import { sideContext, sideTokens, checkRule, variableNames, readingName, newVarId, SIDES, sideSchemaId, toRowAtoms } from '../mapping/mapping.js'
+import { isRelationalFace } from '../relational/face.js'
 import { getAt, setAt, hole, typeGraph } from '../logic/derivationRule.js'
 import { QGAP } from '../logic/renderFormula.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
@@ -397,7 +398,11 @@ function RuleEditor({ mapping, rule, onUpdate, table = null, tableRule = null })
 // ── Palette: what can go in, or be done with, the selected part ────────────
 
 function Palette({ side, node, path, tree, scope, ctx, graph, replace, headOnly = false, label = null }) {
-  const types = useMemo(() => [...ctx.objectTypes].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')), [ctx])
+  // A relational schema in its relational face: table rows and column types
+  // only (its logical view also offers fact and type atoms).
+  const rowsOnly = useOrmStore(s => ctx.relational && isRelationalFace(s, ctx.schemaId))
+  const types = useMemo(() => [...ctx.objectTypes].filter(o => !rowsOnly || o.kind === 'value')
+    .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')), [ctx, rowsOnly])
   const facts = useMemo(() => ctx.facts.map(f => ({ id: f.id, label: readingName(f, ctx) }))
     .sort((a, b) => a.label.localeCompare(b.label)), [ctx])
   const tables = useMemo(() => [...ctx.tables].sort((a, b) => a.name.localeCompare(b.name)), [ctx])
@@ -440,6 +445,10 @@ function Palette({ side, node, path, tree, scope, ctx, graph, replace, headOnly 
     node = getAt(tree, [])
     path = []
   }
+  // Fact atoms over a table that read as table rows (older rules, the logical view).
+  const asRows = !headOnly && ctx.relational ? toRowAtoms(tree, ctx) : tree
+  if (asRows !== tree) rows.push(['Table rows', <button style={btn()} title="Write the fact atoms over a table's columns as rows of that table (the same pattern)"
+    onClick={() => replace([], asRows, [])}>Write as table rows</button>])
   if (headOnly && node?.t !== 'rel') {
     rows.push(['Row', <span style={{ color: 'var(--ink-muted)', fontSize: 12 }}>The row is not a row of the table.</span>])
   } else if (!headOnly && (!node || node.t === 'hole')) {
@@ -454,8 +463,10 @@ function Palette({ side, node, path, tree, scope, ctx, graph, replace, headOnly 
       <button style={btn()} disabled={!qType} onClick={() => replace(path, exists(hole()), [...path, 'body'])}>∃</button>
     </>])
     if (ctx.relational) rows.push(['Table row', tableSelect('', (tableId) => replace(path, { t: 'rel', tableId, args: {} }))])
-    rows.push(['Fact type', factSelect('', (a) => replace(path, a))])
-    rows.push(['Type', typeSelect('', (typeId) => replace(path, { t: 'type', typeId, arg: fitting(typeId) }), 'Is a type…')])
+    if (!rowsOnly) {
+      rows.push(['Fact type', factSelect('', (a) => replace(path, a))])
+      rows.push(['Type', typeSelect('', (typeId) => replace(path, { t: 'type', typeId, arg: fitting(typeId) }), 'Is a type…')])
+    }
     rows.push(['Value', <>
       <button style={btn()} title="The variable's value is the frontier variable $y"
         onClick={() => replace(path, { t: 'vcmp', op: '≈', left: { t: 'var', id: lastVar }, right: { t: 'fv', y: '' } })}>□ ≈ $y</button>

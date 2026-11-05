@@ -19,7 +19,8 @@
 //
 // formulaToSql(formula, model, names) → { check: { tableId, text } } |
 //   { query: text, deontic } | { error }, with model from relationalModel
-//   and names(Var) → a display name for a column of the query's result.
+//   and names(Var) → a display name for a column of the query's result;
+//   qualify(table) → the table's name as written in FROM (default: quoted).
 
 import { quoteIdent } from './sqlNames.js'
 import { makeContext, constraintEntries } from '../logic/constraintFormulas.js'
@@ -116,6 +117,7 @@ const negate = (s) => {
 
 // Data operators (dataOperators.js OPS) in PostgreSQL.
 const INFIX = { add: '+', sub: '-', mul: '*', div: '/', concat: '||' }
+const CASTS = { asInteger: 'integer', asDecimal: 'numeric', asFloat: 'double precision', asBoolean: 'boolean', asDate: 'date', asDatetime: 'timestamp', asTime: 'time' }
 const FUNC = { abs: 'abs', least: 'least', greatest: 'greatest', round: 'round', roundInt: 'round', floor: 'floor', ceiling: 'ceiling',
   truncate: 'trunc', power: 'power', sqrt: 'sqrt', length: 'length', substring: 'substr', upper: 'upper', lower: 'lower', trim: 'trim',
   mod: 'mod', idiv: 'div', makeDate: 'make_date' }
@@ -130,8 +132,9 @@ const merged = (g) => {
   return { ...g, vars, body }
 }
 
-export function formulaToSql(formula, model, names = () => null) {
+export function formulaToSql(formula, model, names = () => null, { qualify = null } = {}) {
   const q = quoteIdent
+  const tableName = (table) => (qualify ? qualify(table) : q(table.name))
   const tableById = new Map(model.tables.map(t => [t.id, t]))
   let f = formula
   const deontic = f?.t === 'obligatory'
@@ -165,6 +168,7 @@ export function formulaToSql(formula, model, names = () => null) {
         if (INFIX[t.op]) return args.map(paren).join(` ${INFIX[t.op]} `)
         if (t.op === 'neg') return `-${paren(args[0])}`
         if (t.op === 'toText') return `CAST(${args[0]} AS text)`
+        if (CASTS[t.op]) return `CAST(${args[0]} AS ${CASTS[t.op]})`
         if (EXTRACT[t.op]) return `EXTRACT(${EXTRACT[t.op]} FROM ${args[0]})`
         if (FUNC[t.op]) return `${FUNC[t.op]}(${args.join(', ')})`
         return no(`the data operator ${t.op}`)
@@ -208,7 +212,7 @@ export function formulaToSql(formula, model, names = () => null) {
       const table = tableById.get(v.typeId)
       if (!table) continue
       const alias = `${table.name.replace(/[^A-Za-z]/g, '').slice(0, 1).toLowerCase() || 't'}${++n}`
-      from.push(`${q(table.name)} ${alias}`)
+      from.push(`${tableName(table)} ${alias}`)
       env.set(v, { row: alias, table })
       pending.delete(v)
     }

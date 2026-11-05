@@ -12,7 +12,8 @@
 // parseDdl(sql) → { tables, enums, domains, inserts, skipped, problems }
 //   tables:  [{ name, qualified, columns: [{ name, type, notNull, checks: [text] }],
 //               primaryKey: [col] | null, uniques: [[col]], foreignKeys: [{ columns,
-//               refTable, refColumns | null }], checks: [text] }]
+//               refTable, refColumns | null, name | null }], checks: [text],
+//               keyNames?: { pk | uniqueKey(cols) → constraint name } }]
 //   enums:   Map(name → [label])
 //   domains: Map(name → { type, notNull, checks: [text] })
 //   inserts: [{ table: { name, schema }, columns: [name] | null, rows: [[value]], copy? }]
@@ -255,7 +256,7 @@ export function parseDdl(sql0) {
         if (s.isWord('unique') && s.isWord('index', 1)) {
           s.i += 2
           s.eatWord('concurrently'); s.eatWord('if', 'not', 'exists')
-          if (!s.isWord('on')) s.qname()
+          const indexName = !s.isWord('on') ? s.qname()?.name ?? null : null
           s.eatWord('on'); s.eatWord('only')
           const q = qn()
           if (s.eatWord('using')) s.next()
@@ -263,7 +264,7 @@ export function parseDdl(sql0) {
           const cols = g && splitCommas(g).every(p => p.length === 1 && (p[0].t === 'id' || p[0].t === 'qid')) ? nameList(g) : null
           const rest = s.tk.slice(s.i)
           const t = q && findTable(q)
-          if (t && cols && !rest.some(x => x.t === 'id' && x.v === 'where')) t.uniques.push(cols)
+          if (t && cols && !rest.some(x => x.t === 'id' && x.v === 'where')) { t.uniques.push(cols); nameKey(t, uniqueKey(cols), indexName) }
           else skip('CREATE UNIQUE INDEX on expressions or with WHERE')
           return
         }
@@ -424,6 +425,13 @@ function readType(s) {
   return { name: words.join(' '), args, array: false, schemaQualified }
 }
 
+// The names a script gives keys (CONSTRAINT name, or a unique index's name),
+// kept in t.keyNames: 'pk' for the primary key, uniqueKey(cols) for a UNIQUE.
+export const uniqueKey = (cols) => `u:${cols.join('\u0000')}`
+function nameKey(t, key, name) {
+  if (name) (t.keyNames ??= {})[key] = name
+}
+
 // Column constraints after the type, into col (and, for REFERENCES, the table).
 function readColumnConstraints(s, col, table, problems) {
   while (!s.done()) {
@@ -448,8 +456,17 @@ function readColumnConstraints(s, col, table, problems) {
       else { s.group(); s.eatWord('stored'); col.generated = true }
       continue
     }
-    if (s.eatWord('primary', 'key')) { if (table) table.primaryKey = [col.name]; col.notNull = true; continue }
-    if (s.eatWord('unique')) { s.eatWord('nulls', 'not', 'distinct'); if (table) table.uniques.push([col.name]); continue }
+    if (s.eatWord('primary', 'key')) {
+      if (table) { table.primaryKey = [col.name]; nameKey(table, 'pk', col._cname) }
+      col.notNull = true; col._cname = null
+      continue
+    }
+    if (s.eatWord('unique')) {
+      s.eatWord('nulls', 'not', 'distinct')
+      if (table) { table.uniques.push([col.name]); nameKey(table, uniqueKey([col.name]), col._cname) }
+      col._cname = null
+      continue
+    }
     if (s.eatWord('check')) {
       col.checks.push(tokensText(s.group() ?? []))
       ;(col.checkNames ??= [])[col.checks.length - 1] = col._cname ?? null
@@ -460,7 +477,8 @@ function readColumnConstraints(s, col, table, problems) {
       const q = s.qname()
       const g = s.isOp('(') ? nameList(s.group()) : null
       skipReferentialActions(s)
-      if (table && q) table.foreignKeys.push({ columns: [col.name], refTable: q.name, refSchema: q.schema, refColumns: g })
+      if (table && q) table.foreignKeys.push({ columns: [col.name], refTable: q.name, refSchema: q.schema, refColumns: g, name: col._cname ?? null })
+      col._cname = null
       continue
     }
     if (s.eatWord('deferrable') || s.eatWord('not', 'deferrable') || s.eatWord('initially', 'deferred') || s.eatWord('initially', 'immediate')) continue
@@ -511,6 +529,8 @@ function alterColumn(s, t, problems) {
     col.name = to
     const ren = (cols) => cols?.map(c => (c === from ? to : c)) ?? cols
     t.primaryKey = ren(t.primaryKey)
+    if (t.keyNames) t.keyNames = Object.fromEntries(Object.entries(t.keyNames).map(([k, n]) =>
+      [k === 'pk' ? k : uniqueKey(ren(k.slice(2).split('\u0000'))), n]))
     t.uniques = t.uniques.map(ren)
     for (const fk of t.foreignKeys) fk.columns = ren(fk.columns)
     return true
@@ -535,12 +555,13 @@ function readTableConstraint(s, t, problems) {
   if (s.eatWord('constraint')) cname = s.next()?.v ?? null
   if (s.eatWord('primary', 'key')) {
     t.primaryKey = nameList(s.group())
+    nameKey(t, 'pk', cname)
     return true
   }
   if (s.eatWord('unique')) {
     s.eatWord('nulls', 'not', 'distinct')
     const cols = nameList(s.group())
-    if (cols.length) t.uniques.push(cols)
+    if (cols.length) { t.uniques.push(cols); nameKey(t, uniqueKey(cols), cname) }
     return true
   }
   if (s.eatWord('foreign', 'key')) {

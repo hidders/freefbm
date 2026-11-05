@@ -1,7 +1,8 @@
 // Named transformations (mapping/transformations.js): pick one, fill in what
 // it needs, and apply it as one step. The result is a new version of the
 // schema with the mapping from the old one. Opened with
-// store.transformDialog = { schemaId }.
+// store.transformDialog = { schemaId, kind?, params? }: kind and params
+// preselect a transformation (the relational Inspector's Transform links).
 import React, { useMemo, useState } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { sideContext } from '../mapping/mapping'
@@ -10,20 +11,20 @@ import { TRANSFORMATIONS } from '../mapping/transformations'
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
 export default function TransformDialog() {
-  const schemaId = useOrmStore(s => s.transformDialog?.schemaId ?? null)
-  if (!schemaId) return null
-  return <Dialog schemaId={schemaId} />
+  const open = useOrmStore(s => s.transformDialog)
+  if (!open?.schemaId) return null
+  return <Dialog key={`${open.schemaId}|${open.kind ?? ''}|${JSON.stringify(open.params ?? {})}`} schemaId={open.schemaId} initial={open} />
 }
 
-function Dialog({ schemaId }) {
+function Dialog({ schemaId, initial }) {
   const close = () => useOrmStore.setState({ transformDialog: null })
   const { ctx, schema } = useMemo(() => {
     const st = useOrmStore.getState()
     return { ctx: sideContext(st, schemaId), schema: st.schemas.find(x => x.id === schemaId) }
   }, [schemaId])
   const kinds = TRANSFORMATIONS.filter(t => t.profile === (schema?.profile === 'relational' ? 'relational' : 'orm2'))
-  const [kind, setKind] = useState(kinds[0]?.id ?? null)
-  const [params, setParams] = useState({})
+  const [kind, setKind] = useState(kinds.some(t => t.id === initial?.kind) ? initial.kind : kinds[0]?.id ?? null)
+  const [params, setParams] = useState(initial?.kind && initial.params ? { [initial.kind]: initial.params } : {})
   const [error, setError] = useState(null)
   const tr = kinds.find(t => t.id === kind)
   const p = params[kind] ?? {}

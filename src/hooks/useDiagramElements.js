@@ -1,5 +1,6 @@
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { findRefMode } from '../utils/refMode'
+import { erdSchemasOfDiagram } from '../relational/face'
 
 /**
  * Returns schema elements filtered to the active diagram,
@@ -178,6 +179,15 @@ export function getDiagramElements(store) {
     visibleFacts       = facts.filter(inDiagram).map(f => ({ ...withPos(f), occurrenceId: null }))
   }
 
+  // A mapping diagram draws the tables of a relational side as ERD boxes
+  // (ErdView); that side's elements are not drawn in ORM2.
+  const erdSchemaIds = diagram?.mappingId ? erdSchemasOfDiagram(store, diagram) : []
+  if (erdSchemaIds.length) {
+    const ors = (x) => !erdSchemaIds.includes(x.schemaId)
+    visibleObjectTypes = visibleObjectTypes.filter(ors)
+    visibleFacts = visibleFacts.filter(ors)
+  }
+
   // visibleConstraints come from constraintOccurrences
   const constraintMap = Object.fromEntries(constraints.map(c => [c.id, c]))
   const visibleConstraints = (diagram?.constraintOccurrences ?? [])
@@ -187,6 +197,7 @@ export function getDiagramElements(store) {
       return { ...c, x: cocc.x, y: cocc.y, constraintOccurrenceId: cocc.id, roleOccurrenceRefs: cocc.roleOccurrenceRefs ?? [] }
     })
     .filter(Boolean)
+    .filter(c => !erdSchemaIds.includes(c.schemaId))
 
   const visibleOtIds   = new Set(visibleObjectTypes.map(o => o.id))
   const visibleFactIds = new Set(visibleFacts.map(f => f.id))
@@ -254,6 +265,7 @@ export function getDiagramElements(store) {
   }
 
   return {
+    erdSchemaIds,
     objectTypes:        visibleObjectTypes,
     facts:              visibleFacts,
     constraints:        visibleConstraints,

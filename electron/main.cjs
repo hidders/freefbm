@@ -76,6 +76,7 @@ function buildMenu(win) {
         { label: 'Import PostgreSQL DDL…', click: send('menu:importSql') },
         { label: 'Export PostgreSQL DDL…', click: send('menu:exportSql') },
         { label: 'Load Sample Rows from SQL…', click: send('menu:loadSampleSql') },
+        { label: 'Export Sample Rows as SQL…', click: send('menu:exportRowsSql') },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
       ],

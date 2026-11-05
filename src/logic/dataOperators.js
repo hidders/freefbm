@@ -162,6 +162,12 @@ export function valueText(v, sort) {
   }
 }
 
+// A text read as a value of a sort, or undefined.
+function fromText(text, sort) {
+  const r = parseAs(String(text ?? '').trim(), sort)
+  return r.invalid || r.empty ? undefined : r.value
+}
+
 // ── Catalogue ────────────────────────────────────────────────────────────────
 //
 // Each operator: label (for menus and messages), symbol and style ('infix',
@@ -317,6 +323,51 @@ export const OPS = {
     label: 'as text', symbol: 'toText', style: 'func', group: 'Text',
     sigs: each(TEXT_SORTS, s => [[s], 'string']),
     ev: ([a], [p]) => valueText(a, p),
+  },
+
+  // Casts (data exchange): a text read as a value of another datatype, as
+  // the value types of two schemas may use different datatypes for the same
+  // thing. Partial: a text that does not read as one has no value.
+  asInteger: {
+    label: 'as integer', symbol: 'asInteger', style: 'func', group: 'Conversions',
+    sigs: [[['string'], 'integer'], [['decimal'], 'integer'], [['float'], 'integer'], [['boolean'], 'integer']],
+    ev: ([a], [p]) => (p === 'string' ? fromText(a, 'integer') : p === 'boolean' ? (a ? 1 : 0) : Number.isInteger(a) ? a : undefined),
+  },
+  asDecimal: {
+    label: 'as decimal', symbol: 'asDecimal', style: 'func', group: 'Conversions',
+    sigs: [[['string'], 'decimal'], [['float'], 'decimal']],
+    ev: ([a], [p]) => (p === 'string' ? fromText(a, 'decimal') : num(a, 'decimal')),
+  },
+  asFloat: {
+    label: 'as floating point number', symbol: 'asFloat', style: 'func', group: 'Conversions',
+    sigs: [[['string'], 'float']],
+    ev: ([a]) => fromText(a, 'float'),
+  },
+  asBoolean: {
+    label: 'as boolean', symbol: 'asBoolean', style: 'func', group: 'Conversions',
+    sigs: [[['string'], 'boolean'], [['integer'], 'boolean']],
+    ev([a], [p]) {
+      if (p === 'integer') return a === 0 ? 0 : a === 1 ? 1 : undefined
+      const l = String(a).trim().toLowerCase()
+      if (['true', 't', 'yes', 'y', '1', 'on'].includes(l)) return 1
+      if (['false', 'f', 'no', 'n', '0', 'off'].includes(l)) return 0
+      return undefined
+    },
+  },
+  asDate: {
+    label: 'as date', symbol: 'asDate', style: 'func', group: 'Conversions',
+    sigs: [[['string'], 'date']],
+    ev: ([a]) => fromText(a, 'date'),
+  },
+  asDatetime: {
+    label: 'as date and time', symbol: 'asDatetime', style: 'func', group: 'Conversions',
+    sigs: [[['string'], 'datetime'], [['date'], 'datetime']],
+    ev: ([a], [p]) => (p === 'date' ? a : fromText(a, 'datetime')),
+  },
+  asTime: {
+    label: 'as time', symbol: 'asTime', style: 'func', group: 'Conversions',
+    sigs: [[['string'], 'time']],
+    ev: ([a]) => fromText(a, 'time'),
   },
 
   year: {
@@ -669,6 +720,13 @@ export function makeTermEvaluator({ sorts, params, varValue, holds, aggregate })
   return {
     value,
     compare(n) {
+      // Labelled nulls (⊥n) are equal only to themselves.
+      const lab = (t) => t?.t === 'var' && varValue(t.id)?.labelled
+      if (lab(n.left) || lab(n.right)) {
+        const a = raw(n.left), b = raw(n.right)
+        if (a == null || b == null) return false
+        return n.op === '≈' ? a === b : n.op === '≉' ? a !== b : false
+      }
       const s = sorts.get(n)
       if (s == null) {
         const a = raw(n.left), b = raw(n.right)

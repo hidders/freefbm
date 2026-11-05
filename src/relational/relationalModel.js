@@ -10,7 +10,9 @@
 //   unwritten: [constraint], // those constraints (formulaSql.js may still
 //                            // write them as a CHECK or a violation query)
 //   (each table also has checks: [{ name, text, constraintId }], the formula
-//   constraints read from CHECK constraints)
+//   constraints read from CHECK constraints, and pkSource / uniqueSources
+//   (parallel to uniques): { ucId | constraintId, sqlName }, the element each
+//   key comes from; each fk has constraintId and sqlName)
 // }
 // col: { fact, table, vt, t (table role index), v (value role index), name,
 //        notNull, generated, pk, unique, fk }
@@ -26,7 +28,8 @@ export function relationalModel(state, schemaId) {
   const constraints = (state.constraints ?? []).filter(inSchema)
   const otById = new Map(ots.map(o => [o.id, o]))
 
-  const tables = ots.filter(o => o.kind === 'entity').map(e => ({ id: e.id, name: e.name, entity: e, columns: [], pk: null, uniques: [], fks: [], checks: [] }))
+  const tables = ots.filter(o => o.kind === 'entity').map(e => ({ id: e.id, name: e.name, entity: e, columns: [], pk: null, uniques: [], fks: [], checks: [],
+    pkSource: null, uniqueSources: [] }))
   const tableById = new Map(tables.map(t => [t.id, t]))
   const columnByFact = new Map()
   const notColumns = []
@@ -59,8 +62,10 @@ export function relationalModel(state, schemaId) {
 
   for (const col of columnByFact.values()) {
     const f = col.fact
-    if ((f.preferredUniqueness ?? []).some(u => u.length === 1 && u[0] === col.v)) col.table.pk = [col]
-    else if ((f.uniqueness ?? []).some(u => u.roles?.length === 1 && u.roles[0] === col.v)) col.table.uniques.push([col])
+    const uc = (f.uniqueness ?? []).find(u => u.roles?.length === 1 && u.roles[0] === col.v)
+    const source = { ucId: uc?.id ?? null, sqlName: uc?.sqlName ?? null }
+    if ((f.preferredUniqueness ?? []).some(u => u.length === 1 && u[0] === col.v)) { col.table.pk = [col]; col.table.pkSource = source }
+    else if (uc) { col.table.uniques.push([col]); col.table.uniqueSources.push(source) }
   }
   const fks = []
   const notExported = [], unwritten = []
@@ -69,14 +74,15 @@ export function relationalModel(state, schemaId) {
     if (c.constraintType === 'uniqueness') {
       const cols = asColumns(c.sequences?.[0])
       if (!cols) { skip(c, `external uniqueness constraint ${c.id} (not over the columns of one table)`); continue }
-      if (c.isPreferredIdentifier) cols[0].table.pk = cols
-      else cols[0].table.uniques.push(cols)
+      const source = { constraintId: c.id, sqlName: c.sqlName ?? null }
+      if (c.isPreferredIdentifier) { cols[0].table.pk = cols; cols[0].table.pkSource = source }
+      else { cols[0].table.uniques.push(cols); cols[0].table.uniqueSources.push(source) }
       continue
     }
     if (c.constraintType === 'subset' && c.sequences?.length === 2) {
       const from = asColumns(c.sequences[0]), to = asColumns(c.sequences[1])
       if (from && to && from.length === to.length) {
-        const fk = { from, to, fromTable: from[0].table, toTable: to[0].table, constraintId: c.id }
+        const fk = { from, to, fromTable: from[0].table, toTable: to[0].table, constraintId: c.id, sqlName: c.sqlName ?? null }
         fks.push(fk)
         fk.fromTable.fks.push(fk)
         continue
@@ -109,7 +115,46 @@ export function relationalModel(state, schemaId) {
     for (const u of t.uniques) if (u.length === 1) u[0].unique = true
     for (const fk of t.fks) for (const c of fk.from) c.fk = true
   }
+  nameKeys(tables, fks)
   return { tables, columnByFact, fks, notColumns, notExported, unwritten }
+}
+
+// PostgreSQL's default name for a constraint of table over cols (truncated to
+// 63 bytes, as PostgreSQL does): <table>_<col>_…_<suffix>, or <table>_<suffix>
+// for a primary key and a CHECK over no single column.
+export function defaultConstraintName(table, cols, suffix) {
+  const parts = suffix === 'pkey' || !cols?.length ? [table] : [table, ...cols]
+  const name = `${parts.join('_')}_${suffix}`
+  return name.length > 63 ? `${parts.join('_').slice(0, 63 - suffix.length - 1)}_${suffix}` : name
+}
+
+// Names the keys and foreign keys: their own name (sqlName, from the script)
+// or PostgreSQL's default. Primary and unique keys are indexes, so their names
+// are unique in the schema; foreign key names are unique per table. A name
+// already taken gets a number, as PostgreSQL does (film_pkey1), and is then no
+// longer marked explicit. Sets t.pkName, t.uniqueNames (parallel to uniques)
+// and fk.name, each { name, explicit }.
+function nameKeys(tables, fks) {
+  const take = (used, src, def) => {
+    let name = src?.sqlName || def
+    const explicit = !!src?.sqlName && !used.has(name)
+    for (let i = 1; used.has(name); i++) name = `${src?.sqlName || def}${i}`
+    used.add(name)
+    return { name, explicit }
+  }
+  const indexes = new Set()
+  // Explicit names first, so a default never takes a name the script gave.
+  const ordered = (items) => [...items.filter(x => x.src?.sqlName), ...items.filter(x => !x.src?.sqlName)]
+  const keys = tables.flatMap(t => [
+    ...(t.pk ? [{ t, src: t.pkSource, cols: t.pk, suffix: 'pkey', set: (n) => { t.pkName = n } }] : []),
+    ...t.uniques.map((u, i) => ({ t, src: t.uniqueSources[i], cols: u, suffix: 'key', set: (n) => { (t.uniqueNames ??= [])[i] = n } })),
+  ])
+  for (const k of ordered(keys)) k.set(take(indexes, k.src, defaultConstraintName(k.t.name, k.cols.map(c => c.name), k.suffix)))
+  const perTable = new Map()
+  for (const fk of ordered(fks.map(fk => ({ fk, src: fk }))).map(x => x.fk)) {
+    if (!perTable.has(fk.fromTable)) perTable.set(fk.fromTable, new Set())
+    fk.name = take(perTable.get(fk.fromTable), fk, defaultConstraintName(fk.fromTable.name, fk.from.map(c => c.name), 'fkey'))
+  }
 }
 
 // Whether the columns are a key (primary or unique) of their table.

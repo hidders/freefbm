@@ -7,6 +7,16 @@ import {
 import { factAsDrawn, defaultFrequencyPos } from '../../utils/frequencyPlacement.js'
 import { isDeonticUniqueness } from '../../logic/modality.js'
 
+// The ORM2 element an object of the relational face is selected through.
+function rmPrimary(o) {
+  if (o.kind === 'table' || o.kind === 'view') return [o.entityId, 'entity']
+  if (o.kind === 'column') return [o.factId, 'fact']
+  if (o.kind === 'notNull') return [o.rmId.slice(3), 'fact']
+  if (o.kind === 'check' && /^ck:[^:]+:(type|role)$/.test(o.rmId)) return [o.rmId.split(':')[1], 'fact']
+  const m = o.members?.[0]
+  return m ? [m, 'constraint'] : [null, null]
+}
+
 export function createSelectionSlice(set, get) {
   return {
     // ── selection ────────────────────────────────────────────────────────────
@@ -27,6 +37,21 @@ export function createSelectionSlice(set, get) {
             selectedMandatoryDot: null, selectedInternalFrequency: null,
             selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
             selectedOccurrenceId: occurrenceId, multiSelectedOccurrenceIds: [] })
+    },
+
+    // Selects an object of a relational schema's relational face
+    // (relationalView.js): the ORM2 element it stands on is selected as usual,
+    // so the canvas highlights it, and selectedRm says which relational object
+    // the Inspector shows (while that element stays selected).
+    selectRm(obj) {
+      if (!obj) return
+      let [id, kind] = rmPrimary(obj)
+      // A one-column key is an internal uniqueness constraint: select its column.
+      if (kind === 'constraint' && !get().constraints.some(c => c.id === id) && obj.columns?.length)
+        [id, kind] = [obj.columns[0].split(':')[1], 'fact']
+      if (!id) return
+      get().select(id, kind)
+      set({ selectedRm: { rmId: obj.rmId, id } })
     },
 
     clearSelection() {

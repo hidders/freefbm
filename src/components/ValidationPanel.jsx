@@ -4,6 +4,8 @@ import { VALIDATION_CATEGORIES } from '../utils/validation.js'
 import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 import { hasTextSelection } from '../utils/textPanel.js'
 import { activeSchemaIdOf } from '../store/storeHelpers'
+import { activeRelationalFace } from '../relational/face'
+import { relationalView, rmObjectOf } from '../relational/relationalView'
 
 const FONT   = "'Segoe UI', Helvetica, Arial, sans-serif"
 const HDR_H  = 24
@@ -182,8 +184,14 @@ export default function ValidationPanel() {
     byCategory[e.category].push(e)
   }
   // A click that ends a text selection only selects; see utils/textPanel.js.
+  // A relational schema showing its tables names each issue's table, column
+  // or key first, and a click selects that object (RM schemas, step 4).
+  const rmView = activeRelationalFace(store) ? relationalView(useOrmStore.getState(), activeSchemaIdOf(store)) : null
+  const rmOf = (e) => (rmView && e.elementId ? rmObjectOf(rmView, e.elementId) : null)
   const navigate = (e) => {
     if (hasTextSelection()) return
+    const rmObj = rmOf(e)
+    if (rmObj) { store.navigateToElement(e.elementId, e.elementKind); useOrmStore.getState().selectRm(rmObj); return }
     // A mapping rule: the Mappings tab, with the rule open in the rule editor.
     if (e.elementKind === 'mappingRule') {
       const s = useOrmStore.getState()
@@ -330,7 +338,7 @@ export default function ValidationPanel() {
                       <span style={{ color: SEV_COLOUR[e.severity], fontWeight: 700, fontSize: 9, marginTop: 2, flexShrink: 0 }}>
                         {SEV_ICON[e.severity]}
                       </span>
-                      <span style={{ fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.4 }}>{multiSchema && allSchemas && schemaNameOf(e) ? `${schemaNameOf(e)}: ${e.message}` : e.message}</span>
+                      <span style={{ fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.4 }}>{multiSchema && allSchemas && schemaNameOf(e) ? `${schemaNameOf(e)}: ` : ''}{rmOf(e) && <b style={{ fontWeight: 600 }}>{rmOf(e).label}: </b>}{e.message}</span>
                     </div>
                   ))}
                 </div>
