@@ -165,6 +165,10 @@ export function makePopulationEvaluator(rawData) {
     return byPos.get(pos)
   }
 
+  // Instances of a type by their data value (valueKey), per instance list
+  // and type list (the value of a cell depends on the variable's types).
+  const valueIndexes = new WeakMap()
+
   // ── Evaluating formulas ──
   //
   // env: varId → { cell, key, typeIds }. failure records the first error met
@@ -194,6 +198,51 @@ export function makePopulationEvaluator(rawData) {
       if (!kindName) return { raw }
       const p = parseLiteral(raw, VALUE_KINDS[kindName])
       return 'value' in p ? { value: p.value, raw } : undefined
+    }
+    // A key for the data value of a variable such that two variables are ≈
+    // under the comparison's sort exactly when their keys are equal, or
+    // undefined (no value, or a sort whose equality is not plain ===).
+    const PLAIN = VALUE_KINDS.string.equal
+    const valueKey = (env, id, sort) => {
+      const v = varValue(env, id)
+      if (!v) return undefined
+      if (v.labelled) return `l:${v.raw}`
+      if (sort == null) {
+        const n = Number(v.raw)
+        return v.raw !== '' && Number.isFinite(n) ? `n:${n}` : `s:${v.raw}`
+      }
+      if (!('value' in v) || VALUE_KINDS[sort]?.equal !== PLAIN) return undefined
+      return `${typeof v.value}:${String(v.value)}`
+    }
+    // x ≈ w (variables) in the conjuncts with x bound and a sort whose
+    // values have keys: { other: x, sort } or null.
+    const eqBound = (conjuncts, id, env) => {
+      for (const c of conjuncts) {
+        if (c.t !== 'vcmp' || c.op !== '≈' || c.left?.t !== 'var' || c.right?.t !== 'var') continue
+        const o = c.left.id === id ? c.right.id : c.right.id === id ? c.left.id : null
+        if (o == null || o === id || !env.has(o)) continue
+        const sort = typing.sorts.has(c) ? typing.sorts.get(c) : null
+        if (sort != null && VALUE_KINDS[sort]?.equal !== PLAIN) continue
+        return { other: o, sort }
+      }
+      return null
+    }
+    const valueIndex = (typeIds, sort) => {
+      const instances = domain(typeIds[0])
+      let byMode = valueIndexes.get(instances)
+      if (!byMode) { byMode = new Map(); valueIndexes.set(instances, byMode) }
+      const mode = `${typeIds.join(',')}|${sort ?? ''}`
+      if (!byMode.has(mode)) {
+        const ix = new Map()
+        for (const cell of instances) {
+          const k = valueKey(new Map([['w', { cell, key: keyOf(cell), typeIds }]]), 'w', sort)
+          if (k === undefined) continue
+          if (!ix.has(k)) ix.set(k, [])
+          ix.get(k).push(cell)
+        }
+        byMode.set(mode, ix)
+      }
+      return byMode.get(mode)
     }
     const terms = (env) => makeTermEvaluator({
       sorts: typing.sorts, params: typing.params,
@@ -347,6 +396,16 @@ export function makePopulationEvaluator(rawData) {
             go(new Map(env).set(w.id, { cell: other.cell, key: keyOf(other.cell), typeIds: w.typeIds }))
             return
           }
+        }
+        // A variable that x ≈ w makes equal to a bound one: only the
+        // instances with that value, through an index.
+        for (const w of open) {
+          const hit = eqBound(conjuncts, w.id, env)
+          if (!hit) continue
+          const want = valueKey(env, hit.other, hit.sort)
+          if (want === undefined) continue
+          for (const cell of valueIndex(w.typeIds, hit.sort).get(want) ?? []) go(new Map(env).set(w.id, { cell, key: keyOf(cell), typeIds: w.typeIds }))
+          return
         }
         // Open variables last: another variable may bind them.
         const v = (openTypes && open.find(w => !openTypes.has(w.typeIds[0]))) || open[0]
