@@ -6,6 +6,7 @@ import { checkViewRule, viewRuleEntries, viewCoverage, viewState, runView, headI
 import { IssueList } from './MappingFormula.jsx'
 import { resultIssues, issueLines } from '../mapping/exchanges.js'
 import { Violations } from './Exchanges.jsx'
+import { ContractReport, runContract } from './ContractReport.jsx'
 import { withRunApplied } from '../mapping/runMapping.js'
 import { Formula, Sentence } from './ConstraintsTab.jsx'
 import { useVerbalisation } from '../verbalisation/workbench.js'
@@ -108,6 +109,7 @@ function ViewBox({ view: v, state, name, run, onRun, onApplied, onCloseRun, styl
     setPick('')
   }
   const missingErrors = coverage.filter(c => c.severity === 'error')
+  const contract = useOrmStore(s => s.viewContracts?.[v.id])
   return (
     <div className="view-mapping" style={{ marginBottom: 14, border: '1px solid var(--border-soft)', borderRadius: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '4px 8px', background: 'var(--bg-raised)', borderBottom: '1px solid var(--border-soft)' }}>
@@ -125,8 +127,10 @@ function ViewBox({ view: v, state, name, run, onRun, onApplied, onCloseRun, styl
         </select>
         <button style={btn} title="Show this view as a diagram: both schemas side by side, each rule linked to the elements it reads and defines" onClick={() => act().openViewDiagram(v.id)}>Diagram</button>
         <button style={btn} title={`Build the population of ${name(v.targetSchemaId)} from that of ${name(v.sourceSchemaId)}`} onClick={onRun}>Run ⇒</button>
+        <button style={btn} title={`Check which constraints of ${name(v.targetSchemaId)} the constraints of ${name(v.sourceSchemaId)} guarantee through this view, and what the supplier must also guarantee`} onClick={() => runContract(v)}>Contract</button>
         <button style={btn} title="Delete this view and its rules" onClick={() => act().deleteView(v.id)}>Delete</button>
       </div>
+      {contract && <ContractReport contract={contract} view={v} name={name} />}
       {run && <ViewRunReport run={run} view={v} name={name} onApply={() => { act().applyView(v.id); onApplied() }} onClose={onCloseRun} />}
       {rules.length === 0 && <div style={{ padding: '6px 8px', color: 'var(--ink-muted)' }}>No rules yet: pick an element of {name(v.targetSchemaId)} under + Rule for….</div>}
       {rules.map(({ r, issues, entries }, k) => {
