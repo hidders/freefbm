@@ -8,9 +8,32 @@ import {
   propagateValueToPlayer,
   findRolePlayer,
 } from '../../utils/refMode.js'
+import { tableShape, withRecord, withoutRecord } from '../../relational/records.js'
 
 export function createPopulationSlice(set, get) {
   return {
+    // ── records of a relational schema's tables (relational/records.js) ────
+    // Replaces the record `oldCell` (null: adds one) of table `tableId` by one
+    // with these column values ({ factId: value }). Returns { cell } or { error }.
+    setTableRecord(schemaId, tableId, oldCell, values) {
+      const s = get()
+      const shape = tableShape(s, schemaId, tableId)
+      if (!shape) return { error: 'No such table.' }
+      const r = withRecord(s, shape, oldCell, values)
+      if (r.error) return r
+      set({ populations: r.populations, factPopulations: r.factPopulations, isDirty: true })
+      return { cell: r.cell }
+    },
+    deleteTableRecord(schemaId, tableId, cell) {
+      const s = get()
+      const shape = tableShape(s, schemaId, tableId)
+      if (!shape) return { error: 'No such table.' }
+      const r = withoutRecord(s, shape, cell)
+      if (r.error) return r
+      set({ populations: r.populations, factPopulations: r.factPopulations, isDirty: true })
+      return {}
+    },
+
     // ── populations (sample data per object type) ──────────────────────────
     addPopulationInstance(otId, value = '') {
       set(s => {

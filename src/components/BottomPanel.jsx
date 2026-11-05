@@ -7,6 +7,8 @@ import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 import ConstraintsTab from './ConstraintsTab.jsx'
 import MappingsTab from './MappingsTab.jsx'
 import { makePopulationEvaluator, formatCell } from '../logic/derivedPopulation.js'
+import RelationalPopulation from './RecordGrid'
+import { activeRelationalFace } from '../relational/face'
 import Splitter from './Splitter.jsx'
 
 const MIN_HEIGHT = 80
@@ -142,6 +144,13 @@ export default function BottomPanel() {
 
 // ── Population tab ─────────────────────────────────────────────────────────
 function PopulationTab() {
+  // A relational schema showing its tables: the records of a table.
+  const relational = useOrmStore(s => activeRelationalFace(s))
+  if (relational) return <RelationalPopulation />
+  return <OrmPopulationTab />
+}
+
+function OrmPopulationTab() {
   const store = useScopedStore()
   const { selectedId, selectedRole, selectedKind } = store
 
