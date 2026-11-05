@@ -37,12 +37,13 @@ export default function StatusBar() {
   const isSel = store.tool === 'select'
   // An edit of a relational schema was refused (ormStore's set).
   const [, tick] = React.useReducer(x => x + 1, 0)
-  const refused = store.readOnlyNotice && Date.now() - store.readOnlyNotice < NOTICE_MS
+  const notice = store.readOnlyNotice
+  const refused = notice && Date.now() - notice.at < NOTICE_MS
   React.useEffect(() => {
     if (!refused) return
-    const t = setTimeout(tick, NOTICE_MS - (Date.now() - store.readOnlyNotice) + 20)
+    const t = setTimeout(tick, NOTICE_MS - (Date.now() - notice.at) + 20)
     return () => clearTimeout(t)
-  }, [store.readOnlyNotice, refused])
+  }, [notice, refused])
 
   // ── Tier 4a: subtype endpoint-pick mode ──────────────────────────────────
   if (store.linkDraft?.type === 'subtypeEndpointPick') {
@@ -157,7 +158,9 @@ export default function StatusBar() {
         background: 'var(--bg-surface)', borderTop: '1px solid var(--border-soft)',
         flexShrink: 0 }}>
         <span style={{ fontSize: 11, color: 'var(--danger)', flex: 1, fontWeight: 600 }}>
-          A relational schema is read-only · Transform… changes it, as a new version with a mapping from this one
+          {notice.reason === 'locked'
+            ? `The mapping ${notice.mapping} locks this schema to constraints only · add constraints, or unlock it in the Mappings tab`
+            : 'A relational schema is read-only · Transform… changes it, as a new version with a mapping from this one'}
         </span>
         <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{Math.round(store.zoom * 100)}%</span>
       </div>

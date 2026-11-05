@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
 import { EMPTY, stampSchemaIds, scopeToSchema } from './storeHelpers'
-import { editsRelationalSchema } from '../relational/face'
+import { refusedEdit } from '../mapping/pairLock'
 import { createModelSlice } from './slices/modelSlice'
 import { createElementSlice } from './slices/elementSlice'
 import { createPopulationSlice } from './slices/populationSlice'
@@ -18,22 +18,24 @@ export { subtypeKindOf } from './storeHelpers'
 // constraint into the graphical constraint it says, and populations (records
 // are not read-only).
 const RELATIONAL_EDITS = ['addTableRule', 'updateTableRules', 'updateTableRule', 'deleteTableRule', 'addTableRuleColumn',
-  'setTablePrimaryKey', 'addDerivedTable', 'addCarriedConstraint', 'formulaToGraphical', 'applyMappingRun', 'loadSampleRows']
+  'setTablePrimaryKey', 'addDerivedTable', 'addCarriedConstraint', 'formulaToGraphical', 'applyMappingRun', 'loadSampleRows', 'addSimpleConstraint']
 
 export const useOrmStore = create((rawSet, get) => {
   // Every update passes through here so that new elements and diagrams get
   // the active schema's id (stampSchemaIds), whichever action made them.
-  // A relational schema is read-only (relational/face.js): an update that
-  // edits one is dropped, with a notice in the status bar, unless it runs as
+  // A relational schema is read-only (relational/face.js), and the schemas of
+  // a locked mapping take only new constraints (mapping/pairLock.js): an
+  // update that edits one otherwise is dropped, with a notice in the status bar, unless it runs as
   // part of one undo step (a transformation, an import, Fold…; historyBatch),
   // inside an action listed in RELATIONAL_EDITS, or replaces the schemas
   // (opening a file, deleting a schema).
   const set = (partial, replace) => {
     const prev = get()
     const next = stampSchemaIds(typeof partial === 'function' ? partial(prev) : partial, prev)
-    if (next && !replace && !(prev.historyBatch > 0) && !(prev.relationalEdits > 0)
-      && !(next.schemas && next.schemas !== prev.schemas) && editsRelationalSchema(prev, next)) {
-      rawSet({ readOnlyNotice: Date.now() })
+    const refused = next && !replace && !(prev.historyBatch > 0) && !(prev.relationalEdits > 0)
+      && !(next.schemas && next.schemas !== prev.schemas) ? refusedEdit(prev, next) : null
+    if (refused) {
+      rawSet({ readOnlyNotice: { at: Date.now(), ...refused } })
       return
     }
     rawSet(next, replace)
