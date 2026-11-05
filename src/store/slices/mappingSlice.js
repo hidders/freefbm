@@ -17,7 +17,8 @@ import { mkLock } from '../../mapping/pairLock.js'
 import { withSimple } from '../../mapping/carry.js'
 import { withTableConstraints } from '../../relational/tableUnits.js'
 import { relationalView, rmLabel } from '../../relational/relationalView.js'
-import { uid } from '../storeHelpers'
+import { uid, mappingOfDiagram, isViewMapping } from '../storeHelpers'
+import { viewRuleElements } from '../../mapping/views.js'
 
 // The constraints of the old version (schemaId) about the given elements
 // that the mapping m loses, each added to the new version as its
@@ -192,7 +193,8 @@ export const createMappingSlice = (set, get) => {
     // rules name if it has none yet. Returns the diagram id.
     openMappingDiagram(mappingId) {
       const s = get()
-      const m = s.mappings?.find(x => x.id === mappingId)
+      // A view's diagram too (mapping/views.js): diagram.mappingId is the view's id.
+      const m = s.mappings?.find(x => x.id === mappingId) ?? s.views?.find(x => x.id === mappingId)
       if (!m) return null
       const existing = s.diagrams.find(d => d.mappingId === mappingId)
       if (existing) { get().setActiveDiagram(existing.id); return existing.id }
@@ -220,13 +222,14 @@ export const createMappingSlice = (set, get) => {
     addMappingRuleElements(diagramId) {
       const s0 = get()
       const diag = s0.diagrams.find(d => d.id === diagramId)
-      const m = s0.mappings?.find(x => x.id === diag?.mappingId)
+      const m = mappingOfDiagram(s0, diag)
       if (!diag || !m) return 0
+      const view = isViewMapping(s0, m)
       const schemaOf = new Map()
       for (const k of ['objectTypes', 'facts', 'constraints']) for (const x of s0[k]) schemaOf.set(x.id, x.schemaId)
       const wanted = { source: new Set(), target: new Set() }
       for (const r of m.rules) {
-        const els = ruleElements(r)
+        const els = view ? viewRuleElements(s0, m, r) : ruleElements(r)
         for (const side of ['source', 'target']) {
           const e = els[side]
           for (const id of [...e.typeIds, ...e.factIds, ...e.tableIds]) wanted[side].add(id)

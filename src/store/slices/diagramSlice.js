@@ -3,7 +3,7 @@ import {
   mkDiagram, occOf, inDiag, cInDiag, cOccOf,
   addOccIfAbsent, addOwnedRefModeOccsIfAbsent, mkOcc,
   normalizeStEps, syncConstraints, computeCascadeRemove, rmCOcc,
-  mkUniqueness, withMandatoryId,
+  mkUniqueness, withMandatoryId, mappingOfDiagram,
 } from '../storeHelpers'
 import { diagramUnits, tableCompanions, tableRemoval, completeTables, withTableConstraints } from '../../relational/tableUnits.js'
 
@@ -303,7 +303,7 @@ export function createDiagramSlice(set, get) {
         const el = s.objectTypes.find(o => o.id === baseId) ?? s.facts.find(f => f.id === baseId)
           ?? s.subtypes.find(st => st.id === baseId) ?? s.constraints.find(c => c.id === baseId)
         // A mapping diagram shows both schemas of its mapping.
-        const m = target?.mappingId ? s.mappings?.find(x => x.id === target.mappingId) : null
+        const m = mappingOfDiagram(s, target)
         const allowed = m ? [m.sourceSchemaId, m.targetSchemaId] : [target?.schemaId]
         if (target && el && el.schemaId && target.schemaId && !allowed.includes(el.schemaId)) return
       }

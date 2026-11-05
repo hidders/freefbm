@@ -1,6 +1,7 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useOrmStore, useOrmStoreIgnoring, subtypeKindOf } from '../store/ormStore'
+import { mappingOfDiagram } from '../store/storeHelpers'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { useContextMenuHandlers } from '../hooks/useContextMenuHandlers'
 import ObjectTypeNode, { computeOtSize, entityBounds, collapsedRefValueRole } from './ObjectTypeNode'
@@ -1383,7 +1384,7 @@ export default function Canvas() {
           <MappingTints/>
           {/* Mapping diagrams: a relational side's tables as ERD boxes */}
           {(erdSchemaIds ?? []).map(sid => {
-            const m = store.mappings?.find(x => x.id === activeDiagram?.mappingId)
+            const m = mappingOfDiagram(store, activeDiagram)
             return <ErdView key={sid} schemaId={sid} tint={m && m.sourceSchemaId !== m.targetSchemaId ? (sid === m.targetSchemaId ? 'target' : 'source') : null}/>
           })}
           {/* Note connectors — rendered below notes so notes sit on top */}

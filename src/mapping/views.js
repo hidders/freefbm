@@ -36,6 +36,7 @@ import { hole, checkRule as checkTypeRule, whyNotDerivableType, upgradeRule, der
 import { checkFactRule, emptyFactRule, factDerivationEntries } from '../logic/factDerivation.js'
 import { makeContext, readingText } from '../logic/constraintFormulas.js'
 import { withDerivedPopulations } from '../logic/derivedPopulation.js'
+import { formulaToString } from '../logic/renderFormula.js'
 import { identifyingFactIds } from '../utils/refMode.js'
 
 export const mkView = (name, sourceSchemaId, targetSchemaId) =>
@@ -268,4 +269,44 @@ export function runView(state, view) {
     log.push({ level: 'warning', text: `${elementName(el, state, ctx)} has no rule, so it is empty, but it has a mandatory role` })
   }
   return { schemaId: view.targetSchemaId, populations, factPopulations, rules, counts, log }
+}
+
+// ── Diagrams ────────────────────────────────────────────────────────────────
+
+// The elements a rule names, by side, in the shape of mapping.js's
+// ruleElements (for mapping diagrams): the head on the target side, and what
+// the rule reads on the side of its schema.
+export function viewRuleElements(state, view, rule) {
+  const side = () => ({ typeIds: [], factIds: [], tableIds: [], columnFactIds: [], varTypeIds: [] })
+  const out = { source: side(), target: side() }
+  const where = new Map()
+  for (const o of state.objectTypes ?? []) where.set(o.id, { schemaId: o.schemaId, kind: 'type' })
+  for (const f of state.facts ?? []) where.set(f.id, { schemaId: f.schemaId, kind: 'fact' })
+  const put = (id, asVar = false) => {
+    const w = where.get(id)
+    if (!w) return
+    const s = w.schemaId === view.targetSchemaId ? out.target : w.schemaId === view.sourceSchemaId ? out.source : null
+    if (!s) return
+    const list = asVar ? s.varTypeIds : w.kind === 'fact' ? s.factIds : s.typeIds
+    if (!list.includes(id)) list.push(id)
+  }
+  const walk = (n) => {
+    if (!n || typeof n !== 'object') return
+    if (Array.isArray(n)) { n.forEach(walk); return }
+    if (n.t === 'fact' && n.factId) put(String(n.factId).split('_il_')[0])
+    if (n.t === 'type' && n.typeId) put(n.typeId)
+    if (n.v?.typeId) put(n.v.typeId, true)
+    if (n.t === 'agg' || n.t === 'tc') for (const v of n.vars ?? []) if (v.typeId) put(v.typeId, true)
+    for (const [k, c] of Object.entries(n)) if (k !== 'v' && k !== 'vars') walk(c)
+  }
+  walk(rule.rule)
+  for (const v of rule.rule?.extraVars ?? []) put(v.typeId, true)
+  put(headId(rule))
+  return out
+}
+
+// A view's rule as text, for a tooltip: the formula of its head as derived by it.
+export function viewRuleText(state, view, rule) {
+  const e = viewRuleEntries(state, view, rule).find(x => x.formula)
+  return e ? formulaToString(e.formula, makeContext(viewState(state, view))) : 'no formula yet'
 }

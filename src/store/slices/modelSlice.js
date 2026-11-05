@@ -774,7 +774,7 @@ export function createModelSlice(set, get) {
       // A mapping diagram whose mapping is gone becomes an ordinary diagram.
       const mappings = loadMappings(d.schema?.mappings, new Set(scoped.schemas.map(x => x.id)), scoped)
       const views = loadViews(d.schema?.views, new Set(scoped.schemas.map(x => x.id)))
-      const mappingIds = new Set(mappings.map(m => m.id))
+      const mappingIds = new Set([...mappings, ...views].map(m => m.id))
       scoped.diagrams = scoped.diagrams.map(dg => {
         if (!dg.mappingId || mappingIds.has(dg.mappingId)) return dg
         const { mappingId: _gone, ...rest } = dg

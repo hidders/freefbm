@@ -16,17 +16,21 @@ export const PROFILE_LABELS = {
 // schema's diagrams, double-clicking renames it, and an empty schema can be
 // removed with its ✕.
 export default function SchemaStrip() {
-  const { schemas, activeId, counts, mappings, activeMappingId, broken } = useOrmStore(useShallow(s => ({
+  const { schemas, activeId, counts, mappings: twoWay, views, activeMappingId, broken } = useOrmStore(useShallow(s => ({
     schemas: s.schemas ?? [],
     activeId: activeSchemaIdOf(s),
     counts: countsKey(s),
     mappings: s.mappings ?? [],
+    views: s.views ?? [],
     activeMappingId: s.diagrams.find(d => d.id === s.activeDiagramId)?.mappingId ?? null,
     broken: brokenKey(s),
   })))
   const [editingId, setEditingId] = useState(null)
   const [draft, setDraft] = useState('')
   const inputRef = useRef(null)
+  // Views (one way, mapping/views.js) are listed with the mappings.
+  const viewIds = new Set(views.map(v => v.id))
+  const mappings = [...twoWay, ...views]
 
   useEffect(() => {
     if (editingId && inputRef.current) { inputRef.current.focus(); inputRef.current.select() }
@@ -105,7 +109,7 @@ export default function SchemaStrip() {
                 onClick={e => {
                   e.stopPropagation()
                   const st = useOrmStore.getState()
-                  const ms = (st.mappings ?? []).filter(m => m.sourceSchemaId === sc.id || m.targetSchemaId === sc.id)
+                  const ms = [...(st.mappings ?? []), ...(st.views ?? [])].filter(m => m.sourceSchemaId === sc.id || m.targetSchemaId === sc.id)
                   if (size > 0 || ms.length) {
                     const parts = [size ? `its ${size} element${size === 1 ? '' : 's'}` : null,
                       ms.length ? `${ms.length === 1 ? 'the mapping' : `the ${ms.length} mappings`} ${ms.map(m => `“${m.name}”`).join(', ')}` : null].filter(Boolean)
@@ -129,12 +133,14 @@ export default function SchemaStrip() {
         {mappings.map(m => {
           const active = m.id === activeMappingId
           const nameOf = (id) => schemas.find(x => x.id === id)?.name ?? '?'
+          const isView = viewIds.has(m.id)
           return (
             <div key={m.id}
               data-mapping-id={m.id}
               className="mapping-chip"
               onClick={() => useOrmStore.getState().openMappingDiagram(m.id)}
-              title={`${nameOf(m.sourceSchemaId)} ⟺ ${nameOf(m.targetSchemaId)} · ${m.rules.length} rule${m.rules.length === 1 ? '' : 's'}${brokenRules[m.id] ? `, ${brokenRules[m.id]} broken (see Validation › Mapping Rules)` : ''}. Click for its diagram.`}
+              data-view={isView ? 'true' : undefined}
+              title={`${nameOf(m.sourceSchemaId)} ${isView ? '⇒' : '⟺'} ${nameOf(m.targetSchemaId)}${isView ? ' (a view, one way)' : ''} · ${m.rules.length} rule${m.rules.length === 1 ? '' : 's'}${brokenRules[m.id] ? `, ${brokenRules[m.id]} broken (see Validation › Mapping Rules)` : ''}. Click for its diagram.`}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5,
                 height: 22, padding: '0 8px 0 3px', borderRadius: 11,
@@ -148,7 +154,7 @@ export default function SchemaStrip() {
               <span style={{
                 fontSize: 9, fontWeight: 700, color: '#fff', borderRadius: 8, padding: '1px 5px', lineHeight: '12px',
                 background: 'linear-gradient(90deg, var(--map-source) 50%, var(--map-target) 50%)',
-              }}>⟺</span>
+              }}>{isView ? '⇒' : '⟺'}</span>
               <span>{m.name}</span>
               {brokenRules[m.id] > 0 && <span className="mapping-broken" style={{
                 fontSize: 9, fontWeight: 700, color: '#fff', background: 'var(--danger, #dc2626)', borderRadius: 7,

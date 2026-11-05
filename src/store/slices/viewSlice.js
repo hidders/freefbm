@@ -21,10 +21,26 @@ export const createViewSlice = (set, get) => {
     updateView(id, patch) {
       mapViews(vs => vs.map(v => (v.id === id ? { ...v, ...patch } : v)))
     },
+    // Its diagrams go too; leave them first if one is active. One undo step.
     deleteView(id) {
-      mapViews(vs => vs.filter(v => v.id !== id))
+      const s = get()
+      const v = s.views?.find(x => x.id === id)
+      const active = s.diagrams.find(d => d.id === s.activeDiagramId)
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        if (active?.mappingId === id) {
+          const back = s.diagrams.find(d => !d.mappingId && d.schemaId === v?.sourceSchemaId) ?? s.diagrams.find(d => !d.mappingId)
+          if (back) get().setActiveDiagram(back.id)
+        }
+        set(st => ({ diagrams: st.diagrams.filter(d => d.mappingId !== id), views: (st.views ?? []).filter(x => x.id !== id), isDirty: true }))
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
       if (get().ruleEditor?.viewId === id) set({ ruleEditor: null })
     },
+    // The view's diagram: both schemas, each rule a node linked to the
+    // elements it names (MappingLayer.jsx); made on first use.
+    openViewDiagram(id) { return get().openMappingDiagram(id) },
     // Adds a rule for an element of the target (head: { typeId } | { factId })
     // and opens it in the rule editor; returns its id. An element that has a
     // rule already opens that one.

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
-import { activeSchemaIdOf } from '../store/storeHelpers'
+import { activeSchemaIdOf, mappingOfDiagram, isViewMapping } from '../store/storeHelpers'
 import { NewSchemaMenu } from './SchemaStrip'
 import { isErdDiagram } from './ErdView'
 
@@ -13,11 +13,12 @@ export default function DiagramTabs() {
   const activeSchemaId  = activeSchemaIdOf(store)
   const activeDiagramId = store.activeDiagramId
   const activeDiagram   = allDiagrams.find(d => d.id === activeDiagramId)
-  const mapping         = activeDiagram?.mappingId ? store.mappings?.find(m => m.id === activeDiagram.mappingId) : null
+  const mapping         = mappingOfDiagram(store, activeDiagram)
+  const isView          = isViewMapping(store, mapping)
   const diagrams        = mapping
     ? allDiagrams.filter(d => d.mappingId === mapping.id)
     : allDiagrams.filter(d => (!activeSchemaId || d.schemaId === activeSchemaId) && !d.mappingId)
-  const singleSchema    = (store.schemas?.length ?? 1) <= 1 && !(store.mappings?.length)
+  const singleSchema    = (store.schemas?.length ?? 1) <= 1 && !(store.mappings?.length) && !(store.views?.length)
   const isRelational    = !mapping && store.schemas?.find(x => x.id === activeDiagram?.schemaId)?.profile === 'relational'
   const schemaName      = (id) => store.schemas?.find(x => x.id === id)?.name ?? '?'
 
@@ -292,9 +293,9 @@ export default function DiagramTabs() {
         {mapping && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--ink-3)', whiteSpace: 'nowrap', marginRight: 8 }}>
             <span title="This diagram draws a mapping: elements of both schemas, and each rule as a node linked to the elements its patterns name">
-              Mapping <b style={{ color: 'var(--ink-1)', fontWeight: 600 }}>{mapping.name}</b>:{' '}
+              {isView ? 'View' : 'Mapping'} <b style={{ color: 'var(--ink-1)', fontWeight: 600 }}>{mapping.name}</b>:{' '}
               <span style={{ color: 'var(--map-source)', fontWeight: 600 }}>{schemaName(mapping.sourceSchemaId)}</span>
-              {' ⟺ '}
+              {isView ? ' ⇒ ' : ' ⟺ '}
               <span style={{ color: 'var(--map-target)', fontWeight: 600 }}>{schemaName(mapping.targetSchemaId)}</span>
             </span>
             <span title="Add the elements the rules name that this diagram doesn't show yet"
