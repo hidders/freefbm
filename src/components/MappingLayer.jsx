@@ -5,6 +5,7 @@ import { useDiagramElements } from '../hooks/useDiagramElements'
 import { mappingOfDiagram } from '../store/storeHelpers'
 import { entityBounds } from './ObjectTypeNode'
 import { factBounds } from './FactTypeNode'
+import { mappingErdBoxes } from './ErdView'
 import { ruleElements, checkRule, sideContext, sideTokens, tokensText, SIDES, sideSchemaId } from '../mapping/mapping.js'
 
 // ── Mapping diagrams ────────────────────────────────────────────────────────
@@ -25,7 +26,7 @@ function useActiveMapping() {
 }
 
 // Bounds of a shown object type or fact type occurrence.
-const boundsOf = (el) => (el.arity != null && el.roles ? factBounds(el) : entityBounds(el))
+const boundsOf = (el) => (el._bounds ?? (el.arity != null && el.roles ? factBounds(el) : entityBounds(el)))
 
 // Tints each element by its side: source blue, target green.
 export function MappingTints() {
@@ -71,7 +72,7 @@ const centroid = (pts) => (pts.length
 // The rules of the active mapping diagram as nodes with connectors.
 export function MappingRules() {
   const mapping = useActiveMapping()
-  const { objectTypes, facts, diagram, collapsedRefFacts } = useDiagramElements()
+  const { objectTypes, facts, diagram, collapsedRefFacts, erdSchemaIds } = useDiagramElements()
   const state = useOrmStore(useShallow(s => ({
     schemas: s.schemas, objectTypes: s.objectTypes, facts: s.facts, constraints: s.constraints, subtypes: s.subtypes,
     editing: s.mappingRuleEditor,
@@ -85,6 +86,21 @@ export function MappingRules() {
     target: sideContext(state, mapping.targetSchemaId),
   } : null), [state, mapping])
 
+  // A relational side drawn as ERD tables: its table boxes, as link ends.
+  const erdKey = (erdSchemaIds ?? []).join()
+  const erd = useMemo(() => {
+    const out = {}
+    if (!mapping || !diagram) return out
+    for (const side of SIDES) {
+      const sid = sideSchemaId(mapping, side)
+      if (!(erdSchemaIds ?? []).includes(sid)) continue
+      const { model, boxes } = mappingErdBoxes(state, diagram, sid)
+      const end = new Map([...boxes].map(([id, b]) => [id, { id, x: b.x + b.w / 2, y: b.y + b.h / 2, _bounds: { left: b.x, right: b.x + b.w, top: b.y, bottom: b.y + b.h } }]))
+      out[side] = { end, tableOfColumn: (fid) => model.columnByFact.get(fid)?.table.id ?? null }
+    }
+    return out
+  }, [mapping, diagram, state, erdKey])   // eslint-disable-line react-hooks/exhaustive-deps
+
   // Per rule: its elements, the shown occurrences they link to, and checks.
   const rules = useMemo(() => {
     if (!mapping || !ctxs) return []
@@ -94,9 +110,19 @@ export function MappingRules() {
     return mapping.rules.map((r, k) => {
       const els = ruleElements(r)
       const ends = {}
+      const namedErd = {}
       for (const side of SIDES) {
         const e = els[side]
         const groups = []
+        if (erd[side]) {
+          // Tables: of table rows, type atoms and the columns fact atoms name.
+          const tables = new Set([...e.typeIds, ...e.tableIds, ...e.factIds.map(erd[side].tableOfColumn)].filter(Boolean))
+          const real = [...tables].filter(id => state.objectTypes.some(o => o.id === id && o.kind === 'entity'))
+          namedErd[side] = real.length
+          for (const id of real) if (erd[side].end.has(id)) groups.push([erd[side].end.get(id)])
+          ends[side] = groups
+          continue
+        }
         for (const id of [...new Set([...e.typeIds, ...e.tableIds])]) {
           const occs = [...(otsById.get(id) ?? []), ...(factsById.get(id) ?? []).filter(f => f.objectified)]
           if (occs.length) groups.push(occs)
@@ -113,11 +139,11 @@ export function MappingRules() {
         typeIds: SIDES.flatMap(side => [...els[side].typeIds, ...els[side].tableIds, ...els[side].varTypeIds]),
         factIds: [...els.source.factIds, ...els.source.columnFactIds, ...els.target.factIds, ...els.target.columnFactIds],
       }
-      const named = SIDES.reduce((n, side) => n + els[side].typeIds.length + els[side].tableIds.length + els[side].factIds.length, 0)
+      const named = SIDES.reduce((n, side) => n + (side in namedErd ? namedErd[side] : els[side].typeIds.length + els[side].tableIds.length + els[side].factIds.length), 0)
       const linked = ends.source.length + ends.target.length
       return { r, k, ends, issues, formula, highlight, missing: Math.max(0, named - linked) }
     })
-  }, [mapping, ctxs, objectTypes, facts, collapsedRefFacts, state])
+  }, [mapping, ctxs, objectTypes, facts, collapsedRefFacts, state, erd])
 
   // Node positions: stored, or between the two sides' elements; default
   // positions that would overlap are stacked downwards.

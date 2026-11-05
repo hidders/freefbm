@@ -51,6 +51,13 @@ export async function triggerPdfExport(store) {
     if (!b.width && !b.height) return
     bounds = { minX: b.x - PAD, minY: b.y - PAD, maxX: b.x + b.width + PAD, maxY: b.y + b.height + PAD }
   } else bounds = computeBounds(store)
+  // A mapping diagram's ERD tables (relational side) are drawn by ErdView.
+  for (const g of svgEl.querySelectorAll('.mapping-erd')) {
+    const b = g.getBBox()
+    if (!b.width && !b.height) continue
+    const e = { minX: b.x - PAD, minY: b.y - PAD, maxX: b.x + b.width + PAD, maxY: b.y + b.height + PAD }
+    bounds = bounds ? { minX: Math.min(bounds.minX, e.minX), minY: Math.min(bounds.minY, e.minY), maxX: Math.max(bounds.maxX, e.maxX), maxY: Math.max(bounds.maxY, e.maxY) } : e
+  }
   if (!bounds) return
 
   const { minX, minY, maxX, maxY } = bounds

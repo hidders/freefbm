@@ -493,7 +493,7 @@ function GridPatterns() {
 
 export default function Canvas() {
   const store = useOrmStoreIgnoring('pan')
-  const { objectTypes: visibleOts, facts: visibleFacts, constraints: visibleConstraints, subtypes: visibleSubtypes } = useDiagramElements()
+  const { objectTypes: visibleOts, facts: visibleFacts, constraints: visibleConstraints, subtypes: visibleSubtypes, erdSchemaIds } = useDiagramElements()
   const sharedIds = store.getSharedIds?.() ?? new Set()
   const activeDiagram = store.diagrams.find(d => d.id === store.activeDiagramId)
   const visibleNotes = activeDiagram?.notes ?? []
@@ -1381,6 +1381,11 @@ export default function Canvas() {
           {!erd && <>
           {/* Mapping diagrams: each element tinted by its schema's side */}
           <MappingTints/>
+          {/* Mapping diagrams: a relational side's tables as ERD boxes */}
+          {(erdSchemaIds ?? []).map(sid => {
+            const m = store.mappings?.find(x => x.id === activeDiagram?.mappingId)
+            return <ErdView key={sid} schemaId={sid} tint={m && m.sourceSchemaId !== m.targetSchemaId ? (sid === m.targetSchemaId ? 'target' : 'source') : null}/>
+          })}
           {/* Note connectors — rendered below notes so notes sit on top */}
           {visibleNotes.flatMap(note => (note.connectors ?? []).map(conn => {
             let tx, ty
