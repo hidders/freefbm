@@ -14,6 +14,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { inDiag } from '../store/storeHelpers'
+import { isRelationalFace } from '../relational/face'
 import { relationalModel, isKey } from '../relational/relationalModel'
 import { typeSql } from '../relational/ddlExport'
 import { layeredLayout, routeLines, assignPorts, SIDES } from '../relational/erdRouting'
@@ -23,12 +24,11 @@ const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 const HEAD_H = 24, ROW_H = 19, PAD_X = 8, MARK_GAP = 6, GAP_TYPE = 18, MIN_W = 140
 const GAP_Y = 70
 
-// Whether the diagram is drawn as an ERD: its schema is relational and the
-// notation switch is on.
+// Whether the diagram is drawn as an ERD: its schema is relational and shows
+// its relational face (relational/face.js: not its logical view).
 export function isErdDiagram(state, diagram) {
-  if (diagram?.notation !== 'erd') return false
-  if (diagram.mappingId) return false   // mapping diagrams are drawn in ORM2
-  return state.schemas?.find(s => s.id === diagram.schemaId)?.profile === 'relational'
+  if (!diagram || diagram.mappingId) return false   // mapping diagrams are drawn in ORM2
+  return isRelationalFace(state, diagram.schemaId)
 }
 
 let _canvas = null

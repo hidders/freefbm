@@ -268,3 +268,18 @@ export function rmObjectOf(view, ormId) {
 export function rmLabel(view, ormId) {
   return rmObjectOf(view, ormId)?.label ?? null
 }
+
+// Counts for a footer or status bar: tables (stored ones, base tables
+// included), views, columns, constraints (keys, foreign keys and CHECKs; NOT
+// NULLs left out) and assertions.
+export function relationalCounts(state, schemaId) {
+  const v = relationalView(state, schemaId)
+  const out = { tables: 0, views: 0, columns: 0, constraints: 0, assertions: v.assertions.length }
+  for (const o of v.objects.values()) {
+    if (o.kind === 'table') out.tables++
+    else if (o.kind === 'view') out.views++
+    else if (o.kind === 'column') out.columns++
+    else if (['primaryKey', 'unique', 'foreignKey', 'check'].includes(o.kind)) out.constraints++
+  }
+  return out
+}

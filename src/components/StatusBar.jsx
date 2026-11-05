@@ -1,6 +1,10 @@
 import React from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
-import { scopeToSchema } from '../store/storeHelpers'
+import { scopeToSchema, activeSchemaIdOf } from '../store/storeHelpers'
+import { activeRelationalFace, activeReadOnly } from '../relational/face'
+
+const NOTICE_MS = 4000
+import { relationalCounts } from '../relational/relationalView'
 
 // ── Tier 1: Tool hints — workflow guidance while a tool is active ─────────────
 const TOOL_HINTS = {
@@ -31,6 +35,14 @@ const TOOL_HINTS = {
 export default function StatusBar() {
   const store = useOrmStoreIgnoring('pan')
   const isSel = store.tool === 'select'
+  // An edit of a relational schema was refused (ormStore's set).
+  const [, tick] = React.useReducer(x => x + 1, 0)
+  const refused = store.readOnlyNotice && Date.now() - store.readOnlyNotice < NOTICE_MS
+  React.useEffect(() => {
+    if (!refused) return
+    const t = setTimeout(tick, NOTICE_MS - (Date.now() - store.readOnlyNotice) + 20)
+    return () => clearTimeout(t)
+  }, [store.readOnlyNotice, refused])
 
   // ── Tier 4a: subtype endpoint-pick mode ──────────────────────────────────
   if (store.linkDraft?.type === 'subtypeEndpointPick') {
@@ -136,7 +148,26 @@ export default function StatusBar() {
         ? `Click canvas to place a ${store.tool.split(':')[1]} external constraint`
         : '')
 
-  const hint = constructionHint || selectionHint || toolHint
+  const relFace = activeRelationalFace(store)
+  const readOnly = activeReadOnly(store)
+  if (refused) {
+    return (
+      <div style={{ height: 26, display: 'flex', alignItems: 'center',
+        padding: '0 14px', gap: 16,
+        background: 'var(--bg-surface)', borderTop: '1px solid var(--border-soft)',
+        flexShrink: 0 }}>
+        <span style={{ fontSize: 11, color: 'var(--danger)', flex: 1, fontWeight: 600 }}>
+          A relational schema is read-only · Transform… changes it, as a new version with a mapping from this one
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{Math.round(store.zoom * 100)}%</span>
+      </div>
+    )
+  }
+  const hint = relFace
+    ? 'Click a table, column or foreign key to inspect it · Drag a table to move it · Transform… changes the schema'
+    : readOnly
+      ? 'The ORM2 schema that stores these tables, read-only · Drag to move · Adding or removing any part of a table adds or removes the whole table'
+      : constructionHint || selectionHint || toolHint
 
   return (
     <div style={{ height: 26, display: 'flex', alignItems: 'center',
@@ -151,7 +182,13 @@ export default function StatusBar() {
         <span style={{ fontSize: 11, color: 'var(--danger)' }}>● unsaved</span>
       )}
       <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
-        {(() => { const sc = scopeToSchema(store); return `${sc.objectTypes.length} types · ${sc.facts.length} facts · ${sc.constraints.length} constraints` })()}
+        {(() => {
+          if (relFace) {
+            const c = relationalCounts(useOrmStore.getState(), activeSchemaIdOf(store))
+            return `${c.tables} tables · ${c.columns} columns · ${c.constraints} constraints`
+          }
+          const sc = scopeToSchema(store); return `${sc.objectTypes.length} types · ${sc.facts.length} facts · ${sc.constraints.length} constraints`
+        })()}
       </span>
     </div>
   )

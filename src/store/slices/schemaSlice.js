@@ -34,6 +34,16 @@ export const createSchemaSlice = (set, get) => ({
     set(s => ({ schemas: s.schemas.map(x => x.id === id ? { ...x, name: trimmed } : x), isDirty: true }))
   },
 
+  // A relational schema's logical view: its ORM2 form in every panel and
+  // diagram instead of tables (Advanced mode only; relational/face.js). A view
+  // setting for this session: not saved, not undone.
+  setSchemaLogicalView(id, on) {
+    set(s => {
+      const { [id]: _, ...rest } = s.logicalViews ?? {}
+      return { logicalViews: on ? { ...rest, [id]: true } : rest }
+    })
+  },
+
   setSchemaProfile(id, profile) {
     if (!SCHEMA_PROFILES.includes(profile)) return
     // A schema made relational gets PostgreSQL datatypes on its diagrams that
