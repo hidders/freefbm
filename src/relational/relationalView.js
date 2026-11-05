@@ -262,6 +262,34 @@ export function rmObjectOf(view, ormId) {
   return ids?.length ? view.objects.get(ids[0]) : null
 }
 
+// The object a constraint entry of the schema stands for (an entry key of
+// formalise: "<factId>:mand:<i>", "<factId>:uc:<roles>", "<factId>:vr:<i>",
+// a constraint id, "<constraintId>:<suffix>"), or null. facts: the schema's.
+export function rmObjectOfKey(view, facts, key) {
+  let m
+  if ((m = key.match(/^([^:]+):mand:(\d+)$/))) {
+    const o = view.objects.get(`nn:${m[1]}`)
+    const f = facts.find(x => x.id === m[1])
+    return o && f?.roles[+m[2]]?.mandatoryId === o.members[0] ? o : (o && !f ? o : null)
+  }
+  if ((m = key.match(/^([^:]+):(?:uc|pi):([\d,]+)$/))) {
+    const f = facts.find(x => x.id === m[1])
+    const u = (f?.uniqueness ?? []).find(x => [...x.roles].sort().join(',') === m[2].split(',').sort().join(','))
+    return u ? pick(view, u.id, ['primaryKey', 'unique']) : null
+  }
+  if ((m = key.match(/^([^:]+):vr:(\d+)$/))) {
+    const f = facts.find(x => x.id === m[1])
+    return f ? view.objects.get(`ck:${f.id}:role`) ?? null : null
+  }
+  if ((m = key.match(/^([^:]+):vr$/))) {
+    const o = [...view.objects.values()].find(x => x.kind === 'check' && x.members[0] === m[1])
+    return o ?? null
+  }
+  const [id] = key.split(':')
+  return pick(view, id, ['primaryKey', 'unique', 'foreignKey', 'check', 'assertion'])
+}
+const pick = (view, ormId, kinds) => (view.ofOrm.get(ormId) ?? []).map(id => view.objects.get(id)).find(o => o && kinds.includes(o.kind)) ?? null
+
 // The relational name of an ORM2 element of the schema: "film.title" for a
 // column's fact type, "PRIMARY KEY film_pkey" for its uniqueness constraint,
 // or null when nothing relational stands for it.

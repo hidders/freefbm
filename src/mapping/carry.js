@@ -14,7 +14,7 @@ import { translateEntry, proposeTranslation } from './translate.js'
 import { formulaElements } from '../logic/formulaConstraint.js'
 import { relationalModel } from '../relational/relationalModel.js'
 import { relationalView } from '../relational/relationalView.js'
-import { rmSentence } from '../relational/rmText.js'
+import { rmSentence, RM_SENTENCE_LANGUAGES } from '../relational/rmText.js'
 import { mkConstraint, uid } from '../store/storeHelpers.js'
 
 const otherOf = (side) => (side === 'source' ? 'target' : 'source')
@@ -100,7 +100,7 @@ function describe(state, state2, sid) {
   if (state.schemas?.find(s => s.id === sid)?.profile === 'relational') {
     const old = relationalView(state, sid), now = relationalView(state2, sid)
     rm = [...now.objects.values()].filter(o => !old.objects.has(o.rmId) && !['table', 'view', 'column'].includes(o.kind))
-      .map(o => ({ rmId: o.rmId, kind: o.kind, label: o.label, sql: o.kind === 'notNull' ? null : o.sql, enforced: o.enforced, sentence: rmSentence(now, o) }))
+      .map(o => ({ rmId: o.rmId, kind: o.kind, label: o.label, sql: o.kind === 'notNull' ? null : o.sql, enforced: o.enforced, sentence: Object.fromEntries(RM_SENTENCE_LANGUAGES.map(lang => [lang, rmSentence(now, o, { lang })])) }))
   }
   return { entry, ctx: after.ctx, rm }
 }

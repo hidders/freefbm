@@ -46,6 +46,8 @@ import { identifyingFactIds } from '../utils/refMode.js'
 import { formulaToRule } from '../logic/formulaToRule.js'
 import { isDeonticUniqueness, isDeonticMandatory } from '../logic/modality.js'
 import { relationalModel } from '../relational/relationalModel.js'
+import { relationalView, rmObjectOfKey } from '../relational/relationalView.js'
+import { rmSentence } from '../relational/rmText.js'
 import { prepareRun, executeRun, schemeOf } from './runMapping.js'
 import { sideContext, sideSchemaId, SIDES, expandSide, asSide } from './mapping.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
@@ -75,6 +77,8 @@ export function worldOf(state, schemaId) {
     entries: () => entries ?? (entries = entriesOf(state, schemaId)),
     ident: identifyingFactIds(els.facts, els.objectTypes, els.constraints),
     relational: ctx.relational ? relationalModel(state, schemaId) : null,
+    // The relational face (relationalView), when first asked for.
+    view: ctx.relational ? () => relationalView(state, schemaId) : null,
   }
 }
 
@@ -785,6 +789,8 @@ export function entriesOf(state, schemaId) {
 export function relationalLabel(w, key) {
   const rm = w.relational
   if (!rm) return null
+  const o = w.view ? rmObjectOfKey(w.view(), w.ctx.facts, key) : null
+  if (o) return o.label
   const colName = (c) => `${c.table.name}.${c.name}`
   let m
   if ((m = key.match(/^([^:]+):mand:(\d+)$/))) {
@@ -1312,7 +1318,7 @@ function accountEntry(entry, A, B, run, fresh) {
       }
     }
     const keys = needed.size ? [...needed] : [...usedAll]
-    const by = keys.map(k => ({ key: k, label: relationalLabel(B, k) }))
+    const by = keys.map(k => ({ key: k, label: relationalLabel(B, k), sentence: relationalSentence(B, k), rm: relationalRef(B, k) }))
     if (!keys.length) return { ...base, status: 'native', by, reason: `Kept by the structure of ${B.ctx.schema?.name ?? 'the other schema'}: the mapping cannot build a population that breaks it.` }
     if (needed.size === 1) return { ...base, status: 'native', by, reason: `Kept by one constraint of ${B.ctx.schema?.name ?? 'the other schema'}.` }
     return { ...base, status: 'implied', by,
@@ -1370,6 +1376,8 @@ export function* accountingSteps(state, mapping, { onlyKeys = null } = {}) {
         r = { key: e.key, entry: e, by: [], counterexample: null, status: 'unknown', reason: `Not checked yet: ${err.message}.` }
       }
       r.label = relationalLabel(A, e.key)
+      r.sentence = relationalSentence(A, e.key)
+      r.rm = relationalRef(A, e.key)
       sides[side].push(r)
       yield { done: ++done, total }
     }
@@ -1383,3 +1391,20 @@ export function* accountingSteps(state, mapping, { onlyKeys = null } = {}) {
 }
 
 export const STATUS_ORDER = ['lost', 'unknown', 'implied', 'native']
+
+// The table sentence of a constraint entry of a relational side (rmText.js),
+// or null.
+export function relationalSentence(w, key) {
+  if (!w.view) return null
+  const view = w.view()
+  const o = rmObjectOfKey(view, w.ctx.facts, key)
+  return o && o.kind !== 'assertion' ? rmSentence(view, o) : null
+}
+
+// Where a constraint entry of a relational side is in its relational face:
+// { schemaId, rmId }, or null.
+export function relationalRef(w, key) {
+  if (!w.view) return null
+  const o = rmObjectOfKey(w.view(), w.ctx.facts, key)
+  return o ? { schemaId: w.schemaId, rmId: o.rmId } : null
+}
