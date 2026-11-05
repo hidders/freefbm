@@ -32,7 +32,7 @@
 // derived populations (derivedPopulation.js) does the rest.
 
 import { uid } from '../store/storeHelpers.js'
-import { hole, checkRule as checkTypeRule, whyNotDerivableType, upgradeRule, derivationEntry } from '../logic/derivationRule.js'
+import { referenceParts, hole, checkRule as checkTypeRule, whyNotDerivableType, upgradeRule, derivationEntry } from '../logic/derivationRule.js'
 import { checkFactRule, emptyFactRule, factDerivationEntries } from '../logic/factDerivation.js'
 import { makeContext, readingText } from '../logic/constraintFormulas.js'
 import { withDerivedPopulations } from '../logic/derivedPopulation.js'
@@ -264,10 +264,31 @@ export function runView(state, view) {
   for (const r of rules) if (r.error) log.push({ level: 'error', text: `${r.name}: ${r.error}` })
   const target = [...vs.objectTypes, ...vs.facts].filter(x => x.schemaId === view.targetSchemaId)
   const factIds = new Set(vs.facts.map(f => f.id))
+  // Identifying facts are not stored as tuples, so the reference values of
+  // the entities the views make go into their value types here (the target's
+  // own value types were left empty).
+  const pops = { ...(done.populations ?? {}) }
+  for (const o of target) {
+    if (o.kind !== 'entity' || !pops[o.id]?.length) continue
+    const parts = referenceParts(o.id, vs)
+    if (!parts) continue
+    parts.forEach((p, i) => {
+      const vt = vs.objectTypes.find(x => x.id === p.typeId)
+      if (vt?.kind !== 'value') return
+      const have = new Set((pops[vt.id] ?? []).map(x => JSON.stringify(x)))
+      const add = []
+      for (const cell of pops[o.id]) {
+        const v = parts.length === 1 ? cell : cell?.[i]
+        if (v == null || have.has(JSON.stringify(v))) continue
+        have.add(JSON.stringify(v)); add.push(v)
+      }
+      if (add.length) pops[vt.id] = [...(pops[vt.id] ?? []), ...add]
+    })
+  }
   const populations = {}, factPopulations = {}, counts = []
   for (const x of target) {
     const isFact = factIds.has(x.id)
-    const p = (isFact ? done.factPopulations : done.populations)?.[x.id]
+    const p = (isFact ? done.factPopulations : pops)?.[x.id]
     if (!p?.length) continue
     ;(isFact ? factPopulations : populations)[x.id] = p
     counts.push({ id: x.id, name: elementName(x, state, ctx), kind: isFact ? 'fact' : x.kind === 'value' ? 'value' : 'entity', n: p.length })

@@ -311,7 +311,7 @@ const OPERATION = {
   concat: '{0} followed by {1}', length: 'the length of {0}',
   substring: 'the part of {0} of length {2} from position {1}',
   upper: '{0} in upper case', lower: '{0} in lower case', trim: '{0} without leading and trailing spaces',
-  toText: '{0} as text',
+  toText: '{0} as text', asInteger: '{0} as an integer', asDecimal: '{0} as a decimal', asFloat: '{0} as a floating point number', asBoolean: '{0} as a boolean', asDate: '{0} as a date', asDatetime: '{0} as a date and time', asTime: '{0} as a time',
   year: 'the year of {0}', month: 'the month of {0}', day: 'the day of the month of {0}',
   hour: 'the hour of {0}', minute: 'the minute of {0}', second: 'the second of {0}',
   dayOfWeek: 'the day of the week of {0}', yearsBetween: 'the number of whole years from {0} to {1}',

@@ -18,6 +18,7 @@ import { withSimple } from '../../mapping/carry.js'
 import { withTableConstraints } from '../../relational/tableUnits.js'
 import { relationalView, rmLabel } from '../../relational/relationalView.js'
 import { uid, mappingOfDiagram, isViewMapping } from '../storeHelpers'
+import { numberInvented } from '../../mapping/exchanges.js'
 import { viewRuleElements } from '../../mapping/views.js'
 
 // The constraints of the old version (schemaId) about the given elements
@@ -45,22 +46,6 @@ function hasPopulation(st, schemaId) {
   const ids = new Set([...st.objectTypes, ...st.facts].filter(x => x.schemaId === schemaId).map(x => x.id))
   return Object.entries(st.populations ?? {}).some(([k, v]) => ids.has(k) && v?.length)
     || Object.entries(st.factPopulations ?? {}).some(([k, v]) => ids.has(k) && v?.length)
-}
-
-// Values a run invented (⟨…⟩) for generated columns of a schema: numbered
-// 1, 2, … per value type, the same number for the same value everywhere.
-function numberInvented(st, schemaId) {
-  const gen = new Set(st.facts.filter(f => f.schemaId === schemaId).flatMap(f => f.roles.filter(r => r.sqlGenerated).map(r => r.objectTypeId)))
-  if (!gen.size) return {}
-  const ids = new Set([...st.objectTypes, ...st.facts].filter(x => x.schemaId === schemaId).map(x => x.id))
-  const num = new Map()
-  const map = (x) => {
-    if (typeof x !== 'string' || !x.startsWith('⟨')) return Array.isArray(x) ? x.map(map) : x
-    if (!num.has(x)) num.set(x, String(num.size + 1))
-    return num.get(x)
-  }
-  const walk = (obj) => Object.fromEntries(Object.entries(obj ?? {}).map(([k, v]) => [k, ids.has(k) && Array.isArray(v) ? v.map(map) : v]))
-  return { populations: walk(st.populations), factPopulations: walk(st.factPopulations) }
 }
 
 const ADVANCED_KEY = 'freefbm.advancedMode'

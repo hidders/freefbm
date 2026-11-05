@@ -92,6 +92,20 @@ export function useElectronMenu() {
       await api.saveSql({ defaultPath: `${schema.name.replace(/[^A-Za-z0-9_-]+/g, '_')}.sql`, content: sql })
     })
 
+    // The sample rows of the active relational schema as INSERT statements
+    // (relational/populationSql.js).
+    on('menu:exportRowsSql', async () => {
+      const s = useOrmStore.getState()
+      const schema = s.schemas.find(x => x.id === activeSchemaIdOf(s))
+      if (schema?.profile !== 'relational') {
+        alert('Export Sample Rows writes the rows of a relational schema. Switch to a relational schema first.')
+        return
+      }
+      const { sql, notes } = s.populationSql(schema.id, { format: 'insert', header: `Rows of ${schema.name}, written by FreeFBM.` })
+      const path = await api.saveSql({ defaultPath: `${schema.name.replace(/[^A-Za-z0-9_-]+/g, '_')}-rows.sql`, content: sql })
+      if (path && notes.length) alert(notes.join('\n'))
+    })
+
     return () => unsubs.forEach(u => u())
   }, []) // register once — storeRef.current always holds latest state
 }

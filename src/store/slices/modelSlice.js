@@ -1,4 +1,5 @@
 import { loadViews } from '../../mapping/views.js'
+import { loadExchanges } from '../../mapping/exchanges.js'
 import { runValidation as runValidationRules, DEFAULT_VALIDATION_CATEGORIES } from '../../utils/validation.js'
 import { computePopulationIssues } from '../../utils/populationValidation.js'
 import { withDerivedPopulations, semiDerivedPopulationIssues, derivedFactPopulationIssues, formulaConstraintPopulationIssues } from '../../logic/derivedPopulation.js'
@@ -795,6 +796,7 @@ export function createModelSlice(set, get) {
         propertyDefinitions: loadPropertyDefinitions(d.schema?.propertyDefinitions),
         mappings,
         views,
+        exchanges: loadExchanges(d.schema?.exchanges, mappingIds),
         mappingRuleEditor: null,
         groups: pruneGroups(loadGroups(d.schema?.groups ?? d.groups), { objectTypes: parsedOts, facts, subtypes: parsedSts, constraints, diagrams }),
         activeDiagramId,
@@ -848,7 +850,7 @@ export function createModelSlice(set, get) {
         pan, zoom,
         mandatoryDotPosition, showReferenceMode, showRoleNames,
         showSequenceMembership, showConstraintQueries,
-        showMinimap, minimapPos, languages, groups, propertyDefinitions, schemas, mappings, views,
+        showMinimap, minimapPos, languages, groups, propertyDefinitions, schemas, mappings, views, exchanges,
       } = state
       // Strip in-memory-only selection state; flush current pan/zoom + display settings into diagrams
       const cleanDiagrams = diagrams.map(({ multiSelectedIds: _, ...d }) => ({
@@ -890,6 +892,7 @@ export function createModelSlice(set, get) {
           ...(propertyDefinitions?.length && { propertyDefinitions }),
           ...(mappings?.length && { mappings }),
           ...(views?.length && { views }),
+          ...(exchanges?.length && { exchanges }),
           displaySettings: {
             mandatoryDotPosition,
             showReferenceMode,
