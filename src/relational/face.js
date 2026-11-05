@@ -7,12 +7,21 @@
 // a session setting per schema id: store.setSchemaLogicalView). Mapping
 // diagrams are always drawn in ORM2.
 
-import { activeSchemaIdOf } from '../store/storeHelpers.js'
+import { activeSchemaIdOf, mappingOfDiagram } from '../store/storeHelpers.js'
 import { lockedSchemas } from '../mapping/pairLock.js'
 
 export function isRelationalFace(state, schemaId) {
   const s = state.schemas?.find(x => x.id === schemaId)
   return s?.profile === 'relational' && !(state.advancedMode && state.logicalViews?.[schemaId])
+}
+
+// The schemas of a mapping diagram drawn as ERD tables: its relational ones
+// that show their relational face (RM step 7). Their elements are left out of
+// the ORM2 drawing (getDiagramElements), and ErdView draws their tables.
+export function erdSchemasOfDiagram(state, diagram) {
+  const m = mappingOfDiagram(state, diagram)
+  if (!m) return []
+  return [...new Set([m.sourceSchemaId, m.targetSchemaId])].filter(sid => isRelationalFace(state, sid))
 }
 
 // The face of the active schema, unless the active diagram draws a mapping.
