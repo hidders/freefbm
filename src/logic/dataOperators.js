@@ -720,6 +720,13 @@ export function makeTermEvaluator({ sorts, params, varValue, holds, aggregate })
   return {
     value,
     compare(n) {
+      // Labelled nulls (⊥n) are equal only to themselves.
+      const lab = (t) => t?.t === 'var' && varValue(t.id)?.labelled
+      if (lab(n.left) || lab(n.right)) {
+        const a = raw(n.left), b = raw(n.right)
+        if (a == null || b == null) return false
+        return n.op === '≈' ? a === b : n.op === '≉' ? a !== b : false
+      }
       const s = sorts.get(n)
       if (s == null) {
         const a = raw(n.left), b = raw(n.right)

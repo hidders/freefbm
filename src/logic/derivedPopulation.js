@@ -187,6 +187,9 @@ export function makePopulationEvaluator(rawData) {
       const a = env.get(id)
       if (!a || typeof a.cell !== 'string') return undefined
       const raw = a.cell.trim()
+      // A labelled null (⊥n, constraint accounting and contract checks): a
+      // value nothing is known of but its identity.
+      if (raw.startsWith('⊥')) return { raw, labelled: true }
       const kindName = kindOf(a.typeIds)
       if (!kindName) return { raw }
       const p = parseLiteral(raw, VALUE_KINDS[kindName])
