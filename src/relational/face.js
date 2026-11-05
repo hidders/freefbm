@@ -5,7 +5,7 @@
 // its diagrams (drawn as ERDs), unless its logical view is on: its stored
 // ORM2 form (encoding B), which only Advanced mode shows (store.logicalViews,
 // a session setting per schema id: store.setSchemaLogicalView). Mapping
-// diagrams are always drawn in ORM2.
+// diagrams are drawn in ORM2, with such a schema's tables as ERD boxes.
 
 import { activeSchemaIdOf, mappingOfDiagram } from '../store/storeHelpers.js'
 import { lockedSchemas } from '../mapping/pairLock.js'
