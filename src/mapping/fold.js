@@ -30,7 +30,10 @@
 
 import { asSide, expandSide, sideContext, sideSchemaId, SIDES, checkRule, readingName, treeToSide } from './mapping.js'
 import { schemeOf, prepareRun, executeRun } from './runMapping.js'
-import { worldOf, genericPopulation, accountingSteps, relationalLabel } from './accounting.js'
+import { worldOf, genericPopulation, accountingSteps, relationalLabel, entriesOf } from './accounting.js'
+import { asGraphical } from './recognise.js'
+import { formulaToRule } from '../logic/formulaToRule.js'
+import { formulaToString } from '../logic/renderFormula.js'
 import { upgradeRule, directSupertypes, referenceParts, SUBJECT } from '../logic/derivationRule.js'
 import { factRuleParts, isDerivedFact } from '../logic/factDerivation.js'
 import { makePopulationEvaluator } from '../logic/derivedPopulation.js'
@@ -625,12 +628,13 @@ export function sideToTree(side) {
 
 // ── Planning ─────────────────────────────────────────────────────────────────
 
-// The fully derived elements of one schema, in an order in which each comes
-// after the derived elements its rule uses.
+// The derived and semi-derived elements of one schema, in an order in which
+// each comes after the derived elements its rule uses.
 function derivedElements(ctx) {
+  const isD = (x) => x.derivation === 'derived' || x.derivation === 'semiDerived'
   const items = [
-    ...ctx.objectTypes.filter(o => o.derivation === 'derived').map(o => ({ el: o, kind: 'type' })),
-    ...ctx.facts.filter(f => f.derivation === 'derived').map(f => ({ el: f, kind: 'fact' })),
+    ...ctx.objectTypes.filter(isD).map(o => ({ el: o, kind: 'type', semi: o.derivation === 'semiDerived' })),
+    ...ctx.facts.filter(isD).map(f => ({ el: f, kind: 'fact', semi: f.derivation === 'semiDerived' })),
   ]
   const ids = new Set(items.map(i => i.el.id))
   const usesOf = (it) => {
@@ -663,6 +667,10 @@ function foldSide(state, mapping) {
   return counts[0] > counts[1] ? 'source' : 'target'
 }
 
+// An item Fold can apply: a rule for a derived element, a constraint for a
+// semi-derived one.
+const foldable = (i) => !!(i.rule || i.constraint)
+
 const nameOf = (it, ctx) => (it.kind === 'fact' ? readingName(it.el, ctx) : it.el.name)
 
 export function planFold(state, mapping, { side = null, check = true } = {}) {
@@ -672,9 +680,31 @@ export function planFold(state, mapping, { side = null, check = true } = {}) {
   const els = elsOf(ctxX)
   const items = []
   let working = mapping
+  let entries = null
   for (const it of derivedElements(ctxX)) {
     const item = { id: it.el.id, kind: it.kind, name: nameOf(it, ctxX), rule: null, error: null, issues: [] }
     items.push(item)
+    if (it.semi) {
+      // A semi-derived element becomes stored, holding its stored and its
+      // derived rows; its rule stays as a constraint (rule ⊆ element). The
+      // mapping must already carry it.
+      item.semi = true
+      if (!JSON.stringify(working.rules.map(r => r[X])).includes(JSON.stringify(it.el.id))) {
+        item.error = 'no mapping rule carries its stored part: map it first, or make it fully derived'
+        continue
+      }
+      entries ??= entriesOf(state, sideSchemaId(mapping, X))
+      const e = entries.find(x => x.elementId === it.el.id && (x.key === `${it.el.id}:derivation` || x.key === `${it.el.id}:derivation:1`))
+      if (!e?.formula) { item.error = e?.note ? e.note.replace(/^No formula yet\. /, '').replace(/\.$/, '').toLowerCase() : 'its rule has no formula'; continue }
+      try {
+        const rule = formulaToRule(e.formula)
+        const g = asGraphical(rule)
+        item.constraint = { rule, graphical: g?.constraintType === 'subset' ? g : null, text: formulaToString(e.formula, entries.ctx) }
+      } catch (err) {
+        item.error = `its rule can't be kept as a constraint (${err?.message ?? err})`
+      }
+      continue
+    }
     if (it.cyclic) { item.error = 'its rule depends on itself'; continue }
     try {
       const atomics = atomicRules(working, X, ctxX, els)
@@ -688,7 +718,7 @@ export function planFold(state, mapping, { side = null, check = true } = {}) {
   }
   // The new rules' checks, against the schemas as they will be (the derived
   // elements ordinary ones).
-  const after = promoted(state, items.filter(i => i.rule).map(i => i.id))
+  const after = promoted(state, items.filter(foldable).map(i => i.id))
   for (const i of items) if (i.rule) i.issues = checkRule(i.rule, working, after)
   const plan = { side: X, items, candidates: [], mapping: working }
   if (check) plan.candidates = removalCandidates(after, state, working, X, items)
@@ -727,10 +757,10 @@ function removalCandidates(state, before, mapping, X, items) {
   const els = elsOf(ctxX)
   const ident = new Set()
   for (const o of ctxX.objectTypes) for (const p of schemeParts(o.id, ctxX, els) ?? []) ident.add(p.factId)
-  const folded = new Set(items.filter(i => i.rule).map(i => i.id))
+  const folded = new Set(items.filter(foldable).map(i => i.id))
   const usedBy = new Map()
   for (const i of items) {
-    if (!i.rule) continue
+    if (!foldable(i)) continue
     const el = (i.kind === 'fact' ? before.facts : before.objectTypes).find(x => x.id === i.id)
     const s = JSON.stringify(el?.derivationRule ?? null)
     for (const f of ctxX.facts) {
@@ -846,12 +876,15 @@ export function finiteCases(w, pops) {
 // delete. Removals are checked together; one that is not recoverable with the
 // others is kept. { mapping, promote: [id], remove: [factId], report: [text] }.
 export function foldChanges(state, plan, { fold = null, remove = null } = {}) {
-  const chosen = plan.items.filter(i => i.rule && (!fold || fold.includes(i.id)))
+  const chosen = plan.items.filter(i => foldable(i) && (!fold || fold.includes(i.id)))
   const report = []
   const base = state.mappings.find(m => m.id === plan.mapping.id)
-  let mapping = { ...base, rules: [...base.rules, ...chosen.map(i => i.rule)] }
-  for (const i of chosen) report.push(`Folded ${i.name} into the mapping as rule "${i.rule.name}"`)
-  for (const i of plan.items.filter(x => !x.rule)) report.push(`Not folded: ${i.name} (${i.error})`)
+  let mapping = { ...base, rules: [...base.rules, ...chosen.filter(i => i.rule).map(i => i.rule)] }
+  for (const i of chosen) {
+    report.push(i.rule ? `Folded ${i.name} into the mapping as rule "${i.rule.name}"`
+      : `Made ${i.name} stored, with its stored and its derived ${i.kind === 'fact' ? 'facts' : 'instances'}`)
+  }
+  for (const i of plan.items.filter(x => !foldable(x))) report.push(`Not folded: ${i.name} (${i.error})`)
   const after = promoted(state, chosen.map(i => i.id))
   const wanted = (remove ?? plan.candidates.filter(c => c.recoverable).map(c => c.factId))
   const removeIds = []
@@ -866,7 +899,8 @@ export function foldChanges(state, plan, { fold = null, remove = null } = {}) {
     mapping = { ...mapping, rules: mapping.rules.filter(x => !r.dropped.includes(x.id)) }
     for (const fid of removeIds) report.push(`Removed ${plan.candidates.find(c => c.factId === fid)?.name ?? 'a fact type'} and its rules`)
   }
-  const changes = { mapping, promote: chosen.map(i => i.id), remove: removeIds, populations: after.populations, factPopulations: after.factPopulations, add: [], report }
+  const changes = { mapping, promote: chosen.map(i => i.id), remove: removeIds,
+    constraints: [], populations: after.populations, factPopulations: after.factPopulations, add: [], report }
   // Constraints the folded fact types get from the other side: a mandatory
   // role or a single-role uniqueness constraint that the mapping keeps
   // (accounting.js), e.g. a NOT NULL column that a removed fact type carried.
@@ -882,6 +916,19 @@ export function foldChanges(state, plan, { fold = null, remove = null } = {}) {
     const fks = suggestedForeignKeys(foldedState(state, changes), mapping, plan.side, tables)
     changes.add = [...changes.add, ...fks]
     for (const c of fks) report.push(`Added ${c.label} (${c.status}: ${c.reason})`)
+  }
+  // The rules of semi-derived elements, as constraints, unless they read a
+  // removed fact type (the mapping then carries what they said).
+  for (const i of chosen.filter(x => x.constraint)) {
+    const text = JSON.stringify(i.constraint.rule)
+    const gone = removeIds.filter(fid => text.includes(JSON.stringify(fid)))
+    const fk = i.constraint.graphical && changes.add.find(x => x.kind === 'fk' && JSON.stringify(x.constraint.sequences) === JSON.stringify(i.constraint.graphical.sequences))
+    if (fk) report.push(`Kept the rule of ${i.name} as ${fk.label}`)
+    else if (gone.length) report.push(`Dropped the rule of ${i.name}: it reads ${gone.map(fid => plan.candidates.find(c => c.factId === fid)?.name ?? 'a removed fact type').join(', ')}, which went`)
+    else {
+      changes.constraints.push({ id: i.id, ...i.constraint })
+      report.push(`Kept the rule of ${i.name} as ${i.constraint.graphical ? 'a subset constraint' : 'a formula constraint'}`)
+    }
   }
   return changes
 }
