@@ -65,7 +65,7 @@ export const createSchemaSlice = (set, get) => ({
     if (s.schemas.length <= 1 || !s.schemas.some(x => x.id === id)) return false
     const owned = x => x.schemaId === id
     if (!withContents && (s.objectTypes.some(owned) || s.facts.some(owned) || s.subtypes.some(owned) || s.constraints.some(owned))) return false
-    const goneMappings = new Set((s.mappings ?? []).filter(m => m.sourceSchemaId === id || m.targetSchemaId === id).map(m => m.id))
+    const goneMappings = new Set([...(s.mappings ?? []), ...(s.views ?? [])].filter(m => m.sourceSchemaId === id || m.targetSchemaId === id).map(m => m.id))
     const dropped = d => owned(d) || goneMappings.has(d.mappingId)
     // Everything a group or a population may name.
     const gone = new Set()

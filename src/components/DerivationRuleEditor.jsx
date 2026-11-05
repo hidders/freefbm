@@ -19,7 +19,7 @@ import { TOKEN_STYLE, Formula } from './ConstraintsTab.jsx'
 import { handleTextPanelKey, hasTextSelection } from '../utils/textPanel.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
 import { checkFormulaConstraint, formulaConstraintEntry } from '../logic/formulaConstraint.js'
-import { checkViewRule, viewRuleEntries } from '../mapping/views.js'
+import { checkViewRule, viewRuleEntries, schemaRolesOf } from '../mapping/views.js'
 
 // ── Derivation rule editor ──────────────────────────────────────────────────
 // A syntax-directed editor for the derivation rule of a derived or
@@ -135,7 +135,7 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
       const v = st.views?.find(x => x.id === viewId)
       const ids = new Set([v?.sourceSchemaId, v?.targetSchemaId])
       const of = (k) => (st[k] ?? []).filter(x => ids.has(x.schemaId))
-      return { objectTypes: of('objectTypes'), facts: of('facts'), subtypes: of('subtypes'), constraints: of('constraints'), schemas: st.schemas }
+      return { objectTypes: of('objectTypes'), facts: of('facts'), subtypes: of('subtypes'), constraints: of('constraints'), schemas: st.schemas, schemaRoles: v ? schemaRolesOf(v) : null }
     }
     const s = scopeToSchema(st)
     return { objectTypes: s.objectTypes, facts: s.facts, subtypes: s.subtypes, constraints: s.constraints }
@@ -752,7 +752,7 @@ function Palette({ node, path, scope, draft, state, ctx, supers, graph, replace 
   // The fact types, and the implied links of the nested ones.
   const facts = useMemo(() => withSchemaNames([...(state.facts ?? []), ...ctx.linkById.values()]
     .map(f => ({ id: f.id, roles: f.roles, label: readingText(f, ctx) || 'Unnamed fact type', schemaId: f.schemaId ?? ctx.factById.get(String(f.id).split('_il_')[0])?.schemaId })),
-  state.schemas, f => f.label, (f, label) => ({ ...f, label }))
+  state.schemas, f => f.label, (f, label) => ({ ...f, label }), state.schemaRoles)
     .sort((a, b) => a.label.localeCompare(b.label)), [state.facts, state.schemas, ctx])
   // A fact type is relevant here when a variable in scope can fill one of its
   // roles: its type is the player, a subtype of it or a supertype of it.

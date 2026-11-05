@@ -4,7 +4,8 @@ import { useOrmStore } from '../store/ormStore'
 import { makeContext } from '../logic/constraintFormulas.js'
 import { checkViewRule, viewRuleEntries, viewCoverage, viewState, runView, headId, elementName } from '../mapping/views.js'
 import { IssueList } from './MappingFormula.jsx'
-import { Formula } from './ConstraintsTab.jsx'
+import { Formula, Sentence } from './ConstraintsTab.jsx'
+import { useVerbalisation } from '../verbalisation/workbench.js'
 
 // The view mappings of the file (mapping/views.js), under the two-way
 // mappings in the Mappings tab: each defines elements of a target schema by
@@ -12,8 +13,12 @@ import { Formula } from './ConstraintsTab.jsx'
 export default function ViewMappings() {
   const state = useOrmStore(useShallow(s => ({
     schemas: s.schemas, objectTypes: s.objectTypes, facts: s.facts, constraints: s.constraints,
-    subtypes: s.subtypes, views: s.views ?? [], editing: s.ruleEditor,
+    subtypes: s.subtypes, views: s.views ?? [], editing: s.ruleEditor, language: s.viewLanguage,
   })))
+  const verbaliser = useVerbalisation(state.language)
+  // Rules as sentences, formulas or both, kept per user.
+  const [show, setShowRaw] = useState(() => { try { return localStorage.getItem(SHOW_KEY) || 'sentences' } catch { return 'sentences' } })
+  const setShow = (v) => { setShowRaw(v); try { localStorage.setItem(SHOW_KEY, v) } catch { /* not kept */ } }
   const act = useOrmStore.getState
   const schemas = state.schemas
   const [src, setSrc] = useState(schemas[0]?.id ?? '')
@@ -40,7 +45,17 @@ export default function ViewMappings() {
 
   return (
     <div className="view-mappings" style={{ marginTop: 18 }}>
-      <div style={{ fontWeight: 700, marginBottom: 4 }}>Views</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4 }}>
+        <span style={{ fontWeight: 700 }}>Views</span>
+        {state.views.length > 0 && <span role="radiogroup" aria-label="Show view rules as" style={{ display: 'inline-flex', border: '1px solid var(--border-soft)', borderRadius: 10, overflow: 'hidden' }}>
+          {[['sentences', 'Sentences'], ['formulas', 'Formulas'], ['both', 'Both']].map(([id, label], i) => (
+            <button key={id} type="button" role="radio" aria-checked={show === id} onClick={() => setShow(id)} style={{
+              fontSize: 10, padding: '1px 9px', cursor: 'pointer', border: 'none', borderLeft: i ? '1px solid var(--border-soft)' : 'none',
+              background: show === id ? 'var(--bg-text-panel)' : 'transparent', color: show === id ? 'var(--accent)' : 'var(--ink-muted)', fontWeight: show === id ? 600 : 400,
+            }}>{label}</button>
+          ))}
+        </span>}
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
         <span style={{ color: 'var(--ink-muted)' }}>New view from</span>
         <select aria-label="View source schema" value={srcId} onChange={e => setSrc(e.target.value)} style={select}>
@@ -60,12 +75,14 @@ export default function ViewMappings() {
       {state.views.map(v => <ViewBox key={v.id} view={v} state={state} name={name} run={runs[v.id]}
         onRun={() => doRun(v)} onApplied={() => setRuns(r => ({ ...r, [v.id]: { ...r[v.id], applied: true } }))}
         onCloseRun={() => setRuns(r => { const n = { ...r }; delete n[v.id]; return n })}
-        styles={{ select, btn, link }} />)}
+        styles={{ select, btn, link }} show={show} language={verbaliser.language} />)}
     </div>
   )
 }
 
-function ViewBox({ view: v, state, name, run, onRun, onApplied, onCloseRun, styles }) {
+const SHOW_KEY = 'freefbm.views.show'
+
+function ViewBox({ view: v, state, name, run, onRun, onApplied, onCloseRun, styles, show, language }) {
   const { select, btn, link } = styles
   const act = useOrmStore.getState
   const vs = useMemo(() => viewState(state, v), [state, v])
@@ -100,6 +117,7 @@ function ViewBox({ view: v, state, name, run, onRun, onApplied, onCloseRun, styl
           <option value="">{candidates.length ? '+ Rule for…' : 'Every element has a rule'}</option>
           {candidates.map(c => <option key={c.elementId} value={c.elementId}>{c.label}{c.kind === 'fact' ? '' : ' (type)'}</option>)}
         </select>
+        <button style={btn} title="Show this view as a diagram: both schemas side by side, each rule linked to the elements it reads and defines" onClick={() => act().openViewDiagram(v.id)}>Diagram</button>
         <button style={btn} title={`Build the population of ${name(v.targetSchemaId)} from that of ${name(v.sourceSchemaId)}`} onClick={onRun}>Run ⇒</button>
         <button style={btn} title="Delete this view and its rules" onClick={() => act().deleteView(v.id)}>Delete</button>
       </div>
@@ -112,7 +130,10 @@ function ViewBox({ view: v, state, name, run, onRun, onApplied, onCloseRun, styl
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
               <span style={{ fontWeight: 600, minWidth: 140 }}>{label(headId(r))}</span>
               <div data-text-panel tabIndex={0} className="copyable" style={{ flex: 1, outline: 'none', minWidth: 0 }}>
-                {entries.filter(e => e.formula).map(e => <Formula key={e.key} formula={e.formula} ctx={ctx} />)}
+                {entries.filter(e => e.formula).map(e => <React.Fragment key={e.key}>
+                  {show !== 'formulas' && <Sentence formula={e.formula} ctx={ctx} language={language} />}
+                  {show !== 'sentences' && <div style={show === 'both' ? { opacity: 0.75, fontSize: 11 } : undefined}><Formula formula={e.formula} ctx={ctx} /></div>}
+                </React.Fragment>)}
                 {!entries.some(e => e.formula) && <span style={{ color: 'var(--ink-muted)' }}>No formula yet.</span>}
               </div>
               <button style={btn} onClick={() => act().openViewRuleEditor(v.id, r.id)}>Edit</button>

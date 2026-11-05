@@ -1018,14 +1018,19 @@ export function activeScopeIdsOf(state) {
   const d = state.diagrams?.find(x => x.id === state.activeDiagramId)
   const own = d?.schemaId ?? state.schemas?.[0]?.id ?? null
   if (d?.mappingId) {
-    const m = state.mappings?.find(x => x.id === d.mappingId)
+    const m = mappingOfDiagram(state, d)
     if (m) return [...new Set([m.sourceSchemaId, m.targetSchemaId].filter(Boolean))]
   }
   return own ? [own] : []
 }
 
-// The mapping a diagram draws, if it is a mapping diagram.
-export const mappingOfDiagram = (state, d) => (d?.mappingId ? state.mappings?.find(m => m.id === d.mappingId) ?? null : null)
+// The mapping a diagram draws, if it is a mapping diagram: a two-way mapping
+// or a view (mapping/views.js), whose diagram.mappingId is the view's id.
+export const mappingOfDiagram = (state, d) => (d?.mappingId
+  ? state.mappings?.find(m => m.id === d.mappingId) ?? state.views?.find(v => v.id === d.mappingId) ?? null : null)
+
+// Whether a mapping (from mappingOfDiagram) is a view.
+export const isViewMapping = (state, m) => !!m && !!state.views?.some(v => v.id === m.id)
 
 // Gives every item in the schema-scoped arrays of `next` that has no schemaId
 // the schema that was active in `prev`. Element constructors don't know the
