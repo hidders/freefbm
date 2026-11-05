@@ -123,9 +123,11 @@ export function exportPostgresDdl(state, schemaId) {
       }
       items.push(line)
     }
-    if (t.pk) items.push(`  PRIMARY KEY (${t.pk.map(c => q(c.name)).join(', ')})`)
+    // Keys keep the names the script gave them (relationalModel's nameKeys).
+    const named = (n) => (n?.explicit ? `CONSTRAINT ${q(n.name)} ` : '')
+    if (t.pk) items.push(`  ${named(t.pkName)}PRIMARY KEY (${t.pk.map(c => q(c.name)).join(', ')})`)
     const kept = (cols) => cols.every(c => !skip.has(c.fact.id))
-    for (const u of t.uniques) if (kept(u)) items.push(`  UNIQUE (${u.map(c => q(c.name)).join(', ')})`)
+    t.uniques.forEach((u, i) => { if (kept(u)) items.push(`  ${named(t.uniqueNames?.[i])}UNIQUE (${u.map(c => q(c.name)).join(', ')})`) })
     for (const ch of t.checks) items.push(`  ${ch.name ? `CONSTRAINT ${q(ch.name)} ` : ''}CHECK (${ch.text})`)
     if (!t.columns.length) warnings.push(`Table ${t.name} has no columns`)
     if (view?.kind === 'base') lines.push(`-- ${t.name} is a view (below) over its stored part ${storedName(t)}.`)
@@ -136,7 +138,7 @@ export function exportPostgresDdl(state, schemaId) {
   const storedFks = fks.filter(fk => isStored(fk.fromTable, fk.from) && isStored(fk.toTable, fk.to))
   for (const fk of fks) if (!storedFks.includes(fk)) warnings.push(`FOREIGN KEY ${fk.fromTable.name}(${fk.from.map(c => c.name).join(', ')}) → ${fk.toTable.name}(${fk.to.map(c => c.name).join(', ')}) is about a view or a derived column and is not enforced`)
   for (const fk of storedFks) {
-    lines.push(`ALTER TABLE ${q(storedName(fk.fromTable))} ADD FOREIGN KEY (${fk.from.map(c => q(c.name)).join(', ')})`
+    lines.push(`ALTER TABLE ${q(storedName(fk.fromTable))} ADD ${fk.name?.explicit ? `CONSTRAINT ${q(fk.name.name)} ` : ''}FOREIGN KEY (${fk.from.map(c => q(c.name)).join(', ')})`
       + ` REFERENCES ${q(storedName(fk.toTable))} (${fk.to.map(c => q(c.name)).join(', ')});`)
   }
   if (storedFks.length) lines.push('')

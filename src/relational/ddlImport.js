@@ -18,11 +18,14 @@
 // buildRelationalSchema(parsed, { schemaId, diagramName }) →
 //   { objectTypes, facts, constraints, diagram, log, stats }
 
-import { parseDdl, tokenize } from './ddlParse.js'
+import { parseDdl, tokenize, uniqueKey } from './ddlParse.js'
 import { checkToFormula, splitCheck } from './checkFormula.js'
 import { relationalModel } from './relationalModel.js'
 import { findRefMode, findCompositePI, identifyingFactIds } from '../utils/refMode.js'
 import { mkEntity, mkValue, mkFact, mkUniqueness, withMandatoryId, mkConstraint, mkDiagram, mkOcc, uid } from '../store/storeHelpers.js'
+
+// A key's name in the script (CONSTRAINT name), kept as sqlName.
+const keyName = (t, key) => t.keyNames?.[key] ?? null
 
 export function importPostgresDdl(sql, opts) {
   const parsed = parseDdl(sql)
@@ -419,7 +422,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
       const from = fk.columns.map(c => colKey(t, c)), to = refCols.map(c => colKey(rt, c))
       const missing = [...from, ...to].filter(k => !colInfo.has(k))
       if (missing.length) { warn(`${tableName(t)}: foreign key (${fk.columns.join(', ')}) names unknown columns and is left out`); continue }
-      fks.push({ table: t, refTable: rt, from, to })
+      fks.push({ table: t, refTable: rt, from, to, name: fk.name ?? null })
     }
   }
 
@@ -494,7 +497,10 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
       ]
       f.uniqueness = [mkUniqueness([0])]
       const isPk = pk.length === 1 && pk[0] === c.name
-      if (isPk || singleUnique.has(c.name)) f.uniqueness.push(mkUniqueness([1]))
+      if (isPk || singleUnique.has(c.name)) {
+        const sqlName = keyName(t, isPk ? 'pk' : uniqueKey([c.name]))
+        f.uniqueness.push({ ...mkUniqueness([1]), ...(sqlName && { sqlName }) })
+      }
       if (isPk) f.preferredUniqueness = [[1]]
       // Column CHECKs on this column alone become a value range on its role;
       // others become formula constraints, below.
@@ -577,7 +583,9 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
     for (const { cols, preferred } of composite) {
       const members = cols.map(c => factByKey.get(colKey(t, c)))
       if (members.some(m => !m)) { warn(`${e.name}: key (${cols.join(', ')}) names unknown columns and is left out`); continue }
+      const sqlName = keyName(t, preferred ? 'pk' : uniqueKey(cols))
       constraints.push({ ...mkConstraint('uniqueness', 0, 0), schemaId, isPreferredIdentifier: preferred, targetObjectTypeId: e.id,
+        ...(sqlName && { sqlName }),
         sequences: [members.map(f => ({ kind: 'role', factId: f.id, roleIndex: 1 }))], queries: [null], _table: t })
     }
     // Columns of a single-column primary key or unique constraint are not repeated in uniques.
@@ -587,7 +595,8 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
   // Foreign keys: subset constraints.
   for (const fk of fks) {
     const seq = (keys) => keys.map(k => ({ kind: 'role', factId: factByKey.get(k).id, roleIndex: 1 }))
-    constraints.push({ ...mkConstraint('subset', 0, 0), schemaId, sequences: [seq(fk.from), seq(fk.to)], queries: [null, null], _table: fk.table, _refTable: fk.refTable })
+    constraints.push({ ...mkConstraint('subset', 0, 0), schemaId, sequences: [seq(fk.from), seq(fk.to)], queries: [null, null], _table: fk.table, _refTable: fk.refTable,
+      ...(fk.name && { sqlName: fk.name }) })
   }
 
   // ── Diagram ──
