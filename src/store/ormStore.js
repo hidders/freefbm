@@ -19,7 +19,7 @@ export { subtypeKindOf } from './storeHelpers'
 // constraint into the graphical constraint it says, and populations (records
 // are not read-only).
 const RELATIONAL_EDITS = ['addTableRule', 'updateTableRules', 'updateTableRule', 'deleteTableRule', 'addTableRuleColumn',
-  'setTablePrimaryKey', 'addDerivedTable', 'addCarriedConstraint', 'formulaToGraphical', 'applyMappingRun', 'loadSampleRows', 'addSimpleConstraint', 'applyView']
+  'setTablePrimaryKey', 'addDerivedTable', 'addCarriedConstraint', 'formulaToGraphical', 'applyMappingRun', 'loadSampleRows', 'addSimpleConstraint', 'applyView', 'applyExchangeRun']
 
 export const useOrmStore = create((rawSet, get) => {
   // Every update passes through here so that new elements and diagrams get

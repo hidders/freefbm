@@ -1123,6 +1123,8 @@ export const EMPTY = () => {
     // View mappings (mapping/views.js): one-way, target elements defined by
     // queries over a source schema.
     views:           [],
+    // Exchanges (mapping/exchanges.js): chains of mappings and views.
+    exchanges:       [],
     mappingRuleEditor: null,
     diagrams:        [d],
     activeDiagramId: d.id,

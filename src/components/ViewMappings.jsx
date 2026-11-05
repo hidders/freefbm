@@ -4,6 +4,9 @@ import { useOrmStore } from '../store/ormStore'
 import { makeContext } from '../logic/constraintFormulas.js'
 import { checkViewRule, viewRuleEntries, viewCoverage, viewState, runView, headId, elementName } from '../mapping/views.js'
 import { IssueList } from './MappingFormula.jsx'
+import { resultIssues, issueLines } from '../mapping/exchanges.js'
+import { Violations } from './Exchanges.jsx'
+import { withRunApplied } from '../mapping/runMapping.js'
 import { Formula, Sentence } from './ConstraintsTab.jsx'
 import { useVerbalisation } from '../verbalisation/workbench.js'
 
@@ -32,8 +35,11 @@ export default function ViewMappings() {
   const doRun = (v) => {
     const t0 = performance.now()
     try {
-      const result = runView(useOrmStore.getState(), v)
-      setRuns(r => ({ ...r, [v.id]: { result, ms: Math.round(performance.now() - t0) } }))
+      const st = useOrmStore.getState()
+      const result = runView(st, v)
+      // The result checked against the target's constraints.
+      const issues = issueLines(st, resultIssues({ ...st, ...withRunApplied(st, result) }, v.targetSchemaId), v.targetSchemaId)
+      setRuns(r => ({ ...r, [v.id]: { result, issues, ms: Math.round(performance.now() - t0) } }))
     } catch (err) {
       setRuns(r => ({ ...r, [v.id]: { error: String(err?.message ?? err) } }))
     }
@@ -180,6 +186,12 @@ function ViewRunReport({ run, view, name, onApply, onClose }) {
         : <table style={{ borderCollapse: 'collapse', fontSize: 12 }}><tbody>
           {r.counts.map(c => <tr key={c.id}><td style={cell}>{c.name}</td><td style={{ ...cell, color: 'var(--ink-muted)' }}>{c.kind === 'fact' ? 'fact type' : c.kind === 'value' ? 'value type' : 'entity type'}</td><td style={{ ...cell, textAlign: 'right' }}>{c.n}</td></tr>)}
         </tbody></table>}
+      {total > 0 && (run.issues?.length
+        ? <div style={{ marginTop: 4 }}>
+          <div style={{ color: '#dc2626' }}>✕ The result breaks {run.issues.length === 1 ? 'a constraint' : `constraints ${run.issues.length} times`} of {tgt}:</div>
+          <div style={{ marginLeft: 14 }}><Violations lines={run.issues} /></div>
+        </div>
+        : <div style={{ marginTop: 4, color: 'var(--col-candidate)' }}>✓ The result meets the constraints of {tgt}.</div>)}
       {r.log.length > 0 && <div style={{ marginTop: 4 }}>{r.log.map((l, i) => <div key={i} style={{ color: levelColor[l.level] ?? 'var(--ink-muted)' }}>{l.level === 'error' ? '✕' : '!'} {l.text}</div>)}</div>}
     </div>
   )

@@ -426,7 +426,7 @@ const OPERATION = {
   concat: '{0}, a po nim {1}', length: 'długość {0:gen}',
   substring: 'fragment {0:gen} o długości {2} od pozycji {1}',
   upper: '{0} wielkimi literami', lower: '{0} małymi literami', trim: '{0} bez spacji na początku i na końcu',
-  toText: '{0} jako tekst',
+  toText: '{0} jako tekst', asInteger: '{0} jako liczba całkowita', asDecimal: '{0} jako liczba dziesiętna', asFloat: '{0} jako liczba zmiennoprzecinkowa', asBoolean: '{0} jako wartość logiczna', asDate: '{0} jako data', asDatetime: '{0} jako data i czas', asTime: '{0} jako czas',
   year: 'rok {0:gen}', month: 'miesiąc {0:gen}', day: 'dzień miesiąca {0:gen}',
   hour: 'godzina {0:gen}', minute: 'minuta {0:gen}', second: 'sekunda {0:gen}',
   dayOfWeek: 'dzień tygodnia {0:gen}', yearsBetween: 'liczba pełnych lat od {0:gen} do {1:gen}',

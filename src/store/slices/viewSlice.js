@@ -2,9 +2,13 @@
 // a target schema by queries over a source schema.
 import { mkView, mkViewRule, headId, runView } from '../../mapping/views.js'
 import { withRunApplied } from '../../mapping/runMapping.js'
+import { mkExchange } from '../../mapping/exchanges.js'
+import { populationSql } from '../../relational/populationSql.js'
 
 export const createViewSlice = (set, get) => {
   const mapViews = (fn) => set(s => ({ views: fn(s.views ?? []), isDirty: true }))
+  const mapExchanges = (fn) => set(s => ({ exchanges: fn(s.exchanges ?? []), isDirty: true }))
+  const mapSteps = (id, fn) => mapExchanges(xs => xs.map(x => (x.id === id ? { ...x, steps: fn(x.steps) } : x)))
   const mapRules = (viewId, fn) =>
     mapViews(vs => vs.map(v => (v.id === viewId ? { ...v, rules: fn(v.rules) } : v)))
   return {
@@ -79,5 +83,30 @@ export const createViewSlice = (set, get) => {
       set(s => ({ ...withRunApplied(s, run), isDirty: true }))
       return run
     },
+
+    // Exchanges (mapping/exchanges.js): chains of mappings and views.
+    addExchange(name, steps = []) {
+      const used = new Set((get().exchanges ?? []).map(x => x.name))
+      const base = name ?? 'Exchange'
+      let unique = base
+      for (let i = 2; used.has(unique); i++) unique = `${base} ${i}`
+      const x = mkExchange(unique, steps)
+      mapExchanges(xs => [...xs, x])
+      return x.id
+    },
+    updateExchange(id, patch) { mapExchanges(xs => xs.map(x => (x.id === id ? { ...x, ...patch } : x))) },
+    deleteExchange(id) { mapExchanges(xs => xs.filter(x => x.id !== id)) },
+    addExchangeStep(id, step) { mapSteps(id, ss => [...ss, { mappingId: step.mappingId, direction: step.direction ?? 'forward' }]) },
+    // Removes a step and the ones after it (they start where it ended).
+    removeExchangeStep(id, index) { mapSteps(id, ss => ss.slice(0, index)) },
+    // Puts the last step's population (runExchange's result) into its
+    // schema, as one undo step.
+    applyExchangeRun(result) {
+      if (!result?.schemaId) return
+      set(s => ({ ...withRunApplied(s, result), isDirty: true }))
+    },
+    // The population of a relational schema as a data script
+    // (relational/populationSql.js): { sql, tables, notes }.
+    populationSql(schemaId, opts) { return populationSql(get(), schemaId, opts) },
   }
 }

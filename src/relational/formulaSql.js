@@ -116,6 +116,7 @@ const negate = (s) => {
 
 // Data operators (dataOperators.js OPS) in PostgreSQL.
 const INFIX = { add: '+', sub: '-', mul: '*', div: '/', concat: '||' }
+const CASTS = { asInteger: 'integer', asDecimal: 'numeric', asFloat: 'double precision', asBoolean: 'boolean', asDate: 'date', asDatetime: 'timestamp', asTime: 'time' }
 const FUNC = { abs: 'abs', least: 'least', greatest: 'greatest', round: 'round', roundInt: 'round', floor: 'floor', ceiling: 'ceiling',
   truncate: 'trunc', power: 'power', sqrt: 'sqrt', length: 'length', substring: 'substr', upper: 'upper', lower: 'lower', trim: 'trim',
   mod: 'mod', idiv: 'div', makeDate: 'make_date' }
@@ -165,6 +166,7 @@ export function formulaToSql(formula, model, names = () => null) {
         if (INFIX[t.op]) return args.map(paren).join(` ${INFIX[t.op]} `)
         if (t.op === 'neg') return `-${paren(args[0])}`
         if (t.op === 'toText') return `CAST(${args[0]} AS text)`
+        if (CASTS[t.op]) return `CAST(${args[0]} AS ${CASTS[t.op]})`
         if (EXTRACT[t.op]) return `EXTRACT(${EXTRACT[t.op]} FROM ${args[0]})`
         if (FUNC[t.op]) return `${FUNC[t.op]}(${args.join(', ')})`
         return no(`the data operator ${t.op}`)

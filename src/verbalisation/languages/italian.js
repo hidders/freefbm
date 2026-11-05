@@ -84,7 +84,7 @@ export const italianLibrary = romanceLibrary({
     concat: '{0} seguito da {1}', length: 'la lunghezza di {0}',
     substring: 'la parte di {0} di lunghezza {2} dalla posizione {1}',
     upper: '{0} in maiuscolo', lower: '{0} in minuscolo', trim: '{0} senza spazi iniziali e finali',
-    toText: '{0} come testo',
+    toText: '{0} come testo', asInteger: '{0} come intero', asDecimal: '{0} come decimale', asFloat: '{0} come numero in virgola mobile', asBoolean: '{0} come booleano', asDate: '{0} come data', asDatetime: '{0} come data e ora', asTime: '{0} come ora',
     year: "l'anno di {0}", month: 'il mese di {0}', day: 'il giorno del mese di {0}',
     hour: "l'ora di {0}", minute: 'il minuto di {0}', second: 'il secondo di {0}',
     dayOfWeek: 'il giorno della settimana di {0}', yearsBetween: 'il numero di anni interi da {0} a {1}',
