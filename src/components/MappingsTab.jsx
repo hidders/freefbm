@@ -7,6 +7,7 @@ import { runMapping, roundTrip } from '../mapping/runMapping.js'
 import { AccountingReport, runAccounting } from './AccountingReport.jsx'
 import { EquivalenceReport, runEquivalence } from './EquivalenceReport.jsx'
 import { CarryPanel } from './CarryPanel.jsx'
+import ViewMappings from './ViewMappings.jsx'
 
 // The mappings of the file (workbench step 7): each relates a source and a
 // target schema by rules φ ⟺ ψ. Rules are edited in MappingRuleEditor.
@@ -146,6 +147,7 @@ export default function MappingsTab() {
           </div>
         )
       })}
+      <ViewMappings />
     </div>
   )
 }

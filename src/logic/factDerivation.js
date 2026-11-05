@@ -143,7 +143,7 @@ export function checkFactRule(fact, state, ctx, typing = { sorts: new Map(), par
     const playerId = parts.roles.find(r => r.id === varId).typeIds[0]
     const player = ctx.otById.get(playerId)
     if (!player) { err(at, `${name(varId)} is a nested entity type, so its objects cannot be computed`); continue }
-    if (isDerived(player)) { err(at, `${name(varId)} is a derived subtype, so its objects cannot be computed`); continue }
+    if (isDerived(player)) { err(at, `${name(varId)} is derived, so its objects cannot be computed: select them in the role instead`); continue }
     if (!valueAccess(playerId, ctx)) {
       err(at, `${name(varId)} has no data value: ${ctx.typeName(playerId)} is not a value type and has no reference mode`)
       continue

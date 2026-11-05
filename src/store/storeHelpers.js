@@ -1115,6 +1115,9 @@ export const EMPTY = () => {
     propertyDefinitions: [],
     // Schema mappings (mapping/mapping.js): rules between two schemas of the file.
     mappings:        [],
+    // View mappings (mapping/views.js): one-way, target elements defined by
+    // queries over a source schema.
+    views:           [],
     mappingRuleEditor: null,
     diagrams:        [d],
     activeDiagramId: d.id,
