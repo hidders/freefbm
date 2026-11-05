@@ -101,6 +101,7 @@ export function viewState(state, view) {
   out.nestedEntityMappings = drop(state.nestedEntityMappings)
   // The target's values come from the source: a variable of a target value
   // type is bound by ≈ to a value (derivedPopulation.js).
+  out.schemaRoles = schemaRolesOf(view)
   out.openTypes = new Set(out.objectTypes.filter(o => inTarget(o) && o.kind === 'value').map(o => o.id))
   byView.set(view, out)
   return out
@@ -133,6 +134,14 @@ function headOf(state, view, rule) {
   if (!el) return { error: 'The element this rule defines no longer exists' }
   if (el.schemaId !== view.targetSchemaId) return { error: `${elementName(el, state)} is not in the target schema` }
   return { element: el, kind: rule.head.factId ? 'fact' : 'type' }
+}
+
+// Which of the view's schemas is the source and which the target, for names
+// that occur in both ("Artist (source)"); one object per view.
+const rolesByView = new WeakMap()
+export function schemaRolesOf(view) {
+  if (!rolesByView.has(view)) rolesByView.set(view, { [view.targetSchemaId]: 'target', [view.sourceSchemaId]: 'source' })
+  return rolesByView.get(view)
 }
 
 // The name of an element, for messages.

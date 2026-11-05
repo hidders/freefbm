@@ -730,14 +730,30 @@ export function impliedLinkEntries(fact, ctx) {
 
 // ── Scope: which constraints belong to the current selection ─────────────────
 
+// The names that elements of more than one schema carry.
+export function sharedNames(items, nameOf) {
+  const where = new Map()
+  for (const x of items) {
+    const n = nameOf(x)
+    if (n) where.set(n, (where.get(n) ?? new Set()).add(x.schemaId))
+  }
+  return new Set([...where].filter(([, ids]) => ids.size > 1).map(([n]) => n))
+}
+
 export function makeContext(state) {
   const objectTypes = state.objectTypes ?? []
   const facts = state.facts ?? []
   const otById = new Map(objectTypes.map(o => [o.id, o]))
   const factById = new Map(facts.map(f => [f.id, f]))
+  // A view mapping reads two schemas (state.schemaRoles: schema id → 'source'
+  // | 'target'); a name that occurs in both is followed by that word.
+  const roles = state.schemaRoles ?? null
+  const bare = (p) => (p?.name || p?.objectifiedName || '').replace(/\s+/g, '')
+  const shared = roles ? sharedNames([...objectTypes, ...facts.filter(f => f.objectified)], bare) : null
   const typeName = (id) => {
     const p = otById.get(id) ?? factById.get(id)
-    const name = (p?.name || p?.objectifiedName || '').replace(/\s+/g, '')
+    const name = bare(p)
+    if (name && shared?.has(name) && roles[p.schemaId]) return `${name} (${roles[p.schemaId]})`
     return name || 'Thing'
   }
   // The implied link fact types of nested fact types, as fact-like objects:
