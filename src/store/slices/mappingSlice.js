@@ -16,6 +16,7 @@ import { transformationById } from '../../mapping/transformations.js'
 import { mkLock } from '../../mapping/pairLock.js'
 import { withSimple } from '../../mapping/carry.js'
 import { withTableConstraints } from '../../relational/tableUnits.js'
+import { relationalView, rmLabel } from '../../relational/relationalView.js'
 import { uid } from '../storeHelpers'
 
 // The constraints of the old version (schemaId) about the given elements
@@ -377,6 +378,9 @@ export const createMappingSlice = (set, get) => {
         }
         const before = get()
         const players = new Set(before.facts.filter(f => removeIds.has(f.id)).flatMap(f => f.roles.map(r => r.objectTypeId)))
+        // A relational schema names its foreign keys and columns (relationalView).
+        const rmView = before.schemas.find(x => x.id === schemaId)?.profile === 'relational' ? relationalView(before, schemaId) : null
+        const rmName = (id) => (rmView ? rmLabel(rmView, id) : null)
         for (const c of before.constraints) {
           if (!(c.sequences ?? []).some(q => (q ?? []).some(x => removeIds.has(x?.factId)))) continue
           // A subset or equality constraint (a foreign key) of a removed column
@@ -384,10 +388,10 @@ export const createMappingSlice = (set, get) => {
           // that moves the column adds it again where the column went).
           if ((c.constraintType === 'subset' || c.constraintType === 'equality') && get().deleteConstraint) {
             get().deleteConstraint(c.id)
-            ch.report.push(`Removed the ${c.constraintType} constraint ${c.name ? `${c.name} ` : ''}on a removed fact type`)
+            ch.report.push(rmName(c.id) ? `Removed ${rmName(c.id)}, of a removed column` : `Removed the ${c.constraintType} constraint ${c.name ? `${c.name} ` : ''}on a removed fact type`)
             continue
           }
-          ch.report.push(`Check the ${c.constraintType ?? 'external'} constraint ${c.name ? `${c.name} ` : ''}on a removed fact type: it now has roles missing`)
+          ch.report.push(rmName(c.id) ? `Check ${rmName(c.id)}: a column it names was removed` : `Check the ${c.constraintType ?? 'external'} constraint ${c.name ? `${c.name} ` : ''}on a removed fact type: it now has roles missing`)
         }
         for (const id of removeIds) get().deleteFact(id)
         // Value types the removed fact types leave without a role.
@@ -398,7 +402,7 @@ export const createMappingSlice = (set, get) => {
           if (!o || o.kind !== 'value' || o.schemaId !== schemaId) continue
           if (after.facts.some(f => f.roles.some(r => r.objectTypeId === id)) || named.includes(JSON.stringify(id))) continue
           get().deleteObjectType(id)
-          ch.report.push(`Removed value type ${o.name}, which no fact type uses any more`)
+          ch.report.push(rmView ? `Removed the column type ${o.name}, which no column uses any more` : `Removed value type ${o.name}, which no fact type uses any more`)
         }
         if (twins) {
           const gone = ch.promote.map(id => twins[id]).filter(Boolean)

@@ -76,6 +76,7 @@ function Dialog({ ormSchemaId }) {
             <div style={{ fontWeight: 600, color: 'var(--ink-1)', margin: '10px 0 4px' }}>
               {plan.tables.length} tables{plan.tables.length ? `: ${['entity', 'subtype', 'fact'].filter(k => counts[k]).map(k => `${counts[k]} for ${k === 'entity' ? 'entity types' : k === 'subtype' ? 'subtypes' : 'fact types'}`).join(', ')}` : ''}
             </div>
+            <div style={{ color: 'var(--ink-3)', fontSize: 11, marginBottom: 4 }}>Each table with its columns and their types: the primary key underlined, columns that may be NULL in italics.</div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
                 {plan.tables.map(t => {
@@ -94,9 +95,14 @@ function Dialog({ ormSchemaId }) {
                         <div>{describe(t)}</div>
                         <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 11, color: 'var(--ink-3)' }}>
                           {t.columns.map((c, i) => (
-                            <span key={c.name}>{i ? ', ' : ''}<span style={t.pk.includes(c.name) ? { textDecoration: 'underline', color: 'var(--ink-2)' } : null}>{c.name}</span></span>
+                            <span key={c.name}>{i ? ', ' : ''}<span title={c.notNull ? 'NOT NULL' : 'may be NULL'}
+                              style={{ ...(t.pk.includes(c.name) ? { textDecoration: 'underline', color: 'var(--ink-2)' } : null), ...(!c.notNull ? { fontStyle: 'italic' } : null) }}>{c.name}</span>
+                              {c.sql && <span style={{ opacity: 0.75 }}> {c.sql}</span>}</span>
                           ))}
                         </div>
+                        {t.fks.length > 0 && <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 11, color: 'var(--ink-3)' }}>
+                          {t.fks.map((fk, i) => <span key={i}>{i ? ', ' : ''}FOREIGN KEY ({fk.cols.join(', ')}) → {plan.entities.get(fk.refTypeId)?.table ?? typeName(fk.refTypeId)}</span>)}
+                        </div>}
                       </td>
                     </tr>
                   )

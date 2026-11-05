@@ -6,6 +6,7 @@ import { SIDES } from '../mapping/mapping.js'
 import { Sentence, Formula } from './ConstraintsTab.jsx'
 import { proposeTranslation } from '../mapping/translate.js'
 import { useVerbalisation } from '../verbalisation/workbench.js'
+import { RmSentence } from './RelationalConstraints.jsx'
 
 // Constraint accounting (workbench step 10, mapping/accounting.js): for each
 // constraint of either schema of a mapping, whether the other schema keeps it.
@@ -126,8 +127,8 @@ function Item({ x, mapping, side, ctx, otherCtx, language, here, there }) {
   const [carry, setCarry] = useState(null)   // proposeTranslation's result, once asked
   const st = STATUS[x.status]
   const mono = { fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.5 }
-  const Constraint = ({ label, entry, c }) => (label
-    ? <div style={{ ...mono, fontSize: 12 }}>{label}</div>
+  const Constraint = ({ label, sentence, rm, entry, c }) => (label
+    ? <><div style={{ ...mono, fontSize: 12 }}>{label}</div>{rm ? <RmSentence schemaId={rm.schemaId} rmId={rm.rmId} fallback={sentence} /> : sentence && <div style={{ fontSize: 13, lineHeight: 1.5 }}>{sentence}</div>}</>
     : entry?.formula ? <Sentence formula={entry.formula} ctx={c} language={language} />
     : <div>{entry?.kind ?? 'a constraint'}</div>)
   const more = (lines, n) => (lines.length > n ? [...lines.slice(0, n), `… and ${lines.length - n} more`] : lines)
@@ -135,8 +136,8 @@ function Item({ x, mapping, side, ctx, otherCtx, language, here, there }) {
     <div style={{ display: 'flex', gap: 8, padding: '3px 0', borderTop: '1px solid var(--border-soft)' }}>
       <span title={st.title} style={{ flex: '0 0 54px', fontSize: 10, fontWeight: 700, color: st.color, paddingTop: 3, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{st.label}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.04em' }}>{x.entry.kind}{x.entry.subject ? ` · ${x.entry.subject}` : ''}</div>
-        <Constraint label={x.label} entry={x.entry} c={ctx} />
+        {!x.label && <div style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.04em' }}>{x.entry.kind}{x.entry.subject ? ` · ${x.entry.subject}` : ''}</div>}
+        <Constraint label={x.label} sentence={x.sentence} rm={x.rm} entry={x.entry} c={ctx} />
         <div style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 1 }}>
           {x.reason}
           {(x.counterexample || x.by.length > 0) && <button type="button" onClick={() => setOpen(o => !o)}
@@ -149,7 +150,7 @@ function Item({ x, mapping, side, ctx, otherCtx, language, here, there }) {
         </div>
         {carry && <Carried carry={carry} x={x} mapping={mapping} side={side} language={language} there={there} onClose={() => setCarry(null)} />}
         {open && x.by.length > 0 && <div style={{ marginTop: 3, paddingLeft: 10, borderLeft: '2px solid var(--border-soft)' }}>
-          {x.by.map(b => <Constraint key={b.key} label={b.label} entry={b.entry} c={otherCtx} />)}
+          {x.by.map(b => <Constraint key={b.key} label={b.label} sentence={b.sentence} rm={b.rm} entry={b.entry} c={otherCtx} />)}
         </div>}
         {open && x.counterexample && <div style={{ marginTop: 3, paddingLeft: 10, borderLeft: '2px solid #dc2626' }}>
           <div style={{ fontSize: 11, color: 'var(--ink-2)' }}>In {there} (⊥ stands for any value, NULL for none):</div>

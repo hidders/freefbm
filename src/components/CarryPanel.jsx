@@ -10,6 +10,7 @@ import { useOrmStore } from '../store/ormStore'
 import { carrySteps, changeScript } from '../mapping/carry.js'
 import { useVerbalisation } from '../verbalisation/workbench.js'
 import { Sentence } from './ConstraintsTab'
+import { RmSentence } from './RelationalConstraints.jsx'
 
 const btn = { fontSize: 11, padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg-surface)', color: 'var(--ink-2)', cursor: 'pointer' }
 const note = { fontSize: 11, color: 'var(--ink-2)' }
@@ -88,8 +89,9 @@ function CarryItem({ it, ctx, language, here, there, mapping }) {
       <span style={{ flex: '0 0 60px', fontSize: 10, fontWeight: 700, paddingTop: 3, textTransform: 'uppercase', letterSpacing: '0.04em',
         color: keptNow || added ? 'var(--col-candidate)' : '#dc2626' }}>{keptNow ? 'kept' : added ? 'carried' : 'not kept'}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.04em' }}>New in {here} · {x.entry.kind}{x.entry.subject ? ` · ${x.entry.subject}` : ''}</div>
-        {x.label ? <div style={{ ...mono, fontSize: 12 }}>{x.label}</div> : <Sentence formula={x.entry.formula} ctx={ctx} language={language} />}
+        <div style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.04em' }}>New in {here}{x.label ? '' : ` · ${x.entry.kind}${x.entry.subject ? ` · ${x.entry.subject}` : ''}`}</div>
+        {x.label ? <><div style={{ ...mono, fontSize: 12 }}>{x.label}</div>{x.rm ? <RmSentence schemaId={x.rm.schemaId} rmId={x.rm.rmId} fallback={x.sentence} /> : x.sentence && <div style={{ fontSize: 13, lineHeight: 1.5 }}>{x.sentence}</div>}</>
+          : <Sentence formula={x.entry.formula} ctx={ctx} language={language} />}
         {keptNow && <div style={note}>{there} already keeps it ({x.status}).</div>}
         {!keptNow && p?.error && <div style={note}>It can't be carried to {there}: {p.error}.</div>}
         {!keptNow && p && !p.error && (
@@ -103,7 +105,7 @@ function CarryItem({ it, ctx, language, here, there, mapping }) {
                 </div>))
               : p.entry?.formula ? <Sentence formula={p.entry.formula} ctx={p.ctx} language={language} /> : null}
             {p.rm?.length > 0 && (p.rm.some(o => o.sentence)
-              ? p.rm.filter(o => o.sentence).map(o => <div key={o.rmId} style={{ fontSize: 13, lineHeight: 1.5, userSelect: 'text' }}>{o.sentence}</div>)
+              ? p.rm.filter(o => o.sentence).map(o => <RmSentence key={o.rmId} schemaId={it.side === 'source' ? mapping.targetSchemaId : mapping.sourceSchemaId} rmId={null} fallback={o.sentence} />)
               : p.entry?.formula && <div style={{ opacity: 0.8 }}><Sentence formula={p.entry.formula} ctx={p.ctx} language={language} /></div>)}
             <div style={{ ...note, marginTop: 2 }}>{proposalKept ? `Checked: with it, ${there} keeps the constraint.` : `Checked: with it, the constraint is still ${p.status ?? 'unknown'}.`}</div>
             <div style={{ marginTop: 3 }}>

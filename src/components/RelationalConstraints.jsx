@@ -10,7 +10,7 @@ import { activeSchemaIdOf, scopeToSchema } from '../store/storeHelpers'
 import { relationalView } from '../relational/relationalView'
 import { rmSentence, rmViolations, selectedTableId } from '../relational/rmText'
 import { formalise } from '../logic/constraintFormulas.js'
-import { useVerbalisation } from '../verbalisation/workbench.js'
+import { useVerbalisation, languageInfo } from '../verbalisation/workbench.js'
 import { Sentence } from './ConstraintsTab'
 
 const VIEWS = [
@@ -87,7 +87,7 @@ export default function RelationalConstraints() {
               <div key={g.title}>
                 {(groups.length > 1 || !tableObj) && <div className="text-panel-section">{g.title}</div>}
                 {g.items.map(o => <RmEntry key={o.rmId} rm={rm} o={o} view={view} broken={violations.get(o.rmId)}
-                  formula={sentences.get(o.rmId)} language={verbaliser.language} />)}
+                  formula={sentences.get(o.rmId)} language={verbaliser.language} lang={languageInfo(viewLanguage).id} />)}
               </div>
             ))}
           </div>
@@ -96,8 +96,8 @@ export default function RelationalConstraints() {
   )
 }
 
-function RmEntry({ rm, o, view, broken, formula, language }) {
-  const sentence = o.kind === 'assertion' ? null : rmSentence(rm, o)
+function RmEntry({ rm, o, view, broken, formula, language, lang }) {
+  const sentence = o.kind === 'assertion' ? null : rmSentence(rm, o, { lang })
   const col = o.kind === 'notNull' ? rm.objects.get(o.columns[0]) : null
   const sql = col ? `${col.name} ${col.type ?? ''} NOT NULL` : o.sql
   const select = () => {
@@ -128,4 +128,16 @@ function RmEntry({ rm, o, view, broken, formula, language }) {
       )}
     </div>
   )
+}
+
+// The table sentence of an object of a relational schema in the view
+// language (rmText.js); when the object is not there (yet), the fallback: a
+// sentence, or { [lang]: sentence }.
+export function RmSentence({ schemaId, rmId, fallback = null, style = null }) {
+  const lang = useOrmStore(s => languageInfo(s.viewLanguage).id)
+  const text = useOrmStore(s => {
+    const o = rmId ? relationalView(s, schemaId).objects.get(rmId) : null
+    return o ? rmSentence(relationalView(s, schemaId), o, { lang }) : typeof fallback === 'object' && fallback ? fallback[lang] ?? fallback.en : fallback
+  })
+  return text ? <div style={{ fontSize: 13, lineHeight: 1.5, userSelect: 'text', ...style }}>{text}</div> : null
 }
