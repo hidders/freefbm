@@ -13,25 +13,14 @@ import { relationalView } from '../relational/relationalView'
 import { relationalModel } from '../relational/relationalModel'
 import { tableShape, tableRecords } from '../relational/records'
 import { TableIcon } from './RelationalBrowser'
+import { selectedTableId } from '../relational/rmText'
 
 const PAGE = 200
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
-// The table the selection is about: a table, view or stored part, or a part
-// of one (column, key, CHECK), or its entity type.
-function selectedTableId(state, schemaId) {
-  if (!state.selectedId) return null
-  const view = relationalView(state, schemaId)
-  const obj = (state.selectedRm?.id === state.selectedId ? view.objects.get(state.selectedRm.rmId) : null)
-    ?? view.ofOrm.get(state.selectedId)?.map(id => view.objects.get(id)).find(Boolean)
-  const tbl = obj && (obj.kind === 'table' || obj.kind === 'view' ? obj : view.objects.get(obj.table))
-  const of = tbl?.of ? view.objects.get(tbl.of) : null
-  return (of ?? tbl)?.entityId ?? null
-}
-
 export default function RelationalPopulation() {
   const schemaId = useOrmStore(s => activeSchemaIdOf(s))
-  const selected = useOrmStore(s => selectedTableId(s, schemaId))
+  const selected = useOrmStore(s => selectedTableId(s, relationalView(s, schemaId)))
   const objectTypes = useOrmStore(s => s.objectTypes)
   const [tableId, setTableId] = useState(selected)
   useEffect(() => { if (selected) setTableId(selected) }, [selected])

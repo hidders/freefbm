@@ -7,6 +7,8 @@ import { renderFormula } from '../logic/renderFormula.js'
 import { verbalise } from '../verbalisation/engine.js'
 import { negativeForm } from '../verbalisation/negative.js'
 import { useVerbalisation, openWorkbench } from '../verbalisation/workbench.js'
+import { activeRelationalFace } from '../relational/face'
+import RelationalConstraints from './RelationalConstraints'
 
 // ── Constraints tab ─────────────────────────────────────────────────────────
 // Lists every constraint in the selected part of the diagram (or, when
@@ -74,7 +76,13 @@ export const SENTENCE_STYLE = {
   punct:   { color: 'var(--ink-2)' },
 }
 
+// A relational schema showing its tables lists its constraints in table terms.
 export default function ConstraintsTab() {
+  const relational = useOrmStore(s => activeRelationalFace(s))
+  return relational ? <RelationalConstraints /> : <OrmConstraintsTab />
+}
+
+function OrmConstraintsTab() {
   // Seen from the active schema: 'Whole schema' means that schema.
   const state = useOrmStore(useShallow(st => { const s = scopeToSchema(st); return {
     objectTypes: s.objectTypes, facts: s.facts, subtypes: s.subtypes, constraints: s.constraints,
