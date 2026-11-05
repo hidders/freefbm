@@ -632,6 +632,8 @@ export const createMappingSlice = (set, get) => {
         m = get().mappings.find(x => x.id === rf.mappingId)
         d.post?.({ mapping: m, idMap: rf.idMap, report })
         }
+        // A table with new columns shows them on every diagram showing it.
+        get().completeTableDiagrams()
         // What the new version has that no diagram of it shows (a new key, a
         // moved foreign key): onto its first diagram.
         // Each on the diagrams that show all its fact types, between them.

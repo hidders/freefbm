@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
 import { EMPTY, stampSchemaIds, scopeToSchema } from './storeHelpers'
+import { editsRelationalSchema } from '../relational/face'
 import { createModelSlice } from './slices/modelSlice'
 import { createElementSlice } from './slices/elementSlice'
 import { createPopulationSlice } from './slices/populationSlice'
@@ -11,15 +12,33 @@ import { createSchemaSlice } from './slices/schemaSlice'
 import { createMappingSlice } from './slices/mappingSlice'
 export { subtypeKindOf } from './storeHelpers'
 
+// Actions that may change a relational schema outside an undo batch: its table
+// rules (derived tables and columns, which transformations derive through), a
+// constraint carried over from the accounting report, and turning a formula
+// constraint into the graphical constraint it says, and populations (records
+// are not read-only).
+const RELATIONAL_EDITS = ['addTableRule', 'updateTableRules', 'updateTableRule', 'deleteTableRule', 'addTableRuleColumn',
+  'setTablePrimaryKey', 'addDerivedTable', 'addCarriedConstraint', 'formulaToGraphical', 'applyMappingRun', 'loadSampleRows']
+
 export const useOrmStore = create((rawSet, get) => {
   // Every update passes through here so that new elements and diagrams get
   // the active schema's id (stampSchemaIds), whichever action made them.
+  // A relational schema is read-only (relational/face.js): an update that
+  // edits one is dropped, with a notice in the status bar, unless it runs as
+  // part of one undo step (a transformation, an import, Fold…; historyBatch),
+  // inside an action listed in RELATIONAL_EDITS, or replaces the schemas
+  // (opening a file, deleting a schema).
   const set = (partial, replace) => {
     const prev = get()
-    const next = typeof partial === 'function' ? partial(prev) : partial
-    rawSet(stampSchemaIds(next, prev), replace)
+    const next = stampSchemaIds(typeof partial === 'function' ? partial(prev) : partial, prev)
+    if (next && !replace && !(prev.historyBatch > 0) && !(prev.relationalEdits > 0)
+      && !(next.schemas && next.schemas !== prev.schemas) && editsRelationalSchema(prev, next)) {
+      rawSet({ readOnlyNotice: Date.now() })
+      return
+    }
+    rawSet(next, replace)
   }
-  return {
+  const actions = {
     ...EMPTY(),
     ...createModelSlice(set, get),
     ...createElementSlice(set, get),
@@ -30,7 +49,16 @@ export const useOrmStore = create((rawSet, get) => {
     ...createSchemaSlice(set, get),
     ...createMappingSlice(set, get),
   }
+  for (const name of RELATIONAL_EDITS) {
+    const fn = actions[name]
+    actions[name] = (...args) => {
+      rawSet({ relationalEdits: (get().relationalEdits ?? 0) + 1 })
+      try { return fn(...args) } finally { rawSet({ relationalEdits: Math.max(0, (get().relationalEdits ?? 1) - 1) }) }
+    }
+  }
+  return actions
 })
+
 
 // The whole state, like useOrmStore(), but a change to only the given keys
 // doesn't re-render. Panning sets `pan` on every wheel event, so components

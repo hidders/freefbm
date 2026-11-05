@@ -23,6 +23,7 @@ import { withRuleForms } from '../../logic/query.js'
 import { mkGroup, loadGroups, pruneGroups } from '../../utils/groups.js'
 import { mkPropertyDefinition, loadPropertyDefinitions, dropPropertyValues } from '../../utils/customProperties.js'
 import { loadMappings } from '../../mapping/mapping.js'
+import { completeTables } from '../../relational/tableUnits.js'
 
 // The clipboard holds elements of the schema it was copied in; they may only be
 // pasted or duplicated into a diagram of that same schema, because they refer
@@ -777,6 +778,10 @@ export function createModelSlice(set, get) {
         const { mappingId: _gone, ...rest } = dg
         return rest
       })
+      // Diagrams of relational schemas show tables whole (tableUnits.js).
+      const completed = completeTables(scoped, scoped.diagrams)
+      if (completed !== scoped.diagrams)
+        scoped.diagrams = syncConstraints(completed, scoped.constraints, scoped.subtypes, scoped.facts)
 
       const activeDiag = diagrams.find(d => d.id === activeDiagramId)
       const diagDS = activeDiag?.displaySettings ?? {}
