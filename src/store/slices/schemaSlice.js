@@ -89,6 +89,7 @@ export const createSchemaSlice = (set, get) => ({
       set(st => ({
         schemas: st.schemas.filter(x => x.id !== id), diagrams: st.diagrams.filter(d => !dropped(d)),
         mappings: (st.mappings ?? []).filter(m => !goneMappings.has(m.id)),
+        views: (st.views ?? []).filter(v => v.sourceSchemaId !== id && v.targetSchemaId !== id),
         ...(gone.size ? {
           objectTypes: st.objectTypes.filter(x => !owned(x)), facts: st.facts.filter(x => !owned(x)),
           subtypes: st.subtypes.filter(x => !owned(x)), constraints: st.constraints.filter(x => !owned(x)),

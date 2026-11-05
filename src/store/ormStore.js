@@ -10,6 +10,7 @@ import { createSelectionSlice } from './slices/selectionSlice'
 import { createDiagramSlice } from './slices/diagramSlice'
 import { createSchemaSlice } from './slices/schemaSlice'
 import { createMappingSlice } from './slices/mappingSlice'
+import { createViewSlice } from './slices/viewSlice'
 export { subtypeKindOf } from './storeHelpers'
 
 // Actions that may change a relational schema outside an undo batch: its table
@@ -18,7 +19,7 @@ export { subtypeKindOf } from './storeHelpers'
 // constraint into the graphical constraint it says, and populations (records
 // are not read-only).
 const RELATIONAL_EDITS = ['addTableRule', 'updateTableRules', 'updateTableRule', 'deleteTableRule', 'addTableRuleColumn',
-  'setTablePrimaryKey', 'addDerivedTable', 'addCarriedConstraint', 'formulaToGraphical', 'applyMappingRun', 'loadSampleRows', 'addSimpleConstraint']
+  'setTablePrimaryKey', 'addDerivedTable', 'addCarriedConstraint', 'formulaToGraphical', 'applyMappingRun', 'loadSampleRows', 'addSimpleConstraint', 'applyView']
 
 export const useOrmStore = create((rawSet, get) => {
   // Every update passes through here so that new elements and diagrams get
@@ -50,6 +51,7 @@ export const useOrmStore = create((rawSet, get) => {
     ...createDiagramSlice(set, get),
     ...createSchemaSlice(set, get),
     ...createMappingSlice(set, get),
+    ...createViewSlice(set, get),
   }
   for (const name of RELATIONAL_EDITS) {
     const fn = actions[name]
