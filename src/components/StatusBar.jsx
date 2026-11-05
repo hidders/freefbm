@@ -1,6 +1,8 @@
 import React from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
-import { scopeToSchema } from '../store/storeHelpers'
+import { scopeToSchema, activeSchemaIdOf } from '../store/storeHelpers'
+import { activeRelationalFace } from '../relational/face'
+import { relationalCounts } from '../relational/relationalView'
 
 // ── Tier 1: Tool hints — workflow guidance while a tool is active ─────────────
 const TOOL_HINTS = {
@@ -136,7 +138,10 @@ export default function StatusBar() {
         ? `Click canvas to place a ${store.tool.split(':')[1]} external constraint`
         : '')
 
-  const hint = constructionHint || selectionHint || toolHint
+  const relFace = activeRelationalFace(store)
+  const hint = relFace
+    ? 'Click a table, column or foreign key to inspect it · Drag a table to move it · Transform… changes the schema'
+    : constructionHint || selectionHint || toolHint
 
   return (
     <div style={{ height: 26, display: 'flex', alignItems: 'center',
@@ -151,7 +156,13 @@ export default function StatusBar() {
         <span style={{ fontSize: 11, color: 'var(--danger)' }}>● unsaved</span>
       )}
       <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
-        {(() => { const sc = scopeToSchema(store); return `${sc.objectTypes.length} types · ${sc.facts.length} facts · ${sc.constraints.length} constraints` })()}
+        {(() => {
+          if (relFace) {
+            const c = relationalCounts(useOrmStore.getState(), activeSchemaIdOf(store))
+            return `${c.tables} tables · ${c.columns} columns · ${c.constraints} constraints`
+          }
+          const sc = scopeToSchema(store); return `${sc.objectTypes.length} types · ${sc.facts.length} facts · ${sc.constraints.length} constraints`
+        })()}
       </span>
     </div>
   )

@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
+import { activeRelationalFace } from '../relational/face'
+import { activeSchemaIdOf } from '../store/storeHelpers'
 
 const COL_CONSTRAINT = '#7c4dbd'
 
@@ -548,11 +550,41 @@ export function NoteConnectorIcon({ active }) {
   )
 }
 
+// In place of the drawing tools for a relational schema showing its tables:
+// such a schema changes only by transformations (or by importing DDL).
+function RelationalTools({ advanced }) {
+  const open = () => {
+    const st = useOrmStore.getState()
+    useOrmStore.setState({ transformDialog: { schemaId: activeSchemaIdOf(st) } })
+  }
+  return (
+    <div style={{ padding: '6px 6px', fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.45 }}>
+      <div style={{ marginBottom: 8 }}>
+        A relational schema is not drawn by hand. Add its tables to a diagram from the schema browser, and change it
+        with a transformation, which makes a new version with the mapping from this one.
+      </div>
+      <button onClick={open} className="relational-transform"
+        style={{ width: '100%', padding: '3px 10px', fontSize: 12, textAlign: 'left', fontFamily: 'var(--font-mono)',
+          background: 'transparent', color: 'var(--ink-1)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+      >Transform…</button>
+      {advanced && (
+        <div style={{ marginTop: 8, color: 'var(--ink-3)' }}>
+          The Logical switch above the diagram shows the ORM2 schema that stores it.
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ToolPanel() {
   const store = useOrmStoreIgnoring('pan', 'zoom')
   const tool = store.sequenceConstruction ? 'connectConstraint' : store.tool
   const advanced = useOrmStore(s => s.advancedMode)
   const setAdvanced = (f) => useOrmStore.getState().setAdvancedMode(f(advanced))
+  // A relational schema showing its tables is not drawn by hand (relational/face.js).
+  const relational = useOrmStore(s => activeRelationalFace(s))
 
   return (
     <div style={{
@@ -608,6 +640,7 @@ export default function ToolPanel() {
         </span>
       </div>
 
+      {relational ? <RelationalTools advanced={advanced} /> : <>
       <button
         title="Select (S)"
         onClick={() => store.setTool('select')}
@@ -895,6 +928,7 @@ export default function ToolPanel() {
       ))}
       <Divider />
 
+      </>}
     </div>
   )
 }

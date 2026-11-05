@@ -10,6 +10,9 @@ import {
   ValueComparisonConstraintIcon, NoteIcon,
 } from './ToolPanel'
 import { queryElements } from '../logic/query.js'
+import { activeRelationalFace } from '../relational/face.js'
+import { relationalView, rmObjectOf } from '../relational/relationalView.js'
+import { relationalSections, relationalOrphanCount } from './RelationalBrowser.jsx'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
@@ -559,9 +562,16 @@ export default function SchemaBrowser() {
   const readyNestedEntityCount = store.facts.filter(f =>
     f.objectified && f.objectifiedKind !== 'value' && !inDiag(f.id) && factDepsStatus(f) === 'ready'
   ).length
-  const readyCount = readyConstraintCount + readySubtypeCount + readyFactCount + readyNestedEntityCount
+  // A relational schema showing its tables lists tables, keys and constraints
+  // instead (RelationalBrowser.jsx); its orphans are tables in no diagram.
+  const relFace = useOrmStore(s => activeRelationalFace(s))
+  const rmView = relFace ? relationalView(useOrmStore.getState(), activeSchemaIdOf(store)) : null
+  const [rmExpanded, setRmExpanded] = useState(() => new Set())
+  const toggleRm = (id) => setRmExpanded(x => { const n = new Set(x); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
-  const allOrphanCount = [
+  const readyCount = rmView ? 0 : readyConstraintCount + readySubtypeCount + readyFactCount + readyNestedEntityCount
+
+  const allOrphanCount = rmView ? relationalOrphanCount(rmView, diagrams.filter(d => d.schemaId === activeSchemaIdOf(store))) : [
     ...store.objectTypes.filter(o => isOrphaned(o.id)),
     ...store.facts.filter(f => isOrphaned(f.id)),
     ...store.subtypes.filter(st => isStOrphaned(st)),
@@ -695,7 +705,12 @@ export default function SchemaBrowser() {
     if (inDiag(il.factId)) store.centerOnElement(il.factId)
   }
 
-  const sections = [
+  const selectedRmId = !rmView ? null
+    : store.selectedRm && store.selectedRm.id === store.selectedId ? store.selectedRm.rmId
+    : rmObjectOf(rmView, store.selectedId)?.rmId ?? null
+  const sections = rmView ? relationalSections({ view: rmView, diagram: diagram?.mappingId ? null : diagram,
+    diagrams: diagrams.filter(d => d.schemaId === activeSchemaIdOf(store)), expanded: rmExpanded, toggle: toggleRm,
+    selectedRmId, showOrphans }) : [
     {
       title: 'Entity Types',
       items: showOrphans ? entityTypes.filter(el => isOrphaned(el.id)) : showReady ? [] : entityTypes,

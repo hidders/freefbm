@@ -1,6 +1,8 @@
 import React, { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react'
 import { useOrmStore, useOrmStoreIgnoring, useScopedStore } from '../store/ormStore'
 import { activeSchemaIdOf } from '../store/storeHelpers'
+import { activeRelationalFace } from '../relational/face'
+import RelationalInspector, { selectedRmObject, RelationalCounts } from './RelationalInspector'
 import { findRefMode, refModeLabel, findCompositePI, canBeExternalUniquenessPI } from '../utils/refMode'
 import { getDisplayReading, makeImplicitLinkFact } from './FactTypeNode'
 import { RingMiniSymbol } from './ConstraintNodes'
@@ -4540,6 +4542,12 @@ export default function Inspector() {
     }
   }
 
+  // A relational schema showing its tables: its tables, columns, keys and
+  // constraints instead of the ORM2 elements that store them.
+  const relFace = useOrmStore(s => activeRelationalFace(s))
+  const rmSchemaId = activeSchemaIdOf(store)
+  const rmObj = relFace ? selectedRmObject(useOrmStore.getState(), rmSchemaId) : null
+
   const counts = {
     entities: store.objectTypes.filter(o => o.kind === 'entity').length,
     values:   store.objectTypes.filter(o => o.kind === 'value').length,
@@ -4554,6 +4562,10 @@ export default function Inspector() {
     <Splitter orientation="v" dragging={resizing} onMouseDown={onResizeMouseDown} />
     <div style={{ flex: 1, minWidth: 0, position: 'relative', overflowY: 'auto', padding: 14 }}>
 
+      {rmObj ? (
+        <RelationalInspector schemaId={rmSchemaId} obj={rmObj}
+          tableRules={(() => { const e = store.objectTypes.find(o => o.id === rmObj.entityId); return e ? <TableRulesSection ot={e} store={store}/> : null })()} />
+      ) : <>
       {note && <NoteInspector note={note} />}
       {group && <GroupInspector group={group} />}
       {ot   && <ObjectTypeInspector ot={ot} />}
@@ -4574,6 +4586,7 @@ export default function Inspector() {
              ? <ExternalConstraintInspector c={con} />
              : con && !isFormulaConstraint(con) && <ConstraintInspector c={con} />}
       {internalConstraintContent}
+      </>}
 
       {store.multiSelectedIds.length > 0 && (
         <div style={{ marginBottom: 16 }}>
@@ -4594,7 +4607,7 @@ export default function Inspector() {
               style={{ fontSize: 11, padding: '3px 8px' }}>
               Clear
             </button>
-            <button
+            {!relFace && <button
               onClick={() => store.deleteMultiSelection()}
               style={{ fontSize: 11, padding: '3px 8px', cursor: 'pointer',
                 background: 'transparent', color: 'var(--danger)',
@@ -4602,7 +4615,7 @@ export default function Inspector() {
               onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--danger)' }}>
               Delete all
-            </button>
+            </button>}
           </div>
         </div>
       )}
@@ -4862,9 +4875,11 @@ export default function Inspector() {
         paddingTop: 10, borderTop: '1px solid var(--border-soft)',
         background: 'var(--bg-surface)', fontSize: 10, color: 'var(--ink-muted)',
         lineHeight: 1.8 }}>
+        {relFace ? <RelationalCounts schemaId={rmSchemaId} /> : <>
         <div>{counts.entities} entities · {counts.values} values</div>
         <div>{counts.facts} facts · {counts.subtypes} subtypes</div>
         <div>{counts.constraints} constraints</div>
+        </>}
         {store.filePath && (
           <div style={{ marginTop: 2, fontSize: 10, overflow: 'hidden',
             textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={store.filePath}>
