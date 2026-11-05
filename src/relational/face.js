@@ -8,6 +8,7 @@
 // diagrams are always drawn in ORM2.
 
 import { activeSchemaIdOf } from '../store/storeHelpers.js'
+import { lockedSchemas } from '../mapping/pairLock.js'
 
 export function isRelationalFace(state, schemaId) {
   const s = state.schemas?.find(x => x.id === schemaId)
@@ -29,34 +30,13 @@ export function isReadOnlySchema(state, schemaId) {
 }
 
 // The active diagram shows a read-only schema (mapping diagrams excepted).
+// In its logical view, a relational schema that a mapping locks to
+// constraints only (mapping/pairLock.js) takes new constraints, so it shows
+// the usual tools there.
 export function activeReadOnly(state) {
   const d = state.diagrams?.find(x => x.id === state.activeDiagramId)
   if (d?.mappingId) return false
-  return isReadOnlySchema(state, activeSchemaIdOf(state))
-}
-
-// Whether an update (prev → next, next possibly partial) changes an element of
-// a relational schema other than in its position. Element positions (x, y at
-// any depth: schema-level fallbacks, frequency markers, implied links) are
-// layout and stay free.
-const ELEMENT_KEYS = ['objectTypes', 'facts', 'subtypes', 'constraints']
-const unplaced = (v) => JSON.stringify(v, (k, val) => ((k === 'x' || k === 'y') && typeof val === 'number' ? undefined : val))
-export function editsRelationalSchema(prev, next) {
-  const rel = new Set((next.schemas ?? prev.schemas ?? []).filter(s => s.profile === 'relational').map(s => s.id))
-  if (!rel.size) return false
-  const counts = (x) => x && !x._implicit && rel.has(x.schemaId)
-  for (const key of ELEMENT_KEYS) {
-    const a = prev[key] ?? [], b = next[key]
-    if (!Array.isArray(b) || a === b) continue
-    const before = new Map(a.map(x => [x.id, x]))
-    const kept = new Set()
-    for (const x of b) {
-      const o = before.get(x.id)
-      kept.add(x.id)
-      if (o === x || !(counts(x) || counts(o))) continue
-      if (!o || unplaced(o) !== unplaced(x)) return true
-    }
-    for (const o of a) if (!kept.has(o.id) && counts(o)) return true
-  }
-  return false
+  const sid = activeSchemaIdOf(state)
+  if (!isReadOnlySchema(state, sid)) return false
+  return isRelationalFace(state, sid) || !lockedSchemas(state).has(sid)
 }

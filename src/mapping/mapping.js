@@ -504,6 +504,8 @@ export function loadMappings(raw, schemaIds) {
         id: String(r.id ?? uid()), name: String(r.name ?? ''),
         source: normPattern(r.source), target: normPattern(r.target),
       })),
+      // Constraints only (pairLock.js).
+      ...(m.lock && typeof m.lock === 'object' && m.lock.base ? { lock: m.lock } : {}),
     }))
 }
 const normPattern = (p) => (p && typeof p === 'object' && typeof p.t === 'string' ? p : { t: 'hole' })

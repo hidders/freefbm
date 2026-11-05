@@ -13,6 +13,10 @@ import { cloneSchema, identityMapping } from '../../mapping/refactor.js'
 import { entriesOf, accountingSteps } from '../../mapping/accounting.js'
 import { proposeTranslation } from '../../mapping/translate.js'
 import { transformationById } from '../../mapping/transformations.js'
+import { mkLock } from '../../mapping/pairLock.js'
+import { withSimple } from '../../mapping/carry.js'
+import { withTableConstraints } from '../../relational/tableUnits.js'
+import { uid } from '../storeHelpers'
 
 // The constraints of the old version (schemaId) about the given elements
 // that the mapping m loses, each added to the new version as its
@@ -100,6 +104,33 @@ export const createMappingSlice = (set, get) => {
       const m = mkMapping(unique, sourceSchemaId, targetSchemaId)
       mapMappings(ms => [...ms, m])
       return m.id
+    },
+    // Constraints only (mapping/pairLock.js): on locks both schemas of the
+    // mapping to new constraints, recording what they have now; off unlocks.
+    lockMapping(id, on) {
+      const s = get()
+      const m = s.mappings.find(x => x.id === id)
+      if (!m) return
+      mapMappings(ms => ms.map(x => {
+        if (x.id !== id) return x
+        if (on) return { ...x, lock: mkLock(s, m) }
+        const { lock: _off, ...rest } = x
+        return rest
+      }))
+    },
+    // A plain constraint carried across a locked mapping (mapping/carry.js):
+    // a mandatory role, a single-role uniqueness or a foreign key (a subset
+    // constraint between two columns), as one undo step. Returns its id.
+    addSimpleConstraint(schemaId, simple) {
+      const id = uid()
+      set(st => {
+        const r = withSimple(st, simple, id)
+        const out = { facts: r.state.facts, constraints: r.state.constraints, isDirty: true }
+        if (simple.kind === 'fk')
+          out.diagrams = st.diagrams.map(d => (d.schemaId === schemaId && !d.mappingId ? withTableConstraints(r.state, d) : d))
+        return out
+      })
+      return id
     },
     updateMapping(id, patch) {
       mapMappings(ms => ms.map(m => (m.id === id ? { ...m, ...patch } : m)))
