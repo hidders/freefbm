@@ -69,7 +69,7 @@ export const VALIDATION_CATEGORIES = {
 }
 
 export const DEFAULT_VALIDATION_CATEGORIES = Object.fromEntries(
-  Object.keys(VALIDATION_CATEGORIES).map(k => [k, k !== 'subtypeHierarchy'])
+  Object.keys(VALIDATION_CATEGORIES).map(k => [k, true])
 )
 
 // Human-readable constraint type labels for error messages
