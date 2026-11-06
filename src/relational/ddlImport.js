@@ -145,6 +145,11 @@ const SIMPLE = {
   char: 'character', character: 'character', bpchar: 'character',
   bool: 'boolean', boolean: 'boolean', date: 'date',
   uuid: 'uuid', json: 'json', jsonb: 'jsonb', xml: 'xml', inet: 'inet', cidr: 'cidr', macaddr: 'macaddr',
+  macaddr8: 'macaddr8', bit: 'bit', varbit: 'bit varying', 'bit varying': 'bit varying',
+  tsvector: 'tsvector', tsquery: 'tsquery',
+  point: 'point', line: 'line', lseg: 'lseg', box: 'box', path: 'path', polygon: 'polygon', circle: 'circle',
+  int4range: 'int4range', int8range: 'int8range', numrange: 'numrange',
+  tsrange: 'tsrange', tstzrange: 'tstzrange', daterange: 'daterange',
 }
 
 const intArg = (a) => { const n = parseInt(a, 10); return Number.isFinite(n) ? n : undefined }
@@ -167,7 +172,7 @@ export function pgAssignment(type) {
   const id = SIMPLE[name]
   if (!id) return null
   if (id === 'numeric') return as(id, { precision: intArg(args[0]), scale: intArg(args[1]) })
-  if (id === 'character varying' || id === 'character') return as(id, { length: intArg(args[0]) })
+  if (id === 'character varying' || id === 'character' || id === 'bit' || id === 'bit varying') return as(id, { length: intArg(args[0]) })
   return as(id)
 }
 
@@ -405,11 +410,17 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
       const plain = { serial: 'integer', bigserial: 'bigint', smallserial: 'smallint' }[assignment?.datatypeId]
       if (plain) { generated = assignment.datatypeId; assignment = { profileId: 'postgresql', datatypeId: plain } }
       if (type.array) { assignment = { profileId: 'postgresql', datatypeId: 'text' }; warn(`${tableName(t)}.${c.name}: the array type ${bare}[] is read as text`) }
-      else if (!assignment) unknownTypes.add(bare)
+      else if (!assignment) {
+        // A type of an extension or a CREATE TYPE: kept as written, so the
+        // export gives it back.
+        unknownTypes.add(bare)
+        assignment = { profileId: 'postgresql', datatypeId: 'user-defined',
+          params: { sql: `${bare}${type.args?.length ? `(${type.args.join(', ')})` : ''}` } }
+      }
       colInfo.set(colKey(t, c.name), { table: t, col: c, assignment, vtSpecs, notNull, extraChecks, generated })
     }
   }
-  if (unknownTypes.size) warn(`Types with no PostgreSQL datatype here, left unset: ${[...unknownTypes].sort().join(', ')}`)
+  if (unknownTypes.size) note(`Types FreeFBM does not know (from an extension or CREATE TYPE), kept as written: ${[...unknownTypes].sort().join(', ')}`)
 
   // Foreign keys, resolved: referencing and referenced column keys.
   const fks = []

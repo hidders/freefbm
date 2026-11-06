@@ -5,6 +5,7 @@ import {
   normalizeStEps, syncConstraints, computeCascadeRemove, rmCOcc,
   mkUniqueness, withMandatoryId, mappingOfDiagram,
 } from '../storeHelpers'
+import { erdPartsOfDiagram, erdTargetOf } from '../../relational/erdBoxes.js'
 import { diagramUnits, tableCompanions, tableRemoval, completeTables, withTableConstraints } from '../../relational/tableUnits.js'
 
 // Module-level variable for pan animation — only used by centerOnElement/centerOnOccurrence
@@ -23,7 +24,13 @@ export function createDiagramSlice(set, get) {
       }
 
       let wx, wy
-      const ot = objectTypes.find(o => o.id === id)
+      // Tables drawn as an ERD (the diagram of a relational schema, or the
+      // relational side of a mapping diagram) are not where the occurrences
+      // of their elements are: the table's box, or its column's row.
+      const erdParts = erdPartsOfDiagram(get(), diagram)
+      const erdAt = erdParts.length ? erdTargetOf(get(), erdParts, id) : null
+      if (erdAt) { wx = erdAt.x + erdAt.w / 2; wy = erdAt.y + erdAt.h / 2 }
+      const ot = wx == null ? objectTypes.find(o => o.id === id) : null
       if (ot) { const p = getElemPos(ot); wx = p.x; wy = p.y }
       if (wx == null) {
         const f = facts.find(f => f.id === id)

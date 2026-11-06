@@ -176,6 +176,30 @@ export const PROFILES = [
       { id: 'inet',             name: 'inet',             params: [] },
       { id: 'cidr',             name: 'cidr',             params: [] },
       { id: 'macaddr',          name: 'macaddr',          params: [] },
+      { id: 'macaddr8',         name: 'macaddr8',         params: [] },
+      { id: 'bit',              name: 'bit',              params: [{ name: 'length', type: 'integer', optional: true }] },
+      { id: 'bit varying',      name: 'varbit',           params: [{ name: 'length', type: 'integer', optional: true }] },
+      // Text search
+      { id: 'tsvector',         name: 'tsvector',         params: [] },
+      { id: 'tsquery',          name: 'tsquery',          params: [] },
+      // Geometric
+      { id: 'point',            name: 'point',            params: [] },
+      { id: 'line',             name: 'line',             params: [] },
+      { id: 'lseg',             name: 'lseg',             params: [] },
+      { id: 'box',              name: 'box',              params: [] },
+      { id: 'path',             name: 'path',             params: [] },
+      { id: 'polygon',          name: 'polygon',          params: [] },
+      { id: 'circle',           name: 'circle',           params: [] },
+      // Ranges
+      { id: 'int4range',        name: 'int4range',        params: [] },
+      { id: 'int8range',        name: 'int8range',        params: [] },
+      { id: 'numrange',         name: 'numrange',         params: [] },
+      { id: 'tsrange',          name: 'tsrange',          params: [] },
+      { id: 'tstzrange',        name: 'tstzrange',        params: [] },
+      { id: 'daterange',        name: 'daterange',        params: [] },
+      // A type PostgreSQL gets from an extension or a CREATE TYPE (pgvector's
+      // vector(20), PostGIS's geometry, a composite type), kept as written.
+      { id: 'user-defined',     name: 'user-defined',     params: [{ name: 'sql', type: 'string' }] },
     ],
   },
   {

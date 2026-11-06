@@ -319,6 +319,11 @@ const POSTGRESQL = {
   interval: 'duration',   // narrowed by its fields below
   uuid: 'unordered', json: 'unordered', jsonb: 'unordered', xml: 'unordered',
   inet: 'unordered', cidr: 'unordered', macaddr: 'unordered',
+  macaddr8: 'unordered', bit: 'unordered', 'bit varying': 'unordered', tsvector: 'unordered', tsquery: 'unordered',
+  point: 'unordered', line: 'unordered', lseg: 'unordered', box: 'unordered', path: 'unordered',
+  polygon: 'unordered', circle: 'unordered', int4range: 'unordered', int8range: 'unordered',
+  numrange: 'unordered', tsrange: 'unordered', tstzrange: 'unordered', daterange: 'unordered',
+  'user-defined': 'unordered',
 }
 
 // NORMA raw data cannot be compared in NORMA, so it is unordered here.
