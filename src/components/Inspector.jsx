@@ -509,7 +509,7 @@ function PropertyDefinitionsEditor() {
       </div>
       {defs.length === 0 && (
         <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8, lineHeight: 1.4 }}>
-          Declare properties, such as an acronym or a source reference, that elements can then fill in.
+          Declare properties, such as an acronym or a source reference, that can be filled in per element.
         </div>
       )}
       {defs.map(d => {
