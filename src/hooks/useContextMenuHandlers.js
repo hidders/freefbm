@@ -89,6 +89,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
+        ...growItems(store, ot.id, occurrenceId),
         { label: ot.kind === 'entity' ? 'Change to Value Type' : 'Change to Entity Type',
           action: () => store.updateObjectType(ot.id, { kind: ot.kind === 'entity' ? 'value' : 'entity' }) },
         ...refExpansionItems,
@@ -166,6 +167,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
+        ...(fact.objectified ? growItems(store, fact.id, occurrenceId) : []),
         ...(fact.arity > 1 ? [
           { label: 'Add spanning Uniq. Constr.',
             disabled: (() => {
@@ -635,4 +637,16 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     handleSubtypeContextMenu,
     handleConstraintContextMenu,
   }
+}
+
+// Growing a diagram by hand from an element (NeighbourPicker.jsx): not on
+// mapping diagrams, which show what their rules name.
+export function growItems(store, elementId, occurrenceId = null) {
+  const diagram = store.diagrams.find(d => d.id === store.activeDiagramId)
+  if (!diagram || diagram.mappingId) return []
+  return [
+    { label: 'Add Neighbours…', action: () => store.openNeighbourPicker(elementId, occurrenceId) },
+    { label: 'New Diagram from Here', action: () => store.newDiagramFrom(elementId) },
+    '---',
+  ]
 }

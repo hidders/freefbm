@@ -6,6 +6,7 @@ import Inspector from './components/Inspector'
 import BottomPanel from './components/BottomPanel'
 import { RuleEditorPanel } from './components/DerivationRuleEditor'
 import { MappingRuleEditorPanel } from './components/MappingRuleEditor'
+import NeighbourPicker from './components/NeighbourPicker'
 import ImportLogPanel from './components/ImportLogPanel'
 import GuessOrmDialog from './components/GuessOrmDialog'
 import GenerateRelationalDialog from './components/GenerateRelationalDialog'
@@ -349,6 +350,7 @@ export default function App() {
         <div id="app-statusbar" className="no-print"><StatusBar /></div>
         <RuleEditorPanel />
         <MappingRuleEditorPanel />
+        <NeighbourPicker />
         <ImportLogPanel />
         <GuessOrmDialog />
         <GenerateRelationalDialog />
