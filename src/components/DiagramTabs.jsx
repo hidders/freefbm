@@ -5,6 +5,7 @@ import { NewSchemaMenu } from './SchemaStrip'
 import { isErdDiagram } from './ErdView'
 import { layoutOrmDiagram } from '../layout/ormLayout'
 import { diagramCoverage } from '../utils/neighbourhood.js'
+import StartingPoints from './StartingPoints'
 
 export default function DiagramTabs() {
   const store = useOrmStoreIgnoring('pan', 'zoom')
@@ -310,7 +311,7 @@ export default function DiagramTabs() {
           </div>
         )}
         {/* Growing mode: "+n" badges where neighbours are not shown, and how much of the schema is on a diagram. */}
-        {activeDiagram && !mapping && (activeDiagram.occurrences?.length ?? 0) > 0 && <GrowSwitch diagram={activeDiagram} />}
+        {activeDiagram && !mapping && <GrowSwitch diagram={activeDiagram} />}
         {/* A relational schema shows tables (an ERD), or in Advanced mode its logical (ORM2) view. */}
         {activeDiagram && isRelational && isErdDiagram(store, activeDiagram) && (
           <div title="Lay the tables out afresh (forgets the positions of moved tables)"
@@ -354,6 +355,7 @@ function GrowSwitch({ diagram }) {
     [on, objectTypes, facts, diagrams, schemas, diagram.schemaId])
   return (
     <div className="grow-switch" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, whiteSpace: 'nowrap', userSelect: 'none' }}>
+      {on && <StartingPoints diagram={diagram} />}
       {coverage && (
         <span title={`${coverage.kind} of this schema that some diagram shows`} style={{ color: 'var(--ink-3)' }}>
           {coverage.shown} of {coverage.total} {coverage.kind} on a diagram

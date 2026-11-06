@@ -222,3 +222,105 @@ function relationalUnits(state, schemaId, x, model = relationalModel(state, sche
   }
   return out
 }
+
+// ── Suggested starting points ────────────────────────────────────────────────
+
+// The major types of a schema, ranked, as seeds for new diagrams (after the
+// schema abstraction of Campbell, Halpin and Proper: a major type has many
+// roles and is referenced; minor ones, such as attributes' value types,
+// subtypes and dependent tables, are attached to a major one by the picker's
+// defaults). majorTypes(state, schemaId, limit) →
+//   [{ id, name, score, reason, diagrams }]  (diagrams: plain diagrams showing it)
+export function majorTypes(state, schemaId, limit = 20) {
+  const relational = isRelational(state, schemaId)
+  const model = relational ? relationalModel(state, schemaId) : null
+  const shownOn = new Map()
+  for (const d of state.diagrams ?? []) {
+    if (d.mappingId || d.schemaId !== schemaId) continue
+    for (const id of new Set((d.occurrences ?? []).map(o => o.schemaElementId))) shownOn.set(id, (shownOn.get(id) ?? 0) + 1)
+  }
+  const out = []
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`
+  if (relational) {
+    for (const t of model.tables) {
+      // Junction tables go with the tables they join; a table keyed by a
+      // foreign key (subtype, 1:1 or weak table) goes with the one it depends
+      // on unless it has much of its own.
+      if (junctionFks(t)) continue
+      const units = relationalUnits(state, schemaId, t.id, model)
+      const dependant = units.some(u => u.group === 'references' && u.defaultOn)
+      const by = units.filter(u => u.group === 'referencedBy').length
+      const refs = units.filter(u => u.group === 'references').length
+      const m2m = units.filter(u => u.group === 'manyToMany').length
+      const score = 2 * by + 2 * m2m + refs + t.columns.length / 10 - (dependant ? 3 : 0)
+      if (by + refs + m2m === 0 || score <= 1) continue
+      const reason = [by && `referenced by ${plural(by, 'table')}`, refs && `references ${plural(refs, 'table')}`, m2m && `${m2m} many-to-many`].filter(Boolean).join(', ')
+      out.push({ id: t.id, name: t.name, score, reason, diagrams: shownOn.get(t.id) ?? 0 })
+    }
+  } else {
+    const subOf = new Set((state.subtypes ?? []).filter(s => s.schemaId === schemaId).map(s => s.subId))
+    const cands = [
+      ...state.objectTypes.filter(o => o.schemaId === schemaId && o.kind === 'entity'),
+      ...state.facts.filter(f => f.schemaId === schemaId && f.objectified && !f._implicit),
+    ]
+    for (const c of cands) {
+      const units = ormUnits(state, schemaId, c.id)
+      const n = (g) => units.filter(u => u.group === g).length
+      const rel = n('relationships'), attr = n('attributes'), sub = n('subtypes')
+      // Mandatory roles it plays (outside its reference scheme).
+      const mand = units.filter(u => u.ids.length === 1).reduce((k, u) => {
+        const f = state.facts.find(x => x.id === u.ids[0])
+        return k + (f?.roles.some(r => r.objectTypeId === c.id && r.mandatory) ? 1 : 0)
+      }, 0)
+      // A subtype goes with its supertype unless it has much of its own.
+      const score = 2 * rel + attr + 1.5 * sub + 0.5 * mand - (subOf.has(c.id) ? 2 : 0)
+      if (rel + sub === 0 || score <= 1) continue
+      const reason = [rel && plural(rel, 'relationship'), attr && plural(attr, 'attribute'), sub && plural(sub, 'subtype')].filter(Boolean).join(', ')
+      out.push({ id: c.id, name: nameOf(state, c.id), score, reason, diagrams: shownOn.get(c.id) ?? 0 })
+    }
+  }
+  return out.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)).slice(0, limit)
+}
+
+// ── Connect ──────────────────────────────────────────────────────────────────
+
+// The shortest chain of neighbourhood units from one element to another
+// (fact types and subtype links in ORM2, foreign keys and junction tables in a
+// relational schema), going through hubs only when there is no other way of
+// about the same length. → [{ unit, anchorId, step }] (anchorId: the element the
+// unit is reached from), [] when they are the same, or null when there is none.
+export function connectPath(state, schemaId, fromId, toId) {
+  if (fromId === toId) return []
+  const relational = isRelational(state, schemaId)
+  const model = relational ? relationalModel(state, schemaId) : null
+  const unitsOf = new Map()
+  const units = (x) => {
+    if (!unitsOf.has(x)) unitsOf.set(x, relational ? relationalUnits(state, schemaId, x, model) : ormUnits(state, schemaId, x))
+    return unitsOf.get(x)
+  }
+  const deg = relational ? null : degreeMap(state, schemaId)
+  const isHub = (id, u) => relational ? u.hub : (deg.get(id) ?? 0) > HUB
+  const via = (y) => relational || state.objectTypes.some(o => o.id === y && o.kind === 'entity') || state.facts.some(f => f.id === y && f.objectified)
+  const dist = new Map([[fromId, 0]]), prev = new Map()
+  const queue = [[0, fromId]]
+  const done = new Set()
+  while (queue.length) {
+    queue.sort((a, b) => a[0] - b[0])
+    const [d, x] = queue.shift()
+    if (done.has(x)) continue
+    done.add(x)
+    if (x === toId) break
+    for (const u of units(x)) {
+      for (const y of u.far) {
+        // Not through value types: sharing one is no relationship.
+        if (y !== toId && !via(y)) continue
+        const cost = d + 1 + (y !== toId && isHub(y, u) ? 3 : 0)
+        if (cost < (dist.get(y) ?? Infinity)) { dist.set(y, cost); prev.set(y, { from: x, unit: u }); queue.push([cost, y]) }
+      }
+    }
+  }
+  if (!prev.has(toId)) return null
+  const chain = []
+  for (let y = toId; y !== fromId; y = prev.get(y).from) chain.unshift(prev.get(y))
+  return chain.map((p, i) => ({ unit: p.unit, anchorId: p.from, step: i }))
+}

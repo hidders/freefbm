@@ -192,8 +192,8 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
   const openMenu = (e, t) => {
     e.preventDefault()
     e.stopPropagation()
+    useOrmStore.getState().select(t.id, 'entity')
     const store = useOrmStore.getState()
-    store.select(t.id, 'entity')
     const items = growItems(store, t.id).filter(x => x !== '---')
     if (items.length) setMenu({ x: e.clientX, y: e.clientY, items })
   }

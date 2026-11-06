@@ -9,7 +9,7 @@ import { erdPartsOfDiagram, erdTargetOf } from '../../relational/erdBoxes.js'
 import { diagramUnits, tableCompanions, tableRemoval, completeTables, withTableConstraints } from '../../relational/tableUnits.js'
 import { isErdDiagram, erdLayout } from '../../relational/erdBoxes.js'
 import { relationalModel } from '../../relational/relationalModel.js'
-import { neighbourUnits } from '../../utils/neighbourhood.js'
+import { neighbourUnits, connectPath } from '../../utils/neighbourhood.js'
 
 // Module-level variable for pan animation — only used by centerOnElement/centerOnOccurrence
 let _panAnimId = null
@@ -359,7 +359,28 @@ export function createDiagramSlice(set, get) {
     // elements they lead to come too.
     // The placement functions are passed in (layout/growPlacement.js reads the
     // components' geometry, which the store must not import).
-    addNeighbours(diagramId, anchorId, anchorOccId, units, { oneMoreStep = false, place } = {}) {
+    // Connect: adds the shortest chain of fact types / foreign keys between
+    // two elements (connectPath), each unit placed beside the element before
+    // it, as one undo step. Returns the number of units added, or null when
+    // the two are not connected.
+    connectElements(diagramId, fromId, toId, { place } = {}) {
+      const s0 = get()
+      const d0 = s0.diagrams.find(d => d.id === diagramId)
+      if (!d0) return null
+      const path = connectPath(s0, d0.schemaId, fromId, toId)
+      if (!path) {
+        set({ readOnlyNotice: 'These two are not connected by fact types or foreign keys' })
+        return null
+      }
+      if (!path.length) return 0
+      get().addNeighbours(diagramId, fromId, null, [], { place, given: path })
+      return path.length
+    },
+
+    // given: [{ unit, anchorId, step }] instead of units around one anchor
+    // (Connect: a path, each unit placed around the element before it).
+    addNeighbours(diagramId, anchorId, anchorOccId, units, { oneMoreStep = false, place, given = null } = {}) {
+      if (given) units = given.map(p => p.unit)
       const s0 = get()
       const d0 = s0.diagrams.find(d => d.id === diagramId)
       if (!d0 || !units.length) return
@@ -373,9 +394,13 @@ export function createDiagramSlice(set, get) {
       set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
       try {
         if (erd && Object.keys(frozen).length) get().setErdPositions(diagramId, frozen)
-        const plans = units.map(u => ({ unit: u, anchorId, anchorOccId, step: 0 }))
+        const plans = given ? given.map(p => ({ ...p, anchorOccId: null })) : units.map(u => ({ unit: u, anchorId, anchorOccId, step: 0 }))
         const planned = new Set(units.map(u => u.ids.join('|')))
         for (const u of units) for (const id of u.ids) get().addElementToDiagram(id, diagramId)
+        if (given) {
+          const d1 = get().diagrams.find(d => d.id === diagramId)
+          for (const p of plans) p.anchorOccId = (d1.occurrences ?? []).find(o => o.schemaElementId === p.anchorId && !o.refModeOwnerOccId)?.id ?? null
+        }
         if (oneMoreStep) {
           const d1 = get().diagrams.find(d => d.id === diagramId)
           const more = []

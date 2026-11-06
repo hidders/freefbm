@@ -4,6 +4,8 @@ import { findRefMode, refModeCollapseBlockers } from '../utils/refMode'
 import { isDeonticUniqueness } from '../logic/modality'
 import { makeContext } from '../logic/constraintFormulas.js'
 import { whyNoOuterJoin } from '../logic/query.js'
+import { placeOrmUnits, placeErdUnits } from '../layout/growPlacement.js'
+import { useOrmStore } from '../store/ormStore'
 
 // The checkable "Deontic" item that switches a constraint between alethic and
 // deontic modality (modality.js).
@@ -31,6 +33,8 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
       store.objectTypes.some(o => o.id === id) || store.facts.some(f => f.id === id) || id.includes('_il_')
     )
     const occIdsToRemove = store.multiSelectedOccurrenceIds
+    // Two object types (or objectified fact types) selected: Connect.
+    const pair = [...new Set(store.multiSelectedIds)].filter(id => connectable(store, id))
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
@@ -40,6 +44,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
           action: () => store.alignMultiSelection('x') },
         '---',
         ...(store.diagrams.find(d => d.id === store.activeDiagramId)?.mappingId ? [] : [
+          ...(pair.length === 2 ? [connectItem(store, pair[0], pair[1])] : []),
           { label: 'Copy Selection to New Diagram', action: () => store.selectionToNewDiagram(false) },
           { label: 'Move Selection to New Diagram', title: 'Object types still linked to what stays here are kept on both diagrams',
             action: () => store.selectionToNewDiagram(true) },
@@ -647,12 +652,34 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
 
 // Growing a diagram by hand from an element (NeighbourPicker.jsx): not on
 // mapping diagrams, which show what their rules name.
+// Connect with is offered for the element selected before this one (the menu
+// selects the element it is opened on).
 export function growItems(store, elementId, occurrenceId = null) {
   const diagram = store.diagrams.find(d => d.id === store.activeDiagramId)
   if (!diagram || diagram.mappingId) return []
+  const shown = new Set((diagram.occurrences ?? []).map(o => o.schemaElementId))
+  const now = useOrmStore.getState()
+  const sel = now.selectedId === elementId ? [now.previousSelectedId] : [now.selectedId]
+  const partners = [...new Set(sel.filter(id => id && id !== elementId && shown.has(id) && connectable(store, id)))]
   return [
     { label: 'Add Neighbours…', action: () => store.openNeighbourPicker(elementId, occurrenceId) },
     { label: 'New Diagram from Here', action: () => store.newDiagramFrom(elementId) },
+    ...(partners.length === 1 ? [connectItem(store, partners[0], elementId, `Connect with ${elementName(store, partners[0])}`)] : []),
     '---',
   ]
+}
+
+// An entity type (a table) or objectified fact type: what Connect joins.
+const connectable = (store, id) => store.objectTypes.some(o => o.id === id && o.kind === 'entity') || store.facts.some(f => f.id === id && f.objectified)
+
+const elementName = (store, id) => store.objectTypes.find(o => o.id === id)?.name
+  || store.facts.find(f => f.id === id)?.objectifiedName || store.facts.find(f => f.id === id)?.name || '?'
+
+// Connect: the shortest chain of fact types or foreign keys from one shown
+// element to another (connectPath), added as one undo step.
+export function connectItem(store, fromId, toId, label = 'Connect These Two') {
+  return {
+    label, title: 'Add the shortest chain of fact types (foreign keys) between them',
+    action: () => store.connectElements(store.activeDiagramId, fromId, toId, { place: { orm: placeOrmUnits, erd: placeErdUnits } }),
+  }
 }

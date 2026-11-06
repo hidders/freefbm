@@ -103,7 +103,10 @@ function TableBody({ t, view, link }) {
   const holder = t.base ? view.objects.get(t.base) : t
   const refs = [...view.objects.values()].filter(o => o.kind === 'foreignKey' && o.refTable === holder.rmId)
   const of = t.of ? view.objects.get(t.of) : null
+  // The SQL schema (namespace) the imported script put it in.
+  const ns = useOrmStore.getState().objectTypes.find(o => o.sqlSchema && (t.members ?? []).includes(o.id))?.sqlSchema
   return <>
+    {ns && <Line>In SQL schema <Code>{ns}</Code></Line>}
     {of && <Note>The stored part of the view {link(of)}: its rows and the columns the view does not derive.</Note>}
     {t.kind === 'view' && (
       <Note>
