@@ -1,4 +1,5 @@
 import { loadViews } from '../../mapping/views.js'
+import { withExplicitRuleIds } from '../../mapping/diagramRules.js'
 import { loadExchanges } from '../../mapping/exchanges.js'
 import { runValidation as runValidationRules, DEFAULT_VALIDATION_CATEGORIES } from '../../utils/validation.js'
 import { computePopulationIssues } from '../../utils/populationValidation.js'
@@ -781,6 +782,8 @@ export function createModelSlice(set, get) {
         const { mappingId: _gone, ...rest } = dg
         return rest
       })
+      // A mapping diagram draws only the rules whose elements it shows.
+      scoped.diagrams = withExplicitRuleIds({ ...scoped, mappings, views }, scoped.diagrams)
       // Diagrams of relational schemas show tables whole (tableUnits.js).
       const completed = completeTables(scoped, scoped.diagrams)
       if (completed !== scoped.diagrams)

@@ -19,39 +19,8 @@ import { withTableConstraints } from '../../relational/tableUnits.js'
 import { relationalView, rmLabel } from '../../relational/relationalView.js'
 import { uid, mappingOfDiagram, isViewMapping, makeUniqueName, diagramRuleIds } from '../storeHelpers'
 import { numberInvented } from '../../mapping/exchanges.js'
-import { viewRuleElements } from '../../mapping/views.js'
-
-// The elements a mapping diagram shows for the given rules, by side: the
-// types, fact types and tables their patterns name, a table's named columns
-// (but its reference mode), and an entity for its reference-mode fact type.
-function ruleWantedElements(s0, m, rules) {
-  const view = isViewMapping(s0, m)
-  const wanted = { source: new Set(), target: new Set() }
-  for (const r of rules) {
-    const els = view ? viewRuleElements(s0, m, r) : ruleElements(r)
-    for (const side of ['source', 'target']) {
-      const e = els[side]
-      for (const id of [...e.typeIds, ...e.factIds, ...e.tableIds]) wanted[side].add(id)
-      for (const tableId of e.tableIds) {
-        const t = s0.objectTypes.find(o => o.id === tableId)
-        const rm = t ? findRefMode(t, s0.facts, s0.objectTypes) : null
-        for (const colId of e.columnFactIds) {
-          const f = s0.facts.find(x => x.id === colId)
-          if (f && f.id !== rm?.factId && f.roles.some(r => r.objectTypeId === tableId)) wanted[side].add(colId)
-        }
-      }
-    }
-  }
-  for (const side of ['source', 'target']) for (const id of [...wanted[side]]) {
-    const f = s0.facts.find(x => x.id === id)
-    if (!f) continue
-    for (const r of f.roles) {
-      const e = s0.objectTypes.find(o => o.id === r.objectTypeId && o.kind === 'entity')
-      if (e && findRefMode(e, s0.facts, s0.objectTypes)?.factId === id) { wanted[side].delete(id); wanted[side].add(e.id) }
-    }
-  }
-  return wanted
-}
+import { ruleWantedElements, compactRulePlacement } from '../../mapping/diagramRules.js'
+import { erdPartsOfDiagram } from '../../relational/erdBoxes.js'
 
 // The constraints of the old version (schemaId) about the given elements
 // that the mapping m loses, each added to the new version as its
@@ -215,7 +184,7 @@ export const createMappingSlice = (set, get) => {
       if (!m) return null
       const existing = s.diagrams.find(d => d.mappingId === mappingId)
       if (existing) { get().setActiveDiagram(existing.id); return existing.id }
-      const d = { ...mkDiagram(m.name, m.sourceSchemaId), mappingId, mappingRulePositions: {} }
+      const d = { ...mkDiagram(m.name, m.sourceSchemaId), mappingId, mappingRuleIds: m.rules.map(r => r.id), mappingRulePositions: {} }
       set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
       try {
         set(st => ({ diagrams: [...st.diagrams, d], isDirty: true }))
@@ -322,10 +291,71 @@ export const createMappingSlice = (set, get) => {
       set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
       try {
         set(st => ({ diagrams: st.diagrams.map(d => (d.id === diagramId ? { ...d, mappingRuleIds: next } : d)), isDirty: true }))
-        get().addMappingRuleElements(diagramId, ruleIds)
+        for (const id of ruleIds) if (!on.has(id)) get().placeMappingRule(diagramId, id)
       } finally {
         set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
       }
+    },
+    // Adds the elements of one rule that the diagram doesn't show yet, close
+    // together near where the rule's node goes (diagramRules.js
+    // compactRulePlacement), and puts the node there.
+    placeMappingRule(diagramId, ruleId) {
+      const s0 = get()
+      const diag0 = s0.diagrams.find(d => d.id === diagramId)
+      const m = mappingOfDiagram(s0, diag0)
+      const rule = m?.rules.find(r => r.id === ruleId)
+      if (!rule) return
+      const beforeIds = new Set((diag0.occurrences ?? []).map(o => o.id))
+      const beforeC = new Set((diag0.constraintOccurrences ?? []).map(o => o.id))
+      get().addMappingRuleElements(diagramId, [ruleId])
+      const s = get()
+      const d = s.diagrams.find(x => x.id === diagramId)
+      const occs = d.occurrences ?? []
+      const fresh = occs.filter(o => !beforeIds.has(o.id) && !o.refModeOwnerOccId)
+      const before = occs.filter(o => beforeIds.has(o.id) && !o.refModeOwnerOccId)
+      const schemaOf = new Map()
+      for (const k of ['objectTypes', 'facts']) for (const x of s[k]) schemaOf.set(x.id, x.schemaId)
+      const sideOf = (id) => (schemaOf.get(id) === m.targetSchemaId && m.targetSchemaId !== m.sourceSchemaId ? 'target' : 'source')
+      const w = ruleWantedElements(s, m, [rule])
+      // Sides drawn as ERD tables: their boxes (new ones laid out where erdLayout puts them).
+      const erd = {}
+      const boxesNow = {}
+      for (const part of erdPartsOfDiagram(s, d)) {
+        const side = part.schemaId === m.targetSchemaId && m.targetSchemaId !== m.sourceSchemaId ? 'target' : 'source'
+        const isNewTable = (t) => fresh.some(o => o.schemaElementId === t)
+        erd[side] = {
+          sizes: new Map([...part.boxes].filter(([t]) => isNewTable(t)).map(([t, b]) => [t, { w: b.w, h: b.h }])),
+          before: [...part.boxes].filter(([t]) => !isNewTable(t)).map(([, b]) => b),
+        }
+        boxesNow[side] = part.boxes
+      }
+      const { node, at, tables } = compactRulePlacement(s, fresh, before, sideOf, new Set([...w.source, ...w.target]), erd,
+        Object.entries(d.mappingRulePositions ?? {}).filter(([id]) => id !== ruleId && diagramRuleIds(d, m).has(id)).map(([, p]) => p))
+      const delta = new Map(fresh.map(o => [o.id, at.has(o.id) ? { dx: at.get(o.id).x - o.x, dy: at.get(o.id).y - o.y } : { dx: 0, dy: 0 }]))
+      set(st => ({
+        diagrams: st.diagrams.map(x => {
+          if (x.id !== diagramId) return x
+          const occurrences = (x.occurrences ?? []).map(o => {
+            const dd = delta.get(o.id) ?? (o.refModeOwnerOccId && !beforeIds.has(o.id) ? delta.get(o.refModeOwnerOccId) : null)
+            return dd ? { ...o, x: Math.round(o.x + dd.dx), y: Math.round(o.y + dd.dy) } : o
+          })
+          // New constraint occurrences above the fact types they are about.
+          const constraintOccurrences = (x.constraintOccurrences ?? []).map(co => {
+            if (beforeC.has(co.id)) return co
+            const c = st.constraints.find(k => k.id === co.schemaConstraintId)
+            const fids = new Set([...(c?.sequences ?? []), ...(c?.roleSequences ?? [])].flat().map(mm => mm?.factId?.split('_il_')[0]).filter(Boolean))
+            const pts = occurrences.filter(o => fids.has(o.schemaElementId) && !o.refModeOwnerOccId)
+            return pts.length ? { ...co, x: Math.round(pts.reduce((a, o) => a + o.x, 0) / pts.length), y: Math.round(pts.reduce((a, o) => a + o.y, 0) / pts.length) - 40 } : co
+          })
+          // ERD tables: the shown ones stay where they are drawn, the new ones go to their spot.
+          const erdPositions = Object.keys(boxesNow).length ? { ...(x.erdPositions ?? {}) } : x.erdPositions
+          for (const boxes of Object.values(boxesNow)) for (const [t, b] of boxes) if (!tables.has(t)) erdPositions[t] = { x: Math.round(b.x), y: Math.round(b.y) }
+          for (const [t, p] of tables) erdPositions[t] = p
+          return { ...x, occurrences, constraintOccurrences, ...(erdPositions ? { erdPositions } : {}),
+            mappingRulePositions: { ...(x.mappingRulePositions ?? {}), [ruleId]: node } }
+        }),
+        isDirty: true,
+      }))
     },
     hideMappingRules(diagramId, ruleIds) {
       const s0 = get()
@@ -374,45 +404,21 @@ export const createMappingSlice = (set, get) => {
         set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
       }
     },
-    // A new diagram of the mapping drawing only the given rules, with the
-    // elements they name where they are on the active mapping diagram (else
-    // where addMappingRuleElements puts them). One undo step. Returns its id.
+    // A new diagram of the mapping drawing only the given rules, their
+    // elements placed close together (placeMappingRule). One undo step.
+    // Returns its id.
     newMappingDiagram(mappingId, ruleIds) {
       const s0 = get()
       const m = s0.mappings?.find(x => x.id === mappingId) ?? s0.views?.find(x => x.id === mappingId)
       if (!m) return null
-      const from = s0.diagrams.find(d => d.id === s0.activeDiagramId && d.mappingId === mappingId)
       const used = new Set(s0.diagrams.map(d => d.name))
       const name = makeUniqueName(`${m.name} part `, used)
-      const d = { ...mkDiagram(name, m.sourceSchemaId), mappingId, mappingRuleIds: m.rules.map(r => r.id).filter(id => ruleIds.includes(id)),
-        mappingRulePositions: Object.fromEntries(Object.entries(from?.mappingRulePositions ?? {}).filter(([id]) => ruleIds.includes(id))) }
+      const d = { ...mkDiagram(name, m.sourceSchemaId), mappingId, mappingRuleIds: [], mappingRulePositions: {} }
       set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
       try {
         set(st => ({ diagrams: [...st.diagrams, d], isDirty: true }))
         get().setActiveDiagram(d.id)
-        get().addMappingRuleElements(d.id)
-        if (from) {
-          // Each element where its first occurrence is on the diagram it came from.
-          set(st => ({
-            diagrams: st.diagrams.map(x => {
-              if (x.id !== d.id) return x
-              const at = (list, key, id) => list.find(o => o[key] === id && !o.refModeOwnerOccId)
-              return {
-                ...x,
-                occurrences: (x.occurrences ?? []).map(o => {
-                  if (o.refModeOwnerOccId) return o
-                  const p = at(from.occurrences ?? [], 'schemaElementId', o.schemaElementId)
-                  return p ? { ...o, x: p.x, y: p.y, ...(p.orientation ? { orientation: p.orientation } : {}) } : o
-                }),
-                constraintOccurrences: (x.constraintOccurrences ?? []).map(o => {
-                  const p = at(from.constraintOccurrences ?? [], 'schemaConstraintId', o.schemaConstraintId)
-                  return p ? { ...o, x: p.x, y: p.y } : o
-                }),
-                ...(from.erdPositions ? { erdPositions: { ...from.erdPositions } } : {}),
-              }
-            }),
-          }))
-        }
+        get().showMappingRules(d.id, ruleIds)
         set({ multiSelectedIds: [], multiSelectedOccurrenceIds: [] })
       } finally {
         set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
