@@ -4,22 +4,42 @@ import { nearestSubtypeEnds } from '../utils/subtypeEnds'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds, computeOtSize } from './ObjectTypeNode'
 import { factBounds, nestedFactBounds, ROLE_W, ROLE_H, ROLE_GAP } from './FactTypeNode'
-import { mappingErdBoxes } from './ErdView'
+import { mappingErdBoxes, erdLayout, isErdDiagram } from './ErdView'
+import { relationalModel } from '../relational/relationalModel'
 
 const MM_W  = 170
 const MM_H  = 110
 const PAD   = 30
 const HDR_H = 24   // header bar height
+const NONE  = []
 
 export default function Minimap() {
   const store = useOrmStore()
-  const { objectTypes: visOts, facts: visFacts, constraints: visCons, subtypes: visSubs, diagram, erdSchemaIds } = useDiagramElements()
-  // A mapping diagram's ERD tables (a relational side, ErdView).
-  const erdBoxes = useMemo(() => {
-    if (!diagram || !erdSchemaIds?.length) return []
+  const elems = useDiagramElements()
+  const { diagram, erdSchemaIds } = elems
+  // A relational schema's diagram in its relational face is drawn as an ERD
+  // (ErdView): the minimap shows its table boxes and foreign keys only.
+  const erd = isErdDiagram(store, diagram)
+  const visOts   = erd ? NONE : elems.objectTypes
+  const visFacts = erd ? NONE : elems.facts
+  const visCons  = erd ? NONE : elems.constraints
+  const visSubs  = erd ? NONE : elems.subtypes
+  // The ERD tables: the whole diagram's, or a mapping diagram's relational
+  // sides. Laid out as ErdView lays them out.
+  const { erdBoxes, erdFks } = useMemo(() => {
+    if (!diagram) return { erdBoxes: [], erdFks: [] }
     const st = useOrmStore.getState()
-    return erdSchemaIds.flatMap(sid => [...mappingErdBoxes(st, diagram, sid).boxes.values()])
-  }, [diagram, erdSchemaIds?.join(), store.objectTypes, store.facts, store.constraints])   // eslint-disable-line react-hooks/exhaustive-deps
+    const sides = erd
+      ? (() => { const model = relationalModel(st, diagram.schemaId); return [{ model, boxes: erdLayout(model, diagram) }] })()
+      : (erdSchemaIds ?? []).map(sid => mappingErdBoxes(st, diagram, sid))
+    const fks = []
+    for (const { model, boxes } of sides)
+      for (const fk of model.fks) {
+        const a = boxes.get(fk.fromTable.id), b = boxes.get(fk.toTable.id)
+        if (a && b && a !== b) fks.push({ key: fk.constraintId, a, b })
+      }
+    return { erdBoxes: sides.flatMap(s => [...s.boxes.values()]), erdFks: fks }
+  }, [diagram, erd, erdSchemaIds?.join(), store.objectTypes, store.facts, store.constraints])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const [collapsed,  setCollapsed]  = useState(false)
   const [expandFrom, setExpandFrom] = useState(null)  // { x, y } pill coords held during expand start
@@ -170,7 +190,7 @@ export default function Minimap() {
   }, [scale, bounds, store, parentSize])
 
   // ── visibility guard ──────────────────────────────────────────────────────
-  const isEmpty = visOts.length === 0 && visFacts.length === 0
+  const isEmpty = visOts.length === 0 && visFacts.length === 0 && erdBoxes.length === 0
   const anchor = <span ref={anchorRef} style={{ display: 'none' }}/>
   if (isEmpty) return anchor
 
@@ -308,7 +328,14 @@ export default function Minimap() {
           })
         })()}
 
-        {/* ERD tables of a mapping diagram */}
+        {/* Foreign keys between ERD tables (centre to centre) */}
+        {erdFks.map(({ key, a, b }) => (
+          <line key={`fk-${key}`}
+            x1={wx(a.x + a.w / 2)} y1={wy(a.y + a.h / 2)} x2={wx(b.x + b.w / 2)} y2={wy(b.y + b.h / 2)}
+            stroke="var(--ink-2)" strokeWidth={0.6} strokeOpacity={0.45}/>
+        ))}
+
+        {/* ERD tables (an ERD diagram, or a mapping diagram's relational side) */}
         {erdBoxes.map(b => (
           <rect key={`erd-${b.table.id}`} x={wx(b.x)} y={wy(b.y)} width={Math.max(4, b.w * scale)} height={Math.max(3, b.h * scale)} rx={1.5}
             fill={store.selectedId === b.table.id ? 'var(--accent)' : 'var(--bg-raised)'} fillOpacity={store.selectedId === b.table.id ? 0.5 : 1}
