@@ -16,10 +16,13 @@ export { subtypeKindOf } from './storeHelpers'
 // Actions that may change a relational schema outside an undo batch: its table
 // rules (derived tables and columns, which transformations derive through), a
 // constraint carried over from the accounting report, and turning a formula
-// constraint into the graphical constraint it says, and populations (records
-// are not read-only).
+// constraint into the graphical constraint it says, populations (records
+// are not read-only), and the view language (setViewLanguage swaps the names
+// and readings shown with their translations, store/viewLanguage.js, which is
+// not an edit of the model).
 const RELATIONAL_EDITS = ['addTableRule', 'updateTableRules', 'updateTableRule', 'deleteTableRule', 'addTableRuleColumn',
-  'setTablePrimaryKey', 'addDerivedTable', 'addCarriedConstraint', 'formulaToGraphical', 'applyMappingRun', 'loadSampleRows', 'addSimpleConstraint', 'applyView', 'applyExchangeRun']
+  'setTablePrimaryKey', 'addDerivedTable', 'addCarriedConstraint', 'formulaToGraphical', 'applyMappingRun', 'loadSampleRows', 'addSimpleConstraint', 'applyView', 'applyExchangeRun',
+  'setViewLanguage', 'addLanguage']
 
 export const useOrmStore = create((rawSet, get) => {
   // Every update passes through here so that new elements and diagrams get
