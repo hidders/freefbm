@@ -7,7 +7,8 @@
 // and derived columns are computed and read-only. Cells that break NOT NULL or
 // a foreign key are marked.
 
-import React, { useMemo, useState, useEffect, useRef } from 'react'
+import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useOrmStore } from '../store/ormStore'
 import { activeSchemaIdOf } from '../store/storeHelpers'
 import { relationalView } from '../relational/relationalView'
@@ -19,7 +20,7 @@ import { removeBtnStyle, removeBtnHandlers, addBtnStyle, issueCellStyle } from '
 
 const PAGE = 200
 // Values offered in a foreign key column's list (the referenced rows' values).
-const MAX_OPTIONS = 2000
+const MAX_OPTIONS = 20000
 // Rows added with "+ Add tuple" that are not records yet (no key, or a key
 // that was refused), per table, so they survive switching tables.
 const draftsByTable = new Map()
@@ -99,7 +100,6 @@ function RecordGrid({ schemaId, tableId }) {
   const cols = shape.columns
   const fkOptions = {}
   for (const fk of fkChecks) Object.assign(fkOptions, fk.options)
-  const listId = (fid) => `rg-fk-${tableId}-${fid}`
   const q = filter.trim().toLowerCase()
   const shown = q ? records.filter(r => cols.some(c => String(r.values[c.factId] ?? '').toLowerCase().includes(q))) : records
   const pages = Math.max(1, Math.ceil(shown.length / PAGE))
@@ -170,9 +170,6 @@ function RecordGrid({ schemaId, tableId }) {
         </span>}
       </div>
       {error && <div style={{ color: 'var(--danger)', marginBottom: 6 }}>{error}</div>}
-      {Object.entries(fkOptions).map(([fid, vals]) => (
-        <datalist key={fid} id={listId(fid)}>{vals.map(v => <option key={v} value={v} />)}</datalist>
-      ))}
       <table style={{ borderCollapse: 'collapse', fontSize: 11 }}>
         <thead>
           <tr>
@@ -193,7 +190,7 @@ function RecordGrid({ schemaId, tableId }) {
             <tr key={r.id}>
               {cols.map(c => (
                 <td key={c.factId} style={td}>
-                  <Cell value={r.values[c.factId]} problem={problem(r, c)} list={fkOptions[c.factId] ? listId(c.factId) : undefined}
+                  <Cell value={r.values[c.factId]} problem={problem(r, c)} options={fkOptions[c.factId]}
                     readOnly={shape.readOnly || c.derived}
                     onCommit={(v) => commit(r.cell, { ...r.values, [c.factId]: v })} />
                 </td>
@@ -208,7 +205,7 @@ function RecordGrid({ schemaId, tableId }) {
             <tr key={d.id}>
               {cols.map(c => (
                 <td key={c.factId} style={td}>
-                  <Cell value={d.values[c.factId]} readOnly={c.derived} list={fkOptions[c.factId] ? listId(c.factId) : undefined}
+                  <Cell value={d.values[c.factId]} readOnly={c.derived} options={fkOptions[c.factId]}
                     problem={d.error && c.pk ? d.error : null}
                     placeholder={c.pk ? 'key' : ''}
                     onCommit={(v) => commitDraft(d, c, v)} />
@@ -238,13 +235,19 @@ const readOnlyStyle = { color: 'var(--ink-2)', background: 'var(--bg-surface)' }
 // One cell: an input like a fact type population's, committed on Enter or
 // blur, or when the grid goes away while it is being edited (Esc restores the
 // stored value). A value the table refuses stays in the cell, marked with the
-// reason. NULL shows as a placeholder; a foreign key column offers the values
-// of the referenced rows.
-function Cell({ value, problem, readOnly, placeholder, list, onCommit }) {
+// reason. NULL shows as a placeholder. A foreign key column offers the values
+// of the referenced rows in a scrollable list under (or above) the cell,
+// filtered by what is typed; arrow keys move through it, Enter or a click
+// picks one.
+function Cell({ value, problem, readOnly, placeholder, options, onCommit }) {
   const stored = value == null ? '' : String(value)
   const [text, setText] = useState(stored)
   const [refused, setRefused] = useState(null)
+  const [open, setOpen] = useState(false)
+  const [typed, setTyped] = useState(false)
+  const [hi, setHi] = useState(-1)
   const focused = useRef(false)
+  const inputRef = useRef(null)
   const live = useRef({})
   live.current = { text, stored, onCommit }
   useEffect(() => { if (!focused.current) { setText(stored); setRefused(null) } }, [stored])
@@ -252,25 +255,82 @@ function Cell({ value, problem, readOnly, placeholder, list, onCommit }) {
     const { text, stored, onCommit } = live.current
     if (focused.current && text !== stored) onCommit(text)
   }, [])
-  const finish = () => {
+  const finish = (v = text) => {
     focused.current = false
-    if (text === stored) { setRefused(null); return }
-    setRefused(onCommit(text) ?? null)
+    setOpen(false)
+    if (v === stored) { setRefused(null); return }
+    setRefused(onCommit(v) ?? null)
   }
   const issue = refused ?? problem
+  const hasList = !readOnly && options?.length > 0
+  const q = typed ? text.trim().toLowerCase() : ''
+  const shown = hasList && open ? (q ? options.filter(o => o.toLowerCase().includes(q)) : options) : []
+  const pick = (v) => { setText(v); live.current.text = v; finish(v); inputRef.current?.blur() }
   return (
-    <input value={text} disabled={readOnly} list={readOnly ? undefined : list}
-      placeholder={value == null && !readOnly ? (placeholder || 'NULL') : (value == null ? 'NULL' : undefined)}
-      title={issue ?? (readOnly ? 'Read-only' : undefined)}
-      className={issue ? 'cell-issue' : undefined}
-      onFocus={() => { focused.current = true }}
-      onChange={e => setText(e.target.value)}
-      onKeyDown={e => {
-        if (e.key === 'Enter') e.currentTarget.blur()
-        if (e.key === 'Escape') { focused.current = false; live.current.text = stored; setText(stored); setRefused(null); const t = e.currentTarget; setTimeout(() => t.blur()) }
-        e.stopPropagation()
-      }}
-      onBlur={() => { if (focused.current) finish() }}
-      style={{ ...inputStyle, ...(readOnly ? readOnlyStyle : null), ...(issue ? issueCellStyle : null) }} />
+    <>
+      <input ref={inputRef} value={text} disabled={readOnly}
+        placeholder={value == null && !readOnly ? (placeholder || 'NULL') : (value == null ? 'NULL' : undefined)}
+        title={issue ?? (readOnly ? 'Read-only' : undefined)}
+        className={issue ? 'cell-issue' : undefined}
+        onFocus={() => { focused.current = true; setTyped(false); setHi(-1); if (hasList) setOpen(true) }}
+        onMouseDown={() => { if (hasList && focused.current) setOpen(o => !o) }}
+        onChange={e => { setText(e.target.value); setTyped(true); setHi(-1); if (hasList) setOpen(true) }}
+        onKeyDown={e => {
+          if (shown.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+            e.preventDefault()
+            setHi(h => e.key === 'ArrowDown' ? Math.min(shown.length - 1, h + 1) : Math.max(0, h - 1))
+          } else if (e.key === 'ArrowDown' && hasList) setOpen(true)
+          if (e.key === 'Enter') { if (shown.length && hi >= 0) pick(shown[hi]); else e.currentTarget.blur() }
+          if (e.key === 'Escape') {
+            if (open) setOpen(false)
+            else { focused.current = false; live.current.text = stored; setText(stored); setRefused(null); const t = e.currentTarget; setTimeout(() => t.blur()) }
+          }
+          e.stopPropagation()
+        }}
+        onBlur={() => { if (focused.current) finish() }}
+        style={{ ...inputStyle, ...(readOnly ? readOnlyStyle : null), ...(issue ? issueCellStyle : null) }} />
+      {shown.length > 0 && <OptionList anchor={inputRef.current} options={shown} current={text} hi={hi} onPick={pick} />}
+    </>
   )
+}
+
+// The list of a foreign key cell, fixed to the window so the panel's
+// scrolling does not clip it: below the cell, or above it when there is more
+// room there, as high as the room allows and scrollable.
+function OptionList({ anchor, options, current, hi, onPick }) {
+  const ref = useRef(null)
+  const [pos, setPos] = useState(null)
+  useLayoutEffect(() => {
+    if (!anchor) return
+    const place = () => {
+      const r = anchor.getBoundingClientRect()
+      const below = window.innerHeight - r.bottom - 8, above = r.top - 8
+      const down = below >= 160 || below >= above
+      setPos({ left: r.left, width: Math.max(r.width, 120), ...(down ? { top: r.bottom + 2, maxHeight: below } : { bottom: window.innerHeight - r.top + 2, maxHeight: above }) })
+    }
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
+  }, [anchor])
+  // Keep the highlighted (or current) value in view.
+  useEffect(() => {
+    const i = hi >= 0 ? hi : options.indexOf(current)
+    ref.current?.children[i]?.scrollIntoView({ block: 'nearest' })
+  }, [hi, pos, options, current])
+  if (!pos) return null
+  return createPortal(
+    <div ref={ref} className="rg-options" onMouseDown={e => e.preventDefault()}
+      style={{ position: 'fixed', zIndex: 1000, overflowY: 'auto', ...pos, maxHeight: Math.min(pos.maxHeight, 320),
+        background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 3, boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+        fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+      {options.map((o, i) => (
+        <div key={o} onClick={() => onPick(o)}
+          style={{ padding: '3px 8px', cursor: 'pointer', whiteSpace: 'nowrap',
+            background: i === hi ? 'var(--selection)' : o === current ? 'var(--bg-raised)' : undefined,
+            fontWeight: o === current ? 600 : undefined }}
+          onMouseEnter={e => { if (i !== hi) e.currentTarget.style.background = 'var(--bg-raised)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = i === hi ? 'var(--selection)' : o === current ? 'var(--bg-raised)' : '' }}>{o}</div>
+      ))}
+    </div>, document.body)
 }
