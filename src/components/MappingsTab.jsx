@@ -9,6 +9,12 @@ import { EquivalenceReport, runEquivalence } from './EquivalenceReport.jsx'
 import { CarryPanel } from './CarryPanel.jsx'
 import ViewMappings from './ViewMappings.jsx'
 import Exchanges from './Exchanges.jsx'
+import { mappingOfDiagram, isViewMapping, diagramRuleIds } from '../store/storeHelpers'
+
+// Whether the tab lists every mapping although a mapping diagram is active,
+// kept per user.
+const ALL_KEY = 'freefbm.mappings.allRules'
+const readAll = () => { try { return localStorage.getItem(ALL_KEY) === '1' } catch { return false } }
 
 // The mappings of the file (workbench step 7): each relates a source and a
 // target schema by rules φ ⟺ ψ. Rules are edited in MappingRuleEditor.
@@ -19,6 +25,17 @@ export default function MappingsTab() {
     accounting: s.mappingAccounting ?? {}, equivalence: s.mappingEquivalence ?? {}, advanced: s.advancedMode, focus: s.mappingRuleFocus,
   })))
   const advanced = state.advanced
+  // Under a mapping diagram the tab lists only that mapping's rules on the
+  // diagram, as the Constraints tab lists the diagram's constraints.
+  const diagramMapping = useOrmStore(s => {
+    const d = s.diagrams.find(x => x.id === s.activeDiagramId)
+    const m = mappingOfDiagram(s, d)
+    return m ? { id: m.id, view: isViewMapping(s, m), ruleIds: [...diagramRuleIds(d, m)].join() } : null
+  }, (a, b) => a?.id === b?.id && a?.ruleIds === b?.ruleIds && a?.view === b?.view)
+  const [allRules, setAllRulesRaw] = useState(readAll)
+  const setAllRules = (v) => { setAllRulesRaw(v); try { localStorage.setItem(ALL_KEY, v ? '1' : '0') } catch { /* not kept */ } }
+  const scoped = diagramMapping && !allRules ? { id: diagramMapping.id, view: diagramMapping.view, ruleIds: new Set(diagramMapping.ruleIds ? diagramMapping.ruleIds.split(',') : []) } : null
+  const shownMappings = scoped ? (scoped.view ? [] : state.mappings.filter(m => m.id === scoped.id)) : state.mappings
   // Basic mode: a rule asked for (from the canvas or the Validation panel) is
   // scrolled to and highlighted.
   const focusRef = useRef(null)
@@ -55,13 +72,23 @@ export default function MappingsTab() {
   const btn = { fontSize: 11, padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg-surface)', color: 'var(--ink-2)', cursor: 'pointer' }
   const link = { ...btn, border: 'none', background: 'none', padding: '0 4px', color: 'var(--ink-muted)' }
 
+  const diagramBar = diagramMapping && (
+    <div className="mappings-scope" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: 'var(--ink-muted)' }}>
+      <span>{scoped ? 'Rules on this diagram' : 'All mappings and rules'}</span>
+      <button style={{ ...btn, ...(allRules ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : {}) }} aria-pressed={allRules}
+        title="List every mapping and rule of the file instead of only the rules on this mapping diagram"
+        onClick={() => setAllRules(!allRules)}>All rules</button>
+    </div>
+  )
+
   return (
     <div style={{ fontSize: 12, color: 'var(--ink)' }}>
-      {!advanced && <div style={{ color: 'var(--ink-muted)', marginBottom: 10, lineHeight: 1.45 }}>
+      {diagramBar}
+      {!advanced && !scoped && <div style={{ color: 'var(--ink-muted)', marginBottom: 10, lineHeight: 1.45 }}>
         Mappings come from Tables generated from… and ORM2 schema guessed from… in the schema strip's + menu, and change by Fold:
         derive the new types in a schema, then fold them in. Switch to Advanced mode (top of the tool panel) to write or edit rules by hand.
       </div>}
-      {advanced && <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+      {advanced && !scoped && <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
         <span style={{ color: 'var(--ink-muted)' }}>New mapping from</span>
         <select aria-label="Source schema" value={srcId} onChange={e => setSrc(e.target.value)} style={select}>
           {schemas.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -74,24 +101,24 @@ export default function MappingsTab() {
         {schemas.length < 2 && <span style={{ color: 'var(--ink-muted)' }}>A mapping usually relates two schemas: add one in the schema strip, or import PostgreSQL DDL.</span>}
       </div>}
 
-      {state.mappings.length === 0 && <div style={{ color: 'var(--ink-muted)' }}>
+      {state.mappings.length === 0 && !scoped && <div style={{ color: 'var(--ink-muted)' }}>
         No mappings yet. A mapping relates a source and a target schema by rules φ ⟺ ψ: whenever the source pattern φ matches with values $y, the target pattern ψ matches with the same values, and back.
       </div>}
 
-      {state.mappings.map(m => {
+      {shownMappings.map(m => {
         const issueCount = { error: 0, warning: 0 }
-        const rules = m.rules.map(r => {
+        const rules = m.rules.map((r, k) => {
           const issues = checkRule(r, m, state, { source: ctxs.get(m.sourceSchemaId), target: ctxs.get(m.targetSchemaId) })
           for (const i of issues) issueCount[i.severity]++
-          return { r, issues }
-        })
+          return { r, issues, k }
+        }).filter(x => !scoped || scoped.ruleIds.has(x.r.id))
         return (
           <div key={m.id} style={{ marginBottom: 14, border: '1px solid var(--border-soft)', borderRadius: 4 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: 'var(--bg-raised)', borderBottom: '1px solid var(--border-soft)' }}>
               <input aria-label="Mapping name" value={m.name} onChange={e => act().updateMapping(m.id, { name: e.target.value })}
                 style={{ ...select, fontWeight: 700, minWidth: 160 }} />
               <span style={{ color: 'var(--ink-muted)' }}>{name(m.sourceSchemaId)} → {name(m.targetSchemaId)}</span>
-              <span style={{ color: 'var(--ink-muted)' }}>· {m.rules.length} rule{m.rules.length === 1 ? '' : 's'}
+              <span style={{ color: 'var(--ink-muted)' }}>· {scoped ? `${rules.length} of ${m.rules.length}` : m.rules.length} rule{m.rules.length === 1 ? '' : 's'}{scoped ? ' on this diagram' : ''}
                 {issueCount.error > 0 && <span style={{ color: '#dc2626' }}> · {issueCount.error} error{issueCount.error === 1 ? '' : 's'}</span>}
                 {issueCount.warning > 0 && <span style={{ color: '#d97706' }}> · {issueCount.warning} warning{issueCount.warning === 1 ? '' : 's'}</span>}
               </span>
@@ -115,13 +142,14 @@ export default function MappingsTab() {
             {m.lock && <CarryPanel mapping={m} name={name} />}
             {state.equivalence[m.id] && <EquivalenceReport eq={state.equivalence[m.id]} mapping={m} name={name} />}
             {state.accounting[m.id] && <AccountingReport acc={state.accounting[m.id]} mapping={m} name={name} />}
-            {rules.length === 0 && <div style={{ padding: '6px 8px', color: 'var(--ink-muted)' }}>No rules yet.</div>}
-            {rules.map(({ r, issues }, k) => {
+            {rules.length === 0 && <div style={{ padding: '6px 8px', color: 'var(--ink-muted)' }}>{scoped && m.rules.length
+              ? 'No rules on this diagram yet: add them from the schema browser.' : 'No rules yet.'}</div>}
+            {rules.map(({ r, issues, k }, row) => {
               const focused = !advanced && state.focus?.mappingId === m.id && state.focus.ruleId === r.id
               const open = (advanced && state.editing?.mappingId === m.id && state.editing.ruleId === r.id) || focused
               const toks = SIDES.map(side => sideTokens(r[side], ctxs.get(sideSchemaId(m, side)) ?? sideContext(state, null)))
               return (
-                <div key={r.id} ref={focused ? focusRef : null} style={{ padding: '6px 8px', borderTop: k ? '1px solid var(--border-soft)' : 'none',
+                <div key={r.id} ref={focused ? focusRef : null} style={{ padding: '6px 8px', borderTop: row ? '1px solid var(--border-soft)' : 'none',
                   background: open ? 'var(--bg-raised)' : 'transparent', boxShadow: focused ? 'inset 3px 0 0 var(--accent)' : 'none' }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                     <span style={{ fontWeight: 600, minWidth: 60 }}>{r.name || `Rule ${k + 1}`}</span>
@@ -132,7 +160,7 @@ export default function MappingsTab() {
                     </div>
                     {advanced && <>
                       <button style={link} title="Move up" disabled={k === 0} onClick={() => act().moveMappingRule(m.id, r.id, -1)}>↑</button>
-                      <button style={link} title="Move down" disabled={k === rules.length - 1} onClick={() => act().moveMappingRule(m.id, r.id, 1)}>↓</button>
+                      <button style={link} title="Move down" disabled={k === m.rules.length - 1} onClick={() => act().moveMappingRule(m.id, r.id, 1)}>↓</button>
                       <button style={btn} onClick={() => act().openMappingRuleEditor(m.id, r.id)}>Edit</button>
                     </>}
                     {advanced || issues.some(i => i.severity === 'error')
@@ -148,8 +176,8 @@ export default function MappingsTab() {
           </div>
         )
       })}
-      <ViewMappings />
-      <Exchanges />
+      {(!scoped || scoped.view) && <ViewMappings only={scoped?.view ? scoped : null} />}
+      {!scoped && <Exchanges />}
     </div>
   )
 }

@@ -14,7 +14,8 @@ import { useVerbalisation } from '../verbalisation/workbench.js'
 // The view mappings of the file (mapping/views.js), under the two-way
 // mappings in the Mappings tab: each defines elements of a target schema by
 // queries over a source schema, and runs one way, from source to target.
-export default function ViewMappings() {
+// only: { id, ruleIds } under a view's diagram: just that view's rules on it.
+export default function ViewMappings({ only = null }) {
   const state = useOrmStore(useShallow(s => ({
     schemas: s.schemas, objectTypes: s.objectTypes, facts: s.facts, constraints: s.constraints,
     subtypes: s.subtypes, views: s.views ?? [], editing: s.ruleEditor, language: s.viewLanguage,
@@ -63,7 +64,7 @@ export default function ViewMappings() {
           ))}
         </span>}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+      {!only && <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
         <span style={{ color: 'var(--ink-muted)' }}>New view from</span>
         <select aria-label="View source schema" value={srcId} onChange={e => setSrc(e.target.value)} style={select}>
           {schemas.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -74,12 +75,12 @@ export default function ViewMappings() {
         </select>
         <button style={btn} disabled={srcId === tgtId} title={srcId === tgtId ? 'A view reads one schema and defines another' : undefined}
           onClick={() => act().addView(srcId, tgtId, `${name(srcId)} as ${name(tgtId)}`)}>Add view</button>
-      </div>
-      {state.views.length === 0 && <div style={{ color: 'var(--ink-muted)', lineHeight: 1.45 }}>
+      </div>}
+      {state.views.length === 0 && !only && <div style={{ color: 'var(--ink-muted)', lineHeight: 1.45 }}>
         No views yet. A view runs one way: each of its rules defines an element of the target schema, an entity type through its
         reference values or a fact type, by a query over the source schema. Running it builds the target's population from the source's.
       </div>}
-      {state.views.map(v => <ViewBox key={v.id} view={v} state={state} name={name} run={runs[v.id]}
+      {state.views.filter(v => !only || v.id === only.id).map(v => <ViewBox key={v.id} onlyRules={only?.ruleIds ?? null} view={v} state={state} name={name} run={runs[v.id]}
         onRun={() => doRun(v)} onApplied={() => setRuns(r => ({ ...r, [v.id]: { ...r[v.id], applied: true } }))}
         onCloseRun={() => setRuns(r => { const n = { ...r }; delete n[v.id]; return n })}
         styles={{ select, btn, link }} show={show} language={verbaliser.language} />)}
@@ -89,7 +90,7 @@ export default function ViewMappings() {
 
 const SHOW_KEY = 'freefbm.views.show'
 
-function ViewBox({ view: v, state, name, run, onRun, onApplied, onCloseRun, styles, show, language }) {
+function ViewBox({ view: v, state, name, run, onRun, onApplied, onCloseRun, styles, show, language, onlyRules = null }) {
   const { select, btn, link } = styles
   const act = useOrmStore.getState
   const vs = useMemo(() => viewState(state, v), [state, v])
@@ -133,7 +134,7 @@ function ViewBox({ view: v, state, name, run, onRun, onApplied, onCloseRun, styl
       {contract && <ContractReport contract={contract} view={v} name={name} />}
       {run && <ViewRunReport run={run} view={v} name={name} onApply={() => { act().applyView(v.id); onApplied() }} onClose={onCloseRun} />}
       {rules.length === 0 && <div style={{ padding: '6px 8px', color: 'var(--ink-muted)' }}>No rules yet: pick an element of {name(v.targetSchemaId)} under + Rule for….</div>}
-      {rules.map(({ r, issues, entries }, k) => {
+      {rules.filter(({ r }) => !onlyRules || onlyRules.has(r.id)).map(({ r, issues, entries }, k) => {
         const open = state.editing?.viewId === v.id && state.editing.ruleId === r.id
         return (
           <div key={r.id} style={{ padding: '6px 8px', borderTop: k ? '1px solid var(--border-soft)' : 'none', background: open ? 'var(--bg-raised)' : 'transparent' }}>
