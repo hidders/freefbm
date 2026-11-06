@@ -7,6 +7,7 @@
 
 import React from 'react'
 import { useOrmStore } from '../store/ormStore'
+import { Highlight } from '../utils/nameFilter.jsx'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
@@ -77,7 +78,9 @@ const colDetail = (c) => [c.type ?? '', c.pk ? 'PK' : '', c.fk ? 'FK' : '', c.no
   c.derived === 'derived' ? 'derived' : c.derived === 'semiDerived' ? 'semi-derived' : ''].filter(Boolean).join(' ')
 
 // The sections, in SchemaBrowser's format: [{ title, items, renderRow }].
-export function relationalSections({ view, diagram, diagrams, expanded, toggle, selectedRmId, showOrphans }) {
+// Under a name filter, a table is listed when its name matches or one of its
+// parts does; in the latter case it shows open, with only the matching parts.
+export function relationalSections({ view, diagram, diagrams, expanded, toggle, selectedRmId, showOrphans, filter }) {
   const st = () => useOrmStore.getState()
   const inDiag = (id) => diagram?.occurrences?.some(o => o.schemaElementId === id) ?? false
   const orphan = (id) => !diagrams.some(d => !d.mappingId && d.occurrences?.some(o => o.schemaElementId === id))
@@ -85,19 +88,24 @@ export function relationalSections({ view, diagram, diagrams, expanded, toggle, 
   const select = (o) => st().selectRm(o)
   const parts = (t) => [...t.columns, ...t.keys.filter(k => !k.startsWith('nn:'))].map(id => view.objects.get(id)).filter(Boolean)
 
+  const partName = (p) => p.kind === 'column' ? p.name : p.label
+  const hit = (t) => !filter || filter.test(t.name)
+  const hitParts = (t) => filter ? parts(t).filter(p => filter.test(partName(p))) : []
   const tableRow = (t) => {
-    const open = expanded.has(t.rmId)
+    const byPart = !hit(t)
+    const open = byPart || expanded.has(t.rmId)
+    const shown = byPart ? hitParts(t) : parts(t)
     const of = t.of ? view.objects.get(t.of) : null
     return (
       <React.Fragment key={t.rmId}>
-        <Row icon={<TableIcon view={t.kind === 'view'} />} label={t.name}
+        <Row icon={<TableIcon view={t.kind === 'view'} />} label={<Highlight text={t.name} filter={filter} />}
           detail={of ? `stored part of view ${of.name}` : t.kind === 'view' ? (t.derived === 'rows' ? 'derived rows' : 'derived columns') : null}
-          selected={selectedRmId === t.rmId} onSelect={() => select(t)} toggle={() => toggle(t.rmId)} open={open}
+          selected={selectedRmId === t.rmId} onSelect={() => select(t)} toggle={byPart ? undefined : () => toggle(t.rmId)} open={open}
           add={!of && diagram ? <AddButton disabled={inDiag(t.entityId)} onAdd={() => st().addElementToDiagram(t.entityId, diagram.id)} /> : null}
           orphan={!of && orphan(t.entityId)} />
-        {open && parts(t).map(p => (
+        {open && shown.map(p => (
           <Row key={p.rmId} depth={1} icon={<PartIcon kind={p.kind} />}
-            label={p.kind === 'column' ? p.name : p.label}
+            label={<Highlight text={partName(p)} filter={filter} />}
             detail={p.kind === 'column' ? colDetail(p) : p.kind === 'foreignKey' ? `→ ${view.objects.get(p.refTable)?.name ?? '?'}` : p.sql}
             muted={!p.enforced} selected={selectedRmId === p.rmId} onSelect={() => select(p)} />
         ))}
@@ -108,13 +116,15 @@ export function relationalSections({ view, diagram, diagrams, expanded, toggle, 
   const tables = view.tables.filter(t => t.kind === 'table' && keep(t)).sort(byName)
   const views = view.tables.filter(t => t.kind === 'view' && keep(t)).sort(byName)
   const assertions = showOrphans ? [] : view.assertions
+  const narrow = (items, match) => filter ? { total: items.length, items: items.filter(match) } : { items }
+  const tableHit = (t) => hit(t) || hitParts(t).length > 0
   return [
-    { title: 'Tables', items: tables, renderRow: tableRow },
-    { title: 'Views', items: views, renderRow: tableRow },
+    { title: 'Tables', ...narrow(tables, tableHit), renderRow: tableRow },
+    { title: 'Views', ...narrow(views, tableHit), renderRow: tableRow },
     {
-      title: 'Assertions', items: assertions,
+      title: 'Assertions', ...narrow(assertions, (a) => filter.test(a.label)),
       renderRow: (a) => (
-        <Row key={a.rmId} icon={<PartIcon kind="assertion" />} label={a.label}
+        <Row key={a.rmId} icon={<PartIcon kind="assertion" />} label={<Highlight text={a.label} filter={filter} />}
           detail={a.query ? 'not enforced' : 'no SQL form'} muted
           selected={selectedRmId === a.rmId} onSelect={() => select(a)} />
       ),
