@@ -78,6 +78,10 @@ const POSTGRESQL = {
   text: 'text', 'character varying': 'text', character: 'text', bytea: 'text',
   boolean: 'boolean', date: 'date', time: 'time', timestamp: 'datetime', interval: 'text',
   uuid: 'text', json: 'text', jsonb: 'text', xml: 'text', inet: 'text', cidr: 'text', macaddr: 'text',
+  macaddr8: 'text', bit: 'text', 'bit varying': 'text', tsvector: 'text', tsquery: 'text',
+  point: 'text', line: 'text', lseg: 'text', box: 'text', path: 'text', polygon: 'text', circle: 'text',
+  int4range: 'text', int8range: 'text', numrange: 'text', tsrange: 'text', tstzrange: 'text', daterange: 'text',
+  'user-defined': 'text',
 }
 
 const MAPPING = {

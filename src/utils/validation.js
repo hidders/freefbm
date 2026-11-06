@@ -241,9 +241,12 @@ function validateRangeSequence(range, ctx, errors) {
 
   // (6) Adjacent/mergeable — only meaningful when there's a discrete successor,
   // i.e. for integer ranges (cardinality, frequency, and integer value ranges).
+  // Not for two single values: a list of codes such as {1, 2} (a CHECK's
+  // IN (1, 2)) says what it means as it is.
   if (kind === VALUE_KINDS.integer) {
     for (let i = 0; i < ivs.length; i++) {
       for (let j = i + 1; j < ivs.length; j++) {
+        if (specs[i].type === 'single' && specs[j].type === 'single') continue
         const A = ivs[i], B = ivs[j]
         const maxLo = cmp(A.lo, B.lo) >= 0 ? A.lo : B.lo
         const minHi = cmp(A.hi, B.hi) <= 0 ? A.hi : B.hi

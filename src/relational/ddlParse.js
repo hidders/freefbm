@@ -204,6 +204,9 @@ export function parseDdl(sql0) {
   const problems = []
   const parentOf = new Map()   // partition key → its table's qualified name
   const skip = (kind) => skipped.set(kind, (skipped.get(kind) ?? 0) + 1)
+  // psql's \copy … FROM a file (AdventureWorks reads its rows from CSV files
+  // next to the script): the rows are not in the script, so not read.
+  for (const _ of sql.matchAll(/^[ \t]*\\copy\b[^\n]*\bfrom\s+(?!stdin\b|pstdin\b)/gim)) skip('\\copy … FROM a file (its rows are not in the script)')
   const keyOf = (q) => `${q.schema ?? ''}.${q.name}`
   const findTable = (q) => tables.get(keyOf(q)) ?? [...tables.values()].find(t => t.name === q.name && (!q.schema || t.schema === q.schema))
 
