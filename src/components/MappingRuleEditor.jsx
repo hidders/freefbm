@@ -7,7 +7,7 @@ import { isRelationalFace } from '../relational/face.js'
 import { getAt, setAt, hole, typeGraph } from '../logic/derivationRule.js'
 import { QGAP } from '../logic/renderFormula.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
-import { handleTextPanelKey } from '../utils/textPanel.js'
+import { handleTextPanelKey, hasTextSelection } from '../utils/textPanel.js'
 import { TOKEN_STYLE } from './ConstraintsTab.jsx'
 import { VarSelect, ConstInput, btn, selectStyle, sectionLabel } from './DerivationRuleEditor.jsx'
 import { PatternText, IssueList, MAPPING_TOKEN_STYLE } from './MappingFormula.jsx'
@@ -120,7 +120,13 @@ function RuleEditor({ mapping, rule, onUpdate, table = null, tableRule = null })
   } : null), [rule, ctxs])
   const issues = useMemo(() => (table ? checkTableRule(state, table, tableRule, ctxs.source)
     : rule ? checkRule(rule, mapping, state, ctxs) : []), [rule, mapping, state, ctxs, table, tableRule])
-  const [sel, setSel] = useState({ side: 'source', path: [] })
+  // Nothing is selected when the editor opens, so the formulas read plainly;
+  // a click on a part selects it, a click on an empty area clears it.
+  const [sel, setSel] = useState(null)
+  const clearSel = (e) => {
+    if (e.target.closest('button, input, select, textarea, [data-keep-sel]') || hasTextSelection()) return
+    setSel(null)
+  }
 
   // ── Panel position, size and folding ──
   const [panel, setPanel] = useState(() => {
@@ -159,7 +165,7 @@ function RuleEditor({ mapping, rule, onUpdate, table = null, tableRule = null })
     if (e.key === 'Escape') { e.preventDefault(); close(); return }
     if (handleTextPanelKey(e)) return
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)
-    if (!typing && (e.key === 'Delete' || e.key === 'Backspace')) {
+    if (!typing && sel && (e.key === 'Delete' || e.key === 'Backspace')) {
       e.preventDefault()
       const n = getAt(rule[sel.side], sel.path)
       if (n && n.t !== 'hole') replace(sel.side, sel.path, hole())
@@ -315,8 +321,8 @@ function RuleEditor({ mapping, rule, onUpdate, table = null, tableRule = null })
     return <span onClick={click} style={wrapStyle}>{body}</span>
   }
 
-  const selTree = rule[sel.side] ?? hole()
-  const selNode = getAt(selTree, sel.path)
+  const selTree = sel ? rule[sel.side] ?? hole() : null
+  const selNode = sel ? getAt(selTree, sel.path) : null
 
   return createPortal(
     <div ref={panelRef} role="dialog" aria-label="Mapping rule" tabIndex={-1}
@@ -349,24 +355,28 @@ function RuleEditor({ mapping, rule, onUpdate, table = null, tableRule = null })
             : 'For all values of the frontier variables $y: the source pattern matches if and only if the target pattern does. Every other variable should be determined by the $y and the keys.'}
         </div>}
       </div>
-      {!panel.folded && <div style={{ padding: 14, overflow: 'auto', flex: 1 }}>
+      {!panel.folded && <div onClick={clearSel} style={{ padding: 14, overflow: 'auto', flex: 1 }}>
         {(table ? ['target', 'source'] : SIDES).map((side, i) => (
           <React.Fragment key={side}>
             {i === 1 && <div style={{ ...MAPPING_TOKEN_STYLE.op, fontSize: 18, margin: '4px 0' }}>{table && tableRule.mode === 'semiDerived' ? '⟸' : '⟺'}</div>}
             <div style={sectionLabel}>{table ? (side === 'target' ? `Row of ${table.name}` : 'Query') : `${side === 'source' ? 'Source' : 'Target'} · ${schemaName(sideSchemaId(mapping, side))}`}</div>
-            <div tabIndex={0} onClick={() => setSel({ side, path: [] })} className="text-panel" style={{
+            <div tabIndex={0} className="text-panel" style={{
               fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 2, minHeight: 30, outline: 'none',
-              padding: '2px 6px', borderRadius: 3, background: sel.side === side ? 'var(--bg-raised)' : undefined,
+              padding: '2px 6px', borderRadius: 3, background: sel?.side === side ? 'var(--bg-raised)' : undefined,
             }}>
               {render(side, rule[side] ?? hole(), [], [])}
             </div>
           </React.Fragment>
         ))}
 
-        <Palette key={keyOf(sel)} side={sel.side} node={selNode} path={sel.path} tree={selTree}
-          scope={scopeAt(selTree, sel.path)} ctx={ctxs[sel.side]} graph={graphs[sel.side]}
-          headOnly={!!table && sel.side === 'target'} label={table ? (sel.side === 'target' ? 'Row' : 'Query') : null}
-          replace={(path, node, next) => replace(sel.side, path, node, next)} />
+        {sel ? <div data-keep-sel>
+          <Palette key={keyOf(sel)} side={sel.side} node={selNode} path={sel.path} tree={selTree}
+            scope={scopeAt(selTree, sel.path)} ctx={ctxs[sel.side]} graph={graphs[sel.side]}
+            headOnly={!!table && sel.side === 'target'} label={table ? (sel.side === 'target' ? 'Row' : 'Query') : null}
+            replace={(path, node, next) => replace(sel.side, path, node, next)} />
+        </div> : <div style={{ fontSize: 12, color: 'var(--ink-muted)', margin: '10px 0 2px' }}>
+          Click a part of a formula to edit it.
+        </div>}
 
         {table && <TableRuleControls table={table} rule={tableRule} ctx={ctxs.source} />}
 
