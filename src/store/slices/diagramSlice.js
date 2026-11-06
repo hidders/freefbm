@@ -106,6 +106,26 @@ export function createDiagramSlice(set, get) {
       _panAnimId = requestAnimationFrame(step)
     },
 
+    // Pans so that the diagram point (wx, wy) is at the canvas centre.
+    centerOnPoint(wx, wy) {
+      const svg = document.getElementById('orm2-canvas-svg')
+      if (!svg || wx == null || wy == null) return
+      const { zoom, pan: startPan } = get()
+      const rect = svg.getBoundingClientRect()
+      const targetX = rect.width / 2 - wx * zoom, targetY = rect.height / 2 - wy * zoom
+      const fromX = startPan.x, fromY = startPan.y
+      const easeInOut = t => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+      const startTime = performance.now()
+      if (_panAnimId) cancelAnimationFrame(_panAnimId)
+      const step = (now) => {
+        const t = Math.min((now - startTime) / 750, 1)
+        const e = easeInOut(t)
+        set({ pan: { x: fromX + (targetX - fromX) * e, y: fromY + (targetY - fromY) * e } })
+        _panAnimId = t < 1 ? requestAnimationFrame(step) : null
+      }
+      _panAnimId = requestAnimationFrame(step)
+    },
+
     centerOnOccurrence(occurrenceId) {
       const { diagrams, activeDiagramId, zoom } = get()
       const diagram = diagrams.find(d => d.id === activeDiagramId)
@@ -789,7 +809,10 @@ export function createDiagramSlice(set, get) {
 
         const updatedDiagrams = s.diagrams.map(d => {
           if (d.id !== diagramId) return d
-          const remainingOccs = (d.occurrences ?? []).filter(o => !toRemove.has(o.schemaElementId))
+          // Occurrences drawn as part of a removed one (a collapsed reference
+          // mode's value type) go with it.
+          const goneOccIds = new Set((d.occurrences ?? []).filter(o => toRemove.has(o.schemaElementId)).map(o => o.id))
+          const remainingOccs = (d.occurrences ?? []).filter(o => !toRemove.has(o.schemaElementId) && !goneOccIds.has(o.refModeOwnerOccId))
           const remainingOccIds = new Set(remainingOccs.map(o => o.id))
           const remainingElIds  = new Set(remainingOccs.map(o => o.schemaElementId))
           const newSubtypeEndpointOccs = {}

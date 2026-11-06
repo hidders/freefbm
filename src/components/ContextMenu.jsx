@@ -136,7 +136,7 @@ export default function ContextMenu({ x, y, items, onClose }) {
 
   return (
     // Zero-size wrapper — only purpose is to group both panels for the outside-click test
-    <div ref={wrapRef} style={{ position: 'fixed', top: 0, left: 0, width: 0, height: 0 }}>
+    <div ref={wrapRef} style={{ position: 'fixed', top: 0, left: 0, width: 0, height: 0, zIndex: 10100 }}>
       <MenuPanel
         left={left} top={top} items={items} zIndex={10100}
         onClose={onClose}
