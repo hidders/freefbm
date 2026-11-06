@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useOrmStore, useOrmStoreIgnoring, useScopedStore } from '../store/ormStore'
 import { findRefMode, refModeLabel, getVtEffectivePopulation, getEntityEffectivePopulation, findCompositePI, findInheritedPI, findRolePlayer, getEntityIdentifierShape, getRoleCellShape, getNestedCellShape, isCompleteValue, UNSET } from '../utils/refMode'
 import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
@@ -9,6 +9,7 @@ import MappingsTab from './MappingsTab.jsx'
 import { makePopulationEvaluator, formatCell } from '../logic/derivedPopulation.js'
 import RelationalPopulation from './RecordGrid'
 import { removeBtnStyle, removeBtnHandlers, addBtnStyle } from './populationStyles'
+import OptionList from './OptionList'
 import { activeRelationalFace } from '../relational/face'
 import Splitter from './Splitter.jsx'
 
@@ -1580,11 +1581,6 @@ function CompositePIEntityPopulation({ ot, cp, inheritedFrom }) {
         )}.
       </div>
       <div style={{ maxWidth: 640 }}>
-        {[...popMetaByPlayer.entries()].map(([pid, m]) => m.listId && (
-          <datalist key={pid} id={m.listId}>
-            {m.values.map((v, j) => <option key={j} value={v}/>)}
-          </datalist>
-        ))}
         <div style={{ display: 'flex', gap: 4 }}>
           {colShapes.map((cs, ci) => (
             <React.Fragment key={ci}>{renderHeader(cs.shape, colLabel(ci))}</React.Fragment>
@@ -2115,11 +2111,6 @@ function SubtypeMappingPopulation({ edge }) {
       </div>
       <div style={{ maxWidth: 720 }}>
         {/* Datalists for supertype-side autocomplete */}
-        {!inherits && [...popMetaByPlayer.entries()].map(([pid, m]) => m.listId && (
-          <datalist key={pid} id={m.listId}>
-            {m.values.map((v, j) => <option key={j} value={v}/>)}
-          </datalist>
-        ))}
         {/* Header row */}
         <div style={{ display: 'flex', gap: 4 }}>
           {subTopShape.columns.map((c, ci) => (
@@ -2440,11 +2431,6 @@ function NestedEntityImplicitPIPopulation({ fact, arity, name, factTuples, roleS
         No explicit preferred identifier — instances are identified by their role players.
         Each row is one fact tuple.
       </div>
-      {[...popMetaByPlayer.entries()].map(([pid, m]) => m.listId && (
-        <datalist key={pid} id={m.listId}>
-          {m.values.map((v, j) => <option key={j} value={v}/>)}
-        </datalist>
-      ))}
       <div style={{ maxWidth: 640 }}>
         <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
           {roleShapes.map((sh, ri) => (
@@ -2572,11 +2558,6 @@ function NestedEntityExplicitPIPopulation({ fact, arity, name, factTuples, roleS
       </div>
 
       {/* Datalists */}
-      {[...popMetaByPlayer.entries()].map(([pid, m]) => m.listId && (
-        <datalist key={pid} id={m.listId}>
-          {m.values.map((v, j) => <option key={j} value={v}/>)}
-        </datalist>
-      ))}
 
       {/* Combined table */}
       <div style={{ maxWidth: 720 }}>
@@ -2889,12 +2870,6 @@ function FactTypePopulation({ fact }) {
   return (
     <div>
       <Header>Population of <strong>{name}</strong> ({arity}-ary)</Header>
-      {/* One datalist per distinct leaf player. */}
-      {[...popMetaByPlayer.entries()].map(([pid, m]) => m.listId && (
-        <datalist key={pid} id={m.listId}>
-          {m.values.map((v, j) => <option key={j} value={v}/>)}
-        </datalist>
-      ))}
       <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
         {fact.roles.slice(0, arity).map((r, ri) => (
           <React.Fragment key={ri}>{renderHeader(roleShapes[ri], headerFor(r, ri))}</React.Fragment>
@@ -2990,21 +2965,22 @@ function FactTypePopulation({ fact }) {
   )
 }
 
-// Width of the native datalist dropdown arrow in Chromium (used to detect
-// arrow clicks and force the dropdown open by clearing the input first).
-const DATALIST_ARROW_W = 18
-
-// Generic single-input leaf used by NestedCellEditor. Handles datalist
-// autocomplete (including the "clear on arrow click" trick) and type-specific
-// input attributes.
-//
-// If `values` (an explicit candidate list) is provided, an inline datalist is
-// rendered with these values — used for context-aware narrowing where the
-// candidate set depends on sibling cell values. Otherwise `listId` references
-// a shared external datalist (the legacy per-player population list).
-function LeafCellInput({ value, onChange, onCommit, listId, values, typeKind, title, className, style, disabled }) {
-  const restoreRef = useRef(null)
-  const generatedId = useId()
+// Generic single-input leaf used by NestedCellEditor, with type-specific
+// input attributes. `values` are the candidates it offers in a scrollable
+// list (OptionList) while it has focus, filtered by what is typed; arrow keys
+// move through it, Enter or a click picks one. The browser's datalist was
+// used before, but it shows only the values that fit in the window.
+function LeafCellInput({ value, onChange, onCommit, values, typeKind, title, className, style, disabled }) {
+  const inputRef = useRef(null)
+  const [open, setOpen] = useState(false)
+  const [typed, setTyped] = useState(false)
+  const [hi, setHi] = useState(-1)
+  // A cell still focused when the panel goes away is committed then (its
+  // value is already in the store; the commit adds it to the player).
+  const commitRef = useRef(onCommit)
+  commitRef.current = onCommit
+  const focusedRef = useRef(false)
+  useEffect(() => () => { if (focusedRef.current) commitRef.current?.() }, [])
   const isBoolean = typeKind === 'boolean'
 
   if (isBoolean) {
@@ -3031,52 +3007,34 @@ function LeafCellInput({ value, onChange, onCommit, listId, values, typeKind, ti
     : typeKind === 'time'     ? { type: 'time', step: 1 }
     : {}
 
-  const inlineListId = values !== undefined ? `pop-leaf-${generatedId}` : null
-  const effectiveListId = inlineListId ?? listId
-  const hasList = !!effectiveListId
-
-  const onMouseDown = (e) => {
-    if (!hasList || disabled) return
-    const input = e.currentTarget
-    const rect = input.getBoundingClientRect()
-    const distFromRight = rect.right - e.clientX
-    if (distFromRight < DATALIST_ARROW_W && input.value !== '') {
-      restoreRef.current = input.value
-      input.value = ''
-      onChange('')
-    }
+  const hasList = !disabled && values?.length > 0
+  const text = value ?? ''
+  const q = typed ? String(text).trim().toLowerCase() : ''
+  const shown = hasList && open ? (q ? values.filter(v => String(v).toLowerCase().includes(q)) : values) : []
+  const pick = (v) => { onChange(v); setOpen(false); inputRef.current?.blur() }
+  const onKeyDown = (e) => {
+    if (shown.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault()
+      setHi(h => e.key === 'ArrowDown' ? Math.min(shown.length - 1, h + 1) : Math.max(0, h - 1))
+    } else if (e.key === 'ArrowDown' && hasList) setOpen(true)
+    if (e.key === 'Enter') { if (shown.length && hi >= 0) pick(shown[hi]); else e.currentTarget.blur() }
+    if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false) }
   }
-  const handleChange = (e) => {
-    restoreRef.current = null
-    onChange(e.target.value)
-  }
-  const handleBlur = () => {
-    if (restoreRef.current != null) {
-      onChange(restoreRef.current)
-      restoreRef.current = null
-    }
-    if (onCommit) onCommit()
-  }
-  const onKeyDown = (e) => { if (e.key === 'Enter') e.currentTarget.blur() }
 
   return (
     <>
-      {inlineListId && (
-        <datalist id={inlineListId}>
-          {values.map((v, i) => <option key={i} value={v}/>)}
-        </datalist>
-      )}
-      <input value={value ?? ''}
-        list={effectiveListId || undefined}
+      <input ref={inputRef} value={text}
         className={className}
-        onMouseDown={onMouseDown}
-        onChange={handleChange}
-        onBlur={handleBlur}
+        onFocus={() => { focusedRef.current = true; setTyped(false); setHi(-1); if (hasList) setOpen(true) }}
+        onMouseDown={() => { if (hasList && document.activeElement === inputRef.current) setOpen(o => !o) }}
+        onChange={e => { onChange(e.target.value); setTyped(true); setHi(-1); if (hasList) setOpen(true) }}
+        onBlur={() => { focusedRef.current = false; setOpen(false); if (onCommit) onCommit() }}
         onKeyDown={onKeyDown}
         disabled={disabled}
         title={title}
         style={style}
         {...typeProps}/>
+      {shown.length > 0 && <OptionList anchor={inputRef.current} options={shown} current={String(text)} hi={hi} onPick={pick} />}
     </>
   )
 }
@@ -3089,7 +3047,7 @@ function LeafCellInput({ value, onChange, onCommit, listId, values, typeKind, ti
 //   the new value is rebuilt at the top of the tree, so the caller receives
 //   the *whole* cell.
 //   onCommit() is called when any leaf blurs (used for propagation hooks).
-//   getMeta(playerOtId) returns { listId, typeKind } for autocomplete + input
+//   getMeta(playerOtId) returns { values, typeKind } for the value list + input
 //   type for that leaf.
 //   cellIssue (optional) is an issue object applied to every leaf — used to
 //   highlight the entire cell when any sub-cell has an issue.
@@ -3116,8 +3074,7 @@ function NestedCellEditor({
         value={typeof value === 'string' && value !== UNSET ? value : ''}
         onChange={onChange}
         onCommit={onCommit}
-        listId={candidateValues === undefined ? meta.listId : undefined}
-        values={candidateValues}
+        values={candidateValues === undefined ? meta.values : candidateValues}
         typeKind={meta.typeKind}
         title={cellIssue?.message}
         className={hasIssue ? 'cell-issue' : undefined}
