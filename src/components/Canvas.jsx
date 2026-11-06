@@ -1726,7 +1726,7 @@ export default function Canvas() {
       })()}
 
       {/* Minimap overlay */}
-      {!erd && <Minimap/>}
+      <Minimap/>
 
       {/* Context menu — rendered via portal at document.body to escape all stacking contexts */}
       {contextMenu && createPortal(
