@@ -1,13 +1,14 @@
 // Harness for the ORM2 auto layout (src/layout/ormLayout.js).
 //
-//   node scripts/orm-layout-check.mjs [--shots DIR] [--only NAME] [case …]
+//   node scripts/orm-layout-check.mjs [--shots DIR] [--only NAME] [--why] [case …]
 //
 // A case is a .ffbm or NORMA .orm file (each ORM2 diagram is laid out) or a
 // PostgreSQL .sql script (its ORM2 schema is guessed first, as Guess ORM2 does).
 // For each diagram it prints the layout score (src/layout/layoutScore.js) as it
 // was, after our Auto layout, and with ELK's layered placement of the same core
 // graph (the development-only benchmark, scripts/layout/elkPlace.js). With
-// --shots, it saves a screenshot of each layout.
+// --shots, it saves a screenshot of each layout; with --why, it lists what
+// overlaps, crosses or runs through a box after Auto layout.
 import { createServer } from 'vite'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
@@ -17,15 +18,16 @@ import path from 'node:path'
 const { chromium } = createRequire(import.meta.url)('playwright')
 
 const args = process.argv.slice(2)
-let shots = null, only = null
+let shots = null, only = null, why = false
 const cases = []
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--shots') shots = args[++i]
   else if (args[i] === '--only') only = args[++i]
+  else if (args[i] === '--why') why = true
   else cases.push(args[i])
 }
 if (!cases.length) {
-  console.error('usage: node scripts/orm-layout-check.mjs [--shots DIR] [--only NAME] file.ffbm|file.orm|file.sql …')
+  console.error('usage: node scripts/orm-layout-check.mjs [--shots DIR] [--only NAME] [--why] file.ffbm|file.orm|file.sql …')
   process.exit(1)
 }
 if (shots) fs.mkdirSync(shots, { recursive: true })
@@ -40,8 +42,8 @@ page.on('pageerror', e => console.error('page error:', e.message))
 await page.goto(url)
 await page.waitForSelector('.canvas-bg', { timeout: 60000 })
 
-const fmt = (s) => s ? `${String(s.overlaps).padStart(4)} ${String(s.crossings).padStart(5)} ${String(s.throughBoxes).padStart(5)} ${String(s.length).padStart(7)} ${String(s.width).padStart(6)}×${String(s.height).padEnd(6)}` : '   –'
-console.log(`${'diagram'.padEnd(36)} ${'layout'.padEnd(8)} overl cross thru   length  size`)
+const fmt = (s) => s ? `${String(s.overlaps).padStart(4)} ${String(s.crossings).padStart(5)} ${String(s.throughBoxes).padStart(5)} ${String(s.length).padStart(7)} ${String(s.width).padStart(6)}×${String(s.height).padEnd(6)}${s.constraints ? ` ${String(s.cCrossings).padStart(5)} ${String(s.cThrough).padStart(5)} ${String(s.cLength).padStart(6)}` : ''}` : '   –'
+console.log(`${'diagram'.padEnd(36)} ${'layout'.padEnd(8)} overl cross thru   length  size          c-cross c-thru c-len`)
 
 for (const file of cases) {
   const content = fs.readFileSync(file, 'utf8')
@@ -100,20 +102,21 @@ for (const file of cases) {
       const elk = finishLayout(elkPlan, await elkPlace(elkPlan))
       return { before, ours, elk, ms, original, nodes: plan.nodes.length }
     }, d.id)
-    const apply = async (r) => page.evaluate(async ({ id, r }) => {
+    const apply = async (r, details = false) => page.evaluate(async ({ id, r, details }) => {
       const { useOrmStore } = await import('/src/store/ormStore.js')
       const { layoutScore } = await import('/src/layout/layoutScore.js')
       useOrmStore.getState().applyDiagramLayout(id, r)
-      return layoutScore(useOrmStore.getState(), id)
-    }, { id: d.id, r })
+      return layoutScore(useOrmStore.getState(), id, { details })
+    }, { id: d.id, r, details })
     await shot('0-before')
     const elkScore = await apply(res.elk)
     await shot('2-elk')
-    const ourScore = await apply(res.ours)
+    const ourScore = await apply(res.ours, why)
     await shot('1-auto')
     console.log(`${label.padEnd(36)} ${'before'.padEnd(8)} ${fmt(res.before)}`)
     console.log(`${''.padEnd(36)} ${'auto'.padEnd(8)} ${fmt(ourScore)}  (${res.nodes} core nodes, ${res.ms} ms)`)
     console.log(`${''.padEnd(36)} ${'elk'.padEnd(8)} ${fmt(elkScore)}`)
+    if (why) for (const w of ourScore.why) console.log(`    ${w}`)
   }
 }
 

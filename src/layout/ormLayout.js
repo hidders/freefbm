@@ -13,19 +13,21 @@
 //   4. orient   each fact type's orientation and role order (a binary may
 //               always be reversed) to shorten its role connectors; the
 //               uniqueness bars go on the side without connectors
-//   5. constraints  external constraints near the centre of what they
-//               constrain, on a free spot; frequency markers next to their bars
+//   5. constraints  external constraints on the free spot near what they
+//               constrain with the shortest connectors that cross the fewest
+//               lines and boxes; frequency markers next to their bars
 //
 // prepareLayout gives the core graph, placeCore positions it (or another
 // placement, e.g. ELK in the benchmark), finishLayout builds the diagram.
 
 import { computeOtSize } from '../components/ObjectTypeNode'
-import { ROLE_W, ROLE_H, ROLE_GAP, nestedFactBounds, factBounds, getDisplayReading } from '../components/FactTypeNode'
+import { ROLE_W, ROLE_H, ROLE_GAP, nestedFactBounds, getDisplayReading } from '../components/FactTypeNode'
 import { roleAnchor } from '../utils/geometry'
 import { findRefMode, refModeCollapseBlockers } from '../utils/refMode'
 import { mkOcc } from '../store/storeHelpers'
 import { defaultFrequencyPos } from '../utils/frequencyPlacement'
 import { formulaElements } from '../logic/formulaConstraint'
+import { factBox } from './layoutScore'
 
 const GAP = 56            // between core nodes
 const SAT_GAP = 46        // entity box → satellite fact → its value type
@@ -33,6 +35,7 @@ const SAT_ROW = 48        // rows of satellites
 const SAT_SPLIT = 14     // more satellites than this: a column on each side
 const FACT_PAD = 22       // room around a core fact type (bars, reading)
 const C_SIZE = 28         // an external constraint's box
+const UNARY_READ = 6      // a satellite unary's reading beside it
 
 const factLen = (n) => n * ROLE_W + (n - 1) * ROLE_GAP
 // Width of a fact type's reading below it (14px text, about 7px a character, plus
@@ -158,7 +161,8 @@ export function prepareLayout(state, diagramId) {
     const rows = []
     let minX = -ew / 2, maxX = ew / 2
     // Gaps wide enough for the longest reading under a satellite fact type.
-    const gap = Math.max(SAT_GAP, ...list.map(s => (readingW(s.fact) - factLen(s.fact.roles.length)) / 2 + 12))
+    // (A unary's reading goes beside it, on the far side.)
+    const gap = Math.max(SAT_GAP, ...list.filter(s => s.fact.roles.length > 1).map(s => (readingW(s.fact) - factLen(s.fact.roles.length)) / 2 + 12))
     // Taller rows when value ranges add a line of text under a value type or role.
     const ranged = list.some(s => (s.vt && otById.get(s.vt)?.valueRange?.length) || s.fact.roles.some(r => r.valueRange?.length || r.cardinalityRange?.length))
     const rowH = ranged ? SAT_ROW + 14 : SAT_ROW
@@ -171,7 +175,7 @@ export function prepareLayout(state, diagramId) {
         const vx = s.vt ? fx + side * (factLen(n) / 2 + gap + vw / 2) : null
         const y = top + i * rowH
         rows.push({ ...s, side, fx, fy: y, vx, vy: y })
-        const far = s.vt ? vx + side * vw / 2 : fx + side * factLen(n) / 2
+        const far = s.vt ? vx + side * vw / 2 : fx + side * (factLen(n) / 2 + (n === 1 ? UNARY_READ + readingW(s.fact) : 0))
         minX = Math.min(minX, far); maxX = Math.max(maxX, far)
       })
     }
@@ -222,26 +226,36 @@ export function prepareLayout(state, diagramId) {
     trees.push({ id, root, rel })
     nodes.push({ id, kind: 'tree', w: box.w, h: box.h, offX: 0, er: Math.min(box.w, box.h) / 2 })
   }
+  const memberById = new Map(nodes.map(n => [n.id, n]))
   for (let i = nodes.length - 1; i >= 0; i--) if (groupOf.has(nodes[i].id)) nodes.splice(i, 1)
   const grp = (id) => (id && groupOf.get(id)) || id
 
   // Edges: a fact type to each of its players; an objectified fact type's roles from
   // its block; subtype links (sub below super).
   const nodeOf = (typeId) => isNode.has(typeId) || (valueIds.has(typeId) && !satVts.has(typeId)) ? grp(typeId) : null
+  // An edge ends at a member of a subtype tree, not at the tree's centre: `oa`/`ob`
+  // are the ends' offsets from their nodes, `len` the length the edge wants.
+  const relOf = new Map()
+  for (const t of trees) for (const [m, r] of t.rel) relOf.set(m, r)
+  const radOf = (id) => { const n = memberById.get(id); return n ? (n.er ?? (n.w + n.h) / 4) : 20 }
   const edges = []
   const seen = new Set()
-  const addEdge = (a, b, kind) => {
+  const addEdge = (ma, mb, kind) => {
+    const a = ma && grp(ma), b = mb && grp(mb)
     if (!a || !b || a === b) return
-    const k = a < b ? `${a}|${b}` : `${b}|${a}`
+    const k = ma < mb ? `${ma}|${mb}` : `${mb}|${ma}`
     if (seen.has(k)) return
-    seen.add(k); edges.push({ a, b, kind })
+    seen.add(k)
+    const o = (m) => relOf.get(m) ?? { x: 0, y: 0 }
+    edges.push({ a, b, kind, oa: o(ma), ob: o(mb), len: radOf(ma) + radOf(mb) + GAP })
   }
-  for (const f of coreFacts) for (const p of players(f)) addEdge(`f:${f.id}`, nodeOf(p), 'role')
+  const memberOf = (typeId) => nodeOf(typeId) ? typeId : null
+  for (const f of coreFacts) for (const p of players(f)) addEdge(`f:${f.id}`, memberOf(p), 'role')
   for (const id of nodeIds) {
     const f = factById.get(id)
-    if (f?.objectified) for (const p of players(f)) addEdge(grp(id), nodeOf(p), 'role')
+    if (f?.objectified) for (const p of players(f)) addEdge(id, memberOf(p), 'role')
   }
-  for (const st of subtypes) addEdge(nodeOf(st.subId), nodeOf(st.superId), 'subtype')
+  for (const st of subtypes) addEdge(memberOf(st.subId), memberOf(st.superId), 'subtype')
   const below = subtypes.map(st => ({ sub: nodeOf(st.subId), sup: nodeOf(st.superId) })).filter(p => p.sub && p.sup && p.sub !== p.sup)
 
   return {
@@ -271,20 +285,50 @@ function layoutTree(root, kids, nodeById, rel) {
       row.push(s)
     }
     rows.push(row)
-    const rowW = rows.map(r => r.reduce((a, s) => a + s.w, 0) + TREE_GAP_X * (r.length - 1))
-    const w = Math.max(n.w, ...rowW)
+    // Rows top-down; the links to a lower row pass through a gap left in the middle
+    // of each row above it (rows are placed bottom-up, x relative to the supertype).
+    const tops = []
     let y = n.h + TREE_GAP_Y
-    const members = [id]
-    rows.forEach((r, k) => {
-      let x = (w - rowW[k]) / 2
-      const rh = Math.max(...r.map(s => s.h))
-      for (const s of r) {
-        for (const m of s.members) { const p = place.get(m); place.set(m, { x: p.x + x, y: p.y + y }) }
-        members.push(...s.members)
-        x += s.w + TREE_GAP_X
+    for (const r of rows) { tops.push(y); y += Math.max(...r.map(s => s.h)) + TREE_GAP_Y * 0.6 }
+    const py = n.h / 2
+    const xs = rows.map(() => [])            // left edge of each subtree, by row
+    const links = []                          // { x, y } of lower rows' roots
+    for (let k = rows.length - 1; k >= 0; k--) {
+      const r = rows[k], top = tops[k], bottom = top + Math.max(...r.map(s => s.h))
+      // Where the links to lower rows cross this row's band.
+      let a = Infinity, b = -Infinity
+      for (const t of links) for (const yy of [top, bottom]) {
+        if (yy > t.y) continue
+        const x = (t.x * (yy - py)) / (t.y - py)
+        a = Math.min(a, x); b = Math.max(b, x)
       }
-      y += rh + TREE_GAP_Y * 0.6
-    })
+      const widths = r.map(s => s.w)
+      if (a > b) {
+        // Nothing passes: centred.
+        let x = -(widths.reduce((u, v) => u + v, 0) + TREE_GAP_X * (r.length - 1)) / 2
+        for (const s of r) { xs[k].push(x); x += s.w + TREE_GAP_X }
+      } else {
+        // Split the row into a left and a right part around [a, b].
+        const total = widths.reduce((u, v) => u + v, 0)
+        let cut = 0, acc = 0
+        while (cut < r.length && acc + widths[cut] / 2 < total / 2) acc += widths[cut++]
+        let x = a - TREE_GAP_X
+        for (let i = cut - 1; i >= 0; i--) { x -= r[i].w; xs[k][i] = x; x -= TREE_GAP_X }
+        x = b + TREE_GAP_X
+        for (let i = cut; i < r.length; i++) { xs[k][i] = x; x += r[i].w + TREE_GAP_X }
+      }
+      r.forEach((s, i) => { const p = place.get(s.c); links.push({ x: xs[k][i] + p.x, y: top + p.y }) })
+    }
+    let lo = -n.w / 2, hi = n.w / 2
+    rows.forEach((r, k) => r.forEach((s, i) => { lo = Math.min(lo, xs[k][i]); hi = Math.max(hi, xs[k][i] + s.w) }))
+    // Keep the supertype in the middle of the box.
+    const half = Math.max(-lo, hi)
+    const w = 2 * half
+    const members = [id]
+    rows.forEach((r, k) => r.forEach((s, i) => {
+      for (const m of s.members) { const p = place.get(m); place.set(m, { x: p.x + xs[k][i] + half, y: p.y + tops[k] }) }
+      members.push(...s.members)
+    }))
     place.set(id, { x: w / 2, y: n.h / 2 })
     return { w, h: y - TREE_GAP_Y * 0.6, members }
   }
@@ -307,11 +351,15 @@ export function placeCore(plan) {
   const N = nodes.length
   const rad = nodes.map(n => n.er ?? (n.w + n.h) / 4)
   const adj = nodes.map(() => [])
+  const links = nodes.map(() => [])   // [j, len, own offset, j's offset]
   for (const e of edges) {
     const a = idx.get(e.a), b = idx.get(e.b)
     if (a == null || b == null) continue
-    const len = rad[a] + rad[b] + GAP
-    adj[a].push([b, len]); adj[b].push([a, len])
+    const oa = e.oa ?? { x: 0, y: 0 }, ob = e.ob ?? { x: 0, y: 0 }
+    const len = e.len ?? rad[a] + rad[b] + GAP
+    const far = len + Math.hypot(oa.x, oa.y) + Math.hypot(ob.x, ob.y)
+    adj[a].push([b, far]); adj[b].push([a, far])
+    links[a].push([b, len, oa, ob]); links[b].push([a, len, ob, oa])
   }
   // Components
   const comp = new Array(N).fill(-1)
@@ -324,7 +372,7 @@ export function placeCore(plan) {
   }
   const pos = nodes.map(() => ({ x: 0, y: 0 }))
   const belowIdx = below.map(p => [idx.get(p.sub), idx.get(p.sup)]).filter(([a, b]) => a != null && b != null)
-  for (const list of comps) stressComponent(list, adj, rad, nodes, pos, belowIdx.filter(([a]) => comp[a] === comp[list[0]]))
+  for (const list of comps) stressComponent(list, adj, links, nodes, pos, belowIdx.filter(([a]) => comp[a] === comp[list[0]]))
   // Stress placed the entity types themselves; their satellites go to the side away
   // from their other links. From here on, positions are the centres of whole blocks.
   const side = nodes.map((n, i) => {
@@ -370,7 +418,7 @@ function dijkstra(src, adj, members) {
   return members.map(m => dist.get(m) ?? Infinity)
 }
 
-function stressComponent(list, adj, rad, nodes, pos, belowIdx) {
+function stressComponent(list, adj, links, nodes, pos, belowIdx) {
   const n = list.length
   if (n === 1) { pos[list[0]] = { x: 0, y: 0 }; return }
   const D = list.map(s => dijkstra(s, adj, list))
@@ -394,6 +442,18 @@ function stressComponent(list, adj, rad, nodes, pos, belowIdx) {
   for (let it = 0; it < iters; it++) {
     for (let i = 0; i < n; i++) {
       let sx = 0, sy = 0, sw = 0
+      // Links pull the members they join (in a subtype tree, off its centre) to
+      // their length.
+      for (const [g, d, oi, oj] of links[list[i]]) {
+        const j = local.get(g)
+        if (j == null) continue
+        const w = 1 / (d * d)
+        const dx = X[i] + oi.x - X[j] - oj.x, dy = Y[i] + oi.y - Y[j] - oj.y
+        const l = Math.hypot(dx, dy) || 1e-6
+        sx += w * (X[j] + oj.x - oi.x + d * dx / l)
+        sy += w * (Y[j] + oj.y - oi.y + d * dy / l)
+        sw += w
+      }
       for (let j = 0; j < n; j++) {
         if (i === j) continue
         const d = D[i][j]
@@ -589,7 +649,9 @@ export function finishLayout(plan, placed) {
       } else if (row.ring) map[1] = occ.id
       // The entity's role faces the entity.
       const roleOrder = n === 2 ? (side > 0 ? [row.ownerRole, 1 - row.ownerRole] : [1 - row.ownerRole, row.ownerRole]) : undefined
-      const fo = emit(row.fact.id, ex + flip * row.fx, ey + drop + row.fy, { ...keepFrom(row.fact.id), orientation: 'horizontal', ...(roleOrder ? { roleOrder } : {}), uniquenessBelow: false, roleOccurrenceMap: map })
+      // A unary's reading beside it, away from the entity.
+      const beside = n === 1 ? { readingAbove: false, readingOffsetBelow: { dx: side * (factLen(1) / 2 + UNARY_READ + readingW(row.fact) / 2), dy: 0 } } : {}
+      const fo = emit(row.fact.id, ex + flip * row.fx, ey + drop + row.fy, { ...keepFrom(row.fact.id), orientation: 'horizontal', ...(roleOrder ? { roleOrder } : {}), uniquenessBelow: false, ...beside, roleOccurrenceMap: map })
       satFacts.push({ occ: fo, fact: row.fact })
     }
   }
@@ -688,23 +750,38 @@ export function finishLayout(plan, placed) {
     const off = -factLen(n) / 2 + k * (ROLE_W + ROLE_GAP) + ROLE_W / 2
     return f.orientation === 'vertical' ? { x: f.x, y: f.y + off } : { x: f.x + off, y: f.y }
   }
-  const pointsOf = (c) => {
-    const pts = []
-    for (const seq of c.sequences ?? []) for (const m of seq ?? []) {
-      if (m?.kind === 'role') { const p = roleCentre(m.factId, m.roleIndex); if (p) pts.push(p) }
-      else if (m?.kind === 'subtype') {
+  // A constraint's members as drawn: a role's connector ends at the side of the
+  // role box facing the constraint, a subtype member at the link's midpoint.
+  // `own` is the occurrence the connector ends at (its own lines don't count).
+  const occOfFact = (fid) => factOccOf.get(fid)
+  const membersOf = (c) => {
+    const ms = []
+    const members = [...(c.sequences ?? []).flat(), ...(c.roleSequences ?? []).flat().map(r => ({ kind: 'role', ...r }))]
+    for (const m of members) {
+      if (m?.kind === 'role') {
+        if (collapsedFacts.has(m.factId)) {
+          const id = newId.get(collapsedFacts.get(m.factId)), p = id && at.get(id)
+          if (p) ms.push({ own: id, at: (x, y) => rectBorder(p, p.w, p.h, x, y), c: p })
+          continue
+        }
+        const base = String(m.factId).split('_il_')[0]
+        const f = drawnFact(base), o = occOfFact(base)
+        if (!f) continue
+        if (base !== m.factId) { ms.push({ own: o.id, at: () => ({ x: f.x, y: f.y }), c: { x: f.x, y: f.y } }); continue }
+        ms.push({ own: o.id, at: (x, y) => roleAnchor(f, m.roleIndex, x, y), c: roleCentre(base, m.roleIndex) })
+      } else if (m?.kind === 'subtype') {
         const st = state.subtypes.find(s => s.id === m.subtypeId)
         const a = st && typeAt(st.subId), b = st && typeAt(st.superId)
-        if (a && b) pts.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
+        if (a && b) { const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; ms.push({ own: null, at: () => mid, c: mid }) }
       }
     }
     if (c.constraintType === 'formula' && c.rule) {
       const { facts: fs, types } = formulaElements(c.rule)
-      for (const fid of fs) { const f = drawnFact(fid); if (f) pts.push({ x: f.x, y: f.y }) }
-      for (const t of types) { const p = typeAt(t); if (p) pts.push(p) }
+      for (const fid of fs) { const f = drawnFact(fid); if (f) { const pt = { x: f.x, y: f.y }; ms.push({ own: occOfFact(fid).id, at: () => pt, c: pt }) } }
+      for (const t of types) { const id = newId.get(t), p = id && at.get(id); if (p) ms.push({ own: id, at: (x, y) => rectBorder(p, p.w, p.h, x, y), c: p }) }
     }
-    if (!pts.length && c.targetObjectTypeId) { const p = typeAt(c.targetObjectTypeId); if (p) pts.push(p) }
-    return pts
+    if (!ms.length && c.targetObjectTypeId) { const id = newId.get(c.targetObjectTypeId), p = id && at.get(id); if (p) ms.push({ own: id, at: (x, y) => rectBorder(p, p.w, p.h, x, y), c: p }) }
+    return ms
   }
 
   // Obstacles: every type and fact type box.
@@ -714,30 +791,117 @@ export function finishLayout(plan, placed) {
     const a = at.get(o.id)
     if (a) {
       const label = factById.get(o.schemaElementId)?.objectified ? 24 : 0   // the name above the box
-      obstacles.push({ l: a.x - a.w / 2, r: a.x + a.w / 2, t: a.y - a.h / 2 - label, b: a.y + a.h / 2 })
+      obstacles.push({ key: o.id, l: a.x - a.w / 2, r: a.x + a.w / 2, t: a.y - a.h / 2 - label, b: a.y + a.h / 2 })
       continue
     }
-    const f = drawnFact(o.schemaElementId)
-    if (f && factById.has(o.schemaElementId)) {
-      const b = factBounds({ ...f, x: o.x, y: o.y, orientation: o.orientation, uniquenessBelow: o.uniquenessBelow })
-      obstacles.push({ l: b.left, r: b.right, t: b.top, b: b.bottom })
+    const f = factById.get(o.schemaElementId)
+    if (f) {
+      const b = factBox({ ...f, ...o, arity: f.roles.length, id: f.id })
+      obstacles.push({ key: o.id, l: b.l, r: b.r, t: b.t, b: b.b })
     }
   }
-  const free = (x, y, w, h) => {
+  // Lines already drawn: role connectors and subtype links.
+  const lines = []
+  for (const o of out) {
+    const f = factById.get(o.schemaElementId)
+    if (!f || !o.roleOccurrenceMap) continue
+    if (o.refModeOwnerOccId && !expandedRefModeOccs.includes(o.refModeOwnerOccId)) continue
+    const g = { ...f, arity: f.roles.length, x: o.x, y: o.y, orientation: o.orientation, roleOrder: o.roleOrder }
+    for (const [ri, pid] of Object.entries(o.roleOccurrenceMap)) {
+      const p = at.get(pid)
+      if (!p || pid === o.id) continue
+      const a = roleAnchor(g, Number(ri), p.x, p.y)
+      lines.push({ p: a, q: rectBorder(p, p.w, p.h, a.x, a.y), own: [o.id, pid] })
+    }
+  }
+  for (const [, eps] of Object.entries(subtypeEndpointOccs)) for (const { subOccId, superOccId } of eps) {
+    const a = at.get(subOccId), b = at.get(superOccId)
+    if (a && b) lines.push({ p: rectBorder(a, a.w, a.h, b.x, b.y), q: rectBorder(b, b.w, b.h, a.x, a.y), own: [subOccId, superOccId] })
+  }
+  const hitsBox = (p, q, b) => {
+    const l = b.l + 2, r = b.r - 2, t = b.t + 2, bt = b.b - 2
+    if (Math.max(p.x, q.x) < l || Math.min(p.x, q.x) > r || Math.max(p.y, q.y) < t || Math.min(p.y, q.y) > bt) return false
+    const inside = (z) => z.x > l && z.x < r && z.y > t && z.y < bt
+    if (inside(p) || inside(q)) return true
+    const c = [{ x: l, y: t }, { x: r, y: t }, { x: r, y: bt }, { x: l, y: bt }]
+    return [0, 1, 2, 3].some(i => segCross(p, q, c[i], c[(i + 1) % 4]))
+  }
+  const distToSeg = (z, p, q) => {
+    const dx = q.x - p.x, dy = q.y - p.y, L = dx * dx + dy * dy
+    const t = L ? Math.max(0, Math.min(1, ((z.x - p.x) * dx + (z.y - p.y) * dy) / L)) : 0
+    return Math.hypot(z.x - p.x - t * dx, z.y - p.y - t * dy)
+  }
+  const free = (x, y, w, h, skip, obs = obstacles) => {
     const l = x - w / 2 - 6, r = x + w / 2 + 6, t = y - h / 2 - 6, b = y + h / 2 + 6
-    return !obstacles.some(o => o.l < r && o.r > l && o.t < b && o.b > t)
+    return !obs.some(o => o !== skip && o.l < r && o.r > l && o.t < b && o.b > t)
   }
-  const placeFree = (cx, cy, w, h) => {
-    if (free(cx, cy, w, h)) return { x: cx, y: cy }
-    for (let rr = 16; rr <= 480; rr += 12) {
-      const steps = Math.max(8, Math.round(rr / 6))
-      for (let k = 0; k < steps; k++) {
-        const th = -Math.PI / 2 + (2 * Math.PI * k) / steps   // start above
-        const x = cx + rr * Math.cos(th), y = cy + rr * Math.sin(th)
-        if (free(x, y, w, h)) return { x, y }
-      }
+  // The cost of a constraint at (x, y): the length of its connectors, plus
+  // penalties for each one that crosses a line or runs through a box, and for
+  // sitting on a line. Placed constraints' connectors count as lines. `near` holds
+  // the lines and boxes in the area searched.
+  const W_CROSS = 320, W_THROUGH = 480, W_ON_LINE = 160
+  const constraintCost = (x, y, ms, near) => {
+    const z = { x, y }
+    let cost = 0
+    for (const m of ms) {
+      const q = m.at(x, y)
+      cost += Math.hypot(q.x - x, q.y - y)
+      for (const ln of near.lines) if (!ln.own.includes(m.own) && segCross(z, q, ln.p, ln.q)) cost += W_CROSS
+      for (const ln of near.others) if (!(m.own && ln.own.includes(m.own)) && segCross(z, q, ln.p, ln.q)) cost += W_CROSS
+      for (const b of near.obs) if (b.key !== m.own && !b.self && hitsBox(z, q, b)) cost += W_THROUGH
     }
-    return { x: cx, y: cy }
+    for (const ln of near.lines) if (distToSeg(z, ln.p, ln.q) < C_SIZE / 2 + 2) cost += W_ON_LINE
+    for (const ln of near.others) if (distToSeg(z, ln.p, ln.q) < C_SIZE / 2 + 2) cost += W_ON_LINE
+    return cost
+  }
+  // The area searched: the members' bounds, widened.
+  const areaOf = (ms) => {
+    const xs = ms.map(m => m.c.x), ys = ms.map(m => m.c.y)
+    return { l: Math.min(...xs) - 140, r: Math.max(...xs) + 140, t: Math.min(...ys) - 140, b: Math.max(...ys) + 140 }
+  }
+  const nearOf = (a, others) => {
+    const inA = (p, q) => Math.max(p.x, q.x) >= a.l - 20 && Math.min(p.x, q.x) <= a.r + 20 && Math.max(p.y, q.y) >= a.t - 20 && Math.min(p.y, q.y) <= a.b + 20
+    return {
+      lines: lines.filter(ln => inA(ln.p, ln.q)),
+      others: others.filter(ln => inA(ln.p, ln.q)),
+      obs: obstacles.filter(o => o.r >= a.l - 20 && o.l <= a.r + 20 && o.b >= a.t - 20 && o.t <= a.b + 20),
+    }
+  }
+  // Candidates: a grid over the area.
+  const candidates = (ms, a) => {
+    const step = Math.max(14, Math.sqrt((a.r - a.l) * (a.b - a.t) / 1600))
+    const pts = []
+    for (let x = a.l; x <= a.r; x += step) for (let y = a.t; y <= a.b; y += step) pts.push({ x, y })
+    const xs = ms.map(m => m.c.x), ys = ms.map(m => m.c.y)
+    pts.push({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 })
+    return pts
+  }
+  // The best free spot, and the cost of `keep` (where the constraint is now) if given.
+  const placeConstraint = (ms, others, skip, keep = null) => {
+    const a = areaOf(ms)
+    if (keep) { a.l = Math.min(a.l, keep.x); a.r = Math.max(a.r, keep.x); a.t = Math.min(a.t, keep.y); a.b = Math.max(a.b, keep.y) }
+    const near = nearOf(a, others)
+    let best = null
+    for (const p of candidates(ms, a)) {
+      if (!free(p.x, p.y, C_SIZE, C_SIZE, skip, near.obs)) continue
+      const cost = constraintCost(p.x, p.y, ms, near)
+      if (!best || cost < best.cost) best = { ...p, cost }
+    }
+    if (keep && best && constraintCost(keep.x, keep.y, ms, near) <= best.cost + 1) return null
+    if (!best) {   // nowhere free near: spiral out from the centre
+      const xs = ms.map(m => m.c.x), ys = ms.map(m => m.c.y)
+      const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2
+      for (let rr = 16; rr <= 900 && !best; rr += 16) {
+        const steps = Math.max(8, Math.round(rr / 6))
+        for (let k = 0; k < steps && !best; k++) {
+          const th = -Math.PI / 2 + (2 * Math.PI * k) / steps
+          const x = cx + rr * Math.cos(th), y = cy + rr * Math.sin(th)
+          if (free(x, y, C_SIZE, C_SIZE, skip)) best = { x, y }
+        }
+      }
+      if (keep) return null
+    }
+    return best ?? { x: ms[0].c.x, y: ms[0].c.y }
   }
 
   const constraintById = new Map(state.constraints.map(c => [c.id, c]))
@@ -746,23 +910,33 @@ export function finishLayout(plan, placed) {
     return Object.fromEntries(Object.entries(refs).map(([k, v]) => [k, remap.get(v) ?? v]).filter(([, v]) => out.some(o => o.id === v)))
   }
   const seenC = new Set()
-  const constraintOccurrences = []
   // Most-connected constraints first: they have the fewest good spots.
   const coccs = (diagram.constraintOccurrences ?? [])
     .filter(co => constraintById.has(co.schemaConstraintId) && !seenC.has(co.schemaConstraintId) && seenC.add(co.schemaConstraintId))
-    .map(co => ({ co, pts: pointsOf(constraintById.get(co.schemaConstraintId)) }))
-    .sort((p, q) => q.pts.length - p.pts.length)
-  for (const { co, pts } of coccs) {
-    let x = co.x, y = co.y
-    if (pts.length) {
-      const xs = pts.map(p => p.x), ys = pts.map(p => p.y)
-      const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2
-      ;({ x, y } = placeFree(cx, cy, C_SIZE, C_SIZE))
-    }
-    x = Math.round(x); y = Math.round(y)
-    obstacles.push({ l: x - C_SIZE / 2, r: x + C_SIZE / 2, t: y - C_SIZE / 2, b: y + C_SIZE / 2 })
-    constraintOccurrences.push({ ...co, x, y, roleOccurrenceRefs: remapRefs(co.roleOccurrenceRefs), queryOccurrenceRefs: remapRefs(co.queryOccurrenceRefs) })
+    .map(co => ({ co, ms: membersOf(constraintById.get(co.schemaConstraintId)), x: co.x, y: co.y, box: null, lines: [] }))
+    .sort((p, q) => q.ms.length - p.ms.length)
+  const cLines = []
+  const setAt = (e, x, y) => {
+    e.x = Math.round(x); e.y = Math.round(y)
+    if (!e.box) { e.box = { self: true }; obstacles.push(e.box) }
+    Object.assign(e.box, { l: e.x - C_SIZE / 2, r: e.x + C_SIZE / 2, t: e.y - C_SIZE / 2, b: e.y + C_SIZE / 2 })
+    for (const ln of e.lines) cLines.splice(cLines.indexOf(ln), 1)
+    e.lines = e.ms.map(m => ({ p: { x: e.x, y: e.y }, q: m.at(e.x, e.y), own: [m.own].filter(Boolean) }))
+    cLines.push(...e.lines)
   }
+  for (const e of coccs) {
+    if (!e.ms.length) { setAt(e, e.x, e.y); continue }
+    const p = placeConstraint(e.ms, cLines, null)
+    setAt(e, p.x, p.y)
+  }
+  // Then each again, knowing where all the others are.
+  for (let pass = 0; pass < 2; pass++) for (const e of coccs) {
+    if (!e.ms.length) continue
+    const own = new Set(e.lines)
+    const p = placeConstraint(e.ms, cLines.filter(ln => !own.has(ln)), e.box, { x: e.x, y: e.y })
+    if (p) setAt(e, p.x, p.y)
+  }
+  const constraintOccurrences = coccs.map(({ co, x, y }) => ({ ...co, x, y, roleOccurrenceRefs: remapRefs(co.roleOccurrenceRefs), queryOccurrenceRefs: remapRefs(co.queryOccurrenceRefs) }))
 
   // Internal frequency markers next to their fact type's bars.
   const internalFrequency = {}
