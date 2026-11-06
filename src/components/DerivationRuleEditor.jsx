@@ -53,7 +53,7 @@ const COUNT_OPS = ['≤', '≥', '=']
 const tcScope = (n) => (n.vars ?? []).map(w => ({ id: w.id, typeIds: [w.typeId] }))
 
 const newVarId = () => `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
-const keyOf = (path) => path.join('.')
+const keyOf = (path) => (path ? path.join('.') : null)
 const samePath = (a, b) => keyOf(a) === keyOf(b)
 
 // The rule of a fact type as the editor works on it.
@@ -162,7 +162,13 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
     : forQuery ? query?.body ?? hole()
     : forFact ? factDraft(fact?.derivationRule) : upgradeRule(ot?.derivationRule) ?? hole()
   const [draft, setDraft] = useState(stored)
-  const [sel, setSel] = useState(forFact ? ['body'] : [])
+  // Nothing is selected when the editor opens, so the formula reads plainly;
+  // a click on a part selects it, a click on an empty area clears it.
+  const [sel, setSel] = useState(null)
+  const clearSel = (e) => {
+    if (e.target.closest('button, input, select, textarea, [data-keep-sel]') || hasTextSelection()) return
+    setSel(null)
+  }
   const [newVarType, setNewVarType] = useState('')
 
   const ctx = useMemo(() => makeContext(state), [state])
@@ -236,7 +242,7 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
   const setRuleHighlight = useOrmStore(s => s.setRuleHighlight)
   const typesOfVars = useMemo(() => varTypes(draft, roots), [draft, roots])
   const highlight = useMemo(() => {
-    const h = (hover && highlightOf(getAt(draft, hover), ctx, typesOfVars)) || highlightOf(getAt(draft, sel), ctx, typesOfVars)
+    const h = (hover && highlightOf(getAt(draft, hover), ctx, typesOfVars)) || (sel && highlightOf(getAt(draft, sel), ctx, typesOfVars))
     return h ? JSON.stringify(h) : null
   }, [hover, sel, draft, ctx, typesOfVars])
   useEffect(() => { setRuleHighlight(highlight && JSON.parse(highlight)) }, [highlight, setRuleHighlight])
@@ -294,7 +300,7 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)
     if (!typing && (e.key === 'Delete' || e.key === 'Backspace')) {
       e.preventDefault()
-      if (sel.length && getAt(draft, sel) && getAt(draft, sel).t !== 'hole') replace(sel, hole())
+      if (sel?.length && getAt(draft, sel) && getAt(draft, sel).t !== 'hole') replace(sel, hole())
     }
   }
 
@@ -509,9 +515,10 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
     return <span onClick={click} onMouseOver={over} style={wrapStyle}>{body}</span>
   }
 
-  const selNode = getAt(draft, sel)
-  const selScope = scopeAt(sel)
-  const termSelected = forFact && sel[0] === 'terms' ? (sel.length === 2 || isTermSlot(draft, sel)) : isTermSlot(draft, sel)
+  const selNode = sel ? getAt(draft, sel) : null
+  const selScope = sel ? scopeAt(sel) : []
+  const termSelected = !sel ? false
+    : forFact && sel[0] === 'terms' ? (sel.length === 2 || isTermSlot(draft, sel)) : isTermSlot(draft, sel)
 
   // ── Variables of a fact type's rule ──
   const setComputed = (roleId, on) => setDraft(d => {
@@ -636,11 +643,11 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
         {/* Folded to its title while the condition is drawn, so the diagram stays free */}
         {drawing && <div style={{ padding: '10px 14px 0' }}><DrawingBanner draft={drawing} onCancel={() => setPanel(p => ({ ...p, folded: false }))} /></div>}
         {!panel.folded && <>
-        <div onMouseLeave={() => setHover(null)} style={{ padding: 14, overflow: 'auto', flex: 1 }}>
+        <div onMouseLeave={() => setHover(null)} onClick={clearSel} style={{ padding: 14, overflow: 'auto', flex: 1 }}>
           {factVariables}
           {queryVariables}
           {(forFact || forQuery) && <div style={sectionLabel}>{forQuery ? 'Formula' : 'Condition'}</div>}
-          <div tabIndex={0} onClick={() => setSel(forFact ? ['body'] : [])} className="text-panel" style={{
+          <div tabIndex={0} className="text-panel" style={{
             fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 2, minHeight: 44, outline: 'none',
           }}>
             {forFact ? render(draft.body, ['body'], roots) : render(draft, [], roots)}
@@ -658,19 +665,22 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
             </div>
           </>}
 
-          {termSelected
-            ? <TermPalette node={selNode} path={sel} scope={selScope} draft={draft} ctx={ctx} nameOf={nameOf}
-                types={types} replace={replace} />
-            : <Palette node={selNode} path={sel} scope={selScope} draft={draft} state={state} ctx={ctx}
-                supers={forFact || forQuery || forFormula || !supers.length ? roots.map(r => r.typeIds[0]) : supers}
-                graph={graph} replace={replace} />}
+          {!sel ? <div style={{ fontSize: 12, color: 'var(--ink-muted)', margin: '10px 0 2px' }}>
+              Click a part of the formula to edit it.
+            </div>
+            : <div data-keep-sel>{termSelected
+              ? <TermPalette node={selNode} path={sel} scope={selScope} draft={draft} ctx={ctx} nameOf={nameOf}
+                  types={types} replace={replace} />
+              : <Palette node={selNode} path={sel} scope={selScope} draft={draft} state={state} ctx={ctx}
+                  supers={forFact || forQuery || forFormula || !supers.length ? roots.map(r => r.typeIds[0]) : supers}
+                  graph={graph} replace={replace} />}</div>}
 
           {/* Focusable so the messages can be selected and copied */}
           <div data-text-panel tabIndex={0} className="copyable" style={{ marginTop: 12 }}>
             {issues.length === 0
               ? <div style={{ fontSize: 12, color: 'var(--col-candidate)' }}>✓ This is a valid {forFormula ? 'formula constraint' : forQuery ? 'query' : 'derivation rule'}.</div>
               : issues.map((i, k) => (
-                <div key={k} onClick={() => { if (!hasTextSelection()) setSel(i.path) }} style={{
+                <div key={k} onClick={e => { e.stopPropagation(); if (!hasTextSelection()) setSel(i.path) }} style={{
                   display: 'flex', gap: 6, fontSize: 12, cursor: 'pointer', marginBottom: 2,
                   color: i.severity === 'error' ? 'var(--danger)' : '#b45309',
                 }}>
