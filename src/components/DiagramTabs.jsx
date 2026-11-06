@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { activeSchemaIdOf, mappingOfDiagram, isViewMapping } from '../store/storeHelpers'
 import { NewSchemaMenu } from './SchemaStrip'
 import { isErdDiagram } from './ErdView'
 import { layoutOrmDiagram } from '../layout/ormLayout'
+import { diagramCoverage } from '../utils/neighbourhood.js'
 
 export default function DiagramTabs() {
   const store = useOrmStoreIgnoring('pan', 'zoom')
@@ -308,6 +309,8 @@ export default function DiagramTabs() {
             >Add rule elements</span>
           </div>
         )}
+        {/* Growing mode: "+n" badges where neighbours are not shown, and how much of the schema is on a diagram. */}
+        {activeDiagram && !mapping && (activeDiagram.occurrences?.length ?? 0) > 0 && <GrowSwitch diagram={activeDiagram} />}
         {/* A relational schema shows tables (an ERD), or in Advanced mode its logical (ORM2) view. */}
         {activeDiagram && isRelational && isErdDiagram(store, activeDiagram) && (
           <div title="Lay the tables out afresh (forgets the positions of moved tables)"
@@ -340,6 +343,33 @@ export default function DiagramTabs() {
   )
 }
 
+
+function GrowSwitch({ diagram }) {
+  const on = useOrmStore(s => !!s.growMode)
+  const objectTypes = useOrmStore(s => s.objectTypes)
+  const facts = useOrmStore(s => s.facts)
+  const diagrams = useOrmStore(s => s.diagrams)
+  const schemas = useOrmStore(s => s.schemas)
+  const coverage = useMemo(() => on ? diagramCoverage({ objectTypes, facts, diagrams, schemas }, diagram.schemaId) : null,
+    [on, objectTypes, facts, diagrams, schemas, diagram.schemaId])
+  return (
+    <div className="grow-switch" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, whiteSpace: 'nowrap', userSelect: 'none' }}>
+      {coverage && (
+        <span title={`${coverage.kind} of this schema that some diagram shows`} style={{ color: 'var(--ink-3)' }}>
+          {coverage.shown} of {coverage.total} {coverage.kind} on a diagram
+        </span>
+      )}
+      <span title={on ? 'Stop showing +n at elements with neighbours not on this diagram'
+        : 'Show +n at each element with neighbours not on this diagram (click one to add them)'}
+        onClick={() => useOrmStore.getState().setGrowMode(!on)}
+        style={{ cursor: 'pointer', padding: '1px 6px', borderRadius: 9, color: on ? '#fff' : 'var(--ink-3)',
+          background: on ? 'var(--accent)' : 'none', border: `1px solid ${on ? 'var(--accent)' : 'transparent'}` }}
+        onMouseEnter={e => { if (!on) e.currentTarget.style.color = 'var(--ink-1)' }}
+        onMouseLeave={e => { if (!on) e.currentTarget.style.color = 'var(--ink-3)' }}
+      >Grow</span>
+    </div>
+  )
+}
 
 // Diagonal | Right-angled switch for the foreign key lines of an ERD.
 function ErdLinesSwitch({ diagram }) {

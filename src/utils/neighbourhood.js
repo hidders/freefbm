@@ -54,6 +54,42 @@ export function neighbourUnits(state, diagram, elementId) {
   return units
 }
 
+// For the "+n" badges of growing mode: how many neighbourhood units of each
+// element shown on the diagram are not shown yet. Map(elementId → n), only n > 0.
+export function hiddenNeighbourCounts(state, diagram) {
+  const out = new Map()
+  if (!diagram || diagram.mappingId) return out
+  const subtypeIds = new Set((state.subtypes ?? []).map(s => s.id))
+  const shown = new Set((diagram.occurrences ?? []).map(o => o.schemaElementId))
+  const relational = isRelational(state, diagram.schemaId)
+  const model = relational ? relationalModel(state, diagram.schemaId) : null
+  const anchors = relational
+    ? model.tables.filter(t => shown.has(t.id)).map(t => t.id)
+    : [...shown].filter(id => hasNeighbourhood(state, id))
+  for (const id of anchors) {
+    const units = relational ? relationalUnits(state, diagram.schemaId, id, model) : ormUnits(state, diagram.schemaId, id)
+    const n = units.filter(u => !u.ids.every(x => onDiagram(diagram, x, subtypeIds))).length
+    if (n) out.set(id, n)
+  }
+  return out
+}
+
+// How much of a schema its (plain) diagrams show: tables of a relational
+// schema; object types and fact types of an ORM2 schema.
+export function diagramCoverage(state, schemaId) {
+  const onSome = new Set()
+  for (const d of state.diagrams ?? []) {
+    if (d.mappingId || d.schemaId !== schemaId) continue
+    for (const o of d.occurrences ?? []) onSome.add(o.schemaElementId)
+  }
+  if (isRelational(state, schemaId)) {
+    const tables = state.objectTypes.filter(o => o.schemaId === schemaId && o.kind === 'entity')
+    return { kind: 'tables', total: tables.length, shown: tables.filter(t => onSome.has(t.id)).length }
+  }
+  const els = [...state.objectTypes.filter(o => o.schemaId === schemaId), ...state.facts.filter(f => f.schemaId === schemaId && !f._implicit)]
+  return { kind: 'elements', total: els.length, shown: els.filter(e => onSome.has(e.id)).length }
+}
+
 // Whether an element can have a neighbourhood: an object type, an objectified
 // fact type, or a table.
 export function hasNeighbourhood(state, elementId) {
@@ -137,8 +173,7 @@ function junctionFks(t) {
   return t.pk.every(c => covered.has(c)) ? fks : null
 }
 
-function relationalUnits(state, schemaId, x) {
-  const model = relationalModel(state, schemaId)
+function relationalUnits(state, schemaId, x, model = relationalModel(state, schemaId)) {
   const table = model.tables.find(t => t.id === x)
   if (!table) return []
   const deg = new Map(model.tables.map(t => [t.id, 0]))

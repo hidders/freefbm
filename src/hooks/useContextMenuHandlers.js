@@ -39,6 +39,12 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         { label: 'Align vertically', disabled: !canAlign,
           action: () => store.alignMultiSelection('x') },
         '---',
+        ...(store.diagrams.find(d => d.id === store.activeDiagramId)?.mappingId ? [] : [
+          { label: 'Copy Selection to New Diagram', action: () => store.selectionToNewDiagram(false) },
+          { label: 'Move Selection to New Diagram', title: 'Object types still linked to what stays here are kept on both diagrams',
+            action: () => store.selectionToNewDiagram(true) },
+          '---',
+        ]),
         { label: 'Remove Selection from Diagram', disabled: idsToRemove.length === 0 && occIdsToRemove.length === 0,
           action: () => {
             if (occIdsToRemove.length > 0) {
