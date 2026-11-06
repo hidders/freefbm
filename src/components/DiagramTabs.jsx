@@ -3,6 +3,7 @@ import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { activeSchemaIdOf, mappingOfDiagram, isViewMapping } from '../store/storeHelpers'
 import { NewSchemaMenu } from './SchemaStrip'
 import { isErdDiagram } from './ErdView'
+import { layoutOrmDiagram } from '../layout/ormLayout'
 
 export default function DiagramTabs() {
   const store = useOrmStoreIgnoring('pan', 'zoom')
@@ -317,6 +318,20 @@ export default function DiagramTabs() {
           >Auto layout</div>
         )}
         {activeDiagram && isRelational && isErdDiagram(store, activeDiagram) && <ErdLinesSwitch diagram={activeDiagram} />}
+        {/* An ORM2 diagram (not a mapping diagram): lay out everything afresh. */}
+        {activeDiagram && !mapping && !isErdDiagram(store, activeDiagram) && (activeDiagram.occurrences?.length ?? 0) > 0 && (
+          <div title="Lay the whole diagram out afresh: moves every element, collapses reference modes, and draws each attribute's value type next to its entity type"
+            className="orm-auto-layout"
+            onClick={() => {
+              const s = useOrmStore.getState()
+              const result = layoutOrmDiagram(s, activeDiagram.id)
+              if (result) s.applyDiagramLayout(activeDiagram.id, result)
+            }}
+            style={{ fontSize: 11, color: 'var(--ink-3)', cursor: 'pointer', userSelect: 'none', padding: '0 4px', whiteSpace: 'nowrap' }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--ink-1)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--ink-3)' }}
+          >Auto layout</div>
+        )}
         {activeDiagram && isRelational && store.advancedMode && <FaceSwitch schemaId={activeDiagram.schemaId} logical={!!store.logicalViews?.[activeDiagram.schemaId]} />}
         {/* With one schema the schema strip is hidden; a new schema starts here. */}
         {singleSchema && <NewSchemaMenu variant="tab" />}

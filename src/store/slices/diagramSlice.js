@@ -207,6 +207,19 @@ export function createDiagramSlice(set, get) {
       }))
     },
 
+    // Puts the result of the ORM2 auto layout (src/layout/ormLayout.js) into a
+    // diagram as one undo step: its occurrences and constraint occurrences, and
+    // the internal frequency markers of its fact types (stored on the facts).
+    applyDiagramLayout(id, { diagram, internalFrequency }) {
+      set(s => ({
+        diagrams: s.diagrams.map(d => d.id === id ? diagram : d),
+        facts: Object.keys(internalFrequency ?? {}).length
+          ? s.facts.map(f => internalFrequency[f.id] ? { ...f, internalFrequency: internalFrequency[f.id] } : f)
+          : s.facts,
+        isDirty: true,
+      }))
+    },
+
     // Top-left corners of ERD table boxes, per diagram: { [entityId]: {x, y} }.
     setErdPositions(id, positions) {
       set(s => ({
