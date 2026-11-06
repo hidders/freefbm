@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
-import { mappingOfDiagram, isViewMapping } from '../store/storeHelpers'
+import { mappingOfDiagram, isViewMapping, diagramRuleIds } from '../store/storeHelpers'
 import { viewRuleElements, checkViewRule, viewRuleText, headId, elementName } from '../mapping/views.js'
 import { entityBounds } from './ObjectTypeNode'
 import { factBounds } from './FactTypeNode'
@@ -112,7 +112,10 @@ export function MappingRules() {
     const otsById = new Map(), factsById = new Map()
     for (const o of objectTypes) { if (!otsById.has(o.id)) otsById.set(o.id, []); otsById.get(o.id).push(o) }
     for (const f of facts) { if (f._implicit) continue; if (!factsById.has(f.id)) factsById.set(f.id, []); factsById.get(f.id).push(f) }
+    // Only the rules this diagram draws (diagram.mappingRuleIds).
+    const on = diagramRuleIds(diagram, mapping)
     return mapping.rules.map((r, k) => {
+      if (!on.has(r.id)) return null
       const els = isView ? viewRuleElements(state, mapping, r) : ruleElements(r)
       const ends = {}
       const namedErd = {}
@@ -148,8 +151,8 @@ export function MappingRules() {
       const named = SIDES.reduce((n, side) => n + (side in namedErd ? namedErd[side] : els[side].typeIds.length + els[side].tableIds.length + els[side].factIds.length), 0)
       const linked = ends.source.length + ends.target.length
       return { r, k, ends, issues, formula, highlight, name, missing: Math.max(0, named - linked) }
-    })
-  }, [mapping, isView, ctxs, objectTypes, facts, collapsedRefFacts, state, erd])
+    }).filter(Boolean)
+  }, [mapping, isView, ctxs, objectTypes, facts, collapsedRefFacts, state, erd, diagram?.mappingRuleIds])   // eslint-disable-line react-hooks/exhaustive-deps
 
   // Node positions: stored, or between the two sides' elements; default
   // positions that would overlap are stacked downwards.

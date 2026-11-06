@@ -17,9 +17,41 @@ import { mkLock } from '../../mapping/pairLock.js'
 import { withSimple } from '../../mapping/carry.js'
 import { withTableConstraints } from '../../relational/tableUnits.js'
 import { relationalView, rmLabel } from '../../relational/relationalView.js'
-import { uid, mappingOfDiagram, isViewMapping } from '../storeHelpers'
+import { uid, mappingOfDiagram, isViewMapping, makeUniqueName, diagramRuleIds } from '../storeHelpers'
 import { numberInvented } from '../../mapping/exchanges.js'
 import { viewRuleElements } from '../../mapping/views.js'
+
+// The elements a mapping diagram shows for the given rules, by side: the
+// types, fact types and tables their patterns name, a table's named columns
+// (but its reference mode), and an entity for its reference-mode fact type.
+function ruleWantedElements(s0, m, rules) {
+  const view = isViewMapping(s0, m)
+  const wanted = { source: new Set(), target: new Set() }
+  for (const r of rules) {
+    const els = view ? viewRuleElements(s0, m, r) : ruleElements(r)
+    for (const side of ['source', 'target']) {
+      const e = els[side]
+      for (const id of [...e.typeIds, ...e.factIds, ...e.tableIds]) wanted[side].add(id)
+      for (const tableId of e.tableIds) {
+        const t = s0.objectTypes.find(o => o.id === tableId)
+        const rm = t ? findRefMode(t, s0.facts, s0.objectTypes) : null
+        for (const colId of e.columnFactIds) {
+          const f = s0.facts.find(x => x.id === colId)
+          if (f && f.id !== rm?.factId && f.roles.some(r => r.objectTypeId === tableId)) wanted[side].add(colId)
+        }
+      }
+    }
+  }
+  for (const side of ['source', 'target']) for (const id of [...wanted[side]]) {
+    const f = s0.facts.find(x => x.id === id)
+    if (!f) continue
+    for (const r of f.roles) {
+      const e = s0.objectTypes.find(o => o.id === r.objectTypeId && o.kind === 'entity')
+      if (e && findRefMode(e, s0.facts, s0.objectTypes)?.factId === id) { wanted[side].delete(id); wanted[side].add(e.id) }
+    }
+  }
+  return wanted
+}
 
 // The constraints of the old version (schemaId) about the given elements
 // that the mapping m loses, each added to the new version as its
@@ -204,40 +236,16 @@ export const createMappingSlice = (set, get) => {
     // as one undo step. Each element goes where it is in its own schema's
     // diagram, the target side shifted to the right of the source side.
     // Returns the number of elements added.
-    addMappingRuleElements(diagramId) {
+    addMappingRuleElements(diagramId, ruleIds = null) {
       const s0 = get()
       const diag = s0.diagrams.find(d => d.id === diagramId)
       const m = mappingOfDiagram(s0, diag)
       if (!diag || !m) return 0
-      const view = isViewMapping(s0, m)
       const schemaOf = new Map()
       for (const k of ['objectTypes', 'facts', 'constraints']) for (const x of s0[k]) schemaOf.set(x.id, x.schemaId)
-      const wanted = { source: new Set(), target: new Set() }
-      for (const r of m.rules) {
-        const els = view ? viewRuleElements(s0, m, r) : ruleElements(r)
-        for (const side of ['source', 'target']) {
-          const e = els[side]
-          for (const id of [...e.typeIds, ...e.factIds, ...e.tableIds]) wanted[side].add(id)
-          // Columns of a table, except the one its reference mode stands for.
-          for (const tableId of e.tableIds) {
-            const t = s0.objectTypes.find(o => o.id === tableId)
-            const rm = t ? findRefMode(t, s0.facts, s0.objectTypes) : null
-            for (const colId of e.columnFactIds) {
-              const f = s0.facts.find(x => x.id === colId)
-              if (f && f.id !== rm?.factId && f.roles.some(r => r.objectTypeId === tableId)) wanted[side].add(colId)
-            }
-          }
-        }
-      }
-      // A reference-mode fact type is drawn as its entity's "(.ref)" shorthand.
-      for (const side of ['source', 'target']) for (const id of [...wanted[side]]) {
-        const f = s0.facts.find(x => x.id === id)
-        if (!f) continue
-        for (const r of f.roles) {
-          const e = s0.objectTypes.find(o => o.id === r.objectTypeId && o.kind === 'entity')
-          if (e && findRefMode(e, s0.facts, s0.objectTypes)?.factId === id) { wanted[side].delete(id); wanted[side].add(e.id) }
-        }
-      }
+      const on = diagramRuleIds(diag, m)
+      const rules = m.rules.filter(r => (ruleIds ? ruleIds.includes(r.id) : on.has(r.id)))
+      const wanted = ruleWantedElements(s0, m, rules)
       const shown = new Set((diag.occurrences ?? []).map(o => o.schemaElementId))
       const toAdd = [...wanted.source, ...wanted.target].filter(id => !shown.has(id) && schemaOf.has(id))
       if (!toAdd.length) return 0
@@ -298,6 +306,121 @@ export const createMappingSlice = (set, get) => {
         set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
       }
       return toAdd.length
+    },
+
+    // Which rules a mapping diagram draws (diagram.mappingRuleIds; none
+    // means all of them). Showing rules adds the elements they name;
+    // hiding them takes off the elements no rule left on the diagram needs.
+    // Each is one undo step.
+    showMappingRules(diagramId, ruleIds) {
+      const s0 = get()
+      const diag = s0.diagrams.find(d => d.id === diagramId)
+      const m = mappingOfDiagram(s0, diag)
+      if (!m || !ruleIds.length) return
+      const on = diagramRuleIds(diag, m)
+      const next = m.rules.map(r => r.id).filter(id => on.has(id) || ruleIds.includes(id))
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        set(st => ({ diagrams: st.diagrams.map(d => (d.id === diagramId ? { ...d, mappingRuleIds: next } : d)), isDirty: true }))
+        get().addMappingRuleElements(diagramId, ruleIds)
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+    },
+    hideMappingRules(diagramId, ruleIds) {
+      const s0 = get()
+      const diag = s0.diagrams.find(d => d.id === diagramId)
+      const m = mappingOfDiagram(s0, diag)
+      if (!m || !ruleIds.length) return
+      const on = diagramRuleIds(diag, m)
+      const next = m.rules.map(r => r.id).filter(id => on.has(id) && !ruleIds.includes(id))
+      const gone = ruleWantedElements(s0, m, m.rules.filter(r => ruleIds.includes(r.id)))
+      const kept = ruleWantedElements(s0, m, m.rules.filter(r => next.includes(r.id)))
+      const needed = new Set([...kept.source, ...kept.target])
+      // The role players of the fact types left (a column's table among them).
+      for (const id of [...needed]) {
+        const f = s0.facts.find(x => x.id === id)
+        for (const r of f?.roles ?? []) if (r.objectTypeId) needed.add(r.objectTypeId)
+      }
+      // The gone rules' elements and the role players of their fact types.
+      const goneIds = new Set([...gone.source, ...gone.target])
+      for (const id of [...goneIds]) {
+        const f = s0.facts.find(x => x.id === id)
+        for (const r of f?.roles ?? []) if (r.objectTypeId) goneIds.add(r.objectTypeId)
+      }
+      const shown = new Set((diag.occurrences ?? []).map(o => o.schemaElementId))
+      const drop = [...goneIds].filter(id => shown.has(id) && !needed.has(id))
+      const dropSet = new Set(drop)
+      // Fact types before object types, so no removal cascades past them.
+      const factIds = new Set(s0.facts.map(f => f.id))
+      drop.sort((a, b) => (factIds.has(b) ? 1 : 0) - (factIds.has(a) ? 1 : 0))
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        set(st => ({ diagrams: st.diagrams.map(d => (d.id === diagramId ? { ...d, mappingRuleIds: next } : d)), isDirty: true }))
+        for (const id of drop) {
+          const d = get().diagrams.find(x => x.id === diagramId)
+          const occs = d?.occurrences ?? []
+          if (!occs.some(o => o.schemaElementId === id)) continue
+          // An object type that a fact type shown for another reason (added by
+          // hand, say) still needs stays; a reference mode drawn with its
+          // entity doesn't count.
+          if (!factIds.has(id)) {
+            const keptFacts = new Set(occs.filter(o => !o.refModeOwnerOccId && !dropSet.has(o.schemaElementId)).map(o => o.schemaElementId))
+            if (s0.facts.some(f => keptFacts.has(f.id) && f.roles.some(r => r.objectTypeId === id))) continue
+          }
+          get().removeElementFromDiagram(id, diagramId)
+        }
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+    },
+    // A new diagram of the mapping drawing only the given rules, with the
+    // elements they name where they are on the active mapping diagram (else
+    // where addMappingRuleElements puts them). One undo step. Returns its id.
+    newMappingDiagram(mappingId, ruleIds) {
+      const s0 = get()
+      const m = s0.mappings?.find(x => x.id === mappingId) ?? s0.views?.find(x => x.id === mappingId)
+      if (!m) return null
+      const from = s0.diagrams.find(d => d.id === s0.activeDiagramId && d.mappingId === mappingId)
+      const used = new Set(s0.diagrams.map(d => d.name))
+      const name = makeUniqueName(`${m.name} part `, used)
+      const d = { ...mkDiagram(name, m.sourceSchemaId), mappingId, mappingRuleIds: m.rules.map(r => r.id).filter(id => ruleIds.includes(id)),
+        mappingRulePositions: Object.fromEntries(Object.entries(from?.mappingRulePositions ?? {}).filter(([id]) => ruleIds.includes(id))) }
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        set(st => ({ diagrams: [...st.diagrams, d], isDirty: true }))
+        get().setActiveDiagram(d.id)
+        get().addMappingRuleElements(d.id)
+        if (from) {
+          // Each element where its first occurrence is on the diagram it came from.
+          set(st => ({
+            diagrams: st.diagrams.map(x => {
+              if (x.id !== d.id) return x
+              const at = (list, key, id) => list.find(o => o[key] === id && !o.refModeOwnerOccId)
+              return {
+                ...x,
+                occurrences: (x.occurrences ?? []).map(o => {
+                  if (o.refModeOwnerOccId) return o
+                  const p = at(from.occurrences ?? [], 'schemaElementId', o.schemaElementId)
+                  return p ? { ...o, x: p.x, y: p.y, ...(p.orientation ? { orientation: p.orientation } : {}) } : o
+                }),
+                constraintOccurrences: (x.constraintOccurrences ?? []).map(o => {
+                  const p = at(from.constraintOccurrences ?? [], 'schemaConstraintId', o.schemaConstraintId)
+                  return p ? { ...o, x: p.x, y: p.y } : o
+                }),
+                ...(from.erdPositions ? { erdPositions: { ...from.erdPositions } } : {}),
+              }
+            }),
+          }))
+        }
+        set({ multiSelectedIds: [], multiSelectedOccurrenceIds: [] })
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+      const svg = typeof document !== 'undefined' ? document.querySelector('.canvas-bg')?.closest('svg') : null
+      const r = svg?.getBoundingClientRect()
+      get().fitToContent(r?.width || 1200, r?.height || 700)
+      return d.id
     },
 
     // Where a rule's node sits in a mapping diagram; null puts it back between

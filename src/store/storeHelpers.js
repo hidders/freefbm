@@ -1029,6 +1029,11 @@ export function activeScopeIdsOf(state) {
 export const mappingOfDiagram = (state, d) => (d?.mappingId
   ? state.mappings?.find(m => m.id === d.mappingId) ?? state.views?.find(v => v.id === d.mappingId) ?? null : null)
 
+// The ids of the rules a mapping diagram draws: diagram.mappingRuleIds, or
+// every rule of the mapping when the diagram has no list (older files).
+export const diagramRuleIds = (d, m) => new Set(Array.isArray(d?.mappingRuleIds)
+  ? d.mappingRuleIds : (m?.rules ?? []).map(r => r.id))
+
 // Whether a mapping (from mappingOfDiagram) is a view.
 export const isViewMapping = (state, m) => !!m && !!state.views?.some(v => v.id === m.id)
 

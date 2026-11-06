@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import ContextMenu from './ContextMenu'
 import { useOrmStore, useOrmStoreIgnoring, useScopedStore } from '../store/ormStore'
-import { activeSchemaIdOf } from '../store/storeHelpers'
+import { activeSchemaIdOf, diagramRuleIds } from '../store/storeHelpers'
 import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import {
@@ -16,6 +16,8 @@ import { activeRelationalFace } from '../relational/face.js'
 import { relationalView, rmObjectOf } from '../relational/relationalView.js'
 import { relationalSections, relationalOrphanCount } from './RelationalBrowser.jsx'
 import { makeNameFilter, Highlight } from '../utils/nameFilter.jsx'
+import { mappingOfDiagram } from '../store/storeHelpers'
+import { useMappingRuleInfos, mappingRuleSections, mappingRuleOrphanCount } from './MappingRuleBrowser.jsx'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
@@ -332,6 +334,32 @@ export default function SchemaBrowser() {
 
   const diagrams = store.diagrams ?? []
 
+  // A mapping diagram lists the mapping's rules (MappingRuleBrowser.jsx).
+  const mapping = useOrmStore(s => mappingOfDiagram(s, s.diagrams.find(d => d.id === s.activeDiagramId)))
+  const ruleInfos = useMappingRuleInfos(mapping)
+  const editingRuleId = useOrmStore(s => (!mapping ? null
+    : s.mappingRuleEditor?.mappingId === mapping.id ? s.mappingRuleEditor.ruleId
+    : s.ruleEditor?.viewId === mapping.id ? s.ruleEditor.ruleId : null))
+  const openRuleMenu = (e, info) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const s = useOrmStore.getState()
+    const d = s.diagrams.find(x => x.id === s.activeDiagramId)
+    if (!d || !mapping) return
+    const here = ruleInfos.filter(i => diagramRuleIds(d, mapping).has(i.r.id)).map(i => i.r.id)
+    const on = here.includes(info.r.id)
+    const others = ruleInfos.map(i => i.r.id).filter(id => !here.includes(id))
+    setRowMenu({ x: e.clientX, y: e.clientY, items: [
+      on ? { label: 'Remove from This Diagram', action: () => s.hideMappingRules(d.id, [info.r.id]) }
+         : { label: 'Add to This Diagram', action: () => s.showMappingRules(d.id, [info.r.id]) },
+      { label: 'New Diagram with This Rule', action: () => s.newMappingDiagram(mapping.id, [info.r.id]) },
+      '---',
+      { label: 'Add All Rules to This Diagram', disabled: !others.length, action: () => s.showMappingRules(d.id, others) },
+      { label: 'Remove Other Rules from This Diagram', disabled: !here.some(id => id !== info.r.id),
+        action: () => s.hideMappingRules(d.id, here.filter(id => id !== info.r.id)) },
+    ] })
+  }
+
   const [collapsed,   setCollapsed]   = useState(true)
   const [expandFrom,  setExpandFrom]  = useState(null)
   const [animating,   setAnimating]   = useState(false)
@@ -609,13 +637,13 @@ export default function SchemaBrowser() {
   // A relational schema showing its tables lists tables, keys and constraints
   // instead (RelationalBrowser.jsx); its orphans are tables in no diagram.
   const relFace = useOrmStore(s => activeRelationalFace(s))
-  const rmView = relFace ? relationalView(useOrmStore.getState(), activeSchemaIdOf(store)) : null
+  const rmView = relFace && !mapping ? relationalView(useOrmStore.getState(), activeSchemaIdOf(store)) : null
   const [rmExpanded, setRmExpanded] = useState(() => new Set())
   const toggleRm = (id) => setRmExpanded(x => { const n = new Set(x); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
-  const readyCount = rmView ? 0 : readyConstraintCount + readySubtypeCount + readyFactCount + readyNestedEntityCount
+  const readyCount = rmView || mapping ? 0 : readyConstraintCount + readySubtypeCount + readyFactCount + readyNestedEntityCount
 
-  const allOrphanCount = rmView ? relationalOrphanCount(rmView, diagrams.filter(d => d.schemaId === activeSchemaIdOf(store))) : [
+  const allOrphanCount = mapping ? mappingRuleOrphanCount(mapping, diagrams) : rmView ? relationalOrphanCount(rmView, diagrams.filter(d => d.schemaId === activeSchemaIdOf(store))) : [
     ...store.objectTypes.filter(o => isOrphaned(o.id)),
     ...store.facts.filter(f => isOrphaned(f.id)),
     ...store.subtypes.filter(st => isStOrphaned(st)),
@@ -752,7 +780,8 @@ export default function SchemaBrowser() {
   const selectedRmId = !rmView ? null
     : store.selectedRm && store.selectedRm.id === store.selectedId ? store.selectedRm.rmId
     : rmObjectOf(rmView, store.selectedId)?.rmId ?? null
-  const sections = rmView ? relationalSections({ view: rmView, diagram: diagram?.mappingId ? null : diagram,
+  const sections = mapping ? mappingRuleSections({ mapping, infos: ruleInfos, diagram, diagrams,
+    showOrphans, filter, editingRuleId, onMenu: openRuleMenu }) : rmView ? relationalSections({ view: rmView, diagram: diagram?.mappingId ? null : diagram,
     diagrams: diagrams.filter(d => d.schemaId === activeSchemaIdOf(store)), expanded: rmExpanded, toggle: toggleRm,
     selectedRmId, showOrphans, filter, onMenu: openRowMenu }) : [
     {
@@ -1091,7 +1120,8 @@ export default function SchemaBrowser() {
             <span style={{ fontSize: 9, color: 'var(--ink-muted)',
               letterSpacing: '0.07em', textTransform: 'uppercase',
               pointerEvents: 'none' }}>
-              ⠿ schema browser{(store.schemas?.length ?? 0) > 1 && ` · ${store.schemas.find(x => x.id === activeSchemaIdOf(store))?.name ?? ''}`}
+              {mapping ? '⠿ mapping rules'
+                : <>⠿ schema browser{(store.schemas?.length ?? 0) > 1 && ` · ${store.schemas.find(x => x.id === activeSchemaIdOf(store))?.name ?? ''}`}</>}
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               {readyCount > 0 && (
@@ -1113,7 +1143,8 @@ export default function SchemaBrowser() {
               {allOrphanCount > 0 && (
                 <span
                   onClick={() => { setShowOrphans(p => !p); setShowReady(false) }}
-                  title={showOrphans ? 'Show all elements' : 'Show only orphans'}
+                  title={mapping ? (showOrphans ? 'Show all rules' : 'Show only rules on no diagram of this mapping')
+                    : showOrphans ? 'Show all elements' : 'Show only orphans'}
                   style={{
                     fontSize: 9,
                     color: showOrphans ? 'white' : 'var(--danger)',
@@ -1123,6 +1154,7 @@ export default function SchemaBrowser() {
                     lineHeight: '14px',
                     cursor: 'pointer',
                     background: showOrphans ? 'var(--danger)' : 'transparent',
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   {allOrphanCount} orphan{allOrphanCount !== 1 ? 's' : ''}
@@ -1144,8 +1176,9 @@ export default function SchemaBrowser() {
           {/* Name filter */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 6px',
             borderBottom: '1px solid var(--border-soft)', flexShrink: 0 }}>
-            <input ref={searchRef} value={query} placeholder="Filter by name"
-              title="Show only elements whose name contains this text (⌘F / Ctrl+F)"
+            <input ref={searchRef} value={query} placeholder={mapping ? 'Filter rules' : 'Filter by name'}
+              title={mapping ? 'Show only rules whose name or formula contains this text (⌘F / Ctrl+F)'
+                : 'Show only elements whose name contains this text (⌘F / Ctrl+F)'}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => {
                 if (e.key !== 'Escape') return
@@ -1165,7 +1198,8 @@ export default function SchemaBrowser() {
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {sections.length === 0 ? (
               <div style={{ padding: 10, fontSize: 11, color: 'var(--ink-muted)', textAlign: 'center' }}>
-                {filter ? `No elements match “${query.trim()}”.` : 'Schema is empty.'}
+                {filter ? `No ${mapping ? 'rules' : 'elements'} match “${query.trim()}”.`
+                  : mapping ? (showOrphans ? 'Every rule is on a diagram.' : 'This mapping has no rules yet.') : 'Schema is empty.'}
               </div>
             ) : sections.map(sec => (
               <div key={sec.title}>
