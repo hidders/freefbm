@@ -5,6 +5,7 @@ import { exportPostgresDdl } from '../../relational/ddlExport.js'
 import { guessOrmSchema } from '../../relational/guessOrm.js'
 import { generateRelational } from '../../relational/rmap.js'
 import { runMapping, withRunApplied } from '../../mapping/runMapping.js'
+import { schemaFingerprint, replaceGenerated, generatedSchemaOf } from '../../mapping/regenerate.js'
 
 // Several schemas in one file (workbench plan, step 2). The schemas are listed
 // in `schemas`; elements and diagrams point to theirs with `schemaId`. The
@@ -174,10 +175,14 @@ export const createSchemaSlice = (set, get) => ({
   // ORM2 schema with one diagram, and the mapping from the relational schema
   // to it, as one undo step. surrogates: { tableId: 'keep' | 'drop' } overrides
   // the default per table. Returns { schemaId, mappingId, stats }.
-  guessOrmFromRelational(relSchemaId, { surrogates = {} } = {}) {
+  guessOrmFromRelational(relSchemaId, { surrogates = {}, regenerate = null } = {}) {
     const st = get()
     const rel = st.schemas.find(x => x.id === relSchemaId)
     if (!rel) return null
+    if (regenerate) return get()._regenerate(regenerate, (schemaId, mappingName) => {
+      const b = guessOrmSchema(get(), relSchemaId, { schemaId, surrogates, mappingName })
+      return { built: b, mapping: b.mapping, log: b.log, options: { surrogates } }
+    })
     const used = new Set(st.schemas.map(x => x.name))
     let unique = `${rel.name} (ORM2)`
     for (let i = 2; used.has(unique); i++) unique = `${rel.name} (ORM2) ${i}`
@@ -192,11 +197,12 @@ export const createSchemaSlice = (set, get) => ({
         subtypes: [...s.subtypes, ...built.subtypes],
         constraints: [...s.constraints, ...built.constraints],
         diagrams: [...s.diagrams, built.diagram],
-        mappings: [...(s.mappings ?? []), built.mapping],
+        mappings: [...(s.mappings ?? []), { ...built.mapping, generator: { kind: 'guess', options: { surrogates } } }],
         isDirty: true,
       }))
       get().setActiveDiagram(built.diagram.id)
       for (const c of built.constraints) get()._tryAutoGenerateQuery(c.id)
+      get()._fingerprintGenerated(built.mapping.id)
     } finally {
       set(s => ({ historyBatch: Math.max(0, (s.historyBatch ?? 1) - 1) }))
     }
@@ -218,10 +224,15 @@ export const createSchemaSlice = (set, get) => ({
   // ORM2 schema's population, if any, is carried over by running the mapping.
   // surrogates: 'never' | 'composite' | 'always'; overrides: { typeId: bool }.
   // Returns { schemaId, mappingId, sql }.
-  generateRelationalFromOrm(ormSchemaId, { surrogates = 'never', overrides = {} } = {}) {
+  generateRelationalFromOrm(ormSchemaId, { surrogates = 'never', overrides = {}, regenerate = null } = {}) {
     const st = get()
     const orm = st.schemas.find(x => x.id === ormSchemaId)
     if (!orm) return null
+    if (regenerate) return get()._regenerate(regenerate, (schemaId, mappingName, schemaName) => {
+      const g = generateRelational(get(), ormSchemaId, { schemaId, surrogates, overrides, mappingName, schemaName: orm.name })
+      if (g.built.diagram) g.built.diagram.profileId = g.built.diagram.profileId ?? RELATIONAL_DATATYPES
+      return { built: g.built, mapping: g.mapping, log: g.log.filter(l => !/^\d+ tables:/.test(l.text)), options: { surrogates, overrides }, carry: true }
+    })
     const used = new Set(st.schemas.map(x => x.name))
     let unique = `${orm.name} (SQL)`
     for (let i = 2; used.has(unique); i++) unique = `${orm.name} (SQL) ${i}`
@@ -238,11 +249,12 @@ export const createSchemaSlice = (set, get) => ({
         facts: [...s.facts, ...built.facts],
         constraints: [...s.constraints, ...built.constraints],
         diagrams: [...s.diagrams, built.diagram],
-        mappings: [...(s.mappings ?? []), g.mapping],
+        mappings: [...(s.mappings ?? []), { ...g.mapping, generator: { kind: 'generate', options: { surrogates, overrides } } }],
         isDirty: true,
       }))
       get().setActiveDiagram(built.diagram.id)
       for (const c of built.constraints) get()._tryAutoGenerateQuery(c.id)
+      get()._fingerprintGenerated(g.mapping.id)
       // The sample population, carried over.
       const now = get()
       const ormIds = new Set([...now.objectTypes, ...now.facts].filter(x => x.schemaId === ormSchemaId).map(x => x.id))
@@ -271,6 +283,60 @@ export const createSchemaSlice = (set, get) => ({
     const r = svg?.getBoundingClientRect()
     get().fitToContent?.(r?.width || 1200, r?.height || 700)
     return { schemaId: schema.id, mappingId: g.mapping.id, sql: g.sql }
+  },
+
+  // Records what a generated schema and its mapping are now, so Regenerate
+  // can tell hand edits (mapping/regenerate.js).
+  _fingerprintGenerated(mappingId) {
+    const m = get().mappings.find(x => x.id === mappingId)
+    if (!m?.generator) return
+    const fingerprint = schemaFingerprint(get(), m.targetSchemaId, m)
+    set(s => ({ mappings: s.mappings.map(x => (x.id === mappingId ? { ...x, generator: { ...x.generator, fingerprint } } : x)) }))
+  },
+
+  // Makes the schema a mapping generated again, in place, with build(schemaId,
+  // mappingName, schemaName) → { built, mapping, log, options, carry }: the
+  // schema, mapping and generated diagram keep their ids, elements that come
+  // back keep theirs and their places (regenerate.js). One undo step.
+  // Returns { schemaId, mappingId, stats } or null.
+  _regenerate(mappingId, build) {
+    const st = get()
+    const old = st.mappings.find(x => x.id === mappingId)
+    const schema = old && generatedSchemaOf(st, old)
+    if (!schema) return null
+    const tmp = mkSchema(schema.name, schema.profile)
+    const b = build(tmp.id, old.name, schema.name)
+    const r = replaceGenerated(st, old, b.built, { ...b.mapping, generator: { ...old.generator, options: b.options } }, tmp.id)
+    let carried = null
+    set(s => ({ historyBatch: (s.historyBatch ?? 0) + 1 }))
+    try {
+      set({ ...r.parts, isDirty: true })
+      if (r.newDiagram) set(s => ({ diagrams: [...s.diagrams, r.newDiagram] }))
+      for (const c of get().constraints.filter(x => x.schemaId === schema.id)) get()._tryAutoGenerateQuery(c.id)
+      get()._fingerprintGenerated(mappingId)
+      const m = get().mappings.find(x => x.id === mappingId)
+      const now = get()
+      const srcIds = [...now.objectTypes, ...now.facts].filter(x => x.schemaId === m.sourceSchemaId).map(x => x.id)
+      if (b.carry && srcIds.some(id => now.populations?.[id]?.length || now.factPopulations?.[id]?.length)) {
+        try {
+          const run = runMapping(now, m, 'forward')
+          set(s => ({ ...withRunApplied(s, run) }))
+          carried = run.log.filter(l => l.level !== 'note')
+        } catch (err) {
+          carried = [{ level: 'warn', text: `The population was not carried over: ${err?.message ?? err}` }]
+        }
+      }
+      const home = r.homeId ?? r.newDiagram?.id
+      if (home) get().setActiveDiagram(home)
+    } finally {
+      set(s => ({ historyBatch: Math.max(0, (s.historyBatch ?? 1) - 1) }))
+    }
+    get().setImportLog({ kind: 'regenerate', source: `${schema.name} from ${st.schemas.find(x => x.id === old.sourceSchemaId)?.name ?? 'its source'}`, entries: [
+      { level: 'note', text: `Regenerated ${schema.name} in place: ${r.stats.kept} elements kept, ${r.stats.added} added, ${r.stats.removed} removed; mapping ${old.name}: ${b.mapping.rules.length} rules` },
+      ...(carried ? [{ level: 'note', text: 'Carried the population over by running the mapping' }, ...carried.slice(0, 20).map(l => ({ level: 'warn', text: l.text }))] : []),
+      ...b.log,
+    ] })
+    return { schemaId: schema.id, mappingId, stats: r.stats }
   },
 
   // The active relational schema as PostgreSQL DDL: { sql, warnings }.

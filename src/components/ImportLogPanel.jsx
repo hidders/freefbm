@@ -18,7 +18,7 @@ export default function ImportLogPanel() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
         borderBottom: '1px solid var(--border-soft)' }}>
         <span style={{ fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {log.kind === 'guess' ? 'Guessed from' : log.kind === 'generate' ? 'Tables generated from' : log.kind === 'fold' ? 'Fold:' : log.kind === 'transform' ? 'Transformed:' : 'Imported from'} {log.source}
+          {log.kind === 'regenerate' ? 'Regenerated:' : log.kind === 'guess' ? 'Guessed from' : log.kind === 'generate' ? 'Tables generated from' : log.kind === 'fold' ? 'Fold:' : log.kind === 'transform' ? 'Transformed:' : 'Imported from'} {log.source}
         </span>
         <button onClick={close} title="Close" style={{ border: 'none', background: 'none',
           cursor: 'pointer', color: 'var(--ink-3)', fontSize: 16, lineHeight: 1 }}>×</button>
@@ -33,7 +33,9 @@ export default function ImportLogPanel() {
         ))}
       </ul>
       <div style={{ padding: '6px 10px', fontSize: 11, color: 'var(--ink-3)', borderTop: '1px solid var(--border-soft)' }}>
-        {log.kind === 'ddl'
+        {log.kind === 'regenerate'
+          ? 'The schema and its mapping were made again in place; the source schema is not changed. Undo puts the old version back.'
+          : log.kind === 'ddl'
           ? 'The tables are a new relational schema in this file; the .sql file is not changed.'
           : log.kind === 'guess'
             ? 'A new ORM2 schema and a mapping to it; the relational schema is not changed. Undo removes both.'

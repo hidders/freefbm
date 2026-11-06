@@ -601,6 +601,8 @@ export function loadMappings(raw, schemaIds, state = null) {
       })),
       // Constraints only (pairLock.js).
       ...(m.lock && typeof m.lock === 'object' && m.lock.base ? { lock: m.lock } : {}),
+      // How the target schema was generated (mapping/regenerate.js).
+      ...(m.generator && typeof m.generator === 'object' && typeof m.generator.kind === 'string' ? { generator: m.generator } : {}),
     }))
 }
 const normPattern = (p) => (p && typeof p === 'object' && typeof p.t === 'string' ? p : { t: 'hole' })
