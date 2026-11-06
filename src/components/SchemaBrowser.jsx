@@ -13,6 +13,7 @@ import { queryElements } from '../logic/query.js'
 import { activeRelationalFace } from '../relational/face.js'
 import { relationalView, rmObjectOf } from '../relational/relationalView.js'
 import { relationalSections, relationalOrphanCount } from './RelationalBrowser.jsx'
+import { makeNameFilter, Highlight } from '../utils/nameFilter.jsx'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
@@ -56,22 +57,22 @@ function subtypeDiagramsContaining(st, diagrams) {
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
-function FactLabel({ fact, otMap }) {
+function FactLabel({ fact, otMap, filter }) {
   const parts = fact.readingParts || []
   const n = fact.arity
   const hasAnyPart = parts.some(p => p?.trim())
   if (!hasAnyPart) {
     return <span style={{ fontStyle: 'italic', color: 'var(--ink-muted)', fontSize: 11 }}>
-      {fact.objectifiedName || fact.name || `(${n}-ary fact)`}
+      <Highlight text={fact.objectifiedName || fact.name || `(${n}-ary fact)`} filter={filter} />
     </span>
   }
   const tokens = []
   for (let i = 0; i <= n; i++) {
     const seg = parts[i]?.trim()
-    if (seg) tokens.push(<span key={`s${i}`} style={{ color: '#2a7a2a' }}>{seg}</span>)
+    if (seg) tokens.push(<span key={`s${i}`} style={{ color: '#2a7a2a' }}><Highlight text={seg} filter={filter} /></span>)
     if (i < n) {
       const name = otMap[fact.roles[i]?.objectTypeId]?.name || '?'
-      tokens.push(<span key={`r${i}`} style={{ color: '#7c4dbd', fontWeight: 700 }}>{name}</span>)
+      tokens.push(<span key={`r${i}`} style={{ color: '#7c4dbd', fontWeight: 700 }}><Highlight text={name} filter={filter} /></span>)
     }
   }
   return <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '0.25em', fontSize: 11 }}>{tokens}</span>
@@ -285,7 +286,7 @@ function GroupIcon({ group }) {
   )
 }
 
-function SectionHeader({ title, count }) {
+function SectionHeader({ title, count, total }) {
   return (
     <div style={{
       padding: '5px 8px 3px',
@@ -297,7 +298,9 @@ function SectionHeader({ title, count }) {
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     }}>
       <span>{title}</span>
-      {count > 0 && <span style={{ fontSize: 9, color: 'var(--ink-muted)' }}>{count}</span>}
+      {total != null && total !== count
+        ? <span style={{ fontSize: 9, color: 'var(--ink-muted)' }}>{count} / {total}</span>
+        : count > 0 && <span style={{ fontSize: 9, color: 'var(--ink-muted)' }}>{count}</span>}
     </div>
   )
 }
@@ -321,6 +324,13 @@ export default function SchemaBrowser() {
   const [size, setSize] = useState({ w: INIT_W, h: INIT_H })
   const [winW, setWinW] = useState(window.innerWidth)
   const [winH, setWinH] = useState(window.innerHeight)
+  // Name filter (src/utils/nameFilter.js): kept across diagrams, cleared when
+  // the active schema changes.
+  const [query, setQuery] = useState('')
+  const filter = makeNameFilter(query)
+  const searchRef = useRef(null)
+  const activeSchemaId = activeSchemaIdOf(store)
+  useEffect(() => { setQuery('') }, [activeSchemaId])
   const animTimerRef = useRef(null)
   const dragRef      = useRef(null)
   const resizeRef    = useRef(null)
@@ -411,6 +421,21 @@ export default function SchemaBrowser() {
     animTimerRef.current = setTimeout(() => setAnimating(false), 350)
     requestAnimationFrame(() => requestAnimationFrame(() => setExpandFrom(null)))
   }, [])
+
+  // Cmd/Ctrl+F opens the browser and puts the cursor in the filter box.
+  const collapsedRef = useRef(collapsed)
+  collapsedRef.current = collapsed
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || (e.key !== 'f' && e.key !== 'F')) return
+      e.preventDefault()
+      const wasCollapsed = collapsedRef.current
+      if (wasCollapsed) handleExpand()
+      setTimeout(() => { searchRef.current?.focus(); searchRef.current?.select() }, wasCollapsed ? 200 : 0)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [handleExpand])
 
   // ── data ──────────────────────────────────────────────────────────────────
 
@@ -710,15 +735,16 @@ export default function SchemaBrowser() {
     : rmObjectOf(rmView, store.selectedId)?.rmId ?? null
   const sections = rmView ? relationalSections({ view: rmView, diagram: diagram?.mappingId ? null : diagram,
     diagrams: diagrams.filter(d => d.schemaId === activeSchemaIdOf(store)), expanded: rmExpanded, toggle: toggleRm,
-    selectedRmId, showOrphans }) : [
+    selectedRmId, showOrphans, filter }) : [
     {
       title: 'Entity Types',
       items: showOrphans ? entityTypes.filter(el => isOrphaned(el.id)) : showReady ? [] : entityTypes,
+      match: (el) => filter.test(el.label),
       renderRow: (el) => {
         return (
           <ElementRow key={el.id}
             icon={<EntityTypeIcon />}
-            label={el.label}
+            label={<Highlight text={el.label} filter={filter} />}
             isOrphaned={isOrphaned(el.id)}
             inCurrentDiagram={inDiag(el.id)}
             onSelect={(e) => selectEl(e, el.id, el.kind)}
@@ -737,6 +763,10 @@ export default function SchemaBrowser() {
                return !inDiag(el.id) && neFact && factDepsStatus(neFact) === 'ready'
              })
            : nestedEntityTypes,
+      match: (el) => {
+        const neFact = store.facts.find(f => f.id === el.id)
+        return filter.test(el.label, neFact && factSortKey(neFact))
+      },
       renderRow: (el) => {
         const neFact = store.facts.find(f => f.id === el.id)
         const neAddStyle = neFact
@@ -745,7 +775,7 @@ export default function SchemaBrowser() {
         return (
           <ElementRow key={el.id}
             icon={<NestedFactTypeIcon />}
-            label={el.label}
+            label={<Highlight text={el.label} filter={filter} />}
             isOrphaned={isOrphaned(el.id)}
             inCurrentDiagram={inDiag(el.id)}
             onSelect={(e) => selectEl(e, el.id, el.kind)}
@@ -760,10 +790,11 @@ export default function SchemaBrowser() {
     {
       title: 'Value Types',
       items: showOrphans ? valueTypes.filter(el => isOrphaned(el.id)) : showReady ? [] : valueTypes,
+      match: (el) => filter.test(el.label),
       renderRow: (el) => (
         <ElementRow key={el.id}
           icon={<ValueTypeIcon />}
-          label={el.label}
+          label={<Highlight text={el.label} filter={filter} />}
           isOrphaned={isOrphaned(el.id)}
           inCurrentDiagram={inDiag(el.id)}
           onSelect={(e) => selectEl(e, el.id, el.kind)}
@@ -778,6 +809,10 @@ export default function SchemaBrowser() {
       items: showOrphans ? factTypes.filter(f => !f.isImpliedLink && isOrphaned(f.id))
            : showReady   ? factTypes.filter(f => !f.isImpliedLink && !inDiag(f.id) && factDepsStatus(f) === 'ready')
            : factTypes,
+      // The reading with its players' names, as the row shows it.
+      match: (f) => f.isImpliedLink
+        ? filter.test(f.objectifiedName, f.readingParts, otAndNestedMap[f.roleOtId]?.name)
+        : filter.test(factSortKey(f), f.name, f.objectifiedName),
       renderRow: (f) => {
         if (f.isImpliedLink) {
           // Construct a synthetic 2-role fact so FactLabel can render the reading naturally.
@@ -792,7 +827,7 @@ export default function SchemaBrowser() {
           return (
             <ElementRow key={f.id}
               icon={<ImpliedLinkFactIcon />}
-              label={<><FactLabel fact={syntheticFact} otMap={syntheticOtMap} /><LinkBadge /></>}
+              label={<><FactLabel fact={syntheticFact} otMap={syntheticOtMap} filter={filter} /><LinkBadge /></>}
               isOrphaned={false}
               inCurrentDiagram={ilInDiag(f)}
               onSelect={() => selectImpliedLink(f)}
@@ -808,7 +843,7 @@ export default function SchemaBrowser() {
         return (
           <ElementRow key={f.id}
             icon={<FactTypeIcon />}
-            label={<FactLabel fact={f} otMap={otAndNestedMap} />}
+            label={<FactLabel fact={f} otMap={otAndNestedMap} filter={filter} />}
             isOrphaned={isOrphaned(f.id)}
             inCurrentDiagram={inDiag(f.id)}
             onSelect={(e) => selectEl(e, f.id, 'fact')}
@@ -825,6 +860,7 @@ export default function SchemaBrowser() {
       items: showOrphans ? subtypeEdges.filter(st => isStOrphaned(st))
            : showReady   ? subtypeEdges.filter(st => !subtypeInDiag(st) && inDiag(st.subId) && inDiag(st.superId))
            : subtypeEdges,
+      match: (st) => filter.test(otAndNestedMap[st.subId]?.name, otAndNestedMap[st.superId]?.name),
       renderRow: (st) => {
         const subName  = otAndNestedMap[st.subId]?.name  ?? '?'
         const supName  = otAndNestedMap[st.superId]?.name ?? '?'
@@ -848,7 +884,7 @@ export default function SchemaBrowser() {
         return (
           <ElementRow key={st.id}
             icon={<SubtypeIcon />}
-            label={<span style={{ fontSize: 11 }}>{subName} <span style={{ color: 'var(--ink-muted)' }}>⊂</span> {supName}</span>}
+            label={<span style={{ fontSize: 11 }}><Highlight text={subName} filter={filter} /> <span style={{ color: 'var(--ink-muted)' }}>⊂</span> <Highlight text={supName} filter={filter} /></span>}
             isOrphaned={isStOrphaned(st)}
             inCurrentDiagram={alreadyIn}
             onSelect={() => selectSubtype(st)}
@@ -866,6 +902,8 @@ export default function SchemaBrowser() {
       items: showOrphans ? constraintNodes.filter(c => isCOrphaned(c.id))
            : showReady   ? constraintNodes.filter(c => !cInCurrentDiag(c.id) && constraintDepsStatus(c) === 'ready')
            : constraintNodes,
+      // Its name if it has one, else its kind.
+      match: (c) => filter.test(c.name?.trim() || c.constraintType),
       renderRow: (c) => {
         const inCurrent = cInCurrentDiag(c.id)
         const allCoveredC = allConstraintCombinationsCovered(c)
@@ -880,9 +918,12 @@ export default function SchemaBrowser() {
         return (
           <ElementRow key={c.id}
             icon={CONSTRAINT_ICON_MAP[c.constraintType] ?? <UniquenessConstraintIcon />}
-            label={<span style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic' }}>
-              {c.constraintType}
-            </span>}
+            label={c.name?.trim()
+              ? <span style={{ fontSize: 11 }}><Highlight text={c.name.trim()} filter={filter} />
+                  <span style={{ color: 'var(--ink-muted)', fontStyle: 'italic' }}> · {c.constraintType}</span></span>
+              : <span style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic' }}>
+                  <Highlight text={c.constraintType} filter={filter} />
+                </span>}
             isOrphaned={isCOrphaned(c.id)}
             inCurrentDiagram={inCurrent}
             onSelect={(e) => selectEl(e, c.id, 'constraint')}
@@ -899,6 +940,7 @@ export default function SchemaBrowser() {
       title: 'Groups',
       count: store.groups.length,
       items: showOrphans || showReady ? [] : [...store.groups, NEW_GROUP_ROW],
+      match: (g) => g !== NEW_GROUP_ROW && filter.test(g.name),
       renderRow: (g) => g === NEW_GROUP_ROW ? (
         <div key="__newGroup" onClick={() => store.addGroup()}
           style={{ padding: '3px 8px 3px 35px', fontSize: 11, color: 'var(--ink-muted)', cursor: 'pointer',
@@ -911,7 +953,7 @@ export default function SchemaBrowser() {
         <ElementRow key={g.id}
           icon={<GroupIcon group={g} />}
           label={<span style={{ fontSize: 11 }}>
-            {g.name || <i style={{ color: 'var(--ink-muted)' }}>(unnamed group)</i>}
+            {g.name ? <Highlight text={g.name} filter={filter} /> : <i style={{ color: 'var(--ink-muted)' }}>(unnamed group)</i>}
             <span style={{ color: 'var(--ink-muted)' }}> · {g.members.length}</span>
           </span>}
           isOrphaned={false}
@@ -925,13 +967,17 @@ export default function SchemaBrowser() {
     {
       title: 'Notes',
       items: showOrphans || showReady ? [] : (diagram?.notes ?? []),
+      match: (note) => filter.test(note.text),
       renderRow: (note) => {
-        const preview = (note.text || '').split('\n')[0].slice(0, 40) || '(empty)'
+        // Under a filter, the first line that matches.
+        const lines = (note.text || '').split('\n')
+        const line = (filter && lines.find(l => filter.test(l))) ?? lines[0]
+        const preview = line.slice(0, 40) || '(empty)'
         return (
           <ElementRow key={note.id}
             icon={<NoteIcon />}
             label={<span style={{ fontSize: 11, fontStyle: note.text ? 'normal' : 'italic',
-              color: note.text ? 'var(--ink-2)' : 'var(--ink-muted)' }}>{preview}</span>}
+              color: note.text ? 'var(--ink-2)' : 'var(--ink-muted)' }}><Highlight text={preview} filter={filter} /></span>}
             isOrphaned={false}
             inCurrentDiagram={true}
             onSelect={() => { store.select(note.id, 'note'); store.centerOnElement(note.id) }}
@@ -941,7 +987,9 @@ export default function SchemaBrowser() {
         )
       },
     },
-  ].filter(s => s.items.length > 0)
+  ].map(s => !filter || !s.match ? s
+      : { ...s, count: undefined, total: s.title === 'Groups' ? store.groups.length : s.items.length, items: s.items.filter(s.match) })
+    .filter(s => s.items.length > 0)
     // An empty schema just says so, without the lone "+ New group" row.
     .filter((s, _, all) => s.title !== 'Groups' || s.count > 0 || all.length > 1)
 
@@ -1071,15 +1119,35 @@ export default function SchemaBrowser() {
             </div>
           </div>
 
+          {/* Name filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 6px',
+            borderBottom: '1px solid var(--border-soft)', flexShrink: 0 }}>
+            <input ref={searchRef} value={query} placeholder="Filter by name"
+              title="Show only elements whose name contains this text (⌘F / Ctrl+F)"
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => {
+                if (e.key !== 'Escape') return
+                e.stopPropagation()
+                if (query) setQuery(''); else e.currentTarget.blur()
+              }}
+              style={{ flex: 1, minWidth: 0, fontSize: 11, fontFamily: FONT, padding: '2px 6px',
+                border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg-surface)', color: 'var(--ink)' }} />
+            {query && (
+              <button onClick={() => { setQuery(''); searchRef.current?.focus() }} title="Clear filter"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px',
+                  fontSize: 13, lineHeight: 1, color: 'var(--ink-muted)' }}>×</button>
+            )}
+          </div>
+
           {/* Element list */}
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {sections.length === 0 ? (
               <div style={{ padding: 10, fontSize: 11, color: 'var(--ink-muted)', textAlign: 'center' }}>
-                Schema is empty.
+                {filter ? `No elements match “${query.trim()}”.` : 'Schema is empty.'}
               </div>
             ) : sections.map(sec => (
               <div key={sec.title}>
-                <SectionHeader title={sec.title} count={sec.count ?? sec.items.length} />
+                <SectionHeader title={sec.title} count={sec.count ?? sec.items.length} total={sec.total} />
                 {sec.items.map(item => sec.renderRow(item))}
               </div>
             ))}
