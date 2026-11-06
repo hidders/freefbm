@@ -1,4 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import ContextMenu from './ContextMenu'
 import { useOrmStore, useOrmStoreIgnoring, useScopedStore } from '../store/ormStore'
 import { activeSchemaIdOf } from '../store/storeHelpers'
 import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
@@ -156,10 +158,11 @@ function ImpliedLinkIcon() {
   )
 }
 
-function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd, onAddExtra, addButtonStyle, addButtonDisabled, onDelete }) {
+function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd, onAddExtra, addButtonStyle, addButtonDisabled, onDelete, onMenu }) {
   return (
     <div
       onClick={onSelect}
+      onContextMenu={onMenu}
       style={{
         display: 'flex', alignItems: 'center',
         padding: '3px 8px',
@@ -310,6 +313,22 @@ function SectionHeader({ title, count, total }) {
 export default function SchemaBrowser() {
   const store = useScopedStore()
   const { diagram } = useDiagramElements()
+
+  // A row's menu: grow a diagram from the element (NeighbourPicker.jsx).
+  const [rowMenu, setRowMenu] = useState(null)
+  const openRowMenu = (e, id) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const s = useOrmStore.getState()
+    const d = s.diagrams.find(x => x.id === s.activeDiagramId)
+    if (!d || d.mappingId) return
+    const occ = (d.occurrences ?? []).find(o => o.schemaElementId === id && !o.refModeOwnerOccId)
+    setRowMenu({ x: e.clientX, y: e.clientY, items: [
+      { label: 'Add Neighbours…', disabled: !occ, title: occ ? undefined : 'Not on this diagram',
+        action: () => { s.centerOnElement(id); s.openNeighbourPicker(id, occ?.id ?? null) } },
+      { label: 'New Diagram from Here', action: () => s.newDiagramFrom(id) },
+    ] })
+  }
 
   const diagrams = store.diagrams ?? []
 
@@ -735,7 +754,7 @@ export default function SchemaBrowser() {
     : rmObjectOf(rmView, store.selectedId)?.rmId ?? null
   const sections = rmView ? relationalSections({ view: rmView, diagram: diagram?.mappingId ? null : diagram,
     diagrams: diagrams.filter(d => d.schemaId === activeSchemaIdOf(store)), expanded: rmExpanded, toggle: toggleRm,
-    selectedRmId, showOrphans, filter }) : [
+    selectedRmId, showOrphans, filter, onMenu: openRowMenu }) : [
     {
       title: 'Entity Types',
       items: showOrphans ? entityTypes.filter(el => isOrphaned(el.id)) : showReady ? [] : entityTypes,
@@ -750,6 +769,7 @@ export default function SchemaBrowser() {
             onSelect={(e) => selectEl(e, el.id, el.kind)}
             onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
             onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
+            onMenu={e => openRowMenu(e, el.id)}
             onDelete={() => store.deleteObjectType(el.id)}
           />
         )
@@ -782,6 +802,7 @@ export default function SchemaBrowser() {
             onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
             onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
             addButtonStyle={neAddStyle}
+            onMenu={e => openRowMenu(e, el.id)}
             onDelete={() => store.deleteFact(el.id)}
           />
         )
@@ -800,7 +821,8 @@ export default function SchemaBrowser() {
           onSelect={(e) => selectEl(e, el.id, el.kind)}
           onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
           onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
-          onDelete={() => store.deleteObjectType(el.id)}
+          onMenu={e => openRowMenu(e, el.id)}
+            onDelete={() => store.deleteObjectType(el.id)}
         />
       ),
     },
@@ -1207,6 +1229,7 @@ export default function SchemaBrowser() {
           </div>
         </div>
       )}
+      {rowMenu && createPortal(<ContextMenu x={rowMenu.x} y={rowMenu.y} items={rowMenu.items} onClose={() => setRowMenu(null)}/>, document.body)}
     </>
   )
 }

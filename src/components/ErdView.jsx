@@ -12,6 +12,9 @@
 // Inspector; dragging a box moves it, as one undo step.
 
 import React, { useMemo, useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import ContextMenu from './ContextMenu'
+import { growItems } from '../hooks/useContextMenuHandlers'
 import { useOrmStore } from '../store/ormStore'
 import { relationalModel, isKey } from '../relational/relationalModel'
 import { routeLines, assignPorts, SIDES } from '../relational/erdRouting'
@@ -62,13 +65,13 @@ function FkLine({ fk, route, selected, onDown }) {
   )
 }
 
-function TableBox({ box, selectedId, highlighted, onHeaderDown, onRowDown, tint = null, ruleHl = null }) {
+function TableBox({ box, selectedId, highlighted, onHeaderDown, onRowDown, onMenu, tint = null, ruleHl = null }) {
   const { table: t, x, y, w, h } = box
   const sel = selectedId === t.id
   const hot = !!ruleHl?.typeIds?.includes(t.id)
   const head = 'var(--col-schema-relational)'
   return (
-    <g style={{ fontFamily: FONT }} data-table={t.name}>
+    <g style={{ fontFamily: FONT }} data-table={t.name} onContextMenu={onMenu ? (e => onMenu(e, t)) : undefined}>
       {tint && <rect x={x - 6} y={y - 6} width={w + 12} height={h + 12} rx={9} fill={`var(--map-${tint}-bg)`}
         stroke={`var(--map-${tint})`} strokeOpacity={0.35} strokeWidth={1} style={{ pointerEvents: 'none' }}/>}
       <rect x={x} y={y} width={w} height={h} rx={4} fill="var(--bg-text-panel)"
@@ -180,6 +183,17 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
     window.addEventListener('mouseup', onUp)
   }
 
+  // A table's menu: grow the diagram from it (NeighbourPicker.jsx).
+  const [menu, setMenu] = useState(null)
+  const openMenu = (e, t) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const store = useOrmStore.getState()
+    store.select(t.id, 'entity')
+    const items = growItems(store, t.id).filter(x => x !== '---')
+    if (items.length) setMenu({ x: e.clientX, y: e.clientY, items })
+  }
+
   const selectColumn = (e, t, c) => {
     if (e.button !== 0) return
     e.stopPropagation()
@@ -271,7 +285,7 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
       ))}
       {[...shown.values()].map(b => (
         <TableBox key={b.table.id} box={b} selectedId={selectedId} highlighted={highlighted} tint={tint} ruleHl={ruleHl}
-          onHeaderDown={startDrag} onRowDown={selectColumn}/>
+          onHeaderDown={startDrag} onRowDown={selectColumn} onMenu={sideSchemaId ? null : openMenu}/>
       ))}
       {[...shown.values()].map(b => {
         const bd = badges.get(b.table.id)
@@ -288,6 +302,7 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
         )
       })}
       <BadgePopup popup={popup}/>
+      {menu && createPortal(<ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)}/>, document.body)}
     </g>
   )
 }

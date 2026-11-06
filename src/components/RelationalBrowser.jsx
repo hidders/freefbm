@@ -49,9 +49,9 @@ function AddButton({ onAdd, disabled }) {
   )
 }
 
-function Row({ depth = 0, icon, label, detail, selected, onSelect, toggle, open, add, orphan, muted }) {
+function Row({ depth = 0, icon, label, detail, selected, onSelect, toggle, open, add, orphan, muted, onMenu }) {
   return (
-    <div className="rm-browser-row" onClick={onSelect}
+    <div className="rm-browser-row" onClick={onSelect} onContextMenu={onMenu}
       style={{ display: 'flex', alignItems: 'center', padding: '3px 8px', paddingLeft: 8 + depth * 14,
         borderBottom: '1px solid var(--border-soft)', cursor: 'pointer',
         background: selected ? 'var(--bg-raised)' : orphan ? 'rgba(192,57,43,0.04)' : undefined }}
@@ -80,7 +80,7 @@ const colDetail = (c) => [c.type ?? '', c.pk ? 'PK' : '', c.fk ? 'FK' : '', c.no
 // The sections, in SchemaBrowser's format: [{ title, items, renderRow }].
 // Under a name filter, a table is listed when its name matches or one of its
 // parts does; in the latter case it shows open, with only the matching parts.
-export function relationalSections({ view, diagram, diagrams, expanded, toggle, selectedRmId, showOrphans, filter }) {
+export function relationalSections({ view, diagram, diagrams, expanded, toggle, selectedRmId, showOrphans, filter, onMenu = null }) {
   const st = () => useOrmStore.getState()
   const inDiag = (id) => diagram?.occurrences?.some(o => o.schemaElementId === id) ?? false
   const orphan = (id) => !diagrams.some(d => !d.mappingId && d.occurrences?.some(o => o.schemaElementId === id))
@@ -102,7 +102,7 @@ export function relationalSections({ view, diagram, diagrams, expanded, toggle, 
           detail={of ? `stored part of view ${of.name}` : t.kind === 'view' ? (t.derived === 'rows' ? 'derived rows' : 'derived columns') : null}
           selected={selectedRmId === t.rmId} onSelect={() => select(t)} toggle={byPart ? undefined : () => toggle(t.rmId)} open={open}
           add={!of && diagram ? <AddButton disabled={inDiag(t.entityId)} onAdd={() => st().addElementToDiagram(t.entityId, diagram.id)} /> : null}
-          orphan={!of && orphan(t.entityId)} />
+          orphan={!of && orphan(t.entityId)} onMenu={!of && onMenu ? (e => onMenu(e, t.entityId)) : undefined} />
         {open && shown.map(p => (
           <Row key={p.rmId} depth={1} icon={<PartIcon kind={p.kind} />}
             label={<Highlight text={partName(p)} filter={filter} />}

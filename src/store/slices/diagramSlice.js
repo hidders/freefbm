@@ -3,10 +3,13 @@ import {
   mkDiagram, occOf, inDiag, cInDiag, cOccOf,
   addOccIfAbsent, addOwnedRefModeOccsIfAbsent, mkOcc,
   normalizeStEps, syncConstraints, computeCascadeRemove, rmCOcc,
-  mkUniqueness, withMandatoryId, mappingOfDiagram,
+  mkUniqueness, withMandatoryId, mappingOfDiagram, makeUniqueName,
 } from '../storeHelpers'
 import { erdPartsOfDiagram, erdTargetOf } from '../../relational/erdBoxes.js'
 import { diagramUnits, tableCompanions, tableRemoval, completeTables, withTableConstraints } from '../../relational/tableUnits.js'
+import { isErdDiagram, erdLayout } from '../../relational/erdBoxes.js'
+import { relationalModel } from '../../relational/relationalModel.js'
+import { neighbourUnits } from '../../utils/neighbourhood.js'
 
 // Module-level variable for pan animation — only used by centerOnElement/centerOnOccurrence
 let _panAnimId = null
@@ -312,6 +315,119 @@ export function createDiagramSlice(set, get) {
         diagrams.splice(insertAt, 0, removed)
         return { diagrams, isDirty: true }
       })
+    },
+
+    // ── growing diagrams by hand (utils/neighbourhood.js) ────────────────────
+
+    // The Add neighbours… picker (NeighbourPicker.jsx) at an occurrence of an
+    // object type or objectified fact type, or at a table of an ERD.
+    openNeighbourPicker(elementId, occurrenceId = null) {
+      const d = get().diagrams.find(x => x.id === get().activeDiagramId)
+      if (!d || d.mappingId) return
+      set({ neighbourPicker: { diagramId: d.id, elementId, occurrenceId } })
+    },
+    closeNeighbourPicker() { set({ neighbourPicker: null }) },
+
+    // Adds the chosen neighbourhood units of an element to a diagram as one
+    // undo step, placed around the anchor without moving what is there
+    // (layout/growPlacement.js). With oneMoreStep, the pre-ticked units of the
+    // elements they lead to come too.
+    // The placement functions are passed in (layout/growPlacement.js reads the
+    // components' geometry, which the store must not import).
+    addNeighbours(diagramId, anchorId, anchorOccId, units, { oneMoreStep = false, place } = {}) {
+      const s0 = get()
+      const d0 = s0.diagrams.find(d => d.id === diagramId)
+      if (!d0 || !units.length) return
+      const erd = isErdDiagram(s0, d0)
+      const beforeOccIds = new Set((d0.occurrences ?? []).map(o => o.id))
+      const beforeCoccIds = (d0.constraintOccurrences ?? []).map(o => o.id)
+      // An ERD's tables without a stored position are fixed where they are drawn now.
+      const frozen = {}
+      if (erd) for (const [id, b] of erdLayout(relationalModel(s0, d0.schemaId), d0)) frozen[id] = { x: b.x, y: b.y }
+      const shownBefore = new Set((d0.occurrences ?? []).map(o => o.schemaElementId))
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        if (erd && Object.keys(frozen).length) get().setErdPositions(diagramId, frozen)
+        const plans = units.map(u => ({ unit: u, anchorId, anchorOccId, step: 0 }))
+        const planned = new Set(units.map(u => u.ids.join('|')))
+        for (const u of units) for (const id of u.ids) get().addElementToDiagram(id, diagramId)
+        if (oneMoreStep) {
+          const d1 = get().diagrams.find(d => d.id === diagramId)
+          const more = []
+          for (const u of units) for (const far of u.far) {
+            if (shownBefore.has(far)) continue
+            const farOcc = (d1.occurrences ?? []).find(o => o.schemaElementId === far && !o.refModeOwnerOccId)
+            for (const v of neighbourUnits(get(), d1, far)) {
+              const k = v.ids.join('|')
+              if (!v.defaultOn || v.shown || planned.has(k)) continue
+              planned.add(k)
+              more.push({ unit: v, anchorId: far, anchorOccId: farOcc?.id ?? null, step: 1 })
+            }
+          }
+          for (const p of more) for (const id of p.unit.ids) get().addElementToDiagram(id, diagramId)
+          plans.push(...more)
+        }
+        const s1 = get()
+        const d1 = s1.diagrams.find(d => d.id === diagramId)
+        if (erd) {
+          const boxes = erdLayout(relationalModel(s1, d1.schemaId), d1)
+          const pos = place.erd(boxes, new Set(Object.keys(frozen)), plans)
+          if (Object.keys(pos).length) get().setErdPositions(diagramId, pos)
+        } else {
+          const { occ, cocc, freq } = place.orm(s1, diagramId, beforeOccIds, plans, beforeCoccIds)
+          set(st => ({
+            diagrams: st.diagrams.map(d => d.id !== diagramId ? d : {
+              ...d,
+              occurrences: d.occurrences.map(o => occ[o.id] ? { ...o, ...occ[o.id] } : o),
+              constraintOccurrences: (d.constraintOccurrences ?? []).map(o => cocc[o.id] ? { ...o, ...cocc[o.id] } : o),
+            }),
+            facts: Object.keys(freq).length ? st.facts.map(f => freq[f.id] ? { ...f, internalFrequency: freq[f.id] } : f) : st.facts,
+          }))
+        }
+        const added = [...new Set(plans.flatMap(p => p.unit.ids))].filter(id => !shownBefore.has(id))
+        set({ multiSelectedIds: added, selectedId: null, selectedKind: null, selectedRole: null, selectedUniqueness: null, isDirty: true })
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+    },
+
+    // A new diagram of the element's schema with just that element, centred,
+    // and the Add neighbours… picker open on it.
+    newDiagramFrom(elementId) {
+      const s0 = get()
+      const el = s0.objectTypes.find(o => o.id === elementId) ?? s0.facts.find(f => f.id === elementId)
+      const active = s0.diagrams.find(d => d.id === s0.activeDiagramId)
+      if (!el || !active || (el.schemaId && active.schemaId && el.schemaId !== active.schemaId)) return
+      const base = (el.objectified ? el.objectifiedName : el.name) || 'Diagram'
+      const used = new Set(s0.diagrams.filter(d => d.schemaId === active.schemaId).map(d => d.name))
+      const name = used.has(base) ? makeUniqueName(`${base} `, used) : base
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      let id
+      try {
+        // A new diagram from a mapping diagram would draw the mapping too.
+        if (active.mappingId) {
+          const back = s0.diagrams.find(d => !d.mappingId && d.schemaId === el.schemaId)
+          if (back) get().setActiveDiagram(back.id)
+        }
+        id = get().addDiagram(name)
+        get().addElementToDiagram(elementId, id)
+        set({ multiSelectedIds: [], selectedId: elementId, selectedKind: el.kind === 'fact' ? 'fact' : el.kind })
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+      const s1 = get()
+      const d = s1.diagrams.find(x => x.id === id)
+      const occ = (d?.occurrences ?? []).find(o => o.schemaElementId === elementId && !o.refModeOwnerOccId)
+      // Centred at once (no animation), so the picker opens next to it.
+      let wx = occ?.x ?? 0, wy = occ?.y ?? 0
+      const parts = erdPartsOfDiagram(s1, d)
+      const at = parts.length ? erdTargetOf(s1, parts, elementId) : null
+      if (at) { wx = at.x + at.w / 2; wy = at.y + at.h / 2 }
+      const svg = typeof document !== 'undefined' ? document.getElementById('orm2-canvas-svg') : null
+      const rect = svg?.getBoundingClientRect()
+      if (rect) set({ zoom: 1, pan: { x: rect.width * 0.4 - wx, y: rect.height / 2 - wy } })
+      set({ neighbourPicker: { diagramId: id, elementId, occurrenceId: occ?.id ?? null } })
+      return id
     },
 
     addElementToDiagram(elementId, diagramId) {
