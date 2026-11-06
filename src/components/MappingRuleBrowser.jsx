@@ -95,6 +95,12 @@ export function mappingRuleSections({ mapping, infos, diagram, diagrams, showOrp
     if (isView) s.openViewRuleEditor(mapping.id, info.r.id)
     else s.openMappingRuleEditor(mapping.id, info.r.id)
   }
+  // Adds the rule and brings its node into view.
+  const addRule = (id) => {
+    st().showMappingRules(diagram.id, [id])
+    const p = st().diagrams.find(d => d.id === diagram.id)?.mappingRulePositions?.[id]
+    if (p) st().centerOnPoint(p.x, p.y)
+  }
   const row = (info) => {
     const here = on.has(info.r.id)
     const lone = orphan(info.r.id)
@@ -111,7 +117,7 @@ export function mappingRuleSections({ mapping, infos, diagram, diagrams, showOrp
         onMouseLeave={e => { e.currentTarget.style.background = bg }}
       >
         <div style={{ width: 22, flexShrink: 0, marginRight: 5 }}>
-          {!here && <SlotButton title="Add to this diagram, with the elements it names" onClick={() => st().showMappingRules(diagram.id, [info.r.id])}>{PLUS}</SlotButton>}
+          {!here && <SlotButton title="Add to this diagram, with the elements it names" onClick={() => addRule(info.r.id)}>{PLUS}</SlotButton>}
         </div>
         <span style={{ flexShrink: 0, marginRight: 5, fontSize: 11, fontWeight: 700, color: 'var(--map-source)', width: 14, textAlign: 'center' }}>
           {isView ? '⇒' : '⟺'}

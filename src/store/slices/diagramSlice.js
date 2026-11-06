@@ -224,7 +224,8 @@ export function createDiagramSlice(set, get) {
         const schema = s0.schemas?.find(x => x.id === active?.schemaId)
         if (schema?.profile === 'relational') d.profileId = active?.profileId ?? 'postgresql'
         // A new diagram next to a mapping diagram draws the same mapping.
-        if (active?.mappingId) { d.mappingId = active.mappingId; d.schemaId = active.schemaId; d.profileId = active.profileId ?? null }
+        // It starts with no rules (the schema browser lists them to add).
+        if (active?.mappingId) { d.mappingId = active.mappingId; d.schemaId = active.schemaId; d.profileId = active.profileId ?? null; d.mappingRuleIds = []; d.mappingRulePositions = {} }
       }
       set(s => {
         // In v2 all diagrams already have explicit occurrences lists (no show-all concept).
