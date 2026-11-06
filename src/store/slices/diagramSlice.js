@@ -3,16 +3,39 @@ import {
   mkDiagram, occOf, inDiag, cInDiag, cOccOf,
   addOccIfAbsent, addOwnedRefModeOccsIfAbsent, mkOcc,
   normalizeStEps, syncConstraints, computeCascadeRemove, rmCOcc,
-  mkUniqueness, withMandatoryId, mappingOfDiagram, makeUniqueName,
+  mkUniqueness, withMandatoryId, mappingOfDiagram, makeUniqueName, eligibleConstraints, mkConstraintOcc,
 } from '../storeHelpers'
 import { erdPartsOfDiagram, erdTargetOf } from '../../relational/erdBoxes.js'
 import { diagramUnits, tableCompanions, tableRemoval, completeTables, withTableConstraints } from '../../relational/tableUnits.js'
 import { isErdDiagram, erdLayout } from '../../relational/erdBoxes.js'
 import { relationalModel } from '../../relational/relationalModel.js'
-import { neighbourUnits } from '../../utils/neighbourhood.js'
+import { neighbourUnits, connectPath } from '../../utils/neighbourhood.js'
 
 // Module-level variable for pan animation — only used by centerOnElement/centerOnOccurrence
 let _panAnimId = null
+
+// A diagram with the external constraints added that all its elements now
+// allow and that are about one of `touched` (elements just added by hand
+// growing), so that adding neighbours brings the constraints among them.
+function withTouchedConstraints(s, d, touched) {
+  if (!touched.size) return d
+  const shown = new Set((d.occurrences ?? []).map(o => o.schemaElementId))
+  const have = new Set((d.constraintOccurrences ?? []).map(co => co.schemaConstraintId))
+  const about = (c) => {
+    const ids = []
+    for (const seq of c.sequences ?? []) for (const m of seq) {
+      if (m.factId) ids.push(m.factId.split('_il_')[0])
+      if (m.subtypeId) { const st = s.subtypes.find(x => x.id === m.subtypeId); if (st) ids.push(st.subId, st.superId) }
+    }
+    for (const seq of c.roleSequences ?? []) for (const m of seq) if (m.factId) ids.push(m.factId.split('_il_')[0])
+    if (c.targetObjectTypeId) ids.push(c.targetObjectTypeId)
+    return ids
+  }
+  const add = eligibleConstraints(s.constraints.filter(c => c.schemaId === d.schemaId && !have.has(c.id)), s.subtypes, shown, s.facts, d.shownImplicitLinks ?? [])
+    .filter(c => about(c).some(id => touched.has(id)))
+  if (!add.length) return d
+  return { ...d, constraintOccurrences: [...(d.constraintOccurrences ?? []), ...add.map(c => mkConstraintOcc(c.id, c.x ?? 0, c.y ?? 0))] }
+}
 
 export function createDiagramSlice(set, get) {
   return {
@@ -327,6 +350,8 @@ export function createDiagramSlice(set, get) {
       set({ neighbourPicker: { diagramId: d.id, elementId, occurrenceId } })
     },
     closeNeighbourPicker() { set({ neighbourPicker: null }) },
+    // Growing mode: "+n" badges at elements with neighbours not shown (GrowBadges.jsx).
+    setGrowMode(on) { set({ growMode: !!on }) },
 
     // Adds the chosen neighbourhood units of an element to a diagram as one
     // undo step, placed around the anchor without moving what is there
@@ -334,7 +359,28 @@ export function createDiagramSlice(set, get) {
     // elements they lead to come too.
     // The placement functions are passed in (layout/growPlacement.js reads the
     // components' geometry, which the store must not import).
-    addNeighbours(diagramId, anchorId, anchorOccId, units, { oneMoreStep = false, place } = {}) {
+    // Connect: adds the shortest chain of fact types / foreign keys between
+    // two elements (connectPath), each unit placed beside the element before
+    // it, as one undo step. Returns the number of units added, or null when
+    // the two are not connected.
+    connectElements(diagramId, fromId, toId, { place } = {}) {
+      const s0 = get()
+      const d0 = s0.diagrams.find(d => d.id === diagramId)
+      if (!d0) return null
+      const path = connectPath(s0, d0.schemaId, fromId, toId)
+      if (!path) {
+        set({ readOnlyNotice: 'These two are not connected by fact types or foreign keys' })
+        return null
+      }
+      if (!path.length) return 0
+      get().addNeighbours(diagramId, fromId, null, [], { place, given: path })
+      return path.length
+    },
+
+    // given: [{ unit, anchorId, step }] instead of units around one anchor
+    // (Connect: a path, each unit placed around the element before it).
+    addNeighbours(diagramId, anchorId, anchorOccId, units, { oneMoreStep = false, place, given = null } = {}) {
+      if (given) units = given.map(p => p.unit)
       const s0 = get()
       const d0 = s0.diagrams.find(d => d.id === diagramId)
       if (!d0 || !units.length) return
@@ -348,9 +394,13 @@ export function createDiagramSlice(set, get) {
       set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
       try {
         if (erd && Object.keys(frozen).length) get().setErdPositions(diagramId, frozen)
-        const plans = units.map(u => ({ unit: u, anchorId, anchorOccId, step: 0 }))
+        const plans = given ? given.map(p => ({ ...p, anchorOccId: null })) : units.map(u => ({ unit: u, anchorId, anchorOccId, step: 0 }))
         const planned = new Set(units.map(u => u.ids.join('|')))
         for (const u of units) for (const id of u.ids) get().addElementToDiagram(id, diagramId)
+        if (given) {
+          const d1 = get().diagrams.find(d => d.id === diagramId)
+          for (const p of plans) p.anchorOccId = (d1.occurrences ?? []).find(o => o.schemaElementId === p.anchorId && !o.refModeOwnerOccId)?.id ?? null
+        }
         if (oneMoreStep) {
           const d1 = get().diagrams.find(d => d.id === diagramId)
           const more = []
@@ -366,6 +416,10 @@ export function createDiagramSlice(set, get) {
           }
           for (const p of more) for (const id of p.unit.ids) get().addElementToDiagram(id, diagramId)
           plans.push(...more)
+        }
+        if (!erd) {
+          const touched = new Set(plans.flatMap(p => [...p.unit.ids, ...p.unit.far]).filter(x => !shownBefore.has(x)))
+          set(st => ({ diagrams: st.diagrams.map(d => (d.id === diagramId ? withTouchedConstraints(st, d, touched) : d)) }))
         }
         const s1 = get()
         const d1 = s1.diagrams.find(d => d.id === diagramId)
@@ -389,6 +443,86 @@ export function createDiagramSlice(set, get) {
       } finally {
         set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
       }
+    },
+
+    // The selected elements in a new diagram of the same schema, where they
+    // are on this one (top-down splitting of a large diagram). With move, they
+    // leave this diagram, except object types that a fact type left here still
+    // needs (the boundary is shown on both). One undo step.
+    selectionToNewDiagram(move = false) {
+      const s0 = get()
+      const src = s0.diagrams.find(d => d.id === s0.activeDiagramId)
+      if (!src || src.mappingId) return null
+      const known = (id) => s0.objectTypes.some(o => o.id === id) || s0.facts.some(f => f.id === id)
+        || s0.subtypes.some(x => x.id === id) || s0.constraints.some(c => c.id === id)
+      const ids = [...new Set([...s0.multiSelectedIds, ...(s0.selectedId ? [s0.selectedId] : [])])].filter(known)
+      if (!ids.length) return null
+      const used = new Set(s0.diagrams.filter(d => d.schemaId === src.schemaId).map(d => d.name))
+      const name = makeUniqueName(`${src.name} part `, used)
+      const { pan, zoom } = s0
+      const erd = isErdDiagram(s0, src)
+      const srcBoxes = erd ? erdLayout(relationalModel(s0, src.schemaId), src) : null
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      let id
+      try {
+        id = get().addDiagram(name)
+        for (const x of ids) if (!s0.constraints.some(c => c.id === x)) get().addElementToDiagram(x, id)
+        if (move) {
+          const s1 = get()
+          const sel = new Set(ids)
+          const shownHere = new Set((src.occurrences ?? []).map(o => o.schemaElementId))
+          const units = diagramUnits(s1, src)
+          // An object type stays when a fact type it plays stays on the source.
+          const staysFor = (otId) => s1.facts.some(f => shownHere.has(f.id) && !sel.has(f.id) && !(units && sel.has(units.tableOf.get(f.id)))
+            && f.roles.some(r => r.objectTypeId === otId) && !f.roles.every(r => sel.has(r.objectTypeId)))
+          const removable = ids.filter(x => !s1.objectTypes.some(o => o.id === x) || units || !staysFor(x))
+          get().removeMultiSelectionFromDiagram(src.id, removable)
+          // What the removal took off with them (a fact type an objectified
+          // type plays, say) goes along, so nothing drops off both diagrams.
+          const s2 = get()
+          const left = new Set((s2.diagrams.find(d => d.id === src.id)?.occurrences ?? []).map(o => o.schemaElementId))
+          const there = new Set((s2.diagrams.find(d => d.id === id)?.occurrences ?? []).map(o => o.schemaElementId))
+          for (const x of shownHere) if (!left.has(x) && !there.has(x) && s2.facts.some(f => f.id === x)) get().addElementToDiagram(x, id)
+        }
+        // The external constraints among the elements, as on the source.
+        if (!erd) set(st => ({ diagrams: st.diagrams.map(d => (d.id === id
+          ? withTouchedConstraints(st, d, new Set((d.occurrences ?? []).map(o => o.schemaElementId))) : d)) }))
+        set(st => ({
+          diagrams: st.diagrams.map(d => {
+            if (d.id !== id) return d
+            // Each new occurrence where its element's (first) occurrence is on the source.
+            const map = new Map()
+            const taken = new Set()
+            const occurrences = d.occurrences.map(o => {
+              const owner = o.refModeOwnerOccId ? d.occurrences.find(x => x.id === o.refModeOwnerOccId)?.schemaElementId : null
+              const from = (src.occurrences ?? []).find(x => !taken.has(x.id) && x.schemaElementId === o.schemaElementId
+                && (owner ? src.occurrences.find(y => y.id === x.refModeOwnerOccId)?.schemaElementId === owner : !x.refModeOwnerOccId))
+              if (!from) return o
+              taken.add(from.id)
+              map.set(from.id, o.id)
+              const { id: _i, schemaElementId: _s, refModeOwnerOccId: _r, roleOccurrenceMap: _m, ...rest } = from
+              return { ...o, ...rest }
+            })
+            const constraintOccurrences = (d.constraintOccurrences ?? []).map(co => {
+              const from = (src.constraintOccurrences ?? []).find(x => x.schemaConstraintId === co.schemaConstraintId)
+              if (from) return { ...co, x: from.x, y: from.y }
+              // Not on the source: between the facts it is about.
+              const c = st.constraints.find(x => x.id === co.schemaConstraintId)
+              const fids = new Set([...(c?.sequences ?? []), ...(c?.roleSequences ?? [])].flat().map(m => m?.factId?.split('_il_')[0]).filter(Boolean))
+              const pts = occurrences.filter(o => fids.has(o.schemaElementId) && !o.refModeOwnerOccId)
+              return pts.length ? { ...co, x: Math.round(pts.reduce((a, o) => a + o.x, 0) / pts.length), y: Math.round(pts.reduce((a, o) => a + o.y, 0) / pts.length) - 30 } : co
+            })
+            const expandedRefModeOccs = [...new Set([...(d.expandedRefModeOccs ?? []),
+              ...(src.expandedRefModeOccs ?? []).map(o => map.get(o)).filter(Boolean)])]
+            const erdPositions = srcBoxes ? Object.fromEntries([...srcBoxes].filter(([t]) => inDiag(d, t)).map(([t, b]) => [t, { x: b.x, y: b.y }])) : d.erdPositions
+            return { ...d, occurrences, constraintOccurrences, expandedRefModeOccs, ...(erdPositions ? { erdPositions } : {}) }
+          }),
+        }))
+        set({ pan, zoom, multiSelectedIds: ids, selectedId: null, selectedKind: null })
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+      return id
     },
 
     // A new diagram of the element's schema with just that element, centred,

@@ -110,7 +110,8 @@ export const createSchemaSlice = (set, get) => ({
   },
 
   // Reads PostgreSQL DDL into a new relational schema of this file, with one
-  // diagram of its tables, as a single undo step. The import log lists what
+  // diagram of its tables (and one per SQL schema when the script has several
+  // namespaces), as a single undo step. The import log lists what
   // was left out. Returns { schemaId, stats }.
   importPostgresDdl(sql, name = 'Relational') {
     const used = new Set(get().schemas.map(s => s.name))
@@ -125,7 +126,7 @@ export const createSchemaSlice = (set, get) => ({
         objectTypes: [...s.objectTypes, ...built.objectTypes],
         facts: [...s.facts, ...built.facts],
         constraints: [...s.constraints, ...built.constraints],
-        diagrams: [...s.diagrams, built.diagram],
+        diagrams: [...s.diagrams, ...built.diagrams],
         // The rows of INSERT statements, as sample population.
         populations: { ...s.populations, ...built.sample.populations },
         factPopulations: { ...s.factPopulations, ...built.sample.factPopulations },

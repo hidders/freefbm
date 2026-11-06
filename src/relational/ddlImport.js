@@ -16,7 +16,9 @@
 // name as the role name of the value role (and in the reading).
 //
 // buildRelationalSchema(parsed, { schemaId, diagramName }) →
-//   { objectTypes, facts, constraints, diagram, log, stats }
+//   { objectTypes, facts, constraints, diagram, diagrams, log, stats }
+// diagram is the one of all tables; diagrams adds one per SQL schema
+// (namespace) when there are several.
 
 import { parseDdl, tokenize, uniqueKey } from './ddlParse.js'
 import { checkToFormula, splitCheck } from './checkFormula.js'
@@ -29,9 +31,21 @@ const keyName = (t, key) => t.keyNames?.[key] ?? null
 
 export function importPostgresDdl(sql, opts) {
   const parsed = parseDdl(sql)
-  const built = buildRelationalSchema(parsed, opts)
+  const built = buildRelationalSchema(parsed, { schemaNames: sqlSchemaNames(sql), ...opts })
   built.sample = samplePopulation(parsed, built)
   return built
+}
+
+// The SQL schemas a script creates, as it writes their names (the parser
+// folds unquoted names to lower case): Map(lower → written).
+export function sqlSchemaNames(sql) {
+  const out = new Map()
+  for (const m of sql.matchAll(/\bcreate\s+schema\s+(?:if\s+not\s+exists\s+)?("([^"]+)"|[A-Za-z_][\w$]*)/gi)) {
+    const name = m[2] ?? m[1]
+    const key = m[2] ?? name.toLowerCase()
+    if (!out.has(key)) out.set(key, name)
+  }
+  return out
 }
 
 // ── Sample rows ──────────────────────────────────────────────────────────────
@@ -365,7 +379,7 @@ const ROW_H = 56          // vertical distance between columns of a table
 const BLOCK_W = 560       // width of a table's block on the diagram
 const GAP_Y = 70
 
-export function buildRelationalSchema(parsed, { schemaId = null, diagramName = 'Tables' } = {}) {
+export function buildRelationalSchema(parsed, { schemaId = null, diagramName = 'Tables', schemaNames = null } = {}) {
   const log = []
   const note = (text) => log.push({ level: 'note', text })
   const warn = (text) => log.push({ level: 'warn', text })
@@ -610,76 +624,101 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
       ...(fk.name && { sqlName: fk.name }) })
   }
 
-  // ── Diagram ──
-  const diagram = { ...mkDiagram(diagramName, schemaId), profileId: 'postgresql' }
-  const occs = []
-  const coccs = []
-  const perRow = Math.max(1, Math.min(5, Math.ceil(Math.sqrt(tables.length))))
-  const blockPos = new Map()
+  // ── Diagrams ──
+  // One diagram of all tables; when the script puts its tables in two or more
+  // SQL schemas (namespaces, CREATE SCHEMA), also one diagram per namespace,
+  // named as the script writes it. The user may remove those.
   // A table with a one-column primary key has a reference mode. Its key column
   // is drawn as a fact type like the other columns, so the entity is marked
   // expanded and the key column's occurrences belong to it; otherwise the
   // entity would also show the "(.ref)" shorthand.
-  const expandedRefModeOccs = []
   // Formula constraints (CHECKs) stand right of their table's value types,
   // so the blocks are wider when there are any.
   const badgeW = Math.max(0, ...constraints.filter(c => c.constraintType === 'formula').map(c => 8 * (c.name.length + 2) + 12))
   const blockW = BLOCK_W + (badgeW ? badgeW + 30 : 0)
-  let y = 80, rowH = 0
-  tables.forEach((t, i) => {
-    const col = i % perRow
-    if (col === 0 && i) { y += rowH + GAP_Y; rowH = 0 }
-    const x = 120 + col * blockW
-    const n = Math.max(1, t.columns.length)
-    const h = (n - 1) * ROW_H
-    rowH = Math.max(rowH, h + 40)
-    const e = entityOf.get(t)
-    const eOcc = mkOcc(e.id, x, y + h / 2)
-    occs.push(eOcc)
-    e.x = x; e.y = y + h / 2
-    blockPos.set(t, { x, y, h })
-    const rm = findRefMode(e, facts, objectTypes)
-    if (rm) expandedRefModeOccs.push(eOcc.id)
-    t.columns.forEach((c, j) => {
-      const k = colKey(t, c.name)
-      const f = factByKey.get(k)
-      const vt = vtByKey.get(k)
-      const fy = y + j * ROW_H
-      const owned = rm?.factId === f.id ? { refModeOwnerOccId: eOcc.id } : {}
-      const vtOcc = mkOcc(vt.id, x + 330, fy, owned)
-      const fOcc = mkOcc(f.id, x + 165, fy, { roleOccurrenceMap: { 0: eOcc.id, 1: vtOcc.id }, ...owned })
-      occs.push(fOcc, vtOcc)
-      f.x = x + 165; f.y = fy
-      if (!vt._placed) { vt.x = x + 330; vt.y = fy; vt._placed = true }
+  const drawTables = (name, subset, primary) => {
+    const diagram = { ...mkDiagram(name, schemaId), profileId: 'postgresql' }
+    const occs = []
+    const coccs = []
+    const expandedRefModeOccs = []
+    const perRow = Math.max(1, Math.min(5, Math.ceil(Math.sqrt(subset.length))))
+    const blockPos = new Map()
+    const factY = new Map()
+    let y = 80, rowH = 0
+    subset.forEach((t, i) => {
+      const col = i % perRow
+      if (col === 0 && i) { y += rowH + GAP_Y; rowH = 0 }
+      const x = 120 + col * blockW
+      const n = Math.max(1, t.columns.length)
+      const h = (n - 1) * ROW_H
+      rowH = Math.max(rowH, h + 40)
+      const e = entityOf.get(t)
+      const eOcc = mkOcc(e.id, x, y + h / 2)
+      occs.push(eOcc)
+      if (primary) { e.x = x; e.y = y + h / 2 }
+      blockPos.set(t, { x, y, h })
+      const rm = findRefMode(e, facts, objectTypes)
+      if (rm) expandedRefModeOccs.push(eOcc.id)
+      t.columns.forEach((c, j) => {
+        const k = colKey(t, c.name)
+        const f = factByKey.get(k)
+        const vt = vtByKey.get(k)
+        const fy = y + j * ROW_H
+        factY.set(f.id, fy)
+        const owned = rm?.factId === f.id ? { refModeOwnerOccId: eOcc.id } : {}
+        const vtOcc = mkOcc(vt.id, x + 330, fy, owned)
+        const fOcc = mkOcc(f.id, x + 165, fy, { roleOccurrenceMap: { 0: eOcc.id, 1: vtOcc.id }, ...owned })
+        occs.push(fOcc, vtOcc)
+        if (primary) {
+          f.x = x + 165; f.y = fy
+          if (!vt._placed) { vt.x = x + 330; vt.y = fy; vt._placed = true }
+        }
+      })
     })
-  })
-  const formulaCount = new Map()
-  for (const c of constraints) {
-    const b = blockPos.get(c._table)
-    let cx, cy
-    if (c.constraintType === 'formula') {
-      // Right of the table's value types, one under the other.
-      const k = formulaCount.get(c._table) ?? 0
-      formulaCount.set(c._table, k + 1)
-      cx = b.x + 490 + badgeW / 2; cy = b.y + k * 32
-    } else if (c.constraintType === 'uniqueness' || c.constraintType === 'valueComparison') {
-      const ys = c.sequences[0].map(m => facts.find(f => f.id === m.factId).y)
-      cx = b.x + (c.constraintType === 'uniqueness' ? 250 : 215); cy = ys.reduce((a, v) => a + v, 0) / ys.length
-    } else {
-      const fromY = facts.find(f => f.id === c.sequences[0][0].factId).y
-      const toY = facts.find(f => f.id === c.sequences[1][0].factId).y
-      const rb = blockPos.get(c._refTable)
-      cx = (b.x + rb.x) / 2 + 250 + (b === rb ? 60 : 0)
-      cy = (fromY + toY) / 2
+    const formulaCount = new Map()
+    for (const c of constraints) {
+      const b = blockPos.get(c._table)
+      // Only constraints within the diagram's tables (a foreign key to a
+      // table of another namespace is left out).
+      if (!b || (c._refTable && !blockPos.has(c._refTable))) continue
+      let cx, cy
+      if (c.constraintType === 'formula') {
+        // Right of the table's value types, one under the other.
+        const k = formulaCount.get(c._table) ?? 0
+        formulaCount.set(c._table, k + 1)
+        cx = b.x + 490 + badgeW / 2; cy = b.y + k * 32
+      } else if (c.constraintType === 'uniqueness' || c.constraintType === 'valueComparison') {
+        const ys = c.sequences[0].map(m => factY.get(m.factId))
+        cx = b.x + (c.constraintType === 'uniqueness' ? 250 : 215); cy = ys.reduce((a, v) => a + v, 0) / ys.length
+      } else {
+        const fromY = factY.get(c.sequences[0][0].factId)
+        const toY = factY.get(c.sequences[1][0].factId)
+        const rb = blockPos.get(c._refTable)
+        cx = (b.x + rb.x) / 2 + 250 + (b === rb ? 60 : 0)
+        cy = (fromY + toY) / 2
+      }
+      cx = Math.round(cx); cy = Math.round(cy)
+      if (primary) { c.x = cx; c.y = cy }
+      coccs.push({ id: `cocc_${uid()}`, schemaConstraintId: c.id, x: cx, y: cy, roleOccurrenceRefs: {}, queryOccurrenceRefs: {} })
     }
-    c.x = Math.round(cx); c.y = Math.round(cy)
-    coccs.push({ id: `cocc_${uid()}`, schemaConstraintId: c.id, x: c.x, y: c.y, roleOccurrenceRefs: {}, queryOccurrenceRefs: {} })
-    delete c._table; delete c._refTable
+    diagram.occurrences = occs
+    diagram.constraintOccurrences = coccs
+    diagram.expandedRefModeOccs = expandedRefModeOccs
+    return diagram
   }
+  const diagram = drawTables(diagramName, tables, true)
+  const namespaces = [...new Set(tables.map(t => t.schema ?? 'public'))]
+  const diagrams = [diagram]
+  if (namespaces.length > 1) {
+    for (const ns of namespaces) {
+      const subset = tables.filter(t => (t.schema ?? 'public') === ns)
+      diagrams.push(drawTables(schemaNames?.get(ns) ?? ns, subset, false))
+    }
+    note(`One diagram per SQL schema: ${namespaces.map(ns => schemaNames?.get(ns) ?? ns).join(', ')}`)
+  }
+  for (const t of tables) if (t.schema && t.schema !== 'public') entityOf.get(t).sqlSchema = schemaNames?.get(t.schema) ?? t.schema
+  for (const c of constraints) { delete c._table; delete c._refTable }
   for (const vt of objectTypes) delete vt._placed
-  diagram.occurrences = occs
-  diagram.constraintOccurrences = coccs
-  diagram.expandedRefModeOccs = expandedRefModeOccs
 
   const stats = { tables: tables.length, columns: facts.length, valueTypes: objectTypes.length - tables.length,
     keys: constraints.filter(c => c.constraintType === 'uniqueness').length + facts.filter(f => f.uniqueness.length > 1).length,
@@ -687,7 +726,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
     comparisons: constraints.filter(c => c.constraintType === 'valueComparison').length }
   for (const [kind, n] of parsed.skipped) note(`Skipped ${n} × ${kind}`)
   for (const p of parsed.problems) warn(p)
-  return { objectTypes, facts, constraints, diagram, log, stats }
+  return { objectTypes, facts, constraints, diagram, diagrams, log, stats }
 }
 
 // Integer types (and their serials) count as one family when a foreign key

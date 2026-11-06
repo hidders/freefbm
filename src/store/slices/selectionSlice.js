@@ -33,7 +33,10 @@ export function createSelectionSlice(set, get) {
               selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
         return
       }
+      // The element selected before, for Connect with (growItems).
+      const prev = get().selectedId
       set({ selectedId: id, selectedKind: kind, selectedRole: null, selectedImplicitLink: null, selectedImplicitLinkRole: null, selectedUniqueness: null,
+            previousSelectedId: prev && prev !== id ? prev : get().previousSelectedId ?? null,
             selectedMandatoryDot: null, selectedInternalFrequency: null,
             selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
             selectedOccurrenceId: occurrenceId, multiSelectedOccurrenceIds: [] })

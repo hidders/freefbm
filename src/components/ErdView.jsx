@@ -15,6 +15,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import ContextMenu from './ContextMenu'
 import { growItems } from '../hooks/useContextMenuHandlers'
+import { useGrowCounts, GrowBadge } from './GrowBadges'
 import { useOrmStore } from '../store/ormStore'
 import { relationalModel, isKey } from '../relational/relationalModel'
 import { routeLines, assignPorts, SIDES } from '../relational/erdRouting'
@@ -183,13 +184,16 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
     window.addEventListener('mouseup', onUp)
   }
 
+  // Growing mode: "+n" at tables with neighbours not shown (GrowBadges.jsx).
+  const growCounts = useGrowCounts()
+
   // A table's menu: grow the diagram from it (NeighbourPicker.jsx).
   const [menu, setMenu] = useState(null)
   const openMenu = (e, t) => {
     e.preventDefault()
     e.stopPropagation()
+    useOrmStore.getState().select(t.id, 'entity')
     const store = useOrmStore.getState()
-    store.select(t.id, 'entity')
     const items = growItems(store, t.id).filter(x => x !== '---')
     if (items.length) setMenu({ x: e.clientX, y: e.clientY, items })
   }
@@ -301,6 +305,10 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
           </g>
         )
       })}
+      {!sideSchemaId && growCounts?.size > 0 && [...shown.values()].filter(b => growCounts.has(b.table.id)).map(b => (
+        <GrowBadge key={`grow-${b.table.id}`} x={b.x + b.w} y={b.y + b.h} n={growCounts.get(b.table.id)}
+          onOpen={() => useOrmStore.getState().openNeighbourPicker(b.table.id, null)} />
+      ))}
       <BadgePopup popup={popup}/>
       {menu && createPortal(<ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)}/>, document.body)}
     </g>

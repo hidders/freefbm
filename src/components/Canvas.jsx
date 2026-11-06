@@ -14,6 +14,7 @@ import Minimap from './Minimap'
 import ErdView, { isErdDiagram } from './ErdView'
 import { BadgePopup, popupPos } from './BadgePopup'
 import { MappingTints, MappingRules, AccountingBadges } from './MappingLayer'
+import { GrowBadges } from './GrowBadges'
 import ContextMenu from './ContextMenu'
 import ConstraintMemberLabels from './ConstraintMemberLabels'
 import QueryAtoms from './QueryAtoms'
@@ -1486,6 +1487,7 @@ export default function Canvas() {
           {/* Mapping diagrams: rules as nodes linked to their elements */}
           <MappingRules/>
           <AccountingBadges/>
+          <GrowBadges/>
           {(qd || store.queryIndexHighlight) && <QueryAtoms
             mousePos={mousePos}
             onAtomClick={target => store.queryEditClick(target)}
