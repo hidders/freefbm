@@ -18,6 +18,11 @@ import { selectedTableId } from '../relational/rmText'
 import { removeBtnStyle, removeBtnHandlers, addBtnStyle, issueCellStyle } from './populationStyles'
 
 const PAGE = 200
+// Values offered in a foreign key column's list (the referenced rows' values).
+const MAX_OPTIONS = 2000
+// Rows added with "+ Add tuple" that are not records yet (no key, or a key
+// that was refused), per table, so they survive switching tables.
+const draftsByTable = new Map()
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
 export default function RelationalPopulation() {
@@ -54,8 +59,12 @@ function RecordGrid({ schemaId, tableId }) {
   const [filter, setFilter] = useState('')
   const [page, setPage] = useState(0)
   const [error, setError] = useState(null)
-  // Rows added with "+ Add tuple" that are not records yet (no key).
-  const [drafts, setDrafts] = useState([])
+  const [drafts, setDraftsState] = useState(() => draftsByTable.get(tableId) ?? [])
+  const setDrafts = (f) => setDraftsState(ds => {
+    const next = typeof f === 'function' ? f(ds) : f
+    if (next.length) draftsByTable.set(tableId, next); else draftsByTable.delete(tableId)
+    return next
+  })
   // Key values of a record just added from a draft: its page is shown.
   const [added, setAdded] = useState(null)
 
@@ -74,13 +83,23 @@ function RecordGrid({ schemaId, tableId }) {
       const toRecords = toShape ? tableRecords(st, toShape) : []
       const toIds = fk.to.map(c => c.fact.id)
       const keys = new Set(toRecords.map(r => JSON.stringify(toIds.map(id => r.values[id]))))
-      return { name: fk.name?.name ?? 'foreign key', target: fk.toTable.name, from: fk.from.map(c => c.fact.id), keys }
+      // Per referencing column, the values of its referenced column.
+      const options = {}
+      fk.from.forEach((c, i) => {
+        const vals = new Set()
+        for (const r of toRecords) { const v = r.values[toIds[i]]; if (v != null) vals.add(String(v)) }
+        options[c.fact.id] = [...vals].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).slice(0, MAX_OPTIONS)
+      })
+      return { name: fk.name?.name ?? 'foreign key', target: fk.toTable.name, from: fk.from.map(c => c.fact.id), keys, options }
     })
     return { shape, records, fkChecks, typeOf }
   }, [schemaId, tableId, populations, factPopulations, facts, objectTypes, constraints])
 
   if (!shape) return null
   const cols = shape.columns
+  const fkOptions = {}
+  for (const fk of fkChecks) Object.assign(fkOptions, fk.options)
+  const listId = (fid) => `rg-fk-${tableId}-${fid}`
   const q = filter.trim().toLowerCase()
   const shown = q ? records.filter(r => cols.some(c => String(r.values[c.factId] ?? '').toLowerCase().includes(q))) : records
   const pages = Math.max(1, Math.ceil(shown.length / PAGE))
@@ -105,28 +124,29 @@ function RecordGrid({ schemaId, tableId }) {
     return null
   }
 
+  // Returns the error, or null when the record was written.
   const commit = (oldCell, values) => {
     const res = useOrmStore.getState().setTableRecord(schemaId, tableId, oldCell, values)
     setError(res.error ?? null)
-    return !res.error
+    return res.error ?? null
   }
   // A draft row is kept until its key columns have values, then it is added
-  // as a record (the other columns go with it, empty ones as NULL).
+  // as a record (the other columns go with it, empty ones as NULL). A key the
+  // table refuses (one it has already) stays on the draft, marked.
   const commitDraft = (d, c, v) => {
     const values = { ...d.values, [c.factId]: v }
     const keyed = cols.filter(k => k.pk).every(k => String(values[k.factId] ?? '').trim() !== '')
-    if (!keyed) {
-      setDrafts(ds => ds.map(x => x.id === d.id ? { ...x, values } : x))
-      return true
+    let err = null
+    if (keyed) {
+      const res = useOrmStore.getState().setTableRecord(schemaId, tableId, null, values)
+      err = res.error ?? null
+      setError(err)
     }
-    const res = useOrmStore.getState().setTableRecord(schemaId, tableId, null, values)
-    setError(res.error ?? null)
-    setDrafts(ds => ds.map(x => x.id === d.id ? { ...x, values } : x))
-    if (!res.error) {
+    if (keyed && !err) {
       setDrafts(ds => ds.filter(x => x.id !== d.id))
       setAdded(shape.keyFacts.map(f => String(values[f] ?? '').trim()))
-    }
-    return true
+    } else setDrafts(ds => ds.map(x => x.id === d.id ? { ...x, values, error: err } : x))
+    return null
   }
   const remove = (cell) => {
     const res = useOrmStore.getState().deleteTableRecord(schemaId, tableId, cell)
@@ -150,6 +170,9 @@ function RecordGrid({ schemaId, tableId }) {
         </span>}
       </div>
       {error && <div style={{ color: 'var(--danger)', marginBottom: 6 }}>{error}</div>}
+      {Object.entries(fkOptions).map(([fid, vals]) => (
+        <datalist key={fid} id={listId(fid)}>{vals.map(v => <option key={v} value={v} />)}</datalist>
+      ))}
       <table style={{ borderCollapse: 'collapse', fontSize: 11 }}>
         <thead>
           <tr>
@@ -170,7 +193,7 @@ function RecordGrid({ schemaId, tableId }) {
             <tr key={r.id}>
               {cols.map(c => (
                 <td key={c.factId} style={td}>
-                  <Cell value={r.values[c.factId]} problem={problem(r, c)}
+                  <Cell value={r.values[c.factId]} problem={problem(r, c)} list={fkOptions[c.factId] ? listId(c.factId) : undefined}
                     readOnly={shape.readOnly || c.derived}
                     onCommit={(v) => commit(r.cell, { ...r.values, [c.factId]: v })} />
                 </td>
@@ -185,7 +208,8 @@ function RecordGrid({ schemaId, tableId }) {
             <tr key={d.id}>
               {cols.map(c => (
                 <td key={c.factId} style={td}>
-                  <Cell value={d.values[c.factId]} readOnly={c.derived}
+                  <Cell value={d.values[c.factId]} readOnly={c.derived} list={fkOptions[c.factId] ? listId(c.factId) : undefined}
+                    problem={d.error && c.pk ? d.error : null}
                     placeholder={c.pk ? 'key' : ''}
                     onCommit={(v) => commitDraft(d, c, v)} />
                 </td>
@@ -198,6 +222,9 @@ function RecordGrid({ schemaId, tableId }) {
           ))}
         </tbody>
       </table>
+      {drafts.filter(d => d.error).map(d => (
+        <div key={d.id} style={{ color: 'var(--danger)', margin: '2px 0 4px' }}>{d.error} The new row is kept until its key is changed.</div>
+      ))}
       {!shape.readOnly && <button style={{ ...addBtnStyle, marginTop: 4 }}
         onClick={() => { setError(null); setDrafts(ds => [...ds, { id: `draft-${Date.now()}-${ds.length}`, values: {} }]) }}>+ Add tuple</button>}
     </div>
@@ -209,30 +236,41 @@ const inputStyle = { width: '100%', minWidth: 60, boxSizing: 'border-box' }
 const readOnlyStyle = { color: 'var(--ink-2)', background: 'var(--bg-surface)' }
 
 // One cell: an input like a fact type population's, committed on Enter or
-// blur (Esc restores the stored value). NULL shows as a placeholder.
-function Cell({ value, problem, readOnly, placeholder, onCommit }) {
+// blur, or when the grid goes away while it is being edited (Esc restores the
+// stored value). A value the table refuses stays in the cell, marked with the
+// reason. NULL shows as a placeholder; a foreign key column offers the values
+// of the referenced rows.
+function Cell({ value, problem, readOnly, placeholder, list, onCommit }) {
   const stored = value == null ? '' : String(value)
   const [text, setText] = useState(stored)
+  const [refused, setRefused] = useState(null)
   const focused = useRef(false)
-  useEffect(() => { if (!focused.current) setText(stored) }, [stored])
+  const live = useRef({})
+  live.current = { text, stored, onCommit }
+  useEffect(() => { if (!focused.current) { setText(stored); setRefused(null) } }, [stored])
+  useEffect(() => () => {
+    const { text, stored, onCommit } = live.current
+    if (focused.current && text !== stored) onCommit(text)
+  }, [])
   const finish = () => {
     focused.current = false
-    if (text === stored) return
-    if (onCommit(text) === false) setText(stored)
+    if (text === stored) { setRefused(null); return }
+    setRefused(onCommit(text) ?? null)
   }
+  const issue = refused ?? problem
   return (
-    <input value={text} disabled={readOnly}
+    <input value={text} disabled={readOnly} list={readOnly ? undefined : list}
       placeholder={value == null && !readOnly ? (placeholder || 'NULL') : (value == null ? 'NULL' : undefined)}
-      title={problem ?? (readOnly ? 'Read-only' : undefined)}
-      className={problem ? 'cell-issue' : undefined}
+      title={issue ?? (readOnly ? 'Read-only' : undefined)}
+      className={issue ? 'cell-issue' : undefined}
       onFocus={() => { focused.current = true }}
       onChange={e => setText(e.target.value)}
       onKeyDown={e => {
         if (e.key === 'Enter') e.currentTarget.blur()
-        if (e.key === 'Escape') { setText(stored); focused.current = false; setTimeout(() => e.target.blur()) }
+        if (e.key === 'Escape') { focused.current = false; live.current.text = stored; setText(stored); setRefused(null); const t = e.currentTarget; setTimeout(() => t.blur()) }
         e.stopPropagation()
       }}
-      onBlur={finish}
-      style={{ ...inputStyle, ...(readOnly ? readOnlyStyle : null), ...(problem ? issueCellStyle : null) }} />
+      onBlur={() => { if (focused.current) finish() }}
+      style={{ ...inputStyle, ...(readOnly ? readOnlyStyle : null), ...(issue ? issueCellStyle : null) }} />
   )
 }
