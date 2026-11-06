@@ -1,10 +1,11 @@
 // The Population tab of a relational schema showing its tables (RM schemas
 // first-class, step 3): the records of one table as a grid, one row per
 // record and one column per table column (relational/records.js). Stored
-// tables are edited in place: click a cell, Enter or leaving it commits, Esc
-// cancels; the last row adds a record; ✕ deletes one. Views and derived
-// columns are computed and read-only. Cells that break NOT NULL or a foreign
-// key are marked.
+// tables are edited in place as in a fact type's population: every cell is an
+// input, Enter or leaving it commits, Esc cancels; "+ Add tuple" adds an empty
+// row that becomes a record once its key is filled in; × deletes one. Views
+// and derived columns are computed and read-only. Cells that break NOT NULL or
+// a foreign key are marked.
 
 import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { useOrmStore } from '../store/ormStore'
@@ -14,6 +15,7 @@ import { relationalModel } from '../relational/relationalModel'
 import { tableShape, tableRecords } from '../relational/records'
 import { TableIcon } from './RelationalBrowser'
 import { selectedTableId } from '../relational/rmText'
+import { removeBtnStyle, removeBtnHandlers, addBtnStyle, issueCellStyle } from './populationStyles'
 
 const PAGE = 200
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
@@ -52,6 +54,10 @@ function RecordGrid({ schemaId, tableId }) {
   const [filter, setFilter] = useState('')
   const [page, setPage] = useState(0)
   const [error, setError] = useState(null)
+  // Rows added with "+ Add tuple" that are not records yet (no key).
+  const [drafts, setDrafts] = useState([])
+  // Key values of a record just added from a draft: its page is shown.
+  const [added, setAdded] = useState(null)
 
   const { shape, records, fkChecks, typeOf } = useMemo(() => {
     const st = useOrmStore.getState()
@@ -78,6 +84,11 @@ function RecordGrid({ schemaId, tableId }) {
   const q = filter.trim().toLowerCase()
   const shown = q ? records.filter(r => cols.some(c => String(r.values[c.factId] ?? '').toLowerCase().includes(q))) : records
   const pages = Math.max(1, Math.ceil(shown.length / PAGE))
+  if (added) {
+    const i = shown.findIndex(r => shape.keyFacts.every((f, j) => String(r.values[f] ?? '') === added[j]))
+    if (i >= 0 && Math.floor(i / PAGE) !== page) setPage(Math.floor(i / PAGE))
+    setAdded(null)
+  }
   const pg = Math.min(page, pages - 1)
   const rows = shown.slice(pg * PAGE, pg * PAGE + PAGE)
 
@@ -99,13 +110,31 @@ function RecordGrid({ schemaId, tableId }) {
     setError(res.error ?? null)
     return !res.error
   }
+  // A draft row is kept until its key columns have values, then it is added
+  // as a record (the other columns go with it, empty ones as NULL).
+  const commitDraft = (d, c, v) => {
+    const values = { ...d.values, [c.factId]: v }
+    const keyed = cols.filter(k => k.pk).every(k => String(values[k.factId] ?? '').trim() !== '')
+    if (!keyed) {
+      setDrafts(ds => ds.map(x => x.id === d.id ? { ...x, values } : x))
+      return true
+    }
+    const res = useOrmStore.getState().setTableRecord(schemaId, tableId, null, values)
+    setError(res.error ?? null)
+    setDrafts(ds => ds.map(x => x.id === d.id ? { ...x, values } : x))
+    if (!res.error) {
+      setDrafts(ds => ds.filter(x => x.id !== d.id))
+      setAdded(shape.keyFacts.map(f => String(values[f] ?? '').trim()))
+    }
+    return true
+  }
   const remove = (cell) => {
     const res = useOrmStore.getState().deleteTableRecord(schemaId, tableId, cell)
     setError(res.error ?? null)
   }
 
   const th = { padding: '3px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', verticalAlign: 'top',
-    position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 1 }
+    position: 'sticky', top: -12, background: 'var(--bg-surface)', zIndex: 1 } // -12: the panel's padding
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, color: 'var(--ink-muted)' }}>
@@ -138,76 +167,72 @@ function RecordGrid({ schemaId, tableId }) {
         </thead>
         <tbody>
           {rows.map(r => (
-            <tr key={r.id} className="rg-row">
+            <tr key={r.id}>
               {cols.map(c => (
-                <Cell key={c.factId} value={r.values[c.factId]} problem={problem(r, c)}
-                  readOnly={shape.readOnly || c.derived}
-                  onCommit={(v) => commit(r.cell, { ...r.values, [c.factId]: v })} />
+                <td key={c.factId} style={td}>
+                  <Cell value={r.values[c.factId]} problem={problem(r, c)}
+                    readOnly={shape.readOnly || c.derived}
+                    onCommit={(v) => commit(r.cell, { ...r.values, [c.factId]: v })} />
+                </td>
               ))}
-              <td style={{ padding: '0 4px', borderBottom: '1px solid var(--border-soft)' }}>
-                {!shape.readOnly && <button className="rg-delete" title="Delete this row" onClick={() => remove(r.cell)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-3)', fontSize: 11 }}>✕</button>}
+              <td style={td}>
+                {!shape.readOnly && <button onClick={() => remove(r.cell)} {...removeBtnHandlers}
+                  style={removeBtnStyle} title="Remove record" aria-label="Remove record">×</button>}
               </td>
             </tr>
           ))}
-          {!shape.readOnly && <NewRow cols={cols} onAdd={(values) => commit(null, values)} />}
+          {drafts.map(d => (
+            <tr key={d.id}>
+              {cols.map(c => (
+                <td key={c.factId} style={td}>
+                  <Cell value={d.values[c.factId]} readOnly={c.derived}
+                    placeholder={c.pk ? 'key' : ''}
+                    onCommit={(v) => commitDraft(d, c, v)} />
+                </td>
+              ))}
+              <td style={td}>
+                <button onClick={() => setDrafts(ds => ds.filter(x => x.id !== d.id))} {...removeBtnHandlers}
+                  style={removeBtnStyle} title="Remove tuple" aria-label="Remove tuple">×</button>
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
+      {!shape.readOnly && <button style={{ ...addBtnStyle, marginTop: 4 }}
+        onClick={() => { setError(null); setDrafts(ds => [...ds, { id: `draft-${Date.now()}-${ds.length}`, values: {} }]) }}>+ Add tuple</button>}
     </div>
   )
 }
 
-const td = { padding: '2px 8px', borderBottom: '1px solid var(--border-soft)', whiteSpace: 'nowrap', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis' }
+const td = { padding: '0 4px 4px 0', verticalAlign: 'middle' }
+const inputStyle = { width: '100%', minWidth: 60, boxSizing: 'border-box' }
+const readOnlyStyle = { color: 'var(--ink-2)', background: 'var(--bg-surface)' }
 
-function Cell({ value, problem, readOnly, onCommit }) {
-  const [edit, setEdit] = useState(null)
-  const done = useRef(false)
-  if (edit != null) {
-    const finish = (ok) => {
-      if (done.current) return
-      done.current = true
-      const keep = ok && edit !== (value ?? '') ? onCommit(edit) : true
-      if (keep !== false || !ok) setEdit(null)
-      else done.current = false
-    }
-    return (
-      <td style={{ ...td, padding: 0 }}>
-        <input className="rg-input" autoFocus value={edit} onChange={e => setEdit(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); e.stopPropagation() }}
-          onBlur={() => finish(true)}
-          style={{ fontSize: 11, padding: '2px 7px', width: '100%', minWidth: 80, border: '1px solid var(--accent)', background: 'var(--bg-surface)', color: 'var(--ink)' }} />
-      </td>
-    )
+// One cell: an input like a fact type population's, committed on Enter or
+// blur (Esc restores the stored value). NULL shows as a placeholder.
+function Cell({ value, problem, readOnly, placeholder, onCommit }) {
+  const stored = value == null ? '' : String(value)
+  const [text, setText] = useState(stored)
+  const focused = useRef(false)
+  useEffect(() => { if (!focused.current) setText(stored) }, [stored])
+  const finish = () => {
+    focused.current = false
+    if (text === stored) return
+    if (onCommit(text) === false) setText(stored)
   }
   return (
-    <td className="rg-cell" title={problem ?? (readOnly ? 'Read-only' : 'Click to edit')}
-      onClick={() => { if (!readOnly) { done.current = false; setEdit(value ?? '') } }}
-      style={{ ...td, cursor: readOnly ? 'default' : 'text', color: readOnly ? 'var(--ink-3)' : undefined,
-        background: problem ? 'rgba(192,57,43,0.10)' : undefined }}>
-      {value == null ? <span style={{ color: 'var(--ink-3)', fontStyle: 'italic' }}>NULL</span> : String(value)}
-    </td>
-  )
-}
-
-function NewRow({ cols, onAdd }) {
-  const [vals, setVals] = useState({})
-  const add = () => { if (onAdd(vals)) setVals({}) }
-  return (
-    <tr>
-      {cols.map(c => (
-        <td key={c.factId} style={{ ...td, padding: 0 }}>
-          {c.derived ? null : (
-            <input className="rg-new" value={vals[c.factId] ?? ''} placeholder={c.pk ? `${c.name} (key)` : c.name}
-              onChange={e => setVals(v => ({ ...v, [c.factId]: e.target.value }))}
-              onKeyDown={e => { if (e.key === 'Enter') add(); e.stopPropagation() }}
-              style={{ fontSize: 11, padding: '2px 7px', width: '100%', minWidth: 80, border: '1px dashed var(--border)', background: 'transparent', color: 'var(--ink)' }} />
-          )}
-        </td>
-      ))}
-      <td style={{ padding: '0 4px' }}>
-        <button className="rg-add" title="Add this row (Enter)" onClick={add}
-          style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 3, cursor: 'pointer', color: 'var(--ink-muted)', fontSize: 11, padding: '0 5px' }}>+</button>
-      </td>
-    </tr>
+    <input value={text} disabled={readOnly}
+      placeholder={value == null && !readOnly ? (placeholder || 'NULL') : (value == null ? 'NULL' : undefined)}
+      title={problem ?? (readOnly ? 'Read-only' : undefined)}
+      className={problem ? 'cell-issue' : undefined}
+      onFocus={() => { focused.current = true }}
+      onChange={e => setText(e.target.value)}
+      onKeyDown={e => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        if (e.key === 'Escape') { setText(stored); focused.current = false; setTimeout(() => e.target.blur()) }
+        e.stopPropagation()
+      }}
+      onBlur={finish}
+      style={{ ...inputStyle, ...(readOnly ? readOnlyStyle : null), ...(problem ? issueCellStyle : null) }} />
   )
 }
