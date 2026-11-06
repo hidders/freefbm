@@ -104,7 +104,7 @@ function RecordGrid({ schemaId, tableId }) {
     setError(res.error ?? null)
   }
 
-  const th = { padding: '3px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
+  const th = { padding: '3px 8px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', verticalAlign: 'top',
     position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 1 }
   return (
     <div>
@@ -126,10 +126,11 @@ function RecordGrid({ schemaId, tableId }) {
           <tr>
             {cols.map(c => (
               <th key={c.factId} style={th} title={c.derived ? 'Derived: computed by a rule' : undefined}>
-                {c.name}
-                <span style={{ marginLeft: 6, fontWeight: 400, color: 'var(--ink-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}>
-                  {[typeOf(c), c.pk ? 'PK' : '', fkChecks.some(f => f.from.includes(c.factId)) ? 'FK' : '', c.notNull && !c.pk ? 'NOT NULL' : '', c.derived ? 'derived' : ''].filter(Boolean).join(' ')}
-                </span>
+                <div>{c.name}</div>
+                <div style={{ fontWeight: 400, color: 'var(--ink-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}>{typeOf(c) || '\u00a0'}</div>
+                <div style={{ fontWeight: 400, color: 'var(--ink-3)', fontFamily: 'var(--font-mono)', fontSize: 9 }}>
+                  {[c.pk ? 'PK' : '', fkChecks.some(f => f.from.includes(c.factId)) ? 'FK' : '', c.notNull && !c.pk ? 'NOT NULL' : '', c.derived ? 'derived' : ''].filter(Boolean).join(' ') || '\u00a0'}
+                </div>
               </th>
             ))}
             <th style={{ ...th, width: 20 }} />
