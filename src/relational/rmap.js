@@ -19,6 +19,8 @@
 //     are kept). A subtype's table has its
 //     supertype's key as primary key and foreign key (as guessOrm.js reads
 //     it back); facts of the subtype are absorbed into it.
+//   - Inclusive-or, exclusive-or, exclusion, equality and subset constraints
+//     over roles that all became columns of one table become CHECKs of it.
 //   - Surrogate keys (decision Q4): never, for composite identifiers only, or
 //     always, overridable per entity type. A surrogate is an integer column
 //     generated as identity; the natural key stays as UNIQUE NOT NULL, and
@@ -339,6 +341,18 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
     if (!t.pk.length) { t.pk = t.columns.map(c => c.name); warn(`${factLabel(f, typeName)} has no uniqueness constraint; its table is keyed by all its columns`) }
     tables.push(t)
   }
+  // External constraints over roles that all became columns of one table:
+  // CHECKs of that table.
+  for (const c of ctx.constraints) {
+    const ck = constraintCheck(c, tables)
+    if (!ck) continue
+    const { t, cond, cols, names } = ck
+    let name = snake(c.name) || `${t.name}_${names.join('_')}_check`
+    name = name.slice(0, 63)
+    for (let i = 2; t.checks.some(x => x.name === name); i++) name = `${name.slice(0, 60)}_${i}`
+    t.checks.push({ name, cond, constraintId: c.id })
+    note(`${CHECK_KINDS[c.constraintType]} over ${cols.join(', ')} becomes a CHECK of ${t.name}`)
+  }
   // Foreign keys resolved to their table and columns.
   for (const t of tables) for (const fk of t.fks) {
     const e = entities.get(fk.refTypeId)
@@ -350,6 +364,55 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
   const nSur = [...entities.values()].filter(e => e.root === e.typeId && e.surrogate).length
   if (nSur) note(`${nSur} surrogate key${nSur === 1 ? '' : 's'} (generated as identity); natural keys stay UNIQUE`)
   return { tables, entities, keyOf, refCols, ctx, els, log, skipped }
+}
+
+const CHECK_KINDS = { inclusiveOr: 'An inclusive-or', exclusiveOr: 'An exclusive-or', exclusion: 'An exclusion', equality: 'An equality', subset: 'A subset constraint' }
+
+// The CHECK condition of an external constraint whose sequences are single
+// roles of fact types absorbed into one table, each on the side of the
+// table's own entity type: { t, cond, cols } or null. Each role is played by
+// a row when its columns are all filled in (a unary: when its column is
+// true), a condition that is never NULL, so they combine as in two-valued
+// logic: inclusive-or p₁ OR p₂ …, exclusive-or that and ¬pᵢ OR ¬pⱼ for each
+// pair, exclusion ¬pᵢ OR ¬pⱼ, equality (p₁ AND p₂) OR (¬p₁ AND ¬p₂), subset
+// ¬p₁ OR p₂, where ¬p of a column is c IS NULL.
+function constraintCheck(c, tables) {
+  if (!CHECK_KINDS[c.constraintType] || c.deontic || c.frequency) return null
+  const seqs = c.sequences ?? []
+  if (seqs.length < 2 || seqs.some(s => s.length !== 1 || s[0]?.kind !== 'role')) return null
+  if ((c.subtypeIds ?? []).length) return null
+  let table = null
+  const parts = []
+  for (const [m] of seqs) {
+    let found = null
+    for (const t of tables) for (const p of t.parts ?? []) if (p.fact.id === m.factId && p.own === m.roleIndex) found = { t, p }
+    if (!found || (table && found.t !== table)) return null
+    table = found.t
+    parts.push(found.p)
+  }
+  const q = quoteIdent
+  // Each role as a condition that holds when the row plays it, and one that
+  // holds when it does not, both written so they can stand next to AND.
+  const plays = parts.map(p => {
+    if (p.other == null) { const c = q(p.cols[0].name); return { yes: `${c} IS NOT NULL AND ${c}`, no: `(${c} IS NULL OR NOT ${c})` } }
+    if (p.cols.length === 1) { const c = q(p.cols[0].name); return { yes: `${c} IS NOT NULL`, no: `${c} IS NULL` } }
+    return { yes: p.cols.map(x => `${q(x.name)} IS NOT NULL`).join(' AND '), no: `(${p.cols.map(x => `${q(x.name)} IS NULL`).join(' OR ')})` }
+  })
+  const par = (x) => `(${x})`
+  const ors = (xs) => xs.join(' OR ')
+  const ands = (xs) => xs.length === 1 ? xs[0] : xs.map(x => (/ OR /.test(x) && !/^\(.*\)$/.test(x) ? par(x) : x)).join(' AND ')
+  const pairs = []
+  for (let i = 0; i < plays.length; i++) for (let j = i + 1; j < plays.length; j++) pairs.push(ors([plays[i].no, plays[j].no]))
+  const yesOr = ors(plays.map(x => (/ AND /.test(x.yes) ? par(x.yes) : x.yes)))
+  let cond
+  const type = c.constraintType === 'inclusiveOr' && c.exclusive ? 'exclusiveOr' : c.constraintType
+  if (type === 'inclusiveOr') cond = yesOr
+  else if (type === 'exclusiveOr') cond = ands([yesOr, ...pairs])
+  else if (type === 'exclusion') cond = ands(pairs)
+  else if (type === 'equality') cond = ands(plays.slice(1).map(x => ors([par(ands([plays[0].yes, x.yes])), par(ands([plays[0].no, x.no]))])))
+  else if (type === 'subset') { if (plays.length !== 2) return null; cond = ors([plays[0].no, / AND /.test(plays[1].yes) ? par(plays[1].yes) : plays[1].yes]) }
+  if (!cond) return null
+  return { t: table, cond, cols: parts.flatMap(p => p.cols.map(x => x.name)), names: parts.map(p => p.cols[0].name) }
 }
 
 function factLabel(f, typeName) {
@@ -375,6 +438,7 @@ export function planDdl(plan, schemaName = 'ORM2') {
     })
     if (t.pk.length) items.push(`  PRIMARY KEY (${t.pk.map(q).join(', ')})`)
     for (const u of t.uniques) items.push(`  UNIQUE (${u.map(q).join(', ')})`)
+    for (const ck of t.checks ?? []) items.push(`  CONSTRAINT ${q(ck.name)} CHECK (${ck.cond})`)
     lines.push(`CREATE TABLE ${q(t.name)} (`, items.join(',\n'), ');', '')
     for (const fk of t.fks) fkLines.push(`ALTER TABLE ${q(t.name)} ADD FOREIGN KEY (${fk.cols.map(q).join(', ')}) REFERENCES ${q(fk.refTable)} (${fk.refCols.map(q).join(', ')});`)
   }

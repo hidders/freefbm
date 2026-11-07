@@ -228,7 +228,14 @@ export function translateEntry(state, mapping, entry, side) {
         default: return fail(`it uses ${g.t}`)
       }
     }
-    const rule = simplify(tr(f))
+    const unique = new Set()
+    for (const fy of ctxY.facts) {
+      if (fy.roles?.length !== 2) continue
+      for (const u of [...(fy.uniqueness ?? []).map(u => u.roles ?? []), ...(fy.preferredUniqueness ?? [])])
+        if (u?.length === 1) unique.add(`${fy.id}:${u[0]}`)
+    }
+    const mandatory = new Set(ctxY.facts.flatMap(fy => (fy.roles ?? []).map((r, i) => (r.mandatory ? `${fy.id}:${i}` : null)).filter(Boolean)))
+    const rule = simplify(tr(f), { unique, mandatory })
     return { rule, deontic }
   } catch (e) {
     if (e instanceof TranslateError) return { error: e.message }
@@ -239,7 +246,12 @@ export function translateEntry(state, mapping, entry, side) {
 // ── Simplification ───────────────────────────────────────────────────────────
 
 // ∀y (… ∧ x ≈ y ∧ … → φ) and ∃y (… ∧ x ≈ y ∧ …) with x, y of one type: y is x.
-export function simplify(rule) {
+// With `unique` (the binary fact type roles "factId:i" that are unique on
+// their own), ∃z (F(z, v) ∧ …) where F(x, v) already holds there, z and x of
+// one type and F's role of v unique: z is x (a row of a table found again
+// through its key, as a translation does when a column of the row is read).
+// `mandatory` ("factId:i") lets a guard F(z, v) on z's mandatory role go.
+export function simplify(rule, { unique = null, mandatory = null } = {}) {
   const subst = (n, from, to) => JSON.parse(JSON.stringify(n).replaceAll(`"id":"${from}"`, `"id":"${to}"`)
     .replaceAll(`"arg":"${from}"`, `"arg":"${to}"`).replace(new RegExp(`"${from}"(?=[,\\]])`, 'g'), `"${to}"`))
   const typeOf = new Map()
@@ -274,8 +286,77 @@ export function simplify(rule) {
     if (m.t === 'and') m = andOf(m.args)
     return m
   }
+  // ∃z over a conjunction with F(z, v), where the context knows F(x, v).
+  const conjuncts = (n) => (n?.t === 'and' ? n.args : n ? [n] : [])
+  const keyHit = (known, z, body) => {
+    for (const a of conjuncts(body)) {
+      if (a.t !== 'fact' || a.args?.length !== 2) continue
+      const zi = a.args.indexOf(z)
+      if (zi < 0 || a.args[1 - zi] === z || !unique.has(`${a.factId}:${1 - zi}`)) continue
+      const v = a.args[1 - zi]
+      const k = known.find(b => b.t === 'fact' && b.factId === a.factId && b.args[1 - zi] === v && b.args[zi] !== z && typeOf.get(b.args[zi]) === typeOf.get(z))
+      if (k) return { other: k.args[zi], atom: a }
+    }
+    return null
+  }
+  const merge = (n, known) => {
+    if (!n || typeof n !== 'object' || Array.isArray(n)) return n
+    if (n.t === 'and') {
+      const all = [...known, ...n.args]
+      return andOf(n.args.map(a => merge(a, all.filter(b => b !== a))))
+    }
+    if (n.t === 'implies') {
+      const left = merge(n.left, known)
+      return { ...n, left, right: merge(n.right, [...known, ...conjuncts(left)]) }
+    }
+    if (n.t === 'exists') {
+      const hit = keyHit(known, n.v.id, n.body)
+      if (hit) return merge(subst(drop(n.body, hit.atom), n.v.id, hit.other), known)
+      return { ...n, body: merge(n.body, known) }
+    }
+    if (n.t === 'forall') {
+      // ∀v (∃z A ∧ B → R): when R reads a row again that A finds, z is
+      // taken out of the antecedent, ∀v ∀z (A ∧ B → R), so R can use it;
+      // and ∀v ∀z (L → R) with v only in L is ∀z (∃v L → R).
+      const b = n.body
+      const ex = b?.t === 'implies' ? conjuncts(b.left).filter(a => a.t === 'exists') : []
+      if (ex.length) {
+        let left = b.left, vars = []
+        for (let k = 0; k < 4; k++) {
+          const parts = conjuncts(left)
+          const e = parts.find(a => a.t === 'exists')
+          if (!e) break
+          vars.push(e.v)
+          left = andOf(parts.flatMap(a => (a === e ? conjuncts(e.body) : [a])))
+        }
+        const right = merge(b.right, [...known, ...conjuncts(left)])
+        const used = (x, id) => JSON.stringify(x).includes(`"${id}"`)
+        if (vars.some(v => used(right, v.id) && !used(b.right, v.id))) {
+          const inner = forallAll(vars, { ...b, left, right })
+          if (!used(right, n.v.id)) {
+            // ∀v ∀z̄ (L → R), v not in R: ∀z̄ (∃v L → R), and ∀z̄ R when L
+            // is F(z, v) with z's role mandatory (the row's own key).
+            const zi = left.t === 'fact' && left.args?.length === 2 ? left.args.indexOf(left.args.find(a => a !== n.v.id)) : -1
+            if (zi >= 0 && left.args[1 - zi] === n.v.id && mandatory?.has(`${left.factId}:${zi}`) && vars.some(v => v.id === left.args[zi]))
+              return forallAll(vars, right)
+            return forallAll(vars, { ...b, left: { t: 'exists', v: n.v, body: left }, right })
+          }
+          return { ...n, body: inner }
+        }
+      }
+      return { ...n, body: merge(n.body, known) }
+    }
+    // Other connectives (∨, ¬, counts, …): the context still holds inside.
+    if (n.t === 'or') return { ...n, args: n.args.map(a => merge(a, known)) }
+    if (n.t === 'not') return { ...n, arg: merge(n.arg, known) }
+    return n
+  }
   let prev, cur = rule
-  for (let i = 0; i < 6 && JSON.stringify(prev) !== JSON.stringify(cur); i++) { prev = cur; cur = walk(cur) }
+  for (let i = 0; i < 6 && JSON.stringify(prev) !== JSON.stringify(cur); i++) {
+    prev = cur
+    cur = walk(cur)
+    if (unique) cur = walk(merge(cur, []))
+  }
   return cur
 }
 
