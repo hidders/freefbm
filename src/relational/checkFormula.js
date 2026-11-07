@@ -71,8 +71,12 @@ class Parser {
     if (this.eatWord('is')) {
       const neg = this.eatWord('not')
       if (this.eatWord('null')) return { k: 'isnull', e: l, neg }
-      if (this.eatWord('true')) return wrapNeg(neg, { k: 'cmp', op: '=', l, r: { k: 'lit', kind: 'bool', v: 'true' } })
-      if (this.eatWord('false')) return wrapNeg(neg, { k: 'cmp', op: '=', l, r: { k: 'lit', kind: 'bool', v: 'false' } })
+      // IS TRUE / IS FALSE are never unknown: c IS TRUE is NOT (c IS NULL
+      // OR NOT c = true), so a NULL does not pass (c = true would let it).
+      const truth = (v) => wrapNeg(neg, { k: 'not', arg: { k: 'or', args: [{ k: 'isnull', e: l, neg: false },
+        { k: 'not', arg: { k: 'cmp', op: '=', l, r: { k: 'lit', kind: 'bool', v } } }] } })
+      if (this.eatWord('true')) return truth('true')
+      if (this.eatWord('false')) return truth('false')
       no('IS DISTINCT FROM')
     }
     const neg = this.isWord('not') && ['in', 'between', 'like', 'ilike'].some(w => this.isWord(w, 1)) ? (this.next(), true) : false
