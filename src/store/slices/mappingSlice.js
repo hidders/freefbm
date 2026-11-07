@@ -432,8 +432,10 @@ export const createMappingSlice = (set, get) => {
     // Several new diagrams of a mapping at once, one per group of rules
     // ([{ name, ruleIds }], from the Suggest diagrams dialog), each drawing
     // its rules with their elements placed close together. One undo step;
-    // the first new diagram becomes active. Returns the new diagram ids.
-    newMappingDiagrams(mappingId, groups) {
+    // the first new diagram becomes active. layout(state, diagramId) lays
+    // each out afresh (layout/mappingLayout.js, passed in as it reads
+    // component geometry). Returns the new diagram ids.
+    newMappingDiagrams(mappingId, groups, { layout = null } = {}) {
       const s0 = get()
       const m = s0.mappings?.find(x => x.id === mappingId) ?? s0.views?.find(x => x.id === mappingId)
       if (!m) return []
@@ -453,6 +455,7 @@ export const createMappingSlice = (set, get) => {
           // The rules in mapping order, so a table's rules come together.
           const order = m.rules.map(r => r.id).filter(id => ruleIds.includes(id))
           get().showMappingRules(d.id, order)
+          if (layout) { const res = layout(get(), d.id); if (res) get().applyDiagramLayout(d.id, res) }
           ids.push(d.id)
         }
         if (ids.length) get().setActiveDiagram(ids[0])

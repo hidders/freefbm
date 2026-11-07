@@ -211,13 +211,16 @@ function partition(info, S1, S2, cap, rnd, jitter = 1) {
 function groupName(state, mapping, info, g) {
   const types = new Map(state.objectTypes.map(o => [o.id, o]))
   const count = new Map()
+  // The names of an ORM2 side read better than table names; else the target's.
+  const relational = (sid) => state.schemas?.find(x => x.id === sid)?.profile === 'relational'
+  const first = relational(mapping.targetSchemaId) && !relational(mapping.sourceSchemaId) ? 'source' : 'target'
   for (const i of g) {
     for (const side of ['target', 'source']) {
       for (const id of new Set(info[i][side])) {
         const t = types.get(id)
         if (t?.kind !== 'entity') continue
-        // The target side names first; the source side counts a little less.
-        count.set(id, (count.get(id) ?? 0) + (side === 'target' ? 1 : 0.9))
+        // The preferred side names first; the other counts a little less.
+        count.set(id, (count.get(id) ?? 0) + (side === first ? 1 : 0.9))
       }
     }
   }

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { clusterRules, shapesOf, DEFAULT_CAP } from '../mapping/ruleClusters.js'
+import { layoutMappingDiagram } from '../layout/mappingLayout.js'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 const CAP_KEY = 'freefbm.suggestDiagrams.cap'
@@ -83,7 +84,7 @@ function Dialog({ mappingId }) {
   const chosen = groups.filter(g => g.on && g.ruleIds.length)
   const go = () => {
     close()
-    useOrmStore.getState().newMappingDiagrams(mappingId, chosen.map(g => ({ name: g.name, ruleIds: g.ruleIds })))
+    useOrmStore.getState().newMappingDiagrams(mappingId, chosen.map(g => ({ name: g.name, ruleIds: g.ruleIds })), { layout: layoutMappingDiagram })
   }
   const ruleCount = groups.reduce((t, g) => t + g.ruleIds.length, 0)
 
