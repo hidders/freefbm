@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { useOrmStore } from '../store/ormStore'
+import { layoutOrmDiagram } from '../layout/ormLayout'
+import { plainDiagramsOf } from '../mapping/carryDiagrams.js'
 import { analyseTables } from '../relational/guessOrm.js'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
@@ -27,9 +29,12 @@ function Dialog({ relSchemaId }) {
   const plan = useMemo(() => analyseTables(useOrmStore.getState(), relSchemaId), [relSchemaId])
   const [choice, setChoice] = useState(() => Object.fromEntries(plan.filter(p => p.surrogate).map(p => [p.table.id, p.defaultSurrogate])))
   const surrogates = plan.filter(p => p.surrogate)
+  const diagramNames = useOrmStore(s => plainDiagramsOf(s, relSchemaId).map(d => d.name).join('\u0000'))
+  const nDiagrams = diagramNames ? diagramNames.split('\u0000').length : 0
+  const [keepDiagrams, setKeepDiagrams] = useState(true)
   const go = () => {
     close()
-    useOrmStore.getState().guessOrmFromRelational(relSchemaId, { surrogates: choice })
+    useOrmStore.getState().guessOrmFromRelational(relSchemaId, { surrogates: choice, diagrams: keepDiagrams, layout: layoutOrmDiagram })
   }
   const counts = plan.reduce((m, p) => ({ ...m, [p.kind]: (m[p.kind] ?? 0) + 1 }), {})
 
@@ -97,7 +102,14 @@ function Dialog({ relSchemaId }) {
             </tbody>
           </table>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 14px', borderTop: '1px solid var(--border-soft)' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, padding: '10px 14px', borderTop: '1px solid var(--border-soft)' }}>
+          {nDiagrams > 1 && (
+            <label title={`One diagram in the new schema per diagram of ${schema?.name ?? 'this schema'} (${diagramNames.split('\u0000').join(', ')}), with what the mapping makes of its elements, laid out afresh`}
+              style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--ink-2)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={keepDiagrams} onChange={e => setKeepDiagrams(e.target.checked)} />
+              Keep the {nDiagrams} diagrams
+            </label>
+          )}
           <button onClick={close} style={btn(false)}>Cancel</button>
           <button onClick={go} autoFocus style={btn(true)}>Guess schema</button>
         </div>
