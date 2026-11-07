@@ -28,7 +28,7 @@ import { singular } from '../relational/guessOrm.js'
 
 const GAMMA1 = 0.2
 const GAMMA2 = 1
-const MERGE_GAMMA = +(globalThis.process?.env?.MG ?? 0.5)
+const MERGE_GAMMA = 0.5
 export const DEFAULT_CAP = 50
 const UNSURE = 0.5
 const SMALL_RULES = 3
