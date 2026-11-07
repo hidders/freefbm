@@ -76,11 +76,26 @@ export const useOrmStore = create((rawSet, get) => {
 export function useOrmStoreIgnoring(...keys) {
   return useStoreWithEqualityFn(useOrmStore, selectAll, (a, b) => {
     if (a === b) return true
-    for (const k in b) if (a[k] !== b[k] && !keys.includes(k)) return false
+    for (const k of changedKeys(a, b)) if (!keys.includes(k)) return false
     return true
   })
 }
 const selectAll = s => s
+
+// The keys whose values differ between two states, worked out once per
+// change and shared by every component that compares them (each element on
+// the canvas does). Actions (functions, most of the keys) never change.
+let lastA = null, lastB = null, lastChanged = []
+const dataKeysOf = new WeakMap()
+function changedKeys(a, b) {
+  if (a === lastA && b === lastB) return lastChanged
+  let dk = dataKeysOf.get(b)
+  if (!dk) { dk = Object.keys(b).filter(k => typeof b[k] !== 'function'); dataKeysOf.set(b, dk) }
+  const out = []
+  for (const k of dk) if (a[k] !== b[k]) out.push(k)
+  lastA = a; lastB = b; lastChanged = out
+  return out
+}
 
 // useOrmStoreIgnoring('pan', 'zoom') seen from the active schema: the element
 // collections and diagrams hold only that schema's (storeHelpers scopeToSchema).
