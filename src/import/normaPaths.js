@@ -9,8 +9,10 @@
 // optionally negated), and each subpath continues from where its parent
 // ended. A negated join negates the fact type it enters together with the
 // rest of its path (NORMA's verbaliser scopes the negation the same way).
-// Object unifiers say that several pathed roles stand for one object, and a
-// pathed role (or the root) can carry a value condition.
+// Object unifiers (and CorrelatedWith, their older form) say that several
+// pathed roles stand for one object, and a pathed role (or the root) can
+// carry a value condition. Only a join is negated: NORMA's verbaliser reads
+// IsNegated on the entry role of a fact type, so it is ignored elsewhere.
 //
 // The translation gives each object (pathed roles joined or unified are one
 // object) a variable, each fact type entry a fact atom over all its roles
@@ -19,15 +21,27 @@
 // value. A variable is bound by ∃ at the innermost negation or branch that
 // holds all its uses; the projected objects are the rule's free variables.
 //
+// Calculated values apply a function of the model to path nodes, constants
+// and other calculated values. NORMA has no function library: each model
+// defines its functions by name and an optional operator symbol, so a
+// function is read by its symbol or name (=, <, +, abs, …; FUNCTIONS below).
+// A boolean one listed under a lead path's Conditions is a condition of the
+// path, placed where all the objects it reads are bound (NORMA's verbaliser
+// adds a condition as soon as its variables are known); a projected one is
+// the term of a computed role.
+//
 // Not translated (reported as the reason): outer joins, negated roots,
-// calculated values and constants, and paths that walk into the implicit
-// boolean role of an old-style unary through its value.
+// functions FreeFBM cannot read, aggregates, subqueries, shared paths, and
+// paths that walk into the implicit boolean role of an old-style unary
+// through its value.
 
 import { SUBJECT } from '../logic/derivationRule.js'
+import { OPS, PREDS } from '../logic/dataOperators.js'
 
 const kids = (el, name) => el ? [...el.children].filter(c => !name || c.localName === name) : []
 const kid  = (el, name) => kids(el, name)[0] ?? null
 const attr = (el, name) => el?.getAttribute(name) ?? null
+const textOf = (el) => (el?.textContent ?? '').trim()
 
 // A link fact type F_il_k: F and k.
 const baseFact = (m) => (m.link ? m.factId.split('_il_')[0] : m.factId)
@@ -36,6 +50,40 @@ const linkIndex = (m) => Number(m.factId.split('_il_')[1])
 class Untranslatable extends Error {}
 const fail = (why) => { throw new Untranslatable(why) }
 
+// NORMA functions by operator symbol or name (lower case, without spaces,
+// hyphens and underscores): comparisons, connectives, data operators and data
+// predicates of src/logic/dataOperators.js.
+const FUNCTIONS = (() => {
+  const m = new Map()
+  const put = (kind, op, ...keys) => keys.forEach(k => m.set(k, { kind, op }))
+  put('cmp', '≈', '=', '==', 'eq', 'equal', 'equals', 'isequalto', 'equalto')
+  put('cmp', '≉', '<>', '!=', '≠', 'ne', 'neq', 'notequal', 'notequals', 'isnotequalto', 'notequalto')
+  put('cmp', '<', '<', 'lt', 'lessthan', 'islessthan')
+  put('cmp', '≤', '<=', '≤', '=<', 'le', 'lte', 'lessthanorequal', 'lessthanorequalto', 'islessthanorequalto', 'atmost')
+  put('cmp', '>', '>', 'gt', 'greaterthan', 'isgreaterthan')
+  put('cmp', '≥', '>=', '≥', '=>', 'ge', 'gte', 'greaterthanorequal', 'greaterthanorequalto', 'isgreaterthanorequalto', 'atleast')
+  put('and', null, 'and', '∧', '&&', '&')
+  put('or', null, 'or', '∨', '||', '|')
+  put('not', null, 'not', '¬', '!')
+  put('op', 'add', '+', 'add', 'plus')
+  put('op', 'sub', '-', '−', 'subtract', 'minus', 'sub')
+  put('op', 'mul', '*', '×', '·', 'multiply', 'times', 'mul')
+  put('op', 'div', '/', '÷', 'divide', 'div')
+  put('op', 'mod', '%', 'mod', 'modulo', 'remainder')
+  put('op', 'concat', 'concat', 'concatenate')
+  for (const op of Object.keys(OPS)) if (!m.has(op.toLowerCase())) put('op', op, op.toLowerCase())
+  for (const op of Object.keys(PREDS)) if (!m.has(op.toLowerCase())) put('pred', op, op.toLowerCase())
+  return m
+})()
+const fnKey = (s) => String(s ?? '').trim().toLowerCase().replace(/[\s_-]+/g, '')
+const fnLookup = (f) => FUNCTIONS.get(String(f.symbol ?? '').trim()) ?? FUNCTIONS.get(fnKey(f.name)) ?? FUNCTIONS.get(String(f.name ?? '').trim())
+
+// All descendants of el called name.
+const descendants = (el, name, out = []) => {
+  for (const c of el ? [...el.children] : []) { if (c.localName === name) out.push(c); descendants(c, name, out) }
+  return out
+}
+
 // ctx: {
 //   roleRef(normaRoleId)  → { kind: 'role', factId, roleIndex, link? } | { kind: 'subtype', subtypeId, side }
 //                           | { kind: 'booleanRole', factId } | undefined
@@ -43,12 +91,13 @@ const fail = (why) => { throw new Untranslatable(why) }
 //   factById, stById, typeOf(normaTypeId) → FreeFBM type id
 //   up(typeId)            → the set of the type and all its supertypes
 //   rangesOf(valueConstraintEl) → FreeFBM range specs
+//   functionOf(normaFunctionId) → { name, symbol, isBoolean, params: [{ id, bag }] } | undefined
 // }
 export function makePathTranslator(ctx) {
   // One path: nodes are NORMA ids of path roots and pathed roles, and fresh
   // ids for roles a path does not visit. The paths of one rule share
   // `counter`, so their variables get distinct ids.
-  function session(counter = { n: 0 }) {
+  function session(counter = { n: 0 }, calcs = new Map()) {
     const parent = new Map()
     const nodeTypes = new Map()   // node → [typeId]
     let fresh = 0
@@ -75,8 +124,19 @@ export function makePathTranslator(ctx) {
 
     // A path's own roles, then its split, from context node `at`. Returns a
     // list of IR items; negation and branches are { k: 'scope', item }.
+    // A subpath with a root object type of its own starts again from that
+    // root, a new object (joined to the rest only through unifiers).
     function walkPath(pathEl, at) {
       const roles = kids(kid(pathEl, 'PathedRoles'), 'PathedRole')
+      const root = pathEl.localName === 'SubPath' ? kid(pathEl, 'RootObjectType') : null
+      if (root) {
+        if (attr(root, 'IsNegated') === 'true') fail('its root object type is negated')
+        if (!attr(root, 'id')) fail('a subpath root has no id')
+        at = add(attr(root, 'id'), ctx.typeOf(attr(root, 'ref')))
+        const ranges = valueCondition(root)
+        const head = ranges ? [{ k: 'value', node: at, ranges }] : []
+        return [...head, ...walkRoles(roles, 0, at, (end) => split(pathEl, end))]
+      }
       return walkRoles(roles, 0, at, (end) => split(pathEl, end))
     }
 
@@ -194,7 +254,66 @@ export function makePathTranslator(ctx) {
         const refs = kids(u).map(e => attr(e, 'ref')).filter(r => parent.has(r))
         refs.slice(1).forEach(r => union(refs[0], r))
       }
-      return { rootId, items }
+      // CorrelatedWith, the older form of an object unifier
+      for (const pr of descendants(pathEl, 'PathedRole')) {
+        const other = attr(kid(pr, 'CorrelatedWith'), 'ref')
+        if (other && parent.has(other) && parent.has(attr(pr, 'id'))) union(attr(pr, 'id'), other)
+      }
+      // conditions: boolean calculated values the path must satisfy
+      const conds = kids(kid(pathEl, 'Conditions'), 'CalculatedCondition').map(c => {
+        const e = calcExpr(attr(c, 'ref'))
+        if (!e.bool) fail('a condition of its path is not a boolean function')
+        return e
+      })
+      return { rootId, items, conds }
+    }
+
+    // A calculated value (by id) as an expression over path nodes:
+    //   { f: 'node', n } | { f: 'const', text } | { f: 'op', op, args }
+    //   | { f: 'cmp', op, left, right } | { f: 'pred', op, args }
+    //   | { f: 'and' | 'or', args } | { f: 'not', arg }
+    // with bool set on the boolean ones.
+    function calcExpr(id, seen = new Set()) {
+      const el = calcs.get(id)
+      if (!el) fail('it refers to a calculated value that is not there')
+      if (seen.has(id)) fail('a calculated value uses itself')
+      seen = new Set([...seen, id])
+      const fn = ctx.functionOf?.(attr(kid(el, 'Function'), 'ref'))
+      if (!fn) fail('a calculated value has no function')
+      const label = fn.symbol || fn.name
+      if (fn.params.some(p => p.bag)) fail(`it uses the aggregate function ${label}`)
+      const inputs = kids(kid(el, 'Inputs'), 'Input')
+      const pos = (inp, i) => { const k = fn.params.findIndex(p => p.id === attr(kid(inp, 'Parameter'), 'ref')); return k < 0 ? i : k }
+      const args = inputs.map((inp, i) => [pos(inp, i), inp]).sort((a, b) => a[0] - b[0]).map(([, inp]) => {
+        const src = kids(kid(inp, 'Source'))[0]
+        if (!src) fail(`an input of ${label} has no source`)
+        if (src.localName === 'Constant') return { f: 'const', text: textOf(kid(src, 'Value')) }
+        if (src.localName === 'CalculatedValue') return calcExpr(attr(src, 'ref'), seen)
+        const n = attr(src, 'ref')
+        if (!parent.has(n)) fail(`an input of ${label} is outside its path`)
+        return { f: 'node', n }
+      })
+      const def = fnLookup(fn)
+      if (!def) fail(`it uses the function ${label}, which FreeFBM cannot read`)
+      const value = (a) => { if (a.bool) fail(`${label} is given a condition where it needs a value`); return a }
+      const cond = (a) => { if (!a.bool) fail(`${label} is given a value where it needs a condition`); return a }
+      switch (def.kind) {
+        case 'cmp':
+          if (args.length !== 2) fail(`${label} does not have two inputs`)
+          return { f: 'cmp', op: def.op, left: value(args[0]), right: value(args[1]), bool: true }
+        case 'and': case 'or':
+          if (args.length < 2) fail(`${label} has fewer than two inputs`)
+          return { f: def.kind, args: args.map(cond), bool: true }
+        case 'not':
+          if (args.length !== 1) fail(`${label} does not have one input`)
+          return { f: 'not', arg: cond(args[0]), bool: true }
+        case 'pred':
+          return { f: 'pred', op: def.op, args: args.map(value), bool: true }
+        default: {
+          const op = def.op === 'sub' && args.length === 1 ? 'neg' : def.op
+          return { f: 'op', op, args: args.map(value) }
+        }
+      }
     }
 
     // The most specific of a class's types (the first when they are not in
@@ -206,8 +325,11 @@ export function makePathTranslator(ctx) {
 
     // Emits the rule tree. `fixed` maps a node to { id, typeId } for the free
     // variables; every other class is bound at the scope that holds all its
-    // uses (top: returned in `top`, to be bound by the caller).
-    function emit(items, fixed) {
+    // uses (top: returned in `top`, to be bound by the caller). Conditions go
+    // to the innermost scope that binds one of their objects (all of them
+    // must be bound on its way up); the objects of `terms` (expressions the
+    // caller writes with the returned `term`) are bound at the top.
+    function emit(items, fixed, { conds = [], terms = [] } = {}) {
       const fixedByClass = new Map()
       const eqs = []
       for (const [n, v] of fixed) {
@@ -219,7 +341,7 @@ export function makePathTranslator(ctx) {
       const scopeOf = new Map()   // class → scope (lowest common)
       const scopes = []
       const mkScope = (parentScope) => {
-        const s = { parent: parentScope, depth: parentScope ? parentScope.depth + 1 : 0, vars: [] }
+        const s = { parent: parentScope, depth: parentScope ? parentScope.depth + 1 : 0, vars: [], extra: [] }
         scopes.push(s)
         return s
       }
@@ -246,6 +368,20 @@ export function makePathTranslator(ctx) {
         }
       }
       collect(items, top)
+      const exprNodes = (e, out = []) => {
+        if (e.f === 'node') out.push(e.n)
+        for (const a of [...(e.args ?? []), e.left, e.right, e.arg].filter(Boolean)) exprNodes(a, out)
+        return out
+      }
+      for (const e of terms) exprNodes(e).forEach(n => use(n, top))
+      for (const e of conds) {
+        const classes = exprNodes(e).map(find).filter(c => !fixedByClass.has(c))
+        for (const c of classes) if (!scopeOf.has(c)) scopeOf.set(c, top)
+        const at = classes.map(c => scopeOf.get(c)).reduce((a, b) => (b.depth > a.depth ? b : a), top)
+        const above = (s, t) => { while (t && t !== s) t = t.parent; return t === s }
+        if (classes.some(c => !above(scopeOf.get(c), at))) fail('a condition reads objects of separate branches of its path')
+        at.extra.push(e)
+      }
 
       const varOf = new Map()   // class → { id, typeId }
       for (const [c, s] of scopeOf) {
@@ -272,6 +408,24 @@ export function makePathTranslator(ctx) {
         }
         return ranges.length === 1 ? one(ranges[0]) : { t: 'or', args: ranges.map(one) }
       }
+      const term = (e) => {
+        switch (e.f) {
+          case 'node': return { t: 'var', id: vid(e.n) }
+          case 'const': return { t: 'const', text: e.text }
+          case 'op': return { t: 'op', op: e.op, args: e.args.map(term) }
+          default: fail('a condition is used as a value')
+        }
+      }
+      const condOut = (e) => {
+        switch (e.f) {
+          case 'cmp': return { t: 'vcmp', op: e.op, left: term(e.left), right: term(e.right) }
+          case 'pred': return { t: 'dpred', op: e.op, args: e.args.map(term) }
+          case 'and': return conj(e.args.map(condOut))
+          case 'or': return { t: 'or', args: e.args.map(condOut) }
+          case 'not': return { t: 'not', arg: condOut(e.arg) }
+          default: fail('a value is used as a condition')
+        }
+      }
       const out = (it) => {
         switch (it.k) {
           case 'fact': return { t: 'fact', factId: it.factId, args: it.args.map(vid) }
@@ -287,15 +441,18 @@ export function makePathTranslator(ctx) {
             if (bs.length === 2) return { t: 'not', arg: { t: 'iff', left: bs[0], right: bs[1] } }
             return { t: 'or', args: bs.map((b, i) => conj([b, ...bs.filter((_, j) => j !== i).map(o => ({ t: 'not', arg: o }))])) }
           }
-          case 'scope': return bind(itemScope.get(it).vars, conj(it.items.map(out).filter(Boolean)))
+          case 'scope': {
+            const sc = itemScope.get(it)
+            return bind(sc.vars, conj([...it.items.map(out).filter(Boolean), ...sc.extra.map(condOut)]))
+          }
         }
       }
-      const body = conj([...items.map(out).filter(Boolean), ...eqs])
-      return { body, top: top.vars }
+      const body = conj([...items.map(out).filter(Boolean), ...top.extra.map(condOut), ...eqs])
+      return { body, top: top.vars, term }
     }
 
     const has = (n) => parent.has(n)
-    return { rolePath, emit, find, has, classType }
+    return { rolePath, emit, find, has, classType, calcExpr }
   }
 
   const sourceNode = (el) => {
@@ -304,7 +461,18 @@ export function makePathTranslator(ctx) {
     if (src.localName !== 'PathRoot' && src.localName !== 'PathedRole') fail('it projects a calculated value or a constant')
     return attr(src, 'ref')
   }
-  const pathsOf = (ownerEl) => kids(kid(ownerEl, 'PathComponents'), 'RolePath')
+  // The lead paths of a path owner (PathComponent is the older container),
+  // after the checks for what the translation does not read.
+  const pathsOf = (ownerEl) => {
+    if (kids(kid(ownerEl, 'PathComponents')).some(e => e.localName === 'SharedRolePath')) fail('it shares a role path with another rule')
+    if (kids(kid(ownerEl, 'Subqueries')).length) fail('it uses a subquery')
+    return [...kids(kid(ownerEl, 'PathComponents'), 'RolePath'), ...kids(kid(ownerEl, 'PathComponent'), 'RolePath')]
+  }
+  // The calculated values of an owner by id: those of its lead paths and the
+  // older ones kept on the owner itself.
+  const calcsOf = (ownerEl, paths) => new Map(
+    [kid(ownerEl, 'CalculatedValues'), ...paths.map(p => kid(p, 'CalculatedValues'))]
+      .flatMap(c => kids(c, 'CalculatedValue')).map(c => [attr(c, 'id'), c]))
   const attempt = (fn) => {
     try { return fn() } catch (e) { if (e instanceof Untranslatable) return { error: e.message }; throw e }
   }
@@ -313,31 +481,44 @@ export function makePathTranslator(ctx) {
   // A fact type's derivation path → { body, extraVars, terms } or { error }.
   // Each role path with its projection is one case of the rule; several are
   // joined by ∨.
+  // A role projected from a calculated value or a constant is a computed
+  // role whose term is that value (one path only: terms are not per case).
   function factRule(fact, dpEl) {
     return attempt(() => {
-      if (kids(kid(dpEl, 'PathComponents')).some(e => e.localName !== 'RolePath')) fail('it uses calculated values')
       const projections = kids(kid(dpEl, 'DerivationProjections'), 'DerivationProjection')
       const paths = pathsOf(dpEl)
       if (!paths.length) fail('it has no path')
+      const calcs = calcsOf(dpEl, paths)
       const roleById = new Map(fact.roles.map(r => [r.id, r]))
       const counter = { n: 0 }
+      let computed = {}
       const cases = paths.map(p => {
-        const s = session(counter)
-        const { items } = s.rolePath(p)
+        const s = session(counter, calcs)
+        const { items, conds } = s.rolePath(p)
         const proj = projections.find(d => attr(d, 'ref') === attr(p, 'id')) ?? (paths.length === 1 ? projections[0] : null)
-        const fixed = []
+        const fixed = [], terms = []
         for (const rp of kids(proj, 'RoleProjection')) {
           const role = roleById.get(attr(rp, 'ref'))
           if (!role) continue   // the boolean role of an old-style unary
+          const src = kids(kid(rp, 'DerivationSource'))[0]
+          if (src?.localName === 'CalculatedValue' || src?.localName === 'Constant') {
+            if (paths.length > 1) fail('several paths compute a role')
+            const e = src.localName === 'Constant' ? { f: 'const', text: textOf(kid(src, 'Value')) } : s.calcExpr(attr(src, 'ref'))
+            if (e.bool) fail('a role is computed by a condition')
+            terms.push([role, e])
+            continue
+          }
           const n = sourceNode(kid(rp, 'DerivationSource'))
           if (!s.has(n)) fail('a projection refers to an object outside its path')
           fixed.push([n, { id: `role:${role.id}`, typeId: role.objectTypeId }])
         }
-        const missing = fact.roles.filter(r => !fixed.some(([, v]) => v.id === `role:${r.id}`))
-        if (missing.length) fail('a role of the fact type is not projected')
-        return s.emit(items, fixed)
+        const done = (r) => fixed.some(([, v]) => v.id === `role:${r.id}`) || terms.some(([t]) => t === r)
+        if (fact.roles.some(r => !done(r))) fail('a role of the fact type is not projected')
+        const c = s.emit(items, fixed, { conds, terms: terms.map(([, e]) => e) })
+        computed = Object.fromEntries(terms.map(([r, e]) => [r.id, c.term(e)]))
+        return c
       })
-      if (cases.length === 1) return { body: cases[0].body, extraVars: cases[0].top, terms: {} }
+      if (cases.length === 1) return { body: cases[0].body, extraVars: cases[0].top, terms: computed }
       return { body: { t: 'or', args: cases.map(c => bindAll(c.top, c.body)) }, extraVars: [], terms: {} }
     })
   }
@@ -347,17 +528,17 @@ export function makePathTranslator(ctx) {
   // are left out and counted in `skipped`.
   function subtypeRule(ot, sdpEl, supertypeIds) {
     return attempt(() => {
-      if (kids(kid(sdpEl, 'PathComponents')).some(e => e.localName !== 'RolePath')) fail('it uses calculated values')
       const paths = pathsOf(sdpEl)
+      const calcs = calcsOf(sdpEl, paths)
       const subject = { id: SUBJECT, typeId: supertypeIds[0] ?? null }
       let skipped = 0
       const cases = []
       const counter = { n: 0 }
       for (const p of paths) {
         const r = attempt(() => {
-          const s = session(counter)
-          const { rootId, items } = s.rolePath(p)
-          const c = s.emit(items, [[rootId, subject]])
+          const s = session(counter, calcs)
+          const { rootId, items, conds } = s.rolePath(p)
+          const c = s.emit(items, [[rootId, subject]], { conds })
           return bindAll(c.top, c.body)
         })
         if (r.error === 'a path is empty') { skipped++; continue }
@@ -376,8 +557,8 @@ export function makePathTranslator(ctx) {
     return attempt(() => {
       const paths = pathsOf(jpEl)
       if (paths.length !== 1) fail(paths.length ? 'it has several paths' : 'it has no path')
-      const s = session()
-      const { rootId, items } = s.rolePath(paths[0])
+      const s = session({ n: 0 }, calcsOf(jpEl, paths))
+      const { rootId, items, conds } = s.rolePath(paths[0])
       const proj = kid(kid(jpEl, 'JoinPathProjections'), 'JoinPathProjection')
       const free = freeTypes.map((typeId, i) => ({ id: `q${i}`, typeId }))
       const fixed = []
@@ -394,7 +575,7 @@ export function makePathTranslator(ctx) {
         target = { id: 't', typeId: s.classType(s.find(rootId)) }
         fixed.push([rootId, target])
       }
-      const c = s.emit(items, fixed)
+      const c = s.emit(items, fixed, { conds })
       return { free, target, body: bindAll(c.top, c.body) }
     })
   }

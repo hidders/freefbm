@@ -174,6 +174,31 @@ export function importNorma(xmlText) {
   const notesFor = new Map()           // FreeFBM element → extra Note lines
   const addNote = (el, line) => { if (el) notesFor.set(el, [...(notesFor.get(el) ?? []), line]) }
 
+  // NORMA's informal derivation rules: the text of a path's
+  // InformalRule/DerivationNote, or of the older DerivationExpression that came
+  // before role paths (its DerivationStorage says how derived the element is).
+  // The text goes into the element's note; an element with only an informal
+  // rule is marked derived and listed in the log.
+  const informalOnly = [], informalEls = new Set()
+  const informalRule = (el, pathEl, exprEl, name, what) => {
+    const text = textOf(path(pathEl, 'InformalRule', 'DerivationNote', 'Body')) || textOf(kid(exprEl, 'Body'))
+    if (!pathEl && exprEl) {
+      const storage = attr(exprEl, 'DerivationStorage') ?? ''
+      el.derivation = storage.startsWith('PartiallyDerived') ? 'semiDerived' : 'derived'
+      if (storage.endsWith('Stored')) addNote(el, 'NORMA: the derived values are stored (DerivationStorage = Stored).')
+    }
+    if (!text) return
+    addNote(el, `NORMA derivation rule (informal): ${text}`)
+    const formal = pathEl && kids(kid(pathEl, 'PathComponents'), 'RolePath').some(p => kids(p).length)
+    if (!formal) { informalOnly.push(`${what} ${name}`); informalEls.add(el) }
+  }
+
+  // The model's functions, which NORMA's calculated values apply.
+  const functions = new Map(kids(kid(model, 'Functions'), 'Function').map(fn => [attr(fn, 'id'), {
+    name: attr(fn, 'Name'), symbol: attr(fn, 'OperatorSymbol'), isBoolean: attr(fn, 'IsBoolean') === 'true',
+    params: kids(kid(fn, 'Parameters'), 'Parameter').map(p => ({ id: attr(p, 'id'), bag: attr(p, 'BagInput') === 'true' })),
+  }]))
+
   // ── object types ──────────────────────────────────────────────────────────
   const objects = kids(kid(model, 'Objects'))
   const objectifiedFacts = new Map()   // NORMA fact id → ObjectifiedType element (explicit only)
@@ -221,11 +246,13 @@ export function importNorma(xmlText) {
       ot.cardinalityRange = cr.flatMap(r => countRange(attr(r, 'From') ?? 0, attr(r, 'To') ?? 0))
       if (attr(cc, 'Modality') === 'Deontic') ot.cardinalityRangeDeontic = true
     }
-    const sdr = path(o, 'SubtypeDerivationRule', 'SubtypeDerivationPath')
+    const sdRule = kid(o, 'SubtypeDerivationRule')
+    const sdr = kid(sdRule, 'SubtypeDerivationPath')
     if (sdr) {
       ot.derivation = attr(sdr, 'DerivationCompleteness') === 'PartiallyDerived' ? 'semiDerived' : 'derived'
       derivationPaths.push({ el: ot, path: sdr, name })
     }
+    informalRule(ot, sdr, kid(sdRule, 'SubtypeDerivationExpression'), name, 'subtype')
     objectTypes.push(ot); otById.set(id, ot); playerId.set(id, id)
   }
 
@@ -301,12 +328,14 @@ export function importNorma(xmlText) {
     }
 
     // derivation
-    const dp = path(f, 'DerivationRule', 'FactTypeDerivationPath')
+    const dRule = kid(f, 'DerivationRule')
+    const dp = kid(dRule, 'FactTypeDerivationPath')
     if (dp) {
       fact.derivation = attr(dp, 'DerivationCompleteness') === 'PartiallyDerived' ? 'semiDerived' : 'derived'
       if (attr(dp, 'DerivationStorage') === 'Stored') addNote(fact, 'NORMA: the derived values are stored (DerivationStorage = Stored).')
       derivationPaths.push({ el: fact, path: dp, name: attr(f, '_Name') ?? id })
     }
+    informalRule(fact, dp, kid(dRule, 'DerivationExpression'), attr(f, '_Name') ?? id, 'fact type')
     const ob = objectifiedFacts.get(id)
     if (ob) {
       fact.objectified = true
@@ -407,13 +436,14 @@ export function importNorma(xmlText) {
   const paths = makePathTranslator({
     roleRef: (id) => roleRef.get(id), playerOf: playerOfMember, factById, stById,
     typeOf: (id) => playerId.get(id), up, rangesOf: valueRanges,
+    functionOf: (id) => functions.get(id),
   })
   const failedRules = [], closedNames = []
   for (const { el, path: dp, name } of derivationPaths) {
     const isFact = el.kind !== 'entity' && el.kind !== 'value'
     if (isFact) {
       const r = paths.factRule(el, dp)
-      if (r.error) { failedRules.push(`fact type ${name}: ${r.error}`); continue }
+      if (r.error) { if (!informalEls.has(el)) failedRules.push(`fact type ${name}: ${r.error}`); continue }
       // A fully derived fact type defined by positive linear recursion gets a
       // transitive closure instead. A semi-derived one keeps its recursion:
       // its stored facts feed it too, which FreeFBM reads as a least fixpoint.
@@ -424,7 +454,7 @@ export function importNorma(xmlText) {
     } else {
       const supers = subtypes.filter(st => st.subId === el.id).map(st => st.superId)
       const r = paths.subtypeRule(el, dp, supers)
-      if (r.error) { failedRules.push(`subtype ${name}: ${r.error}`); continue }
+      if (r.error) { if (!informalEls.has(el)) failedRules.push(`subtype ${name}: ${r.error}`); continue }
       el.derivationRule = r.rule
       if (r.skipped) addNote(el, `NORMA: ${r.skipped} empty path${r.skipped === 1 ? ' was' : 's were'} left out of the derivation rule.`)
       count('subtypeRules')
@@ -920,6 +950,7 @@ export function importNorma(xmlText) {
   if (counts.factRules || counts.subtypeRules || counts.translatedJoins)
     note(`Translated ${counts.factRules ?? 0} fact type and ${counts.subtypeRules ?? 0} subtype derivation rules${counts.translatedJoins ? ` and ${counts.translatedJoins} join paths` : ''} from NORMA's role paths into formulas.`)
   if (closedNames.length) note(`The recursive derivation rule${closedNames.length === 1 ? '' : 's'} of ${closedNames.join(', ')} ${closedNames.length === 1 ? 'was' : 'were'} rewritten with a transitive closure [TC* …], which says the same under least-fixpoint semantics without the fact type referring to itself.`)
+  if (informalOnly.length) warn(`${informalOnly.length === 1 ? 'One element has' : `${informalOnly.length} elements have`} only an informal derivation rule, kept in ${informalOnly.length === 1 ? 'its' : 'their'} note and listed as incomplete by validation: ${informalOnly.join(', ')}.`)
   for (const f of failedRules) warn(`The derivation rule of ${f}; it is marked derived but has no rule, so validation lists it as incomplete.`)
   for (const f of failedJoins) warn(`The join path of ${f}; the sequence is imported without it.`)
   if (counts.pendingJoins) warn(`${counts.pendingJoins} constraints have a join path that could not be translated; their sequences are imported without it.`)
