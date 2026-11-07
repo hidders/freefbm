@@ -44,7 +44,9 @@ const readingW = (f) => (getDisplayReading({ ...f, arity: f.roles.length }) || '
 
 // ── 1 + 2: the core graph ────────────────────────────────────────────────────
 
-export function prepareLayout(state, diagramId) {
+// opts.satOrder: Map(fact id → rank) puts an entity type's satellites in that
+// order (a mapping diagram follows the column order of the table it maps to).
+export function prepareLayout(state, diagramId, opts = {}) {
   const diagram = state.diagrams.find(d => d.id === diagramId)
   if (!diagram) return null
   const otById = new Map(state.objectTypes.map(o => [o.id, o]))
@@ -136,6 +138,13 @@ export function prepareLayout(state, diagramId) {
       if (!leafVt(vt)) continue
       sats.get(ps[ownerRole]).push({ fact: f, ownerRole, vt })
       satFact.add(f.id)
+    }
+  }
+  if (opts.satOrder?.size) {
+    const rank = (x) => opts.satOrder.get(x.fact.id) ?? Infinity
+    for (const list of sats.values()) {
+      const at = new Map(list.map((x, i) => [x, i]))
+      list.sort((a, b) => (rank(a) - rank(b)) || (at.get(a) - at.get(b)))
     }
   }
   // A value type all of whose fact types are satellites is drawn once per satellite.
@@ -982,8 +991,8 @@ export function finishLayout(plan, placed) {
 }
 
 /** The whole pipeline with the built-in placement. */
-export function layoutOrmDiagram(state, diagramId) {
-  const plan = prepareLayout(state, diagramId)
+export function layoutOrmDiagram(state, diagramId, opts = {}) {
+  const plan = prepareLayout(state, diagramId, opts)
   if (!plan) return null
   return finishLayout(plan, placeCore(plan))
 }

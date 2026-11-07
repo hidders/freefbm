@@ -4,6 +4,7 @@ import { activeSchemaIdOf, mappingOfDiagram, isViewMapping } from '../store/stor
 import { NewSchemaMenu } from './SchemaStrip'
 import { isErdDiagram } from './ErdView'
 import { layoutOrmDiagram } from '../layout/ormLayout'
+import { layoutMappingDiagram } from '../layout/mappingLayout'
 import { diagramCoverage } from '../utils/neighbourhood.js'
 import StartingPoints from './StartingPoints'
 
@@ -308,6 +309,17 @@ export default function DiagramTabs() {
               onMouseEnter={e => { e.currentTarget.style.color = 'var(--ink-1)' }}
               onMouseLeave={e => { e.currentTarget.style.color = 'var(--ink-3)' }}
             >Add rule elements</span>
+            <span title="Lay the diagram out afresh: source side left, the rules in a column in the middle level with their elements, target side right"
+              className="mapping-auto-layout"
+              onClick={() => {
+                const s = useOrmStore.getState()
+                const res = layoutMappingDiagram(s, activeDiagram.id)
+                if (res) s.applyDiagramLayout(activeDiagram.id, res)
+              }}
+              style={{ cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'var(--border)', marginLeft: 8 }}
+              onMouseEnter={e => { e.currentTarget.style.color = 'var(--ink-1)' }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'var(--ink-3)' }}
+            >Auto layout</span>
           </div>
         )}
         {/* Growing mode: "+n" badges where neighbours are not shown, and how much of the schema is on a diagram. */}

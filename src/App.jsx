@@ -11,6 +11,7 @@ import ImportLogPanel from './components/ImportLogPanel'
 import GuessOrmDialog from './components/GuessOrmDialog'
 import GenerateRelationalDialog from './components/GenerateRelationalDialog'
 import FoldDialog from './components/FoldDialog'
+import SuggestDiagramsDialog from './components/SuggestDiagramsDialog'
 import TransformDialog from './components/TransformDialog'
 import StatusBar from './components/StatusBar'
 import WelcomeScreen from './components/WelcomeScreen'
@@ -355,6 +356,7 @@ export default function App() {
         <GuessOrmDialog />
         <GenerateRelationalDialog />
         <FoldDialog />
+        <SuggestDiagramsDialog />
         <TransformDialog />
       </div>
     </ErrorBoundary>

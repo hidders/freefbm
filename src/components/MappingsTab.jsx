@@ -124,6 +124,7 @@ export default function MappingsTab() {
               </span>
               <div style={{ flex: 1 }} />
               <button style={btn} title="Show this mapping as a diagram: both schemas side by side, each rule linked to its elements" onClick={() => act().openMappingDiagram(m.id)}>Diagram</button>
+              <button style={btn} disabled={m.rules.length < 2} title="Split the rules into groups that name the same elements, to review and make into mapping diagrams" onClick={() => useOrmStore.setState({ suggestDiagramsDialog: { mappingId: m.id } })}>Suggest diagrams…</button>
               {advanced && <button style={btn} onClick={() => act().addMappingRule(m.id)}>+ Rule</button>}
               <button style={btn} title={`Build the population of ${name(m.targetSchemaId)} from that of ${name(m.sourceSchemaId)}`} onClick={() => doRun(m, 'run', 'forward')}>Run →</button>
               <button style={btn} title={`Build the population of ${name(m.sourceSchemaId)} from that of ${name(m.targetSchemaId)}`} onClick={() => doRun(m, 'run', 'backward')}>Run ←</button>

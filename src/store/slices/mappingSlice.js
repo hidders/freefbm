@@ -429,6 +429,46 @@ export const createMappingSlice = (set, get) => {
       return d.id
     },
 
+    // Several new diagrams of a mapping at once, one per group of rules
+    // ([{ name, ruleIds }], from the Suggest diagrams dialog), each drawing
+    // its rules with their elements placed close together. One undo step;
+    // the first new diagram becomes active. layout(state, diagramId) lays
+    // each out afresh (layout/mappingLayout.js, passed in as it reads
+    // component geometry). Returns the new diagram ids.
+    newMappingDiagrams(mappingId, groups, { layout = null } = {}) {
+      const s0 = get()
+      const m = s0.mappings?.find(x => x.id === mappingId) ?? s0.views?.find(x => x.id === mappingId)
+      if (!m) return []
+      const used = new Set(s0.diagrams.map(d => d.name))
+      const ids = []
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        for (const g of groups) {
+          const ruleIds = g.ruleIds.filter(id => m.rules.some(r => r.id === id))
+          if (!ruleIds.length) continue
+          const want = g.name?.trim()
+          let name = want || makeUniqueName(`${m.name} part `, used)
+          for (let n = 2; used.has(name); n++) name = `${want} ${n}`
+          used.add(name)
+          const d = { ...mkDiagram(name, m.sourceSchemaId), mappingId, mappingRuleIds: [], mappingRulePositions: {} }
+          set(st => ({ diagrams: [...st.diagrams, d], isDirty: true }))
+          // The rules in mapping order, so a table's rules come together.
+          const order = m.rules.map(r => r.id).filter(id => ruleIds.includes(id))
+          get().showMappingRules(d.id, order)
+          if (layout) { const res = layout(get(), d.id); if (res) get().applyDiagramLayout(d.id, res) }
+          ids.push(d.id)
+        }
+        if (ids.length) get().setActiveDiagram(ids[0])
+        set({ multiSelectedIds: [], multiSelectedOccurrenceIds: [] })
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+      const svg = typeof document !== 'undefined' ? document.querySelector('.canvas-bg')?.closest('svg') : null
+      const r = svg?.getBoundingClientRect()
+      if (ids.length) get().fitToContent(r?.width || 1200, r?.height || 700)
+      return ids
+    },
+
     // Where a rule's node sits in a mapping diagram; null puts it back between
     // the elements it links.
     setMappingRulePosition(diagramId, ruleId, pos) {
