@@ -58,6 +58,7 @@ export function createModelSlice(set, get) {
     selectedValueRange:      null,   // { otId? } | { factId, roleIndex } | { nestedFactId } | null
     selectedCardinalityRange: null,  // same shape as selectedValueRange | null
     multiSelectedIds:        [],     // ids of additionally selected elements
+    selectedRuleIds:         [],     // rule nodes selected on a mapping diagram
     selectedOccurrenceId:      null,  // occurrence ID when a specific occurrence was clicked
     multiSelectedOccurrenceIds: [],   // parallel to multiSelectedIds; one entry per selected occurrence
     uniquenessConstruction:  null,   // { factId, roleIndices: number[] } | null

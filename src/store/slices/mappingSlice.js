@@ -469,6 +469,59 @@ export const createMappingSlice = (set, get) => {
       return ids
     },
 
+    // Rule nodes selected on a mapping diagram (shift-click, rubber band);
+    // session only, cleared with the rest of the selection.
+    setRuleSelection(ids) { set({ selectedRuleIds: [...new Set(ids)] }) },
+    toggleRuleSelected(ruleId) {
+      const cur = get().selectedRuleIds ?? []
+      set({ selectedRuleIds: cur.includes(ruleId) ? cur.filter(x => x !== ruleId) : [...cur, ruleId] })
+    },
+
+    // Splits rules off a mapping diagram: a new diagram of the same mapping
+    // drawing those rules, laid out afresh by layout(state, diagramId)
+    // (layout/mappingLayout.js, passed in), named "<diagram> part n". With
+    // move the rules (and the elements no remaining rule needs) leave the
+    // source diagram. One undo step; returns the new diagram's id.
+    rulesToNewDiagram(diagramId, ruleIds, { move = false, layout = null } = {}) {
+      const s0 = get()
+      const src = s0.diagrams.find(d => d.id === diagramId)
+      const m = mappingOfDiagram(s0, src)
+      if (!m) return null
+      const on = diagramRuleIds(src, m)
+      const ids = ruleIds.filter(id => on.has(id))
+      if (!ids.length) return null
+      const name = makeUniqueName(`${src.name} part `, new Set(s0.diagrams.map(d => d.name)))
+      let out = null
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        if (move) get().hideMappingRules(diagramId, ids)
+        if (move) set(st => ({ diagrams: st.diagrams.map(d => {
+          if (d.id !== diagramId || !d.mappingRulePositions) return d
+          const next = { ...d.mappingRulePositions }
+          for (const id of ids) delete next[id]
+          return { ...d, mappingRulePositions: next }
+        }) }))
+        out = get().newMappingDiagrams(m.id, [{ name, ruleIds: ids }], { layout })[0] ?? null
+        set({ selectedRuleIds: [] })
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+      return out
+    },
+
+    // Several rule nodes moved at once ({ ruleId: {x, y} }), one undo step.
+    setMappingRulePositions(diagramId, positions) {
+      set(st => ({
+        diagrams: st.diagrams.map(d => {
+          if (d.id !== diagramId) return d
+          const next = { ...(d.mappingRulePositions ?? {}) }
+          for (const [id, p] of Object.entries(positions)) next[id] = { x: Math.round(p.x), y: Math.round(p.y) }
+          return { ...d, mappingRulePositions: next }
+        }),
+        isDirty: true,
+      }))
+    },
+
     // Where a rule's node sits in a mapping diagram; null puts it back between
     // the elements it links.
     setMappingRulePosition(diagramId, ruleId, pos) {

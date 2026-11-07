@@ -5,6 +5,7 @@ import { isDeonticUniqueness } from '../logic/modality'
 import { makeContext } from '../logic/constraintFormulas.js'
 import { whyNoOuterJoin } from '../logic/query.js'
 import { placeOrmUnits, placeErdUnits } from '../layout/growPlacement.js'
+import { layoutMappingDiagram } from '../layout/mappingLayout.js'
 import { useOrmStore } from '../store/ormStore'
 
 // The checkable "Deontic" item that switches a constraint between alethic and
@@ -43,7 +44,20 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         { label: 'Align vertically', disabled: !canAlign,
           action: () => store.alignMultiSelection('x') },
         '---',
-        ...(store.diagrams.find(d => d.id === store.activeDiagramId)?.mappingId ? [] : [
+        // On a mapping diagram the selected rule nodes can be split off.
+        ...(store.diagrams.find(d => d.id === store.activeDiagramId)?.mappingId ? (() => {
+          const ids = useOrmStore.getState().selectedRuleIds ?? []
+          if (!ids.length) return []
+          const n = ids.length === 1 ? 'Rule' : `${ids.length} Rules`
+          const did = store.activeDiagramId
+          return [
+            { label: `Move ${n} to New Diagram`, title: 'Elements still linked to rules that stay here are kept on both diagrams',
+              action: () => useOrmStore.getState().rulesToNewDiagram(did, ids, { move: true, layout: layoutMappingDiagram }) },
+            { label: `Copy ${n} to New Diagram`,
+              action: () => useOrmStore.getState().rulesToNewDiagram(did, ids, { layout: layoutMappingDiagram }) },
+            '---',
+          ]
+        })() : [
           ...(pair.length === 2 ? [connectItem(store, pair[0], pair[1])] : []),
           { label: 'Copy Selection to New Diagram', action: () => store.selectionToNewDiagram(false) },
           { label: 'Move Selection to New Diagram', title: 'Object types still linked to what stays here are kept on both diagrams',

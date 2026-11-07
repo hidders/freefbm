@@ -71,7 +71,7 @@ const centroid = (pts) => (pts.length
   : null)
 
 // The rules of the active mapping diagram as nodes with connectors.
-export function MappingRules() {
+export function MappingRules({ onRuleContextMenu = null }) {
   const mapping = useActiveMapping()
   const { objectTypes, facts, diagram, collapsedRefFacts, erdSchemaIds } = useDiagramElements()
   const state = useOrmStore(useShallow(s => ({
@@ -83,7 +83,9 @@ export function MappingRules() {
   // derivation rule editor.
   const isView = useOrmStore(s => isViewMapping(s, mapping))
   const [hoverId, setHoverId] = useState(null)
-  const [drag, setDrag] = useState(null)   // { ruleId, x, y }
+  const [drag, setDrag] = useState(null)   // { ids: Set, dx, dy }
+  const selectedRuleIds = useOrmStore(s => s.selectedRuleIds)
+  const selected = useMemo(() => new Set(selectedRuleIds ?? []), [selectedRuleIds])
   const setByUs = useRef(false)
 
   const ctxs = useMemo(() => (mapping ? {
@@ -189,27 +191,35 @@ export function MappingRules() {
 
   if (!mapping) return null
 
+  // Drag moves the node, or all selected nodes when it is one of them;
+  // a click opens the rule, a shift- (or Cmd-) click selects it.
   const startDrag = (e, info) => {
     if (e.button !== 0) return
     e.stopPropagation(); e.preventDefault()
-    const zoom = useOrmStore.getState().zoom || 1
+    const st0 = useOrmStore.getState()
+    if (e.shiftKey || e.metaKey || e.ctrlKey) { st0.toggleRuleSelected(info.r.id); return }
+    const zoom = st0.zoom || 1
     const sx = e.clientX, sy = e.clientY
-    let moved = false, last = { x: info.x, y: info.y }
+    const group = selected.has(info.r.id) ? placed.filter(p => selected.has(p.r.id)) : [info]
+    const ids = new Set(group.map(p => p.r.id))
+    let moved = false, d = { dx: 0, dy: 0 }
     const onMove = (me) => {
-      const dx = (me.clientX - sx) / zoom, dy = (me.clientY - sy) / zoom
       if (!moved && Math.hypot(me.clientX - sx, me.clientY - sy) < 3) return
       moved = true
-      last = { x: info.x + dx, y: info.y + dy }
-      setDrag({ ruleId: info.r.id, ...last })
+      d = { dx: (me.clientX - sx) / zoom, dy: (me.clientY - sy) / zoom }
+      setDrag({ ids, ...d })
     }
     const onUp = () => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
       setDrag(null)
       const st = useOrmStore.getState()
-      if (moved) st.setMappingRulePosition(diagram.id, info.r.id, last)
-      else if (isView) st.openViewRuleEditor(mapping.id, info.r.id)
-      else st.openMappingRuleEditor(mapping.id, info.r.id)
+      if (moved) st.setMappingRulePositions(diagram.id, Object.fromEntries(group.map(p => [p.r.id, { x: p.x + d.dx, y: p.y + d.dy }])))
+      else {
+        if (st.selectedRuleIds?.length) st.setRuleSelection([])
+        if (isView) st.openViewRuleEditor(mapping.id, info.r.id)
+        else st.openMappingRuleEditor(mapping.id, info.r.id)
+      }
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
@@ -218,8 +228,10 @@ export function MappingRules() {
   return (
     <g className="mapping-rules">
       {placed.map(info => {
-        const x = drag?.ruleId === info.r.id ? drag.x : info.x
-        const y = drag?.ruleId === info.r.id ? drag.y : info.y
+        const dragging = drag?.ids.has(info.r.id)
+        const x = dragging ? info.x + drag.dx : info.x
+        const y = dragging ? info.y + drag.dy : info.y
+        const sel = selected.has(info.r.id)
         const label = info.name ?? (info.r.name || `Rule ${info.k + 1}`)
         const w = Math.max(58, 26 + label.length * 6.6)
         const errors = info.issues.filter(i => i.severity === 'error').length
@@ -246,20 +258,26 @@ export function MappingRules() {
         const tip = [`${label}: ${info.formula}`,
           ...info.issues.map(i => `${i.severity === 'error' ? 'Error' : 'Warning'}: ${i.text}`),
           ...(info.missing ? [`${info.missing} element${info.missing === 1 ? '' : 's'} of this rule not shown here (Add rule elements)`] : []),
-          'Click to edit, drag to move.'].join('\n')
+          'Click to edit, drag to move, shift-click to select.'].join('\n')
         return (
-          <g key={info.r.id} className="mapping-rule" data-rule-id={info.r.id}>
+          <g key={info.r.id} className={`mapping-rule${sel ? ' selected' : ''}`} data-rule-id={info.r.id} data-x={x} data-y={y}>
             <g style={{ pointerEvents: 'none' }}>{lines}</g>
             <g transform={`translate(${x},${y})`}
-              style={{ cursor: drag?.ruleId === info.r.id ? 'grabbing' : 'pointer', pointerEvents: 'all' }}
+              style={{ cursor: dragging ? 'grabbing' : 'pointer', pointerEvents: 'all' }}
               onMouseDown={e => startDrag(e, info)}
               onMouseEnter={() => setHoverId(info.r.id)}
               onMouseLeave={() => setHoverId(h => (h === info.r.id ? null : h))}
+              onContextMenu={e => {
+                e.preventDefault(); e.stopPropagation()
+                const st = useOrmStore.getState()
+                if (!selected.has(info.r.id)) st.setRuleSelection([info.r.id])
+                onRuleContextMenu?.(e, diagram.id)
+              }}
               onDoubleClick={e => { e.stopPropagation(); if (info.stored) useOrmStore.getState().setMappingRulePosition(diagram.id, info.r.id, null) }}
             >
               <title>{tip}{info.stored ? '\nDouble-click to put it back between its elements.' : ''}</title>
               <rect x={-w / 2} y={-NODE_H / 2} width={w} height={NODE_H} rx={NODE_H / 2} ry={NODE_H / 2}
-                fill="#fffdf8" stroke={open ? 'var(--accent)' : border} strokeWidth={open ? 2.2 : hot ? 1.8 : 1.3}
+                fill={sel ? '#fbeee0' : '#fffdf8'} stroke={open || sel ? 'var(--accent)' : border} strokeWidth={open || sel ? 2.2 : hot ? 1.8 : 1.3}
                 style={{ filter: hot ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.25))' : 'none' }} />
               <text x={-w / 2 + 10} y={0.5} dominantBaseline="middle" fontSize={12} fill="var(--map-rule)"
                 fontFamily="'Segoe UI', Helvetica, Arial, sans-serif" style={{ userSelect: 'none' }}>
