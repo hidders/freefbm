@@ -10,6 +10,7 @@ import { diagramUnits, tableCompanions, tableRemoval, completeTables, withTableC
 import { isErdDiagram, erdLayout } from '../../relational/erdBoxes.js'
 import { relationalModel } from '../../relational/relationalModel.js'
 import { neighbourUnits, connectPath } from '../../utils/neighbourhood.js'
+import { carriedDiagrams } from '../../mapping/carryDiagrams.js'
 
 // Module-level variable for pan animation — only used by centerOnElement/centerOnOccurrence
 let _panAnimId = null
@@ -465,6 +466,45 @@ export function createDiagramSlice(set, get) {
       } finally {
         set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
       }
+    },
+
+    // After Generate tables or Guess ORM2 (inside their undo batch): a twin in
+    // the new schema of each diagram of the schema the mapping was made from
+    // (mapping/carryDiagrams.js), named alike, after mainDiagramId (the new
+    // schema's diagram of everything). A diagram that all rules are about
+    // gives its name to mainDiagramId instead. Each twin is laid out by
+    // layout(state, diagramId) when given (layout/ormLayout.js, passed in);
+    // ERD tables are placed by the ERD's own auto layout. Returns the ids.
+    carrySchemaDiagrams(mappingId, fromSchemaId, mainDiagramId, { layout = null } = {}) {
+      const s0 = get()
+      const m = (s0.mappings ?? []).find(x => x.id === mappingId)
+      const main = s0.diagrams.find(d => d.id === mainDiagramId)
+      if (!m || !main) return []
+      const twins = carriedDiagrams(s0, m, fromSchemaId)
+      const ids = []
+      let renamed = false
+      for (const t of twins) {
+        if (t.all && !renamed) { get().renameDiagram(mainDiagramId, t.name); renamed = true; continue }
+        get().setActiveDiagram(mainDiagramId)
+        const used = new Set(get().diagrams.filter(d => d.schemaId === main.schemaId).map(d => d.name))
+        const name = used.has(t.name) ? makeUniqueName(`${t.name} `, used) : t.name
+        const id = get().addDiagram(name)
+        for (const x of t.elementIds) get().addElementToDiagram(x, id)
+        // The subtype links between the types shown.
+        {
+          const s1 = get()
+          const shown = new Set((s1.diagrams.find(x => x.id === id)?.occurrences ?? []).map(o => o.schemaElementId))
+          for (const st of s1.subtypes) if (st.schemaId === main.schemaId && shown.has(st.subId) && shown.has(st.superId)) get().addElementToDiagram(st.id, id)
+        }
+        const d = get().diagrams.find(x => x.id === id)
+        if (!(d?.occurrences?.length)) { get().setActiveDiagram(mainDiagramId); get().deleteDiagram(id); continue }
+        if (!isErdDiagram(get(), d)) set(st => ({ diagrams: st.diagrams.map(x => (x.id === id
+          ? withTouchedConstraints(st, x, new Set((x.occurrences ?? []).map(o => o.schemaElementId))) : x)) }))
+        if (layout) { const res = layout(get(), id); if (res) get().applyDiagramLayout(id, res) }
+        ids.push(id)
+      }
+      get().setActiveDiagram(mainDiagramId)
+      return ids
     },
 
     // The selected elements in a new diagram of the same schema, where they

@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { useOrmStore } from '../store/ormStore'
+import { layoutOrmDiagram } from '../layout/ormLayout'
+import { plainDiagramsOf } from '../mapping/carryDiagrams.js'
 import { planRelational } from '../relational/rmap.js'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
@@ -29,9 +31,12 @@ function Dialog({ ormSchemaId }) {
     try { return { plan: planRelational(useOrmStore.getState(), ormSchemaId, { surrogates: mode, overrides }) }
     } catch (err) { return { error: `The tables could not be planned: ${err?.message ?? err}` } }
   }, [ormSchemaId, mode, overrides])
+  const diagramNames = useOrmStore(s => plainDiagramsOf(s, ormSchemaId).map(d => d.name).join('\u0000'))
+  const nDiagrams = diagramNames ? diagramNames.split('\u0000').length : 0
+  const [keepDiagrams, setKeepDiagrams] = useState(true)
   const go = () => {
     close()
-    useOrmStore.getState().generateRelationalFromOrm(ormSchemaId, { surrogates: mode, overrides })
+    useOrmStore.getState().generateRelationalFromOrm(ormSchemaId, { surrogates: mode, overrides, diagrams: keepDiagrams, layout: layoutOrmDiagram })
   }
   const typeName = (id) => plan?.ctx.otById.get(id)?.name ?? plan?.ctx.factById.get(id)?.objectifiedName ?? '?'
   const entityOf = (t) => (t.typeId ? plan.entities.get(t.typeId) : null)
@@ -117,7 +122,14 @@ function Dialog({ ormSchemaId }) {
             </>}
           </>}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 14px', borderTop: '1px solid var(--border-soft)' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, padding: '10px 14px', borderTop: '1px solid var(--border-soft)' }}>
+          {nDiagrams > 1 && (
+            <label title={`One diagram in the new schema per diagram of ${schema?.name ?? 'this schema'} (${diagramNames.split('\u0000').join(', ')}), with what the mapping makes of its elements, laid out afresh`}
+              style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--ink-2)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={keepDiagrams} onChange={e => setKeepDiagrams(e.target.checked)} />
+              Keep the {nDiagrams} diagrams
+            </label>
+          )}
           <button onClick={close} style={btn(false)}>Cancel</button>
           <button onClick={go} disabled={!plan?.tables.length} autoFocus style={{ ...btn(true), opacity: plan?.tables.length ? 1 : 0.5 }}>Generate tables</button>
         </div>

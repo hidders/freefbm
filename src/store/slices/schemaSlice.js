@@ -174,8 +174,10 @@ export const createSchemaSlice = (set, get) => ({
   // Guesses an ORM2 schema from a relational one (workbench step 9): a new
   // ORM2 schema with one diagram, and the mapping from the relational schema
   // to it, as one undo step. surrogates: { tableId: 'keep' | 'drop' } overrides
-  // the default per table. Returns { schemaId, mappingId, stats }.
-  guessOrmFromRelational(relSchemaId, { surrogates = {} } = {}) {
+  // the default per table. With diagrams, each diagram of the relational
+  // schema gets a twin in the new one (carrySchemaDiagrams), laid out by
+  // layout. Returns { schemaId, mappingId, stats }.
+  guessOrmFromRelational(relSchemaId, { surrogates = {}, diagrams = true, layout = null } = {}) {
     const st = get()
     const rel = st.schemas.find(x => x.id === relSchemaId)
     if (!rel) return null
@@ -184,6 +186,7 @@ export const createSchemaSlice = (set, get) => ({
     for (let i = 2; used.has(unique); i++) unique = `${rel.name} (ORM2) ${i}`
     const schema = mkSchema(unique, 'orm2')
     const built = guessOrmSchema(st, relSchemaId, { schemaId: schema.id, surrogates, mappingName: `${rel.name} to ${unique}` })
+    let carried = []
     set(s => ({ historyBatch: (s.historyBatch ?? 0) + 1 }))
     try {
       set(s => ({
@@ -198,6 +201,7 @@ export const createSchemaSlice = (set, get) => ({
       }))
       get().setActiveDiagram(built.diagram.id)
       for (const c of built.constraints) get()._tryAutoGenerateQuery(c.id)
+      if (diagrams) carried = get().carrySchemaDiagrams(built.mapping.id, relSchemaId, built.diagram.id, { layout })
     } finally {
       set(s => ({ historyBatch: Math.max(0, (s.historyBatch ?? 1) - 1) }))
     }
@@ -205,6 +209,7 @@ export const createSchemaSlice = (set, get) => ({
     get().setImportLog({ kind: 'guess', source: `${rel.name} (guessed ORM2 schema)`, entries: [
       { level: 'note', text: `Schema ${unique}: ${n.entityTypes} entity types, ${n.valueTypes} value types, ${n.factTypes} fact types${n.subtypes ? `, ${n.subtypes} subtypes` : ''}; ${n.junctions} junction tables became fact types${n.flags ? `; ${n.flags} boolean columns became unary fact types` : ''}${n.dropped ? `; ${n.dropped} surrogate keys dropped` : ''}` },
       { level: 'note', text: `Mapping ${built.mapping.name}: ${n.rules} rules (Mappings tab: Run →, Round trip)` },
+      ...(carried.length ? [{ level: 'note', text: `Diagrams of ${rel.name} carried over: ${carried.length} (${carried.map(id => get().diagrams.find(d => d.id === id)?.name).join(', ')})` }] : []),
       ...built.log,
     ] })
     const svg = typeof document !== 'undefined' ? document.querySelector('.canvas-bg')?.closest('svg') : null
@@ -218,8 +223,9 @@ export const createSchemaSlice = (set, get) => ({
   // tables, and the mapping from the ORM2 schema to it, as one undo step. The
   // ORM2 schema's population, if any, is carried over by running the mapping.
   // surrogates: 'never' | 'composite' | 'always'; overrides: { typeId: bool }.
-  // Returns { schemaId, mappingId, sql }.
-  generateRelationalFromOrm(ormSchemaId, { surrogates = 'never', overrides = {} } = {}) {
+  // With diagrams, each diagram of the ORM2 schema gets a twin in the new one
+  // (carrySchemaDiagrams), laid out by layout. Returns { schemaId, mappingId, sql }.
+  generateRelationalFromOrm(ormSchemaId, { surrogates = 'never', overrides = {}, diagrams = true, layout = null } = {}) {
     const st = get()
     const orm = st.schemas.find(x => x.id === ormSchemaId)
     if (!orm) return null
@@ -230,7 +236,7 @@ export const createSchemaSlice = (set, get) => ({
     const g = generateRelational(st, ormSchemaId, { schemaId: schema.id, surrogates, overrides, mappingName: `${orm.name} to ${unique}`, schemaName: orm.name })
     const built = g.built
     if (built.diagram) built.diagram.profileId = built.diagram.profileId ?? RELATIONAL_DATATYPES
-    let carried = null
+    let carried = null, twins = []
     set(s => ({ historyBatch: (s.historyBatch ?? 0) + 1 }))
     try {
       set(s => ({
@@ -244,6 +250,7 @@ export const createSchemaSlice = (set, get) => ({
       }))
       get().setActiveDiagram(built.diagram.id)
       for (const c of built.constraints) get()._tryAutoGenerateQuery(c.id)
+      if (diagrams) twins = get().carrySchemaDiagrams(g.mapping.id, ormSchemaId, built.diagram.id, { layout })
       // The sample population, carried over.
       const now = get()
       const ormIds = new Set([...now.objectTypes, ...now.facts].filter(x => x.schemaId === ormSchemaId).map(x => x.id))
@@ -265,6 +272,7 @@ export const createSchemaSlice = (set, get) => ({
     get().setImportLog({ kind: 'generate', source: `${orm.name}`, entries: [
       { level: 'note', text: `Schema ${unique}: ${n.tables ?? '?'} tables with ${n.columns ?? '?'} columns, ${n.keys ?? 0} keys, ${n.foreignKeys ?? 0} foreign keys (File › Export PostgreSQL DDL… writes them)` },
       { level: 'note', text: `Mapping ${g.mapping.name}: ${g.mapping.rules.length} rules. Accounting in the Mappings tab lists the constraints the tables don't enforce` },
+      ...(twins.length ? [{ level: 'note', text: `Diagrams of ${orm.name} carried over: ${twins.length} (${twins.map(id => get().diagrams.find(d => d.id === id)?.name).join(', ')})` }] : []),
       ...(carried ? [{ level: 'note', text: `Carried the population over by running the mapping: ${carried.rows} rows` }, ...carried.problems.slice(0, 20).map(l => ({ level: 'warn', text: l.text }))] : []),
       ...g.log.filter(l => !/^\d+ tables:/.test(l.text)),
     ] })
