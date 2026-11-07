@@ -14,6 +14,7 @@ import Minimap from './Minimap'
 import ErdView, { isErdDiagram } from './ErdView'
 import { BadgePopup, popupPos } from './BadgePopup'
 import { MappingTints, MappingRules, AccountingBadges } from './MappingLayer'
+import { layoutMappingDiagram } from '../layout/mappingLayout'
 import { GrowBadges } from './GrowBadges'
 import ContextMenu from './ContextMenu'
 import ConstraintMemberLabels from './ConstraintMemberLabels'
@@ -712,6 +713,26 @@ export default function Canvas() {
     handleConstraintContextMenu,
   } = useContextMenuHandlers(store, setContextMenu, setVrPopup)
 
+  // Selected rule nodes of a mapping diagram: split them off into a new
+  // diagram (laid out afresh), or take them off this one.
+  const handleRuleContextMenu = useCallback((e, diagramId) => {
+    const ids = useOrmStore.getState().selectedRuleIds ?? []
+    if (!ids.length) return
+    const n = ids.length === 1 ? 'Rule' : `${ids.length} Rules`
+    const st = useOrmStore.getState
+    setContextMenu({
+      x: e.clientX, y: e.clientY,
+      items: [
+        { label: `Move ${n} to New Diagram`, title: 'Elements still linked to rules that stay here are kept on both diagrams',
+          action: () => st().rulesToNewDiagram(diagramId, ids, { move: true, layout: layoutMappingDiagram }) },
+        { label: `Copy ${n} to New Diagram`,
+          action: () => st().rulesToNewDiagram(diagramId, ids, { layout: layoutMappingDiagram }) },
+        '---',
+        { label: `Remove ${n} from Diagram`, action: () => { st().hideMappingRules(diagramId, ids); st().setRuleSelection([]) } },
+      ],
+    })
+  }, [setContextMenu])
+
   const handleRoleValueClick = useCallback((fact, roleIndex, clientX, clientY) => {
     store.setTool('select')
     setVrPopup({ factId: fact.id, roleIndex, x: clientX, y: clientY })
@@ -1119,6 +1140,11 @@ export default function Canvas() {
         ? [...new Set([...store.multiSelectedOccurrenceIds, ...occIds])]
         : occIds
       store.setMultiSelection(finalIds, finalOccIds)
+      // Rule nodes of a mapping diagram (MappingLayer.jsx) whose centre is in the band.
+      const ruleIds = [...(svgRef.current?.querySelectorAll('.mapping-rule[data-rule-id]') ?? [])]
+        .filter(n => inBand(Number(n.dataset.x), Number(n.dataset.y))).map(n => n.dataset.ruleId)
+      if (ruleIds.length || !dragState.additive)
+        store.setRuleSelection(dragState.additive ? [...(useOrmStore.getState().selectedRuleIds ?? []), ...ruleIds] : ruleIds)
     }
     setDragState(null)
     setBandRect(null)
@@ -1485,7 +1511,7 @@ export default function Canvas() {
           <ValidationBadges store={store} visibleOts={visibleOts} visibleFacts={visibleFacts} visibleConstraints={visibleConstraints} visibleSubtypes={visibleSubtypes}/>
           </g>{/* end previewDim wrapper */}
           {/* Mapping diagrams: rules as nodes linked to their elements */}
-          <MappingRules/>
+          <MappingRules onRuleContextMenu={handleRuleContextMenu}/>
           <AccountingBadges/>
           <GrowBadges/>
           {(qd || store.queryIndexHighlight) && <QueryAtoms

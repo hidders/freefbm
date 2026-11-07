@@ -63,7 +63,7 @@ export function createSelectionSlice(set, get) {
       if (get().sequenceConstruction) get().abandonSequenceConstruction()
       set({ selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitLink: null, selectedImplicitLinkRole: null, selectedUniqueness: null,
             selectedMandatoryDot: null, selectedInternalFrequency: null,
-            selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+            selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [], selectedRuleIds: [],
             selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
     },
 
@@ -72,7 +72,7 @@ export function createSelectionSlice(set, get) {
       if (get().frequencyConstruction) get().abandonFrequencyConstruction()
       set({ selectedMandatoryDot: { factId, roleIndex }, selectedId: null, selectedKind: null,
             selectedRole: null, selectedUniqueness: null, selectedInternalFrequency: null,
-            selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+            selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [], selectedRuleIds: [],
             selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
     },
     deselectMandatoryDot() { set({ selectedMandatoryDot: null }) },
@@ -87,7 +87,7 @@ export function createSelectionSlice(set, get) {
       set({ selectedUniqueness: { factId, impliedRoleIndex: roleIndex, implied: true },
             selectedId: null, selectedKind: null, selectedRole: null,
             selectedMandatoryDot: null, selectedInternalFrequency: null,
-            selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+            selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [], selectedRuleIds: [],
             selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
     },
     selectImpliedMandatoryDot(factId, roleIndex) {
@@ -96,7 +96,7 @@ export function createSelectionSlice(set, get) {
       set({ selectedMandatoryDot: { factId, roleIndex, implied: true },
             selectedId: null, selectedKind: null, selectedRole: null,
             selectedUniqueness: null, selectedInternalFrequency: null,
-            selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+            selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [], selectedRuleIds: [],
             selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
     },
 
@@ -105,7 +105,7 @@ export function createSelectionSlice(set, get) {
       if (get().frequencyConstruction) get().abandonFrequencyConstruction()
       set({ selectedInternalFrequency: { factId, ifId }, selectedId: null, selectedKind: null,
             selectedRole: null, selectedUniqueness: null, selectedMandatoryDot: null,
-            selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+            selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [], selectedRuleIds: [],
             selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
     },
     deselectInternalFrequency() { set({ selectedInternalFrequency: null }) },
@@ -113,7 +113,7 @@ export function createSelectionSlice(set, get) {
     selectValueRange(desc) {
       set({ selectedValueRange: desc, selectedId: null, selectedKind: null,
             selectedRole: null, selectedUniqueness: null, selectedMandatoryDot: null,
-            selectedInternalFrequency: null, selectedCardinalityRange: null, multiSelectedIds: [],
+            selectedInternalFrequency: null, selectedCardinalityRange: null, multiSelectedIds: [], selectedRuleIds: [],
             selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
     },
     deselectValueRange() { set({ selectedValueRange: null }) },
@@ -127,7 +127,7 @@ export function createSelectionSlice(set, get) {
     selectCardinalityRange(desc) {
       set({ selectedCardinalityRange: desc, selectedId: null, selectedKind: null,
             selectedRole: null, selectedUniqueness: null, selectedMandatoryDot: null,
-            selectedInternalFrequency: null, selectedValueRange: null, multiSelectedIds: [],
+            selectedInternalFrequency: null, selectedValueRange: null, multiSelectedIds: [], selectedRuleIds: [],
             selectedOccurrenceId: null, multiSelectedOccurrenceIds: [] })
     },
     deselectCardinalityRange() { set({ selectedCardinalityRange: null }) },

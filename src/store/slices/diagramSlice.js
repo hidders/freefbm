@@ -343,6 +343,7 @@ export function createDiagramSlice(set, get) {
         zoom:            incoming?.zoom ?? 1,
         multiSelectedIds: restoredSelection,
         multiSelectedOccurrenceIds: restoredOccIds,
+        selectedRuleIds: [],
         selectedId:       null,
         selectedKind:     null,
         selectedRole:     null,
