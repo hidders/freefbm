@@ -26,6 +26,19 @@ import { relationalModel } from './relationalModel.js'
 import { findRefMode, findCompositePI, identifyingFactIds } from '../utils/refMode.js'
 import { mkEntity, mkValue, mkFact, mkUniqueness, withMandatoryId, mkConstraint, mkDiagram, mkOcc, uid } from '../store/storeHelpers.js'
 
+// Whether a condition's text is one parenthesised whole: "(a OR b)", not "(a) OR (b)".
+function wrapped(x) {
+  if (!x.startsWith('(') || !x.endsWith(')')) return false
+  let d = 0, quote = null
+  for (let i = 0; i < x.length; i++) {
+    if (quote) { if (x[i] === quote) quote = null; continue }
+    if (x[i] === "'" || x[i] === '"') quote = x[i]
+    else if (x[i] === '(') d++
+    else if (x[i] === ')' && --d === 0 && i < x.length - 1) return false
+  }
+  return true
+}
+
 // A key's name in the script (CONSTRAINT name), kept as sqlName.
 const keyName = (t, key) => t.keyNames?.[key] ?? null
 
@@ -588,7 +601,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
         }
         if (!restTexts.length) continue
       }
-      const text = restTexts.length === 1 ? restTexts[0] : restTexts.map(x => `(${x})`).join(' AND ')
+      const text = restTexts.length === 1 ? restTexts[0] : restTexts.map(x => (wrapped(x) ? x : `(${x})`)).join(' AND ')
       const cols = ch.domain ? new Map([...columns, ['value', columns.get(ch.column)]]) : columns
       const res = checkToFormula(text, cols, e.id)
       if (res.error) { warn(`${ch.where}: ${what} is left out: ${res.error} is not read yet`); continue }
