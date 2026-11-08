@@ -640,7 +640,8 @@ export function makePathTranslator(ctx) {
 
   // A constraint sequence's join path → { free, target, body } or { error }.
   // positionOf(constraintRoleId) gives the sequence position a projection
-  // fills; with withTarget the path's root is the query's target.
+  // fills, or 'drop' for one to leave out; with withTarget the path's root is
+  // the query's target.
   function joinQuery(jpEl, positionOf, freeTypes, withTarget) {
     return attempt(() => {
       const paths = pathsOf(jpEl)
@@ -652,6 +653,7 @@ export function makePathTranslator(ctx) {
       const fixed = []
       for (const cp of kids(proj, 'ConstraintRoleProjection')) {
         const i = positionOf(attr(cp, 'ref'))
+        if (i === 'drop') continue   // a position the caller leaves out (an old-style unary's boolean)
         if (i == null || i < 0) fail('a projection fills no position of the sequence')
         const n = sourceNode(kid(cp, 'ProjectedFrom'))
         if (!s.has(n)) fail('a projection refers to an object outside its path')

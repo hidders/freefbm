@@ -13,6 +13,7 @@ import RoleConnectors, { MandatoryDots } from './RoleConnectors'
 import Minimap from './Minimap'
 import ErdView, { isErdDiagram } from './ErdView'
 import { BadgePopup, popupPos } from './BadgePopup'
+import { IMPORT_NOTE_SEVERITY } from '../utils/importNotes.js'
 import { MappingTints, MappingRules, AccountingBadges } from './MappingLayer'
 import { layoutMappingDiagram } from '../layout/mappingLayout'
 import { GrowBadges } from './GrowBadges'
@@ -38,6 +39,72 @@ function noteEdgePoint(note, tx, ty) {
   const tY = dy !== 0 ? hh / Math.abs(dy) : Infinity
   const t = Math.min(tX, tY)
   return { x: note.x + dx * t, y: note.y + dy * t }
+}
+
+// ── Import note badges ──────────────────────────────────────────────────────
+// A small ✎ at the bottom-right corner of an element an import adapted
+// (src/utils/importNotes.js): violet when the meaning changed, slate when it
+// was only rewritten. Hover shows the notes, a click selects the element.
+
+function ImportNoteBadges({ store, visibleOts, visibleFacts, visibleConstraints, visibleSubtypes }) {
+  const [popup, setPopup] = useState(null)
+  const has = el => (el?.importNotes?.length ?? 0) > 0
+  const ots = visibleOts.filter(has), facts = visibleFacts.filter(f => !f._implicit && has(f))
+  const cons = (visibleConstraints ?? []).filter(has), sts = (visibleSubtypes ?? []).filter(has)
+  if (!ots.length && !facts.length && !cons.length && !sts.length) return null
+  const R = 6
+  const sevOf = el => el.importNotes.some(n => n.severity === 'changed') ? 'changed' : 'rewritten'
+  const badge = (key, el, kind, bx, by) => (
+    <g key={key} style={{ cursor: 'pointer', pointerEvents: 'all' }}
+       onMouseEnter={e => { e.stopPropagation(); setPopup({ clientX: e.clientX, clientY: e.clientY,
+         elementErrors: el.importNotes.map(n => ({ id: n.id, severity: n.severity, message: n.text,
+           label: IMPORT_NOTE_SEVERITY[n.severity]?.label })) }) }}
+       onMouseLeave={() => setPopup(null)}
+       onMouseDown={e => e.stopPropagation()}
+       onClick={e => { e.stopPropagation(); setPopup(null); store.select(el.id, kind, el.occurrenceId ?? null) }}>
+      <circle cx={bx} cy={by} r={R + 2} fill="transparent"/>
+      <circle cx={bx} cy={by} r={R} fill={IMPORT_NOTE_SEVERITY[sevOf(el)].colour}/>
+      <text x={bx} y={by + 0.5} textAnchor="middle" dominantBaseline="middle"
+        fontSize={8} fontWeight={700} fill="#fff" style={{ pointerEvents: 'none' }}>✎</text>
+    </g>
+  )
+  const otMap     = Object.fromEntries(visibleOts.map(o => [o.id, o]))
+  const nestedMap = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
+  return (
+    <>
+      <g>
+        {ots.map(ot => {
+          const { w, h } = computeOtSize(ot)
+          return badge(`imp-${ot.occurrenceId ?? ot.id}`, ot, ot.kind, ot.x + w / 2 - 1, ot.y + h / 2 - 1)
+        })}
+        {facts.map(f => {
+          let bx, by
+          if (f.objectified) {
+            const b = nestedFactBounds(f)
+            bx = b.right - 1; by = b.bottom - 1
+          } else {
+            const n = Math.max(f.arity, 1)
+            if (f.orientation === 'vertical') {
+              const totalH = n * ROLE_W + (n - 1) * ROLE_GAP
+              bx = f.x + ROLE_H / 2 + R - 1; by = f.y + totalH / 2 + R - 1
+            } else {
+              const totalW = n * ROLE_W + (n - 1) * ROLE_GAP
+              bx = f.x + totalW / 2 + R - 1; by = f.y + ROLE_H / 2 + R - 1
+            }
+          }
+          return badge(`imp-${f.occurrenceId ?? f.id}`, f, 'fact', bx, by)
+        })}
+        {cons.map(c => badge(`imp-${c.id}`, c, 'constraint', c.x + R, c.y + R))}
+        {sts.map(st => {
+          const a = playerBounds(st.subId, otMap, nestedMap), b = playerBounds(st.superId, otMap, nestedMap)
+          if (!a || !b) return null
+          const from = rectBorderPoint(a, b.cx, b.cy), to = rectBorderPoint(b, a.cx, a.cy)
+          return badge(`imp-${st.id}`, st, 'subtype', (from.x + to.x) / 2, (from.y + to.y) / 2 + R + 2)
+        })}
+      </g>
+      <BadgePopup popup={popup}/>
+    </>
+  )
 }
 
 // ── Validation error badges ──────────────────────────────────────────────────
@@ -1509,6 +1576,7 @@ export default function Canvas() {
           </g>
           <ConstraintMemberLabels/>
           <ValidationBadges store={store} visibleOts={visibleOts} visibleFacts={visibleFacts} visibleConstraints={visibleConstraints} visibleSubtypes={visibleSubtypes}/>
+          <ImportNoteBadges store={store} visibleOts={visibleOts} visibleFacts={visibleFacts} visibleConstraints={visibleConstraints} visibleSubtypes={visibleSubtypes}/>
           </g>{/* end previewDim wrapper */}
           {/* Mapping diagrams: rules as nodes linked to their elements */}
           <MappingRules onRuleContextMenu={handleRuleContextMenu}/>

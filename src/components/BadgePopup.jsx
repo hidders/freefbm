@@ -4,8 +4,8 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
 
-export const BADGE_SEV_COLOUR = { error: '#dc2626', warning: '#d97706', population: '#f5b400' }
-export const BADGE_SEV_ICON   = { error: '✕', warning: '!', population: '!' }
+export const BADGE_SEV_COLOUR = { error: '#dc2626', warning: '#d97706', population: '#f5b400', changed: '#7c3aed', rewritten: '#64748b' }
+export const BADGE_SEV_ICON   = { error: '✕', warning: '!', population: '!', changed: '✎', rewritten: '✎' }
 const BADGE_POPUP_FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 const POP_W = 260
 
