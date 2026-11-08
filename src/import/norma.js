@@ -36,6 +36,8 @@ import { narrowestNoteWidth, fittingNoteHeight } from '../components/NoteNode.js
 import { getDatatypeById } from '../data/datatypeProfiles.js'
 import { makePathTranslator, closeLinearRecursion } from './normaPaths.js'
 import { addImportNote } from '../utils/importNotes.js'
+import { VALUE_KINDS, valueKindName } from '../utils/datatypeValues.js'
+import { normaTemporal } from './normaTemporal.js'
 
 const SCALE = 200   // pixels per inch
 
@@ -442,6 +444,34 @@ export function importNorma(xmlText) {
     r.objectTypeId = playerId.get(r._player) ?? null
     if (!r.objectTypeId) warn(`A role of fact type ${f.id} has no player FreeFBM can show.`)
     delete r._player
+  }
+
+  // date and time bounds of value ranges, in XML Schema's form
+  {
+    const show = (b) => `“${b}”`
+    const fix = (el, ranges, owner, assignment) => {
+      const kindName = valueKindName(assignment)
+      if (!ranges?.length || !['date', 'time', 'datetime'].includes(kindName)) return
+      const kind = VALUE_KINDS[kindName]
+      const done = [], unsure = []
+      for (const r of ranges) for (const key of ['value', 'lower', 'upper']) {
+        const b = r[key]
+        if (b == null || b === '' || !kind.parse(String(b).trim()).invalid) continue
+        const got = normaTemporal(b, kindName)
+        if (!got) continue
+        r[key] = got.text
+        done.push(`${show(b)} is ${got.text}`)
+        if (got.ambiguous) unsure.push(show(b))
+        counts.temporalBounds = (counts.temporalBounds ?? 0) + 1
+      }
+      if (!done.length) return
+      const what = `NORMA keeps the bounds of a value range as typed. In the value range ${owner}, ${done.join(', ')}, written as XML Schema writes ${kindName === 'time' ? 'times' : 'dates'}.`
+      if (unsure.length) changed(el, `${what} NORMA writes a bound as typed; ${unsure.join(', ')} ${unsure.length === 1 ? 'is' : 'are'} read month first, as NORMA compares bounds (its invariant culture). Swap day and month if the model was made with day first.`)
+      else rewritten(el, what)
+    }
+    for (const ot of objectTypes) fix(ot, ot.valueRange, `of ${ot.name}`, ot.datatypeAssignment)
+    for (const f of facts) f.roles.forEach((r, i) =>
+      fix(f, r.valueRange, `on role ${i + 1} of ${factName0(f.id)}`, otById.get(r.objectTypeId)?.datatypeAssignment))
   }
 
   // subtype links
@@ -1250,6 +1280,7 @@ export function importNorma(xmlText) {
   if (counts.negatableUnaries) note(`${counts.negatableUnaries} unar${counts.negatableUnaries === 1 ? 'y is' : 'ies are'} paired with a negation in NORMA (true, false or unknown); each pair is kept as two unaries under the closed-world assumption ("is known to …", "is known not to …") with the exclusion NORMA gives them; see their import notes.`)
   const nImportNotes = [...objectTypes, ...facts, ...subtypes, ...constraints].reduce((n, el) => n + (el.importNotes?.length ?? 0), 0)
   if (nImportNotes) note(`${nImportNotes} import note${nImportNotes === 1 ? ' says' : 's say'} what was adapted to FreeFBM, on the elements concerned; they are listed under Import in the Validation panel and marked ✎ on the diagrams.`)
+  if (counts.temporalBounds) note(`${counts.temporalBounds} date or time bound${counts.temporalBounds === 1 ? ' of a value range is' : 's of value ranges are'} written as XML Schema does (1900-01-01); NORMA keeps them as typed (such as 1900/01/01).`)
   if (counts.unaries) note(`${counts.unaries} unary fact types were stored by NORMA as binaries with an implicit boolean value type; they are unaries here.`)
   const skippedImplied = [...unused(counts.impliedObjectification, 'implied objectifications'), ...unused(counts.impliedMandatory, 'implied mandatory constraints')]
   if (skippedImplied.length) note(`Skipped what NORMA implies and FreeFBM derives itself: ${skippedImplied.join(', ')}.`)
