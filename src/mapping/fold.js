@@ -40,6 +40,7 @@ import { makePopulationEvaluator } from '../logic/derivedPopulation.js'
 import { projCellKey } from '../utils/populationValidation.js'
 import { uid, mkConstraint } from '../store/storeHelpers.js'
 import { valueKindName } from '../utils/datatypeValues.js'
+import { withImplicitRules } from './sameModel.js'
 
 const other = (side) => (side === 'source' ? 'target' : 'source')
 const keyOf = (cell) => JSON.stringify(projCellKey(cell))
@@ -674,6 +675,7 @@ const foldable = (i) => !!(i.rule || i.constraint)
 const nameOf = (it, ctx) => (it.kind === 'fact' ? readingName(it.el, ctx) : it.el.name)
 
 export function planFold(state, mapping, { side = null, check = true } = {}) {
+  mapping = withImplicitRules(state, mapping)
   const X = side ?? foldSide(state, mapping), Y = other(X)
   const ctxs = { source: sideContext(state, mapping.sourceSchemaId), target: sideContext(state, mapping.targetSchemaId) }
   const ctxX = ctxs[X]
@@ -780,6 +782,7 @@ function removalCandidates(state, before, mapping, X, items) {
 // run the rest of the mapping there and back on a generic population of the
 // other side built from those rules. { recoverable, reason }.
 export function recoverable(state, mapping, X, factIds) {
+  mapping = withImplicitRules(state, mapping)
   const Y = other(X)
   const ctxX = sideContext(state, sideSchemaId(mapping, X))
   const ids = new Set(factIds)
@@ -878,7 +881,7 @@ export function finiteCases(w, pops) {
 export function foldChanges(state, plan, { fold = null, remove = null } = {}) {
   const chosen = plan.items.filter(i => foldable(i) && (!fold || fold.includes(i.id)))
   const report = []
-  const base = state.mappings.find(m => m.id === plan.mapping.id)
+  const base = withImplicitRules(state, state.mappings.find(m => m.id === plan.mapping.id))
   let mapping = { ...base, rules: [...base.rules, ...chosen.filter(i => i.rule).map(i => i.rule)] }
   for (const i of chosen) {
     report.push(i.rule ? `Folded ${i.name} into the mapping as rule "${i.rule.name}"`
@@ -955,6 +958,7 @@ export function foldedState(state, changes) {
 // same value types, and back (a vertical split gives both).
 // [{ kind: 'fk', constraint, key, label, status, reason }].
 export function suggestedForeignKeys(state, mapping, X, tableIds) {
+  mapping = withImplicitRules(state, mapping)
   const ctx = sideContext(state, sideSchemaId(mapping, X))
   if (!ctx.relational) return []
   const keyOfTable = (t) => {
@@ -1010,6 +1014,7 @@ export function addConstraint(f, a) {
 // X lacks, that the mapping keeps: [{ factId, kind: 'mand'|'uc', roleIndex,
 // key, label, status, reason }].
 export function suggestedConstraints(state, mapping, X, factIds) {
+  mapping = withImplicitRules(state, mapping)
   const ctx = sideContext(state, sideSchemaId(mapping, X))
   const props = []
   for (const fid of factIds) {

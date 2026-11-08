@@ -26,6 +26,7 @@ import { makeContext } from '../logic/constraintFormulas.js'
 import { checkFormulaConstraint, formulaConstraintEntry } from '../logic/formulaConstraint.js'
 import { asGraphical, graphicalFields } from './recognise.js'
 import { mkConstraint } from '../store/storeHelpers.js'
+import { withImplicitRules } from './sameModel.js'
 
 const other = (side) => (side === 'source' ? 'target' : 'source')
 class TranslateError extends Error {}
@@ -40,6 +41,7 @@ const existsAll = (vars, body) => vars.reduceRight((b, v) => ({ t: 'exists', v, 
 const forallAll = (vars, body) => vars.reduceRight((b, v) => ({ t: 'forall', v, body: b }), body)
 
 export function translateEntry(state, mapping, entry, side) {
+  mapping = withImplicitRules(state, mapping)
   const X = side, Y = other(side)
   const ctxs = { source: sideContext(state, mapping.sourceSchemaId), target: sideContext(state, mapping.targetSchemaId) }
   const ctxX = ctxs[X], ctxY = ctxs[Y]
@@ -378,6 +380,7 @@ export function asValueComparison(rule) {
 // constraint kept once it is there: { schemaId, rule, deontic, vc, entry,
 // ctx, errors, status, reason } or { error }.
 export function proposeTranslation(state, mapping, x, side) {
+  mapping = withImplicitRules(state, mapping)
   const t = translateEntry(state, mapping, x.entry, side)
   if (t.error) return { error: t.error }
   const schemaId = side === 'source' ? mapping.targetSchemaId : mapping.sourceSchemaId

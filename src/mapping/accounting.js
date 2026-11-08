@@ -52,6 +52,7 @@ import { prepareRun, executeRun, schemeOf } from './runMapping.js'
 import { sideContext, sideSchemaId, SIDES, expandSide, asSide } from './mapping.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
 import { isIndependentType, identifiedRoles } from '../utils/independence.js'
+import { withImplicitRules } from './sameModel.js'
 
 const isFresh = (v) => typeof v === 'string' && v.startsWith('⊥')
 const keyOf = (cell) => JSON.stringify(projCellKey(cell))
@@ -1352,6 +1353,7 @@ export function accountMapping(state, mapping, options) {
 // The same, one constraint per step: yields { done, total } and returns the
 // result, so that the Mappings tab can show progress and stay responsive.
 export function* accountingSteps(state, mapping, { onlyKeys = null } = {}) {
+  mapping = withImplicitRules(state, mapping)
   const t0 = Date.now()
   const worlds = { source: worldOf(state, mapping.sourceSchemaId), target: worldOf(state, mapping.targetSchemaId) }
   const preps = {

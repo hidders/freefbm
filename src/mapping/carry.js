@@ -16,6 +16,7 @@ import { relationalModel } from '../relational/relationalModel.js'
 import { relationalView } from '../relational/relationalView.js'
 import { rmSentence, RM_SENTENCE_LANGUAGES } from '../relational/rmText.js'
 import { mkConstraint, uid } from '../store/storeHelpers.js'
+import { withImplicitRules } from './sameModel.js'
 
 const otherOf = (side) => (side === 'source' ? 'target' : 'source')
 const schemaOf = (mapping, side) => (side === 'source' ? mapping.sourceSchemaId : mapping.targetSchemaId)
@@ -109,6 +110,7 @@ function describe(state, state2, sid) {
 // { kind: 'simple', simple, status, entry, ctx, rm } or
 // { kind: 'translation', carry (proposeTranslation's result), entry, ctx, rm } or { error }.
 export function proposeCarry(state, mapping, x, side) {
+  mapping = withImplicitRules(state, mapping)
   const sid = schemaOf(mapping, otherOf(side))
   for (const simple of candidates(state, mapping, x, side)) {
     const { state: s2 } = withSimple(state, simple, '__carried')
@@ -130,6 +132,7 @@ export function proposeCarry(state, mapping, x, side) {
 // The carry report, one step per constraint: yields { done, total }, returns
 // { items: [{ side, x (accounting item), proposal | null }], ms }.
 export function* carrySteps(state, mapping) {
+  mapping = withImplicitRules(state, mapping)
   const t0 = Date.now()
   const added = addedEntries(state, mapping)
   const keys = new Set([...added.source, ...added.target].map(e => e.key))

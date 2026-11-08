@@ -26,6 +26,7 @@ import { withRuleForms } from '../../logic/query.js'
 import { mkGroup, loadGroups, pruneGroups } from '../../utils/groups.js'
 import { mkPropertyDefinition, loadPropertyDefinitions, dropPropertyValues } from '../../utils/customProperties.js'
 import { loadMappings } from '../../mapping/mapping.js'
+import { compactMapping } from '../../mapping/sameModel.js'
 import { completeTables } from '../../relational/tableUnits.js'
 
 // The clipboard holds elements of the schema it was copied in; they may only be
@@ -775,7 +776,10 @@ export function createModelSlice(set, get) {
       })
 
       // A mapping diagram whose mapping is gone becomes an ordinary diagram.
+      // A mapping within one data model keeps only the rules that change
+      // something (sameModel.js); older files had a rule per unchanged element.
       const mappings = loadMappings(d.schema?.mappings, new Set(scoped.schemas.map(x => x.id)), scoped)
+        .map(m => { try { return compactMapping(scoped, m, { infer: true }) } catch { return m } })
       const views = loadViews(d.schema?.views, new Set(scoped.schemas.map(x => x.id)))
       const mappingIds = new Set([...mappings, ...views].map(m => m.id))
       scoped.diagrams = scoped.diagrams.map(dg => {
