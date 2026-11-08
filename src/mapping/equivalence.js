@@ -34,6 +34,7 @@ import { uncoveredElements } from './mappingIssues.js'
 import { translateEntry } from './translate.js'
 import { asGraphical } from './recognise.js'
 import { isIndependentType } from '../utils/independence.js'
+import { withImplicitRules } from './sameModel.js'
 
 const other = (side) => (side === 'source' ? 'target' : 'source')
 const dirFrom = (side) => (side === 'source' ? 'forward' : 'backward')
@@ -123,6 +124,7 @@ function keptBy(x, otherConstraints) {
 }
 
 export function* equivalenceSteps(state, mapping) {
+  mapping = withImplicitRules(state, mapping)
   const t0 = Date.now()
   const worlds = { source: worldOf(state, mapping.sourceSchemaId), target: worldOf(state, mapping.targetSchemaId) }
   const preps = { forward: prepareRun(state, mapping, 'forward', { check: false }), backward: prepareRun(state, mapping, 'backward', { check: false }) }

@@ -24,6 +24,7 @@ import { rmViolations } from '../relational/rmText.js'
 import { makeContext, readingText } from '../logic/constraintFormulas.js'
 import { computePopulationIssues } from '../utils/populationValidation.js'
 import { withDerivedPopulations, semiDerivedPopulationIssues, derivedFactPopulationIssues, formulaConstraintPopulationIssues } from '../logic/derivedPopulation.js'
+import { withImplicitRules } from './sameModel.js'
 
 export const mkExchange = (name, steps = []) => ({ id: uid(), name, steps })
 
@@ -40,7 +41,7 @@ export function loadExchanges(raw, mappingIds) {
 // The mapping or view of a step: { m, isView } or null.
 export function stepMapping(state, step) {
   const m = (state.mappings ?? []).find(x => x.id === step.mappingId)
-  if (m) return { m, isView: false }
+  if (m) return { m: withImplicitRules(state, m), isView: false }
   const v = (state.views ?? []).find(x => x.id === step.mappingId)
   return v ? { m: v, isView: true } : null
 }

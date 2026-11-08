@@ -10,6 +10,7 @@ import { mkTableRule, tableRulesOf, compileTableRulesInto, newColumn, withPrimar
 import { sideContext, treeToSide, expandSide, checkRule } from '../../mapping/mapping.js'
 import { mkEntity } from '../storeHelpers'
 import { cloneSchema, identityMapping } from '../../mapping/refactor.js'
+import { compactMapping } from '../../mapping/sameModel.js'
 import { entriesOf, accountingSteps } from '../../mapping/accounting.js'
 import { proposeTranslation } from '../../mapping/translate.js'
 import { transformationById } from '../../mapping/transformations.js'
@@ -550,7 +551,9 @@ export const createMappingSlice = (set, get) => {
     // for them, as one undo step. plan from planFold; fold, remove: the
     // chosen element and fact type ids. Shows a report in the import log.
     // twins: { folded element id → element of the old version to delete } (Refactor).
-    foldMapping(plan, { fold = null, remove = null, twins = null } = {}) {
+    // compact: false leaves the mapping's identity rules written out (a
+    // transformation compacts it once it is done).
+    foldMapping(plan, { fold = null, remove = null, twins = null, compact = true } = {}) {
       const st = get()
       const m = st.mappings?.find(x => x.id === plan.mapping.id)
       if (!m) return null
@@ -633,6 +636,7 @@ export const createMappingSlice = (set, get) => {
             ch.report.push(`Removed from the old version the ${gone.length} derived element${gone.length === 1 ? '' : 's'} now stored in the new one; the mapping gives them`)
           }
         }
+        if (compact) get()._compactMapping(m.id)
       } finally {
         set(s => ({ historyBatch: Math.max(0, (s.historyBatch ?? 1) - 1) }))
       }
@@ -779,10 +783,19 @@ export const createMappingSlice = (set, get) => {
     refactorSchema(schemaId) {
       const r = get()._refactor(schemaId)
       if (!r) return null
+      get()._compactMapping(r.mappingId)
       set({ foldDialog: { mappingId: r.mappingId, side: 'target', twins: r.twins } })
       return r.mappingId
     },
-    // The clone and the identity mapping: { mappingId, idMap, twins, schemaId }.
+    // A same-model mapping keeps only the rules that change something: its
+    // identity rules become unchanged pairs (sameModel.js). Not undoable on
+    // its own: it is part of the action that calls it.
+    _compactMapping(mappingId) {
+      set(st => ({ mappings: (st.mappings ?? []).map(m => (m.id === mappingId ? compactMapping(st, m) : m)) }))
+    },
+    // The clone and the identity mapping, with a rule for every element
+    // (compacted by the caller once the change is made):
+    // { mappingId, idMap, twins, schemaId }.
     _refactor(schemaId, newName = null) {
       const s = get()
       const old = s.schemas.find(x => x.id === schemaId)
@@ -810,7 +823,7 @@ export const createMappingSlice = (set, get) => {
         set(st => ({ mappings: [...(st.mappings ?? []), mapping] }))
         if (cl.diagrams[0]) get().setActiveDiagram(cl.diagrams[0].id)
         get().setImportLog?.({ kind: 'fold', source: `Refactor ${old.name}`, entries: [
-          { level: 'note', text: `Copied ${old.name} to ${name}, with the mapping ${mapping.name} (${mapping.rules.length} rules, one per entity type and fact type).` },
+          { level: 'note', text: `Copied ${old.name} to ${name}, with the mapping ${mapping.name}; it carries the ${mapping.rules.length} entity types and fact types over unchanged and gets a rule for each one that changes.` },
           ...skipped.map(x => ({ level: 'warn', text: `No identity rule for ${x}: it has no identifier to map it by` })),
         ] })
       } finally {
@@ -877,7 +890,7 @@ export const createMappingSlice = (set, get) => {
         // derived ones the schema had stay as they are.
         const failed = plan.items.filter(i => !i.rule && !i.semi)
         if (failed.length) throw new Error(`${failed.map(i => `${i.name}: ${i.error}`).join('; ')}`)
-        const ch = get().foldMapping(plan, { fold: plan.items.filter(i => i.rule).map(i => i.id), remove: plan.candidates.filter(c => remove.has(c.factId) && c.recoverable).map(c => c.factId), twins: rf.twins })
+        const ch = get().foldMapping(plan, { fold: plan.items.filter(i => i.rule).map(i => i.id), remove: plan.candidates.filter(c => remove.has(c.factId) && c.recoverable).map(c => c.factId), twins: rf.twins, compact: false })
         report.push(...(ch?.report ?? []))
         for (const c of plan.candidates) if (remove.has(c.factId) && !c.recoverable) report.push(`Kept ${c.name}: ${c.reason}`)
         m = get().mappings.find(x => x.id === rf.mappingId)
@@ -904,6 +917,9 @@ export const createMappingSlice = (set, get) => {
             return add.length ? { ...d, constraintOccurrences: [...(d.constraintOccurrences ?? []), ...add] } : d
           }) }))
         }
+        // The mapping keeps only the rules that change something.
+        get()._compactMapping(rf.mappingId)
+        m = get().mappings.find(x => x.id === rf.mappingId)
         get().setImportLog?.({ kind: 'transform', source: tr.label, entries: [
           { level: 'note', text: `${tr.describe(params, ctx0)} The new version is ${get().schemas.find(x => x.id === rf.schemaId)?.name}, with the mapping ${m.name} from the old one; its Equivalence button checks the change.` },
           ...report.map(text => ({ level: /^Kept /.test(text) ? 'warn' : 'note', text })),

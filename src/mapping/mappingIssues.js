@@ -14,6 +14,7 @@
 
 import { checkRule, sideContext, sideSchemaId, expandSide, asSide, SIDES } from './mapping.js'
 import { identifyingFactIds } from '../utils/refMode.js'
+import { withImplicitRules } from './sameModel.js'
 
 const ctxsOf = (state, mapping, cache) => {
   const get = (id) => {
@@ -44,6 +45,7 @@ export function mappingRuleIssues(state, cache = new Map()) {
 // types that use them), and so are fully derived fact types (their rule
 // gives them) and identifying fact types of a named entity type.
 export function uncoveredElements(state, mapping, side, ctx = sideContext(state, sideSchemaId(mapping, side))) {
+  mapping = withImplicitRules(state, mapping)
   const typeIds = new Set(), factIds = new Set()
   for (const r of mapping.rules) {
     let s
@@ -75,11 +77,11 @@ export function uncoveredElements(state, mapping, side, ctx = sideContext(state,
   return out
 }
 
-// Coverage of every mapping with rules, per element: [{ mapping, side, elementId, kind: 'type' | 'fact' }].
+// Coverage of every mapping with rules (or unchanged elements, sameModel.js), per element: [{ mapping, side, elementId, kind: 'type' | 'fact' }].
 export function mappingCoverageIssues(state, cache = new Map()) {
   const out = []
   for (const m of state.mappings ?? []) {
-    if (!m.rules.length) continue
+    if (!m.rules.length && !m.unchanged?.length) continue
     const ctxs = ctxsOf(state, m, cache)
     for (const side of SIDES) {
       const u = uncoveredElements(state, m, side, ctxs[side])

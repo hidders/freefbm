@@ -9,11 +9,12 @@
 //
 // cloneSchema(state, schemaId, name) gives the clone's parts with fresh ids;
 // identityMapping(state, oldId, newId, idMap) the mapping between the two.
+// The new version's mapping keeps only the rules that change something;
+// unchanged elements are pairs (sameModel.js).
 
 import { uid, mkSchema } from '../store/storeHelpers.js'
 import { sideContext, mkMapping } from './mapping.js'
-import { keyLeaves, schemeParts, ownPattern, elsOf, snake, sideToTree } from './fold.js'
-import { readingName } from './mapping.js'
+import { identityRules } from './sameModel.js'
 
 // The schema's elements, diagrams (not mapping diagrams) and populations with
 // fresh ids: { schema, objectTypes, facts, subtypes, constraints, diagrams,
@@ -64,47 +65,16 @@ export function cloneSchema(state, schemaId, name) {
 const isFullyDerived = (x) => x.derivation === 'derived'
 
 // The identity mapping from schema oldId to its clone newId: for every
-// entity type with an identifier and every fact type that does not identify
-// one (fully derived ones are left to Fold), the element's own pattern on
-// both sides over the frontier names of its reference values.
+// entity type with an identifier and every fact type that does not
+// identify one (fully derived ones are left to Fold), the element's own pattern on
+// both sides over the frontier names of its reference values. The rules are
+// marked `identity`: once the change is made, compactMapping (sameModel.js)
+// keeps only the rules that change something.
 // Returns { mapping, skipped: [name] }.
 export function identityMapping(state, oldId, newId, idMap, name) {
-  const ctxOld = sideContext(state, oldId), ctxNew = sideContext(state, newId)
-  const elsOld = elsOf(ctxOld), elsNew = elsOf(ctxNew)
   const mapping = mkMapping(name, oldId, newId)
-  const skipped = []
-  const ident = new Set()
-  for (const o of ctxOld.objectTypes) for (const p of schemeParts(o.id, ctxOld, elsOld) ?? []) ident.add(p.factId)
-  const namesFor = (typeIds) => {
-    const taken = new Set()
-    return typeIds.map(tid => (keyLeaves(tid, ctxOld, elsOld) ?? []).map(vt => {
-      const base = snake(ctxOld.otById.get(vt)?.name)
-      let n = base
-      for (let i = 2; taken.has(n); i++) n = `${base}_${i}`
-      taken.add(n)
-      return n
-    }))
-  }
-  const add = (el, kind, label) => {
-    const twin = (kind === 'fact' ? ctxNew.factById : ctxNew.otById).get(idMap.get(el.id))
-    const typeIds = kind === 'fact' ? el.roles.map(r => r.objectTypeId) : [el.id]
-    if (!twin || typeIds.some(t => !keyLeaves(t, ctxOld, elsOld))) { skipped.push(label); return }
-    const names = namesFor(typeIds)
-    const rootNames = kind === 'fact' ? names : [names.flat()]
-    try {
-      const source = sideToTree(ownPattern(el, kind, ctxOld, elsOld, rootNames))
-      const target = sideToTree(ownPattern(twin, kind, ctxNew, elsNew, rootNames))
-      mapping.rules.push({ id: uid(), name: label, source, target })
-    } catch { skipped.push(label) }
-  }
-  for (const o of ctxOld.objectTypes) {
-    if (o.kind !== 'entity' || isFullyDerived(o)) continue
-    add(o, 'type', o.name)
-  }
-  for (const f of ctxOld.facts) {
-    if (ident.has(f.id) || isFullyDerived(f)) continue
-    add(f, 'fact', readingName(f, ctxOld))
-  }
+  const { rules, skipped } = identityRules(state, mapping, idMap)
+  mapping.rules.push(...rules)
   return { mapping, skipped }
 }
 

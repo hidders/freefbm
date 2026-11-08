@@ -31,6 +31,7 @@ import { makePopulationEvaluator } from '../logic/derivedPopulation.js'
 import { projCellKey } from '../utils/populationValidation.js'
 import { findRefMode, findCompositePI, findInheritedPI, identifyingFactIds } from '../utils/refMode.js'
 import { asSide, expandSide, sideContext, sideSchemaId, readingName, checkRule, SIDES } from './mapping.js'
+import { withImplicitRules } from './sameModel.js'
 
 const keyOf = (cell) => {
   const k = projCellKey(cell)
@@ -513,6 +514,7 @@ export function runMapping(state, mapping, direction = 'forward') {
 // spelt out, and lookups of the elements. Used again and again by constraint
 // accounting (accounting.js), which runs mappings on many small populations.
 export function prepareRun(state, mapping, direction = 'forward', { check = true } = {}) {
+  mapping = withImplicitRules(state, mapping)
   const from = direction === 'forward' ? 'source' : 'target'
   const to = other(from)
   const elements = dataOf({ ...state, populations: {}, factPopulations: {}, nestedEntityMappings: {}, subtypeMappings: {} })
@@ -644,6 +646,7 @@ export function withRunApplied(state, run) {
 // Runs the mapping there and back, and compares what comes back with the
 // population of the elements the rules name on the starting side.
 export function roundTrip(state, mapping, direction = 'forward') {
+  mapping = withImplicitRules(state, mapping)
   const there = runMapping(state, mapping, direction)
   const mid = { ...state, ...withRunApplied(state, there) }
   const back = runMapping(mid, mapping, direction === 'forward' ? 'backward' : 'forward')

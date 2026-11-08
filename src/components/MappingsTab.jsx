@@ -119,6 +119,7 @@ export default function MappingsTab() {
                 style={{ ...select, fontWeight: 700, minWidth: 160 }} />
               <span style={{ color: 'var(--ink-muted)' }}>{name(m.sourceSchemaId)} → {name(m.targetSchemaId)}</span>
               <span style={{ color: 'var(--ink-muted)' }}>· {scoped ? `${rules.length} of ${m.rules.length}` : m.rules.length} rule{m.rules.length === 1 ? '' : 's'}{scoped ? ' on this diagram' : ''}
+                {m.unchanged?.length > 0 && <span title="Entity types and fact types (tables and columns) the new version has as they were: the mapping carries them over without a rule">{` · ${m.unchanged.length} unchanged`}</span>}
                 {issueCount.error > 0 && <span style={{ color: '#dc2626' }}> · {issueCount.error} error{issueCount.error === 1 ? '' : 's'}</span>}
                 {issueCount.warning > 0 && <span style={{ color: '#d97706' }}> · {issueCount.warning} warning{issueCount.warning === 1 ? '' : 's'}</span>}
               </span>
@@ -144,7 +145,7 @@ export default function MappingsTab() {
             {state.equivalence[m.id] && <EquivalenceReport eq={state.equivalence[m.id]} mapping={m} name={name} />}
             {state.accounting[m.id] && <AccountingReport acc={state.accounting[m.id]} mapping={m} name={name} />}
             {rules.length === 0 && <div style={{ padding: '6px 8px', color: 'var(--ink-muted)' }}>{scoped && m.rules.length
-              ? 'No rules on this diagram yet: add them from the schema browser.' : 'No rules yet.'}</div>}
+              ? 'No rules on this diagram yet: add them from the schema browser.' : m.unchanged?.length ? 'No rules: everything is carried over unchanged.' : 'No rules yet.'}</div>}
             {rules.map(({ r, issues, k }, row) => {
               const focused = !advanced && state.focus?.mappingId === m.id && state.focus.ruleId === r.id
               const open = (advanced && state.editing?.mappingId === m.id && state.editing.ruleId === r.id) || focused

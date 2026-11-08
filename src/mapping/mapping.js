@@ -599,6 +599,8 @@ export function loadMappings(raw, schemaIds, state = null) {
         id: String(r.id ?? uid()), name: String(r.name ?? ''),
         source: rows(normPattern(r.source), m.sourceSchemaId), target: rows(normPattern(r.target), m.targetSchemaId),
       })),
+      // Elements a same-model mapping carries unchanged (sameModel.js).
+      ...(Array.isArray(m.unchanged) && m.unchanged.length ? { unchanged: m.unchanged.filter(p => Array.isArray(p) && p.length === 2).map(([a, b]) => [String(a), String(b)]) } : {}),
       // Constraints only (pairLock.js).
       ...(m.lock && typeof m.lock === 'object' && m.lock.base ? { lock: m.lock } : {}),
     }))
