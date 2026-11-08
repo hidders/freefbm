@@ -3,7 +3,8 @@ import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { VALIDATION_CATEGORIES } from '../utils/validation.js'
 import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 import { hasTextSelection } from '../utils/textPanel.js'
-import { activeSchemaIdOf } from '../store/storeHelpers'
+import { activeSchemaIdOf, factTypeLabel } from '../store/storeHelpers'
+import { allImportNotes, elementKindOf, importNoteElementLabel, IMPORT_NOTE_SEVERITY } from '../utils/importNotes.js'
 import { activeRelationalFace } from '../relational/face'
 import { relationalView, rmObjectOf } from '../relational/relationalView'
 
@@ -183,6 +184,10 @@ export default function ValidationPanel() {
     if (!byCategory[e.category]) byCategory[e.category] = []
     byCategory[e.category].push(e)
   }
+  // What an import adapted (src/utils/importNotes.js), listed after the
+  // issues so that notes on elements no diagram shows can be found too.
+  const importNotes = allImportNotes(store).filter(({ element }) =>
+    !multiSchema || allSchemas || !element.schemaId || element.schemaId === activeSchemaId)
   // A click that ends a text selection only selects; see utils/textPanel.js.
   // A relational schema showing its tables names each issue's table, column
   // or key first, and a click selects that object (RM schemas, step 4).
@@ -247,6 +252,13 @@ export default function ValidationPanel() {
             minWidth: 14, textAlign: 'center',
           }}>{errorCount}</span>
         )}
+        {importNotes.length > 0 && (
+          <span title="Import notes" style={{
+            background: IMPORT_NOTE_SEVERITY.changed.colour, color: 'white',
+            borderRadius: 8, fontSize: 9, padding: '0 4px', lineHeight: '14px',
+            minWidth: 14, textAlign: 'center',
+          }}>✎{importNotes.length}</span>
+        )}
       </div>
 
       {/* Panel content — visible when expanded */}
@@ -309,12 +321,12 @@ export default function ValidationPanel() {
 
         {/* Body — focusable so the messages can be selected and copied (see App.jsx) */}
         <div data-text-panel tabIndex={0} className="copyable" style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {errorCount === 0 ? (
+          {errorCount === 0 && importNotes.length === 0 ? (
             <div style={{ fontSize: 11, color: 'var(--ink-muted)', textAlign: 'center', marginTop: 12 }}>
               No validation errors
             </div>
-          ) : (
-            Object.entries(byCategory).map(([cat, errs]) => (
+          ) : (<>
+            {Object.entries(byCategory).map(([cat, errs]) => (
               <div key={cat}>
                 <div style={{
                   fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
@@ -343,8 +355,43 @@ export default function ValidationPanel() {
                   ))}
                 </div>
               </div>
-            ))
-          )}
+            ))}
+            {importNotes.length > 0 && (
+              <div>
+                <div style={{
+                  fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+                  textTransform: 'uppercase', color: 'var(--ink-muted)', marginBottom: 4,
+                }}>
+                  Import ({importNotes.length})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {importNotes.map(({ element, kind, note }) => {
+                    const sev = IMPORT_NOTE_SEVERITY[note.severity] ?? IMPORT_NOTE_SEVERITY.changed
+                    return (
+                      <div key={`${element.id}:${note.id}`} title={sev.label}
+                        onClick={() => { if (!hasTextSelection()) store.navigateToElement(element.id, elementKindOf(element, kind)) }}
+                        style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 6,
+                          padding: '5px 7px', borderRadius: 4,
+                          background: 'var(--bg-raised)',
+                          border: '1px solid var(--border-soft)',
+                          borderLeft: `3px solid ${sev.colour}`,
+                          cursor: 'pointer',
+                        }}
+                        onMouseEnter={ev => ev.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseLeave={ev => ev.currentTarget.style.background = 'var(--bg-raised)'}
+                      >
+                        <span style={{ color: sev.colour, fontWeight: 700, fontSize: 9, marginTop: 2, flexShrink: 0 }}>{sev.icon}</span>
+                        <span style={{ fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.4 }}>
+                          <b style={{ fontWeight: 600 }}>{importNoteElementLabel(store, element, kind, f => factTypeLabel(f, store.objectTypes))}: </b>{note.text}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </>)}
         </div>
       </div>
 

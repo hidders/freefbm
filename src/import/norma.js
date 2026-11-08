@@ -25,10 +25,17 @@
 //   - element groups with their colours, custom properties (a property
 //     named Definition or Note fills the element's own field), model notes
 //   - diagrams: shapes become occurrences, inches become pixels
+//
+// Where the import adapts the model to FreeFBM's (a reading of NORMA's
+// construct that FreeFBM writes differently, or something it cannot keep),
+// the element gets an import note (src/utils/importNotes.js): 'changed' when
+// the meaning changed or something was lost, 'rewritten' when it says the
+// same. Adaptations of layout only are in the log.
 
 import { narrowestNoteWidth, fittingNoteHeight } from '../components/NoteNode.jsx'
 import { getDatatypeById } from '../data/datatypeProfiles.js'
 import { makePathTranslator, closeLinearRecursion } from './normaPaths.js'
+import { addImportNote } from '../utils/importNotes.js'
 
 const SCALE = 200   // pixels per inch
 
@@ -171,8 +178,11 @@ export function importNorma(xmlText) {
   const otById = new Map(), factById = new Map(), stById = new Map(), conById = new Map()
   const playerId = new Map()           // NORMA object type id → FreeFBM player id
   const implicitBoolean = new Set()    // NORMA value type ids
+  const booleanAllowsFalse = new Set() // those whose value constraint is not just true
   const notesFor = new Map()           // FreeFBM element → extra Note lines
   const addNote = (el, line) => { if (el) notesFor.set(el, [...(notesFor.get(el) ?? []), line]) }
+  const changed = (el, text) => addImportNote(el, 'changed', text)
+  const rewritten = (el, text) => addImportNote(el, 'rewritten', text)
 
   // NORMA's informal derivation rules: the text of a path's
   // InformalRule/DerivationNote, or of the older DerivationExpression that came
@@ -185,12 +195,15 @@ export function importNorma(xmlText) {
     if (!pathEl && exprEl) {
       const storage = attr(exprEl, 'DerivationStorage') ?? ''
       el.derivation = storage.startsWith('PartiallyDerived') ? 'semiDerived' : 'derived'
-      if (storage.endsWith('Stored')) addNote(el, 'NORMA: the derived values are stored (DerivationStorage = Stored).')
+      if (storage.endsWith('Stored')) changed(el, 'NORMA stores the derived values (DerivationStorage = Stored); FreeFBM leaves storage to the mapping and does not keep it.')
     }
     if (!text) return
     addNote(el, `NORMA derivation rule (informal): ${text}`)
     const formal = pathEl && kids(kid(pathEl, 'PathComponents'), 'RolePath').some(p => kids(p).length)
-    if (!formal) { informalOnly.push(`${what} ${name}`); informalEls.add(el) }
+    if (!formal) {
+      informalOnly.push(`${what} ${name}`); informalEls.add(el)
+      changed(el, 'NORMA has only an informal derivation rule for this element (kept in its note); it is marked derived, but has no formal rule yet.')
+    }
   }
 
   // The model's functions, which NORMA's calculated values apply.
@@ -204,7 +217,13 @@ export function importNorma(xmlText) {
   const objectifiedFacts = new Map()   // NORMA fact id → ObjectifiedType element (explicit only)
   for (const o of objects) {
     const id = attr(o, 'id'), name = attr(o, 'Name') ?? ''
-    if (o.localName === 'ValueType' && attr(o, 'IsImplicitBooleanValue') === 'true') { implicitBoolean.add(id); continue }
+    if (o.localName === 'ValueType' && attr(o, 'IsImplicitBooleanValue') === 'true') {
+      implicitBoolean.add(id)
+      // NORMA restricted the value to true; a wider range made it open world
+      const vc = path(o, 'ValueRestriction', 'ValueConstraint')
+      if (vc && valueRanges(vc).some(r => r.type !== 'single' || !/^(true|1)$/i.test(String(r.value).trim()))) booleanAllowsFalse.add(id)
+      continue
+    }
     if (o.localName === 'ObjectifiedType') {
       const np = kid(o, 'NestedPredicate')
       if (attr(np, 'IsImplied') === 'true') { count('impliedObjectification'); continue }
@@ -233,6 +252,7 @@ export function importNorma(xmlText) {
           params: { ...(len > 0 && lenParam && { [lenParam]: len }), ...(scale > 0 && hasScale && { scale }) } }
       } else if (dt && dt.localName !== 'UnspecifiedDataType') {
         warn(`${o.localName === 'EntityType' ? 'Entity type' : 'Value type'} "${name}": data type ${dt.localName} has no FreeFBM equivalent, left unset.`)
+        changed(ot, `NORMA's data type ${dt.localName} has no FreeFBM equivalent, so the data type is left unset.`)
       }
     }
     const vc = path(o, 'ValueRestriction', 'ValueConstraint')
@@ -257,6 +277,23 @@ export function importNorma(xmlText) {
   }
 
   // ── fact types ────────────────────────────────────────────────────────────
+  const unaryPatterns = new Map()   // NORMA fact id → UnaryPattern
+  const negationOf = new Map()      // positive unary's id → its negation's id
+  const negationPairs = new Map()   // either of a pair → the other
+  // A fact type as its reading with its players' names, “Person smokes”
+  // (NORMA's _Name otherwise).
+  const factName0 = (fid) => {
+    const f = factById.get(fid), rp = f?.readingParts
+    if (rp && f.roles.length) {
+      const name = (r) => otById.get(playerId.get(r._player) ?? r.objectTypeId)?.name
+        ?? factById.get(playerId.get(r._player) ?? r.objectTypeId)?.objectifiedName ?? '…'
+      const words = []
+      f.roles.forEach((r, i) => { words.push(rp[i], name(r)) })
+      words.push(rp[f.roles.length])
+      return `“${words.map(w => (w ?? '').trim()).filter(Boolean).join(' ')}”`
+    }
+    return attr(kids(kid(model, 'Facts')).find(e => attr(e, 'id') === fid), '_Name') ?? fid
+  }
   const roleRef = new Map()   // NORMA role id → member { kind:'role', factId, roleIndex } | { kind:'subtype', subtypeId }
   const roleEl = new Map()    // NORMA role id → its element
   const factEls = kids(kid(model, 'Facts'))
@@ -267,6 +304,7 @@ export function importNorma(xmlText) {
     const real = roleEls.filter(r => !implicitBoolean.has(attr(kid(r, 'RolePlayer'), 'ref')))
     const isUnary = real.length < roleEls.length
     if (isUnary) count('unaries')
+    const boolRoleEls = roleEls.filter(r => !real.includes(r))
 
     // roles[] in the order of the first reading
     const orders = kids(kid(f, 'ReadingOrders'), 'ReadingOrder').map(ro => ({
@@ -299,7 +337,20 @@ export function importNorma(xmlText) {
       _normaRoleOrder: realIds,
     }
     fact.roles.forEach((r, i) => { roleRef.set(r.id, { kind: 'role', factId: id, roleIndex: i }); roleEl.set(r.id, roleEls.find(e => attr(e, 'id') === r.id)) })
+    // (The older binary format itself is only in the log: it says the same.)
+    if (isUnary) {
+      if (boolRoleEls.some(r => booleanAllowsFalse.has(attr(kid(r, 'RolePlayer'), 'ref'))))
+        changed(fact, "NORMA's hidden boolean value of this unary may also be false, so NORMA could record that it does not hold; FreeFBM keeps only the facts that it holds, and a missing fact means it does not hold.")
+    }
     if (isUnary) for (const r of roleEls) if (!realIds.includes(attr(r, 'id'))) roleRef.set(attr(r, 'id'), { kind: 'booleanRole', factId: id })
+    // Current NORMA's unary patterns: a negation pair, a default value.
+    const pattern = attr(f, 'UnaryPattern')
+    if (pattern && pattern !== 'NotUnary') unaryPatterns.set(id, pattern)
+    const negRef = attr(kid(f, 'NegatedByUnaryFactType'), 'ref')
+    if (negRef) negationOf.set(id, negRef)
+    const dv = real.map(r => textOf(kid(r, 'DefaultValue'))).find(Boolean)
+    const dflt = /DefaultTrue$/.test(pattern ?? '') ? 'true' : /DefaultFalse$/.test(pattern ?? '') ? 'false' : roleIds.length === 1 ? dv : null
+    if (dflt) changed(fact, `NORMA gives this unary the default value ${dflt}; FreeFBM has no default values, so it was left out.`)
 
     // readings
     for (const o of orders) {
@@ -308,7 +359,7 @@ export function importNorma(xmlText) {
       const idxOf = (rid) => roleIds.indexOf(rid)
       for (const data of o.readings) {
         const rp = readingParts(data, o.rawSeq.length)
-        if (!rp) { warn(`A reading of fact type ${id} could not be read: “${data}”.`); continue }
+        if (!rp) { warn(`A reading of fact type ${id} could not be read: “${data}”.`); changed(fact, `NORMA's reading “${data}” could not be read and was left out.`); continue }
         const ordered = rp.order.map(k => o.rawSeq[k])
         const keep = ordered.map((rid, i) => ({ rid, i })).filter(x => idxOf(x.rid) >= 0)
         if (keep.length !== roleIds.length) continue
@@ -332,7 +383,7 @@ export function importNorma(xmlText) {
     const dp = kid(dRule, 'FactTypeDerivationPath')
     if (dp) {
       fact.derivation = attr(dp, 'DerivationCompleteness') === 'PartiallyDerived' ? 'semiDerived' : 'derived'
-      if (attr(dp, 'DerivationStorage') === 'Stored') addNote(fact, 'NORMA: the derived values are stored (DerivationStorage = Stored).')
+      if (attr(dp, 'DerivationStorage') === 'Stored') changed(fact, 'NORMA stores the derived values (DerivationStorage = Stored); FreeFBM leaves storage to the mapping and does not keep it.')
       derivationPaths.push({ el: fact, path: dp, name: attr(f, '_Name') ?? id })
     }
     informalRule(fact, dp, kid(dRule, 'DerivationExpression'), attr(f, '_Name') ?? id, 'fact type')
@@ -353,6 +404,39 @@ export function importNorma(xmlText) {
     }
     facts.push(fact); factById.set(id, fact)
   }
+  // Negatable unaries (current NORMA): a positive unary F paired with its
+  // negation N (UnaryPattern Negation). NORMA reads the pair as three-valued
+  // (holds, does not hold, unknown); FreeFBM keeps both unaries under the
+  // closed-world assumption, F as "is known to …" and N as "is known not to …",
+  // with the exclusion (or exclusive-or, when Required) NORMA gives them.
+  for (const [fid, nid] of negationOf) {
+    const F = factById.get(fid), N = factById.get(nid)
+    if (!F || !N) continue
+    negationPairs.set(fid, nid); negationPairs.set(nid, fid)
+    count('negatableUnaries')
+    const fName = factName0(fid)
+    if (!N.readingParts && !N.alternativeReadings.length && F.readingParts) {
+      const parts = [...F.readingParts]
+      parts[parts.length - 1] = `${parts[parts.length - 1]} (negation)`.trim()
+      N.readingParts = parts
+      changed(N, `NORMA gives this negation of ${fName} no reading of its own; it reads as that unary followed by “(negation)” here, so give it a reading of its own.`)
+    }
+    const nName = factName0(nid)
+    const pat = unaryPatterns.get(fid) ?? ''
+    if (/^RequiredWithNegation/.test(pat)) {
+      rewritten(F, `NORMA pairs this unary with its negation ${nName} and requires one of them; FreeFBM keeps both unaries with an exclusive-or constraint, so ${nName} holds exactly when this one does not.`)
+      rewritten(N, `The negation of ${fName} in NORMA, kept as a unary of its own with an exclusive-or constraint.`)
+    } else {
+      changed(F, `NORMA pairs this unary with its negation ${nName}, so that it holds, does not hold or is unknown (open world). FreeFBM reads both unaries under the closed-world assumption: this one says it is known to hold, ${nName} that it is known not to hold, and an instance in neither is unknown. The readings are kept as imported.${/^Deontic/.test(pat) ? ' NORMA requires one of the two as a deontic rule.' : ''}`)
+      changed(N, `The negation of ${fName} in NORMA, kept as a unary of its own: it says that ${fName} is known not to hold (see the note there).`)
+    }
+    const dF = !!F.derivation, dN = !!N.derivation
+    if (dF !== dN) {
+      const [stored, derived] = dF ? [N, F] : [F, N]
+      changed(stored, `${factName0(derived.id)} is derived in NORMA but this unary, its ${dF ? 'negation' : 'positive form'}, has no rule; it is stored here, so the two may disagree.`)
+    }
+  }
+
   // role players, now that objectified facts are known
   for (const f of facts) for (const r of f.roles) {
     r.objectTypeId = playerId.get(r._player) ?? null
@@ -450,28 +534,37 @@ export function importNorma(xmlText) {
     if (!fids.length) return
     const names = fids.map(factName)
     negationReads.push(`${what} (${names.join(', ')})`)
-    addNote(el, `NORMA: the rule tests the boolean value of the old-style unar${names.length === 1 ? 'y' : 'ies'} ${names.join(', ')} for false; FreeFBM reads that as not ${names.length === 1 ? 'that unary' : 'those unaries'}.`)
+    changed(el, `NORMA's path tests the hidden boolean value of the unar${names.length === 1 ? 'y' : 'ies'} ${names.join(', ')} for false, which literally matches nothing (that value can only be true); FreeFBM reads it as “does not hold”.`)
   }
   for (const { el, path: dp, name } of derivationPaths) {
     const isFact = el.kind !== 'entity' && el.kind !== 'value'
     if (isFact) {
       const r = paths.factRule(el, dp)
-      if (r.error) { if (!informalEls.has(el)) failedRules.push(`fact type ${name}: ${r.error}`); continue }
+      if (r.error) {
+        if (!informalEls.has(el)) { failedRules.push(`fact type ${name}: ${r.error}`); changed(el, `NORMA's derivation rule could not be translated (${r.error}); the fact type is marked derived but has no rule.`) }
+        continue
+      }
       // A fully derived fact type defined by positive linear recursion gets a
       // transitive closure instead. A semi-derived one keeps its recursion:
       // its stored facts feed it too, which FreeFBM reads as a least fixpoint.
       noteNegations(`fact type ${name}`, el)
       const closed = el.derivation === 'derived' && closeLinearRecursion(el, r, factById)
       el.derivationRule = closed || r
-      if (closed) { count('closedRecursions'); closedNames.push(name) }
+      if (closed) {
+        count('closedRecursions'); closedNames.push(name)
+        rewritten(el, "NORMA's derivation rule uses this fact type itself (linear recursion); it is written with a transitive closure [TC* …] instead, which says the same.")
+      }
       count('factRules')
     } else {
       const supers = subtypes.filter(st => st.subId === el.id).map(st => st.superId)
       const r = paths.subtypeRule(el, dp, supers)
-      if (r.error) { if (!informalEls.has(el)) failedRules.push(`subtype ${name}: ${r.error}`); continue }
+      if (r.error) {
+        if (!informalEls.has(el)) { failedRules.push(`subtype ${name}: ${r.error}`); changed(el, `NORMA's derivation rule could not be translated (${r.error}); the subtype is marked derived but has no rule.`) }
+        continue
+      }
       noteNegations(`subtype ${name}`, el)
       el.derivationRule = r.rule
-      if (r.skipped) addNote(el, `NORMA: ${r.skipped} empty path${r.skipped === 1 ? ' was' : 's were'} left out of the derivation rule.`)
+      if (r.skipped) rewritten(el, `${r.skipped} empty path${r.skipped === 1 ? '' : 's'} of NORMA's derivation rule (kept for rules not written yet) ${r.skipped === 1 ? 'was' : 'were'} left out.`)
       count('subtypeRules')
     }
   }
@@ -533,6 +626,7 @@ export function importNorma(xmlText) {
         const q = paths.joinQuery(jp, (id) => crIds.indexOf(id), ms.map(playerOfMember), outputTarget)
         if (q.error) {
           failedJoins.push(`${attr(seqEls[i].closest('[Name]'), 'Name') ?? con.id}: ${q.error}`)
+          changed(con, `NORMA's join path of ${seqs.length > 1 ? `sequence ${i + 1}` : 'the role sequence'} could not be translated (${q.error}); the sequence is imported without it, so the constraint says something else until a query is added.`)
           pending = true
           return null
         }
@@ -541,7 +635,11 @@ export function importNorma(xmlText) {
         if (outputTarget && q.target && !con.targetObjectTypeId) con.targetObjectTypeId = q.target.typeId
         return q
       }
-      if (g === null) { pending = true; return null }
+      if (g === null) {
+        pending = true
+        changed(con, `The roles of ${seqs.length > 1 ? `sequence ${i + 1}` : 'the role sequence'} need a join path that the import could not build; the sequence is imported without it, so the constraint says something else until a query is added.`)
+        return null
+      }
       if (outputTarget && !con.targetObjectTypeId) con.targetObjectTypeId = g._target
       delete g._target
       return g
@@ -550,10 +648,147 @@ export function importNorma(xmlText) {
   }
   const failedJoins = []
   const pushCon = (con, c) => { constraints.push(con); conById.set(con.id, con); conAlias.set(attr(c, 'id'), con.id) }
+  // The elements a constraint's members are about, for an import note on a
+  // constraint that is not imported.
+  const kindLabel = (c) => c.localName.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()
+  const conName = (c) => attr(c, 'Name') ?? attr(c, 'id')
+  const membersAbout = (ms) => [...new Set(ms.filter(Boolean).map(m =>
+    m.kind === 'subtype' ? stById.get(m.subtypeId) : factById.get(m.factId.split('_il_')[0])).filter(Boolean))]
+  const skippedOn = (ms, c, why) => {
+    for (const el of membersAbout(ms)) changed(el, `NORMA's ${kindLabel(c)} ${conName(c)} was not imported: ${why}.`)
+  }
+  const unaryNames = (fids) => [...new Set(fids)].map(factName0).join(", ")
   const unknownMembers = (ms, c) => {
-    if (ms.every(Boolean)) return false
-    warn(`${c.localName} ${attr(c, 'Name') ?? attr(c, 'id')} refers to a role FreeFBM does not have; skipped.`)
-    return true
+    if (!ms.every(Boolean)) {
+      warn(`${c.localName} ${conName(c)} refers to a role FreeFBM does not have; skipped.`)
+      skippedOn(ms, c, 'it refers to a role FreeFBM does not have')
+      return true
+    }
+    const bool = ms.filter(m => m.kind === 'booleanRole')
+    if (bool.length) {
+      warn(`${c.localName} ${conName(c)} refers to the hidden boolean role of an old-style unary; skipped.`)
+      skippedOn(ms, c, `it refers to the hidden boolean role of the unary ${unaryNames(bool.map(m => m.factId))}, which FreeFBM does not have`)
+      return true
+    }
+    return false
+  }
+  // Simple mandatory roles (NORMA role ids), for constraints read before the
+  // mandatory constraint itself.
+  const mandatoryRoles = new Set()
+  for (const c of conEls) if (c.localName === 'MandatoryConstraint' && attr(c, 'IsSimple') === 'true'
+    && attr(c, 'IsImplied') !== 'true' && attr(c, 'Modality') !== 'Deontic') refsOf(kid(c, 'RoleSequence')).forEach(r => mandatoryRoles.add(r))
+  const isMandatoryRole = (rid) => mandatoryRoles.has(rid) || attr(roleEl.get(rid), '_IsMandatory') === 'true'
+  const typeName = (tid) => otById.get(tid)?.name ?? factById.get(tid)?.objectifiedName ?? tid
+
+  // An external uniqueness constraint whose sequence has the hidden boolean
+  // role of old-style unaries U: that value can only be true, so the
+  // constraint is about the instances that U holds for: the boolean role
+  // drops out and U(t) becomes a condition (Jan's decision, 2026-11-08). When
+  // U is mandatory the condition always holds and the constraint is the
+  // uniqueness of the other roles (a preferred identifier stays one); else
+  // it is a uniqueness among the instances U holds for, which identifies no
+  // type.
+  function qualifiedUniqueness(c, ms, seqEl) {
+    const id = attr(c, 'id'), name = conName(c)
+    const isBool = (m) => m.kind === 'booleanRole'
+    const unaries = [...new Set(ms.filter(isBool).map(m => m.factId))].map(fid => factById.get(fid))
+    const realMs = ms.filter(m => !isBool(m))
+    const uNames = unaryNames(unaries.map(f => f.id))
+    const pif = playerId.get(attr(kid(c, 'PreferredIdentifierFor'), 'ref')) ?? null
+    if (!realMs.length) { skippedOn(ms, c, `it is only about the hidden boolean role of ${uNames}`); return }
+    const deontic = attr(c, 'Modality') === 'Deontic'
+    const suggest = 'If the modeller meant whether it holds, model it as a binary to a Boolean value type (Transform › Unary → boolean) and add that role to the constraint.'
+    const mandatory = unaries.every(f => isMandatoryRole(f.roles[0].id))
+    const what = pif ? `NORMA's preferred identifier ${name} of ${typeName(pif)}` : `NORMA's uniqueness constraint ${name}`
+    const position = (crId) => {
+      const i = crIdsOf(seqEl).indexOf(crId)
+      if (i < 0) return null
+      if (isBool(ms[i])) return 'drop'
+      return realMs.indexOf(ms[i])
+    }
+    if (mandatory) {
+      const note = `${what} includes the unary ${uNames}, whose hidden boolean value can only be true. ${unaries.length === 1 ? 'That unary is' : 'Those unaries are'} mandatory, so ${unaries.length === 1 ? 'it was' : 'they were'} left out of the constraint, which says the same. ${suggest}`
+      unaries.forEach(f => rewritten(f, note))
+      // the other roles in one fact type: an internal uniqueness
+      const f = factById.get(realMs[0].factId)
+      if (f && realMs.every(m => m.kind === 'role' && !m.link && m.factId === f.id) && realMs.length < f.arity) {
+        const roles = realMs.map(m => m.roleIndex).sort((a, b) => a - b)
+        const same = f.uniqueness.find(u => u.roles.join() === roles.join())
+        const uc = same ?? { id, roles }
+        if (!same) f.uniqueness.push(uc)
+        ucById.set(id, uc)
+        const rest = f.roles.filter((_, ri) => !roles.includes(ri))
+        if (pif && rest.length === 1 && rest[0].objectTypeId === pif) f.preferredUniqueness.push(roles)
+        if (deontic) f.deonticUniqueness = [...(f.deonticUniqueness ?? []), roles]
+        rewritten(f, note)
+        return
+      }
+      const con = mkCon(c, 'uniqueness', { sequences: [realMs.map(asMember)], targetObjectTypeId: pif, isPreferredIdentifier: !!pif })
+      const g = autoJoin(realMs, true, true)
+      if (g) { if (!con.targetObjectTypeId) con.targetObjectTypeId = g._target; delete g._target; con.queries = [g] }
+      else if (g === null) con.queries = [conditionalQuery(c, con, realMs, seqEl, position, [])]
+      rewritten(con, note)
+      pushCon(con, c)
+      return
+    }
+    const con = mkCon(c, 'uniqueness', { sequences: [realMs.map(asMember)], targetObjectTypeId: pif, isPreferredIdentifier: false })
+    con.queries = [conditionalQuery(c, con, realMs, seqEl, position, unaries)]
+    if (pif) {
+      const n = typeName(pif)
+      const note = `${what} includes the unary ${uNames}, whose hidden boolean value can only be true. It is read as a uniqueness among the ${n} instances that ${unaries.length === 1 ? 'unary holds' : 'those unaries hold'} for, so it no longer identifies every ${n}, and ${n} has no preferred identifier. ${suggest}`
+      changed(con, note)
+      unaries.forEach(f => changed(f, note))
+    } else {
+      rewritten(con, `${what} includes the unary ${uNames}, whose hidden boolean value can only be true; it is written as a uniqueness among the instances that ${unaries.length === 1 ? 'unary holds' : 'those unaries hold'} for, which says the same. ${suggest}`)
+    }
+    pushCon(con, c)
+  }
+  const crIdsOf = (seqEl) => kids(seqEl).map(e => attr(e, 'id'))
+  // The query of a uniqueness over realMs, from NORMA's join path when there
+  // is one (positions of the boolean roles dropped), else joined through the
+  // instance t their other roles are played by (or that nests their fact
+  // type), with the unaries U(t).
+  function conditionalQuery(c, con, realMs, seqEl, position, unaries) {
+    const jp = path(seqEl, 'JoinRule', 'JoinPath')
+    if (jp) {
+      const q = paths.joinQuery(jp, position, realMs.map(playerOfMember), true)
+      if (!q.error) {
+        count('translatedJoins')
+        if (q.target && !con.targetObjectTypeId) con.targetObjectTypeId = q.target.typeId
+        return q
+      }
+      failedJoins.push(`${conName(c)}: ${q.error}`)
+      changed(con, `NORMA's join path could not be translated (${q.error}); the sequence is imported without it, so the constraint says something else until a query is added.`)
+      count('pendingJoins'); con._pendingJoin = true
+      return null
+    }
+    const subject = unaries[0]?.roles[0].objectTypeId
+    // each role's atom from the target t: its fact type's other role, or the
+    // implied link when t nests the fact type
+    const others = realMs.map(m => {
+      const o = otherRole(m)
+      if (o && (!subject || o.player === subject)) return o
+      if (subject && m.kind === 'role' && !m.link && m.factId === subject) return { link: true, player: subject }
+      return null
+    })
+    const players = new Set([...others.map(o => o?.player), ...unaries.map(f => f.roles[0].objectTypeId)])
+    if (others.some(o => !o) || players.size !== 1) {
+      changed(con, 'The roles of the sequence need a join path that the import could not build; the sequence is imported without it, so the constraint says something else until a query is added.')
+      count('pendingJoins'); con._pendingJoin = true
+      return null
+    }
+    const target = { id: 't', typeId: [...players][0] }
+    if (!con.targetObjectTypeId) con.targetObjectTypeId = target.typeId
+    const free = realMs.map((m, i) => ({ id: `q${i}`, typeId: playerOfMember(m) }))
+    const atoms = realMs.map((m, i) => {
+      if (others[i].link) return { t: 'fact', factId: `${m.factId}_il_${m.roleIndex}`, args: [target.id, free[i].id] }
+      const args = []
+      args[m.roleIndex] = free[i].id
+      args[others[i].roleIndex] = target.id
+      return { t: 'fact', factId: m.factId, args }
+    })
+    for (const f of unaries) atoms.push({ t: 'fact', factId: f.id, args: [target.id] })
+    return { free, target, body: atoms.length === 1 ? atoms[0] : { t: 'and', args: atoms } }
   }
 
   for (const c of conEls) {
@@ -563,9 +798,23 @@ export function importNorma(xmlText) {
     if (t === 'UniquenessConstraint') {
       const ms = members(seq)
       if (attr(c, 'IsInternal') === 'true') {
+        // On the far role of an objectification's link fact type: the
+        // uniqueness of that role in the objectified fact type.
+        if (ms.length === 1 && ms[0]?.link && ms[0].roleIndex === 1) {
+          const F = factById.get(ms[0].factId.split('_il_')[0]), k = Number(ms[0].factId.split('_il_')[1])
+          if (F && !F.uniqueness.some(u => u.roles.length === 1 && u.roles[0] === k)) {
+            F.uniqueness.push({ id, roles: [k] })
+            rewritten(F, `NORMA's uniqueness constraint on the role of ${typeName(F.roles[k].objectTypeId)} in the link fact type of ${F.objectifiedName || 'this objectification'} is the uniqueness of that role in the objectified fact type, so it is written there.`)
+          }
+          continue
+        }
         if (ms.some(m => m?.kind === 'subtype' || m?.link)) continue   // implied by the subtype link or objectification
         const real = ms.filter(m => m?.kind === 'role')
-        if (!real.length) continue
+        if (!real.length) {
+          if (ms.some(m => m?.kind === 'booleanRole'))
+            skippedOn(ms, c, 'it is on the hidden boolean role of the unary (at most one instance may have the fact), which FreeFBM does not have')
+          continue
+        }
         const f = factById.get(real[0].factId)
         const roles = real.map(m => m.roleIndex).sort((a, b) => a - b)
         const same = f.uniqueness.find(u => u.roles.join() === roles.join())
@@ -580,6 +829,7 @@ export function importNorma(xmlText) {
         if (attr(c, 'Modality') === 'Deontic') f.deonticUniqueness = [...(f.deonticUniqueness ?? []), roles]
         continue
       }
+      if (ms.every(Boolean) && ms.some(m => m.kind === 'booleanRole')) { qualifiedUniqueness(c, ms, seq); continue }
       if (unknownMembers(ms, c)) continue
       const pif = attr(kid(c, 'PreferredIdentifierFor'), 'ref')
       const con = mkCon(c, 'uniqueness', {
@@ -594,6 +844,17 @@ export function importNorma(xmlText) {
       const ms = members(seq)
       if (attr(c, 'IsSimple') === 'true') {
         const m = ms[0]
+        // On the far role of a link fact type: mandatory in the objectified fact type.
+        if (m?.link && m.roleIndex === 1) {
+          const F = factById.get(m.factId.split('_il_')[0]), role = F?.roles[Number(m.factId.split('_il_')[1])]
+          if (role && !role.mandatory) {
+            role.mandatory = true; role.mandatoryId = id; mandatoryIds.add(id)
+            if (attr(c, 'Modality') === 'Deontic') role.mandatoryDeontic = true
+            rewritten(F, `NORMA's mandatory constraint on the role of ${typeName(role.objectTypeId)} in the link fact type of ${F.objectifiedName || 'this objectification'} is the mandatory role in the objectified fact type, so it is written there.`)
+          }
+          continue
+        }
+        if (m?.kind === 'booleanRole') { skippedOn(ms, c, 'it is on the hidden boolean role of the unary (some instance must have the fact), which FreeFBM does not have'); continue }
         if (!m || m.kind !== 'role' || m.link) continue   // subtype meta roles and link roles: implied
         const role = factById.get(m.factId).roles[m.roleIndex]
         role.mandatory = true
@@ -622,7 +883,11 @@ export function importNorma(xmlText) {
       const ms = members(seq)
       if (unknownMembers(ms, c)) continue
       const rt = ringTypes(attr(c, 'Type'))
-      if (!rt) { warn(`Ring constraint ${attr(c, 'Name')} has a type FreeFBM does not know (${attr(c, 'Type')}); skipped.`); continue }
+      if (!rt) {
+        warn(`Ring constraint ${attr(c, 'Name')} has a type FreeFBM does not know (${attr(c, 'Type')}); skipped.`)
+        skippedOn(ms, c, `its ring type ${attr(c, 'Type')} is one FreeFBM does not know`)
+        continue
+      }
       const con = mkCon(c, 'ring', { sequences: [ms.map(asMember)], ringTypes: rt })
       setQueries(con, [ms], [seq])
       pushCon(con, c)
@@ -651,6 +916,7 @@ export function importNorma(xmlText) {
       pushCon(con, c)
     } else {
       warn(`${t} ${attr(c, 'Name') ?? id} is not imported.`)
+      skippedOn([seq, ...seqs].flatMap(members), c, 'FreeFBM has no constraint of this kind')
     }
   }
 
@@ -956,10 +1222,34 @@ export function importNorma(xmlText) {
   }
   for (const [el, lines] of notesFor) el.note = [el.note, ...lines].filter(Boolean).join('\n')
 
+  // A rule or join path that negates a unary NORMA pairs with a negation:
+  // NORMA may have meant either "not known to hold" or the negation.
+  if (negationPairs.size) {
+    const negated = (node, inNot, out) => {
+      if (!node || typeof node !== 'object') return out
+      if (Array.isArray(node)) { for (const x of node) negated(x, inNot, out); return out }
+      if (node.t === 'fact' && inNot && negationPairs.has(node.factId)) out.add(node.factId)
+      for (const [k, v] of Object.entries(node)) if (k !== 'factId') negated(v, inNot || node.t === 'not', out)
+      return out
+    }
+    const check = (el, rule) => {
+      const fids = [...negated(rule, false, new Set())]
+      if (!fids.length) return
+      const what = fids.map(fid => `not ${factName0(fid)}`).join(', ')
+      const negs = fids.map(fid => factName0(negationPairs.get(fid))).join(', ')
+      changed(el, `This ${el.kind === 'constraint' ? 'join path' : 'rule'} says ${what}, a unary that NORMA pairs with a negation. NORMA may have meant the negation ${negs}; FreeFBM reads “not” as “not known to hold”, which includes unknown. Use the negation instead if that was meant.`)
+    }
+    for (const el of [...objectTypes, ...facts]) if (el.derivationRule) check(el, el.derivationRule)
+    for (const c of constraints) if (c.queries) check(c, c.queries)
+  }
+
   // ── log ───────────────────────────────────────────────────────────────────
   const unused = (n, what) => n ? [`${n} ${what}`] : []
   const crm = kids(kid(model, 'CustomReferenceModes')).length
   log.unshift({ level: 'note', text: `Imported ${objectTypes.length} object types, ${facts.length} fact types (${facts.filter(f => f.objectified).length} objectified), ${subtypes.length} subtype links, ${constraints.length} external constraints, ${groups.length} groups, ${propertyDefinitions.length} custom property definitions and ${diagrams.length} diagrams.` })
+  if (counts.negatableUnaries) note(`${counts.negatableUnaries} unar${counts.negatableUnaries === 1 ? 'y is' : 'ies are'} paired with a negation in NORMA (true, false or unknown); each pair is kept as two unaries under the closed-world assumption ("is known to …", "is known not to …") with the exclusion NORMA gives them; see their import notes.`)
+  const nImportNotes = [...objectTypes, ...facts, ...subtypes, ...constraints].reduce((n, el) => n + (el.importNotes?.length ?? 0), 0)
+  if (nImportNotes) note(`${nImportNotes} import note${nImportNotes === 1 ? ' says' : 's say'} what was adapted to FreeFBM, on the elements concerned; they are listed under Import in the Validation panel and marked ✎ on the diagrams.`)
   if (counts.unaries) note(`${counts.unaries} unary fact types were stored by NORMA as binaries with an implicit boolean value type; they are unaries here.`)
   const skippedImplied = [...unused(counts.impliedObjectification, 'implied objectifications'), ...unused(counts.impliedMandatory, 'implied mandatory constraints')]
   if (skippedImplied.length) note(`Skipped what NORMA implies and FreeFBM derives itself: ${skippedImplied.join(', ')}.`)

@@ -29,6 +29,7 @@ import { readingList, occurrences, preferredReadings } from '../store/readings.j
 const hasReadingText = (parts) => Array.isArray(parts) && parts.some(p => p?.trim())
 import { isDeonticUniqueness } from '../logic/modality.js'
 import { COLOR_CHANNELS, describeMember } from '../utils/groups.js'
+import { IMPORT_NOTE_SEVERITY, IMPORT_NOTE_STYLE } from '../utils/importNotes.js'
 import { PROPERTY_TYPES, PROPERTY_KINDS, definitionsFor, validPropertyValue, withProperty } from '../utils/customProperties.js'
 import { plural as englishPlural } from '../verbalisation/languages/english.js'
 import { pluralise as dutchPlural } from '../verbalisation/languages/dutch.js'
@@ -461,6 +462,39 @@ function PropertyInput({ def, value, onChange }) {
       value={value ?? ''} placeholder={dflt} title={title} style={style}
       onChange={e => onChange(e.target.value)}
       onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}/>
+  )
+}
+
+// What an import adapted about this element (src/utils/importNotes.js): each
+// note with Dismiss (removes it, undoable) and Show on diagram (a coloured
+// diagram note linked to the element).
+function ImportNotesSection({ kind, el }) {
+  const store = useScopedStore()
+  const notes = el?.importNotes ?? []
+  if (!notes.length) return null
+  const diag = store.diagrams?.find(d => d.id === store.activeDiagramId)
+  const shown = id => (diag?.notes ?? []).some(n => n.importNote?.elementId === el.id && n.importNote?.noteId === id)
+  const link = { background: 'none', border: 'none', padding: 0, fontSize: 11, cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline' }
+  return (
+    <Section title="Import notes">
+      {notes.map(n => {
+        const sev = IMPORT_NOTE_SEVERITY[n.severity] ?? IMPORT_NOTE_SEVERITY.changed
+        const st = IMPORT_NOTE_STYLE[n.severity] ?? IMPORT_NOTE_STYLE.changed
+        return (
+          <div key={n.id} className="copyable" style={{ marginBottom: 8, padding: '6px 8px', borderLeft: `3px solid ${sev.colour}`,
+            background: st.fill, color: st.text, fontSize: 12, lineHeight: 1.4, borderRadius: 3 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: sev.colour, marginBottom: 2 }}>{sev.icon} {sev.label}</div>
+            <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{n.text}</div>
+            <div style={{ marginTop: 4, display: 'flex', gap: 12 }}>
+              <button style={link} title="Remove this note" onClick={() => store.dismissImportNote(kind, el.id, n.id)}>Dismiss</button>
+              {shown(n.id)
+                ? <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>On this diagram</span>
+                : <button style={link} title="Add it to the diagram as a note" onClick={() => store.showImportNoteOnDiagram(kind, el.id, n.id)}>Show on diagram</button>}
+            </div>
+          </div>
+        )
+      })}
+    </Section>
   )
 }
 
@@ -1185,6 +1219,7 @@ function ObjectTypeInspector({ ot }) {
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>{ot.kind === 'entity' ? 'Entity Type' : 'Value Type'}</InspectorTitle>
+      <ImportNotesSection kind="objectTypes" el={ot}/>
       <ValidationErrorStrip elementId={ot.id} store={store}/>
       <Row>
         <Label>Name</Label>
@@ -2845,6 +2880,7 @@ function FactInspector({ fact }) {
   const factTypeSection = (
     <div style={{ marginBottom: 18 }}>
       {!fact.objectified && <InspectorTitle>Fact Type ({fact.arity}-ary)</InspectorTitle>}
+      <ImportNotesSection kind="facts" el={fact}/>
       {!fact.objectified && <ValidationErrorStrip elementId={fact.id} store={store}/>}
       {/* Arity control — hidden for nested entity types (rendered above Properties instead) */}
       {!fact.objectified && <Row>
@@ -3616,6 +3652,7 @@ function SubtypeInspector({ st }) {
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>Subtype Relationship</InspectorTitle>
+      <ImportNotesSection kind="subtypes" el={st}/>
       <ValidationErrorStrip elementId={st.id} store={store}/>
       <Row>
         <div style={{ fontSize: 12, color: 'var(--ink-2)', padding: '6px 8px',
@@ -3780,6 +3817,7 @@ function ExternalConstraintInspector({ c }) {
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>{EXTERNAL_CONSTRAINT_TITLES[c.constraintType] || 'Constraint'}</InspectorTitle>
+      <ImportNotesSection kind="constraints" el={c}/>
       <ValidationErrorStrip elementId={c.id} store={store}/>
 
       {/* Is Preferred Identifier — only for uniqueness */}
@@ -4276,6 +4314,7 @@ function FormulaConstraintInspector({ c }) {
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>Formula Constraint</InspectorTitle>
+      <ImportNotesSection kind="constraints" el={c}/>
       <ValidationErrorStrip elementId={c.id} store={store}/>
       <Row>
         <Label>Name</Label>
@@ -4323,6 +4362,7 @@ function ConstraintInspector({ c }) {
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>{c.constraintType.charAt(0).toUpperCase() + c.constraintType.slice(1)} Constraint</InspectorTitle>
+      <ImportNotesSection kind="constraints" el={c}/>
       <ValidationErrorStrip elementId={c.id} store={store}/>
 
       {c.constraintType === 'frequency' && (

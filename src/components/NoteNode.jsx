@@ -1,4 +1,5 @@
 import React, { useRef, useState, useLayoutEffect } from 'react'
+import { IMPORT_NOTE_STYLE } from '../utils/importNotes.js'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 const FOLD = 16  // dog-ear size
@@ -76,8 +77,10 @@ export function narrowestNoteWidth(text, w, min = 60) {
   return hi
 }
 
-export default function NoteNode({ note, selected, groupStyle: gs, onDragStart, onResizeStart, onDoubleClick, onContextMenu }) {
+export default function NoteNode({ note, selected, groupStyle, onDragStart, onResizeStart, onDoubleClick, onContextMenu }) {
   const { id, x, y, w, h, text } = note
+  // A note made from an import note takes that note's colours unless a group colours it.
+  const gs = groupStyle ?? (note.importNote ? IMPORT_NOTE_STYLE[note.importNote.severity] : undefined)
   const [truncated, setTruncated] = useState(null)
   const measRef = useRef(null)
   const measKey = useRef('')
@@ -149,7 +152,7 @@ export default function NoteNode({ note, selected, groupStyle: gs, onDragStart, 
       {/* Dog-ear triangle */}
       <path
         d={`M ${w - FOLD} 0 L ${w - FOLD} ${FOLD} L ${w} ${FOLD} Z`}
-        fill="#f0d060"
+        fill={note.importNote && !groupStyle ? gs?.outline : '#f0d060'}
         stroke={borderColor}
         strokeWidth={borderWidth}
       />

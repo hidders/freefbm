@@ -85,6 +85,54 @@ export function createElementSlice(set, get) {
       }))
     },
 
+    // ── import notes (src/utils/importNotes.js) ──────────────────────────────
+
+    // Dismissing an import note removes it from its element (undoable).
+    dismissImportNote(kind, elementId, noteId) {
+      set(s => ({
+        [kind]: (s[kind] ?? []).map(el => {
+          if (el.id !== elementId) return el
+          const rest = (el.importNotes ?? []).filter(n => n.id !== noteId)
+          const { importNotes: _, ...plain } = el
+          return rest.length ? { ...el, importNotes: rest } : plain
+        }),
+        isDirty: true,
+      }))
+    },
+
+    // Puts an import note on the active diagram as a coloured diagram note
+    // linked to its element, above and to the right of the element.
+    showImportNoteOnDiagram(kind, elementId, noteId) {
+      const s = get()
+      const el = (s[kind] ?? []).find(e => e.id === elementId)
+      const imp = el?.importNotes?.find(n => n.id === noteId)
+      const d = s.diagrams.find(dg => dg.id === s.activeDiagramId)
+      if (!imp || !d) return null
+      const existing = (d.notes ?? []).find(n => n.importNote?.elementId === elementId && n.importNote?.noteId === noteId)
+      if (existing) return existing.id
+      let pos = null
+      if (kind === 'constraints') pos = cOccOf(d, elementId)
+      else if (kind === 'subtypes') {
+        const a = occOf(d, el.subId), b = occOf(d, el.superId)
+        if (a && b) pos = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+      } else pos = occOf(d, elementId)
+      const target = pos ?? { x: el.x ?? 0, y: el.y ?? 0 }
+      const w = 220
+      const h = Math.max(60, 20 + 14 * Math.ceil(imp.text.length / 34))
+      const note = {
+        ...mkNote(target.x + 60 + w / 2, target.y - 40 - h / 2),
+        w, h, text: imp.text,
+        importNote: { severity: imp.severity, elementId, noteId },
+        connectors: pos ? [{ id: uid(), targetId: elementId }] : [],
+      }
+      set(st => ({
+        diagrams: st.diagrams.map(dg => dg.id !== st.activeDiagramId ? dg
+          : { ...dg, notes: [...(dg.notes ?? []), note] }),
+        isDirty: true,
+      }))
+      return note.id
+    },
+
     startNoteConnector(noteId)      { set({ noteConnectorDraft: { noteId }, noteRemoveSubjectDraft: null }) },
     cancelNoteConnector()           { set({ noteConnectorDraft: null }) },
     startNoteRemoveSubject(noteId)  { set({ noteRemoveSubjectDraft: { noteId }, noteConnectorDraft: null }) },
