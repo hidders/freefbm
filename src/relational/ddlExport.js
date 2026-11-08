@@ -5,8 +5,10 @@
 // their formulas (formulaSql.js): as a CHECK when they are about one row,
 // otherwise as a commented query that returns their violations. What has no
 // SQL form here is listed in comments at the end and returned as warnings.
+// The schema itself is a relational schema in general, so whatever PostgreSQL
+// can't enforce is only reported here, at export (DdlExportDialog.jsx).
 //
-// exportPostgresDdl(state, schemaId) → { sql, warnings }
+// exportPostgresDdl(state, schemaId) → { sql, warnings, queries, assertions }
 
 import { tableRulesOf, tableRuleAsMapping } from './derivedTables.js'
 import { tableViews, viewOrder } from './viewSql.js'
@@ -161,7 +163,20 @@ export function exportPostgresDdl(state, schemaId) {
   const otById = new Map((state.objectTypes ?? []).map(o => [o.id, o]))
   const notes = [...unwrittenNotes]
   for (const s of (state.subtypes ?? []).filter(inSchema)) notes.push(`subtype ${otById.get(s.subId)?.name} of ${otById.get(s.superId)?.name}`)
+  // Constraints of the schema that the export has no SQL for at all.
+  for (const t of tables) for (const col of t.columns)
+    if ((col.fact.internalFrequency ?? []).length) notes.push(`frequency constraint on ${t.name}.${col.name}`)
+  for (const o of (state.objectTypes ?? []).filter(inSchema))
+    if (o.cardinalityRange?.length) notes.push(`cardinality range of ${o.name}`)
+  for (const t of tables) for (const col of t.columns)
+    if (col.fact.roles.some(r => r.cardinalityRange?.length)) notes.push(`cardinality range on ${t.name}.${col.name}`)
   for (const n of notes) warnings.push(`Not exported: ${n}`)
   if (warnings.length) lines.push('-- Not written as SQL:', ...warnings.map(w => `--   ${w}`), '')
-  return { sql: lines.join('\n'), warnings, queries: queries.length }
+  return {
+    sql: lines.join('\n'), warnings, queries: queries.length,
+    // What PostgreSQL will not enforce, for the export report
+    // (DdlExportDialog.jsx): assertions written as violation queries, and
+    // the other warnings.
+    assertions: queries.map(x => ({ label: x.label, text: x.text, deontic: !!x.deontic })),
+  }
 }

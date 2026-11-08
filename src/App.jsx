@@ -13,6 +13,7 @@ import GenerateRelationalDialog from './components/GenerateRelationalDialog'
 import FoldDialog from './components/FoldDialog'
 import SuggestDiagramsDialog from './components/SuggestDiagramsDialog'
 import TransformDialog from './components/TransformDialog'
+import DdlExportDialog from './components/DdlExportDialog'
 import StatusBar from './components/StatusBar'
 import WelcomeScreen from './components/WelcomeScreen'
 import DiagramTabs from './components/DiagramTabs'
@@ -358,6 +359,7 @@ export default function App() {
         <FoldDialog />
         <SuggestDiagramsDialog />
         <TransformDialog />
+        <DdlExportDialog />
       </div>
     </ErrorBoundary>
   )

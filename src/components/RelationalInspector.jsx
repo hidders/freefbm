@@ -65,7 +65,7 @@ export default function RelationalInspector({ schemaId, obj, tableRules }) {
       {obj.kind === 'column' && <ColumnBody c={obj} view={view} link={link} />}
       {!['table', 'view', 'column'].includes(obj.kind) && <ConstraintBody o={obj} view={view} link={link} />}
       {!obj.enforced && obj.kind !== 'assertion' && (
-        <Note>PostgreSQL does not check this: it is about a view or a derived column.</Note>
+        <Note>In PostgreSQL: not checked, as it is about a view or a derived column (the DDL export says so).</Note>
       )}
       {(obj.kind === 'table' || obj.kind === 'view' || obj.kind === 'column') && <Transformations schemaId={schemaId} obj={obj} table={table} />}
       {(obj.kind === 'table' || obj.kind === 'view') && !obj.of && tableRules}
@@ -126,12 +126,12 @@ function TableBody({ t, view, link }) {
     {t.base && <Note>Its keys and foreign keys are on {link(view.objects.get(t.base))}.</Note>}
     {keys.length > 0 && (
       <Section title="Keys and constraints">
-        {keys.map(k => <Line key={k.rmId} muted={!k.enforced}>{link(k, k.label)} <Code>{k.kind === 'foreignKey' ? `→ ${view.objects.get(k.refTable)?.name}` : k.sql}</Code></Line>)}
+        {keys.map(k => <Line key={k.rmId}>{link(k, k.label)} <Code>{k.kind === 'foreignKey' ? `→ ${view.objects.get(k.refTable)?.name}` : k.sql}</Code></Line>)}
       </Section>
     )}
     {refs.length > 0 && (
       <Section title="Referenced by">
-        {refs.map(k => <Line key={k.rmId} muted={!k.enforced}>{link(view.objects.get(k.table))} {link(k, k.name)}</Line>)}
+        {refs.map(k => <Line key={k.rmId}>{link(view.objects.get(k.table))} {link(k, k.name)}</Line>)}
       </Section>
     )}
   </>
@@ -153,7 +153,7 @@ function ColumnBody({ c, view, link }) {
     </Section>
     {inKeys.length > 0 && (
       <Section title="In">
-        {inKeys.map(k => <Line key={k.rmId} muted={!k.enforced}>{link(k, k.label)} <Code>{k.kind === 'foreignKey' ? `→ ${view.objects.get(k.refTable)?.name}` : k.sql}</Code></Line>)}
+        {inKeys.map(k => <Line key={k.rmId}>{link(k, k.label)} <Code>{k.kind === 'foreignKey' ? `→ ${view.objects.get(k.refTable)?.name}` : k.sql}</Code></Line>)}
       </Section>
     )}
     {refs.length > 0 && (
@@ -177,7 +177,7 @@ function ConstraintBody({ o, view, link }) {
     {o.kind !== 'assertion' && o.sql && <Sql text={o.sql} title="SQL" />}
     {o.kind === 'assertion' && <>
       <Note>{o.query
-        ? 'It has no table form, so PostgreSQL does not check it. The export writes it as a query that returns the rows breaking it.'
+        ? 'A constraint with no table form. In PostgreSQL, which has no assertions, the DDL export writes it as a query that returns the rows breaking it.'
         : `It has no SQL form${o.error ? `: ${o.error}` : ''}.`}</Note>
       {o.formula && <Sql text={o.formula} title="Formula" />}
       {o.query && <Sql text={`${o.query};`} title="Violations" />}

@@ -13,6 +13,8 @@ import { cloneSchema, identityMapping } from '../../mapping/refactor.js'
 import { compactMapping } from '../../mapping/sameModel.js'
 import { entriesOf, accountingSteps } from '../../mapping/accounting.js'
 import { proposeTranslation } from '../../mapping/translate.js'
+import { makeContext } from '../../logic/constraintFormulas.js'
+import { formulaToString } from '../../logic/renderFormula.js'
 import { transformationById } from '../../mapping/transformations.js'
 import { mkLock } from '../../mapping/pairLock.js'
 import { withSimple } from '../../mapping/carry.js'
@@ -24,21 +26,28 @@ import { ruleWantedElements, compactRulePlacement } from '../../mapping/diagramR
 import { erdPartsOfDiagram } from '../../relational/erdBoxes.js'
 
 // The constraints of the old version (schemaId) about the given elements
-// that the mapping m loses, each added to the new version as its
-// translation when the translation keeps it. Returns report lines.
-function carryLost(get, m, schemaId, elementIds) {
-  const keys = new Set(entriesOf(get(), schemaId).filter(e => !e.possible && elementIds.has(e.elementId)).map(e => e.key))
+// (all of them when elementIds is null) that the mapping m loses, each added
+// to the new version as its translation when the translation keeps it.
+// Returns report lines. Also used by Generate tables (schemaSlice), where a
+// constraint the tables have no form for becomes an assertion.
+export function carryLost(get, m, schemaId, elementIds, { to = 'the new version' } = {}) {
+  const keys = new Set(entriesOf(get(), schemaId).filter(e => !e.possible && (!elementIds || elementIds.has(e.elementId))).map(e => e.key))
   if (!keys.size) return []
   const gen = accountingSteps(get(), m, { onlyKeys: keys })
   let r
   do r = gen.next(); while (!r.done)
   const out = []
+  let ctx = null
   for (const x of r.value.sides.source.filter(e => e.status === 'lost')) {
-    const what = x.label ?? x.entry.subject
+    const kind = x.entry?.kind ?? 'constraint'
+    let what = x.label || (x.entry?.subject ? `${kind} · ${x.entry.subject}` : kind)
+    if (!x.label && !x.entry?.subject && x.entry?.formula) {
+      try { what = `${kind} ${formulaToString(x.entry.formula, (ctx ??= makeContext(get())))}` } catch { /* the kind alone */ }
+    }
     const p = proposeTranslation(get(), m, x, 'source')
-    if (p.error || p.errors?.length || !['native', 'implied'].includes(p.status)) { out.push(`Kept by nothing in the new version: ${what}${p.error ? ` (${p.error})` : ''}; the Equivalence report says more`); continue }
+    if (p.error || p.errors?.length || !['native', 'implied'].includes(p.status)) { out.push(`Kept by nothing in ${to}: ${what}${p.error ? ` (${p.error})` : ''}; the Equivalence report says more`); continue }
     get().addCarriedConstraint(m.targetSchemaId, { rule: p.rule, deontic: p.deontic, graphical: p.graphical })
-    out.push(`Added ${p.graphical ? GRAPHICAL_NAME[p.graphical.constraintType] : 'a formula constraint'} to the new version for ${what}`)
+    out.push(`Added ${p.graphical ? GRAPHICAL_NAME[p.graphical.constraintType] : 'a formula constraint'} to ${to} for ${what}`)
   }
   return out
 }

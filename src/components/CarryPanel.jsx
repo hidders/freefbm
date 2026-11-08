@@ -101,7 +101,7 @@ function CarryItem({ it, ctx, language, here, there, mapping }) {
               ? p.rm.map(o => (
                 <div key={o.rmId} style={mono}>
                   {o.label}{o.sql && o.kind !== 'assertion' ? `  ${o.sql}` : ''}
-                  {!o.enforced && <span style={{ ...note, color: '#d97706' }}>{o.kind === 'assertion' ? '  (an assertion: PostgreSQL does not enforce it)' : '  (not enforced)'}</span>}
+                  {o.kind === 'assertion' && <span style={note}>  (an assertion)</span>}
                 </div>))
               : p.entry?.formula ? <Sentence formula={p.entry.formula} ctx={p.ctx} language={language} /> : null}
             {p.rm?.length > 0 && (p.rm.some(o => o.sentence)

@@ -5,6 +5,7 @@ import { exportPostgresDdl } from '../../relational/ddlExport.js'
 import { guessOrmSchema } from '../../relational/guessOrm.js'
 import { generateRelational } from '../../relational/rmap.js'
 import { runMapping, withRunApplied } from '../../mapping/runMapping.js'
+import { carryLost } from './mappingSlice.js'
 
 // Several schemas in one file (workbench plan, step 2). The schemas are listed
 // in `schemas`; elements and diagrams point to theirs with `schemaId`. The
@@ -224,8 +225,13 @@ export const createSchemaSlice = (set, get) => ({
   // ORM2 schema's population, if any, is carried over by running the mapping.
   // surrogates: 'never' | 'composite' | 'always'; overrides: { typeId: bool }.
   // With diagrams, each diagram of the ORM2 schema gets a twin in the new one
-  // (carrySchemaDiagrams), laid out by layout. Returns { schemaId, mappingId, sql }.
-  generateRelationalFromOrm(ormSchemaId, { surrogates = 'never', overrides = {}, diagrams = true, layout = null } = {}) {
+  // (carrySchemaDiagrams), laid out by layout. With assertions, each ORM2
+  // constraint the tables don't keep (constraint accounting) is added to the
+  // new schema as its translation (a CHECK, a graphical constraint over
+  // columns, or an assertion), so the two schemas say the same; what
+  // PostgreSQL can't enforce of that is reported when the DDL is exported.
+  // Returns { schemaId, mappingId, sql }.
+  generateRelationalFromOrm(ormSchemaId, { surrogates = 'never', overrides = {}, diagrams = true, layout = null, assertions = true } = {}) {
     const st = get()
     const orm = st.schemas.find(x => x.id === ormSchemaId)
     if (!orm) return null
@@ -236,7 +242,7 @@ export const createSchemaSlice = (set, get) => ({
     const g = generateRelational(st, ormSchemaId, { schemaId: schema.id, surrogates, overrides, mappingName: `${orm.name} to ${unique}`, schemaName: orm.name })
     const built = g.built
     if (built.diagram) built.diagram.profileId = built.diagram.profileId ?? RELATIONAL_DATATYPES
-    let carried = null, twins = []
+    let carried = null, twins = [], added = []
     set(s => ({ historyBatch: (s.historyBatch ?? 0) + 1 }))
     try {
       set(s => ({
@@ -250,6 +256,10 @@ export const createSchemaSlice = (set, get) => ({
       }))
       get().setActiveDiagram(built.diagram.id)
       for (const c of built.constraints) get()._tryAutoGenerateQuery(c.id)
+      if (assertions) {
+        try { added = carryLost(get, get().mappings.find(m => m.id === g.mapping.id), ormSchemaId, null, { to: unique }) }
+        catch (err) { added = [`Constraints the tables don't keep were not added: ${err?.message ?? err}`] }
+      }
       if (diagrams) twins = get().carrySchemaDiagrams(g.mapping.id, ormSchemaId, built.diagram.id, { layout })
       // The sample population, carried over.
       const now = get()
@@ -271,7 +281,8 @@ export const createSchemaSlice = (set, get) => ({
     const n = built.stats ?? {}
     get().setImportLog({ kind: 'generate', source: `${orm.name}`, entries: [
       { level: 'note', text: `Schema ${unique}: ${n.tables ?? '?'} tables with ${n.columns ?? '?'} columns, ${n.keys ?? 0} keys, ${n.foreignKeys ?? 0} foreign keys (File › Export PostgreSQL DDL… writes them)` },
-      { level: 'note', text: `Mapping ${g.mapping.name}: ${g.mapping.rules.length} rules. Accounting in the Mappings tab lists the constraints the tables don't enforce` },
+      { level: 'note', text: `Mapping ${g.mapping.name}: ${g.mapping.rules.length} rules. Accounting in the Mappings tab lists the constraints the tables don't keep` },
+      ...added.map(text => ({ level: /^Added/.test(text) ? 'note' : 'warn', text })),
       ...(twins.length ? [{ level: 'note', text: `Diagrams of ${orm.name} carried over: ${twins.length} (${twins.map(id => get().diagrams.find(d => d.id === id)?.name).join(', ')})` }] : []),
       ...(carried ? [{ level: 'note', text: `Carried the population over by running the mapping: ${carried.rows} rows` }, ...carried.problems.slice(0, 20).map(l => ({ level: 'warn', text: l.text }))] : []),
       ...g.log.filter(l => !/^\d+ tables:/.test(l.text)),
