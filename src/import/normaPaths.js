@@ -30,10 +30,22 @@
 // adds a condition as soon as its variables are known); a projected one is
 // the term of a computed role.
 //
+// Old-style unaries: NORMA used to store a unary F as a binary whose second
+// role is played by an implicit boolean value type restricted to true, and
+// the importer keeps only the unary. A path through such a binary is a path
+// through the unary: the boolean role is left out of the fact atom, a path
+// may start at the boolean value and enter F through it, and a value
+// condition on the boolean value (on the role or the root) is read as
+// follows: true (or true and false) gives F(x), false alone gives ¬F(x). The
+// literal reading of false would match nothing, as no tuple holds false;
+// the modeller meant the negation, and NORMA mapped these unaries to a
+// boolean column with false for not F. Such readings are collected for the
+// import log (takeNegations). The boolean value is not an object of the
+// path: joining it to another role, unifying or projecting it is refused,
+// and a calculated value reading it reads the constant true.
+//
 // Not translated (reported as the reason): outer joins, negated roots,
-// functions FreeFBM cannot read, aggregates, subqueries, shared paths, and
-// paths that walk into the implicit boolean role of an old-style unary
-// through its value.
+// functions FreeFBM cannot read, aggregates, subqueries and shared paths.
 
 import { SUBJECT } from '../logic/derivationRule.js'
 import { OPS, PREDS } from '../logic/dataOperators.js'
@@ -76,6 +88,14 @@ const FUNCTIONS = (() => {
   return m
 })()
 const fnKey = (s) => String(s ?? '').trim().toLowerCase().replace(/[\s_-]+/g, '')
+// A boolean value as NORMA may write it, or undefined.
+const boolOf = (text) => {
+  const t = String(text ?? '').trim().toLowerCase()
+  if (['true', '1', 'yes', 't', 'y'].includes(t)) return true
+  if (['false', '0', 'no', 'f', 'n'].includes(t)) return false
+  return undefined
+}
+
 const fnLookup = (f) => FUNCTIONS.get(String(f.symbol ?? '').trim()) ?? FUNCTIONS.get(fnKey(f.name)) ?? FUNCTIONS.get(String(f.name ?? '').trim())
 
 // All descendants of el called name.
@@ -92,6 +112,7 @@ const descendants = (el, name, out = []) => {
 //   up(typeId)            → the set of the type and all its supertypes
 //   rangesOf(valueConstraintEl) → FreeFBM range specs
 //   functionOf(normaFunctionId) → { name, symbol, isBoolean, params: [{ id, bag }] } | undefined
+//   isBooleanType(normaTypeId) → whether it is the implicit boolean value type of an old-style unary
 // }
 export function makePathTranslator(ctx) {
   // One path: nodes are NORMA ids of path roots and pathed roles, and fresh
@@ -115,6 +136,36 @@ export function makePathTranslator(ctx) {
     }
     const freshNode = (typeId) => add(`_n${++fresh}`, typeId)
 
+    // Nodes that stand for the boolean value of an old-style unary, and value
+    // conditions on such a value at a path root (applied where the path
+    // enters its unary).
+    const boolNodes = new Set()
+    const boolRootConds = new Map()   // root node → ranges
+    const isBool = (n) => { const c = find(n); for (const b of boolNodes) if (find(b) === c) return true; return false }
+    // The value a condition on a boolean allows: true, false, or null for both.
+    const boolWanted = (ranges) => {
+      const vals = ranges.map(r => {
+        const v = r.type === 'single' ? boolOf(r.value) : undefined
+        if (v === undefined) fail('it tests the boolean value of an old-style unary with a value FreeFBM cannot read')
+        return v
+      })
+      const t = vals.includes(true), f = vals.includes(false)
+      return t && !f ? true : f && !t ? false : null
+    }
+    // A path root: its node and the items of its value condition.
+    const rootItems = (root) => {
+      const id = attr(root, 'id')
+      const ranges = valueCondition(root)
+      if (ctx.isBooleanType?.(attr(root, 'ref'))) {
+        add(id, null)
+        boolNodes.add(id)
+        if (ranges) boolRootConds.set(id, ranges)
+        return []
+      }
+      add(id, ctx.typeOf(attr(root, 'ref')))
+      return ranges ? [{ k: 'value', node: id, ranges }] : []
+    }
+
     const valueCondition = (el) => {
       const vr = kid(el, 'ValueRestriction')
       const vc = vr && kids(vr)[0]
@@ -132,9 +183,8 @@ export function makePathTranslator(ctx) {
       if (root) {
         if (attr(root, 'IsNegated') === 'true') fail('its root object type is negated')
         if (!attr(root, 'id')) fail('a subpath root has no id')
-        at = add(attr(root, 'id'), ctx.typeOf(attr(root, 'ref')))
-        const ranges = valueCondition(root)
-        const head = ranges ? [{ k: 'value', node: at, ranges }] : []
+        const head = rootItems(root)
+        at = attr(root, 'id')
         return [...head, ...walkRoles(roles, 0, at, (end) => split(pathEl, end))]
       }
       return walkRoles(roles, 0, at, (end) => split(pathEl, end))
@@ -156,8 +206,24 @@ export function makePathTranslator(ctx) {
         return m
       })
       const em = members[0]
-      if (em.kind === 'booleanRole') fail('it enters an old-style unary through its boolean value')
-      add(attr(entry, 'id'), ctx.playerOf(em))
+      // The value a condition on the unary's boolean asks for (see the top).
+      let wanted = null
+      const want = (ranges) => {
+        const v = boolWanted(ranges)
+        if (v === null) return
+        if (wanted !== null && wanted !== v) fail('it tests the boolean value of an old-style unary for both true and false')
+        wanted = v
+      }
+      if (em.kind === 'booleanRole') {
+        // entering the unary from its boolean value
+        if (at == null || !isBool(at)) fail('it joins an object to the boolean value of an old-style unary')
+        for (const [n, ranges] of boolRootConds) if (find(n) === find(at)) want(ranges)
+        add(attr(entry, 'id'), null)
+        boolNodes.add(attr(entry, 'id'))
+      } else {
+        if (at != null && isBool(at)) fail('it joins the boolean value of an old-style unary to another role')
+        add(attr(entry, 'id'), ctx.playerOf(em))
+      }
       union(at, attr(entry, 'id'))
       let end = attr(entry, 'id')
       if (em.kind === 'subtype') {
@@ -204,7 +270,11 @@ export function makePathTranslator(ctx) {
         group.forEach((r, k) => {
           const m = members[k]
           if (m.kind === 'booleanRole' && m.factId === factId) {
-            if (valueCondition(r)) fail('it tests the boolean value of an old-style unary')
+            add(attr(r, 'id'), null)
+            boolNodes.add(attr(r, 'id'))
+            const ranges = valueCondition(r)
+            if (ranges) want(ranges)
+            end = attr(r, 'id')
             return
           }
           if (m.kind !== 'role' || m.factId !== factId) fail('a step leaves the fact type it is in')
@@ -215,9 +285,12 @@ export function makePathTranslator(ctx) {
         for (let ri = 0; ri < arity; ri++) {
           if (args[ri] == null) args[ri] = freshNode(ctx.playerOf({ kind: 'role', factId, roleIndex: ri, link: em.link }))
         }
-        items.push({ k: 'fact', factId, args })
+        const atom = { k: 'fact', factId, args }
+        if (wanted === false) { items.push({ k: 'not', item: { k: 'scope', items: [atom] } }); noted?.push(factId) }
+        else items.push(atom)
       }
       for (const r of group) {
+        if (boolNodes.has(attr(r, 'id'))) continue
         const ranges = valueCondition(r)
         if (ranges) items.push({ k: 'value', node: attr(r, 'id'), ranges })
       }
@@ -244,20 +317,21 @@ export function makePathTranslator(ctx) {
       if (!root) fail('a path has no root object type')
       if (attr(root, 'IsNegated') === 'true') fail('its root object type is negated')
       const rootId = attr(root, 'id')
-      add(rootId, ctx.typeOf(attr(root, 'ref')))
-      const items = []
-      const ranges = valueCondition(root)
-      if (ranges) items.push({ k: 'value', node: rootId, ranges })
+      const items = rootItems(root)
       items.push(...walkPath(pathEl, rootId))
       if (!items.length) fail('a path is empty')
       for (const u of kids(kid(pathEl, 'ObjectUnifiers'), 'ObjectUnifier')) {
         const refs = kids(u).map(e => attr(e, 'ref')).filter(r => parent.has(r))
+        if (refs.some(isBool)) fail('it unifies the boolean value of an old-style unary')
         refs.slice(1).forEach(r => union(refs[0], r))
       }
       // CorrelatedWith, the older form of an object unifier
       for (const pr of descendants(pathEl, 'PathedRole')) {
         const other = attr(kid(pr, 'CorrelatedWith'), 'ref')
-        if (other && parent.has(other) && parent.has(attr(pr, 'id'))) union(attr(pr, 'id'), other)
+        if (other && parent.has(other) && parent.has(attr(pr, 'id'))) {
+          if (isBool(other) || isBool(attr(pr, 'id'))) fail('it unifies the boolean value of an old-style unary')
+          union(attr(pr, 'id'), other)
+        }
       }
       // conditions: boolean calculated values the path must satisfy
       const conds = kids(kid(pathEl, 'Conditions'), 'CalculatedCondition').map(c => {
@@ -291,6 +365,7 @@ export function makePathTranslator(ctx) {
         if (src.localName === 'CalculatedValue') return calcExpr(attr(src, 'ref'), seen)
         const n = attr(src, 'ref')
         if (!parent.has(n)) fail(`an input of ${label} is outside its path`)
+        if (isBool(n)) return { f: 'const', text: 'true' }   // an old-style unary's boolean
         return { f: 'node', n }
       })
       const def = fnLookup(fn)
@@ -333,6 +408,7 @@ export function makePathTranslator(ctx) {
       const fixedByClass = new Map()
       const eqs = []
       for (const [n, v] of fixed) {
+        if (isBool(n)) fail('it projects the boolean value of an old-style unary')
         const c = find(n)
         if (fixedByClass.has(c)) eqs.push({ t: 'cmp', op: '=', left: fixedByClass.get(c).id, right: v.id })
         else fixedByClass.set(c, v)
@@ -473,9 +549,21 @@ export function makePathTranslator(ctx) {
   const calcsOf = (ownerEl, paths) => new Map(
     [kid(ownerEl, 'CalculatedValues'), ...paths.map(p => kid(p, 'CalculatedValues'))]
       .flatMap(c => kids(c, 'CalculatedValue')).map(c => [attr(c, 'id'), c]))
+  // The unaries whose boolean a translated path tests for false (read as
+  // their negation): collected per attempt, kept only when it succeeds.
+  let noted = null
+  let negations = []
   const attempt = (fn) => {
-    try { return fn() } catch (e) { if (e instanceof Untranslatable) return { error: e.message }; throw e }
+    const outer = noted
+    noted = []
+    try {
+      const r = fn()
+      if (!r?.error) (outer ?? negations).push(...noted)
+      return r
+    } catch (e) { if (e instanceof Untranslatable) return { error: e.message }; throw e } finally { noted = outer }
   }
+  // The fact ids of the unaries read as negations since the last call.
+  const takeNegations = () => { const out = negations; negations = []; return out }
   const bindAll = (vars, body) => vars.reduceRight((b, v) => ({ t: 'exists', v, body: b }), body)
 
   // A fact type's derivation path → { body, extraVars, terms } or { error }.
@@ -580,7 +668,7 @@ export function makePathTranslator(ctx) {
     })
   }
 
-  return { factRule, subtypeRule, joinQuery }
+  return { factRule, subtypeRule, joinQuery, takeNegations }
 }
 
 // ── Positive linear recursion → transitive closure ─────────────────────────
