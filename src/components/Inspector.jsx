@@ -4207,8 +4207,12 @@ function ExternalConstraintInspector({ c }) {
 
         return (
           <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
-              textTransform: 'uppercase', marginBottom: 5, display: 'block' }}>Queries</label>
+            <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: 5 }}>
+              <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
+                textTransform: 'uppercase', flex: 1 }}>Queries</label>
+              <span style={{ fontSize: 10, color: 'var(--ink-muted)', fontStyle: 'italic', paddingRight: 30 }}
+                title="Each query can be edited as a join path on the diagram or as a formula of the logic">edit as</span>
+            </div>
             {needsTarget && !hasTarget && (
               <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic', marginBottom: 6 }}>
                 Set a target object type above to enable query editing.
@@ -4228,8 +4232,7 @@ function ExternalConstraintInspector({ c }) {
               const graphDisabled = (needsTarget && !hasTarget) || !!gc || !!notDrawable
               const qPressed = pressedQueryIndex === gi
               return (
-                <div key={gi} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-                  <span style={{ fontSize: 11, color: 'var(--ink-2)', minWidth: 24, flexShrink: 0 }}>S{gi + 1}</span>
+                <div key={gi} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 5 }}>
                   <button
                     disabled={!q}
                     onMouseDown={() => {
@@ -4239,39 +4242,41 @@ function ExternalConstraintInspector({ c }) {
                     }}
                     onMouseUp={() => { setPressedQueryIndex(null); store.clearQueryIndexHighlight() }}
                     onMouseLeave={() => { setPressedQueryIndex(null); store.clearQueryIndexHighlight() }}
-                    style={{ fontSize: 11, flex: 1, textAlign: 'left',
+                    title={`S${gi + 1}: ${statusText}`}
+                    style={{ fontSize: 10, flex: 1, minWidth: 30, textAlign: 'left', whiteSpace: 'nowrap',
+                      overflow: 'hidden', textOverflow: 'ellipsis',
                       cursor: q ? 'default' : 'not-allowed',
                       color: q ? 'var(--col-query-in)' : 'var(--ink-muted)',
                       fontStyle: q ? 'normal' : 'italic',
                       background: 'var(--bg-raised)',
                       border: '1px solid var(--border-soft)',
-                      borderRadius: 3, padding: '2px 5px',
+                      borderRadius: 3, padding: '2px 4px',
                       boxShadow: qPressed
                         ? 'inset 1px 1px 2px rgba(0,0,0,0.25), inset -1px -1px 1px rgba(255,255,255,0.4)'
                         : 'inset -1px -1px 2px rgba(0,0,0,0.15), inset 1px 1px 1px rgba(255,255,255,0.7)',
                       transform: qPressed ? 'translateY(1px)' : 'none',
                       opacity: q ? 1 : 0.55 }}>
-                    {statusText}
+                    S{gi + 1} · {statusText}
                   </button>
                   <button
                     disabled={graphDisabled}
                     title={notDrawable ? `Can't be edited on the diagram: ${notDrawable}` : 'Edit the query as a join path on the diagram'}
                     onClick={() => store.startQueryEdit(c.id, gi)}
-                    style={{ padding: '2px 8px', fontSize: 10, background: 'var(--bg-raised)',
+                    style={{ padding: '2px 5px', fontSize: 10, flexShrink: 0, background: 'var(--bg-raised)',
                       border: '1px solid var(--border)', borderRadius: 3,
                       cursor: !graphDisabled ? 'pointer' : 'default',
                       color: 'var(--ink-2)', opacity: !graphDisabled ? 1 : 0.4 }}>
-                    {q ? 'Edit' : 'Define'}
+                    Diagram
                   </button>
                   <button
                     disabled={!!gc}
                     title="Edit the query as a formula of the logic, in the rule editor"
                     onClick={() => store.openRuleEditor({ constraintId: c.id, sequenceIndex: gi })}
-                    style={{ padding: '2px 8px', fontSize: 10, background: 'var(--bg-raised)',
+                    style={{ padding: '2px 5px', fontSize: 10, flexShrink: 0, background: 'var(--bg-raised)',
                       border: '1px solid var(--border)', borderRadius: 3,
                       cursor: !gc ? 'pointer' : 'default',
                       color: 'var(--ink-2)', opacity: !gc ? 1 : 0.4 }}>
-                    Text
+                    Formula
                   </button>
                   {q && (
                     <button onClick={() => store.clearConstraintQuery(c.id, gi)}
