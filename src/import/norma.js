@@ -375,11 +375,13 @@ export function importNorma(xmlText) {
   }
 
   // link fact types of explicit objectifications: their roles are reachable
-  // as F_il_r (role 0 the objectified type, role 1 the original player)
+  // as F_il_r (role 0 the objectified type, role 1 the original player).
+  // An objectified old-style unary has an ObjectifiedUnaryRole (naming its
+  // unary role by UnaryRole) where other link fact types have a RoleProxy.
   for (const lf of factEls.filter(f => f.localName === 'ImpliedFact')) {
-    const proxy = kid(kid(lf, 'FactRoles'), 'RoleProxy')
+    const proxy = kid(kid(lf, 'FactRoles'), 'RoleProxy') ?? kid(kid(lf, 'FactRoles'), 'ObjectifiedUnaryRole')
     const own = kid(kid(lf, 'FactRoles'), 'Role')
-    const orig = roleRef.get(attr(kid(proxy, 'Role'), 'ref'))
+    const orig = roleRef.get(attr(kid(proxy, 'Role') ?? kid(proxy, 'UnaryRole'), 'ref'))
     if (!orig || orig.kind !== 'role' || !factById.get(orig.factId)?.objectified) continue
     const ilId = `${orig.factId}_il_${orig.roleIndex}`
     roleRef.set(attr(proxy, 'id'), { kind: 'role', factId: ilId, roleIndex: 1, link: true })
