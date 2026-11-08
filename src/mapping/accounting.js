@@ -346,8 +346,8 @@ function issueKey(i) {
 
 // Whether an issue is a violation of the constraint of a formalise entry.
 function issueMatches(entry) {
-  // Cardinality ranges: population validation doesn't check them, so their
-  // formula is evaluated.
+  // Cardinality ranges: their formula is evaluated (population validation
+  // checks them too, but issuesOf leaves out fact types without facts).
   if (/:card(:\d+)?$/.test(entry.key) && entry.formula) {
     let rule
     try { rule = formulaToRule(entry.formula.t === 'obligatory' ? entry.formula.arg : entry.formula) } catch { return null }
