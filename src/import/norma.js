@@ -436,9 +436,20 @@ export function importNorma(xmlText) {
   const paths = makePathTranslator({
     roleRef: (id) => roleRef.get(id), playerOf: playerOfMember, factById, stById,
     typeOf: (id) => playerId.get(id), up, rangesOf: valueRanges,
-    functionOf: (id) => functions.get(id),
+    functionOf: (id) => functions.get(id), isBooleanType: (id) => implicitBoolean.has(id),
   })
   const failedRules = [], closedNames = []
+  // Rules and queries that test an old-style unary's boolean for false, which
+  // the translator reads as the unary's negation.
+  const negationReads = []
+  const factName = (fid) => attr(factEls.find(f => attr(f, 'id') === fid), '_Name') ?? fid
+  const noteNegations = (what, el) => {
+    const fids = [...new Set(paths.takeNegations())]
+    if (!fids.length) return
+    const names = fids.map(factName)
+    negationReads.push(`${what} (${names.join(', ')})`)
+    addNote(el, `NORMA: the rule tests the boolean value of the old-style unar${names.length === 1 ? 'y' : 'ies'} ${names.join(', ')} for false; FreeFBM reads that as not ${names.length === 1 ? 'that unary' : 'those unaries'}.`)
+  }
   for (const { el, path: dp, name } of derivationPaths) {
     const isFact = el.kind !== 'entity' && el.kind !== 'value'
     if (isFact) {
@@ -447,6 +458,7 @@ export function importNorma(xmlText) {
       // A fully derived fact type defined by positive linear recursion gets a
       // transitive closure instead. A semi-derived one keeps its recursion:
       // its stored facts feed it too, which FreeFBM reads as a least fixpoint.
+      noteNegations(`fact type ${name}`, el)
       const closed = el.derivation === 'derived' && closeLinearRecursion(el, r, factById)
       el.derivationRule = closed || r
       if (closed) { count('closedRecursions'); closedNames.push(name) }
@@ -455,6 +467,7 @@ export function importNorma(xmlText) {
       const supers = subtypes.filter(st => st.subId === el.id).map(st => st.superId)
       const r = paths.subtypeRule(el, dp, supers)
       if (r.error) { if (!informalEls.has(el)) failedRules.push(`subtype ${name}: ${r.error}`); continue }
+      noteNegations(`subtype ${name}`, el)
       el.derivationRule = r.rule
       if (r.skipped) addNote(el, `NORMA: ${r.skipped} empty path${r.skipped === 1 ? ' was' : 's were'} left out of the derivation rule.`)
       count('subtypeRules')
@@ -522,6 +535,7 @@ export function importNorma(xmlText) {
           return null
         }
         count('translatedJoins')
+        noteNegations(`the join path of ${attr(seqEls[i].closest('[Name]'), 'Name') ?? con.id}`, con)
         if (outputTarget && q.target && !con.targetObjectTypeId) con.targetObjectTypeId = q.target.typeId
         return q
       }
@@ -950,6 +964,7 @@ export function importNorma(xmlText) {
   if (counts.factRules || counts.subtypeRules || counts.translatedJoins)
     note(`Translated ${counts.factRules ?? 0} fact type and ${counts.subtypeRules ?? 0} subtype derivation rules${counts.translatedJoins ? ` and ${counts.translatedJoins} join paths` : ''} from NORMA's role paths into formulas.`)
   if (closedNames.length) note(`The recursive derivation rule${closedNames.length === 1 ? '' : 's'} of ${closedNames.join(', ')} ${closedNames.length === 1 ? 'was' : 'were'} rewritten with a transitive closure [TC* …], which says the same under least-fixpoint semantics without the fact type referring to itself.`)
+  if (negationReads.length) note(`A test that an old-style unary's boolean value is false matches nothing literally (NORMA restricted that value to true), so it was read as the unary's negation in ${negationReads.join('; ')}.`)
   if (informalOnly.length) warn(`${informalOnly.length === 1 ? 'One element has' : `${informalOnly.length} elements have`} only an informal derivation rule, kept in ${informalOnly.length === 1 ? 'its' : 'their'} note and listed as incomplete by validation: ${informalOnly.join(', ')}.`)
   for (const f of failedRules) warn(`The derivation rule of ${f}; it is marked derived but has no rule, so validation lists it as incomplete.`)
   for (const f of failedJoins) warn(`The join path of ${f}; the sequence is imported without it.`)
