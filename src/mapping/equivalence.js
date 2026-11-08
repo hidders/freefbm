@@ -26,7 +26,7 @@
 // { verdict, info: { source, target }, constraints: { source, target },
 //   accounting, ms }, see summarise.
 
-import { worldOf, genericPopulation, genericInstance, contains, accountingSteps } from './accounting.js'
+import { worldOf, genericPopulation, genericInstance, contains, accountingSteps, isIdentifyingLink } from './accounting.js'
 import { prepareRun, executeRun } from './runMapping.js'
 import { finiteCases } from './fold.js'
 import { expandSide, asSide, readingName, SIDES } from './mapping.js'
@@ -54,7 +54,7 @@ function namedBy(w, ruleSide) {
   walk(s.vars, s.atoms)
   return {
     typeIds: [...typeIds].filter(id => w.ctx.otById.get(id)?.kind === 'entity'),
-    factIds: [...factIds].filter(id => !w.ident.entity.has(id) && !w.ident.nested.has(id)),
+    factIds: [...factIds].filter(id => !w.ident.entity.has(id) && !w.ident.nested.has(id) && !isIdentifyingLink(w, id)),
   }
 }
 

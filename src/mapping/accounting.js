@@ -89,13 +89,28 @@ const clonePops = (p) => ({
   factPopulations: Object.fromEntries(Object.entries(p.factPopulations ?? {}).map(([k, v]) => [k, v.map(t => [...t])])),
 })
 const sizeOf = (p) => Object.values(p.factPopulations).reduce((a, v) => a + v.length, 0) + Object.values(p.populations).reduce((a, v) => a + v.length, 0)
-const isIdentifying = (w, factId) => w.ident.entity.has(factId) || w.ident.nested.has(factId)
+// Identifying facts: reference modes and composite identifiers, and the
+// implied links '<factId>_il_<i>' of an objectified fact type without an
+// identifier of its own (its instance is the tuple of its role players, so a
+// link says which part of the instance a player is).
+const isIdentifying = (w, factId) => w.ident.entity.has(factId) || w.ident.nested.has(factId) || isIdentifyingLink(w, factId)
+export function isIdentifyingLink(w, factId) {
+  if (!w.ctx.factById.get(factId)?._link) return false
+  const owner = /^(.*)_il_\d+$/.exec(factId)?.[1]
+  return schemeOf(owner, w.els)?.parts?.some(p => p.factId === factId) ?? false
+}
 const playerOf = (w, factId, ri) => w.ctx.factById.get(factId)?.roles[ri]?.objectTypeId
 
 // An instance of a type, with what keeps the stored populations aligned: the
 // supertypes have it too, and its reference values are values of their types.
 function addInst(w, pops, typeId, cell) {
   if (cell == null || !typeId) return
+  // An instance of an objectified fact type without an identifier of its
+  // own is the fact it nests.
+  if (!w.ctx.otById.has(typeId)) {
+    const f = w.ctx.factById.get(typeId)
+    if (f?.objectified && Array.isArray(cell) && schemeOf(typeId, w.els)?.parts?.every(p => w.ctx.factById.get(p.factId)?._link)) { addTuple(w, pops, typeId, cell); return }
+  }
   const list = pops.populations[typeId] ?? (pops.populations[typeId] = [])
   const k = keyOf(cell)
   if (list.some(c => keyOf(c) === k)) return
