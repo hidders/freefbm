@@ -199,6 +199,20 @@ function freqSpecSatisfies(count, spec) {
   return true
 }
 
+// Whether a number of instances is in a cardinality range: in one of its
+// segments, those without a bound left out (as the Constraints tab's formula
+// reads it); a range with no bound at all allows any number.
+function cardinalitySatisfies(count, range) {
+  const num = (x) => (x === '' || x == null || !Number.isFinite(Number(x)) ? null : Number(x))
+  const specs = (range ?? []).map(s => (
+    s.type === 'single' ? { lo: num(s.value), hi: num(s.value) }
+      : s.type === 'lower' ? { lo: num(s.lower), hi: null }
+      : s.type === 'upper' ? { lo: null, hi: num(s.upper) }
+      : { lo: num(s.lower), hi: num(s.upper) })).filter(s => s.lo != null || s.hi != null)
+  if (!specs.length) return true
+  return specs.some(({ lo, hi }) => (lo == null || count >= lo) && (hi == null || count <= hi))
+}
+
 export function freqRangeSatisfies(count, range) {
   if (!range || range.length === 0) return true
   return range.some(spec => freqSpecSatisfies(count, spec))
@@ -739,6 +753,44 @@ export function computePopulationIssues(rawData) {
     }
   }
 
+  // ── 6b. Cardinality ranges ─────────────────────────────────────────────
+  // A type's cardinality range bounds the number of its instances (with its
+  // subtypes'); a role's bounds the number of distinct objects playing it.
+  {
+    const typeName = (id) => otById.get(id)?.name || (facts || []).find(f => f.id === id)?.objectifiedName || '?'
+    // "Person has Phone": the reading with the players' names.
+    const factLabel = (fact) => {
+      const parts = fact.readingParts ?? []
+      const words = []
+      ;(fact.roles ?? []).forEach((r, i) => { words.push(parts[i] ?? '', r?.objectTypeId ? typeName(r.objectTypeId) : '?') })
+      words.push(parts[fact.roles?.length ?? 0] ?? '')
+      return words.map(w => (w ?? '').trim()).filter(Boolean).join(' ')
+    }
+    const check = (range, n, base, what) => {
+      if (cardinalitySatisfies(n, range)) return
+      issues.push({ kind: 'cardinalityViolation', ...base, count: n,
+        message: `${what}: ${n}, outside the cardinality range ${formatFreqRangeShort(range)}` })
+    }
+    const distinct = (cells) => new Set(cells.map(v => projCellKey(v)).filter(k => k !== null).map(k => JSON.stringify(k))).size
+    for (const ot of (objectTypes || [])) {
+      if (!ot.cardinalityRange?.length) continue
+      check(ot.cardinalityRange, distinct(playerPopulation(ot)), { elementId: ot.id, otId: ot.id }, `Number of ${ot.name || 'instances'}`)
+    }
+    for (const fact of (facts || [])) {
+      if (fact.objectified && fact.cardinalityRange?.length) {
+        check(fact.cardinalityRange, distinct(playerPopulation(fact)), { elementId: fact.id, otId: fact.id, factId: fact.id },
+          `Number of ${fact.objectifiedName || 'instances'}`)
+      }
+      ;(fact.roles ?? []).forEach((role, ri) => {
+        if (!role?.cardinalityRange?.length) return
+        const cells = (effectiveFactTuples(fact) ?? []).filter(Array.isArray).map(t => t[ri])
+        const player = role.objectTypeId ? typeName(role.objectTypeId) : 'objects'
+        check(role.cardinalityRange, distinct(cells), { elementId: fact.id, factId: fact.id, roleIndex: ri },
+          `Number of ${player} playing ${role.roleName?.trim() || `role ${ri + 1}`} in ${factLabel(fact)}`)
+      })
+    }
+  }
+
   // ── 7. Subtype mapping completeness + injectivity (non-inheriting only) ──
   // For each non-inheriting subtype edge, the mapping from subtype instances
   // to supertype instances must be:
@@ -1007,106 +1059,8 @@ export function computePopulationIssues(rawData) {
     }
   }
 
-  // ── 9. Exclusion, equality, subset constraint population checks ───────────
-  // Each sequence has an associated query (a relational join pattern).  We
-  // evaluate the query to obtain a result set, then compare sets across
-  // sequences:
-  //   exclusion: all pairwise result sets must be disjoint
-  //   equality:  all result sets must be equal
-  //   subset:    result set of sequence 1 ⊆ result set of sequence 2
-  //
-  // If a query is absent or has an unrecognised structure we fall back to a
-  // direct role-projection of the underlying fact population (legacy path).
-  if (constraints?.length && facts?.length) {
-    const CHECKED = new Set([])  // exclusion, equality, subset all handled after DSU
-
-
-    // Evaluate one query → { keys: Set<string>, values: any[] } or null.
-    //
-    // The evaluator handles three structural forms:
-    //
-    // A) Subtype atom (no fact atoms): result = population of the sub OT.
-    //
-    // B) Fact atoms with seeded-role output positions (the standard form for
-    //    exclusion / equality / subset).  OT atoms are pure join variables —
-    //    they constrain which fact rows may be combined but never appear in the
-    //    output.  A recursive nested-loop join collects (seeded-role value)
-    //    tuples ordered by seqPosition.
-    //
-    // C) Legacy: one isOutput OT copy, no seeded-role outputs (older saved
-    //    queries or manually-built queries for uniqueness / frequency).  The
-    //    result is the intersection of the per-fact-copy value sets reachable
-    //    through the output variable.
-    // (evaluateQuery is now a module-level function)
-
-    const seqLabel = (i) => `sequence ${i + 1}`
-    const displayV = (rawV) => projCellDisplay(projCellKey(rawV))
-
-    for (const c of (constraints || [])) {
-      if (!CHECKED.has(c.constraintType)) continue
-      const seqs    = c.sequences ?? []
-      const queries = c.queries ?? []
-      if (seqs.length < 2) continue
-
-      const projections = seqs.map((seq, i) => {
-        const qResult = evaluateQuery(queries[i] ?? null, facts, populations, effectiveFactTuples)
-        return qResult !== null ? qResult : projectSequence(seq, facts, effectiveFactTuples)
-      })
-      if (projections.some(p => p === null)) continue
-
-      if (c.constraintType === 'equality') {
-        const ref = projections[0]
-        for (let i = 1; i < projections.length; i++) {
-          const pi = projections[i]
-          for (const rawV of ref.values) {
-            if (!pi.keys.has(JSON.stringify(projCellKey(rawV)))) {
-              issues.push({
-                kind: 'equalityViolation',
-                elementId: c.id,
-                constraintId: c.id,
-                seqIndices: [0, i],
-                value: rawV,
-                message: `${displayV(rawV)} is in ${seqLabel(0)} but not in ${seqLabel(i)} — violates equality`,
-              })
-            }
-          }
-          for (const rawV of pi.values) {
-            if (!ref.keys.has(JSON.stringify(projCellKey(rawV)))) {
-              issues.push({
-                kind: 'equalityViolation',
-                elementId: c.id,
-                constraintId: c.id,
-                seqIndices: [i, 0],
-                value: rawV,
-                message: `${displayV(rawV)} is in ${seqLabel(i)} but not in ${seqLabel(0)} — violates equality`,
-              })
-            }
-          }
-        }
-      }
-
-      if (c.constraintType === 'subset') {
-        const [sub, sup] = projections
-        for (const rawV of sub.values) {
-          if (!sup.keys.has(JSON.stringify(projCellKey(rawV)))) {
-            issues.push({
-              kind: 'subsetViolation',
-              elementId: c.id,
-              constraintId: c.id,
-              seqIndices: [0, 1],
-              value: rawV,
-              message: `${displayV(rawV)} is in ${seqLabel(0)} but not in ${seqLabel(1)} — violates subset`,
-            })
-          }
-        }
-      }
-    }
-  }
-
-  // ── 9b. Inclusive-or and exclusive-or constraint population checks ───────────
-  // inclusive-or:  every instance of the target type must appear in at least one
-  //                sequence projection.
-  // exclusive-or: moved to after DSU construction for DSU-based correspondence checks.
+  // ── 9. Exclusion, equality, subset, inclusive-or and exclusive-or: further
+  // down, after the DSU of objects that represent the same entity is built.
 
   // ── 9c. Value comparison constraint population checks ─────────────────────
   // For each value-comparison constraint, obtain the binary relation from
@@ -1996,110 +1950,65 @@ export function computePopulationIssues(rawData) {
   }
 
   // ── Inclusive Or / Exclusive Or: DSU-based correspondence checks ──────────
-  // For each instance of the target OT, at least one sequence must have a
-  // corresponding instance (same DSU representative = represents the same object).
+  // For each instance of the target type, the sequences with a corresponding
+  // instance (same DSU representative = represents the same object): at least
+  // one for inclusive-or, exactly one for exclusive-or. A sequence with a
+  // query (a join path) is read through it; without one it is a single role
+  // or subtype link. A constraint with a sequence that can't be read (a role
+  // of an implied link, or several roles, without a query) is not checked:
+  // it has no formula yet either.
   if (constraints?.length) {
-    for (const c of (constraints || [])) {
-      if (c.constraintType !== 'inclusiveOr') continue
-      if (!c.targetObjectTypeId) continue
-      const seqs = c.sequences ?? []
-      if (seqs.length < 2) continue
-
-      // Get target OT effective population
-      const targetPlayer = otById.get(c.targetObjectTypeId)
-        ?? (facts || []).find(f => f.id === c.targetObjectTypeId && f.objectified)
-      if (!targetPlayer) continue
-      const targetPop = playerPopulation(targetPlayer)
-      if (!targetPop || targetPop.length === 0) continue
-
-      // Build a DSU representative set for each sequence
-      const seqRepSets = seqs.map(seq => {
-        const repSet = new Set()
-        if (!Array.isArray(seq) || seq.length !== 1) return repSet
-        const m = seq[0]
-        if (m.kind === 'subtype') {
-          const st = (subtypes || []).find(s => s.id === m.subtypeId)
-          if (!st) return repSet
-          const subPlayer = otById.get(st.subId)
-            ?? (facts || []).find(f => f.id === st.subId && f.objectified)
-          const subPop = subPlayer ? playerPopulation(subPlayer) : []
-          for (const v of subPop) {
-            const k = projCellKey(v)
-            if (k !== null) repSet.add(dsuFind(nodeKey(st.subId, k)))
-          }
-        } else if (m.kind === 'role' && !m.factId?.includes('_il_')) {
-          const fact = (facts || []).find(f => f.id === m.factId)
-          const anchorOtId = fact?.roles?.[m.roleIndex]?.objectTypeId
-          if (!fact || !anchorOtId) return repSet
-          for (const tuple of (effectiveFactTuples(fact) ?? [])) {
-            if (!Array.isArray(tuple)) continue
-            const k = projCellKey(tuple[m.roleIndex])
-            if (k !== null) repSet.add(dsuFind(nodeKey(anchorOtId, k)))
-          }
-        }
-        return repSet
-      })
-
-      const reportedReps = new Set()
-      for (const inst of targetPop) {
-        const k = projCellKey(inst)
-        if (k === null) continue
-        const rep = dsuFind(nodeKey(c.targetObjectTypeId, k))
-        if (reportedReps.has(rep)) continue
-        if (!seqRepSets.some(rs => rs.has(rep))) {
-          reportedReps.add(rep)
-          issues.push({
-            kind: 'inclusiveOrViolation',
-            elementId: c.id,
-            constraintId: c.id,
-            value: k,
-            message: `Inclusive-or violated: ${projCellDisplay(k)} does not appear in any of the constrained role sequences`,
-          })
-        }
+    // The type a role's values belong to, implied links included.
+    const rolePlayerId = (factId, roleIndex) => {
+      const il = /^(.*)_il_(\d+)$/.exec(factId ?? '')
+      if (il) {
+        const parent = (facts || []).find(f => f.id === il[1])
+        if (!parent) return null
+        return roleIndex === 0 ? parent.id : parent.roles?.[+il[2]]?.objectTypeId ?? null
       }
+      return (facts || []).find(f => f.id === factId)?.roles?.[roleIndex]?.objectTypeId ?? null
     }
-  }
+    const typePopulation = (typeId) => {
+      const p = otById.get(typeId) ?? (facts || []).find(f => f.id === typeId && f.objectified)
+      return p ? playerPopulation(p) : []
+    }
+    // The DSU representatives of a sequence's objects, or null.
+    const sequenceReps = (seq, query) => {
+      if (!Array.isArray(seq) || seq.length !== 1) return null
+      const m = seq[0]
+      const repSet = new Set()
+      const anchorId = m.kind === 'subtype'
+        ? (subtypes || []).find(s => s.id === m.subtypeId)?.subId
+        : m.kind === 'role' ? rolePlayerId(m.factId, m.roleIndex) : null
+      if (!anchorId) return null
+      const add = (v) => { const k = projCellKey(v); if (k !== null) repSet.add(dsuFind(nodeKey(anchorId, k))) }
+      if (query) {
+        const r = evaluateQuery(query, facts, populations, effectiveFactTuples)
+        if (!r) return null
+        for (const v of r.values) add(v)
+        return repSet
+      }
+      if (m.kind === 'subtype') {
+        for (const v of typePopulation(anchorId)) add(v)
+        return repSet
+      }
+      if (m.kind !== 'role' || m.factId?.includes('_il_')) return null
+      const fact = (facts || []).find(f => f.id === m.factId)
+      if (!fact) return null
+      for (const tuple of (effectiveFactTuples(fact) ?? [])) if (Array.isArray(tuple)) add(tuple[m.roleIndex])
+      return repSet
+    }
 
-  // ── Exclusive Or: DSU-based — each target instance must be in exactly one sequence ──
-  if (constraints?.length) {
     for (const c of (constraints || [])) {
-      if (c.constraintType !== 'exclusiveOr') continue
+      const inclusive = c.constraintType === 'inclusiveOr'
+      if (!inclusive && c.constraintType !== 'exclusiveOr') continue
       if (!c.targetObjectTypeId) continue
       const seqs = c.sequences ?? []
       if (seqs.length < 2) continue
-
-      const targetPlayer = otById.get(c.targetObjectTypeId)
-        ?? (facts || []).find(f => f.id === c.targetObjectTypeId && f.objectified)
-      if (!targetPlayer) continue
-      const targetPop = playerPopulation(targetPlayer)
-      if (!targetPop || targetPop.length === 0) continue
-
-      const seqRepSets = seqs.map(seq => {
-        const repSet = new Set()
-        if (!Array.isArray(seq) || seq.length !== 1) return repSet
-        const m = seq[0]
-        if (m.kind === 'subtype') {
-          const st = (subtypes || []).find(s => s.id === m.subtypeId)
-          if (!st) return repSet
-          const subPlayer = otById.get(st.subId)
-            ?? (facts || []).find(f => f.id === st.subId && f.objectified)
-          const subPop = subPlayer ? playerPopulation(subPlayer) : []
-          for (const v of subPop) {
-            const k = projCellKey(v)
-            if (k !== null) repSet.add(dsuFind(nodeKey(st.subId, k)))
-          }
-        } else if (m.kind === 'role' && !m.factId?.includes('_il_')) {
-          const fact = (facts || []).find(f => f.id === m.factId)
-          const anchorOtId = fact?.roles?.[m.roleIndex]?.objectTypeId
-          if (!fact || !anchorOtId) return repSet
-          for (const tuple of (effectiveFactTuples(fact) ?? [])) {
-            if (!Array.isArray(tuple)) continue
-            const k = projCellKey(tuple[m.roleIndex])
-            if (k !== null) repSet.add(dsuFind(nodeKey(anchorOtId, k)))
-          }
-        }
-        return repSet
-      })
+      const targetPop = typePopulation(c.targetObjectTypeId)
+      if (!targetPop.length) continue
+      const seqRepSets = seqs.map((seq, i) => sequenceReps(seq, (c.queries ?? [])[i] ?? null))
+      if (seqRepSets.some(s => s === null)) continue
 
       const reportedReps = new Set()
       for (const inst of targetPop) {
@@ -2108,19 +2017,24 @@ export function computePopulationIssues(rawData) {
         const rep = dsuFind(nodeKey(c.targetObjectTypeId, k))
         if (reportedReps.has(rep)) continue
         const count = seqRepSets.filter(rs => rs.has(rep)).length
-        if (count !== 1) {
-          reportedReps.add(rep)
-          issues.push({
-            kind: 'exclusiveOrViolation',
-            elementId: c.id,
-            constraintId: c.id,
-            value: k,
-            count,
-            message: count === 0
-              ? `Exclusive-or violated: ${projCellDisplay(k)} does not appear in any of the constrained role sequences`
-              : `Exclusive-or violated: ${projCellDisplay(k)} appears in ${count} role sequences (must be exactly one)`,
-          })
-        }
+        if (inclusive ? count >= 1 : count === 1) continue
+        reportedReps.add(rep)
+        issues.push(inclusive ? {
+          kind: 'inclusiveOrViolation',
+          elementId: c.id,
+          constraintId: c.id,
+          value: k,
+          message: `Inclusive-or violated: ${projCellDisplay(k)} does not appear in any of the constrained role sequences`,
+        } : {
+          kind: 'exclusiveOrViolation',
+          elementId: c.id,
+          constraintId: c.id,
+          value: k,
+          count,
+          message: count === 0
+            ? `Exclusive-or violated: ${projCellDisplay(k)} does not appear in any of the constrained role sequences`
+            : `Exclusive-or violated: ${projCellDisplay(k)} appears in ${count} role sequences (must be exactly one)`,
+        })
       }
     }
   }
@@ -2136,6 +2050,10 @@ function markDeontic(issues, facts, constraints, otById) {
   const isDeontic = (i) => {
     if (i.constraintId) return deonticCons.has(i.constraintId)
     if (i.kind === 'valueRangeViolation' && i.otId) return !!otById.get(i.otId)?.valueRangeDeontic
+    if (i.kind === 'cardinalityViolation') {
+      if (i.roleIndex != null) return !!factById.get(i.factId)?.roles?.[i.roleIndex]?.cardinalityRangeDeontic
+      return !!(otById.get(i.otId) ?? factById.get(i.otId))?.cardinalityRangeDeontic
+    }
     const fact = factById.get(i.factId)
     if (!fact) return false
     if (i.kind === 'uniquenessViolation') return isDeonticUniqueness(fact, i.roleIndices)

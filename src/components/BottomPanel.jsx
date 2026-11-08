@@ -1726,7 +1726,7 @@ function ObjectTypePopulation({ ot }) {
       {(() => {
         const indepViolations = (store.populationIssues || []).filter(
           i => i.otId === ot.id && !i.factId &&
-            (i.kind === 'nonIndependentNotPlaying' || i.kind === 'duplicateIdentifier')
+            (i.kind === 'nonIndependentNotPlaying' || i.kind === 'duplicateIdentifier' || i.kind === 'cardinalityViolation')
         )
         if (!indepViolations.length) return null
         return (
@@ -2839,7 +2839,7 @@ function FactTypePopulation({ fact }) {
     } else if (issue.tupleIndex != null && issue.roleIndex != null) {
       pushCell(issue.tupleIndex, issue.roleIndex, issue)
     }
-    if (issue.kind === 'uniquenessViolation' || issue.kind === 'frequencyViolation' || issue.kind === 'mandatoryRoleNotPlayed' || issue.kind === 'nonIndependentNotPlaying' || issue.kind === 'duplicateIdentifier') {
+    if (issue.kind === 'uniquenessViolation' || issue.kind === 'frequencyViolation' || issue.kind === 'mandatoryRoleNotPlayed' || issue.kind === 'nonIndependentNotPlaying' || issue.kind === 'duplicateIdentifier' || issue.kind === 'cardinalityViolation') {
       constraintViolations.push(issue)
     }
   }
