@@ -281,9 +281,9 @@ export function NewSchemaMenu({ variant = 'strip' }) {
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
             >
               <span style={{
-                fontSize: 9, fontWeight: 700, color: '#fff', background: PROFILE_LABELS.relational.color,
+                fontSize: 9, fontWeight: 700, color: '#fff', background: PROFILE_LABELS[sc.profile === 'relational' ? 'relational' : 'orm2'].color,
                 borderRadius: 8, padding: '1px 5px', lineHeight: '12px',
-              }}>{PROFILE_LABELS.relational.tag}</span>
+              }}>{PROFILE_LABELS[sc.profile === 'relational' ? 'relational' : 'orm2'].tag}</span>
               Transform {sc.name}…
             </div>
           ))}
