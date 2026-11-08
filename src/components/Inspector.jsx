@@ -4206,15 +4206,17 @@ function ExternalConstraintInspector({ c }) {
         }
 
         return (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: 5 }}>
-              <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
-                textTransform: 'uppercase', flex: 1 }}>Queries</label>
-              <span style={{ fontSize: 10, color: 'var(--ink-muted)', fontStyle: 'italic', paddingRight: 30 }}
-                title="Each query can be edited as a join path on the diagram or as a formula of the logic">edit as</span>
-            </div>
+          // One grid, so the Diagram and Formula buttons form columns under "edit as".
+          <div style={{ marginBottom: 12, display: 'grid', gridTemplateColumns: 'minmax(30px, 1fr) auto auto auto',
+            columnGap: 4, rowGap: 5, alignItems: 'center' }}>
+            <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
+              textTransform: 'uppercase', alignSelf: 'end' }}>Queries</label>
+            <span style={{ gridColumn: '2 / 4', textAlign: 'center', alignSelf: 'end', fontSize: 10,
+              color: 'var(--ink-muted)', fontStyle: 'italic' }}
+              title="Each query can be edited as a join path on the diagram or as a formula of the logic">edit as</span>
+            <span/>
             {needsTarget && !hasTarget && (
-              <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic', marginBottom: 6 }}>
+              <div style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic', marginBottom: 1 }}>
                 Set a target object type above to enable query editing.
               </div>
             )}
@@ -4232,7 +4234,7 @@ function ExternalConstraintInspector({ c }) {
               const graphDisabled = (needsTarget && !hasTarget) || !!gc || !!notDrawable
               const qPressed = pressedQueryIndex === gi
               return (
-                <div key={gi} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 5 }}>
+                <React.Fragment key={gi}>
                   <button
                     disabled={!q}
                     onMouseDown={() => {
@@ -4243,7 +4245,7 @@ function ExternalConstraintInspector({ c }) {
                     onMouseUp={() => { setPressedQueryIndex(null); store.clearQueryIndexHighlight() }}
                     onMouseLeave={() => { setPressedQueryIndex(null); store.clearQueryIndexHighlight() }}
                     title={`S${gi + 1}: ${statusText}`}
-                    style={{ fontSize: 10, flex: 1, minWidth: 30, textAlign: 'left', whiteSpace: 'nowrap',
+                    style={{ fontSize: 10, minWidth: 0, textAlign: 'left', whiteSpace: 'nowrap',
                       overflow: 'hidden', textOverflow: 'ellipsis',
                       cursor: q ? 'default' : 'not-allowed',
                       color: q ? 'var(--col-query-in)' : 'var(--ink-muted)',
@@ -4262,7 +4264,7 @@ function ExternalConstraintInspector({ c }) {
                     disabled={graphDisabled}
                     title={notDrawable ? `Can't be edited on the diagram: ${notDrawable}` : 'Edit the query as a join path on the diagram'}
                     onClick={() => store.startQueryEdit(c.id, gi)}
-                    style={{ padding: '2px 5px', fontSize: 10, flexShrink: 0, background: 'var(--bg-raised)',
+                    style={{ padding: '2px 5px', fontSize: 10, background: 'var(--bg-raised)',
                       border: '1px solid var(--border)', borderRadius: 3,
                       cursor: !graphDisabled ? 'pointer' : 'default',
                       color: 'var(--ink-2)', opacity: !graphDisabled ? 1 : 0.4 }}>
@@ -4272,13 +4274,13 @@ function ExternalConstraintInspector({ c }) {
                     disabled={!!gc}
                     title="Edit the query as a formula of the logic, in the rule editor"
                     onClick={() => store.openRuleEditor({ constraintId: c.id, sequenceIndex: gi })}
-                    style={{ padding: '2px 5px', fontSize: 10, flexShrink: 0, background: 'var(--bg-raised)',
+                    style={{ padding: '2px 5px', fontSize: 10, background: 'var(--bg-raised)',
                       border: '1px solid var(--border)', borderRadius: 3,
                       cursor: !gc ? 'pointer' : 'default',
                       color: 'var(--ink-2)', opacity: !gc ? 1 : 0.4 }}>
                     Formula
                   </button>
-                  {q && (
+                  {q ? (
                     <button onClick={() => store.clearConstraintQuery(c.id, gi)}
                       title="Clear query"
                       style={{ padding: '2px 6px', fontSize: 10, background: 'var(--bg-raised)',
@@ -4288,8 +4290,8 @@ function ExternalConstraintInspector({ c }) {
                       onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-raised)'; e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.borderColor = '#e0b0a8' }}>
                       ×
                     </button>
-                  )}
-                </div>
+                  ) : <span/>}
+                </React.Fragment>
               )
             })}
           </div>
