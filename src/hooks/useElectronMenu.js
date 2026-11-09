@@ -1,7 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { triggerPdfExport } from '../utils/pdfExport'
-import { openModelFile } from '../import/openModelFile'
+import { newModel, openModel, saveModel } from '../utils/fileActions'
+import { removeSelectionFromDiagram, openDeleteFromSchema, canDeleteFromSchema } from '../utils/deleteSelection'
+import { undoRedo } from './useUndoRedo'
+import { textPanelOf } from '../utils/textPanel'
+import { isErdDiagram } from '../components/ErdView'
+import { activeReadOnly } from '../relational/face'
 import { activeSchemaIdOf } from '../store/storeHelpers'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -21,34 +26,39 @@ export function useElectronMenu() {
       if (unsub) unsubs.push(unsub)
     }
 
-    on('menu:new', () => {
-      const store = storeRef.current
-      if (store.isDirty && !confirm('Discard unsaved changes?')) return
-      store.newModel()
-    })
+    on('menu:new', () => newModel())
+    on('menu:open', () => openModel())
+    on('menu:save', () => saveModel())
+    on('menu:saveAs', () => saveModel({ saveAs: true }))
 
-    on('menu:open', async () => {
-      const result = await api.openFile()
-      if (!result) return
-      try { openModelFile(result) }
-      catch (err) { alert(`Failed to open model file.${err?.message ? `\n${err.message}` : ''}`) }
+    // Edit: in a text field these are text editing; elsewhere they act on
+    // the model, as their keys do (App.jsx, useUndoRedo.js).
+    const typing = () => {
+      const el = document.activeElement
+      const tag = el?.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!el?.isContentEditable || !!textPanelOf(el)
+    }
+    const onErd = () => {
+      const st = useOrmStore.getState()
+      return isErdDiagram(st, st.diagrams?.find(d => d.id === st.activeDiagramId))
+    }
+    const edit = (cmd, modelAction) => on(`menu:${cmd}`, () => {
+      if (typing()) { api.nativeEdit(cmd); return }
+      modelAction()
     })
-
-    on('menu:save', async () => {
-      const store = storeRef.current
-      const content = store.serialize()
-      const fp = await api.saveFile({ defaultPath: store.filePath || store.importedFrom || 'model.ffbm', content })
-      if (fp) { store.setFilePath(fp); store.markClean() }
+    edit('undo', () => undoRedo.undo())
+    edit('redo', () => undoRedo.redo())
+    edit('cut', () => { if (!onErd()) useOrmStore.getState().cutSelection() })
+    edit('copy', () => { if (!onErd()) useOrmStore.getState().copySelection() })
+    edit('paste', () => { if (!onErd()) useOrmStore.getState().pasteClipboard() })
+    edit('selectAll', () => { if (!onErd()) useOrmStore.getState().selectAll() })
+    on('menu:removeFromDiagram', () => { if (!typing()) removeSelectionFromDiagram() })
+    on('menu:deleteFromSchema', () => {
+      if (canDeleteFromSchema()) openDeleteFromSchema()
+      else alert(activeReadOnly(useOrmStore.getState())
+        ? 'A relational schema changes only through transformations (Transform…).'
+        : 'Select the elements to delete first.')
     })
-
-    on('menu:saveAs', async () => {
-      const store = storeRef.current
-      const content = store.serialize()
-      const fp = await api.saveFile({ defaultPath: store.filePath || store.importedFrom || 'model.ffbm', content })
-      if (fp) { store.setFilePath(fp); store.markClean() }
-    })
-
-    on('menu:deleteSelected', () => storeRef.current.removeSelectedFromDiagram())
 
     on('menu:zoomIn',    () => storeRef.current.zoomBy(0.1))
     on('menu:zoomOut',   () => storeRef.current.zoomBy(-0.1))

@@ -754,7 +754,6 @@ export default function Canvas() {
         { label: 'Remove subject', disabled: !(note.connectors?.length),
           action: () => store.startNoteRemoveSubject(note.id) },
         '---',
-        { label: 'Remove from diagram', action: () => store.deleteNote(note.id) },
         { label: 'Delete', danger: true, action: () => store.deleteNote(note.id) },
       ],
     })
@@ -1269,18 +1268,7 @@ export default function Canvas() {
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
   }, [])
 
-  // Backspace → remove selected occurrence(s) from diagram (same as Delete key via Electron menu)
-  useEffect(() => {
-    const down = (e) => {
-      if (e.key !== 'Backspace') return
-      const tag = document.activeElement?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
-      e.preventDefault()
-      useOrmStore.getState().removeSelectedFromDiagram()
-    }
-    window.addEventListener('keydown', down)
-    return () => window.removeEventListener('keydown', down)
-  }, [])
+  // Delete and Backspace are handled in App.jsx (utils/deleteSelection.js).
 
   // ── cursor ──────────────────────────────────────────────────────────────
   const cursor =

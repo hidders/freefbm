@@ -7,6 +7,16 @@ import { whyNoOuterJoin } from '../logic/query.js'
 import { placeOrmUnits, placeErdUnits } from '../layout/growPlacement.js'
 import { layoutMappingDiagram } from '../layout/mappingLayout.js'
 import { useOrmStore } from '../store/ormStore'
+import { openDeleteFromSchema, canDeleteFromSchema, schemaDeletionIds } from '../utils/deleteSelection'
+
+// Delete from Schema…: asks first (DeleteFromSchemaDialog.jsx); Delete on the
+// keyboard only takes things off the diagram.
+function deleteFromSchemaItem(store, ids, label = 'Delete from Schema…') {
+  const st = useOrmStore.getState()
+  const del = schemaDeletionIds({ ...st, multiSelectedIds: ids, selectedId: null })
+  return { label, danger: true, disabled: !canDeleteFromSchema(st, del),
+    action: () => openDeleteFromSchema(del) }
+}
 
 // The checkable "Deontic" item that switches a constraint between alethic and
 // deontic modality (modality.js).
@@ -74,8 +84,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
               store.removeMultiSelectionFromDiagram(store.activeDiagramId, idsToRemove)
             }
           } },
-        { label: 'Delete Selection from Schema', danger: true,
-          action: () => store.deleteMultiSelection() },
+        deleteFromSchemaItem(store, store.multiSelectedIds, 'Delete Selection from Schema…'),
       ],
     })
   }, [store, setContextMenu])
@@ -124,8 +133,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
             ? store.removeOccurrenceFromDiagram(occurrenceId, store.activeDiagramId)
             : store.removeElementFromDiagram(ot.id, store.activeDiagramId) },
         '---',
-        { label: 'Remove from Schema',
-          danger: true, action: () => store.deleteObjectType(ot.id) },
+        deleteFromSchemaItem(store, [ot.id]),
       ],
     })
   }, [store, setContextMenu, handleMultiSelectionContextMenu])
@@ -251,8 +259,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
             ? store.removeOccurrenceFromDiagram(occurrenceId, store.activeDiagramId)
             : store.removeElementFromDiagram(fact.id, store.activeDiagramId) },
         '---',
-        { label: 'Remove from Schema',
-          danger: true, action: () => store.deleteFact(fact.id) },
+        deleteFromSchemaItem(store, [fact.id]),
       ],
     })
   }, [store, setContextMenu, handleMultiSelectionContextMenu])
@@ -498,12 +505,12 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
       '---',
     ]
     if (canRemoveOccurrence) {
-      items.push({ label: 'Remove this occurrence from diagram',
+      items.push({ label: 'Remove This Occurrence from Diagram',
         action: () => store.removeSubtypeOccurrenceFromDiagram(st.id, st.subOccId, st.superOccId, diagramId) })
     }
-    items.push({ label: 'Remove all occurrences from diagram',
+    items.push({ label: 'Remove All Occurrences from Diagram',
       action: () => store.removeElementFromDiagram(st.id, diagramId) })
-    items.push({ label: 'Delete Subtype Relationship', danger: true, action: () => store.deleteSubtype(st.id) })
+    items.push('---', deleteFromSchemaItem(store, [st.id]))
     setContextMenu({ x: e.clientX, y: e.clientY, items })
   }, [store, setContextMenu, handleMultiSelectionContextMenu])
 
@@ -609,8 +616,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         ? store.removeConstraintOccurrenceFromDiagram(constraintOccurrenceId, store.activeDiagramId)
         : store.removeElementFromDiagram(c.id, store.activeDiagramId) })
     items.push('---')
-    items.push({ label: 'Remove from Schema', danger: true,
-      action: () => store.deleteConstraint(c.id) })
+    items.push(deleteFromSchemaItem(store, [c.id]))
     setContextMenu({ x: e.clientX, y: e.clientY, items })
   }, [store, setContextMenu, handleMultiSelectionContextMenu])
 

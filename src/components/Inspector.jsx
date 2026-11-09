@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react'
 import { useOrmStore, useOrmStoreIgnoring, useScopedStore } from '../store/ormStore'
+import { openDeleteFromSchema, schemaDeletionIds } from '../utils/deleteSelection'
 import { activeSchemaIdOf } from '../store/storeHelpers'
 import { activeRelationalFace } from '../relational/face'
 import RelationalInspector, { selectedRmObject, RelationalCounts } from './RelationalInspector'
@@ -1332,8 +1333,8 @@ function ObjectTypeInspector({ ot }) {
         <DiagramList elementId={ot.id} kind={ot.kind} />
       </Section>
 
-      <DangerBtn onClick={() => store.deleteObjectType(ot.id)}>
-        Delete {ot.kind === 'entity' ? 'Entity' : 'Value'} Type
+      <DangerBtn onClick={() => openDeleteFromSchema([ot.id])}>
+        Delete {ot.kind === 'entity' ? 'Entity' : 'Value'} Type from Schema…
       </DangerBtn>
     </div>
   )
@@ -3029,8 +3030,8 @@ function FactInspector({ fact }) {
       <Section title="Usage">
         <DiagramList elementId={fact.id} kind="fact" />
       </Section>
-      <DangerBtn onClick={() => store.deleteFact(fact.id)}>
-        {fact.objectified ? 'Delete Nested Entity Type' : 'Delete Fact Type'}
+      <DangerBtn onClick={() => openDeleteFromSchema([fact.id])}>
+        {fact.objectified ? 'Delete Nested Entity Type from Schema…' : 'Delete Fact Type from Schema…'}
       </DangerBtn>
     </div>
   )
@@ -3725,7 +3726,7 @@ function SubtypeInspector({ st }) {
       <GroupMembershipSection id={st.id}/>
       <DiagramList elementId={st.id} kind="subtype" subtypeEndpointIds={[st.subId, st.superId]} />
       <div style={{ marginTop: 8 }}>
-        <DangerBtn onClick={() => store.deleteSubtype(st.id)}>Delete</DangerBtn>
+        <DangerBtn onClick={() => openDeleteFromSchema([st.id])}>Delete Subtype Link from Schema…</DangerBtn>
       </div>
     </div>
   )
@@ -4358,7 +4359,7 @@ function ExternalConstraintInspector({ c }) {
       <Section title="Usage">
         <DiagramList elementId={c.id} kind="constraint" />
       </Section>
-      <DangerBtn onClick={() => store.deleteConstraint(c.id)}>Delete Constraint</DangerBtn>
+      <DangerBtn onClick={() => openDeleteFromSchema([c.id])}>Delete Constraint from Schema…</DangerBtn>
     </div>
   )
 }
@@ -4409,7 +4410,7 @@ function FormulaConstraintInspector({ c }) {
         <DiagramList elementId={c.id} kind="constraint" />
       </Section>
       <div style={{ marginTop: 8 }}>
-        <DangerBtn onClick={() => store.deleteConstraint(c.id)}>Delete Constraint</DangerBtn>
+        <DangerBtn onClick={() => openDeleteFromSchema([c.id])}>Delete Constraint from Schema…</DangerBtn>
       </div>
     </div>
   )
@@ -4497,7 +4498,7 @@ function ConstraintInspector({ c }) {
         <DiagramList elementId={c.id} kind="constraint" />
       </Section>
       <div style={{ marginTop: 8 }}>
-        <DangerBtn onClick={() => store.deleteConstraint(c.id)}>Delete Constraint</DangerBtn>
+        <DangerBtn onClick={() => openDeleteFromSchema([c.id])}>Delete Constraint from Schema…</DangerBtn>
       </div>
     </div>
   )
@@ -4709,13 +4710,13 @@ export default function Inspector() {
               Clear
             </button>
             {!relFace && <button
-              onClick={() => store.deleteMultiSelection()}
+              onClick={() => openDeleteFromSchema(schemaDeletionIds())}
               style={{ fontSize: 11, padding: '3px 8px', cursor: 'pointer',
                 background: 'transparent', color: 'var(--danger)',
                 border: '1px solid var(--danger)', borderRadius: 3 }}
               onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--danger)' }}>
-              Delete all
+              Delete from Schema…
             </button>}
           </div>
         </div>
