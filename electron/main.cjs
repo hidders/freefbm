@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
@@ -167,12 +167,24 @@ function buildMenu(win) {
         { label: 'Zoom Out',   accelerator: 'CmdOrCtrl+-', click: send('menu:zoomOut') },
         { label: 'Reset Zoom', accelerator: 'CmdOrCtrl+0', click: send('menu:zoomReset') },
         { type: 'separator' },
+        // The sidebar's tabs; the page handles the keys (Sidebar.jsx).
+        { label: 'Browser',  accelerator: 'CmdOrCtrl+1', registerAccelerator: false, click: send('menu:sidebarBrowser') },
+        { label: 'Problems', accelerator: 'CmdOrCtrl+2', registerAccelerator: false, click: send('menu:sidebarProblems') },
+        { type: 'separator' },
         { label: 'Verbalisation Workbench', accelerator: 'CmdOrCtrl+Shift+B', click: openWorkbench },
         { type: 'separator' },
         { role: 'toggleDevTools' }, { role: 'togglefullscreen' },
       ],
     },
     { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        { label: 'Keyboard Shortcuts', accelerator: 'CmdOrCtrl+/', click: send('menu:shortcuts') },
+        { type: 'separator' },
+        { label: 'FreeFBM on GitHub', click: () => shell.openExternal('https://github.com/hidders/freefbm') },
+      ],
+    },
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }

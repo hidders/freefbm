@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       'menu:undo', 'menu:redo', 'menu:cut', 'menu:copy', 'menu:paste', 'menu:selectAll',
       'menu:removeFromDiagram', 'menu:deleteFromSchema',
       'menu:zoomIn', 'menu:zoomOut', 'menu:zoomReset',
+      'menu:sidebarBrowser', 'menu:sidebarProblems', 'menu:shortcuts',
       'menu:exportPdf', 'menu:importSql', 'menu:exportSql', 'menu:loadSampleSql', 'menu:exportRowsSql',
       'app:saveThenClose',
     ]

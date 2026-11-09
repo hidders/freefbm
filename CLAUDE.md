@@ -54,6 +54,7 @@ Roles connect FactTypes to ObjectTypes; `RoleConnectors.jsx` draws the SVG lines
 - `Inspector.jsx` — right-panel property editor for the selected element
 - `Sidebar.jsx` — docked panel left of the canvas with two tabs, Browser (`SchemaBrowser.jsx`) and Problems (`ValidationPanel.jsx`; `visibleIssues` also gives the status bar's "⚠ n problems" link); « folds it to a rail, ⌘1/⌘2 show or hide a tab, ⌘F opens the Browser's filter; `store.sidebar = { open, tab, width }` in localStorage `freefbm.sidebar` (`setSidebar`, `showSidebarTab`), All schemas in `store.validationAllSchemas`
 - `useElectronMenu.js` — translates Electron menu IPC events (New, Open, Save, Undo, Redo…) into store actions
+- `ShortcutsDialog.jsx` — Help › Keyboard Shortcuts (⌘/) or ? on the canvas (`store.shortcutsDialog`); the list is `src/utils/shortcuts.js` (also on the welcome screen), keep it in step with the key handlers and menus. View › Browser / Problems (⌘1/⌘2) show the sidebar's tabs
 
 ### Tool modes
 

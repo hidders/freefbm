@@ -63,6 +63,9 @@ export function useElectronMenu() {
     on('menu:zoomIn',    () => storeRef.current.zoomBy(0.1))
     on('menu:zoomOut',   () => storeRef.current.zoomBy(-0.1))
     on('menu:zoomReset', () => storeRef.current.resetView())
+    on('menu:sidebarBrowser',  () => useOrmStore.getState().showSidebarTab('browser'))
+    on('menu:sidebarProblems', () => useOrmStore.getState().showSidebarTab('problems'))
+    on('menu:shortcuts', () => useOrmStore.setState({ shortcutsDialog: true }))
 
     on('menu:exportPdf', () => triggerPdfExport(storeRef.current))
 
