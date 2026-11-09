@@ -107,7 +107,7 @@ function RmEntry({ rm, o, view, broken, formula, language, lang }) {
   return (
     <div className="rm-constraint" style={{ marginBottom: 10 }}>
       <div onClick={select} style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.04em', marginBottom: 2, cursor: 'pointer' }}>
-        {o.label}{o.enforced ? '' : ' · not enforced'}
+        {o.label}
         {o.kind === 'assertion' && !o.query && ' · no SQL form'}
       </div>
       {view !== 'sql' && (sentence

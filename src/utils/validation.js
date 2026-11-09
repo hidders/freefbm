@@ -7,9 +7,6 @@ import { derivationIssues } from '../logic/derivationRule.js'
 import { factDerivationIssues, factLabel } from '../logic/factDerivation.js'
 import { derivationGraph, derivationCycles } from '../logic/derivationDependencies.js'
 import { makeContext } from '../logic/constraintFormulas.js'
-import { sqlCheckOf } from '../relational/checkFormula.js'
-import { relationalModel } from '../relational/relationalModel.js'
-import { constraintsAsSql } from '../relational/formulaSql.js'
 import { isFormulaConstraint, checkFormulaConstraint } from '../logic/formulaConstraint.js'
 import { isFormulaQuery, checkQuery, whyNoOuterJoin } from '../logic/query.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
@@ -52,7 +49,7 @@ export const VALIDATION_CATEGORIES = {
   },
   relationalProfile: {
     label: 'Relational Profile',
-    description: 'Elements of a relational schema that are not a table, a column or a SQL constraint',
+    description: 'Elements of a relational schema that are not a table, a column or a constraint over them',
   },
   schemaScope: {
     label: 'Schemas',
@@ -745,8 +742,11 @@ export function runValidation(state, enabledCategories) {
   // uniqueness constraint on the table's role, NOT NULL a mandatory role, the
   // primary key its preferred identifier, UNIQUE an external uniqueness
   // constraint over one table's columns, a foreign key a subset constraint.
-  // Anything else breaks the encoding (error) or has no SQL counterpart other
-  // than a CHECK constraint or a trigger (warning).
+  // Anything else breaks the encoding (error). The schema is a relational
+  // schema in general, not one of a particular DBMS: any constraint over its
+  // tables and columns is fine (one with no table form is an assertion), and
+  // what PostgreSQL cannot enforce is reported when the DDL is exported
+  // (ddlExport.js, DdlExportDialog.jsx).
   const relationalIds = new Set((state.schemas ?? []).filter(x => x.profile === 'relational').map(x => x.id))
   if (enabledCategories.has('relationalProfile') && relationalIds.size) {
     const inRM = x => relationalIds.has(x.schemaId)
@@ -763,7 +763,6 @@ export function runValidation(state, enabledCategories) {
     const push = (id, el, elementKind, message, severity = 'error') => errors.push({
       id: `rel-${id}-${el.id}`, category: 'relationalProfile', elementId: el.id, elementKind, message, severity,
     })
-    const NOT_SQL = 'it has no SQL counterpart other than a CHECK constraint or a trigger'
 
     // Columns: binary fact types from a table to a value type. tableOf maps
     // each column fact to its table role, for the checks below.
@@ -783,8 +782,6 @@ export function runValidation(state, enabledCategories) {
       tableRole.set(f.id, t)
       if (!(f.uniqueness ?? []).some(u => u.roles?.length === 1 && u.roles[0] === t))
         push('single-valued', f, 'fact', `${factName(f)} needs a uniqueness constraint on the role of ${typeName(f.roles[t].objectTypeId)}: a column holds one value per row`)
-      if ((f.internalFrequency ?? []).length)
-        push('frequency', f, 'fact', `${factName(f)} has a frequency constraint; ${NOT_SQL}`, 'warning')
     }
 
     for (const st of subtypes) {
@@ -803,68 +800,6 @@ export function runValidation(state, enabledCategories) {
         else if (pid !== 'postgresql' && pid !== 'sql2016')
           push('datatype', ot, 'objectType', `${ot.name} has a datatype from another profile; a column needs a PostgreSQL or SQL type`, 'warning')
       }
-      if (ot.cardinalityRange?.length) push('cardinality', ot, 'objectType', `${ot.name} has a cardinality range; ${NOT_SQL}`, 'warning')
-    }
-
-    // What the DDL export writes for a constraint with no table form: a
-    // CHECK from its formula (nothing to say), a query that finds its
-    // violations (not enforced), or nothing (the reason given).
-    let sqlForms = null
-    const sqlFormOf = (c) => {
-      if (!sqlForms) {
-        sqlForms = new Map()
-        for (const sid of relationalIds) for (const x of constraintsAsSql(state, relationalModel(state, sid))) sqlForms.set(x.c.id, x.entries)
-      }
-      return sqlForms.get(c.id) ?? []
-    }
-    const notSql = (c, message, sep = '; ') => {
-      const entries = sqlFormOf(c)
-      if (entries.length && entries.every(e => e.check)) return
-      if (entries.length && entries.every(e => e.check || e.query)) {
-        push('not-sql', c, 'constraint', `${message}${sep}the DDL export writes it as a query that finds its violations, which PostgreSQL does not enforce`, 'warning')
-        return
-      }
-      const why = entries.find(e => e.error)?.error
-      push('not-sql', c, 'constraint', `${message}${sep}${why ? `it is not written as SQL (${why})` : NOT_SQL}`, 'warning')
-    }
-
-    for (const c of constraints) {
-      if (!inRM(c)) continue
-      const label = CONSTRAINT_LABELS[c.constraintType] ?? c.constraintType
-      if (c.constraintType === 'subset') continue   // a foreign key
-      if (c.constraintType === 'uniqueness') {
-        // UNIQUE: the value roles of columns of one table.
-        const members = (c.sequences ?? []).flat().filter(Boolean)
-        const tablesOf = new Set(members.map(m => {
-          const t = m.kind === 'role' ? tableRole.get(m.factId) : undefined
-          if (t === undefined || m.roleIndex === t) return null
-          return facts.find(f => f.id === m.factId)?.roles[t].objectTypeId ?? null
-        }))
-        if (!members.length || tablesOf.has(null) || tablesOf.size !== 1)
-          notSql(c, `${label} constraint is not over the columns of one table, so it is not a UNIQUE or PRIMARY KEY constraint`)
-        continue
-      }
-      if (c.constraintType === 'valueComparison') {
-        // Two columns of one table: CHECK (a op b).
-        const seq = (c.sequences?.[0] ?? []).filter(Boolean)
-        const tables = new Set(seq.map(m => {
-          const t = m.kind === 'role' ? tableRole.get(m.factId) : undefined
-          if (t === undefined || m.roleIndex === t) return null
-          return facts.find(f => f.id === m.factId)?.roles[t].objectTypeId ?? null
-        }))
-        if (seq.length === 2 && !tables.has(null) && tables.size === 1) continue
-        notSql(c, `${label} constraint is not between two columns of one table`)
-        continue
-      }
-      if (c.constraintType === 'formula') {
-        // A formula constraint read from a CHECK is written back as that CHECK.
-        const colName = (factId) => tableRole.has(factId) ? 'column' : null
-        const ch = sqlCheckOf(c, colName, x => x)
-        if (ch.text) continue
-        notSql(c, `Formula constraint${c.name ? ` ${c.name}` : ''}`, ': ')
-        continue
-      }
-      notSql(c, `${label} constraint${c.name ? ` ${c.name}` : ''}`, ': ')
     }
   }
 

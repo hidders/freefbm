@@ -34,9 +34,10 @@ function Dialog({ ormSchemaId }) {
   const diagramNames = useOrmStore(s => plainDiagramsOf(s, ormSchemaId).map(d => d.name).join('\u0000'))
   const nDiagrams = diagramNames ? diagramNames.split('\u0000').length : 0
   const [keepDiagrams, setKeepDiagrams] = useState(true)
+  const [assertions, setAssertions] = useState(true)
   const go = () => {
     close()
-    useOrmStore.getState().generateRelationalFromOrm(ormSchemaId, { surrogates: mode, overrides, diagrams: keepDiagrams, layout: layoutOrmDiagram })
+    useOrmStore.getState().generateRelationalFromOrm(ormSchemaId, { surrogates: mode, overrides, diagrams: keepDiagrams, assertions, layout: layoutOrmDiagram })
   }
   const typeName = (id) => plan?.ctx.otById.get(id)?.name ?? plan?.ctx.factById.get(id)?.objectifiedName ?? '?'
   const entityOf = (t) => (t.typeId ? plan.entities.get(t.typeId) : null)
@@ -123,13 +124,20 @@ function Dialog({ ormSchemaId }) {
           </>}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, padding: '10px 14px', borderTop: '1px solid var(--border-soft)' }}>
-          {nDiagrams > 1 && (
-            <label title={`One diagram in the new schema per diagram of ${schema?.name ?? 'this schema'} (${diagramNames.split('\u0000').join(', ')}), with what the mapping makes of its elements, laid out afresh`}
-              style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--ink-2)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={keepDiagrams} onChange={e => setKeepDiagrams(e.target.checked)} />
-              Keep the {nDiagrams} diagrams
+          <div style={{ marginRight: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <label title={`Constraints of ${schema?.name ?? 'this schema'} that the tables, keys and foreign keys don't keep are added to the new schema as CHECKs, constraints over columns or assertions (found by constraint accounting), so both schemas say the same. What PostgreSQL can't enforce is reported when the DDL is exported.`}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--ink-2)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={assertions} onChange={e => setAssertions(e.target.checked)} />
+              Keep every constraint (add assertions)
             </label>
-          )}
+            {nDiagrams > 1 && (
+              <label title={`One diagram in the new schema per diagram of ${schema?.name ?? 'this schema'} (${diagramNames.split('\u0000').join(', ')}), with what the mapping makes of its elements, laid out afresh`}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--ink-2)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={keepDiagrams} onChange={e => setKeepDiagrams(e.target.checked)} />
+                Keep the {nDiagrams} diagrams
+              </label>
+            )}
+          </div>
           <button onClick={close} style={btn(false)}>Cancel</button>
           <button onClick={go} disabled={!plan?.tables.length} autoFocus style={{ ...btn(true), opacity: plan?.tables.length ? 1 : 0.5 }}>Generate tables</button>
         </div>

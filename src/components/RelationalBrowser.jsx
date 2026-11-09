@@ -107,7 +107,7 @@ export function relationalSections({ view, diagram, diagrams, expanded, toggle, 
           <Row key={p.rmId} depth={1} icon={<PartIcon kind={p.kind} />}
             label={<Highlight text={partName(p)} filter={filter} />}
             detail={p.kind === 'column' ? colDetail(p) : p.kind === 'foreignKey' ? `→ ${view.objects.get(p.refTable)?.name ?? '?'}` : p.sql}
-            muted={!p.enforced} selected={selectedRmId === p.rmId} onSelect={() => select(p)} />
+            selected={selectedRmId === p.rmId} onSelect={() => select(p)} />
         ))}
       </React.Fragment>
     )
@@ -125,7 +125,7 @@ export function relationalSections({ view, diagram, diagrams, expanded, toggle, 
       title: 'Assertions', ...narrow(assertions, (a) => filter.test(a.label)),
       renderRow: (a) => (
         <Row key={a.rmId} icon={<PartIcon kind="assertion" />} label={<Highlight text={a.label} filter={filter} />}
-          detail={a.query ? 'not enforced' : 'no SQL form'} muted
+          detail={a.query ? null : 'no SQL form'}
           selected={selectedRmId === a.rmId} onSelect={() => select(a)} />
       ),
     },
