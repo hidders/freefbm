@@ -4881,7 +4881,7 @@ export default function Inspector() {
                 onChange={v => store.setRemoveNameCharacters(v)}/>
             </div>
             <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginTop: 4 }}>
-              As NORMA’s Object Type Name Display; the characters are dropped when names are separated or combined. Formulas keep names as entered.
+              Characters left out of names when they are separated or combined (not with As is). Formulas keep names as entered.
             </div>
           </div>
 
