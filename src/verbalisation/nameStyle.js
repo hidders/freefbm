@@ -11,7 +11,7 @@
 // two names, the entity type's and the reference mode's, as NORMA does.
 
 export const NAME_STYLES = [
-  { id: 'asIs', label: 'As is', sub: 'Names as entered (NORMA’s default)' },
+  { id: 'asIs', label: 'As is', sub: 'Names as entered' },
   { id: 'separate', label: 'Separate combined names', sub: 'InstructionType → instruction type' },
   { id: 'combineUpper', label: 'Combine names, lead with upper case', sub: 'instruction type → InstructionType' },
   { id: 'combineLower', label: 'Combine names, lead with lower case', sub: 'Instruction Type → instructionType' },
