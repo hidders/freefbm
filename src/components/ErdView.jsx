@@ -17,6 +17,8 @@ import React, { useMemo, useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import ContextMenu from './ContextMenu'
 import { growItems } from '../hooks/useContextMenuHandlers'
+import { transformItems } from '../relational/transformItems'
+import { removeSelectionFromDiagram } from '../utils/deleteSelection'
 import { useGrowCounts, GrowBadge } from './GrowBadges'
 import { useOrmStore } from '../store/ormStore'
 import { relationalModel, isKey } from '../relational/relationalModel'
@@ -49,7 +51,7 @@ function EndMarker({ x, y, side, kind, stroke }) {
   )
 }
 
-function FkLine({ fk, route, selected, onDown }) {
+function FkLine({ fk, route, selected, onDown, onMenu }) {
   if (!route) return null
   const pts = route.points
   const d = pts.map(([x, y], i) => `${i ? 'L' : 'M'} ${x} ${y}`).join(' ')
@@ -58,7 +60,7 @@ function FkLine({ fk, route, selected, onDown }) {
   const many = !isKey(fk.fromTable, fk.from)
   const stroke = selected ? 'var(--accent)' : 'var(--ink-2)'
   return (
-    <g onMouseDown={e => onDown(e, fk)} style={{ cursor: 'pointer' }}>
+    <g onMouseDown={e => onDown(e, fk)} onContextMenu={onMenu ? (e => onMenu(e, fk)) : undefined} style={{ cursor: 'pointer' }}>
       {/* A wide invisible stroke makes the line easy to click. */}
       <path d={d} fill="none" stroke="transparent" strokeWidth={10}/>
       <path d={d} fill="none" stroke={stroke} strokeWidth={selected ? 2.4 : 1.3} strokeLinejoin="round"
@@ -69,7 +71,7 @@ function FkLine({ fk, route, selected, onDown }) {
   )
 }
 
-function TableBox({ box, selectedId, highlighted, onHeaderDown, onRowDown, onMenu, tint = null, ruleHl = null }) {
+function TableBox({ box, selectedId, highlighted, onHeaderDown, onRowDown, onMenu, onRowMenu, tint = null, ruleHl = null }) {
   const { table: t, x, y, w, h } = box
   const sel = selectedId === t.id
   const hot = !!ruleHl?.typeIds?.includes(t.id)
@@ -92,7 +94,7 @@ function TableBox({ box, selectedId, highlighted, onHeaderDown, onRowDown, onMen
         const csel = selectedId === c.fact.id || (!!c.vt && selectedId === c.vt.id)
         const hl = highlighted.has(c) || !!ruleHl?.factIds?.includes(c.fact.id)
         return (
-          <g key={c.fact.id} onMouseDown={e => onRowDown(e, t, c)} style={{ cursor: 'pointer' }}>
+          <g key={c.fact.id} onMouseDown={e => onRowDown(e, t, c)} onContextMenu={onRowMenu ? (e => onRowMenu(e, t, c)) : undefined} style={{ cursor: 'pointer' }}>
             <rect x={x + 1} y={ry} width={w - 2} height={ROW_H} fill={hl ? 'rgba(180,83,9,0.28)' : csel ? 'var(--selection)' : 'transparent'}/>
             {i > 0 && t.columns[i - 1].pk && !c.pk && (
               <line x1={x + 1} y1={ry} x2={x + w - 1} y2={ry} stroke="var(--border-soft)" strokeWidth={1}/>
@@ -200,15 +202,56 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
   // Growing mode: "+n" at tables with neighbours not shown (GrowBadges.jsx).
   const growCounts = useGrowCounts()
 
-  // A table's menu: grow the diagram from it (NeighbourPicker.jsx).
+  // Context menus of tables, columns and foreign key lines, laid out as the
+  // ORM2 canvas's: growing (not on mapping diagrams), Transform, the bottom
+  // panel's tabs, Remove from diagram, and Delete from schema…, which a
+  // relational schema never offers (it changes only through Transform…).
   const [menu, setMenu] = useState(null)
-  const openMenu = (e, t) => {
+  const onMappingDiagram = !!sideSchemaId
+  const showTab = (tab) => {
+    const st = useOrmStore.getState()
+    if (st.bottomPanelCollapsed) st.setBottomPanelCollapsed(false)
+    st.setBottomPanelTab(tab)
+  }
+  const transformMenu = (tableId, part) => {
+    const xs = transformItems(useOrmStore.getState(), schemaId, tableId, part)
+    const open = (kind, params) => useOrmStore.setState({ transformDialog: { schemaId, kind, params } })
+    return xs.length
+      ? { label: 'Transform', submenu: xs.map(x => ({ label: `${x.label}${x.detail ? ` · ${x.detail}` : ''}…`, action: () => open(x.kind, x.params) })) }
+      : { label: 'Transform…', action: () => useOrmStore.setState({ transformDialog: { schemaId } }) }
+  }
+  const noDelete = { label: 'Delete from schema…', disabled: true, title: 'A relational schema changes only through Transform…' }
+  const tableTail = (t) => [
+    '---',
+    { label: 'Show rows', action: () => { useOrmStore.getState().select(t.id, 'entity'); showTab('population') } },
+    { label: 'Show constraints', action: () => { useOrmStore.getState().select(t.id, 'entity'); showTab('constraints') } },
+    ...(onMappingDiagram ? [] : ['---', { label: 'Remove table from diagram', action: () => { useOrmStore.getState().select(t.id, 'entity'); removeSelectionFromDiagram() } }]),
+    '---',
+    noDelete,
+  ]
+  const show = (e, items) => {
     e.preventDefault()
     e.stopPropagation()
+    setMenu({ x: e.clientX, y: e.clientY, items })
+  }
+  const openMenu = (e, t) => {
     useOrmStore.getState().select(t.id, 'entity')
     const store = useOrmStore.getState()
-    const items = growItems(store, t.id).filter(x => x !== '---')
-    if (items.length) setMenu({ x: e.clientX, y: e.clientY, items })
+    show(e, [...growItems(store, t.id), transformMenu(t.id), ...tableTail(t)])
+  }
+  const openRowMenu = (e, t, c) => {
+    useOrmStore.getState().select(c.fact.id, 'fact')
+    show(e, [transformMenu(t.id, { colId: c.fact.id }), ...tableTail(t)])
+  }
+  const openFkMenu = (e, fk) => {
+    useOrmStore.getState().select(fk.constraintId, 'constraint')
+    show(e, [
+      transformMenu(fk.fromTable.id, { fkColIds: fk.from.map(c => c.fact.id) }),
+      '---',
+      { label: 'Show constraints', action: () => { useOrmStore.getState().select(fk.constraintId, 'constraint'); showTab('constraints') } },
+      '---',
+      noDelete,
+    ])
   }
 
   const selectColumn = (e, t, c) => {
@@ -300,12 +343,12 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
     <g className={sideSchemaId ? 'mapping-erd' : 'erd-view'}>
       {assertions.length > 0 && <ErdAssertions layer="edges" {...assertionProps}/>}
       {[...model.fks].sort((p, q) => selectedFks.has(p) - selectedFks.has(q)).map(fk => (
-        <FkLine key={fk.constraintId} fk={fk} selected={selectedFks.has(fk)} onDown={selectFk}
+        <FkLine key={fk.constraintId} fk={fk} selected={selectedFks.has(fk)} onDown={selectFk} onMenu={openFkMenu}
           route={dragRoutes?.get(fk.constraintId) ?? routes.get(fk.constraintId)}/>
       ))}
       {[...shown.values()].map(b => (
         <TableBox key={b.table.id} box={b} selectedId={selectedId} highlighted={highlighted} tint={tint} ruleHl={ruleHl}
-          onHeaderDown={startDrag} onRowDown={selectColumn} onMenu={sideSchemaId ? null : openMenu}/>
+          onHeaderDown={startDrag} onRowDown={selectColumn} onMenu={openMenu} onRowMenu={openRowMenu}/>
       ))}
       {assertions.length > 0 && (
         <ErdAssertions layer="nodes" {...assertionProps}/>
