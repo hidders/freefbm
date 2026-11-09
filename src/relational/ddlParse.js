@@ -696,6 +696,31 @@ function parseScript(sql0, dialect, oracle) {
           skip('CREATE FUNCTION (read only where a CHECK calls it)')
           return
         }
+        // PostgreSQL: a (constraint) trigger whose PL/pgSQL function raises an
+        // error when a violation query has rows (IF EXISTS (query) THEN RAISE
+        // EXCEPTION, as FreeFBM's PostgreSQL export writes assertions) is read
+        // as the assertion NOT EXISTS (query), once for all its tables.
+        if (!oracle && !tsql && (s.eatWord('trigger') || s.eatWord('constraint', 'trigger'))) {
+          const tq = s.qname()
+          const rest = s.tk.slice(s.i)
+          const on = rest.findIndex(t => t.t === 'id' && t.v === 'on')
+          const q = on >= 0 ? new Stream(rest.slice(on + 1)).qname() : null
+          const ef = rest.findIndex((t, i) => t.t === 'id' && t.v === 'execute' && ['function', 'procedure'].includes(rest[i + 1]?.v))
+          const fq = ef >= 0 ? new Stream(rest.slice(ef + 2)).qname() : null
+          const fn = fq && functions.get(fq.name)
+          const bt = tq && q && fn?.language === 'plpgsql' && fn.body ? tokenize(fn.body) : []
+          const ex = bt.findIndex((t, i) => t.t === 'id' && t.v === 'if' && bt[i + 1]?.v === 'exists' && bt[i + 2]?.v === '(')
+          if (ex >= 0 && bt.some((t, i) => t.t === 'id' && t.v === 'raise' && bt[i + 1]?.v === 'exception')) {
+            const g = new Stream(bt.slice(ex + 2)).group()
+            const name = tq.name.endsWith(`_on_${q.name}`) ? tq.name.slice(0, -(q.name.length + 4)) : tq.name
+            const text = `NOT EXISTS (${conditionText(g)})`
+            if (!assertions.some(a => a.name === name || a.text === text)) assertions.push({ name, text })
+            skip('CREATE TRIGGER (read as the assertion it checks)')
+            return
+          }
+          skip('CREATE TRIGGER')
+          return
+        }
         const kind = tokens.slice(1, 4).filter(t => t.t === 'id').map(t => t.v)
           .find(w => ['view', 'function', 'procedure', 'trigger', 'index', 'sequence', 'schema', 'extension',
             'materialized', 'aggregate', 'rule', 'policy', 'publication', 'operator', 'cast', 'language'].includes(w))

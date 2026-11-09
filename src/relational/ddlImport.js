@@ -656,7 +656,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
     const t = findTable(name, schema)
     if (!t || !entityOf.has(t)) return null
     const cols = new Map(t.columns.map(c => [c.name, { factId: factByKey.get(colKey(t, c.name))?.id, vtId: vtByKey.get(colKey(t, c.name))?.id }]))
-    return { name: entityOf.get(t).name, typeId: entityOf.get(t).id, columns: cols }
+    return { name: entityOf.get(t).name, typeId: entityOf.get(t).id, columns: cols, key: t.primaryKey ?? null }
   }
   const entityOf = new Map()    // table → entity type
   for (const t of tables) {

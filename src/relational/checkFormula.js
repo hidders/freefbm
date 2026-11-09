@@ -193,7 +193,7 @@ class Parser {
   // → { items: [expr] | null (for *), from: [{ table, schema, alias }], where }
   select() {
     if (!this.eatWord('select')) no('a subquery without SELECT')
-    this.eatWord('distinct')
+    const distinct = this.eatWord('distinct')
     let items = []
     if (this.eatOp('*')) items = null
     else {
@@ -207,6 +207,16 @@ class Parser {
     const from = [], on = []
     if (this.eatWord('from')) {
       const item = () => {
+        // (SELECT DISTINCT …) AS d, as an export writes a count of several values.
+        if (this.isOp('(') && this.isWord('select', 1)) {
+          this.next()
+          const sub = this.select()
+          this.expectOp(')')
+          this.eatWord('as')
+          const a = this.peek()
+          from.push({ sub, alias: a && (a.t === 'qid' || (a.t === 'id' && !FROM_STOP.has(a.v))) ? this.next().v : null })
+          return
+        }
         const parts = [this.next()]
         if (!['id', 'qid'].includes(parts[0]?.t) || (parts[0].t === 'id' && parts[0].v === 'select')) no('a FROM item that is not a table')
         while (this.isOp('.') && ['id', 'qid'].includes(this.peek(1)?.t)) { this.next(); parts.push(this.next()) }
@@ -239,7 +249,7 @@ class Parser {
     for (const w of ['group', 'having', 'order', 'limit', 'offset', 'union', 'intersect', 'except', 'fetch'])
       if (this.isWord(w)) no(`${w.toUpperCase()} in a subquery`)
     if (on.length) where = { k: 'and', args: where ? [...on, where] : on }
-    return { items, from, where, site: this.site }
+    return { items, from, where, distinct, site: this.site }
   }
   // An expression or a condition (a select item, a function's result).
   exprOrCond() {
@@ -338,9 +348,18 @@ class Parser {
         // An aggregate (in a subquery's select list).
         this.next()
         const distinct = this.eatWord('distinct')
+        if (distinct && this.isOp('(')) {
+          // COUNT(DISTINCT (a, b)): a row of several values.
+          const save = this.i
+          this.next()
+          const args = [this.expr()]
+          while (this.eatOp(',')) args.push(this.expr())
+          if (args.length > 1 && this.eatOp(')')) { this.expectOp(')'); return { k: 'agg', fn: t.v, distinct, arg: args[0], args } }
+          this.i = save
+        }
         const arg = this.eatOp('*') ? null : this.expr()
         this.expectOp(')')
-        return { k: 'agg', fn: t.v, distinct, arg }
+        return { k: 'agg', fn: t.v, distinct, arg, args: arg ? [arg] : null }
       }
       if (this.isOp('(') && this.funcs?.has(t.v) && !FUNCS[t.v] && t.v !== 'round') return this.inline(t)
       if (this.isOp('(')) {
@@ -441,9 +460,10 @@ function translate(text, { columns, tableTypeId, table = null, tables = null, fu
       return no(e.qual ? `${e.qual}.${e.name}, which names no table of the query` : `the column ${e.name}, which is not in the table`)
     }
     const rowsOf = (q) => q.from.map(f => {
+      if (f.sub) no('a FROM item that is not a table')
       const tb = tables?.(f.table, f.schema) ?? no(`the table ${f.table}, which is not in the script`)
       others.add(tb.name ?? f.table)
-      return { alias: f.alias, table: f.table, id: `r${++m}`, typeId: tb.typeId, cols: tb.columns, site: q.site }
+      return { alias: f.alias, table: f.table, id: `r${++m}`, typeId: tb.typeId, cols: tb.columns, key: tb.key ?? null, site: q.site }
     })
 
     // The columns an atomic condition reads, in order of appearance.
@@ -533,18 +553,43 @@ function translate(text, { columns, tableTypeId, table = null, tables = null, fu
       if (r.k === 'subq') { [l, r] = [r, l]; op = { '<': '>', '<=': '>=', '>': '<', '>=': '<=', '=': '=', '<>': '<>', '!=': '!=' }[op] }
       if (l.k !== 'subq' || !l.q.items || l.q.items.length !== 1 || l.q.items[0].k !== 'agg' || l.q.items[0].fn !== 'count') no('a subquery used as a value')
       if (r.k !== 'lit' || r.kind !== 'num' || !/^\d+$/.test(r.v)) no('a COUNT compared with something other than a whole number')
-      if (l.q.from.length !== 1) no('a COUNT over a join')
-      const agg = l.q.items[0]
-      if (agg.distinct) no('COUNT(DISTINCT …)')
+      let q = l.q, agg = q.items[0]
+      // COUNT(*) FROM (SELECT DISTINCT a, b FROM … WHERE …) AS d is COUNT(DISTINCT (a, b)) of the inner query.
+      if (q.from.length === 1 && q.from[0].sub) {
+        const sub = q.from[0].sub
+        if (agg.arg || agg.distinct || q.where || !sub.distinct || !sub.items?.length || sub.items.some(x => x.k !== 'col')) no('a FROM item that is not a table')
+        agg = { k: 'agg', fn: 'count', distinct: true, args: sub.items }
+        q = sub
+      }
       const k = +r.v
-      const rows = rowsOf(l.q)
+      const rows = rowsOf(q)
       const inner = [rows, ...scope]
       const parts = []
-      if (l.q.where) parts.push(tr(l.q.where, 'T', inner))
-      // COUNT(c) counts the rows where c is not NULL.
-      if (agg.arg) parts.push(tr({ k: 'isnull', e: agg.arg, neg: true }, 'T', inner))
-      const body = parts.length === 0 ? { t: 'true' } : parts.length === 1 ? parts[0] : { t: 'and', args: parts }
-      const v = { id: rows[0].id, typeId: rows[0].typeId }
+      if (q.where) parts.push(tr(q.where, 'T', inner))
+      const and = (xs) => (xs.length === 0 ? { t: 'true' } : xs.length === 1 ? xs[0] : { t: 'and', args: xs })
+      let v, body
+      if (agg.distinct) {
+        // COUNT(DISTINCT key columns of a row r) counts the rows r: ∃^{op n} r ∃ (the other rows) T(w).
+        // COUNT(DISTINCT c) counts the values of c: ∃^{op n} v ∃ (the rows) (T(w) ∧ c(r, v)).
+        if (agg.args.some(x => x.k !== 'col')) no('COUNT(DISTINCT …) of an expression')
+        const cols = agg.args.map(e => ({ e, ...find(e, [rows]) }))
+        const row = rows.find(x => x.id === cols[0].row)
+        const names = cols.map(c => c.e.name)
+        if (cols.every(c => c.row === row.id) && row.key?.length === names.length && row.key.every(c => names.includes(c))) {
+          v = { id: row.id, typeId: row.typeId }
+          body = quant('exists', rows.filter(x => x !== row), and(parts))
+        } else if (cols.length === 1) {
+          const c = cols[0]
+          v = { id: `v${++n}`, typeId: c.vtId }
+          body = quant('exists', rows, and([...parts, { t: 'fact', factId: c.factId, args: [c.row, v.id] }]))
+        } else no('COUNT(DISTINCT …) of several columns that are not a key')
+      } else {
+        if (rows.length !== 1) no('a COUNT over a join')
+        // COUNT(c) counts the rows where c is not NULL.
+        if (agg.arg) parts.push(tr({ k: 'isnull', e: agg.arg, neg: true }, 'T', inner))
+        body = and(parts)
+        v = { id: rows[0].id, typeId: rows[0].typeId }
+      }
       const cnt = (o, x) => ({ t: 'count', op: o, n: x, v, body })
       switch (op) {
         case '<=': return cnt('≤', k)
