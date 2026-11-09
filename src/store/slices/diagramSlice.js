@@ -8,6 +8,7 @@ import {
 import { erdPartsOfDiagram, erdTargetOf } from '../../relational/erdBoxes.js'
 import { diagramUnits, tableCompanions, tableRemoval, completeTables, withTableConstraints } from '../../relational/tableUnits.js'
 import { isErdDiagram, erdLayout } from '../../relational/erdBoxes.js'
+import { erdSchemasOfDiagram } from '../../relational/face.js'
 import { relationalModel } from '../../relational/relationalModel.js'
 import { neighbourUnits, connectPath } from '../../utils/neighbourhood.js'
 import { carriedDiagrams } from '../../mapping/carryDiagrams.js'
@@ -223,10 +224,16 @@ export function createDiagramSlice(set, get) {
         const occ = occOf(diagram, el.id)
         return occ ? { x: occ.x, y: occ.y } : { x: el.x, y: el.y }
       }
+      // On a mapping diagram the elements of a side drawn as ERD tables keep
+      // occurrences that are not drawn; they don't count.
+      const erdSides = new Set(diagram?.mappingId ? erdSchemasOfDiagram(get(), diagram) : [])
+      const drawn = (el) => inDiag(diagram, el.id) && !erdSides.has(el.schemaId)
       const pts = [
-        ...objectTypes.filter(ot => inDiag(diagram, ot.id)).map(ot => ({ ...getPos(ot), hw: 70, hh: 28 })),
-        ...facts.filter(f => inDiag(diagram, f.id)).map(f => ({ ...getPos(f), hw: f.arity * 16, hh: 16 })),
-        ...constraints.filter(c => inDiag(diagram, c.id)).map(c => ({ ...getPos(c), hw: 16, hh: 16 })),
+        ...objectTypes.filter(drawn).map(ot => ({ ...getPos(ot), hw: 70, hh: 28 })),
+        ...facts.filter(drawn).map(f => ({ ...getPos(f), hw: f.arity * 16, hh: 16 })),
+        ...constraints.filter(drawn).map(c => ({ ...getPos(c), hw: 16, hh: 16 })),
+        // Rule nodes.
+        ...Object.values(diagram?.mappingRulePositions ?? {}).filter(p => p && p.x != null).map(p => ({ x: p.x, y: p.y, hw: 50, hh: 14 })),
       ]
       // The ERD tables of a mapping diagram's relational sides.
       const eb = diagram?.mappingId ? erdBounds(get(), diagram) : null
@@ -239,6 +246,15 @@ export function createDiagramSlice(set, get) {
       const maxY = Math.max(...pts.map(p => p.y + p.hh)) + PAD
       const worldW = maxX - minX || 800
       const worldH = maxY - minY || 600
+      // A mapping diagram is shown as Reset View shows a diagram: at most
+      // 100% (at least 50%, where its labels stay readable), with its top-left
+      // corner near the canvas corner, so a wide diagram doesn't shrink to a
+      // strip in the middle.
+      if (diagram?.mappingId) {
+        const z = Math.max(0.5, Math.min(1, vpW / worldW, vpH / worldH))
+        set({ zoom: z, pan: { x: -minX * z, y: -minY * z } })
+        return
+      }
       const zoom = Math.min(vpW / worldW, vpH / worldH, 2)
       set({
         zoom,
