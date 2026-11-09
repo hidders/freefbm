@@ -8,7 +8,14 @@
 // The schema itself is a relational schema in general, so whatever PostgreSQL
 // can't enforce is only reported here, at export (DdlExportDialog.jsx).
 //
-// exportPostgresDdl(state, schemaId) → { sql, warnings, queries, assertions }
+// Assertions (constraints written as a query that returns their violations)
+// are written as commented queries, or with { assertions: 'triggers' } as
+// constraint triggers: a PL/pgSQL function that raises an exception when the
+// query returns a row, run after each change of a table the query reads,
+// deferred to the end of the transaction (deontic ones stay comments).
+//
+// exportPostgresDdl(state, schemaId, { assertions: 'comments'|'triggers' })
+//   → { sql, warnings, queries, assertions }
 
 import { tableRulesOf, tableRuleAsMapping } from './derivedTables.js'
 import { tableViews, viewOrder } from './viewSql.js'
@@ -19,6 +26,9 @@ import { quoteIdent } from './sqlNames.js'
 import { constraintsAsSql } from './formulaSql.js'
 
 export { quoteIdent }
+
+// A constraint's name as a SQL identifier part (lower case, underscores).
+const snakeName = (name) => String(name ?? '').trim().replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').toLowerCase()
 
 const NUMERIC_KINDS = new Set(['integer', 'decimal', 'float'])
 
@@ -68,7 +78,7 @@ export function rangeSql(col, specs, numeric) {
   return parts.length === 1 ? parts[0] : parts.map(p => `(${p})`).join(' OR ')
 }
 
-export function exportPostgresDdl(state, schemaId) {
+export function exportPostgresDdl(state, schemaId, { assertions: assertionMode = 'comments' } = {}) {
   const inSchema = (x) => !schemaId || x.schemaId === schemaId
   const model = relationalModel(state, schemaId)
   const { tables, fks, notColumns } = model
@@ -80,7 +90,7 @@ export function exportPostgresDdl(state, schemaId) {
     const label = `${c.name ? `${c.name}: ` : ''}${entries[0]?.entry.kind ?? c.constraintType}`
     for (const e of entries) {
       if (e.check) tableById.get(e.check.tableId).checks.push({ name: entries.length === 1 ? c.name || null : null, text: e.check.text })
-      else if (e.query) queries.push({ label: e.entry.kind === entries[0].entry.kind ? label : `${label}, ${e.entry.kind}`, ...e })
+      else if (e.query) queries.push({ label: e.entry.kind === entries[0].entry.kind ? label : `${label}, ${e.entry.kind}`, name: c.name || null, kind: e.entry.kind, ...e })
     }
     const bad = entries.filter(e => !e.check && !e.query)
     if (bad.length) unwrittenNotes.push(`${model.notExported[i]}: ${bad.map(e => e.error).join('; ')}`)
@@ -152,10 +162,52 @@ export function exportPostgresDdl(state, schemaId) {
     lines.push('-- Tables with derived rows or columns (table rules), as views:', '')
     for (const id of order) lines.push(views.get(id).view, '')
   }
-  if (queries.length) {
+  // Assertions: constraint triggers (enforced) or commented queries.
+  const triggers = [], commented = []
+  for (const x of queries) {
+    if (assertionMode !== 'triggers' || x.deontic) { commented.push(x); continue }
+    // Triggers go on the stored tables the query reads; a view has none.
+    const on = [...new Set((x.tables ?? []).map(id => tableById.get(id)).filter(t => t && views.get(t.id)?.kind !== 'view').map(storedName))]
+    if (!on.length) { commented.push(x); warnings.push(`${x.label}: it reads only views, so it gets no trigger`); continue }
+    triggers.push({ ...x, on, src: x })
+  }
+  if (triggers.length) {
+    lines.push('-- Assertions, enforced by constraint triggers: each change of a table an',
+      '-- assertion reads runs its check at the end of the transaction, which fails',
+      '-- when the query finds a row breaking it.', '')
+    const used = new Set(tables.map(t => t.name))
+    const fresh = (base) => {
+      let name = base.slice(0, 63)
+      for (let i = 2; used.has(name); i++) name = `${base.slice(0, 60)}_${i}`
+      used.add(name)
+      return name
+    }
+    triggers.forEach((x, i) => {
+      const base = snakeName(x.name) || `assertion_${i + 1}`
+      const fn = fresh(`${base}_check`)
+      const what = (x.name ? `${x.name} (${x.kind})` : x.kind).replace(/'/g, "''")
+      lines.push(`-- ${x.label}`, `--   ${x.text}`,
+        `CREATE FUNCTION ${q(fn)}() RETURNS trigger LANGUAGE plpgsql AS $fn$`,
+        'BEGIN',
+        '  IF EXISTS (',
+        ...x.query.split('\n').map(l => `    ${l}`),
+        '  ) THEN',
+        `    RAISE EXCEPTION 'assertion ${what} is violated' USING ERRCODE = 'check_violation', DETAIL = '${String(x.text ?? '').replace(/'/g, "''")}';`,
+        '  END IF;',
+        '  RETURN NULL;',
+        'END',
+        '$fn$;')
+      for (const t of x.on) {
+        lines.push(`CREATE CONSTRAINT TRIGGER ${q(fresh(`${base}_on_${t}`))} AFTER INSERT OR UPDATE OR DELETE ON ${q(t)}`,
+          `  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION ${q(fn)}();`)
+      }
+      lines.push('')
+    })
+  }
+  if (commented.length) {
     lines.push('-- Constraints that PostgreSQL does not enforce here, as queries that return',
       '-- the rows breaking them (none when the data satisfies them):', '')
-    for (const x of queries) {
+    for (const x of commented) {
       lines.push(`-- ${x.label}${x.deontic ? ' (deontic: ought to hold)' : ''}`, `--   ${x.text}`,
         ...`${x.query};`.split('\n').map(l => `-- ${l}`), '')
     }
@@ -177,6 +229,6 @@ export function exportPostgresDdl(state, schemaId) {
     // What PostgreSQL will not enforce, for the export report
     // (DdlExportDialog.jsx): assertions written as violation queries, and
     // the other warnings.
-    assertions: queries.map(x => ({ label: x.label, text: x.text, deontic: !!x.deontic })),
+    assertions: queries.map(x => ({ label: x.label, text: x.text, deontic: !!x.deontic, trigger: triggers.some(t => t.src === x) })),
   }
 }

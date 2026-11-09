@@ -18,7 +18,7 @@
 // meet a NULL, the condition says IS NULL or IS DISTINCT FROM.
 //
 // formulaToSql(formula, model, names) → { check: { tableId, text } } |
-//   { query: text, deontic } | { error }, with model from relationalModel
+//   { query: text, deontic, tables: [tableId] } | { error }, with model from relationalModel
 //   and names(Var) → a display name for a column of the query's result;
 //   qualify(table) → the table's name as written in FROM (default: quoted).
 
@@ -134,7 +134,9 @@ const merged = (g) => {
 
 export function formulaToSql(formula, model, names = () => null, { qualify = null } = {}) {
   const q = quoteIdent
-  const tableName = (table) => (qualify ? qualify(table) : q(table.name))
+  // The tables a query reads (its constraint triggers fire on them).
+  const readTables = new Set()
+  const tableName = (table) => { readTables.add(table.id); return qualify ? qualify(table) : q(table.name) }
   const tableById = new Map(model.tables.map(t => [t.id, t]))
   let f = formula
   const deontic = f?.t === 'obligatory'
@@ -384,9 +386,10 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
       })
       const text = `SELECT ${cols.length ? `DISTINCT ${cols.join(', ')}` : `'violated' AS violation`}`
         + (b.from.length ? `\nFROM ${b.from.join(', ')}` : '') + (where.length ? `\nWHERE ${where.map(w => (where.length > 1 && hasTop(w, 'OR') ? `(${w})` : w)).join('\n  AND ')}` : '')
-      return { query: text, deontic }
+      return { query: text, deontic, tables: [...readTables] }
     }
-    return { query: `SELECT 'violated' AS violation\nWHERE ${negate(cond(f, new Map()))}`, deontic }
+    const where = negate(cond(f, new Map()))
+    return { query: `SELECT 'violated' AS violation\nWHERE ${where}`, deontic, tables: [...readTables] }
   } catch (e) {
     if (e instanceof Unsupported) return { error: e.message }
     throw e

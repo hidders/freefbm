@@ -177,7 +177,7 @@ function ConstraintBody({ o, view, link }) {
     {o.kind !== 'assertion' && o.sql && <Sql text={o.sql} title="SQL" />}
     {o.kind === 'assertion' && <>
       <Note>{o.query
-        ? 'A constraint with no table form. In PostgreSQL, which has no assertions, the DDL export writes it as a query that returns the rows breaking it.'
+        ? 'A constraint with no table form. PostgreSQL has no assertions, so the DDL export enforces it with constraint triggers that run the query below, or writes the query as a comment.'
         : `It has no SQL form${o.error ? `: ${o.error}` : ''}.`}</Note>
       {o.formula && <Sql text={o.formula} title="Formula" />}
       {o.query && <Sql text={`${o.query};`} title="Violations" />}

@@ -294,8 +294,8 @@ export const createSchemaSlice = (set, get) => ({
   },
 
   // The active relational schema as PostgreSQL DDL: { sql, warnings }.
-  exportPostgresDdl(schemaId = activeSchemaIdOf(get())) {
-    return exportPostgresDdl(get(), schemaId)
+  exportPostgresDdl(schemaId = activeSchemaIdOf(get()), options = {}) {
+    return exportPostgresDdl(get(), schemaId, options)
   },
 
   // Activates the schema by switching to its first diagram.
