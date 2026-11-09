@@ -69,8 +69,8 @@ function literalSql(value, numeric) {
 }
 
 // A value range as a SQL condition on col.
-export function rangeSql(col, specs, numeric) {
-  const lit = (v) => literalSql(v, numeric)
+export function rangeSql(col, specs, numeric, literal = null) {
+  const lit = literal ?? ((v) => literalSql(v, numeric))
   const singles = specs.filter(s => s.type === 'single')
   const parts = []
   if (singles.length === 1) parts.push(`${col} = ${lit(singles[0].value)}`)

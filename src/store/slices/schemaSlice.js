@@ -2,6 +2,7 @@ import { mkSchema, mkDiagram, SCHEMA_PROFILES, activeSchemaIdOf } from '../store
 import { importPostgresDdl, samplePopulation } from '../../relational/ddlImport.js'
 import { parseDdl } from '../../relational/ddlParse.js'
 import { exportPostgresDdl } from '../../relational/ddlExport.js'
+import { exportSqlDdl } from '../../relational/sqlExport.js'
 import { guessOrmSchema } from '../../relational/guessOrm.js'
 import { generateRelational } from '../../relational/rmap.js'
 import { runMapping, withRunApplied } from '../../mapping/runMapping.js'
@@ -322,6 +323,11 @@ export const createSchemaSlice = (set, get) => ({
   // The active relational schema as PostgreSQL DDL: { sql, warnings }.
   exportPostgresDdl(schemaId = activeSchemaIdOf(get()), options = {}) {
     return exportPostgresDdl(get(), schemaId, options)
+  },
+
+  // The DDL for the schema's SQL target (relational/sqlExport.js).
+  exportSqlDdl(schemaId = activeSchemaIdOf(get()), options = {}) {
+    return exportSqlDdl(get(), schemaId, options)
   },
 
   // Activates the schema by switching to its first diagram.

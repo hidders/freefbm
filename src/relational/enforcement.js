@@ -30,16 +30,19 @@
 
 import { relationalView } from './relationalView.js'
 import { constraintsAsSql } from './formulaSql.js'
-import { isKey } from './relationalModel.js'
+import { isKey, relationalModel } from './relationalModel.js'
+import { withDialect } from './sqlNames.js'
+import { oracleAssertion } from './oracleAssertions.js'
+import { assertionTables } from './erdAssertions.js'
 import { tableViews } from './viewSql.js'
 import { asForeignKey } from './foreignKeyRewrite.js'
 import { typeSql } from './ddlExport.js'
 
-// The SQL DBMSs a schema can be written for. Only PostgreSQL is written yet;
-// the others are the plan's next stages.
+// The SQL DBMSs a schema can be written for. PostgreSQL and Oracle are
+// written; the others are the plan's next stages.
 export const SQL_TARGETS = [
   { id: 'postgresql', name: 'PostgreSQL', ready: true, deferredTriggers: true, assertions: false },
-  { id: 'oracle', name: 'Oracle', ready: false },
+  { id: 'oracle', name: 'Oracle (23.26.1 or later)', ready: true, deferredTriggers: false, assertions: true },
   { id: 'sqlserver', name: 'SQL Server', ready: false },
   { id: 'mysql', name: 'MySQL', ready: false },
   { id: 'sqlite', name: 'SQLite', ready: false },
@@ -57,7 +60,7 @@ export function sqlSettings(schema) {
 }
 
 const TECHNIQUE = {
-  table: 'table constraint', check: 'CHECK', foreignKey: 'FOREIGN KEY', trigger: 'trigger',
+  table: 'table constraint', check: 'CHECK', foreignKey: 'FOREIGN KEY', assertion: 'CREATE ASSERTION', trigger: 'trigger',
   audit: 'audit query', none: 'not written',
 }
 export const techniqueName = (t) => TECHNIQUE[t] ?? t
@@ -66,14 +69,32 @@ export function planEnforcement(state, schemaId, settings0 = null) {
   const settings = settings0 ?? sqlSettings((state.schemas ?? []).find(s => s.id === schemaId))
   const target = targetOf(settings.target)
   const view = relationalView(state, schemaId)
-  const model = view.model
+  // Other dialects read the schema again (a CHECK read from a PostgreSQL
+  // script is written from its formula there) and write their own queries.
+  const dialect = (fn) => (target.id === 'postgresql' ? fn() : withDialect(target.id, fn))
+  const model = target.id === 'postgresql' ? view.model : dialect(() => relationalModel(state, schemaId))
   const items = []
   const item = (x) => { items.push({ rmId: null, note: null, choice: null, entry: null, ...x }); return x }
 
+  // Assertions: constraints with no table form (and foreign keys to columns
+  // that are not a key, which SQL refuses), from their formulas.
+  const views = tableViews(state, model, typeSql)
+  const isView = (id) => views.get(id)?.kind === 'view'
+  const badFks = model.fks.filter(fk => !isKey(fk.toTable, fk.to))
+  const assertionSources = dialect(() => [
+    ...constraintsAsSql(state, model).map(x => ({ ...x, prefix: 'as' })),
+    ...(badFks.length ? constraintsAsSql(state, { ...model, unwritten: badFks.map(fk => state.constraints.find(c => c.id === fk.constraintId)).filter(Boolean) })
+      .map(x => ({ ...x, prefix: 'fk', note: 'its referenced columns are not a key' })) : []),
+  ])
+  // Constraints the relational view has as a CHECK that this dialect can't
+  // write as one (they are assertions here).
+  const notChecks = new Set(assertionSources.filter(x => x.entries.some(e => !e.check)).map(x => x.c.id))
+
   // The table form, from the relational view (a view's keys are not enforced).
-  const unwrittenIds = new Set(model.unwritten.map(c => c.id))
+  const unwrittenIds = new Set(view.model.unwritten.map(c => c.id))
   for (const o of view.objects.values()) {
     if (!['notNull', 'primaryKey', 'unique', 'foreignKey', 'check'].includes(o.kind)) continue
+    if (o.kind === 'check' && notChecks.has(o.members?.[0])) continue
     if (o.kind === 'foreignKey') {
       const fk = model.fks.find(x => `fk:${x.constraintId}` === o.rmId)
       if (fk && !isKey(fk.toTable, fk.to)) continue   // an assertion, below
@@ -86,16 +107,6 @@ export function planEnforcement(state, schemaId, settings0 = null) {
       note: 'about a view or a derived column' })
   }
 
-  // Assertions: constraints with no table form (and foreign keys to columns
-  // that are not a key, which SQL refuses), from their formulas.
-  const views = tableViews(state, model, typeSql)
-  const isView = (id) => views.get(id)?.kind === 'view'
-  const badFks = model.fks.filter(fk => !isKey(fk.toTable, fk.to))
-  const assertionSources = [
-    ...constraintsAsSql(state, model).map(x => ({ ...x, prefix: 'as' })),
-    ...(badFks.length ? constraintsAsSql(state, { ...model, unwritten: badFks.map(fk => state.constraints.find(c => c.id === fk.constraintId)).filter(Boolean) })
-      .map(x => ({ ...x, prefix: 'fk', note: 'its referenced columns are not a key' })) : []),
-  ]
   const byRm = new Map(view.assertions.map(a => [a.rmId, a]))
   for (const { c, entries, prefix, note: why } of assertionSources) {
     entries.forEach((e, i) => {
@@ -119,6 +130,28 @@ export function planEnforcement(state, schemaId, settings0 = null) {
       const mode = choice ?? (settings.assertions === 'audit' ? 'audit' : 'trigger')
       const read = (e.tables ?? []).filter(id => model.tables.some(t => t.id === id))
       const stored = read.filter(id => !isView(id))
+      if (target.id === 'oracle' && choice !== 'audit') {
+        // CREATE ASSERTION where nothing rules it out; the choice says what
+        // replaces it when Oracle can't or won't assert it.
+        const ora = dialect(() => oracleAssertion(e.query, model))
+        const mustHave = (assertionTables(e.entry?.formula, model).positive ?? []).length > 0
+        const fallback = mode === 'audit' || !stored.length ? 'audit' : 'trigger'
+        const after = mustHave ? ' (checked after each statement, as Oracle has no deferred triggers)' : ''
+        if (ora.ok) {
+          item({ ...base, technique: 'assertion', choice, entry: { ...entry, oracle: ora, mustHave, fallback },
+            status: ora.likely || fallback === 'trigger' ? 'enforced' : 'partly',
+            note: [mustHave ? 'checked at commit (deferred)' : null,
+              ora.likely ? null : `${ora.reason}; then ${fallback === 'trigger' ? `triggers enforce it${after}` : 'it is not enforced'}`].filter(Boolean).join('; ') || null })
+          return
+        }
+        if (fallback === 'trigger') {
+          item({ ...base, technique: 'trigger', choice, entry: { ...entry, mustHave }, status: stored.length < read.length ? 'partly' : 'enforced',
+            note: `${ora.reason}${after}` })
+          return
+        }
+        item({ ...base, technique: 'audit', status: 'not', choice, viewsOnly: !stored.length, note: ora.reason })
+        return
+      }
       if (mode === 'audit') { item({ ...base, technique: 'audit', status: 'not', choice, note: why ?? null }); return }
       if (!stored.length) { item({ ...base, technique: 'audit', status: 'not', choice, viewsOnly: true, note: 'it reads only views, so no trigger can check it' }); return }
       item({ ...base, technique: 'trigger', choice, status: stored.length < read.length ? 'partly' : 'enforced',

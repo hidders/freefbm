@@ -27,7 +27,7 @@
 
 import { tableRulesOf } from './derivedTables.js'
 import { treeToSide, expandSide, sideContext } from '../mapping/mapping.js'
-import { quoteIdent as q } from './sqlNames.js'
+import { quoteIdent as q, sqlDialect } from './sqlNames.js'
 
 class Unsupported extends Error {}
 const no = (what) => { throw new Unsupported(what) }
@@ -87,7 +87,7 @@ function compile(side, model, outer, counter) {
       }
       const alias = `o${++counter.n}`
       const sel = got.length ? got.map(y => `${inner.ys.get(y)} AS ${q(y)}`).join(', ') : '1 AS present'
-      laterals.push(`LEFT JOIN LATERAL (${selectText(sel, inner)} LIMIT 1) ${alias} ON TRUE`)
+      laterals.push(`LEFT JOIN LATERAL (${selectText(sel, inner)} ${sqlDialect() === 'oracle' ? 'FETCH FIRST 1 ROWS ONLY' : 'LIMIT 1'}) ${alias} ON TRUE`)
       for (const y of got) { ys.set(y, `${alias}.${q(y)}`); newYs.push(y) }
     } else if (a.t === 'not') {
       const inner = compile(a, model, { rows, vals, ys }, counter)
@@ -143,7 +143,7 @@ export function tableViews(state, model, typeSql) {
       if (!t.pk?.length) no(`${t.name} has no primary key`)
       const rowsView = rowRule?.mode === 'derived'
       if (rowsView) { res.kind = 'view'; res.baseName = null }
-      const typed = (c) => { const ty = typeSql(c.vt.datatypeAssignment, null); return ty ? `NULL::${ty}` : 'NULL' }
+      const typed = (c) => { const ty = typeSql(c.vt.datatypeAssignment, null); return ty ? (sqlDialect() === 'oracle' ? `CAST(NULL AS ${ty})` : `NULL::${ty}`) : 'NULL' }
       // Columns a columns rule derives fully: never stored, never in the rows' query.
       const colDerived = new Set(colRules.filter(r => r.mode === 'derived').flatMap(r => Object.keys(r.head).filter(id => !key.has(id))))
       const baseCols = t.columns.filter(c => !(rowsView ? colDerived : derivedCols).has(c.fact.id))

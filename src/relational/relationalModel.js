@@ -18,8 +18,7 @@
 //        notNull, generated, pk, unique, fk }
 
 import { sqlCheckOf, VC_SQL } from './checkFormula.js'
-
-const quoteName = (n) => (/^[a-z_][a-z0-9_$]*$/.test(n) ? n : `"${n.replace(/"/g, '""')}"`)
+import { quoteIdent as quoteName, sqlDialect } from './sqlNames.js'
 
 export function relationalModel(state, schemaId) {
   const inSchema = (x) => !schemaId || x.schemaId === schemaId
@@ -102,6 +101,9 @@ export function relationalModel(state, schemaId) {
       continue
     }
     if (c.constraintType === 'formula') {
+      // A CHECK's own text is PostgreSQL's (from the script it was read from);
+      // other dialects write it from its formula (formulaSql.js).
+      if (sqlDialect() !== 'postgresql' && c.sqlCheck) { skip(c, `formula constraint ${c.name || c.id} (a CHECK written from its formula)`); continue }
       const ch = sqlCheckOf(c, (factId) => columnByFact.get(factId)?.name ?? null, quoteName)
       const table = ch.text && tableById.get(ch.table)
       if (table) table.checks.push({ name: ch.name, text: ch.text, constraintId: c.id })
