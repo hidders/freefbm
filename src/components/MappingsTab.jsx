@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useShallow } from 'zustand/react/shallow'
+import ContextMenu from './ContextMenu'
 import { useOrmStore } from '../store/ormStore'
 import { sideContext, sideTokens, checkRule, SIDES, sideSchemaId } from '../mapping/mapping.js'
 import { PatternText, IssueList } from './MappingFormula.jsx'
@@ -42,6 +44,9 @@ export default function MappingsTab() {
   const focusRef = useRef(null)
   useEffect(() => { focusRef.current?.scrollIntoView?.({ block: 'nearest' }) }, [state.focus])
   const act = useOrmStore.getState
+  // The header's menus (Run, Check, More), drawn by ContextMenu.
+  const [menu, setMenu] = useState(null)
+  const openMenu = (e, items) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.bottom + 2, items }) }
   const schemas = state.schemas
   // The last run per mapping (store.mappingRuns, also filled by the Mapping menu).
   const runs = state.runs
@@ -117,18 +122,31 @@ export default function MappingsTab() {
               </span>
               <div style={{ flex: 1 }} />
               <button style={btn} title="Show this mapping as a diagram: both schemas side by side, each rule linked to its elements" onClick={() => act().openMappingDiagram(m.id)}>Diagram</button>
-              <button style={btn} disabled={m.rules.length < 2} title="Split the rules into groups that name the same elements, to review and make into mapping diagrams" onClick={() => useOrmStore.setState({ suggestDiagramsDialog: { mappingId: m.id } })}>Suggest diagrams…</button>
               {advanced && <button style={btn} onClick={() => act().addMappingRule(m.id)}>+ Rule</button>}
-              <button style={btn} title={`Build the population of ${name(m.targetSchemaId)} from that of ${name(m.sourceSchemaId)}`} onClick={() => doRun(m, 'run', 'forward')}>Run →</button>
-              <button style={btn} title={`Build the population of ${name(m.sourceSchemaId)} from that of ${name(m.targetSchemaId)}`} onClick={() => doRun(m, 'run', 'backward')}>Run ←</button>
-              <button style={btn} title={`Run the mapping from ${name(m.sourceSchemaId)} there and back, and compare what comes back`} onClick={() => doRun(m, 'roundTrip', 'forward')}>Round trip</button>
-              <button style={btn} title={`Whether ${name(m.sourceSchemaId)} and ${name(m.targetSchemaId)} are equivalent under this mapping: no information lost either way, every constraint kept, and how many need formula constraints`} onClick={() => { act().setActiveMapping(m.id); runEquivalence(m) }}>Equivalence</button>
-              <button style={btn} title={`For each constraint of either schema, whether the other schema keeps it under this mapping: native, implied, lost (with a counterexample) or unknown`} onClick={() => { act().setActiveMapping(m.id); runAccounting(m) }}>Accounting</button>
-              <button style={btn} disabled={!!m.lock} title={m.lock ? 'Unlock the mapping to fold' : 'Fold the derived types and fact types of a schema into this mapping: each gets a mapping rule and becomes ordinary (a semi-derived one keeps its rule as a constraint), and the fact types it replaces can go'} onClick={() => useOrmStore.setState({ foldDialog: { mappingId: m.id } })}>Fold…</button>
-              <button className="mapping-lock" style={{ ...btn, whiteSpace: 'nowrap', ...(m.lock ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : {}) }} aria-pressed={!!m.lock}
-                title={m.lock ? `Unlock: ${name(m.sourceSchemaId)} and ${name(m.targetSchemaId)} can be edited freely again` : `Lock ${name(m.sourceSchemaId)} and ${name(m.targetSchemaId)} to new constraints only, and carry the constraints added to one to the other`}
-                onClick={() => act().lockMapping(m.id, !m.lock)}>{m.lock ? '✓ ' : ''}Constraints only</button>
-              <button style={btn} title="Delete this mapping and its rules" onClick={() => confirmDeleteMapping(m.id)}>Delete…</button>
+              {m.lock && <button className="mapping-lock" style={{ ...btn, whiteSpace: 'nowrap', borderColor: 'var(--accent)', color: 'var(--accent)' }} aria-pressed
+                title={`Unlock: ${name(m.sourceSchemaId)} and ${name(m.targetSchemaId)} can be edited freely again`}
+                onClick={() => act().lockMapping(m.id, false)}>✓ Constraints only</button>}
+              <MenuButton label="Run" style={btn} onOpen={openMenu} items={[
+                { label: `Run ${name(m.sourceSchemaId)} → ${name(m.targetSchemaId)}`, title: `Build the population of ${name(m.targetSchemaId)} from that of ${name(m.sourceSchemaId)}`, action: () => doRun(m, 'run', 'forward') },
+                { label: `Run ${name(m.targetSchemaId)} → ${name(m.sourceSchemaId)}`, title: `Build the population of ${name(m.sourceSchemaId)} from that of ${name(m.targetSchemaId)}`, action: () => doRun(m, 'run', 'backward') },
+                { label: 'Round trip', title: `Run the mapping from ${name(m.sourceSchemaId)} there and back, and compare what comes back`, action: () => doRun(m, 'roundTrip', 'forward') },
+              ]} />
+              <MenuButton label="Check" style={btn} onOpen={openMenu} items={[
+                { label: 'Check equivalence', title: `Whether ${name(m.sourceSchemaId)} and ${name(m.targetSchemaId)} are equivalent under this mapping: no information lost either way, every constraint kept, and how many need formula constraints`,
+                  action: () => { act().setActiveMapping(m.id); runEquivalence(m) } },
+                { label: 'Account for constraints', title: 'For each constraint of either schema, whether the other schema keeps it under this mapping: native, implied, lost (with a counterexample) or unknown',
+                  action: () => { act().setActiveMapping(m.id); runAccounting(m) } },
+              ]} />
+              <MenuButton label="More" style={btn} onOpen={openMenu} items={[
+                { label: 'Suggest diagrams…', disabled: m.rules.length < 2, title: 'Split the rules into groups that name the same elements, to review and make into mapping diagrams',
+                  action: () => useOrmStore.setState({ suggestDiagramsDialog: { mappingId: m.id } }) },
+                { label: 'Fold…', disabled: !!m.lock, title: m.lock ? 'Unlock the mapping to fold' : 'Fold the derived types and fact types of a schema into this mapping: each gets a mapping rule and becomes ordinary (a semi-derived one keeps its rule as a constraint), and the fact types it replaces can go',
+                  action: () => useOrmStore.setState({ foldDialog: { mappingId: m.id } }) },
+                { label: `${m.lock ? '✓ ' : ''}Constraints only`, title: m.lock ? `Unlock: ${name(m.sourceSchemaId)} and ${name(m.targetSchemaId)} can be edited freely again` : `Lock ${name(m.sourceSchemaId)} and ${name(m.targetSchemaId)} to new constraints only, and carry the constraints added to one to the other`,
+                  action: () => act().lockMapping(m.id, !m.lock) },
+                '---',
+                { label: 'Delete mapping…', title: 'Delete this mapping and its rules', action: () => confirmDeleteMapping(m.id) },
+              ]} />
             </div>
             {runs[m.id] && <RunReport run={runs[m.id]} mapping={m} name={name}
               onApply={(run) => { act().applyMappingRun(run); act().setMappingRun(m.id, { ...runs[m.id], applied: true }) }}
@@ -172,6 +190,7 @@ export default function MappingsTab() {
       })}
       {(!scoped || scoped.view) && <ViewMappings only={scoped?.view ? scoped : null} />}
       {!scoped && <Exchanges />}
+      {menu && createPortal(<ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />, document.body)}
     </div>
   )
 }
@@ -241,4 +260,9 @@ function RunReport({ run, mapping, name, onApply, onClose }) {
       {r.log.length > 0 && <div style={{ marginTop: 4 }}><LogList log={r.log} /></div>}
     </div>
   )
+}
+
+// A button that opens a menu of actions below it.
+function MenuButton({ label, items, style, onOpen }) {
+  return <button style={{ ...style, whiteSpace: 'nowrap' }} aria-haspopup="menu" onClick={e => onOpen(e, items)}>{label} <span className="ui-caret">▾</span></button>
 }
