@@ -41,7 +41,7 @@ export default function Workbench() {
   const [negative, setNegative] = useState(false)
   const editor = useRef(null)
 
-  useEffect(() => { document.title = 'Verbalisation Workbench' }, [])
+  useEffect(() => { document.title = 'Verbalisation workbench' }, [])
 
   const appliedRef = useRef(null)
   appliedRef.current = () => appliedOf(langId)

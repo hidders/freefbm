@@ -78,17 +78,17 @@ function FactLabel({ fact, otMap, filter }) {
 
 function OrphanBadge() {
   return (
-    <span title="Not in any diagram" style={{
+    <span title="On no diagram" style={{
       fontSize: 8, color: 'var(--danger)', border: '1px solid var(--danger)',
       borderRadius: 3, padding: '0 3px', lineHeight: '13px',
       flexShrink: 0, marginLeft: 3,
-    }}>orphan</span>
+    }}>on no diagram</span>
   )
 }
 
 function LinkBadge() {
   return (
-    <span title="Implied link" style={{
+    <span title="Link fact type" style={{
       fontSize: 8, color: 'var(--ink-muted)', border: '1px solid var(--border)',
       borderRadius: 3, padding: '0 3px', lineHeight: '13px',
       flexShrink: 0, marginLeft: 3,
@@ -154,7 +154,7 @@ function ImpliedLinkIcon() {
   )
 }
 
-function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd, onAddExtra, addButtonStyle, addButtonDisabled, onDelete, deleteTitle = 'Delete from Schema…', onMenu }) {
+function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd, onAddExtra, addButtonStyle, addButtonDisabled, onDelete, deleteTitle = 'Delete from schema…', onMenu }) {
   return (
     <div
       onClick={onSelect}
@@ -320,9 +320,9 @@ export default function SchemaBrowser() {
     if (!d || d.mappingId) return
     const occ = (d.occurrences ?? []).find(o => o.schemaElementId === id && !o.refModeOwnerOccId)
     setRowMenu({ x: e.clientX, y: e.clientY, items: [
-      { label: 'Add Neighbours…', disabled: !occ, title: occ ? undefined : 'Not on this diagram',
+      { label: 'Add neighbours…', disabled: !occ, title: occ ? undefined : 'Not on this diagram',
         action: () => { s.centerOnElement(id); s.openNeighbourPicker(id, occ?.id ?? null) } },
-      { label: 'New Diagram from Here', action: () => s.newDiagramFrom(id) },
+      { label: 'New diagram from here', action: () => s.newDiagramFrom(id) },
     ] })
   }
 
@@ -344,12 +344,12 @@ export default function SchemaBrowser() {
     const on = here.includes(info.r.id)
     const others = ruleInfos.map(i => i.r.id).filter(id => !here.includes(id))
     setRowMenu({ x: e.clientX, y: e.clientY, items: [
-      on ? { label: 'Remove from This Diagram', action: () => s.hideMappingRules(d.id, [info.r.id]) }
-         : { label: 'Add to This Diagram', action: () => s.showMappingRules(d.id, [info.r.id]) },
-      { label: 'New Diagram with This Rule', action: () => s.newMappingDiagram(mapping.id, [info.r.id]) },
+      on ? { label: 'Remove from this diagram', action: () => s.hideMappingRules(d.id, [info.r.id]) }
+         : { label: 'Add to this diagram', action: () => s.showMappingRules(d.id, [info.r.id]) },
+      { label: 'New diagram with this rule', action: () => s.newMappingDiagram(mapping.id, [info.r.id]) },
       '---',
-      { label: 'Add All Rules to This Diagram', disabled: !others.length, action: () => s.showMappingRules(d.id, others) },
-      { label: 'Remove Other Rules from This Diagram', disabled: !here.some(id => id !== info.r.id),
+      { label: 'Add all rules to this diagram', disabled: !others.length, action: () => s.showMappingRules(d.id, others) },
+      { label: 'Remove other rules from this diagram', disabled: !here.some(id => id !== info.r.id),
         action: () => s.hideMappingRules(d.id, here.filter(id => id !== info.r.id)) },
     ] })
   }
@@ -645,7 +645,7 @@ export default function SchemaBrowser() {
     diagrams: diagrams.filter(d => d.schemaId === activeSchemaIdOf(store)), expanded: rmExpanded, toggle: toggleRm,
     selectedRmId, showOrphans, filter, onMenu: openRowMenu }) : [
     {
-      title: 'Entity Types',
+      title: 'Entity types',
       items: showOrphans ? entityTypes.filter(el => isOrphaned(el.id)) : showReady ? [] : entityTypes,
       match: (el) => filter.test(el.label),
       renderRow: (el) => {
@@ -665,7 +665,7 @@ export default function SchemaBrowser() {
       },
     },
     {
-      title: 'Nested Entity Types',
+      title: 'Objectified fact types',
       items: showOrphans ? nestedEntityTypes.filter(el => isOrphaned(el.id))
            : showReady   ? nestedEntityTypes.filter(el => {
                const neFact = store.facts.find(f => f.id === el.id)
@@ -698,7 +698,7 @@ export default function SchemaBrowser() {
       },
     },
     {
-      title: 'Value Types',
+      title: 'Value types',
       items: showOrphans ? valueTypes.filter(el => isOrphaned(el.id)) : showReady ? [] : valueTypes,
       match: (el) => filter.test(el.label),
       renderRow: (el) => (
@@ -716,7 +716,7 @@ export default function SchemaBrowser() {
       ),
     },
     {
-      title: 'Fact Types',
+      title: 'Fact types',
       items: showOrphans ? factTypes.filter(f => !f.isImpliedLink && isOrphaned(f.id))
            : showReady   ? factTypes.filter(f => !f.isImpliedLink && !inDiag(f.id) && factDepsStatus(f) === 'ready')
            : factTypes,
@@ -767,7 +767,7 @@ export default function SchemaBrowser() {
       },
     },
     {
-      title: 'Subtype Relationships',
+      title: 'Subtype links',
       items: showOrphans ? subtypeEdges.filter(st => isStOrphaned(st))
            : showReady   ? subtypeEdges.filter(st => !subtypeInDiag(st) && inDiag(st.subId) && inDiag(st.superId))
            : subtypeEdges,
@@ -809,7 +809,7 @@ export default function SchemaBrowser() {
       },
     },
     {
-      title: 'External Constraints',
+      title: 'External constraints',
       items: showOrphans ? constraintNodes.filter(c => isCOrphaned(c.id))
            : showReady   ? constraintNodes.filter(c => !cInCurrentDiag(c.id) && constraintDepsStatus(c) === 'ready')
            : constraintNodes,
@@ -948,7 +948,7 @@ export default function SchemaBrowser() {
                 <span
                   onClick={() => { setShowOrphans(p => !p); setShowReady(false) }}
                   title={mapping ? (showOrphans ? 'Show all rules' : 'Show only rules on no diagram of this mapping')
-                    : showOrphans ? 'Show all elements' : 'Show only orphans'}
+                    : showOrphans ? 'Show all elements' : 'Show only elements on no diagram'}
                   style={{
                     fontSize: 9,
                     color: showOrphans ? 'white' : 'var(--danger)',
@@ -961,7 +961,7 @@ export default function SchemaBrowser() {
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {allOrphanCount} orphan{allOrphanCount !== 1 ? 's' : ''}
+                  {allOrphanCount} on no diagram
                 </span>
               )}
             </div>

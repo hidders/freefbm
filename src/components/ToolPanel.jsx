@@ -6,26 +6,26 @@ import { activeSchemaIdOf } from '../store/storeHelpers'
 const COL_CONSTRAINT = '#7c4dbd'
 
 const ALL_INTERNAL_CONSTRAINT_TYPES = [
-  { key: 'internalUniqueness', label: 'Internal Uniqueness', tool: 'addInternalUniqueness', shortcut: 'I' },
-  { key: 'mandatoryRole',      label: 'Mandatory Role', tool: 'toggleMandatory', shortcut: 'M' },
-  { key: 'valueRange',         label: 'Value Range', shortcut: 'R' },
+  { key: 'internalUniqueness', label: 'Internal uniqueness', tool: 'addInternalUniqueness', shortcut: 'I' },
+  { key: 'mandatoryRole',      label: 'Mandatory role', tool: 'toggleMandatory', shortcut: 'M' },
+  { key: 'valueRange',         label: 'Value range', shortcut: 'R' },
   { key: 'cardinality',        label: 'Cardinality', shortcut: 'C' },
-  { key: 'internalFrequency',  label: 'Internal Frequency', tool: 'addInternalFrequency', shortcut: 'Q' },
+  { key: 'internalFrequency',  label: 'Internal frequency', tool: 'addInternalFrequency', shortcut: 'Q' },
 ]
 
 const BASIC_INTERNAL_CONSTRAINT_TYPES    = ALL_INTERNAL_CONSTRAINT_TYPES.slice(0, 2)
 const ADVANCED_INTERNAL_CONSTRAINT_TYPES = ALL_INTERNAL_CONSTRAINT_TYPES.slice(2)
 
 const ALL_CONSTRAINT_TYPES = [
-  { key: 'uniqueness',        label: 'External Uniqueness',   short: null },
-  { key: 'inclusiveOr',       label: 'Inclusive Or', short: null },
+  { key: 'uniqueness',        label: 'External uniqueness',   short: null },
+  { key: 'inclusiveOr',       label: 'Inclusive or', short: null },
   { key: 'exclusion',         label: 'Exclusion',    short: null },
-  { key: 'exclusiveOr',       label: 'Exclusive Or', short: null },
+  { key: 'exclusiveOr',       label: 'Exclusive or', short: null },
   { key: 'equality',          label: 'Equality',     short: null },
   { key: 'subset',            label: 'Subset',       short: null },
   { key: 'ring',              label: 'Ring',         short: null },
-  { key: 'valueComparison',   label: 'Value Comparison', short: null },
-  { key: 'frequency',         label: 'External Frequency', short: null },
+  { key: 'valueComparison',   label: 'Value comparison', short: null },
+  { key: 'frequency',         label: 'External frequency', short: null },
   { key: 'formula',           label: 'Formula',      short: null },
 ]
 
@@ -679,7 +679,7 @@ export default function ToolPanel() {
       <GroupLabel>Types</GroupLabel>
 
       <button
-        title="Add Entity Type (E)"
+        title="Add entity type (E)"
         onClick={() => store.setTool('addEntity')}
         style={{
           width: '100%',
@@ -702,10 +702,10 @@ export default function ToolPanel() {
         onMouseLeave={e => { if (tool !== 'addEntity') e.currentTarget.style.background = 'transparent' }}
       >
         <EntityTypeIcon active={tool === 'addEntity'} />
-        Entity Type
+        Entity type
       </button>
       <button
-        title="Add Value Type (V)"
+        title="Add value type (V)"
         onClick={() => store.setTool('addValue')}
         style={{
           width: '100%',
@@ -728,10 +728,10 @@ export default function ToolPanel() {
         onMouseLeave={e => { if (tool !== 'addValue') e.currentTarget.style.background = 'transparent' }}
       >
         <ValueTypeIcon active={tool === 'addValue'} />
-        Value Type
+        Value type
       </button>
       <button
-        title="Add Fact Type (F)"
+        title="Add fact type (F)"
         onClick={() => store.setTool('addFact2')}
         style={{
           width: '100%',
@@ -754,11 +754,11 @@ export default function ToolPanel() {
         onMouseLeave={e => { if (tool !== 'addFact2') e.currentTarget.style.background = 'transparent' }}
       >
         <FactTypeIcon active={tool === 'addFact2'} />
-        Fact Type
+        Fact type
       </button>
       <AdvancedSection show={advanced} showDelay={200} hideDelay={0}>
         <button
-          title="Add Nested Entity Type"
+          title="Add objectified fact type"
           onClick={() => store.setTool('addNestedFact')}
           style={{
             width: '100%',
@@ -781,11 +781,11 @@ export default function ToolPanel() {
           onMouseLeave={e => { if (tool !== 'addNestedFact') e.currentTarget.style.background = 'transparent' }}
         >
           <NestedFactTypeIcon active={tool === 'addNestedFact'} />
-          Nested Entity Type
+          Objectified fact type
         </button>
       </AdvancedSection>
       <button
-        title="Assign Object Type to Role (A)"
+        title="Assign object type to role (A)"
         onClick={() => { store.clearSelection(); store.setTool('assignRole') }}
         style={{
           width: '100%',
@@ -811,7 +811,7 @@ export default function ToolPanel() {
         Role connector
       </button>
       <button
-        title="Draw Subtype Link (U)"
+        title="Draw subtype link (U)"
         onClick={() => { store.clearSelection(); store.setTool('addSubtype') }}
         style={{
           width: '100%',
@@ -834,11 +834,11 @@ export default function ToolPanel() {
         onMouseLeave={e => { if (tool !== 'addSubtype') e.currentTarget.style.background = 'transparent' }}
       >
         <SubtypeIcon active={tool === 'addSubtype'} />
-        Subtype connector
+        Subtype link
       </button>
 
       <Divider />
-      <GroupLabel>Internal Constraints</GroupLabel>
+      <GroupLabel>Internal constraints</GroupLabel>
 
       {BASIC_INTERNAL_CONSTRAINT_TYPES.map(ct => (
         <InternalConstraintBtn
@@ -862,7 +862,7 @@ export default function ToolPanel() {
       </AdvancedSection>
 
       <Divider />
-      <GroupLabel>External Constraints</GroupLabel>
+      <GroupLabel>External constraints</GroupLabel>
 
       {BASIC_CONSTRAINT_TYPES.map(ct => (
         <ConstraintBtn
@@ -883,7 +883,7 @@ export default function ToolPanel() {
         ))}
       </AdvancedSection>
       <button
-        title="Connect Constraint to Role / Object Type"
+        title="Connect constraint to role / object type"
         onClick={() => { store.clearSelection(); store.setTool('connectConstraint') }}
         style={{
           width: '100%',
@@ -911,8 +911,8 @@ export default function ToolPanel() {
       <Divider />
       <SectionLabel>Notes</SectionLabel>
       {[
-        { key: 'addNote',          Icon: NoteIcon,          label: 'Note',           title: 'Add Note (N)' },
-        { key: 'addNoteConnector', Icon: NoteConnectorIcon, label: 'Note connector', title: 'Add Note Connector' },
+        { key: 'addNote',          Icon: NoteIcon,          label: 'Note',           title: 'Add note (N)' },
+        { key: 'addNoteConnector', Icon: NoteConnectorIcon, label: 'Note connector', title: 'Add note connector' },
       ].map(({ key, Icon, label, title }) => (
         <button key={key}
           title={title}

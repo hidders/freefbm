@@ -51,7 +51,7 @@ function Dialog({ ids }) {
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 14px', borderTop: '1px solid var(--border-soft)' }}>
           <button ref={cancelRef} onClick={close} style={btn(false)}>Cancel</button>
-          <button onClick={go} style={btn(true)}>Delete from Schema</button>
+          <button onClick={go} style={btn(true)}>Delete from schema</button>
         </div>
       </div>
     </div>

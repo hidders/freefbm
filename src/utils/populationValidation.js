@@ -1759,7 +1759,7 @@ export function computePopulationIssues(rawData) {
     // Nested entity types (objectified facts, entity kind only)
     for (const fact of (facts || [])) {
       if (!fact.objectified || fact.objectifiedKind === 'value' || fact.isIndependent) continue
-      const name = fact.objectifiedName || 'nested entity type'
+      const name = fact.objectifiedName || 'objectified fact type'
       const pop = playerPopulation(fact)
       for (const inst of (pop || [])) {
         const cellKey = projCellKey(inst)
@@ -1817,7 +1817,7 @@ export function computePopulationIssues(rawData) {
     for (const fact of (facts || [])) {
       if (!fact.objectified || fact.objectifiedKind === 'value') continue
       const effPop = playerPopulation(fact)
-      checkCollisions(fact.id, effPop, fact.objectifiedName || 'nested entity type', true)
+      checkCollisions(fact.id, effPop, fact.objectifiedName || 'objectified fact type', true)
     }
   }
 

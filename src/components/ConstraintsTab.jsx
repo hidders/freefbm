@@ -115,7 +115,7 @@ function OrmConstraintsTab() {
       empty: 'There is only one entity-type hierarchy, so there is nothing to keep disjoint.' },
     showParticipation && { title: 'Implicit participation constraints', items: implicit.participation,
       empty: 'Every type here is independent.' },
-    showLinks && { title: 'Implied link constraints', items: implicit.impliedLinks,
+    showLinks && { title: 'Link fact type constraints', items: implicit.impliedLinks,
       empty: 'There are no nested fact types here.' },
   ].filter(Boolean)
 
@@ -153,7 +153,7 @@ function OrmConstraintsTab() {
           <ToggleButton on={showParticipation} onClick={toggleParticipation}
             title="Show that instances of non-independent types play some role">Implicit participation</ToggleButton>
           <ToggleButton on={showLinks} onClick={toggleLinks}
-            title="Show how a nested fact type relates to its implied link fact types">Implied links</ToggleButton>
+            title="Show how a nested fact type relates to its link fact types">Link fact types</ToggleButton>
           <ToggleButton on={showPossible} onClick={togglePossible}
             title="Say what the schema allows because a mandatory role or uniqueness constraint is missing: “It is possible that some Person does not have any Email”">Possible</ToggleButton>
         </span>

@@ -303,7 +303,7 @@ function RingConstraintPopulation({ con }) {
   if (!result) {
     return (
       <div>
-        <Header>Ring Constraint <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
+        <Header>Ring constraint <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
         <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8 }}>
           Ring properties: {(con.ringTypes ?? []).join(', ') || 'none'}
         </div>
@@ -323,7 +323,7 @@ function RingConstraintPopulation({ con }) {
 
   return (
     <div>
-      <Header>Ring Constraint <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
+      <Header>Ring constraint <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
       <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8 }}>
         Ring properties: {ringTypes.join(', ')}
       </div>
@@ -421,7 +421,7 @@ function ExternalUniquenessPopulation({ con }) {
   if (!result) {
     return (
       <div>
-        <Header>External Uniqueness <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
+        <Header>External uniqueness <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
         <EmptyState>No projection data available — constraint may lack required sequence or role structure.</EmptyState>
       </div>
     )
@@ -432,7 +432,7 @@ function ExternalUniquenessPopulation({ con }) {
 
   return (
     <div>
-      <Header>External Uniqueness <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
+      <Header>External uniqueness <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
       <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8 }}>
         {totalTuples} tuple{totalTuples === 1 ? '' : 's'} projected, {entries.length} unique{entries.length === 1 ? '' : 's'}
         {violations.length > 0 && (
@@ -529,7 +529,7 @@ function ExternalFrequencyPopulation({ con }) {
   if (!result) {
     return (
       <div>
-        <Header>External Frequency <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
+        <Header>External frequency <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
         <EmptyState>No projection data available — constraint may lack required sequence or role structure.</EmptyState>
       </div>
     )
@@ -541,7 +541,7 @@ function ExternalFrequencyPopulation({ con }) {
 
   return (
     <div>
-      <Header>External Frequency <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
+      <Header>External frequency <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
       <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8 }}>
         {totalTuples} tuple{totalTuples === 1 ? '' : 's'} projected, {entries.length} unique{entries.length === 1 ? '' : 's'}
         {violations.length > 0 && (
@@ -636,7 +636,7 @@ function InclusiveOrConstraintPopulation({ con }) {
   if (!result) {
     return (
       <div>
-        <Header>Inclusive Or <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
+        <Header>Inclusive or <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
         <EmptyState>No data available — constraint may lack a target object type or role sequences.</EmptyState>
       </div>
     )
@@ -657,7 +657,7 @@ function InclusiveOrConstraintPopulation({ con }) {
 
   return (
     <div>
-      <Header>Inclusive Or <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
+      <Header>Inclusive or <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
       <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8 }}>
         {seqCount} sequence{seqCount === 1 ? '' : 's'}
         {violationCount > 0 && (
@@ -738,7 +738,7 @@ function ExclusiveOrConstraintPopulation({ con }) {
   if (!result) {
     return (
       <div>
-        <Header>Exclusive Or <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
+        <Header>Exclusive or <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
         <EmptyState>No data available — constraint may lack a target object type or role sequences.</EmptyState>
       </div>
     )
@@ -761,7 +761,7 @@ function ExclusiveOrConstraintPopulation({ con }) {
 
   return (
     <div>
-      <Header>Exclusive Or <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
+      <Header>Exclusive or <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
       <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8 }}>
         {seqCount} sequence{seqCount === 1 ? '' : 's'}
         {violationCount > 0 && (
@@ -1103,8 +1103,8 @@ function ExternalBinaryConstraintPopulation({ con }) {
   const typeLabel = con.constraintType === 'exclusion' ? 'Exclusion'
     : con.constraintType === 'equality' ? 'Equality'
     : con.constraintType === 'subset' ? 'Subset'
-    : con.constraintType === 'inclusiveOr' ? 'Inclusive Or'
-    : 'Exclusive Or'
+    : con.constraintType === 'inclusiveOr' ? 'Inclusive or'
+    : 'Exclusive or'
 
   const displayVal = (v) => {
     if (typeof v === 'string') return v
@@ -1277,7 +1277,7 @@ function ValueComparisonPopulation({ con }) {
   if (!result || result.mode === 'unsupported') {
     return (
       <div>
-        <Header>Value Comparison <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
+        <Header>Value comparison <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
         <EmptyState>Validation is supported when the query of the role sequence defines a binary relation. Define a query above to enable population checking.</EmptyState>
         {populationIssues.length > 0 && (
           <div data-text-panel tabIndex={0} className="copyable" style={{ marginTop: 12 }}>
@@ -1298,7 +1298,7 @@ function ValueComparisonPopulation({ con }) {
 
   return (
     <div>
-      <Header>Value Comparison <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
+      <Header>Value comparison <strong>{con.name || `#${con.id.slice(0, 8)}`}</strong></Header>
       <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8 }}>
         Operator: <strong>{operator}</strong>
         {' — '}{pairs.length} tuple{pairs.length === 1 ? '' : 's'}
@@ -2209,7 +2209,7 @@ function NestedEntityObjectifiedPopulation({ fact }) {
     ? findInheritedPI(fact, store.facts, store.objectTypes, store.subtypes, store.constraints) : null
   const hasExplicitPI = !!(rm || cp || inherited)
 
-  const name       = fact.objectifiedName || (fact.readingParts || []).filter(Boolean).join(' ').trim() || 'nested entity'
+  const name       = fact.objectifiedName || (fact.readingParts || []).filter(Boolean).join(' ').trim() || 'objectified fact type'
   const factTuples = store.factPopulations?.[fact.id] ?? []
 
   // Shape of each role in the underlying fact (for fact-side columns).
@@ -2272,7 +2272,7 @@ function ImpliedLinkPopulation({ parentFact, roleIndex }) {
         return r?.roleName || p?.name || p?.objectifiedName || `role ${ri + 1}`
       }).join(', ')})`
   const roleLabel = role?.roleName || rolePlayer?.name || rolePlayer?.objectifiedName || `role ${roleIndex + 1}`
-  const name = parentFact.objectifiedName || (parentFact.readingParts || []).filter(Boolean).join(' ').trim() || 'nested entity'
+  const name = parentFact.objectifiedName || (parentFact.readingParts || []).filter(Boolean).join(' ').trim() || 'objectified fact type'
 
   // Row data.
   const factTuples = store.factPopulations?.[parentFact.id] ?? []
@@ -2280,7 +2280,7 @@ function ImpliedLinkPopulation({ parentFact, roleIndex }) {
 
   return (
     <div>
-      <Header>Implied link: <strong>{name}</strong> → <strong>{roleLabel}</strong></Header>
+      <Header>Link fact type: <strong>{name}</strong> → <strong>{roleLabel}</strong></Header>
       <div style={{ maxWidth: 640, fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8 }}>
         Derived from the population of{' '}
         <button onClick={() => store.select(parentFact.id, 'fact')}
@@ -2346,9 +2346,9 @@ function DerivedImpliedLinks({ arity, factTuples, roleShapes, entityShape, roleL
 
   return (
     <div>
-      <SectionDivider label="Implied links (derived)" />
+      <SectionDivider label="Link fact types (derived)" />
       <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8 }}>
-        The implied binary links from this nested entity type to its role players are derived
+        The implied binary links from this objectified fact type to its role players are derived
         from the population above and shown read-only.
       </div>
       {Array.from({ length: arity }, (_, ri) => {
@@ -2357,7 +2357,7 @@ function DerivedImpliedLinks({ arity, factTuples, roleShapes, entityShape, roleL
         return (
           <div key={ri} style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 11, color: 'var(--ink-2)', marginBottom: 4 }}>
-              Implied link → <strong>{playerLabel}</strong>
+              Link fact type → <strong>{playerLabel}</strong>
             </div>
             <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
               {renderNestedHeader(entityShape, entityLabel)}

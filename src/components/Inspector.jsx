@@ -125,13 +125,13 @@ export function ValidationErrorStrip({ elementId, store }) {
 const RING_TYPES = [
   { key: 'irreflexive',           label: 'Irreflexive' },
   { key: 'reflexive',             label: 'Reflexive (locally)' },
-  { key: 'purely-reflexive',      label: 'Purely Reflexive' },
+  { key: 'purely-reflexive',      label: 'Purely reflexive' },
   { key: 'asymmetric',            label: 'Asymmetric' },
   { key: 'symmetric',             label: 'Symmetric' },
   { key: 'antisymmetric',         label: 'Antisymmetric' },
   { key: 'transitive',            label: 'Transitive' },
   { key: 'intransitive',          label: 'Intransitive' },
-  { key: 'strongly-intransitive', label: 'Strongly Intransitive' },
+  { key: 'strongly-intransitive', label: 'Strongly intransitive' },
   { key: 'acyclic',               label: 'Acyclic' },
 ]
 
@@ -255,7 +255,7 @@ function RefModeExpandCollapseButtons({ factId, occurrenceId, store }) {
         style={{ fontSize: 10, padding: '1px 6px',
           background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
           borderRadius: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
-        Fact Type
+        Fact type
       </button>
       {refVt && (
         <button
@@ -263,7 +263,7 @@ function RefModeExpandCollapseButtons({ factId, occurrenceId, store }) {
           style={{ fontSize: 10, padding: '1px 6px',
             background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
             borderRadius: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
-          Value Type
+          Value type
         </button>
       )}
       {occurrenceId && (
@@ -542,7 +542,7 @@ function PropertyDefinitionsEditor() {
       <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700,
         letterSpacing: '0.1em', textTransform: 'uppercase',
         borderBottom: '1px solid var(--border-soft)', paddingBottom: 5, marginBottom: 10 }}>
-        Custom Properties
+        Custom properties
       </div>
       {defs.length === 0 && (
         <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 8, lineHeight: 1.4 }}>
@@ -599,7 +599,7 @@ function PropertyDefinitionsEditor() {
                   const n = usage(d.id)
                   if (n && !window.confirm(`Delete “${d.name}” and its values on ${n} element${n === 1 ? '' : 's'}?`)) return
                   store.deletePropertyDefinition(d.id)
-                }}>Delete Property</DangerBtn>
+                }}>Delete property</DangerBtn>
               </div>
             )}
           </div>
@@ -769,7 +769,7 @@ function GroupInspector({ group }) {
       <DocumentationSection el={group} onChange={update}/>
       <PropertiesSection el={group} kind="group" onChange={update}/>
 
-      <DangerBtn onClick={() => store.deleteGroup(group.id)}>Delete Group</DangerBtn>
+      <DangerBtn onClick={() => store.deleteGroup(group.id)}>Delete group</DangerBtn>
     </div>
   )
 }
@@ -1230,7 +1230,7 @@ function ObjectTypeInspector({ ot }) {
 
   return (
     <div style={{ marginBottom: 18 }}>
-      <InspectorTitle>{ot.kind === 'entity' ? 'Entity Type' : 'Value Type'}</InspectorTitle>
+      <InspectorTitle>{ot.kind === 'entity' ? 'Entity type' : 'Value type'}</InspectorTitle>
       <ImportNotesSection kind="objectTypes" el={ot}/>
       <ValidationErrorStrip elementId={ot.id} store={store}/>
       <Row>
@@ -1243,7 +1243,7 @@ function ObjectTypeInspector({ ot }) {
         compositePiFact ? (
           <>
             <Row>
-              <Label>Reference Mode</Label>
+              <Label>Reference mode</Label>
               <span style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic' }}>
                 composite preferred identifier
               </span>
@@ -1254,13 +1254,13 @@ function ObjectTypeInspector({ ot }) {
                 style={{ fontSize: 10, padding: '1px 6px',
                   background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
                   borderRadius: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
-                Identifying Fact
+                Identifying fact
               </button>
             </div>
           </>
         ) : (
           <Row>
-            <Label>Reference Mode</Label>
+            <Label>Reference mode</Label>
             <TInput value={refLabel} placeholder=".code / kg: / ISBN"
               onChange={v => store.setEntityRefModeLabel(ot.id, v)}/>
           </Row>
@@ -1313,13 +1313,13 @@ function ObjectTypeInspector({ ot }) {
       <Section title="Constraints">
         {ot.kind === 'value' && (
           <Row>
-            <Label>Value Range</Label>
+            <Label>Value range</Label>
             <RangeChip range={ot.valueRange}
               onClick={() => store.selectValueRange({ otId: ot.id })} />
           </Row>
         )}
         <Row>
-          <Label>Cardinality Range</Label>
+          <Label>Cardinality range</Label>
           <RangeChip range={ot.cardinalityRange} format={formatCardinalityRange}
             onClick={() => store.selectCardinalityRange({ otId: ot.id })} />
         </Row>
@@ -1572,14 +1572,14 @@ function RoleConstraintsSection({ role, onChange, onNavigateValueRange, onNaviga
         </div>
       )}
       <Row>
-        <Label>Value Range</Label>
+        <Label>Value range</Label>
         {onNavigateValueRange
           ? <RangeChip range={role.valueRange} onClick={onNavigateValueRange} />
           : <ValueRangeEditor range={role.valueRange}
               onChange={vr => onChange({ valueRange: vr })} />}
       </Row>
       <Row>
-        <Label>Cardinality Range</Label>
+        <Label>Cardinality range</Label>
         {onNavigateCardinalityRange
           ? <RangeChip range={role.cardinalityRange} format={formatCardinalityRange} onClick={onNavigateCardinalityRange} />
           : <ValueRangeEditor naturalNumbers range={role.cardinalityRange}
@@ -1641,7 +1641,7 @@ function CompactRoleList({ fact, store }) {
                   background: isShown ? 'var(--accent)' : 'var(--bg-raised)',
                   color: isShown ? '#fff' : 'var(--ink-muted)',
                   border: '1px solid var(--border)', borderRadius: 3 }}>
-                {isShown ? 'Shown Link' : 'Show Link'}
+                {isShown ? 'Shown link' : 'Show link'}
               </button>
             )}
           </div>
@@ -1666,11 +1666,11 @@ function RoleInspector({ fact, roleIndex, mandatorySelected = false }) {
           onClick={() => store.select(fact.id, 'fact')}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
             color: 'var(--accent)', fontSize: 11 }}>
-          ← {reading ? reading : 'Fact Type'}
+          ← {reading ? reading : 'Fact type'}
         </button>
       </div>
       <Row>
-        <Label>Object Type</Label>
+        <Label>Object type</Label>
         <select value={role.objectTypeId || ''} style={{ width: '100%' }}
           onChange={e => store.assignObjectTypeToRole(fact.id, roleIndex, e.target.value || null)}
           onMouseDown={e => e.stopPropagation()}>
@@ -1686,7 +1686,7 @@ function RoleInspector({ fact, roleIndex, mandatorySelected = false }) {
         </select>
       </Row>
       <Row>
-        <Label>Role Name</Label>
+        <Label>Role name</Label>
         <TInput value={role.roleName} placeholder="optional"
           onChange={v => store.updateRole(fact.id, roleIndex, { roleName: v })}/>
       </Row>
@@ -1701,7 +1701,7 @@ function RoleInspector({ fact, roleIndex, mandatorySelected = false }) {
       {mandatorySelected && role.mandatoryId && <GroupMembershipSection id={role.mandatoryId} title="Groups of the mandatory constraint"/>}
       <Section title="Usage">
         <DangerBtn onClick={() => { store.deleteRole(fact.id, roleIndex); store.select(fact.id, 'fact') }}>
-          Delete Role
+          Delete role
         </DangerBtn>
       </Section>
     </div>
@@ -1772,12 +1772,12 @@ function UniquenessBarInspector({ fact, uIndex }) {
 
   return (
     <div style={{ marginBottom: 18 }}>
-      <InspectorTitle>Internal Uniqueness</InspectorTitle>
+      <InspectorTitle>Internal uniqueness</InspectorTitle>
       <div style={{ marginBottom: 10 }}>
         <button onClick={() => isImplicit ? store.selectImplicitLink(parentFact.id, fact._implicitRoleIndex) : store.select(fact.id, 'fact')}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
             color: 'var(--accent)', fontSize: 11 }}>
-          ← {reading ?? 'Fact Type'}
+          ← {reading ?? 'Fact type'}
         </button>
       </div>
       <Row>
@@ -1802,7 +1802,7 @@ function UniquenessBarInspector({ fact, uIndex }) {
       <Row>
         <Label>Identification</Label>
         <Checkbox
-          label="Preferred Identifier"
+          label="Preferred identifier"
           checked={isPreferred}
           disabled={!canBePreferred || identifiesVt}
           title={identifiesVt ? 'A value type cannot have a preferred identifier' : undefined}
@@ -1843,12 +1843,12 @@ function ImpliedUniquenessBarInspector({ fact, roleIndex }) {
 
   return (
     <div style={{ marginBottom: 18 }}>
-      <InspectorTitle>Implied Uniqueness</InspectorTitle>
+      <InspectorTitle>Implied uniqueness</InspectorTitle>
       <div style={{ marginBottom: 10 }}>
         <button onClick={() => store.select(fact.id, 'fact')}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
             color: 'var(--accent)', fontSize: 11 }}>
-          ← {reading ?? 'Fact Type'}
+          ← {reading ?? 'Fact type'}
         </button>
       </div>
       <Row>
@@ -1882,12 +1882,12 @@ function ImpliedMandatoryDotInspector({ fact, roleIndex }) {
 
   return (
     <div style={{ marginBottom: 18 }}>
-      <InspectorTitle>Implied Mandatory Role</InspectorTitle>
+      <InspectorTitle>Implied mandatory role</InspectorTitle>
       <div style={{ marginBottom: 10 }}>
         <button onClick={() => store.select(fact.id, 'fact')}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
             color: 'var(--accent)', fontSize: 11 }}>
-          ← {reading ?? 'Fact Type'}
+          ← {reading ?? 'Fact type'}
         </button>
       </div>
       <Row>
@@ -1927,12 +1927,12 @@ function InternalFrequencyInspector({ fact, ifItem }) {
 
   return (
     <div style={{ marginBottom: 18 }}>
-      <InspectorTitle>Frequency Range</InspectorTitle>
+      <InspectorTitle>Frequency range</InspectorTitle>
       <div style={{ marginBottom: 10 }}>
         <button onClick={() => isImplicit ? store.selectImplicitLink(parentFact.id, fact._implicitRoleIndex) : store.select(fact.id, 'fact')}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
             color: 'var(--accent)', fontSize: 11 }}>
-          ← {reading ?? 'Fact Type'}
+          ← {reading ?? 'Fact type'}
         </button>
       </div>
       <Row>
@@ -1955,7 +1955,7 @@ function InternalFrequencyInspector({ fact, ifItem }) {
         })}
       </Row>
       <Row>
-        <Label>Frequency Range</Label>
+        <Label>Frequency range</Label>
         <ValueRangeEditor
           positiveIntegers
           range={ifItem.range}
@@ -1974,7 +1974,7 @@ function InternalFrequencyInspector({ fact, ifItem }) {
         <div style={{ marginTop: 8 }}>
           <Label>Usage</Label>
           <DangerBtn onClick={() => { store.removeInternalFrequency(fact.id, ifItem.id); store.select(fact.id, 'fact') }}>
-            Delete Frequency Range
+            Delete frequency range
           </DangerBtn>
         </div>
       )}
@@ -2014,7 +2014,7 @@ function useRangeSelectionInfo(sel) {
     if (!f) return null
     const role = f.roles[sel.roleIndex]
     if (!role) return null
-    const reading = getDisplayReading(f) || 'Fact Type'
+    const reading = getDisplayReading(f) || 'Fact type'
     const player = store.objectTypes.find(o => o.id === role.objectTypeId)
     return {
       label: `Role ${sel.roleIndex + 1} of ${reading}`,
@@ -2096,7 +2096,7 @@ function ValueRangeConstraintInspector({ sel }) {
   if (!info) return null
   return (
     <div style={{ marginBottom: 18 }}>
-      <InspectorTitle>Value Range</InspectorTitle>
+      <InspectorTitle>Value range</InspectorTitle>
       <div style={{ marginBottom: 10 }}>
         <button onClick={info.onBack}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
@@ -2121,7 +2121,7 @@ function ValueRangeConstraintInspector({ sel }) {
         onChange={v => info.onPatch({ valueRangeDeontic: v })}/>
       <RangeLabelPosition sel={sel}/>
       <Label>Usage</Label>
-      <DangerBtn onClick={info.onDeleteValueRange}>Delete Value Range</DangerBtn>
+      <DangerBtn onClick={info.onDeleteValueRange}>Delete value range</DangerBtn>
     </div>
   )
 }
@@ -2132,7 +2132,7 @@ function CardinalityRangeInspector({ sel }) {
   if (!info) return null
   return (
     <div style={{ marginBottom: 18 }}>
-      <InspectorTitle>Cardinality Range</InspectorTitle>
+      <InspectorTitle>Cardinality range</InspectorTitle>
       <div style={{ marginBottom: 10 }}>
         <button onClick={info.onBack}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
@@ -2157,7 +2157,7 @@ function CardinalityRangeInspector({ sel }) {
         onChange={v => info.onPatch({ cardinalityRangeDeontic: v })}/>
       <RangeLabelPosition sel={sel} cardinality/>
       <Label>Usage</Label>
-      <DangerBtn onClick={info.onDeleteCardinalityRange}>Delete Cardinality Range</DangerBtn>
+      <DangerBtn onClick={info.onDeleteCardinalityRange}>Delete cardinality range</DangerBtn>
     </div>
   )
 }
@@ -2614,7 +2614,7 @@ function FactPresentationSubsection({ fact, store }) {
   return (
     <Section title="Presentation">
       <Row>
-        <Label>Shown Role Box Order</Label>
+        <Label>Shown role box order</Label>
         <select value={JSON.stringify(dro)} style={{ width: '100%' }}
           onChange={e => {
             const newOrder = JSON.parse(e.target.value)
@@ -2627,10 +2627,10 @@ function FactPresentationSubsection({ fact, store }) {
       </Row>
       {fact.arity === 2 && (
         <Row>
-          <Label>Shown Reading</Label>
+          <Label>Shown reading</Label>
           {[
             { value: 'forward', label: 'Forward only' },
-            { value: 'both',    label: 'Forward / Reverse' },
+            { value: 'both',    label: 'Forward / reverse' },
             { value: 'reverse', label: '◂  Reverse only' },
           ].map(opt => {
             const disabled =
@@ -2679,7 +2679,7 @@ function FactPresentationSubsection({ fact, store }) {
         const currentKey = JSON.stringify(ro)
         return (
           <Row>
-            <Label>Shown Reading</Label>
+            <Label>Shown reading</Label>
             <select value={currentKey} style={{ width: '100%' }}
               onChange={e => store.updateFactLayout(fact.id, { readingOrder: e.target.value ? JSON.parse(e.target.value) : undefined })}>
               {readings.map((r, i) => (
@@ -2709,10 +2709,10 @@ function FactPresentationSubsection({ fact, store }) {
         ))}
       </Row>
       <Row>
-        <Label>Reading Position</Label>
+        <Label>Reading position</Label>
         {fact.objectified && (
           <Checkbox
-            label="Nested Reading"
+            label="Fact type reading"
             checked={!!fact.nestedReading}
             disabled={fact.orientation === 'vertical'}
             onChange={v => {
@@ -2798,12 +2798,12 @@ function FactPresentationSubsection({ fact, store }) {
         )
       })()}
       {fact.objectified && (
-        <LabelPositionRow label="Name Position" name={`npos-${fact.id}`}
+        <LabelPositionRow label="Name position" name={`npos-${fact.id}`}
           moved={!!fact.nameOffset && (fact.nameOffset.dx !== 0 || fact.nameOffset.dy !== 0)}
           onDefault={() => store.updateFactLayout(fact.id, { nameOffset: null })}/>
       )}
        <Row>
-         <Label>Uniqueness Bar Position</Label>
+         <Label>Uniqueness bar position</Label>
        </Row>
        <Row>
          {(fact.orientation === 'vertical'
@@ -2861,7 +2861,7 @@ function FactConstraintsSubsection({ fact, store }) {
               background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
               borderRadius: 3 }}>
             <span style={{ flex: 1 }}>Roles: {[...u].sort((a, b) => a - b).map(i => i + 1).join(', ')}</span>
-            {isPreferred && <span title="Preferred Identifier"
+            {isPreferred && <span title="Preferred identifier"
               style={{ color: 'var(--col-mandatory)', fontSize: 11, flexShrink: 0 }}>★</span>}
             <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent)', flexShrink: 0, lineHeight: 1 }}>→</span>
           </div>
@@ -2878,7 +2878,7 @@ function FactConstraintsSubsection({ fact, store }) {
 
       {fact.objectified && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none' && (
         <Row>
-          <Label>Value Range</Label>
+          <Label>Value range</Label>
           <RangeChip range={fact.valueRange}
             onClick={() => store.selectValueRange({ nestedFactId: fact.id })} />
         </Row>
@@ -2886,7 +2886,7 @@ function FactConstraintsSubsection({ fact, store }) {
 
       {fact.objectified && (
         <Row>
-          <Label>Cardinality Range</Label>
+          <Label>Cardinality range</Label>
           <RangeChip range={fact.cardinalityRange} format={formatCardinalityRange}
             onClick={() => store.selectCardinalityRange({ nestedFactId: fact.id })} />
         </Row>
@@ -3031,7 +3031,7 @@ function FactInspector({ fact }) {
         <DiagramList elementId={fact.id} kind="fact" />
       </Section>
       <DangerBtn onClick={() => openDeleteFromSchema([fact.id])}>
-        {fact.objectified ? 'Delete Nested Entity Type from Schema…' : 'Delete Fact Type from Schema…'}
+        {fact.objectified ? 'Delete objectified fact type from schema…' : 'Delete fact type from schema…'}
       </DangerBtn>
     </div>
   )
@@ -3042,15 +3042,15 @@ function FactInspector({ fact }) {
         <>
           {/* Object-type identity */}
           <div style={{ marginBottom: 18 }}>
-            <InspectorTitle>Nested Entity Type</InspectorTitle>
+            <InspectorTitle>Objectified fact type</InspectorTitle>
             <ValidationErrorStrip elementId={fact.id} store={store}/>
             <Row>
-              <Label>Entity Name</Label>
+              <Label>Entity name</Label>
               <TInput value={fact.objectifiedName || ''} placeholder="Name"
                 onChange={v => store.updateFact(fact.id, { objectifiedName: v })}/>
             </Row>
             <Row>
-              <Label>Reference Mode</Label>
+              <Label>Reference mode</Label>
               <TInput value={fact.objectifiedRefMode || ''} placeholder="id / name / none"
                 onChange={v => store.setNestedRefModeLabel(fact.id, v)}/>
             </Row>
@@ -3126,7 +3126,7 @@ function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
     }
   }, [il, parentFact.id, parentFact.objectified, roleIndex, store])
 
-  if (!il) return <div style={{ marginBottom: 18 }}><InspectorTitle>Role</InspectorTitle><div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No implicit link data available.</div></div>
+  if (!il) return <div style={{ marginBottom: 18 }}><InspectorTitle>Role</InspectorTitle><div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No link fact type data available.</div></div>
   const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
 
@@ -3160,7 +3160,7 @@ function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
         </button>
       </div>
       <Row>
-        <Label>Object Type</Label>
+        <Label>Object type</Label>
         <div style={{ fontSize: 12, color: 'var(--ink)', padding: '4px 8px',
           background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', borderRadius: 4 }}>
           {playerName}
@@ -3168,7 +3168,7 @@ function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
         </div>
       </Row>
       <Row>
-        <Label>Role Name</Label>
+        <Label>Role name</Label>
         <TInput value={role.roleName || ''} placeholder="optional"
           onChange={v => {
             const roleNames = [...(il.roleNames || [null, null])]
@@ -3186,7 +3186,7 @@ function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
 
         {parentRole && parentUniqueness.length > 0 && parentUniqueness.some(u => u.roles.includes(parentRoleIndex)) && (
           <>
-            <Label style={{ marginTop: 8 }}>Parent Fact Uniqueness</Label>
+            <Label style={{ marginTop: 8 }}>Parent fact uniqueness</Label>
             {parentUniqueness.map(({ roles: uRoles }, ui) => {
               if (!uRoles.includes(parentRoleIndex)) return null
               const key = JSON.stringify([...uRoles].sort((a, b) => a - b))
@@ -3230,7 +3230,7 @@ function ImplicitLinkRoleInspector({ parentFact, roleIndex, ilRoleIndex }) {
 
         {parentRole && parentFrequency.length > 0 && parentFrequency.some(ifItem => ifItem.roles.includes(parentRoleIndex)) && (
           <>
-            <Label style={{ marginTop: 8 }}>Parent Fact Frequency</Label>
+            <Label style={{ marginTop: 8 }}>Parent fact frequency</Label>
             {parentFrequency.map(ifItem => {
               if (!ifItem.roles.includes(parentRoleIndex)) return null
               const range = ifItem.range
@@ -3324,7 +3324,7 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
     }
   }, [mergedIl, parentFact.id, parentFact.objectified, roleIndex, store])
 
-  if (!mergedIl) return <div style={{ marginBottom: 18 }}><InspectorTitle>Implicit Link</InspectorTitle><div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No implicit link data available.</div></div>
+  if (!mergedIl) return <div style={{ marginBottom: 18 }}><InspectorTitle>Link fact type</InspectorTitle><div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No link fact type data available.</div></div>
   const role = parentFact.roles[roleIndex]
   const otMap = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
   const ot = otMap[role.objectTypeId]
@@ -3366,7 +3366,7 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
         <button onClick={() => store.select(parentFact.id, 'fact')}
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
             color: 'var(--accent)', fontSize: 11 }}>
-          ← {parentFact.objectifiedName || 'Fact Type'}
+          ← {parentFact.objectifiedName || 'Fact type'}
         </button>
       </div>
 
@@ -3390,7 +3390,7 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
 
       <Section title="Presentation">
         <Row>
-          <Label>Shown Role Box Order</Label>
+          <Label>Shown role box order</Label>
           <select value={JSON.stringify(mergedIl.roleOrder || [0, 1])} style={{ width: '100%' }}
             onChange={e => {
               const newOrder = JSON.parse(e.target.value)
@@ -3401,10 +3401,10 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
           </select>
         </Row>
         <Row>
-          <Label>Shown Reading</Label>
+          <Label>Shown reading</Label>
           {[
             { value: 'forward', label: 'Forward only' },
-            { value: 'both',    label: 'Forward / Reverse' },
+            { value: 'both',    label: 'Forward / reverse' },
             { value: 'reverse', label: '◂ Reverse only' },
           ].map(opt => {
             const disabled =
@@ -3449,7 +3449,7 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
           ))}
         </Row>
         <Row>
-          <Label>Reading Position</Label>
+          <Label>Reading position</Label>
         </Row>
         {(() => {
           const isVert    = mergedIl.orientation === 'vertical'
@@ -3490,7 +3490,7 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
           )
         })()}
         <Row>
-          <Label>Uniqueness Bar Position</Label>
+          <Label>Uniqueness bar position</Label>
         </Row>
         <Row>
           {(mergedIl.orientation === 'vertical'
@@ -3523,7 +3523,7 @@ function ImplicitLinkInspector({ parentFact, roleIndex }) {
               {uBars.map((uRoles, ui) => {
                 const key = JSON.stringify([...uRoles].sort())
                 const isPreferred = prefArr.some(pu => JSON.stringify([...pu].sort()) === key)
-                const label = uBars.length > 1 ? `Internal Uniqueness ${ui + 1}` : 'Internal Uniqueness'
+                const label = uBars.length > 1 ? `Internal Uniqueness ${ui + 1}` : 'Internal uniqueness'
                 return (
                   <button key={ui} onClick={() => store.selectImplicitLinkUniqueness(parentFact.id, roleIndex, ui)}
                     style={{ width: '100%', padding: '6px 12px', fontSize: 12, background: 'var(--bg-raised)',
@@ -3705,7 +3705,7 @@ function SubtypeInspector({ st }) {
   }
   return (
     <div style={{ marginBottom: 18 }}>
-      <InspectorTitle>Subtype Relationship</InspectorTitle>
+      <InspectorTitle>Subtype link</InspectorTitle>
       <ImportNotesSection kind="subtypes" el={st}/>
       <ValidationErrorStrip elementId={st.id} store={store}/>
       <Row>
@@ -3716,7 +3716,7 @@ function SubtypeInspector({ st }) {
       </Row>
       <Row>
         <Checkbox
-          label="Inherits Preferred Identifier"
+          label="Inherits preferred identifier"
           checked={st.inheritsPreferredIdentifier !== false}
           onChange={v => store.updateSubtype(st.id, { inheritsPreferredIdentifier: v })}
         />
@@ -3726,22 +3726,22 @@ function SubtypeInspector({ st }) {
       <GroupMembershipSection id={st.id}/>
       <DiagramList elementId={st.id} kind="subtype" subtypeEndpointIds={[st.subId, st.superId]} />
       <div style={{ marginTop: 8 }}>
-        <DangerBtn onClick={() => openDeleteFromSchema([st.id])}>Delete Subtype Link from Schema…</DangerBtn>
+        <DangerBtn onClick={() => openDeleteFromSchema([st.id])}>Delete subtype link from schema…</DangerBtn>
       </div>
     </div>
   )
 }
 
 const EXTERNAL_CONSTRAINT_TITLES = {
-  ring:        'Ring Constraint',
-  exclusiveOr: 'Exclusive Or Constraint',
-  exclusion:   'Exclusion Constraint',
-  inclusiveOr: 'Inclusive Or Constraint',
-  uniqueness:  'External Uniqueness Constraint',
-  equality:    'Equality Constraint',
-  subset:      'Subset Constraint',
-  frequency:       'External Frequency Constraint',
-  valueComparison: 'Value Comparison Constraint',
+  ring:        'Ring constraint',
+  exclusiveOr: 'Exclusive or constraint',
+  exclusion:   'Exclusion constraint',
+  inclusiveOr: 'Inclusive or constraint',
+  uniqueness:  'External uniqueness constraint',
+  equality:    'Equality constraint',
+  subset:      'Subset constraint',
+  frequency:       'External frequency constraint',
+  valueComparison: 'Value comparison constraint',
 }
 
 // ── Subtype-like Constraint inspector ─────────────────────────────────────────
@@ -3888,7 +3888,7 @@ function ExternalConstraintInspector({ c }) {
           <Row>
             <Label>Identification</Label>
             <Checkbox
-              label="Is Preferred Identifier"
+              label="Is preferred identifier"
               checked={!!c.isPreferredIdentifier}
               disabled={piDisabled}
               title={piTitle}
@@ -3925,7 +3925,7 @@ function ExternalConstraintInspector({ c }) {
       {/* Frequency range — only for frequency */}
       {c.constraintType === 'frequency' && (
         <Row>
-          <Label>Frequency Range</Label>
+          <Label>Frequency range</Label>
           <ValueRangeEditor
             range={c.frequency}
             onChange={vr => store.updateConstraint(c.id, { frequency: vr })}
@@ -3937,7 +3937,7 @@ function ExternalConstraintInspector({ c }) {
       {/* Target Object Type — only for inclusiveOr / exclusiveOr / uniqueness / frequency */}
       {(c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr' || c.constraintType === 'uniqueness' || c.constraintType === 'frequency') && (
         <Row>
-          <Label>Target Object Type</Label>
+          <Label>Target object type</Label>
           <select
             value={c.targetObjectTypeId ?? ''}
             onChange={e => store.updateConstraint(c.id, {
@@ -3985,7 +3985,7 @@ function ExternalConstraintInspector({ c }) {
         const SYM_W = 28, SYM_H = 20
         return (
           <Row>
-            <Label>Ring Properties</Label>
+            <Label>Ring properties</Label>
             {isEmpty && (
               <div style={{ marginBottom: 8, padding: '5px 8px', borderRadius: 4,
                 background: '#fdecea', border: '1px solid #f5c6cb',
@@ -4064,7 +4064,7 @@ function ExternalConstraintInspector({ c }) {
                 padding: '3px 6px', marginBottom: 3, fontWeight: 600 }}>
                 ⚠ {gc.warning}
               </div>
-            : <div style={{ opacity: 0.85 }}>Click a role box or subtype relationship on the canvas · Enter or click constraint to commit.</div>
+            : <div style={{ opacity: 0.85 }}>Click a role box or subtype link on the canvas · Enter or click constraint to commit.</div>
           }
           <button onClick={() => store.abandonSequenceConstruction()}
             style={{ marginTop: 6, padding: '2px 8px', fontSize: 10, background: 'rgba(255,255,255,0.2)',
@@ -4359,7 +4359,7 @@ function ExternalConstraintInspector({ c }) {
       <Section title="Usage">
         <DiagramList elementId={c.id} kind="constraint" />
       </Section>
-      <DangerBtn onClick={() => openDeleteFromSchema([c.id])}>Delete Constraint from Schema…</DangerBtn>
+      <DangerBtn onClick={() => openDeleteFromSchema([c.id])}>Delete constraint from schema…</DangerBtn>
     </div>
   )
 }
@@ -4374,7 +4374,7 @@ function FormulaConstraintInspector({ c }) {
   const g = !c.deontic && c.rule && entry.formula ? asGraphical(upgradeRule(c.rule)) : null
   return (
     <div style={{ marginBottom: 18 }}>
-      <InspectorTitle>Formula Constraint</InspectorTitle>
+      <InspectorTitle>Formula constraint</InspectorTitle>
       <ImportNotesSection kind="constraints" el={c}/>
       <ValidationErrorStrip elementId={c.id} store={store}/>
       <Row>
@@ -4410,7 +4410,7 @@ function FormulaConstraintInspector({ c }) {
         <DiagramList elementId={c.id} kind="constraint" />
       </Section>
       <div style={{ marginTop: 8 }}>
-        <DangerBtn onClick={() => openDeleteFromSchema([c.id])}>Delete Constraint from Schema…</DangerBtn>
+        <DangerBtn onClick={() => openDeleteFromSchema([c.id])}>Delete constraint from schema…</DangerBtn>
       </div>
     </div>
   )
@@ -4447,7 +4447,7 @@ function ConstraintInspector({ c }) {
       )}
 
       <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginBottom: 8,
-        textTransform: 'uppercase', letterSpacing: '0.07em' }}>Role Sequences</div>
+        textTransform: 'uppercase', letterSpacing: '0.07em' }}>Role sequences</div>
       {c.roleSequences.map((group, gi) => (
         <div key={gi} style={{ marginBottom: 8 }}>
           <div style={{ fontSize: 11, color: 'var(--ink-3)', marginBottom: 4 }}>
@@ -4498,7 +4498,7 @@ function ConstraintInspector({ c }) {
         <DiagramList elementId={c.id} kind="constraint" />
       </Section>
       <div style={{ marginTop: 8 }}>
-        <DangerBtn onClick={() => openDeleteFromSchema([c.id])}>Delete Constraint from Schema…</DangerBtn>
+        <DangerBtn onClick={() => openDeleteFromSchema([c.id])}>Delete constraint from schema…</DangerBtn>
       </div>
     </div>
   )
@@ -4668,7 +4668,7 @@ export default function Inspector() {
         : selectedKind === 'implicitLink' && fact && selectedImplicitLink != null
         ? <ImplicitLinkInspector parentFact={fact} roleIndex={selectedImplicitLink} />
         : selectedKind === 'implicitLink' && fact
-        ? <div style={{ marginBottom: 18 }}><InspectorTitle>Implicit Link</InspectorTitle><div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No implicit link data available. Try showing the link from the role context menu first.</div></div>
+        ? <div style={{ marginBottom: 18 }}><InspectorTitle>Link fact type</InspectorTitle><div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>No link fact type data available. Try showing the link from the role context menu first.</div></div>
         : roleFact
           ? <RoleInspector fact={roleFact} roleIndex={selectedRole.roleIndex} />
           : selectedUniqueness && fact
@@ -4708,7 +4708,7 @@ export default function Inspector() {
                 border: '1px solid var(--danger)', borderRadius: 3 }}
               onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--danger)' }}>
-              Delete from Schema…
+              Delete from schema…
             </button>}
           </div>
         </div>
@@ -4719,7 +4719,7 @@ export default function Inspector() {
           <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700,
             letterSpacing: '0.1em', textTransform: 'uppercase',
             borderBottom: '1px solid var(--border-soft)', paddingBottom: 5, marginBottom: 12 }}>
-            Schema Settings
+            Schema settings
           </div>
 
           {(store.schemas?.length ?? 0) > 1 && (() => {
@@ -4773,7 +4773,7 @@ export default function Inspector() {
           <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700,
             letterSpacing: '0.1em', textTransform: 'uppercase',
             borderBottom: '1px solid var(--border-soft)', paddingBottom: 5, marginBottom: 12 }}>
-            Display Settings
+            Display settings
           </div>
 
           <div style={{ marginBottom: 6 }}>

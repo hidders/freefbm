@@ -15,13 +15,13 @@ const TOOL_HINTS = {
   addEntity:          'Click canvas to place an Entity Type',
   addValue:           'Click canvas to place a Value Type',
   addFact2:           'Click canvas to place a Binary Fact Type',
-  addNestedFact:      'Click canvas to place a Nested Entity Type',
+  addNestedFact:      'Click canvas to place an objectified fact type',
   assignRole:         'Click a role box to set the source role · Then click an object type to complete the assignment',
   toggleMandatory:    'Click a role box to toggle its mandatory constraint on/off',
   addInternalUniqueness: 'Click a fact type or role box to start · Click role boxes to build the uniqueness bar · Click the bar or press Enter to commit',
   addInternalFrequency:  'Click a fact type to select it · Click role boxes to include them · Click the constraint or press Enter to set the frequency range',
-  addSubtype:         'Click the subtype object type, then the supertype object type to draw a subtype arrow',
-  connectConstraint:  'Click an external constraint · Click role boxes or subtype relationships to build sequences · Click the constraint or press Enter to commit',
+  addSubtype:         'Click the subtype object type, then the supertype object type to draw a subtype link',
+  connectConstraint:  'Click an external constraint · Click role boxes or subtype links to build sequences · Click the constraint or press Enter to commit',
   'addConstraint:uniqueness':      'Click canvas to place an External Uniqueness constraint · Double-click the constraint to add a role sequence',
   'addConstraint:inclusiveOr':     'Click canvas to place an Inclusive Or constraint · Double-click the constraint to add a role sequence',
   'addConstraint:exclusion':       'Click canvas to place an Exclusion constraint · Double-click the constraint to add a role sequence',
@@ -172,7 +172,7 @@ export default function StatusBar() {
           {orphanNotice.text} · it stays in the schema ·{' '}
           <span role="button" style={{ color: 'var(--danger)', textDecoration: 'underline', cursor: 'pointer' }}
             onClick={() => { useOrmStore.setState({ orphanNotice: null }); openDeleteFromSchema(orphanNotice.ids) }}>
-            Delete from Schema…
+            Delete from schema…
           </span>
         </span>
         <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{Math.round(store.zoom * 100)}%</span>

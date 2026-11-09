@@ -708,7 +708,7 @@ export function impliedLinkEntries(fact, ctx) {
   const base = { elementId: fact.id, subject: `${ctx.typeName(fact.id)} nests ${reading}` }
   const links = fact.roles.map((_, i) => ctx.linkById.get(`${fact.id}_il_${i}`))
   if (links.some(l => !l) || fact.roles.some(r => !r.objectTypeId))
-    return [{ ...base, key: `${fact.id}:il`, kind: 'Implied links', note: 'Not every role has a player and an implied link yet.' }]
+    return [{ ...base, key: `${fact.id}:il`, kind: 'Link fact types', note: 'Not every role has a player and a link fact type yet.' }]
   const xs = () => fact.roles.map(r => mkVar(r.objectTypeId))
   const linked = (d, vs) => and(links.map((l, i) => factAtom(l.id, [d, vs[i]])))
   const out = []

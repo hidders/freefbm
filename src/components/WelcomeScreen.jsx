@@ -87,9 +87,9 @@ export default function WelcomeScreen({ onClose }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 22 }}>
           <ActionBtn icon="✦" label="Load sample" sub="University schema"
             onClick={() => store.loadModel(SAMPLE_RAW)} />
-          <ActionBtn icon={<EntityTypeIcon active={false} />} label="Add Entity Type" sub="Press E"
+          <ActionBtn icon={<EntityTypeIcon active={false} />} label="Add entity type" sub="Press E"
             onClick={() => store.setTool('addEntity')} />
-          <ActionBtn icon={<FactTypeIcon active={false} />} label="Add Fact Type" sub="Press F"
+          <ActionBtn icon={<FactTypeIcon active={false} />} label="Add fact type" sub="Press F"
             onClick={() => store.setTool('addFact2')} />
         </div>
 
@@ -97,7 +97,7 @@ export default function WelcomeScreen({ onClose }) {
 
         <div style={{ fontSize: 10, color: 'var(--accent)', textTransform: 'uppercase',
           letterSpacing: '0.1em', marginBottom: 10, fontWeight: 700 }}>
-          Keyboard Shortcuts
+          Keyboard shortcuts
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
@@ -106,7 +106,7 @@ export default function WelcomeScreen({ onClose }) {
           ))}
         </div>
         <div style={{ marginTop: 8, fontSize: 11, color: 'var(--ink-muted)' }}>
-          All shortcuts: press <kbd style={{ padding: '0 5px', background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 3 }}>?</kbd> or Help › Keyboard Shortcuts.
+          All shortcuts: press <kbd style={{ padding: '0 5px', background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 3 }}>?</kbd> or Help › Keyboard shortcuts.
         </div>
 
         <div style={{ marginTop: 16, padding: '10px 12px', background: 'var(--bg-raised)',
@@ -122,7 +122,7 @@ export default function WelcomeScreen({ onClose }) {
           <kbd style={{ padding: '1px 5px', background:'var(--bg-deep)',
             border:'1px solid var(--border)', borderRadius:3 }}>U</kbd>
           ) — click the subtype entity, then the supertype.{' '}
-          <strong style={{ color: 'var(--ink-2)' }}>Constraint</strong> — click an external constraint, then role boxes or subtype relationships to build groups.
+          <strong style={{ color: 'var(--ink-2)' }}>Constraint</strong> — click an external constraint, then role boxes or subtype links to build groups.
         </div>
 
         {onClose && (
