@@ -79,6 +79,16 @@ ipcMain.on('window:document', (event, { path: filePath, dirty, title }) => {
   }
 })
 
+// The renderer says which Schema menu items apply to the active schema.
+ipcMain.on('window:menuState', (_event, enabled) => {
+  const menu = Menu.getApplicationMenu()
+  for (const [id, on] of Object.entries(enabled ?? {})) {
+    if (!id.startsWith('schema:')) continue
+    const item = menu?.getMenuItemById(id)
+    if (item) item.enabled = !!on
+  }
+})
+
 const EDIT_COMMANDS = new Set(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll'])
 ipcMain.on('window:nativeEdit', (event, cmd) => {
   if (EDIT_COMMANDS.has(cmd)) event.sender[cmd]()
@@ -116,6 +126,7 @@ ipcMain.on('workbench:msg', (event, msg) => {
 function buildMenu(win) {
   const isMac = process.platform === 'darwin'
   const send = (ch) => () => win.webContents.send(ch)
+  const schemaAction = (id) => () => win.webContents.send('menu:schema', id)
   const template = [
     ...(isMac ? [{ role: 'appMenu' }] : []),
     {
@@ -174,6 +185,22 @@ function buildMenu(win) {
         { label: 'Verbalisation Workbench', accelerator: 'CmdOrCtrl+Shift+B', click: openWorkbench },
         { type: 'separator' },
         { role: 'toggleDevTools' }, { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      // Acts on the active schema (src/utils/schemaActions.js).
+      label: 'Schema',
+      submenu: [
+        { id: 'schema:newOrm2',        label: 'New ORM2 Schema',        click: schemaAction('schema:newOrm2') },
+        { id: 'schema:newRelational',  label: 'New Relational Schema',  click: schemaAction('schema:newRelational') },
+        { type: 'separator' },
+        { id: 'schema:generateTables', label: 'Generate Tables…',       click: schemaAction('schema:generateTables') },
+        { id: 'schema:guessOrm',       label: 'Guess ORM2 Schema…',     click: schemaAction('schema:guessOrm') },
+        { id: 'schema:transform',      label: 'Transform…',             click: schemaAction('schema:transform') },
+        { id: 'schema:refactor',       label: 'Refactor Derived Elements…', click: schemaAction('schema:refactor') },
+        { id: 'schema:derivedTable',   label: 'Add Derived Table',      click: schemaAction('schema:derivedTable') },
+        { type: 'separator' },
+        { id: 'schema:delete',         label: 'Delete Schema…',         click: schemaAction('schema:delete') },
       ],
     },
     { role: 'windowMenu' },

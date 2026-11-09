@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { useShallow } from 'zustand/react/shallow'
 import { activeSchemaIdOf } from '../store/storeHelpers'
+import { confirmDeleteSchema } from '../utils/schemaActions'
 
 const FONT = 'var(--font-ui)'
 
@@ -108,14 +109,7 @@ export default function SchemaStrip() {
                 title={size === 0 ? 'Remove this empty schema' : 'Delete this schema with its elements (Undo brings it back)'}
                 onClick={e => {
                   e.stopPropagation()
-                  const st = useOrmStore.getState()
-                  const ms = [...(st.mappings ?? []), ...(st.views ?? [])].filter(m => m.sourceSchemaId === sc.id || m.targetSchemaId === sc.id)
-                  if (size > 0 || ms.length) {
-                    const parts = [size ? `its ${size} element${size === 1 ? '' : 's'}` : null,
-                      ms.length ? `${ms.length === 1 ? 'the mapping' : `the ${ms.length} mappings`} ${ms.map(m => `“${m.name}”`).join(', ')}` : null].filter(Boolean)
-                    if (!window.confirm(`Delete schema “${sc.name}” with ${parts.join(' and ')}? Undo brings it back.`)) return
-                  }
-                  st.deleteSchema(sc.id, { withContents: true })
+                  confirmDeleteSchema(sc.id)
                 }}
                 style={{ color: 'var(--ink-muted)', fontSize: 10, marginLeft: 2, cursor: 'pointer' }}
                 onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)' }}

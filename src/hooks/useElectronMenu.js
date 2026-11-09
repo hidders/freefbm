@@ -8,6 +8,7 @@ import { textPanelOf } from '../utils/textPanel'
 import { isErdDiagram } from '../components/ErdView'
 import { activeReadOnly } from '../relational/face'
 import { activeSchemaIdOf } from '../store/storeHelpers'
+import { runSchemaAction, schemaMenuState } from '../utils/schemaActions'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
@@ -119,6 +120,24 @@ export function useElectronMenu() {
       const path = await api.saveSql({ defaultPath: `${schema.name.replace(/[^A-Za-z0-9_-]+/g, '_')}-rows.sql`, content: sql })
       if (path && notes.length) alert(notes.join('\n'))
     })
+
+    // Schema menu: actions on the active schema (utils/schemaActions.js);
+    // the main process greys out those that don't apply.
+    on('menu:schema', (_e, action) => runSchemaAction(action))
+    let lastMenuState = '', lastRefs = []
+    const syncMenu = (s) => {
+      // Only what the menu state reads (dragging changes none of these).
+      const refs = [s.schemas, s.objectTypes, s.facts, s.diagrams, s.activeDiagramId]
+      if (refs.every((r, i) => r === lastRefs[i])) return
+      lastRefs = refs
+      const enabled = schemaMenuState(s)
+      const key = JSON.stringify(enabled)
+      if (key === lastMenuState) return
+      lastMenuState = key
+      api.setMenuState?.(enabled)
+    }
+    syncMenu(useOrmStore.getState())
+    unsubs.push(useOrmStore.subscribe(syncMenu))
 
     return () => unsubs.forEach(u => u())
   }, []) // register once — storeRef.current always holds latest state
