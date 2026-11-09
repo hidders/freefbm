@@ -6,7 +6,7 @@
 
 import React, { useMemo } from 'react'
 import { useOrmStore } from '../store/ormStore'
-import { relationalView, rmObjectOf, relationalCounts } from '../relational/relationalView.js'
+import { relationalView, rmObjectOf } from '../relational/relationalView.js'
 import { exportPostgresDdl } from '../relational/ddlExport.js'
 import { planEnforcement, sqlSettings, targetOf } from '../relational/enforcement.js'
 import { quoteIdent } from '../relational/sqlNames.js'
@@ -26,17 +26,6 @@ export function selectedRmObject(state, schemaId) {
   const view = relationalView(state, schemaId)
   const picked = state.selectedRm?.id === state.selectedId ? view.objects.get(state.selectedRm.rmId) : null
   return picked ?? rmObjectOf(view, state.selectedId)
-}
-
-// The Inspector's footer for a relational schema.
-export function RelationalCounts({ schemaId }) {
-  useOrmStore(s => s.constraints)
-  const c = relationalCounts(useOrmStore.getState(), schemaId)
-  return <>
-    <div>{c.tables} tables · {c.views} views</div>
-    <div>{c.columns} columns</div>
-    <div>{c.constraints} constraints · {c.assertions} assertions</div>
-  </>
 }
 
 export default function RelationalInspector({ schemaId, obj, tableRules }) {

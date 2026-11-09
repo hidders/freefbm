@@ -1,4 +1,5 @@
 import React from 'react'
+import { SHORTCUT_GROUPS } from '../utils/shortcuts'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { EntityTypeIcon, FactTypeIcon } from './ToolPanel'
 import SAMPLE_RAW from '../data/sample.ffbm?raw'
@@ -86,9 +87,9 @@ export default function WelcomeScreen({ onClose }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 22 }}>
           <ActionBtn icon="✦" label="Load sample" sub="University schema"
             onClick={() => store.loadModel(SAMPLE_RAW)} />
-          <ActionBtn icon={<EntityTypeIcon active={false} />} label="Add Entity Type" sub="Press E"
+          <ActionBtn icon={<EntityTypeIcon active={false} />} label="Add entity type" sub="Press E"
             onClick={() => store.setTool('addEntity')} />
-          <ActionBtn icon={<FactTypeIcon active={false} />} label="Add Fact Type" sub="Press F"
+          <ActionBtn icon={<FactTypeIcon active={false} />} label="Add fact type" sub="Press F"
             onClick={() => store.setTool('addFact2')} />
         </div>
 
@@ -96,34 +97,16 @@ export default function WelcomeScreen({ onClose }) {
 
         <div style={{ fontSize: 10, color: 'var(--accent)', textTransform: 'uppercase',
           letterSpacing: '0.1em', marginBottom: 10, fontWeight: 700 }}>
-          Keyboard Shortcuts
+          Keyboard shortcuts
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
-          <ShortcutRow keys={['E']}             label="Add entity type" />
-          <ShortcutRow keys={['V']}             label="Add value type" />
-          <ShortcutRow keys={['F']}             label="Add fact type" />
-          <ShortcutRow keys={['U']}             label="Draw subtype arrow" />
-          <ShortcutRow keys={['A']}             label="Role connector" />
-          <ShortcutRow keys={['S']}             label="Select tool" />
-          <ShortcutRow keys={['M']}             label="Mandatory role" />
-          <ShortcutRow keys={['I']}             label="Internal uniqueness" />
-          <ShortcutRow keys={['Q']}             label="Internal frequency" />
-          <ShortcutRow keys={['R']}             label="Value range" />
-          <ShortcutRow keys={['C']}             label="Cardinality" />
-          <ShortcutRow keys={['Del']}           label="Remove from diagram" />
-          <ShortcutRow keys={['Esc']}           label="Cancel / deselect" />
-          <ShortcutRow keys={['Ctrl','Z']}      label="Undo" />
-          <ShortcutRow keys={['Ctrl','Y']}      label="Redo" />
-          <ShortcutRow keys={['Ctrl','A']}      label="Select all" />
-          <ShortcutRow keys={['Ctrl','C']}      label="Copy selection" />
-          <ShortcutRow keys={['Ctrl','X']}      label="Cut selection" />
-          <ShortcutRow keys={['Ctrl','V']}      label="Paste" />
-          <ShortcutRow keys={['Ctrl','D']}      label="Duplicate selection" />
-          <ShortcutRow keys={['↑↓←→']}         label="Move selected (10 px)" />
-          <ShortcutRow keys={['Shift','↑↓←→']} label="Move selected (50 px)" />
-          <ShortcutRow keys={['Shift','click']} label="Multi-select / deselect" />
-          <ShortcutRow keys={['Enter']}         label="Commit multi-step construction" />
+          {[...SHORTCUT_GROUPS[0].items, ...SHORTCUT_GROUPS[1].items.slice(0, 8)].map(([keys, label]) => (
+            <ShortcutRow key={label} keys={keys} label={label} />
+          ))}
+        </div>
+        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--ink-muted)' }}>
+          All shortcuts: press <kbd style={{ padding: '0 5px', background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 3 }}>?</kbd> or Help › Keyboard shortcuts.
         </div>
 
         <div style={{ marginTop: 16, padding: '10px 12px', background: 'var(--bg-raised)',
@@ -139,7 +122,7 @@ export default function WelcomeScreen({ onClose }) {
           <kbd style={{ padding: '1px 5px', background:'var(--bg-deep)',
             border:'1px solid var(--border)', borderRadius:3 }}>U</kbd>
           ) — click the subtype entity, then the supertype.{' '}
-          <strong style={{ color: 'var(--ink-2)' }}>Constraint</strong> — click an external constraint, then role boxes or subtype relationships to build groups.
+          <strong style={{ color: 'var(--ink-2)' }}>Constraint</strong> — click an external constraint, then role boxes or subtype links to build groups.
         </div>
 
         {onClose && (

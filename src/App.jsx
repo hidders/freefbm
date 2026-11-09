@@ -19,6 +19,7 @@ import WelcomeScreen from './components/WelcomeScreen'
 import DiagramTabs from './components/DiagramTabs'
 import SchemaStrip from './components/SchemaStrip'
 import Sidebar from './components/Sidebar'
+import ShortcutsDialog from './components/ShortcutsDialog'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useElectronMenu } from './hooks/useElectronMenu'
 import { useWorkbenchBridge } from './hooks/useWorkbenchBridge'
@@ -171,6 +172,7 @@ function useKeyboardShortcuts() {
 
       if (e.ctrlKey || e.metaKey || e.altKey) return
 
+      if (e.key === '?') { useOrmStore.setState({ shortcutsDialog: true }); return }
       if (e.key === 's' || e.key === 'S') { store.setTool('select'); return }
       if (e.key === 'n' || e.key === 'N') { store.setTool('addNote'); return }
       if (e.key === 'e' || e.key === 'E') { store.setTool('addEntity'); return }
@@ -277,6 +279,7 @@ export default function App() {
         <TransformDialog />
         <DdlExportDialog />
         <DeleteFromSchemaDialog />
+        <ShortcutsDialog />
       </div>
     </ErrorBoundary>
   )

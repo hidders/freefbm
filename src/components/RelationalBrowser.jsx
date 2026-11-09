@@ -68,7 +68,7 @@ function Row({ depth = 0, icon, label, detail, selected, onSelect, toggle, open,
         fontSize: 11, fontFamily: FONT, color: muted ? 'var(--ink-3)' : undefined }}>
         {label}{detail && <span style={{ color: 'var(--ink-3)', marginLeft: 6 }}>{detail}</span>}
       </span>
-      {orphan && <span title="Not in any diagram" style={{ fontSize: 8, color: 'var(--danger)', marginLeft: 4 }}>●</span>}
+      {orphan && <span title="On no diagram" style={{ fontSize: 8, color: 'var(--danger)', marginLeft: 4 }}>●</span>}
     </div>
   )
 }

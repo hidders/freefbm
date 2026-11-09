@@ -11,7 +11,7 @@ import { openDeleteFromSchema, canDeleteFromSchema, schemaDeletionIds } from '..
 
 // Delete from Schema…: asks first (DeleteFromSchemaDialog.jsx); Delete on the
 // keyboard only takes things off the diagram.
-function deleteFromSchemaItem(store, ids, label = 'Delete from Schema…') {
+function deleteFromSchemaItem(store, ids, label = 'Delete from schema…') {
   const st = useOrmStore.getState()
   const del = schemaDeletionIds({ ...st, multiSelectedIds: ids, selectedId: null })
   return { label, danger: true, disabled: !canDeleteFromSchema(st, del),
@@ -32,8 +32,8 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
   const collapseItem = (entity, occurrenceId) => {
     const n = refModeCollapseBlockers(entity, store.facts, store.objectTypes, store.constraints).length
     return n > 0
-      ? { label: `Collapse Reference Mode (blocked: ${n} constraint${n > 1 ? 's' : ''} on ${entity.name || entity.objectifiedName || 'its'}'s own role)`, disabled: true, action: () => {} }
-      : { label: 'Collapse Reference Mode', action: () => store.collapseRefMode(occurrenceId) }
+      ? { label: `Collapse reference mode (blocked: ${n} constraint${n > 1 ? 's' : ''} on ${entity.name || entity.objectifiedName || 'its'}'s own role)`, disabled: true, action: () => {} }
+      : { label: 'Collapse reference mode', action: () => store.collapseRefMode(occurrenceId) }
   }
 
   const handleMultiSelectionContextMenu = useCallback((e) => {
@@ -61,20 +61,20 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
           const n = ids.length === 1 ? 'Rule' : `${ids.length} Rules`
           const did = store.activeDiagramId
           return [
-            { label: `Move ${n} to New Diagram`, title: 'Elements still linked to rules that stay here are kept on both diagrams',
+            { label: `Move ${n} to new diagram`, title: 'Elements still linked to rules that stay here are kept on both diagrams',
               action: () => useOrmStore.getState().rulesToNewDiagram(did, ids, { move: true, layout: layoutMappingDiagram }) },
-            { label: `Copy ${n} to New Diagram`,
+            { label: `Copy ${n} to new diagram`,
               action: () => useOrmStore.getState().rulesToNewDiagram(did, ids, { layout: layoutMappingDiagram }) },
             '---',
           ]
         })() : [
           ...(pair.length === 2 ? [connectItem(store, pair[0], pair[1])] : []),
-          { label: 'Copy Selection to New Diagram', action: () => store.selectionToNewDiagram(false) },
-          { label: 'Move Selection to New Diagram', title: 'Object types still linked to what stays here are kept on both diagrams',
+          { label: 'Copy selection to new diagram', action: () => store.selectionToNewDiagram(false) },
+          { label: 'Move selection to new diagram', title: 'Object types still linked to what stays here are kept on both diagrams',
             action: () => store.selectionToNewDiagram(true) },
           '---',
         ]),
-        { label: 'Remove Selection from Diagram', disabled: idsToRemove.length === 0 && occIdsToRemove.length === 0,
+        { label: 'Remove selection from diagram', disabled: idsToRemove.length === 0 && occIdsToRemove.length === 0,
           action: () => {
             if (occIdsToRemove.length > 0) {
               for (const occId of occIdsToRemove) {
@@ -84,7 +84,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
               store.removeMultiSelectionFromDiagram(store.activeDiagramId, idsToRemove)
             }
           } },
-        deleteFromSchemaItem(store, store.multiSelectedIds, 'Delete Selection from Schema…'),
+        deleteFromSchemaItem(store, store.multiSelectedIds, 'Delete selection from schema…'),
       ],
     })
   }, [store, setContextMenu])
@@ -118,17 +118,17 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     const refExpansionItems = hasRefMode && occurrenceId
       ? ['---', isExpandedHere
           ? collapseItem(ot, occurrenceId)
-          : { label: 'Expand Reference Mode',   action: () => store.expandRefMode(occurrenceId)   }]
+          : { label: 'Expand reference mode',   action: () => store.expandRefMode(occurrenceId)   }]
       : []
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
         ...growItems(store, ot.id, occurrenceId),
-        { label: ot.kind === 'entity' ? 'Change to Value Type' : 'Change to Entity Type',
+        { label: ot.kind === 'entity' ? 'Change to value type' : 'Change to entity type',
           action: () => store.updateObjectType(ot.id, { kind: ot.kind === 'entity' ? 'value' : 'entity' }) },
         ...refExpansionItems,
         '---',
-        { label: 'Remove from Diagram',
+        { label: 'Remove from diagram',
           action: () => occurrenceId
             ? store.removeOccurrenceFromDiagram(occurrenceId, store.activeDiagramId)
             : store.removeElementFromDiagram(ot.id, store.activeDiagramId) },
@@ -144,27 +144,27 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     const role = fact.roles[roleIndex]
     const hasUnary = fact.uniqueness.some(u => u.roles.length === 1 && u.roles[0] === roleIndex)
     const items = [
-      { label: 'is Mandatory', checked: !!role.mandatory,
+      { label: 'Is mandatory', checked: !!role.mandatory,
         action: () => store.updateRole(fact.id, roleIndex, { mandatory: !role.mandatory }) },
-      { label: 'has Uniqueness Constraint', checked: hasUnary,
+      { label: 'Has uniqueness constraint', checked: hasUnary,
         action: () => store.toggleUniqueness(fact.id, [roleIndex]) },
       '---',
-      { label: 'Insert Role Before',
+      { label: 'Insert role before',
         action: () => { store.insertRole(fact.id, roleIndex); store.selectRole(fact.id, roleIndex + 1) } },
-      { label: 'Insert Role After',
+      { label: 'Insert role after',
         action: () => store.insertRole(fact.id, roleIndex + 1) },
       ...(fact.arity > 2 ? [
-        { label: 'Move Role to Left',
+        { label: 'Move role to left',
           disabled: roleIndex === 0,
           action: () => { store.reorderRoles(fact.id, roleIndex, roleIndex - 1); store.selectRole(fact.id, roleIndex - 1) } },
-        { label: 'Move Role to Right',
+        { label: 'Move role to right',
           disabled: roleIndex === fact.arity - 1,
           action: () => { store.reorderRoles(fact.id, roleIndex, roleIndex + 1); store.selectRole(fact.id, roleIndex + 1) } },
       ] : []),
     ]
     if (fact.objectified && role.objectTypeId) {
       const isShown = store.isImplicitLinkShown(fact.id, roleIndex)
-      items.push('---', { label: 'show Link Fact Type',
+      items.push('---', { label: 'Show link fact type',
         checked: isShown,
         action: () => store.toggleImplicitLink(fact.id, roleIndex) })
     }
@@ -194,7 +194,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     const refExpansionItems = hasRefMode && occurrenceId
       ? [isExpandedHere
           ? collapseItem(fact, occurrenceId)
-          : { label: 'Expand Reference Mode',   action: () => store.expandRefMode(occurrenceId)   },
+          : { label: 'Expand reference mode',   action: () => store.expandRefMode(occurrenceId)   },
          '---']
       : []
     setContextMenu({
@@ -202,7 +202,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
       items: [
         ...(fact.objectified ? growItems(store, fact.id, occurrenceId) : []),
         ...(fact.arity > 1 ? [
-          { label: 'Add spanning Uniq. Constr.',
+          { label: 'Add spanning uniqueness constraint',
             disabled: (() => {
               const allRoles = Array.from({ length: fact.arity }, (_, i) => i)
               const key = JSON.stringify(allRoles)
@@ -215,20 +215,20 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
           '---',
         ] : []),
         ...(fact.arity === 2 ? [
-          { label: 'Reverse Roles',
+          { label: 'Reverse roles',
             action: () => store.reverseRoles(fact.id) },
         ] : []),
-        { label: fact.orientation === 'vertical' ? 'Show Horizontally' : 'Show Vertically',
+        { label: fact.orientation === 'vertical' ? 'Show horizontally' : 'Show vertically',
           action: () => store.updateFactLayout(fact.id, {
             orientation: fact.orientation === 'vertical' ? 'horizontal' : 'vertical',
           }) },
         '---',
         { label: 'Change into', submenu: [
             ...(!fact.objectified ? [
-              { label: 'Nested Entity Type',
+              { label: 'Objectified fact type',
                 action: () => store.convertToNestedEntity(fact.id) },
             ] : [
-              { label: 'Fact Type',
+              { label: 'Fact type',
                 action: () => store.updateFact(fact.id, {
                   objectified: false, objectifiedName: undefined,
                   nestedReading: false, readingAbove: false, readingOffsetAbove: null, readingOffsetBelow: null,
@@ -243,7 +243,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
           const shownCount  = eligibleIls.filter(il => store.isImplicitLinkShown(fact.id, il.roleIndex)).length
           const total       = eligibleIls.length
           return [
-            { label: 'Implied Links', submenu: [
+            { label: 'Link fact types', submenu: [
               { label: 'Show all',
                 disabled: shownCount === total,
                 action: () => store.setAllImplicitLinksShown(fact.id, true) },
@@ -254,7 +254,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
           ]
         })() : []),
         '---',
-        { label: 'Remove from Diagram',
+        { label: 'Remove from diagram',
           action: () => occurrenceId
             ? store.removeOccurrenceFromDiagram(occurrenceId, store.activeDiagramId)
             : store.removeElementFromDiagram(fact.id, store.activeDiagramId) },
@@ -270,15 +270,15 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'Edit Frequency Range…', action: () => store.startFrequencyRangeEdit(fact.id, ifId) },
+        { label: 'Edit frequency range…', action: () => store.startFrequencyRangeEdit(fact.id, ifId) },
         deonticItem((fact.internalFrequency || []).find(f => f.id === ifId)?.deontic,
           v => store.updateInternalFrequency(fact.id, ifId, { deontic: v })),
         '---',
-        { label: 'Change into Internal Uniqueness Constraint',
+        { label: 'Change into internal uniqueness constraint',
           action: () => store.convertFrequencyToUniqueness(fact.id, ifId),
         },
         '---',
-        { label: 'Delete Frequency Constraint', danger: true,
+        { label: 'Delete frequency constraint', danger: true,
           action: () => store.removeInternalFrequency(fact.id, ifId) },
       ],
     })
@@ -290,13 +290,13 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'Edit Value Range…', action: () => {
+        { label: 'Edit value range…', action: () => {
             store.setTool('select')
             setVrPopup({ factId: fact.id, roleIndex, x: e.clientX, y: e.clientY })
           }},
         deonticItem(fact.roles[roleIndex]?.valueRangeDeontic, v => store.updateRole(fact.id, roleIndex, { valueRangeDeontic: v })),
         '---',
-        { label: 'Delete Value Range', danger: true,
+        { label: 'Delete value range', danger: true,
           action: () => store.updateRole(fact.id, roleIndex, { valueRange: [], valueRangeDeontic: false }) },
       ],
     })
@@ -308,14 +308,14 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'Edit Cardinality Range…', action: () => {
+        { label: 'Edit cardinality range…', action: () => {
             store.setTool('select')
             setVrPopup({ factId: fact.id, roleIndex, x: e.clientX, y: e.clientY,
-                         naturalNumbers: true, title: `Cardinality Range — Role ${roleIndex + 1}` })
+                         naturalNumbers: true, title: `Cardinality range — Role ${roleIndex + 1}` })
           }},
         deonticItem(fact.roles[roleIndex]?.cardinalityRangeDeontic, v => store.updateRole(fact.id, roleIndex, { cardinalityRangeDeontic: v })),
         '---',
-        { label: 'Delete Cardinality Range', danger: true,
+        { label: 'Delete cardinality range', danger: true,
           action: () => store.updateRole(fact.id, roleIndex, { cardinalityRange: [], cardinalityRangeDeontic: false }) },
       ],
     })
@@ -327,13 +327,13 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'Edit Value Range…', action: () => {
+        { label: 'Edit value range…', action: () => {
             store.setTool('select')
             setVrPopup({ nestedFactId: fact.id, x: e.clientX, y: e.clientY })
           }},
         deonticItem(fact?.valueRangeDeontic, v => store.updateFact(fact.id, { valueRangeDeontic: v })),
         '---',
-        { label: 'Delete Value Range', danger: true,
+        { label: 'Delete value range', danger: true,
           action: () => store.updateFact(fact.id, { valueRange: null, valueRangeDeontic: false }) },
       ],
     })
@@ -345,14 +345,14 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'Edit Cardinality Range…', action: () => {
+        { label: 'Edit cardinality range…', action: () => {
             store.setTool('select')
             setVrPopup({ nestedFactId: fact.id, x: e.clientX, y: e.clientY,
-                         naturalNumbers: true, title: `Cardinality Range — ${fact.objectifiedName || 'Nested Type'}` })
+                         naturalNumbers: true, title: `Cardinality range — ${fact.objectifiedName || 'objectified fact type'}` })
           }},
         deonticItem(fact?.cardinalityRangeDeontic, v => store.updateFact(fact.id, { cardinalityRangeDeontic: v })),
         '---',
-        { label: 'Delete Cardinality Range', danger: true,
+        { label: 'Delete cardinality range', danger: true,
           action: () => store.updateFact(fact.id, { cardinalityRange: null, cardinalityRangeDeontic: false }) },
       ],
     })
@@ -364,13 +364,13 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'Edit Value Range…', action: () => {
+        { label: 'Edit value range…', action: () => {
             store.setTool('select')
             setVrPopup({ otId: ot.id, x: e.clientX, y: e.clientY })
           }},
         deonticItem(ot?.valueRangeDeontic, v => store.updateObjectType(ot.id, { valueRangeDeontic: v })),
         '---',
-        { label: 'Delete Value Range', danger: true,
+        { label: 'Delete value range', danger: true,
           action: () => store.updateObjectType(ot.id, { valueRange: [], valueRangeDeontic: false }) },
       ],
     })
@@ -382,14 +382,14 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'Edit Cardinality Range…', action: () => {
+        { label: 'Edit cardinality range…', action: () => {
             store.setTool('select')
             setVrPopup({ otId: ot.id, x: e.clientX, y: e.clientY,
-                         naturalNumbers: true, title: `Cardinality Range — ${ot.name || 'Object Type'}` })
+                         naturalNumbers: true, title: `Cardinality range — ${ot.name || 'Object type'}` })
           }},
         deonticItem(ot?.cardinalityRangeDeontic, v => store.updateObjectType(ot.id, { cardinalityRangeDeontic: v })),
         '---',
-        { label: 'Delete Cardinality Range', danger: true,
+        { label: 'Delete cardinality range', danger: true,
           action: () => store.updateObjectType(ot.id, { cardinalityRange: [], cardinalityRangeDeontic: false }) },
       ],
     })
@@ -404,7 +404,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         deonticItem(store.facts.find(f => f.id === factId)?.roles[roleIndex]?.mandatoryDeontic,
           v => store.updateRole(factId, roleIndex, { mandatoryDeontic: v })),
         '---',
-        { label: 'Delete Mandatory Constraint', danger: true,
+        { label: 'Delete mandatory constraint', danger: true,
           action: () => store.removeMandatoryRole(factId, roleIndex) },
       ],
     })
@@ -435,16 +435,16 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'Is Preferred', checked: isPreferred, disabled: piDisabled, title: piTitle,
+        { label: 'Is preferred', checked: isPreferred, disabled: piDisabled, title: piTitle,
           action: () => store.setPreferredUniqueness(fact.id, uRoles) },
         deonticItem(isDeonticUniqueness(fact, uRoles), v => store.setUniquenessDeontic(fact.id, uRoles, v),
           isPreferred ? 'A preferred identifier is always alethic' : null),
         '---',
-        { label: 'Change into Internal Frequency Constraint',
+        { label: 'Change into internal frequency constraint',
           action: () => store.convertUniquenessToFrequency(fact.id, uRoles),
         },
         '---',
-        { label: 'Delete Uniqueness Constraint', danger: true,
+        { label: 'Delete uniqueness constraint', danger: true,
           action: () => store.toggleUniqueness(fact.id, uRoles) },
       ],
     })
@@ -472,7 +472,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'Is Preferred', checked: isPreferred, disabled: identifiesVt, title: piTitle,
+        { label: 'Is preferred', checked: isPreferred, disabled: identifiesVt, title: piTitle,
           action: () => {
             const next = isPreferred
               ? prefArr.filter(pu => JSON.stringify([...pu].sort()) !== sortedKey)
@@ -498,17 +498,17 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     const canRemoveOccurrence = st.subOccId != null && st.superOccId != null && epsArr.length > 1
     const items = [
       {
-        label: 'Inherits Preferred Identifier',
+        label: 'Inherits preferred identifier',
         checked: st.inheritsPreferredIdentifier !== false,
         action: () => store.updateSubtype(st.id, { inheritsPreferredIdentifier: st.inheritsPreferredIdentifier === false }),
       },
       '---',
     ]
     if (canRemoveOccurrence) {
-      items.push({ label: 'Remove This Occurrence from Diagram',
+      items.push({ label: 'Remove this occurrence from diagram',
         action: () => store.removeSubtypeOccurrenceFromDiagram(st.id, st.subOccId, st.superOccId, diagramId) })
     }
-    items.push({ label: 'Remove All Occurrences from Diagram',
+    items.push({ label: 'Remove all occurrences from diagram',
       action: () => store.removeElementFromDiagram(st.id, diagramId) })
     items.push('---', deleteFromSchemaItem(store, [st.id]))
     setContextMenu({ x: e.clientX, y: e.clientY, items })
@@ -530,7 +530,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     // "Set Target Object Type" for applicable constraint types
     if (hasTargetOt) {
       items.push({
-        label: 'Set Target Object Type…',
+        label: 'Set target object type…',
         action: () => store.startTargetPick(c.id),
       })
 
@@ -547,9 +547,9 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
       }
       items.push('---')
       if (c.constraintType === 'frequency') {
-        items.push({ label: 'Edit Frequency Range…',
+        items.push({ label: 'Edit frequency range…',
           action: () => store.startExternalFrequencyEdit(c.id) })
-        items.push({ label: 'Change into External Uniqueness Constraint',
+        items.push({ label: 'Change into external uniqueness constraint',
           action: () => store.updateConstraint(c.id, { constraintType: 'uniqueness', isPreferredIdentifier: false }) })
         items.push('---')
       } else if (c.constraintType === 'uniqueness') {
@@ -559,20 +559,20 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
           ? store.objectTypes.find(o => o.id === c.targetObjectTypeId) : null
         const identifiesVt = targetOt?.kind === 'value'
         items.push({
-          label: 'Is Preferred Identifier',
+          label: 'Is preferred identifier',
           checked: !!c.isPreferredIdentifier,
           disabled: identifiesVt,
           title: identifiesVt ? 'A value type cannot have a preferred identifier' : undefined,
           action: () => store.updateConstraint(c.id, c.isPreferredIdentifier
             ? { isPreferredIdentifier: false } : { isPreferredIdentifier: true, deontic: false }),
         })
-        items.push({ label: 'Change into External Frequency Constraint',
+        items.push({ label: 'Change into external frequency constraint',
           action: () => store.updateConstraint(c.id, { constraintType: 'frequency', frequency: [{ type: 'upper', upper: 1 }] }) })
         items.push('---')
       } else if (c.constraintType === 'equality' || c.constraintType === 'subset') {
         const other = c.constraintType === 'equality' ? 'subset' : 'equality'
-        const otherLabel = c.constraintType === 'equality' ? 'Subset' : 'Equality'
-        items.push({ label: `Change to ${otherLabel} Constraint`,
+        const otherLabel = c.constraintType === 'equality' ? 'subset' : 'equality'
+        items.push({ label: `Change into ${otherLabel} constraint`,
           action: () => store.updateConstraint(c.id, { constraintType: other }) })
         if (c.constraintType === 'subset') {
           items.push({ label: 'Reverse direction',
@@ -582,9 +582,9 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         items.push('---')
       } else if (c.constraintType !== 'frequency' && c.constraintType !== 'valueComparison' && c.constraintType !== 'ring') {
         const CHANGE_LABELS = {
-          exclusiveOr: 'Exclusive Or',
+          exclusiveOr: 'Exclusive or',
           exclusion:   'Exclusion',
-          inclusiveOr: 'Inclusive Or',
+          inclusiveOr: 'Inclusive or',
         }
         const others = ['exclusiveOr', 'exclusion', 'inclusiveOr']
           .filter(t => t !== c.constraintType)
@@ -611,7 +611,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         action: () => store.updateConstraint(c.id, { outerJoin: !c.outerJoin || undefined }) })
     }
     items.push('---')
-    items.push({ label: 'Remove from Diagram',
+    items.push({ label: 'Remove from diagram',
       action: () => constraintOccurrenceId
         ? store.removeConstraintOccurrenceFromDiagram(constraintOccurrenceId, store.activeDiagramId)
         : store.removeElementFromDiagram(c.id, store.activeDiagramId) })
@@ -636,14 +636,14 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: isVertical ? 'Show Horizontally' : 'Show Vertically',
+        { label: isVertical ? 'Show horizontally' : 'Show vertically',
           action: () => store.updateImplicitLink(factId, roleIndex, {
             orientation: isVertical ? 'horizontal' : 'vertical'
           }) },
-        { label: 'Reverse Roles',
+        { label: 'Reverse roles',
           action: () => store.reverseImplicitLinkRoles(factId, roleIndex) },
         '---',
-        { label: 'Remove from Diagram',
+        { label: 'Remove from diagram',
           action: () => store.toggleImplicitLink(factId, roleIndex) },
       ],
     })
@@ -682,8 +682,8 @@ export function growItems(store, elementId, occurrenceId = null) {
   const sel = now.selectedId === elementId ? [now.previousSelectedId] : [now.selectedId]
   const partners = [...new Set(sel.filter(id => id && id !== elementId && shown.has(id) && connectable(store, id)))]
   return [
-    { label: 'Add Neighbours…', action: () => store.openNeighbourPicker(elementId, occurrenceId) },
-    { label: 'New Diagram from Here', action: () => store.newDiagramFrom(elementId) },
+    { label: 'Add neighbours…', action: () => store.openNeighbourPicker(elementId, occurrenceId) },
+    { label: 'New diagram from here', action: () => store.newDiagramFrom(elementId) },
     ...(partners.length === 1 ? [connectItem(store, partners[0], elementId, `Connect with ${elementName(store, partners[0])}`)] : []),
     '---',
   ]
@@ -697,7 +697,7 @@ const elementName = (store, id) => store.objectTypes.find(o => o.id === id)?.nam
 
 // Connect: the shortest chain of fact types or foreign keys from one shown
 // element to another (connectPath), added as one undo step.
-export function connectItem(store, fromId, toId, label = 'Connect These Two') {
+export function connectItem(store, fromId, toId, label = 'Connect these two') {
   return {
     label, title: 'Add the shortest chain of fact types (foreign keys) between them',
     action: () => store.connectElements(store.activeDiagramId, fromId, toId, { place: { orm: placeOrmUnits, erd: placeErdUnits } }),

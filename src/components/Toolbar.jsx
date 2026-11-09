@@ -110,7 +110,7 @@ export default function Toolbar() {
       </span>
 
       <div style={{ display: 'flex', gap: 4, WebkitAppRegion: 'no-drag' }}>
-        <Btn label="＋ New"   title="New Model"  onClick={handleNew}/>
+        <Btn label="＋ New"   title="New model"  onClick={handleNew}/>
         {isElectron && <Btn label="📂 Open" title="Open"   onClick={handleOpen}/>}
         {isElectron && <Btn label="💾 Save" title={isMac ? 'Save (⌘S)' : 'Save (Ctrl+S)'} onClick={handleSave}/>}
         {isElectron && <Btn label="⎙ PDF" title="Export to PDF (⌘⇧E)" onClick={handleExportPdf}/>}
@@ -133,12 +133,12 @@ export default function Toolbar() {
       </div>
 
       <div style={{ display: 'flex', gap: 4, alignItems: 'center', WebkitAppRegion: 'no-drag' }}>
-        <Btn label="−" title="Zoom Out" onClick={() => store().zoomBy(-0.1)}/>
+        <Btn label="−" title="Zoom out" onClick={() => store().zoomBy(-0.1)}/>
         <span style={{ fontSize: 11, color: 'var(--ink-muted)', minWidth: 38, textAlign: 'center' }}>
           {Math.round(storeRef.current.zoom * 100)}%
         </span>
-        <Btn label="+" title="Zoom In" onClick={() => store().zoomBy(0.1)}/>
-        <Btn label="⊡" title="Reset View" onClick={() => store().resetView()}/>
+        <Btn label="+" title="Zoom in" onClick={() => store().zoomBy(0.1)}/>
+        <Btn label="⊡" title="Reset view" onClick={() => store().resetView()}/>
       </div>
     </div>
   )

@@ -16,11 +16,11 @@ import { readingName } from '../mapping/mapping.js'
 
 export const VALIDATION_CATEGORIES = {
   factTypeDefinition: {
-    label: 'Fact Type Definition',
+    label: 'Fact type definition',
     description: 'Missing role players, missing or redundant internal uniqueness constraints',
   },
   constraintStructure: {
-    label: 'Constraint Structure',
+    label: 'Constraint structure',
     description: 'Role sequence arity mismatches, insufficient role sequences, missing queries on external constraints',
   },
   identification: {
@@ -32,23 +32,23 @@ export const VALIDATION_CATEGORIES = {
     description: 'Duplicate object type names, duplicate predicate readings',
   },
   redundantConcepts: {
-    label: 'Redundant Concepts',
+    label: 'Redundant concepts',
     description: 'Cycles in the subtype graph, mandatory unary fact types',
   },
   subtypeHierarchy: {
-    label: 'Subtype Hierarchy',
+    label: 'Subtype hierarchy',
     description: 'Each entity type must belong to exactly one root type hierarchy (no multiple inheritance from different roots)',
   },
   rangeSequences: {
-    label: 'Range Sequences',
+    label: 'Range sequences',
     description: 'Issues in value and frequency range specifications',
   },
   derivationRules: {
-    label: 'Derivation Rules',
+    label: 'Derivation rules',
     description: 'Missing, ill-formed or circular derivation rules of derived and semi-derived subtypes and fact types',
   },
   relationalProfile: {
-    label: 'Relational Profile',
+    label: 'Relational profile',
     description: 'Elements of a relational schema that are not a table, a column or a constraint over them',
   },
   schemaScope: {
@@ -56,11 +56,11 @@ export const VALIDATION_CATEGORIES = {
     description: 'Elements that refer to elements of another schema in the same file',
   },
   mappingRules: {
-    label: 'Mapping Rules',
+    label: 'Mapping rules',
     description: 'Rules of a mapping that name deleted or changed elements, or that are ill-formed or not key-safe',
   },
   mappingCoverage: {
-    label: 'Mapping Coverage',
+    label: 'Mapping coverage',
     description: 'Entity and fact types that no rule of a mapping names, so the mapping does not carry them over',
   },
 }

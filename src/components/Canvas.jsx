@@ -388,7 +388,7 @@ function FrequencyRangePopup({ range, onChange, x, y, onDone, onAbort }) {
         style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)',
           textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8,
           cursor: 'move', userSelect: 'none' }}>
-        Frequency Range
+        Frequency range
       </div>
       <ValueRangeEditor range={range} onChange={onChange} naturalNumbers={true}/>
       <button
@@ -789,12 +789,12 @@ export default function Canvas() {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: `Move ${n} to New Diagram`, title: 'Elements still linked to rules that stay here are kept on both diagrams',
+        { label: `Move ${n} to new diagram`, title: 'Elements still linked to rules that stay here are kept on both diagrams',
           action: () => st().rulesToNewDiagram(diagramId, ids, { move: true, layout: layoutMappingDiagram }) },
-        { label: `Copy ${n} to New Diagram`,
+        { label: `Copy ${n} to new diagram`,
           action: () => st().rulesToNewDiagram(diagramId, ids, { layout: layoutMappingDiagram }) },
         '---',
-        { label: `Remove ${n} from Diagram`, action: () => { st().hideMappingRules(diagramId, ids); st().setRuleSelection([]) } },
+        { label: `Remove ${n} from diagram`, action: () => { st().hideMappingRules(diagramId, ids); st().setRuleSelection([]) } },
       ],
     })
   }, [setContextMenu])
@@ -816,17 +816,17 @@ export default function Canvas() {
 
   const handleOtCardinalityRangeClick = useCallback((ot, clientX, clientY) => {
     store.setTool('select')
-    setVrPopup({ otId: ot.id, x: clientX, y: clientY, naturalNumbers: true, title: `Cardinality Range — ${ot.name || 'Object Type'}` })
+    setVrPopup({ otId: ot.id, x: clientX, y: clientY, naturalNumbers: true, title: `Cardinality range — ${ot.name || 'Object type'}` })
   }, [store])
 
   const handleRoleCardinalityClick = useCallback((fact, roleIndex, clientX, clientY) => {
     store.setTool('select')
-    setVrPopup({ factId: fact.id, roleIndex, x: clientX, y: clientY, naturalNumbers: true, title: `Cardinality Range — Role ${roleIndex + 1}` })
+    setVrPopup({ factId: fact.id, roleIndex, x: clientX, y: clientY, naturalNumbers: true, title: `Cardinality range — Role ${roleIndex + 1}` })
   }, [store])
 
   const handleNestedFactCrClick = useCallback((fact, clientX, clientY) => {
     store.setTool('select')
-    setVrPopup({ nestedFactId: fact.id, x: clientX, y: clientY, naturalNumbers: true, title: `Cardinality Range — ${fact.objectifiedName || 'Nested Type'}` })
+    setVrPopup({ nestedFactId: fact.id, x: clientX, y: clientY, naturalNumbers: true, title: `Cardinality range — ${fact.objectifiedName || 'objectified fact type'}` })
   }, [store])
 
   // Canvas doesn't re-render on a pan (see ViewportGroup), so `pan` is read
@@ -1794,17 +1794,17 @@ export default function Canvas() {
             const fact = store.facts.find(f => f.id === vrPopup.factId)
             initialRange = fact?.roles[vrPopup.roleIndex]?.valueRange
             onCommit = vr => store.updateRole(vrPopup.factId, vrPopup.roleIndex, { valueRange: vr })
-            title    = `Value Range — Role ${vrPopup.roleIndex + 1}`
+            title    = `Value range — Role ${vrPopup.roleIndex + 1}`
           } else if (vrPopup.nestedFactId != null) {
             const fact = store.facts.find(f => f.id === vrPopup.nestedFactId)
             initialRange = fact?.valueRange
             onCommit = vr => store.updateFact(vrPopup.nestedFactId, { valueRange: vr })
-            title    = `Value Range — ${fact?.objectifiedName || 'Nested Type'}`
+            title    = `Value range — ${fact?.objectifiedName || 'objectified fact type'}`
           } else {
             const ot = store.objectTypes.find(o => o.id === vrPopup.otId)
             initialRange = ot?.valueRange
             onCommit = vr => store.updateObjectType(vrPopup.otId, { valueRange: vr })
-            title    = `Value Range — ${ot?.name || 'Object Type'}`
+            title    = `Value range — ${ot?.name || 'Object type'}`
           }
         }
         return <ValueRangePopup title={title} initialRange={initialRange} onCommit={onCommit}

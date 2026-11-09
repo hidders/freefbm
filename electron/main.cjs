@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
@@ -79,6 +79,16 @@ ipcMain.on('window:document', (event, { path: filePath, dirty, title }) => {
   }
 })
 
+// The renderer says which Schema menu items apply to the active schema.
+ipcMain.on('window:menuState', (_event, enabled) => {
+  const menu = Menu.getApplicationMenu()
+  for (const [id, on] of Object.entries(enabled ?? {})) {
+    if (!id.startsWith('schema:')) continue
+    const item = menu?.getMenuItemById(id)
+    if (item) item.enabled = !!on
+  }
+})
+
 const EDIT_COMMANDS = new Set(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll'])
 ipcMain.on('window:nativeEdit', (event, cmd) => {
   if (EDIT_COMMANDS.has(cmd)) event.sender[cmd]()
@@ -116,23 +126,24 @@ ipcMain.on('workbench:msg', (event, msg) => {
 function buildMenu(win) {
   const isMac = process.platform === 'darwin'
   const send = (ch) => () => win.webContents.send(ch)
+  const schemaAction = (id) => () => win.webContents.send('menu:schema', id)
   const template = [
     ...(isMac ? [{ role: 'appMenu' }] : []),
     {
       label: 'File',
       submenu: [
-        { label: 'New Model', accelerator: 'CmdOrCtrl+N',       click: send('menu:new') },
+        { label: 'New model', accelerator: 'CmdOrCtrl+N',       click: send('menu:new') },
         { label: 'Open…',     accelerator: 'CmdOrCtrl+O',       click: send('menu:open') },
         { type: 'separator' },
         { label: 'Save',      accelerator: 'CmdOrCtrl+S',       click: send('menu:save') },
-        { label: 'Save As…',  accelerator: 'CmdOrCtrl+Shift+S', click: send('menu:saveAs') },
+        { label: 'Save as…',  accelerator: 'CmdOrCtrl+Shift+S', click: send('menu:saveAs') },
         { type: 'separator' },
         { label: 'Export to PDF…', accelerator: 'CmdOrCtrl+Shift+E', click: send('menu:exportPdf') },
         { type: 'separator' },
         { label: 'Import SQL DDL (PostgreSQL, Oracle or SQL Server)…', click: send('menu:importSql') },
         { label: 'Export SQL DDL…', click: send('menu:exportSql') },
-        { label: 'Load Sample Rows from SQL…', click: send('menu:loadSampleSql') },
-        { label: 'Export Sample Rows as SQL…', click: send('menu:exportRowsSql') },
+        { label: 'Load sample rows from SQL…', click: send('menu:loadSampleSql') },
+        { label: 'Export sample rows as SQL…', click: send('menu:exportRowsSql') },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
       ],
@@ -150,11 +161,11 @@ function buildMenu(win) {
         { label: 'Cut',        accelerator: 'CmdOrCtrl+X',       registerAccelerator: false, click: send('menu:cut') },
         { label: 'Copy',       accelerator: 'CmdOrCtrl+C',       registerAccelerator: false, click: send('menu:copy') },
         { label: 'Paste',      accelerator: 'CmdOrCtrl+V',       registerAccelerator: false, click: send('menu:paste') },
-        { label: 'Select All', accelerator: 'CmdOrCtrl+A',       registerAccelerator: false, click: send('menu:selectAll') },
+        { label: 'Select all', accelerator: 'CmdOrCtrl+A',       registerAccelerator: false, click: send('menu:selectAll') },
         { type: 'separator' },
         // No accelerator on macOS: Backspace must keep deleting text in fields.
-        { label: 'Remove from Diagram', ...(isMac ? {} : { accelerator: 'Delete', registerAccelerator: false }), click: send('menu:removeFromDiagram') },
-        { label: 'Delete from Schema…', click: send('menu:deleteFromSchema') },
+        { label: 'Remove from diagram', ...(isMac ? {} : { accelerator: 'Delete', registerAccelerator: false }), click: send('menu:removeFromDiagram') },
+        { label: 'Delete from schema…', click: send('menu:deleteFromSchema') },
       ],
     },
     {
@@ -163,16 +174,44 @@ function buildMenu(win) {
         // Reloading drops the model; only offered while developing, and the
         // unsaved-changes question still applies.
         ...(isDev ? [{ label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => { win.__pending = 'reload'; win.webContents.reload() } }, { type: 'separator' }] : []),
-        { label: 'Zoom In',    accelerator: 'CmdOrCtrl+=', click: send('menu:zoomIn') },
-        { label: 'Zoom Out',   accelerator: 'CmdOrCtrl+-', click: send('menu:zoomOut') },
-        { label: 'Reset Zoom', accelerator: 'CmdOrCtrl+0', click: send('menu:zoomReset') },
+        { label: 'Zoom in',    accelerator: 'CmdOrCtrl+=', click: send('menu:zoomIn') },
+        { label: 'Zoom out',   accelerator: 'CmdOrCtrl+-', click: send('menu:zoomOut') },
+        { label: 'Reset zoom', accelerator: 'CmdOrCtrl+0', click: send('menu:zoomReset') },
         { type: 'separator' },
-        { label: 'Verbalisation Workbench', accelerator: 'CmdOrCtrl+Shift+B', click: openWorkbench },
+        // The sidebar's tabs; the page handles the keys (Sidebar.jsx).
+        { label: 'Browser',  accelerator: 'CmdOrCtrl+1', registerAccelerator: false, click: send('menu:sidebarBrowser') },
+        { label: 'Problems', accelerator: 'CmdOrCtrl+2', registerAccelerator: false, click: send('menu:sidebarProblems') },
+        { type: 'separator' },
+        { label: 'Verbalisation workbench', accelerator: 'CmdOrCtrl+Shift+B', click: openWorkbench },
         { type: 'separator' },
         { role: 'toggleDevTools' }, { role: 'togglefullscreen' },
       ],
     },
+    {
+      // Acts on the active schema (src/utils/schemaActions.js).
+      label: 'Schema',
+      submenu: [
+        { id: 'schema:newOrm2',        label: 'New ORM2 schema',        click: schemaAction('schema:newOrm2') },
+        { id: 'schema:newRelational',  label: 'New relational schema',  click: schemaAction('schema:newRelational') },
+        { type: 'separator' },
+        { id: 'schema:generateTables', label: 'Generate tables…',       click: schemaAction('schema:generateTables') },
+        { id: 'schema:guessOrm',       label: 'Guess ORM2 schema…',     click: schemaAction('schema:guessOrm') },
+        { id: 'schema:transform',      label: 'Transform…',             click: schemaAction('schema:transform') },
+        { id: 'schema:refactor',       label: 'Refactor derived elements…', click: schemaAction('schema:refactor') },
+        { id: 'schema:derivedTable',   label: 'Add derived table',      click: schemaAction('schema:derivedTable') },
+        { type: 'separator' },
+        { id: 'schema:delete',         label: 'Delete schema…',         click: schemaAction('schema:delete') },
+      ],
+    },
     { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        { label: 'Keyboard shortcuts', accelerator: 'CmdOrCtrl+/', click: send('menu:shortcuts') },
+        { type: 'separator' },
+        { label: 'FreeFBM on GitHub', click: () => shell.openExternal('https://github.com/hidders/freefbm') },
+      ],
+    },
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
