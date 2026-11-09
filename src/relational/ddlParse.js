@@ -28,13 +28,47 @@ import { quoteIdent } from './sqlNames.js'
 // 'id' values are lower-cased (PostgreSQL folds unquoted names); 'qid' keeps
 // its case. Comments, and dollar-quoted bodies of functions, are skipped over
 // as strings so their semicolons don't end a statement.
-export function tokenize(sql, { oracle = false } = {}) {
+export function tokenize(sql, { oracle = false, dialect = null } = {}) {
+  const tsql = dialect === 'sqlserver'
+  oracle ||= dialect === 'oracle'
+  const pg = !oracle && !tsql
   const out = []
   let i = 0
   const n = sql.length
   while (i < n) {
     const c = sql[i]
     if (/\s/.test(c)) { i++; continue }
+    if (tsql) {
+      // A line holding only GO [count] ends a batch (sqlcmd, SSMS).
+      if ((c === 'G' || c === 'g') && /(^|\n)[ \t]*$/.test(sql.slice(Math.max(0, i - 80), i)) && /^go[ \t]*(\d+[ \t]*)?(--[^\n]*)?(\r?\n|$)/i.test(sql.slice(i, i + 80))) {
+        out.push({ t: 'slash', v: 'go', raw: 'GO' })
+        while (i < n && sql[i] !== '\n') i++
+        continue
+      }
+      // [name]: a quoted name (]] is a ]); unquoted names keep their case
+      // as written (name), as SQL Server compares names without case.
+      if (c === '[') {
+        const start = i
+        i++
+        let v = ''
+        while (i < n) {
+          if (sql[i] === ']' && sql[i + 1] === ']') { v += ']'; i += 2; continue }
+          if (sql[i] === ']') { i++; break }
+          v += sql[i++]
+        }
+        out.push({ t: 'qid', v, raw: sql.slice(start, i) })
+        continue
+      }
+      // N'…' (Unicode) strings are plain strings here.
+      if ((c === 'N' || c === 'n') && sql[i + 1] === "'") { i++; continue }
+      // 0x… binary literals, as PostgreSQL's bytea text '\x…'.
+      if (c === '0' && (sql[i + 1] === 'x' || sql[i + 1] === 'X')) {
+        const hex = /^0[xX]([0-9A-Fa-f]*)/.exec(sql.slice(i, i + 1e6))
+        out.push({ t: 'str', v: `\\x${hex[1].toLowerCase()}`, raw: `'\\x${hex[1].toLowerCase()}'` })
+        i += hex[0].length
+        continue
+      }
+    }
     if (oracle) {
       // A line holding only / ends a PL/SQL unit (SQL*Plus).
       if (c === '/' && sql[i + 1] !== '*' && /(^|\n)[ \t]*$/.test(sql.slice(Math.max(0, i - 80), i)) && /^\/[ \t]*(\r?\n|$)/.test(sql.slice(i, i + 80))) {
@@ -54,7 +88,7 @@ export function tokenize(sql, { oracle = false } = {}) {
       }
     }
     // psql meta-commands (\c db, \set ...) run to the end of their line.
-    if (!oracle && c === '\\' && /(^|\n)[ \t]*$/.test(sql.slice(Math.max(0, i - 80), i))) { while (i < n && sql[i] !== '\n') i++; continue }
+    if (pg && c === '\\' && /(^|\n)[ \t]*$/.test(sql.slice(Math.max(0, i - 80), i))) { while (i < n && sql[i] !== '\n') i++; continue }
     if (c === '-' && sql[i + 1] === '-') { while (i < n && sql[i] !== '\n') i++; continue }
     if (c === '/' && sql[i + 1] === '*') {
       let depth = 1; i += 2
@@ -65,7 +99,7 @@ export function tokenize(sql, { oracle = false } = {}) {
       }
       continue
     }
-    if (c === "'" || (!oracle && (c === 'E' || c === 'e') && sql[i + 1] === "'")) {
+    if (c === "'" || (pg && (c === 'E' || c === 'e') && sql[i + 1] === "'")) {
       const start = i
       if (c !== "'") i++
       i++
@@ -79,7 +113,7 @@ export function tokenize(sql, { oracle = false } = {}) {
       out.push({ t: 'str', v, raw: sql.slice(start, i) })
       continue
     }
-    if (c === '$' && !oracle) {
+    if (c === '$' && pg) {
       const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i, i + 64))
       if (m) {
         const tag = m[0]
@@ -112,9 +146,9 @@ export function tokenize(sql, { oracle = false } = {}) {
     }
     if (/[A-Za-z_\u0080-￿]/.test(c)) {
       const start = i
-      while (i < n && (/[A-Za-z0-9_$\u0080-￿]/.test(sql[i]) || (oracle && sql[i] === '#'))) i++
+      while (i < n && (/[A-Za-z0-9_$\u0080-￿]/.test(sql[i]) || ((oracle || tsql) && (sql[i] === '#' || (tsql && sql[i] === '@'))))) i++
       const raw = sql.slice(start, i)
-      out.push({ t: 'id', v: raw.toLowerCase(), raw })
+      out.push(tsql ? { t: 'id', v: raw.toLowerCase(), raw, name: raw } : { t: 'id', v: raw.toLowerCase(), raw })
       continue
     }
     if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(sql[i + 1] ?? ''))) {
@@ -143,7 +177,9 @@ function plsqlUnit(cur) {
   const rest = ws.slice(1).filter(w => !['or', 'replace', 'editionable', 'noneditionable', 'force', 'nonforce'].includes(w))
   return PLSQL_UNITS.has(rest[0])
 }
-function statements(tokens, oracle = false) {
+function statements(tokens, dialect = 'postgresql') {
+  if (dialect === 'sqlserver') return tsqlStatements(tokens)
+  const oracle = dialect === 'oracle' || dialect === true
   const out = []
   let cur = []
   let unit = null
@@ -160,16 +196,75 @@ function statements(tokens, oracle = false) {
   return out
 }
 
-// Which SQL dialect a script is written in: 'oracle' when it uses Oracle's
-// types or SQL*Plus's / lines, else 'postgresql'.
-export function detectDialect(sql) {
+// T-SQL: batches end at GO; a procedure, function, trigger or view is a
+// whole batch. Elsewhere a statement ends at a semicolon, which T-SQL makes
+// optional, or where a word that only starts a statement follows (INSERT,
+// CREATE, IF, PRINT, …), outside parentheses.
+const TSQL_UNITS = new Set(['procedure', 'proc', 'function', 'trigger', 'view'])
+const TSQL_STARTS = new Set(['insert', 'create', 'if', 'print', 'use', 'exec', 'execute', 'declare', 'raiserror', 'throw',
+  'bulk', 'grant', 'deny', 'revoke', 'truncate', 'set', 'alter', 'drop', 'begin', 'end', 'commit', 'rollback', 'while', 'return'])
+// After these words, IF (DROP TABLE IF EXISTS) and the like don't start a statement.
+const TSQL_OBJECT = new Set(['table', 'view', 'index', 'procedure', 'proc', 'function', 'trigger', 'schema', 'type', 'sequence',
+  'database', 'column', 'constraint', 'user', 'role', 'synonym', 'default', 'rule', 'statistics', 'login'])
+function tsqlStatements(tokens) {
+  const out = []
+  let cur = [], unit = false, depth = 0
+  const flush = () => { if (cur.length) out.push(cur); cur = []; depth = 0; unit = false }
+  for (const tk of tokens) {
+    if (tk.t === 'slash') { flush(); continue }
+    if (unit === true) { cur.push(tk); continue }
+    if (unit === null) {
+      // CREATE [OR ALTER] PROCEDURE|FUNCTION|TRIGGER|VIEW: up to GO.
+      const ws = [...cur, tk].filter(t => t.t === 'id').map(t => t.v).slice(1).filter(w => w !== 'or' && w !== 'alter')
+      if (ws.length) unit = TSQL_UNITS.has(ws[0])
+      if (unit) { cur.push(tk); continue }
+    }
+    if (tk.t === 'semi') { if (!depth) flush(); continue }
+    if (tk.t === 'op' && tk.v === '(') depth++
+    if (tk.t === 'op' && tk.v === ')') depth--
+    if (!depth && cur.length && tk.t === 'id' && TSQL_STARTS.has(tk.v)) {
+      const first = cur[0].t === 'id' ? cur[0].v : null
+      const prev = cur[cur.length - 1]
+      const pw = prev.t === 'id' ? prev.v : null
+      const inside = TSQL_OBJECT.has(pw)
+        // ALTER TABLE t ALTER COLUMN / DROP COLUMN …, ALTER DATABASE … SET …
+        || (first === 'alter' && ['alter', 'drop', 'set'].includes(tk.v))
+        // UPDATE … SET, ON DELETE|UPDATE SET NULL
+        || (tk.v === 'set' && (first === 'update' || pw === 'delete' || pw === 'update'))
+        // BEGIN TRAN, END TRY, BEGIN CATCH …
+        || (tk.v === 'rollback' && pw === 'with') || (tk.v === 'insert' && pw === 'bulk') || (pw === 'begin' && ['tran', 'transaction', 'try', 'catch', 'distributed'].includes(tk.v))
+        || (tk.v === 'end' && first === 'case')
+      if (!inside) flush()
+    }
+    if (!cur.length && tk.t === 'id' && tk.v === 'create') unit = null
+    cur.push(tk)
+  }
+  flush()
+  return out
+}
+
+// Which SQL dialect a script is written in: 'sqlserver' when it has T-SQL's
+// GO lines, [names] or types, 'oracle' when it uses Oracle's types or
+// SQL*Plus's / lines, else 'postgresql'.
+export function detectDialect(sql0) {
+  const sql = sql0.length > 4e6 ? sql0.slice(0, 4e6) : sql0
+  const code = sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, '')
+  // SQL Server: GO lines, [bracketed] names, NVARCHAR(MAX), IDENTITY(1, 1).
+  if (/^[ \t]*GO[ \t]*(\d+[ \t]*)?\r?$|\[\w+\]\s*\.\s*\[\w+\]|\b(N?VARCHAR|VARBINARY)\s*\(\s*MAX\s*\)|\bIDENTITY\s*\(\s*\d+\s*,|\bNVARCHAR\b|\bDATETIME2?\b|\bUNIQUEIDENTIFIER\b/im.test(code)) return 'sqlserver'
   return /\b(VARCHAR2|NVARCHAR2|NUMBER\s*\(|CLOB|NCLOB|BINARY_(FLOAT|DOUBLE))|^[ \t]*\/[ \t]*$|\bENABLE\s*[,;)]|\bLONG\s+RAW\b/im.test(sql) ? 'oracle' : 'postgresql'
 }
 
 // SQL*Plus commands (one line each, no semicolon) taken out of an Oracle script.
 const SQLPLUS_LINE = /^[ \t]*(rem(ark)?\b|prompt\b|spool\b|@@?|exit\b|quit\b|whenever\b|connect\b|conn\b|host\b|pause\b|accept\b|undefine\b|clear\b|timing\b|show\b|define\s+\w+\s*=|set\s+(define|echo|feedback|serveroutput|linesize|pagesize|verify|termout|heading|timing|trimspool|trimout|sqlblanklines|long|scan|escape|autocommit|sqlprompt|newpage|wrap|tab|colsep|numwidth|arraysize|concat|markup|errorlogging)\b|col(umn)?\s+\S+\s+(format|heading|new_value|noprint|clear)\b).*$/gim
 
+// sqlcmd commands (:setvar, :on error exit, :r file…) taken out of a T-SQL script.
+const SQLCMD_LINE = /^[ \t]*:(setvar|on|r|connect|out|error|exit|quit|serverlist|listvar|reset|ed|perftrace|help|xml)\b.*$/gim
+
 // ── Token stream helpers ─────────────────────────────────────────────────────
+
+// A name as written: SQL Server keeps the case of unquoted names (name),
+// PostgreSQL and Oracle fold them (v).
+const nm = (t) => t?.name ?? t?.v
 
 class Stream {
   constructor(tokens) { this.tk = tokens; this.i = 0 }
@@ -201,9 +296,12 @@ class Stream {
     const parts = []
     const t = this.peek()
     if (!t || (t.t !== 'id' && t.t !== 'qid')) return null
-    parts.push(this.next().v)
-    while (this.isOp('.') && (this.peek(1)?.t === 'id' || this.peek(1)?.t === 'qid')) { this.i++; parts.push(this.next().v) }
-    return { name: parts[parts.length - 1], schema: parts.length > 1 ? parts[parts.length - 2] : null }
+    parts.push(nm(this.next()))
+    while (this.isOp('.') && (this.peek(1)?.t === 'id' || this.peek(1)?.t === 'qid')) { this.i++; parts.push(nm(this.next())) }
+    // SQL Server: [db].[schema].[name]; dbo is the default schema.
+    let schema = parts.length > 1 ? parts[parts.length - 2] : null
+    if (mode === 'sqlserver' && schema?.toLowerCase() === 'dbo') schema = null
+    return { name: parts[parts.length - 1], schema }
   }
 }
 
@@ -238,29 +336,32 @@ export function tokensText(tokens) {
 
 const nameList = (tokens) => splitCommas(tokens ?? []).map(part => {
   const t = part.find(x => x.t === 'id' || x.t === 'qid')
-  return t ? t.v : null
+  return t ? nm(t) : null
 }).filter(Boolean)
 
 // Words that end a column's type.
 const TYPE_STOP = new Set(['constraint', 'not', 'null', 'default', 'primary', 'unique', 'references',
   'check', 'collate', 'generated', 'identity', 'deferrable', 'initially',
   // Oracle
-  'enable', 'disable', 'visible', 'invisible', 'encrypt', 'as'])
+  'enable', 'disable', 'visible', 'invisible', 'encrypt', 'as',
+  // SQL Server
+  'rowguidcol', 'sparse', 'filestream', 'masked'])
 
 // ── Statements ───────────────────────────────────────────────────────────────
 
-let oracleMode = false
+let mode = 'postgresql'
 export function parseDdl(sql0, { dialect = null } = {}) {
   dialect ??= detectDialect(sql0)
   const oracle = dialect === 'oracle'
-  const was = oracleMode
-  oracleMode = oracle
-  try { return parseScript(sql0, dialect, oracle) } finally { oracleMode = was }
+  const was = mode
+  mode = dialect
+  try { return parseScript(sql0, dialect, oracle) } finally { mode = was }
 }
 
 function parseScript(sql0, dialect, oracle) {
-  const { sql: sql1, copies } = oracle ? { sql: sql0, copies: [] } : extractCopies(sql0)
-  const sql = oracle ? sql1.replace(SQLPLUS_LINE, '') : sql1
+  const tsql = dialect === 'sqlserver'
+  const { sql: sql1, copies } = oracle || tsql ? { sql: sql0, copies: [] } : extractCopies(sql0)
+  const sql = oracle ? sql1.replace(SQLPLUS_LINE, '') : tsql ? sql1.replace(SQLCMD_LINE, '') : sql1
   const tables = new Map()   // key: qualified name
   const enums = new Map()
   const domains = new Map()
@@ -274,9 +375,12 @@ function parseScript(sql0, dialect, oracle) {
   // psql's \copy … FROM a file (AdventureWorks reads its rows from CSV files
   // next to the script): the rows are not in the script, so not read.
   for (const _ of sql.matchAll(/^[ \t]*\\copy\b[^\n]*\bfrom\s+(?!stdin\b|pstdin\b)/gim)) skip('\\copy … FROM a file (its rows are not in the script)')
-  const keyOf = (q) => `${q.schema ?? ''}.${q.name}`
-  const findTable = (q) => tables.get(keyOf(q)) ?? [...tables.values()].find(t => t.name === q.name && (!q.schema || t.schema === q.schema))
+  // SQL Server compares names without case.
+  const ci = (x) => (tsql && x != null ? String(x).toLowerCase() : x)
+  const keyOf = (q) => ci(`${q.schema ?? ''}.${q.name}`)
+  const findTable = (q) => tables.get(keyOf(q)) ?? [...tables.values()].find(t => ci(t.name) === ci(q.name) && (!q.schema || ci(t.schema) === ci(q.schema)))
 
+  let dateFormat = null   // SQL Server: SET DATEFORMAT dmy | mdy | …
   const partitions = new Set()
   const seqTriggers = []   // Oracle: [table, column] a BEFORE INSERT trigger fills from a sequence
   const handle = (tokens, defSchema) => {
@@ -302,6 +406,7 @@ function parseScript(sql0, dialect, oracle) {
       }
       if (s.eatWord('create')) {
         s.eatWord('or', 'replace')
+        if (tsql) s.eatWord('or', 'alter')
         if (oracle) { s.eatWord('editionable'); s.eatWord('noneditionable'); s.eatWord('no', 'force'); s.eatWord('force'); s.eatWord('private') }
         s.eatWord('global'); s.eatWord('local')
         s.eatWord('temporary'); s.eatWord('temp'); s.eatWord('unlogged')
@@ -328,6 +433,14 @@ function parseScript(sql0, dialect, oracle) {
         }
         if (s.eatWord('type')) {
           const q = s.qname()
+          // SQL Server: CREATE TYPE name FROM base [NOT NULL] (an alias type)
+          // is a domain.
+          if (tsql && q && s.eatWord('from')) {
+            const d = { type: readType(s), notNull: false, checks: [] }
+            readColumnConstraints(s, d, null, problems)
+            domains.set(q.name.toLowerCase(), d)
+            return
+          }
           if (q && s.eatWord('as', 'enum')) {
             enums.set(q.name, splitCommas(s.group() ?? []).map(p => p.find(t => t.t === 'str')?.v).filter(v => v != null))
           } else skip('CREATE TYPE (not an enum)')
@@ -342,8 +455,8 @@ function parseScript(sql0, dialect, oracle) {
           if (q) domains.set(q.name, d)
           return
         }
-        if (s.isWord('unique') && s.isWord('index', 1)) {
-          s.i += 2
+        if (s.isWord('unique') && (s.isWord('index', 1) || ((s.isWord('clustered', 1) || s.isWord('nonclustered', 1)) && s.isWord('index', 2)))) {
+          s.i += s.isWord('index', 1) ? 2 : 3
           s.eatWord('concurrently'); s.eatWord('if', 'not', 'exists')
           const indexName = !s.isWord('on') ? s.qname()?.name ?? null : null
           s.eatWord('on'); s.eatWord('only')
@@ -351,8 +464,24 @@ function parseScript(sql0, dialect, oracle) {
           if (s.eatWord('using')) s.next()
           const g = s.group()
           const cols = g && splitCommas(g).every(p => p.length === 1 && (p[0].t === 'id' || p[0].t === 'qid')) ? nameList(g) : null
-          const rest = s.tk.slice(s.i)
+          let rest = s.tk.slice(s.i)
           const t = q && findTable(q)
+          // WHERE c IS NOT NULL AND … over key columns only leaves out the
+          // rows that standard SQL's UNIQUE does not compare: the same key
+          // (FreeFBM's SQL Server export writes UNIQUE so).
+          const w = rest.findIndex(x => x.t === 'id' && x.v === 'where')
+          if (w >= 0 && cols) {
+            const conds = []
+            let cur = []
+            for (const x of rest.slice(w + 1)) {
+              if (x.t === 'id' && x.v === 'and') { conds.push(cur); cur = [] }
+              else if (!(x.t === 'op' && (x.v === '(' || x.v === ')'))) cur.push(x)
+            }
+            conds.push(cur)
+            const inKey = (x) => (x.t === 'id' || x.t === 'qid') && cols.some(n => n.toLowerCase() === String(nm(x)).toLowerCase())
+            const ok = conds.every(c => c.length === 4 && inKey(c[0]) && c[1].v === 'is' && c[2].v === 'not' && c[3].v === 'null')
+            if (ok) rest = rest.slice(0, w)
+          }
           if (t && cols && !rest.some(x => x.t === 'id' && x.v === 'where')) { t.uniques.push(cols); nameKey(t, uniqueKey(cols), indexName) }
           else skip('CREATE UNIQUE INDEX on expressions or with WHERE')
           return
@@ -391,6 +520,26 @@ function parseScript(sql0, dialect, oracle) {
               }
             })
             if (best) seqTriggers.push([q, best.col])
+          }
+          skip('CREATE TRIGGER')
+          return
+        }
+        // SQL Server: a trigger that throws when a violation query has rows
+        // (IF EXISTS (query) THROW …, as FreeFBM's SQL Server export writes
+        // assertions) is read as the assertion NOT EXISTS (query).
+        if (tsql && s.eatWord('trigger')) {
+          const tq = s.qname()
+          s.eatWord('on')
+          const q = s.qname()
+          const rest = s.tk.slice(s.i)
+          const ex = rest.findIndex((t, i) => t.t === 'id' && t.v === 'if' && rest[i + 1]?.v === 'exists' && rest[i + 2]?.v === '(')
+          if (tq && q && ex >= 0 && rest.some(t => t.t === 'id' && (t.v === 'throw' || t.v === 'raiserror'))) {
+            const g = new Stream(rest.slice(ex + 2)).group()
+            const name = tq.name.endsWith(`_on_${q.name}`) ? tq.name.slice(0, -(q.name.length + 4)) : tq.name
+            const text = `NOT EXISTS (${conditionText(g)})`
+            if (!assertions.some(a => a.name === name || a.text === text)) assertions.push({ name, text })
+            skip('CREATE TRIGGER (read as the assertion it checks)')
+            return
           }
           skip('CREATE TRIGGER')
           return
@@ -443,7 +592,7 @@ function parseScript(sql0, dialect, oracle) {
         }
         return
       }
-      if (s.eatWord('insert', 'into')) {
+      if (s.eatWord('insert', 'into') || (tsql && s.isWord('insert') && (s.peek(1)?.t === 'qid' || (s.peek(1)?.t === 'id' && !['all', 'overwrite'].includes(s.peek(1).v))) && s.eatWord('insert'))) {
         const q = qn()
         let columns = null
         if (s.isOp('(')) columns = nameList(s.group())
@@ -469,9 +618,18 @@ function parseScript(sql0, dialect, oracle) {
           if (child) { partitions.add(keyOf(child)); if (q) parentOf.set(keyOf(child), q) }
           return
         }
+        // SQL Server: WITH CHECK | NOCHECK ADD …, and one ADD for a list.
+        if (tsql) { s.eatWord('with', 'check'); s.eatWord('with', 'nocheck') }
         const actions = splitCommas(s.tk.slice(s.i))
         let used = false
-        for (const a of actions) {
+        let lastVerb = null
+        for (const a0 of actions) {
+          let a = a0
+          if (tsql) {
+            const w = a[0]?.t === 'id' ? a[0].v : null
+            if (['add', 'drop', 'alter'].includes(w)) lastVerb = a[0]
+            else if (lastVerb && !['check', 'nocheck', 'enable', 'disable', 'set', 'switch', 'rebuild', 'with'].includes(w)) a = [lastVerb, ...a]
+          }
           const as = new Stream(a)
           if (!t) {
             // Sequences, views and the like are altered too; only adding to a missing table is a problem.
@@ -493,6 +651,18 @@ function parseScript(sql0, dialect, oracle) {
             for (const item of items) if (modifyColumn(new Stream(item), t, problems)) used = true
             continue
           }
+          // SQL Server: ALTER COLUMN c type [NULL | NOT NULL].
+          if (tsql && as.isWord('alter') && as.isWord('column', 1)) {
+            as.i += 2
+            const k = as.next()
+            const col = k && t.columns.find(c => c.name.toLowerCase() === String(nm(k)).toLowerCase())
+            if (!col) { problems.push(`${t.name}: ALTER COLUMN of an unknown column`); continue }
+            const type = readType(as)
+            if (type.name) col.type = type
+            col.notNull = as.isWord('not') && as.isWord('null', 1)
+            used = true
+            continue
+          }
           if (alterColumn(as, t, problems)) { used = true; continue }
           if (!as.eatWord('add')) continue
           if (readTableConstraint(as, t, problems)) used = true
@@ -500,13 +670,15 @@ function parseScript(sql0, dialect, oracle) {
         if (!used) skip('ALTER TABLE (other than adding a constraint or changing columns)')
         return
       }
+      if (tsql && s.isWord('bulk') && s.isWord('insert', 1)) { skip('BULK INSERT … FROM a file (its rows are not in the script)'); return }
+      if (tsql && s.eatWord('set', 'dateformat')) { dateFormat = s.next()?.v?.toLowerCase() ?? null; return }
       const head = tokens.slice(0, 2).filter(t => t.t === 'id').map(t => t.v.toUpperCase()).join(' ')
       skip(head || 'statement')
     } catch (err) {
       problems.push(`Could not read: ${tokensText(tokens).slice(0, 120)}… (${err.message})`)
     }
   }
-  for (const tokens of statements(tokenize(sql, { oracle }), oracle)) handle(tokens, null)
+  for (const tokens of statements(tokenize(sql, { dialect }), dialect)) handle(tokens, null)
   if (oracle) {
     // A unique index behind a primary key or UNIQUE constraint (as Oracle's
     // DBMS_METADATA writes them) is the same key.
@@ -527,6 +699,7 @@ function parseScript(sql0, dialect, oracle) {
       }
     }
   }
+  if (tsql) caseFold([...tables.values()], inserts, domains)
   // Partitions of a partitioned table hold its rows; they are not tables of their own.
   for (const k of partitions) if (tables.delete(k)) skip('partition (ALTER TABLE ... ATTACH PARTITION)')
   for (const c of copies) {
@@ -540,7 +713,44 @@ function parseScript(sql0, dialect, oracle) {
       q = parentOf.get(keyOf(q)) ?? parentOf.get([...parentOf.keys()].find(x => x.endsWith(`.${q.name}`)))
     ins.table = q
   }
-  return { tables: [...tables.values()], enums, domains, inserts, skipped, problems, assertions, functions, dialect }
+  return { tables: [...tables.values()], enums, domains, inserts, skipped, problems, assertions, functions, dialect, dateFormat }
+}
+
+// SQL Server compares names without case: every reference to a table or a
+// column is written as the table or column was declared (keys, foreign keys,
+// rows, the names in CHECKs), and types and domains are lower case.
+function caseFold(tables, inserts, domains) {
+  const low = (x) => String(x).toLowerCase()
+  const tableOf = (name, schema) => tables.find(t => low(t.name) === low(name) && (!schema || low(t.schema ?? '') === low(schema)))
+    ?? tables.find(t => low(t.name) === low(name))
+  const colsOf = (t) => new Map(t.columns.map(c => [low(c.name), c.name]))
+  const fix = (t, cols) => cols?.map(c => colsOf(t).get(low(c)) ?? c) ?? cols
+  for (const [k, d] of [...domains]) { domains.delete(k); domains.set(low(k), d); if (d.type?.name) d.type.name = low(d.type.name) }
+  for (const t of tables) {
+    for (const c of t.columns) if (c.type?.name) c.type.name = low(c.type.name)
+    t.primaryKey = fix(t, t.primaryKey)
+    if (t.keyNames) t.keyNames = Object.fromEntries(Object.entries(t.keyNames).map(([k, n]) =>
+      [k === 'pk' ? k : uniqueKey(fix(t, k.slice(2).split('\u0000'))), n]))
+    t.uniques = t.uniques.map(u => fix(t, u))
+    for (const fk of t.foreignKeys) {
+      fk.columns = fix(t, fk.columns)
+      const rt = tableOf(fk.refTable, fk.refSchema)
+      if (rt) { fk.refTable = rt.name; fk.refSchema = rt.schema; fk.refColumns = fix(rt, fk.refColumns) }
+    }
+    const names = colsOf(t)
+    const text = (x) => tokensText(tokenize(x).map(k => {
+      const n = (k.t === 'id' || k.t === 'qid') && names.get(low(k.v))
+      return n && n !== k.v ? { t: 'qid', v: n, raw: quoteIdent(n) } : k
+    }))
+    t.checks = t.checks.map(text)
+    for (const c of t.columns) c.checks = c.checks.map(text)
+  }
+  for (const ins of inserts) {
+    const t = tableOf(ins.table.name, ins.table.schema)
+    if (!t) continue
+    ins.table = { name: t.name, schema: t.schema }
+    ins.columns = fix(t, ins.columns)
+  }
 }
 
 // The value of a literal in a VALUES list: a string, null for NULL, or
@@ -548,7 +758,7 @@ function parseScript(sql0, dialect, oracle) {
 // (::type) are dropped.
 function literalValue(tokens) {
   let tks = tokens
-  if (oracleMode) {
+  if (mode === 'oracle') {
     // DATE '…', TIMESTAMP '…', TO_DATE('…', 'format'), TO_TIMESTAMP(…).
     if (tks.length === 2 && tks[0].t === 'id' && (tks[0].v === 'date' || tks[0].v === 'timestamp') && tks[1].t === 'str') return tks[1].v
     if (tks[0]?.t === 'id' && /^to_(date|timestamp)$/.test(tks[0].v) && tks[1]?.t === 'op' && tks[1].v === '(' && tks[tks.length - 1]?.v === ')') {
@@ -601,7 +811,9 @@ function parseCreateTable(s, tables, keyOf, problems, skip, defSchema, parentOf)
     if (is.isWord('like')) { problems.push(`${t.name}: LIKE in CREATE TABLE is not read`); continue }
     const nameTk = is.next()
     if (!nameTk || (nameTk.t !== 'id' && nameTk.t !== 'qid')) continue
-    const col = { name: nameTk.v, type: readType(is), notNull: false, checks: [] }
+    // SQL Server: name AS expression (a computed column) has no type of its own.
+    if (mode === 'sqlserver' && is.isWord('as')) { (t.computed ??= []).push(nm(nameTk)); continue }
+    const col = { name: nm(nameTk), type: readType(is), notNull: false, checks: [] }
     readColumnConstraints(is, col, t, problems)
     t.columns.push(col)
   }
@@ -650,7 +862,7 @@ function nameKey(t, key, name) {
 // Column constraints after the type, into col (and, for REFERENCES, the table).
 function readColumnConstraints(s, col, table, problems) {
   while (!s.done()) {
-    if (s.eatWord('constraint')) { col._cname = s.next()?.v ?? null; continue }
+    if (s.eatWord('constraint')) { col._cname = nm(s.next()) ?? null; continue }
     if (s.eatWord('not', 'null')) { col.notNull = true; continue }
     if (s.eatWord('null')) continue
     if (s.eatWord('default')) {
@@ -658,11 +870,13 @@ function readColumnConstraints(s, col, table, problems) {
       const start = s.i
       skipExpression(s)
       const words = s.tk.slice(start, s.i).filter(t => t.t === 'id').map(t => t.v)
-      if (words.includes('nextval')) col.defaultGenerated = 'sequence'
-      else if (words.some(w => /^(gen_random_uuid|uuid_generate\w*|uuidv\d)$/.test(w))) col.defaultGenerated = 'uuid'
+      if (words.includes('nextval') || (words.includes('next') && words.includes('value') && words.includes('for'))) col.defaultGenerated = 'sequence'
+      else if (words.some(w => /^(gen_random_uuid|uuid_generate\w*|uuidv\d|newid|newsequentialid)$/.test(w))) col.defaultGenerated = 'uuid'
       continue
     }
     if (s.eatWord('collate')) { s.qname(); continue }
+    // SQL Server: IDENTITY [(seed, increment)].
+    if (mode === 'sqlserver' && s.eatWord('identity')) { if (s.isOp('(')) s.group(); col.identity = true; continue }
     if (s.eatWord('generated')) {
       // GENERATED ALWAYS|BY DEFAULT AS IDENTITY [(...)] | AS (expr) STORED
       while (!s.done() && !s.isWord('as')) s.next()
@@ -708,7 +922,7 @@ function readColumnConstraints(s, col, table, problems) {
 // DEFAULT. Scripts such as AdventureWorks reshape tables after CREATE TABLE.
 // Returns false for anything else (ADD of a table constraint among them).
 function alterColumn(s, t, problems) {
-  const colName = () => { const k = s.next(); return k && (k.t === 'id' || k.t === 'qid') ? k.v : null }
+  const colName = () => { const k = s.next(); return k && (k.t === 'id' || k.t === 'qid') ? nm(k) : null }
   const find = (n) => t.columns.find(c => c.name === n)
   const start = s.i
   if (s.eatWord('add')) {
@@ -769,14 +983,16 @@ function alterColumn(s, t, problems) {
 
 function readTableConstraint(s, t, problems) {
   let cname = null
-  if (s.eatWord('constraint')) cname = s.next()?.v ?? null
+  if (s.eatWord('constraint')) cname = nm(s.next()) ?? null
   if (s.eatWord('primary', 'key')) {
+    s.eatWord('clustered'); s.eatWord('nonclustered')
     t.primaryKey = nameList(s.group())
     nameKey(t, 'pk', cname)
     return true
   }
   if (s.eatWord('unique')) {
     s.eatWord('nulls', 'not', 'distinct')
+    s.eatWord('clustered'); s.eatWord('nonclustered')
     const cols = nameList(s.group())
     if (cols.length) { t.uniques.push(cols); nameKey(t, uniqueKey(cols), cname) }
     return true
@@ -921,7 +1137,7 @@ function csvRows(lines, delim, nul) {
 // ALTER TABLE … MODIFY col [type] [constraints] | MODIFY (col …, col …).
 function modifyColumn(s, t, problems) {
   const k = s.next()
-  const col = k && (k.t === 'id' || k.t === 'qid') ? t.columns.find(c => c.name === k.v) : null
+  const col = k && (k.t === 'id' || k.t === 'qid') ? t.columns.find(c => c.name === nm(k)) : null
   if (!col) { if (k) problems.push(`${t.name}: MODIFY of an unknown column ${k.v}`); return false }
   const type = readType(s)
   if (type.name) col.type = type
@@ -935,7 +1151,28 @@ function modifyColumn(s, t, problems) {
 // p [, 'i']) written as PostgreSQL's a ~ p (a ~* p), which the CHECK reader
 // knows.
 function conditionText(tks) {
-  if (!oracleMode) return tokensText(tks)
+  if (mode === 'sqlserver') {
+    // [name] as "name"; 1 = 1 and 1 = 0 (T-SQL has no TRUE) as TRUE, FALSE.
+    const out = []
+    for (let i = 0; i < tks.length; i++) {
+      const t = tks[i]
+      if (t.t === 'num' && tks[i + 1]?.t === 'op' && tks[i + 1].v === '=' && tks[i + 2]?.t === 'num' && t.v === '1' && /^[01]$/.test(tks[i + 2].v)) {
+        const v = tks[i + 2].v === '1' ? 'TRUE' : 'FALSE'
+        out.push({ t: 'id', v: v.toLowerCase(), raw: v }); i += 2; continue
+      }
+      // LIKE with a [character class] (T-SQL's, not standard SQL's) as a
+      // regular expression.
+      if (t.t === 'id' && t.v === 'like' && tks[i + 1]?.t === 'str' && /\[[^\]]+\]/.test(tks[i + 1].v) && tks[i - 1]?.v !== 'not') {
+        const re = `^${tks[i + 1].v.replace(/\[[^\]]*\]|[%_]|[.*+?^${}()|\\]/g, (m) => (m === '%' ? '.*' : m === '_' ? '.' : m.startsWith('[') ? m.replace(/^\[\^/, '[^') : `\\${m}`))}$`
+        out.push({ t: 'op', v: '~', raw: '~' }, { t: 'str', v: re, raw: `'${re.replace(/'/g, "''")}'` })
+        i++
+        continue
+      }
+      out.push(t.t === 'qid' ? { ...t, raw: `"${t.v.replace(/"/g, '""')}"` } : t)
+    }
+    return tokensText(out)
+  }
+  if (mode !== 'oracle') return tokensText(tks)
   const out = []
   for (let i = 0; i < tks.length; i++) {
     const t = tks[i]

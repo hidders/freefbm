@@ -41,7 +41,7 @@ function Dialog({ schemaId }) {
   const save = async () => {
     close()
     const api = window.electronAPI
-    if (api?.saveSql) await api.saveSql({ defaultPath: `${(schema?.name ?? 'schema').replace(/[^A-Za-z0-9_-]+/g, '_')}${oracle ? '_oracle' : ''}.sql`, content: res.sql })
+    if (api?.saveSql) await api.saveSql({ defaultPath: `${(schema?.name ?? 'schema').replace(/[^A-Za-z0-9_-]+/g, '_')}${settings.target && settings.target !== 'postgresql' ? `_${settings.target}` : ''}.sql`, content: res.sql })
   }
   const items = res.plan?.items ?? []
   const warnings = res.warnings ?? []
@@ -94,6 +94,12 @@ function Dialog({ schemaId }) {
                     those that ask for rows are checked at commit. When Oracle can't, or refuses one when the script runs, they become
                     triggers, which Oracle runs after each statement (it has no deferred triggers), or audit queries: commented queries
                     that return the rows breaking them.</>
+                  : settings.target === 'sqlserver'
+                  ? <>Those that are a foreign key in disguise are written as one. SQL Server has no CREATE ASSERTION and no deferred
+                    triggers, so the others become triggers (AFTER INSERT, UPDATE, DELETE, raising an error with THROW) that check the
+                    assertion after each statement, so an assertion that asks for rows in another table can only be met when both are
+                    written in one statement, or with its triggers disabled while loading; or audit queries: commented queries that
+                    return the rows breaking them.</>
                   : <>Those that are a foreign key in disguise are written as one. PostgreSQL has no CREATE ASSERTION, so the others become
                     constraint triggers, which run the assertion's query at the end of every transaction that changes a table it reads
                     (so load rows in one transaction), or audit queries: commented queries that return the rows breaking them.</>}

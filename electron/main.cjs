@@ -73,7 +73,7 @@ function buildMenu(win) {
         { type: 'separator' },
         { label: 'Export to PDF…', accelerator: 'CmdOrCtrl+Shift+E', click: send('menu:exportPdf') },
         { type: 'separator' },
-        { label: 'Import SQL DDL (PostgreSQL or Oracle)…', click: send('menu:importSql') },
+        { label: 'Import SQL DDL (PostgreSQL, Oracle or SQL Server)…', click: send('menu:importSql') },
         { label: 'Export SQL DDL…', click: send('menu:exportSql') },
         { label: 'Load Sample Rows from SQL…', click: send('menu:loadSampleSql') },
         { label: 'Export Sample Rows as SQL…', click: send('menu:exportRowsSql') },

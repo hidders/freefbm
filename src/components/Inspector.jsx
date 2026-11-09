@@ -12,6 +12,7 @@ import { NoteConnectorIcon } from './ToolPanel'
 import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
 import { constraintMaxSequences, suppressRolePosition } from '../utils/constraintRules.js'
 import { PROFILES, PROFILE_MAP, getDatatypeById } from '../data/datatypeProfiles'
+import { nativeTypes, DIALECT_NAMES } from '../relational/sqlNames.js'
 import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
 import { VALIDATION_CATEGORIES } from '../utils/validation.js'
 import { DERIVATION_MODES, whyNotDerivableType, isDerived, checkRule, upgradeRule } from '../logic/derivationRule.js'
@@ -1150,7 +1151,7 @@ function DatatypeField({ assignment, onSet }) {
             style={selectStyle}>
             <option value="">— not set —</option>
             {profile.datatypes.map(dt => (
-              <option key={dt.id} value={dt.id}>{dt.name}</option>
+              <option key={dt.id} value={dt.id}>{dt.name}{dt.ext ? ` (${dt.ext === 'postgresql' ? 'PostgreSQL' : dt.ext} only)` : ''}</option>
             ))}
           </select>
         )}
@@ -1189,7 +1190,9 @@ function DatatypeField({ assignment, onSet }) {
                   const val = e.target.value === '' ? undefined : Number(e.target.value)
                   const params = { ...(assignment.params ?? {}), [param.name]: val }
                   if (val === undefined) delete params[param.name]
-                  onSet({ ...assignment, params })
+                  // Another type than the one a script gave: its own text goes.
+                  const { sqlTypes: _n, oracle: _o, ...rest } = assignment
+                  onSet({ ...rest, params })
                 }}
                 onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
                 style={paramInputStyle}
@@ -1198,6 +1201,13 @@ function DatatypeField({ assignment, onSet }) {
           ))}
         </div>
       )}
+      {Object.entries(nativeTypes(assignment)).map(([d, text]) => (
+        <Row key={d}>
+          <Label>{DIALECT_NAMES[d] ?? d}</Label>
+          <span style={{ fontSize: 11, color: 'var(--ink-2)', fontFamily: 'var(--font-mono, monospace)' }}
+            title={`The type as the ${DIALECT_NAMES[d] ?? d} script wrote it; the ${DIALECT_NAMES[d] ?? d} export writes it back`}>{text}</span>
+        </Row>
+      ))}
     </>
   )
 }

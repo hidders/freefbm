@@ -136,10 +136,15 @@ export const PROFILES = [
     ],
   },
   {
-    // PostgreSQL's built-in types, for relational schemas (workbench step 4).
-    // Ids are the names PostgreSQL itself prints (format_type), in lower case.
+    // The SQL types of relational schemas (workbench step 4): one type system
+    // for every SQL DBMS. Ids are the names PostgreSQL prints (format_type),
+    // in lower case (the id stays 'postgresql' for older files); types only
+    // PostgreSQL has are marked ext. A column read from another DBMS's script
+    // has the nearest of these types and keeps its own type text per dialect
+    // in the assignment's sqlTypes ({ oracle: 'VARCHAR2(40)', sqlserver:
+    // 'NVARCHAR(40)' }), which that DBMS's export writes back.
     id: 'postgresql',
-    name: 'PostgreSQL',
+    name: 'SQL types',
     datatypes: [
       // Numeric
       { id: 'smallint',         name: 'smallint',         params: [] },
@@ -151,16 +156,16 @@ export const PROFILES = [
         ] },
       { id: 'real',             name: 'real',             params: [] },
       { id: 'double precision', name: 'double precision', params: [] },
-      { id: 'smallserial',      name: 'smallserial',      params: [] },
-      { id: 'serial',           name: 'serial',           params: [] },
-      { id: 'bigserial',        name: 'bigserial',        params: [] },
-      { id: 'money',            name: 'money',            params: [] },
+      { id: 'smallserial',      name: 'smallserial',      params: [], ext: 'postgresql' },
+      { id: 'serial',           name: 'serial',           params: [], ext: 'postgresql' },
+      { id: 'bigserial',        name: 'bigserial',        params: [], ext: 'postgresql' },
+      { id: 'money',            name: 'money',            params: [], ext: 'postgresql' },
       // Character
       { id: 'text',             name: 'text',             params: [] },
       { id: 'character varying', name: 'varchar',         params: [{ name: 'length', type: 'integer', optional: true }] },
       { id: 'character',        name: 'char',             params: [{ name: 'length', type: 'integer', optional: true, default: 1 }] },
       // Binary
-      { id: 'bytea',            name: 'bytea',            params: [] },
+      { id: 'bytea',            name: 'bytea',            params: [], ext: 'postgresql' },
       // Boolean
       { id: 'boolean',          name: 'boolean',          params: [] },
       // Date/time
@@ -171,32 +176,32 @@ export const PROFILES = [
       // Other
       { id: 'uuid',             name: 'uuid',             params: [] },
       { id: 'json',             name: 'json',             params: [] },
-      { id: 'jsonb',            name: 'jsonb',            params: [] },
+      { id: 'jsonb',            name: 'jsonb',            params: [], ext: 'postgresql' },
       { id: 'xml',              name: 'xml',              params: [] },
-      { id: 'inet',             name: 'inet',             params: [] },
-      { id: 'cidr',             name: 'cidr',             params: [] },
-      { id: 'macaddr',          name: 'macaddr',          params: [] },
-      { id: 'macaddr8',         name: 'macaddr8',         params: [] },
-      { id: 'bit',              name: 'bit',              params: [{ name: 'length', type: 'integer', optional: true }] },
-      { id: 'bit varying',      name: 'varbit',           params: [{ name: 'length', type: 'integer', optional: true }] },
+      { id: 'inet',             name: 'inet',             params: [], ext: 'postgresql' },
+      { id: 'cidr',             name: 'cidr',             params: [], ext: 'postgresql' },
+      { id: 'macaddr',          name: 'macaddr',          params: [], ext: 'postgresql' },
+      { id: 'macaddr8',         name: 'macaddr8',         params: [], ext: 'postgresql' },
+      { id: 'bit',              name: 'bit',              params: [{ name: 'length', type: 'integer', optional: true }], ext: 'postgresql' },
+      { id: 'bit varying',      name: 'varbit',           params: [{ name: 'length', type: 'integer', optional: true }], ext: 'postgresql' },
       // Text search
-      { id: 'tsvector',         name: 'tsvector',         params: [] },
-      { id: 'tsquery',          name: 'tsquery',          params: [] },
+      { id: 'tsvector',         name: 'tsvector',         params: [], ext: 'postgresql' },
+      { id: 'tsquery',          name: 'tsquery',          params: [], ext: 'postgresql' },
       // Geometric
-      { id: 'point',            name: 'point',            params: [] },
-      { id: 'line',             name: 'line',             params: [] },
-      { id: 'lseg',             name: 'lseg',             params: [] },
-      { id: 'box',              name: 'box',              params: [] },
-      { id: 'path',             name: 'path',             params: [] },
-      { id: 'polygon',          name: 'polygon',          params: [] },
-      { id: 'circle',           name: 'circle',           params: [] },
+      { id: 'point',            name: 'point',            params: [], ext: 'postgresql' },
+      { id: 'line',             name: 'line',             params: [], ext: 'postgresql' },
+      { id: 'lseg',             name: 'lseg',             params: [], ext: 'postgresql' },
+      { id: 'box',              name: 'box',              params: [], ext: 'postgresql' },
+      { id: 'path',             name: 'path',             params: [], ext: 'postgresql' },
+      { id: 'polygon',          name: 'polygon',          params: [], ext: 'postgresql' },
+      { id: 'circle',           name: 'circle',           params: [], ext: 'postgresql' },
       // Ranges
-      { id: 'int4range',        name: 'int4range',        params: [] },
-      { id: 'int8range',        name: 'int8range',        params: [] },
-      { id: 'numrange',         name: 'numrange',         params: [] },
-      { id: 'tsrange',          name: 'tsrange',          params: [] },
-      { id: 'tstzrange',        name: 'tstzrange',        params: [] },
-      { id: 'daterange',        name: 'daterange',        params: [] },
+      { id: 'int4range',        name: 'int4range',        params: [], ext: 'postgresql' },
+      { id: 'int8range',        name: 'int8range',        params: [], ext: 'postgresql' },
+      { id: 'numrange',         name: 'numrange',         params: [], ext: 'postgresql' },
+      { id: 'tsrange',          name: 'tsrange',          params: [], ext: 'postgresql' },
+      { id: 'tstzrange',        name: 'tstzrange',        params: [], ext: 'postgresql' },
+      { id: 'daterange',        name: 'daterange',        params: [], ext: 'postgresql' },
       // A type PostgreSQL gets from an extension or a CREATE TYPE (pgvector's
       // vector(20), PostGIS's geometry, a composite type), kept as written.
       { id: 'user-defined',     name: 'user-defined',     params: [{ name: 'sql', type: 'string' }] },

@@ -1,6 +1,7 @@
 import { mkSchema, mkDiagram, SCHEMA_PROFILES, activeSchemaIdOf } from '../storeHelpers'
 import { importPostgresDdl, samplePopulation } from '../../relational/ddlImport.js'
 import { parseDdl } from '../../relational/ddlParse.js'
+import { DIALECT_NAMES } from '../../relational/sqlNames.js'
 import { exportPostgresDdl } from '../../relational/ddlExport.js'
 import { exportSqlDdl } from '../../relational/sqlExport.js'
 import { guessOrmSchema } from '../../relational/guessOrm.js'
@@ -162,7 +163,7 @@ export const createSchemaSlice = (set, get) => ({
       set(s => ({ historyBatch: Math.max(0, (s.historyBatch ?? 1) - 1) }))
     }
     const st = built.stats
-    get().setImportLog({ kind: 'ddl', source: `${name} (${built.dialect === 'oracle' ? 'Oracle' : 'PostgreSQL'} DDL)`, entries: [
+    get().setImportLog({ kind: 'ddl', source: `${name} (${DIALECT_NAMES[built.dialect] ?? 'PostgreSQL'} DDL)`, entries: [
       { level: 'note', text: `Read ${st.tables} tables with ${st.columns} columns into schema ${unique}: ${st.valueTypes} value types, ${st.keys} keys, ${st.foreignKeys} foreign keys${st.comparisons ? `, ${st.comparisons} value comparison${st.comparisons === 1 ? '' : 's'}` : ''}${st.checks ? `, ${st.checks} CHECK constraint${st.checks === 1 ? '' : 's'} as formula constraints` : ''}` },
       ...built.log,
       ...built.sample.log,
