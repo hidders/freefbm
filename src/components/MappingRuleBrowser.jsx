@@ -13,7 +13,7 @@ import { Highlight } from '../utils/nameFilter.jsx'
 import { checkRule, sideContext, sideTokens, tokensText, SIDES } from '../mapping/mapping.js'
 import { checkViewRule, viewRuleText, headId, elementName } from '../mapping/views.js'
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 
 // Per rule of the mapping: its label, formula and number of errors/warnings.
 export function useMappingRuleInfos(mapping) {

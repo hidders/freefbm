@@ -3,7 +3,7 @@ import { useOrmStore } from '../store/ormStore'
 import { clusterRules, shapesOf, DEFAULT_CAP } from '../mapping/ruleClusters.js'
 import { layoutMappingDiagram } from '../layout/mappingLayout.js'
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 const CAP_KEY = 'freefbm.suggestDiagrams.cap'
 
 const readCap = () => {

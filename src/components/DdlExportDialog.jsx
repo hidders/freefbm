@@ -2,7 +2,7 @@ import React, { useMemo } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { SQL_TARGETS, sqlSettings, techniqueName } from '../relational/enforcement.js'
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 const OLD_MODE_KEY = 'freefbm.ddlExport.assertions'
 
 // File › Export SQL DDL…: a relational schema is a relational schema in

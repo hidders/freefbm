@@ -30,13 +30,11 @@ export default function StartingPoints({ diagram }) {
 
   const btn = { fontSize: 10, padding: '1px 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg-surface)', color: 'var(--ink-2)', cursor: 'pointer', whiteSpace: 'nowrap' }
   return <>
-    <span className="starting-points-toggle" title="The schema's major types, as seeds for new diagrams"
+    <button className="ui-btn starting-points-toggle" title="The schema's major types, as seeds for new diagrams"
+      aria-haspopup="menu" aria-expanded={!!open}
       onMouseDown={e => e.stopPropagation()}
       onClick={e => { const r = e.currentTarget.getBoundingClientRect(); setOpen(open ? null : { x: r.left, y: r.bottom + 4 }) }}
-      style={{ cursor: 'pointer', color: open ? 'var(--ink-1)' : 'var(--ink-3)' }}
-      onMouseEnter={e => { e.currentTarget.style.color = 'var(--ink-1)' }}
-      onMouseLeave={e => { if (!open) e.currentTarget.style.color = 'var(--ink-3)' }}
-    >Starting points</span>
+    >Starting points<span className="ui-caret">▾</span></button>
     {open && createPortal(
       <div ref={ref} className="starting-points" style={{ position: 'fixed', left: Math.min(open.x, window.innerWidth - 400), top: open.y, width: 380, maxHeight: '60vh', overflowY: 'auto', zIndex: 1000,
         background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 6, boxShadow: '0 6px 24px rgba(0,0,0,0.18)', padding: '6px 0', fontSize: 12 }}>

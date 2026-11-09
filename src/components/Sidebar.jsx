@@ -4,7 +4,7 @@ import SchemaBrowser from './SchemaBrowser'
 import ValidationPanel, { visibleIssues } from './ValidationPanel'
 import Splitter from './Splitter'
 
-const FONT  = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 const RAIL  = 26
 const MIN_W = 180
 const MAX_W = 640

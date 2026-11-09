@@ -19,7 +19,7 @@ import { makeNameFilter, Highlight } from '../utils/nameFilter.jsx'
 import { mappingOfDiagram } from '../store/storeHelpers'
 import { useMappingRuleInfos, mappingRuleSections, mappingRuleOrphanCount } from './MappingRuleBrowser.jsx'
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 
 const HDR_H  = 24
 

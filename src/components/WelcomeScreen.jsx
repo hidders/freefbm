@@ -23,7 +23,7 @@ export default function WelcomeScreen({ onClose }) {
             padding: '2px 7px', fontSize: 10,
             background: 'var(--bg-deep)', color: 'var(--ink-2)',
             border: '1px solid var(--border)', borderRadius: 3,
-            fontFamily: 'var(--font-mono)',
+            fontFamily: 'var(--font-ui)',
           }}>{k}</kbd>
         ))}
       </div>
@@ -45,7 +45,7 @@ export default function WelcomeScreen({ onClose }) {
         ? <span style={{ fontSize: 18 }}>{icon}</span>
         : <span style={{ display: 'flex' }}>{icon}</span>}
       <span style={{ fontSize: 12, color: 'var(--ink)', fontWeight: 600,
-        fontFamily: 'var(--font-mono)' }}>{label}</span>
+        fontFamily: 'var(--font-ui)' }}>{label}</span>
       {sub && <span style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{sub}</span>}
     </button>
   )

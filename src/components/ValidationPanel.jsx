@@ -7,7 +7,7 @@ import { allImportNotes, elementKindOf, importNoteElementLabel, IMPORT_NOTE_SEVE
 import { activeRelationalFace } from '../relational/face'
 import { relationalView, rmObjectOf } from '../relational/relationalView'
 
-const FONT   = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 
 const SEV_COLOUR = { error: '#dc2626', warning: '#d97706' }
 const SEV_ICON   = { error: '✕', warning: '!' }

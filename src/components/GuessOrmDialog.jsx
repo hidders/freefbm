@@ -4,7 +4,7 @@ import { layoutOrmDiagram } from '../layout/ormLayout'
 import { plainDiagramsOf } from '../mapping/carryDiagrams.js'
 import { analyseTables } from '../relational/guessOrm.js'
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 
 const KIND_TEXT = {
   entity: 'entity type',

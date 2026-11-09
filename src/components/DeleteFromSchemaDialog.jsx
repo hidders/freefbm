@@ -2,7 +2,7 @@ import React, { useMemo, useEffect, useRef } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { deletionSummary, deleteFromSchema } from '../utils/deleteSelection'
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 
 // Edit › Delete from Schema… asks here first: it names what will be deleted
 // and what goes with it. Delete on the keyboard only takes things off the

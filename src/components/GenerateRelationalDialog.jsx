@@ -4,7 +4,7 @@ import { layoutOrmDiagram } from '../layout/ormLayout'
 import { plainDiagramsOf } from '../mapping/carryDiagrams.js'
 import { planRelational } from '../relational/rmap.js'
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 
 const MODE_TEXT = {
   never: 'Never: natural keys only',

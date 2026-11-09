@@ -3,7 +3,7 @@ import { useOrmStore } from '../store/ormStore'
 import { useShallow } from 'zustand/react/shallow'
 import { activeSchemaIdOf } from '../store/storeHelpers'
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 
 export const PROFILE_LABELS = {
   orm2:       { tag: 'ORM2', name: 'ORM2 schema',       color: 'var(--col-schema-orm2)' },
@@ -216,22 +216,15 @@ export function NewSchemaMenu({ variant = 'strip' }) {
   const tab = variant === 'tab'
   return (
     <div ref={ref} style={{ position: tab ? 'static' : 'relative', flexShrink: 0, alignSelf: tab ? 'center' : 'auto' }}>
-      <div
+      <button
         onClick={() => setOpen(o => !o)}
-        title="Add a schema to this file"
-        className="new-schema-button"
-        style={{
-          display: 'flex', alignItems: 'center', gap: 3,
-          height: tab ? 20 : 22, padding: tab ? '0 8px' : '0 7px', marginRight: tab ? 8 : 0,
-          borderRadius: 11, border: '1px dashed var(--border)',
-          color: 'var(--ink-muted)', fontSize: 11, cursor: 'pointer', userSelect: 'none',
-          fontFamily: FONT, whiteSpace: 'nowrap',
-        }}
-        onMouseEnter={e => { e.currentTarget.style.color = 'var(--ink-1)' }}
-        onMouseLeave={e => { e.currentTarget.style.color = 'var(--ink-muted)' }}
+        title="Add a schema to this file: a new one, generated tables, a guessed ORM2 schema, an import or a transformation"
+        aria-haspopup="menu" aria-expanded={open}
+        className="ui-btn new-schema-button"
+        style={tab ? { marginRight: 8 } : { height: 22, padding: '0 7px' }}
       >
-        <span style={{ fontSize: 13, lineHeight: 1 }}>+</span>{tab && <span>Schema</span>}
-      </div>
+        <span style={{ fontSize: 13, lineHeight: 1 }}>+</span>{tab && <span>Schema</span>}<span className="ui-caret">▾</span>
+      </button>
       {open && (
         <div style={{
           position: 'fixed', zIndex: 50, minWidth: 230,

@@ -140,3 +140,5 @@ Population validation coverage: `node scripts/population-coverage-check.mjs [--r
 ### Styling
 
 `src/index.css` defines CSS custom properties for the entire design system (parchment/navy palette, ORM2 element colours, fonts). Components use these variables directly — no CSS-in-JS or utility framework.
+
+Fonts are bundled (`@fontsource/*`, imported in `src/main.jsx`; the CSP allows no remote fonts): `--font-ui` (IBM Plex Sans) for the whole interface, `--font-mono` (IBM Plex Mono) for formulas, SQL, datatypes and ids, `--font-display` (Fraunces) for the logo. Diagram drawings keep their own Segoe UI stack (measured for layout and NORMA labels). Controls in the bars above the canvas use `.ui-btn` (index.css): an action is a button, an on/off mode a button with `aria-pressed`, a menu ends in `.ui-caret` ▾, and a choice between states is a segmented control; links only go somewhere.

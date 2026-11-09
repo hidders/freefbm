@@ -327,7 +327,7 @@ function ToolBtn({ label, title, active, onClick }) {
         color: active ? '#fff' : 'var(--ink-2)',
         border: `1px solid ${active ? 'var(--accent)' : 'transparent'}`,
         borderRadius: 4,
-        fontFamily: 'var(--font-mono)',
+        fontFamily: 'var(--font-ui)',
         cursor: 'pointer',
         transition: 'all 0.12s',
         whiteSpace: 'nowrap',
@@ -417,7 +417,7 @@ function InternalConstraintBtn({ ct, active, onClick, shortcut }) {
         color: greyed ? 'var(--ink-muted)' : active ? '#fff' : 'var(--ink-2)',
         border: `1px solid ${active ? 'var(--accent)' : 'transparent'}`,
         borderRadius: 4,
-        fontFamily: 'var(--font-mono)',
+        fontFamily: 'var(--font-ui)',
         cursor: greyed ? 'default' : 'pointer',
         transition: 'all 0.12s',
         whiteSpace: 'nowrap',
@@ -449,7 +449,7 @@ function ConstraintBtn({ ct, active, onClick }) {
         color: active ? '#fff' : 'var(--ink-2)',
         border: `1px solid ${active ? 'var(--accent)' : 'transparent'}`,
         borderRadius: 4,
-        fontFamily: 'var(--font-mono)',
+        fontFamily: 'var(--font-ui)',
         cursor: 'pointer',
         transition: 'all 0.12s',
         whiteSpace: 'nowrap',
@@ -487,7 +487,7 @@ function GroupLabel({ children }) {
   return (
     <span style={{
       fontSize: 10,
-      fontFamily: 'var(--font-mono)',
+      fontFamily: 'var(--font-ui)',
       color: 'var(--ink-muted)',
       textTransform: 'uppercase',
       letterSpacing: '0.08em',
@@ -509,7 +509,7 @@ export function SectionLabel({ children }) {
     <div style={{
       fontSize: 9, color: 'var(--ink-muted)', letterSpacing: '0.08em',
       textTransform: 'uppercase', padding: '4px 10px 2px',
-      fontFamily: 'var(--font-mono)',
+      fontFamily: 'var(--font-ui)',
     }}>{children}</div>
   )
 }
@@ -564,7 +564,7 @@ function RelationalTools({ advanced, logical }) {
         with a transformation, which makes a new version with the mapping from this one.
       </div>
       <button onClick={open} className="relational-transform"
-        style={{ width: '100%', padding: '3px 10px', fontSize: 12, textAlign: 'left', fontFamily: 'var(--font-mono)',
+        style={{ width: '100%', padding: '3px 10px', fontSize: 12, textAlign: 'left', fontFamily: 'var(--font-ui)',
           background: 'transparent', color: 'var(--ink-1)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
         onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)' }}
         onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
@@ -613,7 +613,7 @@ export default function ToolPanel() {
         padding: '2px 4px 5px',
         marginBottom: 2,
       }}>
-        <span style={{ fontSize: 10, color: advanced ? 'var(--ink-muted)' : 'var(--ink-2)', fontFamily: 'var(--font-mono)', userSelect: 'none' }}>
+        <span style={{ fontSize: 10, color: advanced ? 'var(--ink-muted)' : 'var(--ink-2)', fontFamily: 'var(--font-ui)', userSelect: 'none' }}>
           Basic
         </span>
         <div
@@ -642,7 +642,7 @@ export default function ToolPanel() {
             transition: 'left 0.2s',
           }}/>
         </div>
-        <span style={{ fontSize: 10, color: advanced ? 'var(--ink-2)' : 'var(--ink-muted)', fontFamily: 'var(--font-mono)', userSelect: 'none' }}>
+        <span style={{ fontSize: 10, color: advanced ? 'var(--ink-2)' : 'var(--ink-muted)', fontFamily: 'var(--font-ui)', userSelect: 'none' }}>
           Advanced
         </span>
       </div>
@@ -663,7 +663,7 @@ export default function ToolPanel() {
           color: tool === 'select' ? '#fff' : 'var(--ink-2)',
           border: `1px solid ${tool === 'select' ? 'var(--accent)' : 'transparent'}`,
           borderRadius: 4,
-          fontFamily: 'var(--font-mono)',
+          fontFamily: 'var(--font-ui)',
           cursor: 'pointer',
           transition: 'all 0.12s',
           whiteSpace: 'nowrap',
@@ -693,7 +693,7 @@ export default function ToolPanel() {
           color: tool === 'addEntity' ? '#fff' : 'var(--ink-2)',
           border: `1px solid ${tool === 'addEntity' ? 'var(--accent)' : 'transparent'}`,
           borderRadius: 4,
-          fontFamily: 'var(--font-mono)',
+          fontFamily: 'var(--font-ui)',
           cursor: 'pointer',
           transition: 'all 0.12s',
           whiteSpace: 'nowrap',
@@ -719,7 +719,7 @@ export default function ToolPanel() {
           color: tool === 'addValue' ? '#fff' : 'var(--ink-2)',
           border: `1px solid ${tool === 'addValue' ? 'var(--accent)' : 'transparent'}`,
           borderRadius: 4,
-          fontFamily: 'var(--font-mono)',
+          fontFamily: 'var(--font-ui)',
           cursor: 'pointer',
           transition: 'all 0.12s',
           whiteSpace: 'nowrap',
@@ -745,7 +745,7 @@ export default function ToolPanel() {
           color: tool === 'addFact2' ? '#fff' : 'var(--ink-2)',
           border: `1px solid ${tool === 'addFact2' ? 'var(--accent)' : 'transparent'}`,
           borderRadius: 4,
-          fontFamily: 'var(--font-mono)',
+          fontFamily: 'var(--font-ui)',
           cursor: 'pointer',
           transition: 'all 0.12s',
           whiteSpace: 'nowrap',
@@ -772,7 +772,7 @@ export default function ToolPanel() {
             color: tool === 'addNestedFact' ? '#fff' : 'var(--ink-2)',
             border: `1px solid ${tool === 'addNestedFact' ? 'var(--accent)' : 'transparent'}`,
             borderRadius: 4,
-            fontFamily: 'var(--font-mono)',
+            fontFamily: 'var(--font-ui)',
             cursor: 'pointer',
             transition: 'all 0.12s',
             whiteSpace: 'nowrap',
@@ -799,7 +799,7 @@ export default function ToolPanel() {
           color: tool === 'assignRole' ? '#fff' : 'var(--ink-2)',
           border: `1px solid ${tool === 'assignRole' ? 'var(--accent)' : 'transparent'}`,
           borderRadius: 4,
-          fontFamily: 'var(--font-mono)',
+          fontFamily: 'var(--font-ui)',
           cursor: 'pointer',
           transition: 'all 0.12s',
           whiteSpace: 'nowrap',
@@ -825,7 +825,7 @@ export default function ToolPanel() {
           color: tool === 'addSubtype' ? '#fff' : 'var(--ink-2)',
           border: `1px solid ${tool === 'addSubtype' ? 'var(--accent)' : 'transparent'}`,
           borderRadius: 4,
-          fontFamily: 'var(--font-mono)',
+          fontFamily: 'var(--font-ui)',
           cursor: 'pointer',
           transition: 'all 0.12s',
           whiteSpace: 'nowrap',
@@ -897,7 +897,7 @@ export default function ToolPanel() {
           color: tool === 'connectConstraint' ? '#fff' : 'var(--ink-2)',
           border: `1px solid ${tool === 'connectConstraint' ? 'var(--accent)' : 'transparent'}`,
           borderRadius: 4,
-          fontFamily: 'var(--font-mono)',
+          fontFamily: 'var(--font-ui)',
           cursor: 'pointer',
           transition: 'all 0.12s',
           whiteSpace: 'nowrap',
@@ -923,7 +923,7 @@ export default function ToolPanel() {
             background: tool === key ? 'var(--accent)' : 'transparent',
             color: tool === key ? '#fff' : 'var(--ink-2)',
             border: `1px solid ${tool === key ? 'var(--accent)' : 'transparent'}`,
-            borderRadius: 4, fontFamily: 'var(--font-mono)',
+            borderRadius: 4, fontFamily: 'var(--font-ui)',
             cursor: 'pointer', transition: 'all 0.12s', whiteSpace: 'nowrap',
           }}
           onMouseEnter={e => { if (tool !== key) e.currentTarget.style.background = 'var(--bg-hover)' }}
