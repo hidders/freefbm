@@ -202,6 +202,8 @@ export function parseDdl(sql0) {
   const skipped = new Map()
   const inserts = []
   const problems = []
+  const assertions = []        // CREATE ASSERTION: { name, text }
+  const functions = new Map()  // CREATE FUNCTION: name → { params: [name | null], body, language, returns }
   const parentOf = new Map()   // partition key → its table's qualified name
   const skip = (kind) => skipped.set(kind, (skipped.get(kind) ?? 0) + 1)
   // psql's \copy … FROM a file (AdventureWorks reads its rows from CSV files
@@ -269,6 +271,37 @@ export function parseDdl(sql0) {
           const t = q && findTable(q)
           if (t && cols && !rest.some(x => x.t === 'id' && x.v === 'where')) { t.uniques.push(cols); nameKey(t, uniqueKey(cols), indexName) }
           else skip('CREATE UNIQUE INDEX on expressions or with WHERE')
+          return
+        }
+        // CREATE ASSERTION name CHECK (condition) [DEFERRABLE …] (SQL standard).
+        if (s.eatWord('assertion')) {
+          const q = s.qname()
+          if (!s.eatWord('check')) { problems.push(`CREATE ASSERTION ${q?.name ?? ''}: CHECK expected`); return }
+          const g = s.group()
+          if (q && g) assertions.push({ name: q.name, text: tokensText(g) })
+          return
+        }
+        // CREATE FUNCTION: kept so a CHECK that calls a SQL function can be
+        // read through its body.
+        if (s.eatWord('function')) {
+          const q = s.qname()
+          const g = s.group() ?? []
+          const params = splitCommas(g).map(p => {
+            const ws = p.filter(t => !(t.t === 'id' && ['in', 'out', 'inout', 'variadic'].includes(t.v) && p.length > 2))
+            const di = ws.findIndex(t => (t.t === 'id' && t.v === 'default') || (t.t === 'op' && t.v === '='))
+            const head = di >= 0 ? ws.slice(0, di) : ws
+            return head.length >= 2 && (head[0].t === 'id' || head[0].t === 'qid') ? head[0].v : null
+          })
+          let language = null, body = null, returns = null
+          while (!s.done()) {
+            if (s.eatWord('returns')) { returns = s.next()?.v ?? null; continue }
+            if (s.eatWord('language')) { language = s.next()?.v?.toLowerCase() ?? null; continue }
+            if (s.eatWord('as')) { const t = s.next(); if (t?.t === 'str') body = t.v; continue }
+            if (s.eatWord('return')) { body = `RETURN ${tokensText(s.tk.slice(s.i))}`; language ??= 'sql'; break }
+            s.next()
+          }
+          if (q) functions.set(q.name, { params, body, language: language ?? 'sql', returns })
+          skip('CREATE FUNCTION (read only where a CHECK calls it)')
           return
         }
         const kind = tokens.slice(1, 4).filter(t => t.t === 'id').map(t => t.v)
@@ -339,7 +372,7 @@ export function parseDdl(sql0) {
       q = parentOf.get(keyOf(q)) ?? parentOf.get([...parentOf.keys()].find(x => x.endsWith(`.${q.name}`)))
     ins.table = q
   }
-  return { tables: [...tables.values()], enums, domains, inserts, skipped, problems }
+  return { tables: [...tables.values()], enums, domains, inserts, skipped, problems, assertions, functions }
 }
 
 // The value of a literal in a VALUES list: a string, null for NULL, or
