@@ -10,8 +10,7 @@ import { relationalView, rmObjectOf } from '../relational/relationalView.js'
 import { exportPostgresDdl } from '../relational/ddlExport.js'
 import { planEnforcement, sqlSettings, targetOf } from '../relational/enforcement.js'
 import { quoteIdent } from '../relational/sqlNames.js'
-import { sideContext } from '../mapping/mapping.js'
-import { TRANSFORMATIONS } from '../mapping/transformations.js'
+import { transformItems } from '../relational/transformItems.js'
 import { assertionShapes, ASSERTION_KINDS } from '../relational/erdAssertions.js'
 
 const KIND_TITLE = {
@@ -225,35 +224,8 @@ function Transformations({ schemaId, obj, table }) {
   const facts = useOrmStore(s => s.facts)
   const constraints = useOrmStore(s => s.constraints)
   const objectTypes = useOrmStore(s => s.objectTypes)
-  const items = useMemo(() => {
-    const st = useOrmStore.getState()
-    let ctx
-    try { ctx = sideContext(st, schemaId) } catch { return [] }
-    const tableId = table?.entityId
-    const colId = obj.kind === 'column' ? obj.factId : null
-    const t = ctx.tableById?.get(tableId)
-    if (!t) return []
-    const out = []
-    for (const tr of TRANSFORMATIONS.filter(x => x.profile === 'relational')) {
-      if (tr.options) {
-        let opts = []
-        try { opts = tr.options(ctx) } catch { opts = [] }
-        for (const o of opts) {
-          const p = o.params ?? {}
-          const onTable = p.tableId === tableId || (p.tableIds ?? []).includes(tableId)
-          const onCol = colId ? (p.columnId === colId || (p.columnIds ?? []).includes(colId) || (p.keyIds ?? []).includes(colId)) : true
-          if (onTable && onCol) out.push({ key: `${tr.id}|${o.key}`, label: tr.label, detail: o.label, kind: tr.id, params: { optionKey: o.key } })
-        }
-      } else if (tr.id === 'split' && !colId && t.pk?.length && t.columns.some(c => !c.pk)) {
-        out.push({ key: 'split', label: tr.label, kind: 'split', params: { tableId } })
-      } else if (tr.id === 'split' && colId && t.pk?.length && !t.columns.find(c => c.fact.id === colId)?.pk) {
-        out.push({ key: 'split', label: tr.label, detail: `move ${obj.name}`, kind: 'split', params: { tableId, columnIds: [colId] } })
-      } else if (tr.id === 'absorb' && !colId && tr.targets(ctx, tableId).length) {
-        out.push({ key: 'absorb', label: tr.label, detail: `into ${tr.targets(ctx, tableId).map(x => x.name).join(' or ')}`, kind: 'absorb', params: { fromId: tableId } })
-      }
-    }
-    return out
-  }, [facts, constraints, objectTypes, schemaId, obj.rmId, table?.rmId])
+  const items = useMemo(() => transformItems(useOrmStore.getState(), schemaId, table?.entityId,
+    { colId: obj.kind === 'column' ? obj.factId : null }), [facts, constraints, objectTypes, schemaId, obj.rmId, table?.rmId])
   if (!items.length) return null
   return (
     <Section title="Transform">
