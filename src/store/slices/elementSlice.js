@@ -1,4 +1,4 @@
-import { findRefMode, vtNameFromLabel, refModeCollapseBlockers } from '../../utils/refMode.js'
+import { findRefMode, vtNameFromLabel, refModeSeparator, refModeCollapseBlockers } from '../../utils/refMode.js'
 import { readingList, readingsPatch, editReadings } from '../readings.js'
 import {
   uid, mkEntity, mkValue, mkFact, mkRole, mkSubtype, mkConstraint, mkDiagram, mkNote, mkImplicitLink,
@@ -202,18 +202,28 @@ export function createElementSlice(set, get) {
       if (!entity || entity.kind !== 'entity') return
       const current = findRefMode(entity, s.facts, s.objectTypes)
 
+      // The ref mode's own name as typed ('.code' → 'code'), shown as written
+      const refModeName = trimmed.startsWith('.') && trimmed.length > 1 ? trimmed.slice(1) : null
+      const withName = (state, patch) => (entity.refModeName ?? null) === refModeName ? patch : {
+        ...patch,
+        objectTypes: (patch.objectTypes ?? state.objectTypes).map(o => o.id !== entityId ? o
+          : refModeName ? { ...o, refModeName } : (({ refModeName: _, ...rest }) => rest)(o)),
+      }
+
       if (trimmed === '') {
         if (!current) return
-        set(state => clearRefModePI(state, entityId, current))
+        set(state => withName(state, clearRefModePI(state, entityId, current)))
         return
       }
 
-      const targetVtName = vtNameFromLabel(entity.name, trimmed)
+      // Keep the value type's separator ('Family Name' stays spaced)
+      const currentVt = current && s.objectTypes.find(o => o.id === current.vtId)
+      const targetVtName = vtNameFromLabel(entity.name, trimmed, refModeSeparator(entity.name, currentVt?.name))
       if (current) {
         const existingMatch = s.objectTypes.find(o => o.id !== current.vtId && o.kind === 'value' && o.name === targetVtName)
         if (existingMatch) {
           // Rewire fact to the existing VT and drop the now-orphan one if unused elsewhere.
-          set(state => {
+          set(state => withName(state, (() => {
             const oldVtUsedElsewhere = state.facts.some(f =>
               f.id !== current.factId && f.roles.some(r => r.objectTypeId === current.vtId)
             )
@@ -237,9 +247,9 @@ export function createElementSlice(set, get) {
               return nd
             })
             return { objectTypes: nextOts, facts: newFacts, diagrams: nextDiagrams, isDirty: true }
-          })
+          })()))
         } else {
-          set(state => ({
+          set(state => withName(state, {
             objectTypes: state.objectTypes.map(o => o.id === current.vtId ? { ...o, name: targetVtName } : o),
             isDirty: true,
           }))
@@ -249,7 +259,7 @@ export function createElementSlice(set, get) {
 
       const existing = s.objectTypes.find(o => o.kind === 'value' && o.name === targetVtName)
       const matchFact = existing ? findMatchingRefModeFact(entity.id, existing.id, s.facts) : null
-      set(state => applyFreshRefMode(state, entity, targetVtName, existing, matchFact, entity.id))
+      set(state => withName(state, applyFreshRefMode(state, entity, targetVtName, existing, matchFact, entity.id)))
     },
 
     setNestedRefModeLabel(factId, label) {

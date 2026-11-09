@@ -238,6 +238,9 @@ export function importNorma(xmlText) {
       id, kind: o.localName === 'EntityType' ? 'entity' : 'value', name, x: 0, y: 0,
       valueRangeOffset: null, datatypeAssignment: null,
       ...(o.localName === 'EntityType' && { isPersonal: attr(o, 'IsPersonal') === 'true' }),
+      // NORMA's reference mode name as written ("Name"); the label shows it, not the
+      // value type's suffix ("DiplomatName", "Family Name"), see refModeLabel
+      ...(o.localName === 'EntityType' && attr(o, '_ReferenceMode') && { refModeName: attr(o, '_ReferenceMode') }),
       ...(attr(o, 'IsIndependent') === 'true' && { isIndependent: true }),
     }
     const cdt = kid(o, 'ConceptualDataType')

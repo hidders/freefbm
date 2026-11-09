@@ -1208,7 +1208,7 @@ function ObjectTypeInspector({ ot }) {
   // Derived ref-mode info for entities.
   const refMode    = ot.kind === 'entity' ? findRefMode(ot, store.facts, store.objectTypes) : null
   const refVt      = refMode ? store.objectTypes.find(o => o.id === refMode.vtId) : null
-  const refLabel   = refVt ? refModeLabel(ot.name, refVt.name) : ''
+  const refLabel   = refVt ? refModeLabel(ot.name, refVt.name, ot.refModeName) : ''
 
   // Composite preferred identifier (non-ref-mode-binary PI scheme).
   const compositePi    = ot.kind === 'entity' && !refMode
