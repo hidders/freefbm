@@ -43,7 +43,7 @@ function wrapped(x) {
 const keyName = (t, key) => t.keyNames?.[key] ?? null
 
 export function importPostgresDdl(sql, opts) {
-  const parsed = parseDdl(sql)
+  const parsed = parseDdl(sql, { dialect: opts?.dialect ?? null })
   const built = buildRelationalSchema(parsed, { schemaNames: sqlSchemaNames(sql), ...opts })
   built.sample = samplePopulation(parsed, built)
   return built
@@ -67,7 +67,10 @@ export function sqlSchemaNames(sql) {
 // writes t/f).
 const TRUE = new Set(['t', 'true', 'y', 'yes', 'on', '1']), FALSE = new Set(['f', 'false', 'n', 'no', 'off', '0'])
 function cellValue(col, v) {
-  if (col.vt.datatypeAssignment?.datatypeId !== 'boolean') return v
+  const id = col.vt.datatypeAssignment?.datatypeId
+  // A date for a timestamp column (Oracle's DATE is read as timestamp(0)).
+  if (id === 'timestamp' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v} 00:00:00`
+  if (id !== 'boolean') return v
   const l = v.toLowerCase()
   return TRUE.has(l) ? 'true' : FALSE.has(l) ? 'false' : v
 }
@@ -98,7 +101,7 @@ export function samplePopulation(parsed, built) {
     obj[id].push(cell)
   }
   let rows = 0, dropped = 0, expr = 0
-  const noKey = new Set(), unknownCols = new Set(), cut = new Map()
+  const noKey = new Set(), noKeyValue = new Set(), unknownCols = new Set(), cut = new Map()
   const tableOf = (ins) => byName.get(ins.table.name.toLowerCase()) ?? byName.get(`${ins.table.schema}_${ins.table.name}`.toLowerCase())
   // At most MAX_ROWS rows in all, shared fairly: small tables are read whole
   // (their rows are what the others refer to), large ones cut to an equal share.
@@ -134,7 +137,7 @@ export function samplePopulation(parsed, built) {
         if (colOf[i] && v != null && String(v).trim() !== '') val.set(colOf[i].fact.id, cellValue(colOf[i], String(v).trim()))
       })
       const keyVals = keyFacts.map(fid => val.get(fid))
-      if (keyVals.some(v => v == null)) { dropped++; continue }
+      if (keyVals.some(v => v == null)) { dropped++; noKeyValue.add(table.name); continue }
       const cell = refMode ? keyVals[0] : keyVals
       add(populations, table.entity.id, cell, JSON.stringify(cell))
       rows++
@@ -150,7 +153,7 @@ export function samplePopulation(parsed, built) {
   }
   const how = [inserts.some(i => !i.copy) && 'INSERT statements', inserts.some(i => i.copy) && 'COPY blocks'].filter(Boolean).join(' and ')
   if (rows) log.push({ level: 'note', text: `Read ${rows} rows of ${how} into the sample population` })
-  if (dropped) log.push({ level: 'warn', text: `Left out ${dropped} rows${noKey.size ? ` (no primary key: ${[...noKey].join(', ')})` : ''}${cut.size ? `; at most ${MAX_ROWS} rows are read, so large tables are cut (${[...cut].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([n, k]) => `${n} −${k}`).join(', ')}${cut.size > 6 ? ', …' : ''}), and some of their foreign keys may point to rows that were left out` : ''}` })
+  if (dropped) log.push({ level: 'warn', text: `Left out ${dropped} rows${noKey.size ? ` (no primary key: ${[...noKey].join(', ')})` : ''}${noKeyValue.size ? ` (no value for the primary key, e.g. one the database generates: ${[...noKeyValue].join(', ')})` : ''}${cut.size ? `; at most ${MAX_ROWS} rows are read, so large tables are cut (${[...cut].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([n, k]) => `${n} −${k}`).join(', ')}${cut.size > 6 ? ', …' : ''}), and some of their foreign keys may point to rows that were left out` : ''}` })
   if (expr) log.push({ level: 'warn', text: `Left out ${expr} values that are not literals (expressions or function calls)` })
   if (unknownCols.size) log.push({ level: 'warn', text: `Columns not in the table: ${[...unknownCols].slice(0, 8).join(', ')}` })
   return { populations, factPopulations, rows, log }
@@ -201,6 +204,44 @@ export function pgAssignment(type) {
   if (id === 'numeric') return as(id, { precision: intArg(args[0]), scale: intArg(args[1]) })
   if (id === 'character varying' || id === 'character' || id === 'bit' || id === 'bit varying') return as(id, { length: intArg(args[0]) })
   return as(id)
+}
+
+// The datatype assignment for an Oracle column type: the nearest PostgreSQL
+// type (relational schemas keep one type system), with the Oracle type as
+// written in `oracle`, so an Oracle export gives it back. null for a type
+// FreeFBM does not know.
+export function oracleAssignment(type) {
+  if (!type?.name) return null
+  const name = type.name
+  const args = type.args ?? []
+  const text = `${name.toUpperCase()}${args.length ? `(${args.join(', ').toUpperCase()})` : ''}`
+  const as = (datatypeId, params = {}) => {
+    const p = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== false && v !== ''))
+    return { profileId: 'postgresql', datatypeId, ...(Object.keys(p).length ? { params: p } : {}), oracle: text }
+  }
+  const p = intArg(args[0]), sc = args[1] != null ? intArg(args[1]) : undefined
+  if (name === 'number' || name === 'numeric' || name === 'decimal' || name === 'dec') {
+    if (args[0] === '*') return sc ? as('numeric', { precision: 38, scale: sc }) : as('numeric', { precision: 38, scale: 0 })
+    if (p == null) return as('numeric')
+    if (!sc) return p <= 4 ? as('smallint') : p <= 9 ? as('integer') : p <= 18 ? as('bigint') : as('numeric', { precision: p, scale: 0 })
+    return as('numeric', { precision: p, scale: sc })
+  }
+  if (name === 'integer' || name === 'int' || name === 'smallint') return as('numeric', { precision: 38, scale: 0 })
+  if (name === 'binary_float' || name === 'real' || (name === 'float' && p != null && p <= 24)) return as('real')
+  if (name === 'binary_double' || name === 'double precision' || name === 'float') return as('double precision')
+  if (['varchar2', 'nvarchar2', 'varchar', 'character varying', 'national character varying', 'nchar varying'].includes(name)) return as('character varying', { length: p })
+  if (['char', 'nchar', 'character', 'national character'].includes(name)) return as('character', { length: p ?? 1 })
+  if (['clob', 'nclob', 'long', 'rowid', 'urowid'].includes(name)) return as('text')
+  if (['blob', 'raw', 'long raw', 'bfile'].includes(name)) return as('bytea')
+  if (name === 'date') return as('timestamp', { precision: 0 })
+  if (name === 'timestamp') return as('timestamp', { precision: p })
+  if (name === 'timestamp with time zone' || name === 'timestamp with local time zone') return as('timestamp', { precision: p, withTimeZone: true })
+  if (name.startsWith('interval year')) return as('interval', { fields: 'YEAR TO MONTH' })
+  if (name.startsWith('interval day')) return as('interval', { fields: 'DAY TO SECOND' })
+  if (name === 'boolean') return as('boolean')
+  if (name === 'json') return as('jsonb')
+  if (name === 'xmltype' || name === 'sys.xmltype') return as('xml')
+  return null
 }
 
 const assignmentKey = (a) => a ? `${a.datatypeId}(${Object.entries(a.params ?? {}).map(([k, v]) => `${k}=${v}`).join(',')})` : ''
@@ -397,6 +438,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
   const note = (text) => log.push({ level: 'note', text })
   const warn = (text) => log.push({ level: 'warn', text })
   const { tables, enums, domains } = parsed
+  const oracle = parsed.dialect === 'oracle'
 
   // Table names: bare unless two schemas use the same name.
   const nameCount = new Map()
@@ -429,7 +471,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
           else extraChecks.push({ domain: bare, text: ch })
         }
       }
-      let assignment = type.array ? null : pgAssignment(type)
+      let assignment = type.array ? null : oracle ? oracleAssignment(type) : pgAssignment(type)
       // A serial column is an integer column with generated values; its value
       // type is the plain integer type (so referencing columns get it too) and
       // the serial is kept on the column's role.
@@ -441,11 +483,23 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
         // A type of an extension or a CREATE TYPE: kept as written, so the
         // export gives it back.
         unknownTypes.add(bare)
-        assignment = { profileId: 'postgresql', datatypeId: 'user-defined',
-          params: { sql: `${bare}${type.args?.length ? `(${type.args.join(', ')})` : ''}` } }
+        const sql = `${bare}${type.args?.length ? `(${type.args.join(', ')})` : ''}`
+        assignment = { profileId: 'postgresql', datatypeId: 'user-defined', params: { sql }, ...(oracle ? { oracle: sql.toUpperCase() } : {}) }
       }
       colInfo.set(colKey(t, c.name), { table: t, col: c, assignment, vtSpecs, notNull, extraChecks, generated })
     }
+  }
+  if (oracle) {
+    const kinds = new Map()
+    for (const { table, col } of colInfo.values()) {
+      const k = col.type.name
+      if (k === 'date' || /^(varchar2|nvarchar2|char|nchar)$/.test(k)) (kinds.get(k) ?? kinds.set(k, []).get(k)).push(`${tableName(table)}.${col.name}`)
+    }
+    note('Read as Oracle DDL: each column has the nearest PostgreSQL type, and keeps its Oracle type for the Oracle export (NUMBER(p) is smallint, integer or bigint by its precision)')
+    const list = (xs) => xs.length > 12 ? `${xs.slice(0, 12).join(', ')} and ${xs.length - 12} more` : xs.join(', ')
+    if (kinds.has('date')) note(`Oracle's DATE holds a time of day too, so it is read as timestamp(0): ${list(kinds.get('date'))}`)
+    const text = ['varchar2', 'nvarchar2', 'char', 'nchar'].flatMap(k => kinds.get(k) ?? [])
+    if (text.length) note(`In Oracle an empty string is NULL, so these columns never hold '' there (a PostgreSQL export allows it): ${list(text)}`)
   }
   if (unknownTypes.size) note(`Types FreeFBM does not know (from an extension or CREATE TYPE), kept as written: ${[...unknownTypes].sort().join(', ')}`)
 
@@ -770,7 +824,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
     comparisons: constraints.filter(c => c.constraintType === 'valueComparison').length }
   for (const [kind, n] of parsed.skipped) note(`Skipped ${n} × ${kind}`)
   for (const p of parsed.problems) warn(p)
-  return { objectTypes, facts, constraints, diagram, diagrams, log, stats }
+  return { objectTypes, facts, constraints, diagram, diagrams, log, stats, dialect: parsed.dialect ?? 'postgresql' }
 }
 
 // Integer types (and their serials) count as one family when a foreign key
