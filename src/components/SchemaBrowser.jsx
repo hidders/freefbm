@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import ContextMenu from './ContextMenu'
 import { useOrmStore, useOrmStoreIgnoring, useScopedStore } from '../store/ormStore'
+import { openDeleteFromSchema } from '../utils/deleteSelection'
 import { activeSchemaIdOf, diagramRuleIds } from '../store/storeHelpers'
 import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 import { useDiagramElements } from '../hooks/useDiagramElements'
@@ -160,7 +161,7 @@ function ImpliedLinkIcon() {
   )
 }
 
-function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd, onAddExtra, addButtonStyle, addButtonDisabled, onDelete, onMenu }) {
+function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd, onAddExtra, addButtonStyle, addButtonDisabled, onDelete, deleteTitle = 'Delete from Schema…', onMenu }) {
   return (
     <div
       onClick={onSelect}
@@ -254,7 +255,7 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
         <button
           onMouseDown={e => e.stopPropagation()}
           onClick={e => { e.stopPropagation(); onDelete() }}
-          title="Delete"
+          title={deleteTitle}
           style={{
             background: 'none', border: '1px solid #e0b0a8',
             borderRadius: 3, cursor: 'pointer',
@@ -799,7 +800,7 @@ export default function SchemaBrowser() {
             onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
             onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
             onMenu={e => openRowMenu(e, el.id)}
-            onDelete={() => store.deleteObjectType(el.id)}
+            onDelete={() => openDeleteFromSchema([el.id])}
           />
         )
       },
@@ -832,7 +833,7 @@ export default function SchemaBrowser() {
             onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
             addButtonStyle={neAddStyle}
             onMenu={e => openRowMenu(e, el.id)}
-            onDelete={() => store.deleteFact(el.id)}
+            onDelete={() => openDeleteFromSchema([el.id])}
           />
         )
       },
@@ -851,7 +852,7 @@ export default function SchemaBrowser() {
           onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
           onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
           onMenu={e => openRowMenu(e, el.id)}
-            onDelete={() => store.deleteObjectType(el.id)}
+            onDelete={() => openDeleteFromSchema([el.id])}
         />
       ),
     },
@@ -901,7 +902,7 @@ export default function SchemaBrowser() {
             onAdd={() => store.addElementToDiagram(f.id, diagram?.id)}
             onAddExtra={diagram ? () => store.addExtraOccurrence(f.id, diagram.id) : undefined}
             addButtonStyle={fAddStyle}
-            onDelete={() => store.deleteFact(f.id)}
+            onDelete={() => openDeleteFromSchema([f.id])}
           />
         )
       },
@@ -943,7 +944,7 @@ export default function SchemaBrowser() {
             onAddExtra={alreadyIn && !allCoveredSt ? stAddFn : undefined}
             addButtonStyle={stAddStyle}
             addButtonDisabled={allCoveredSt ? true : undefined}
-            onDelete={() => store.deleteSubtype(st.id)}
+            onDelete={() => openDeleteFromSchema([st.id])}
           />
         )
       },
@@ -982,7 +983,7 @@ export default function SchemaBrowser() {
             onAddExtra={inCurrent && !allCoveredC ? cAddFn : undefined}
             addButtonStyle={addStyle}
             addButtonDisabled={allCoveredC ? true : undefined}
-            onDelete={() => store.deleteConstraint(c.id)}
+            onDelete={() => openDeleteFromSchema([c.id])}
           />
         )
       },
@@ -1012,6 +1013,7 @@ export default function SchemaBrowser() {
           onSelect={() => store.select(g.id, 'group')}
           onAdd={null}
           onDelete={() => store.deleteGroup(g.id)}
+          deleteTitle="Delete group"
         />
       ),
     },
@@ -1034,6 +1036,7 @@ export default function SchemaBrowser() {
             onSelect={() => { store.select(note.id, 'note'); store.centerOnElement(note.id) }}
             onAdd={null}
             onDelete={() => store.deleteNote(note.id)}
+            deleteTitle="Delete note"
           />
         )
       },

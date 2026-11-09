@@ -111,7 +111,7 @@ export default function WelcomeScreen({ onClose }) {
           <ShortcutRow keys={['Q']}             label="Internal frequency" />
           <ShortcutRow keys={['R']}             label="Value range" />
           <ShortcutRow keys={['C']}             label="Cardinality" />
-          <ShortcutRow keys={['Del']}           label="Delete selected" />
+          <ShortcutRow keys={['Del']}           label="Remove from diagram" />
           <ShortcutRow keys={['Esc']}           label="Cancel / deselect" />
           <ShortcutRow keys={['Ctrl','Z']}      label="Undo" />
           <ShortcutRow keys={['Ctrl','Y']}      label="Redo" />

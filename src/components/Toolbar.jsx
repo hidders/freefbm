@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { triggerPdfExport } from '../utils/pdfExport'
-import { openModelFile } from '../import/openModelFile'
+import { newModel, openModel, saveModel, fileLabel } from '../utils/fileActions'
 import { LANGUAGES } from '../verbalisation/languages/index.js'
 import { BASE_LANGUAGE, modelLanguages } from '../store/viewLanguage.js'
 
@@ -87,31 +87,9 @@ export default function Toolbar() {
   // Read from ref inside handlers so we always get current state.
   const store = () => storeRef.current
 
-  const handleNew = () => {
-    if (store().isDirty && !confirm('Discard unsaved changes?')) return
-    store().newModel()
-  }
-
-  const handleOpen = async () => {
-    if (!isElectron) return
-    const result = await window.electronAPI.openFile()
-    if (!result) return
-    try { openModelFile(result) }
-    catch (err) { alert(`Failed to open model file.${err?.message ? `\n${err.message}` : ''}`) }
-  }
-
-  const handleSave = async () => {
-    if (!isElectron) return
-    try {
-      const s = store()
-      const content = s.serialize()
-      const fp = await window.electronAPI.saveFile({ defaultPath: s.filePath || s.importedFrom || 'model.ffbm', content })
-      if (fp) { store().setFilePath(fp); store().markClean() }
-    } catch (err) {
-      alert(`Save failed: ${err.message}`)
-    }
-  }
-
+  const handleNew = () => newModel()
+  const handleOpen = () => openModel()
+  const handleSave = () => saveModel()
   const handleExportPdf = () => triggerPdfExport(store())
 
   return (
@@ -131,12 +109,19 @@ export default function Toolbar() {
         FreeFBM
       </span>
 
+      {/* The open file; • while it has unsaved changes. */}
+      <span title={storeRef.current.filePath || (storeRef.current.importedFrom ? `Imported from ${storeRef.current.importedFrom}` : 'Not saved yet')}
+        style={{ fontSize: 12, color: 'var(--ink-2)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
+          overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260, marginRight: 4, userSelect: 'none' }}>
+        {fileLabel(storeRef.current)}{storeRef.current.isDirty && <span style={{ color: 'var(--danger)' }}> •</span>}
+      </span>
+
       <Divider/>
 
       <div style={{ display: 'flex', gap: 4, WebkitAppRegion: 'no-drag' }}>
         <Btn label="＋ New"   title="New Model"  onClick={handleNew}/>
         {isElectron && <Btn label="📂 Open" title="Open"   onClick={handleOpen}/>}
-        {isElectron && <Btn label={`💾 Save${storeRef.current.isDirty ? ' *' : ''}`} title="Save" onClick={handleSave}/>}
+        {isElectron && <Btn label="💾 Save" title={isMac ? 'Save (⌘S)' : 'Save (Ctrl+S)'} onClick={handleSave}/>}
         {isElectron && <Btn label="⎙ PDF" title="Export to PDF (⌘⇧E)" onClick={handleExportPdf}/>}
       </div>
 

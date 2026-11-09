@@ -24,6 +24,10 @@ function snapshot(state) {
   })
 }
 
+// Undo and redo for the application menu (useElectronMenu.js), set while
+// App is mounted.
+export const undoRedo = { undo: () => {}, redo: () => {} }
+
 export function useUndoRedo() {
   const past      = useRef([])
   const future    = useRef([])
@@ -102,6 +106,9 @@ export function useUndoRedo() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [undo, redo])
+
+  undoRedo.undo = undo
+  undoRedo.redo = redo
 
   return {
     undo, redo,

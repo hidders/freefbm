@@ -28,6 +28,9 @@ import { textPanelOf, handleTextPanelKey } from './utils/textPanel'
 import { useOrmStore, useOrmStoreIgnoring } from './store/ormStore'
 import { getDiagramElements } from './hooks/useDiagramElements'
 import { isErdDiagram } from './components/ErdView'
+import { removeSelectionFromDiagram } from './utils/deleteSelection'
+import DeleteFromSchemaDialog from './components/DeleteFromSchemaDialog'
+import { useDocumentState } from './hooks/useDocumentState'
 
 function useKeyboardShortcuts() {
   const store = useOrmStoreIgnoring('pan', 'zoom')
@@ -87,105 +90,19 @@ function useKeyboardShortcuts() {
 
       if (isTyping) return
 
-      // The ERD view is read-only: no deleting, moving, pasting or tool keys.
+      // Delete and Backspace take the selection off the diagram (on an ERD, whole tables); deleting
+      // from the schema is Edit › Delete from Schema… (utils/deleteSelection.js).
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (removeSelectionFromDiagram()) e.preventDefault()
+        return
+      }
+
+      // The ERD view is read-only: no moving, pasting or tool keys.
       {
         const st = useOrmStore.getState()
         if (isErdDiagram(st, st.diagrams?.find(d => d.id === st.activeDiagramId))) return
       }
 
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        const s = useOrmStore.getState()
-
-        if (s.selectedMandatoryDot) {
-          if (s.selectedMandatoryDot.implied) {
-            // Implied constraints cannot be deleted — just consume the keystroke
-            e.preventDefault()
-            return
-          }
-          const { factId, roleIndex } = s.selectedMandatoryDot
-          s.removeMandatoryRole(factId, roleIndex)
-          e.preventDefault()
-          return
-        }
-
-        if (s.selectedInternalFrequency) {
-          const { factId, ifId } = s.selectedInternalFrequency
-          s.removeInternalFrequency(factId, ifId)
-          e.preventDefault()
-          return
-        }
-
-        if (s.selectedValueRange) {
-          s.removeValueRange(s.selectedValueRange)
-          e.preventDefault()
-          return
-        }
-
-        if (s.selectedCardinalityRange) {
-          s.removeCardinalityRange(s.selectedCardinalityRange)
-          e.preventDefault()
-          return
-        }
-
-        if (s.selectedKind === 'implicitLink') {
-          e.preventDefault()
-          const roleIndex = s.selectedImplicitLinkRole?.roleIndex ?? s.selectedImplicitLink
-          if (roleIndex != null) {
-            s.toggleImplicitLink(s.selectedId, roleIndex)
-            return
-          }
-        }
-
-        const { selectedId, selectedKind, selectedUniqueness, selectedImplicitLink, selectedImplicitLinkRole, uniquenessConstruction, multiSelectedIds, activeDiagramId } = store
-
-        if (multiSelectedIds.length > 0) {
-          const s0 = useOrmStore.getState()
-          const hasConstraints = multiSelectedIds.some(id => s0.constraints.some(c => c.id === id))
-          const hasSubtypes    = multiSelectedIds.some(id => s0.subtypes.some(st => st.id === id))
-          if (hasConstraints || hasSubtypes) {
-            store.deleteMultiSelection()
-          } else {
-            const idsToRemove = multiSelectedIds.filter(id =>
-              s0.objectTypes.some(o => o.id === id) || s0.facts.some(f => f.id === id) || id.includes('_il_')
-            )
-            if (idsToRemove.length > 0) {
-              store.removeMultiSelectionFromDiagram(activeDiagramId, idsToRemove)
-            } else {
-              store.clearSelection()
-            }
-          }
-          return
-        }
-
-        if (uniquenessConstruction?.uIndex != null) {
-          // Delete the constraint being edited and exit construction mode
-          const fact = store.facts.find(f => f.id === uniquenessConstruction.factId)
-          const roles = fact?.uniqueness[uniquenessConstruction.uIndex]?.roles
-          if (roles) store.toggleUniqueness(uniquenessConstruction.factId, roles)
-          store.clearSelection()
-          return
-        }
-
-        if (selectedUniqueness) {
-          if (selectedUniqueness.implied) {
-            // Implied constraints cannot be deleted — just consume the keystroke
-            return
-          }
-          const fact = store.facts.find(f => f.id === selectedUniqueness.factId)
-          if (fact) {
-            store.removeUniqueness(selectedUniqueness.factId, fact.uniqueness[selectedUniqueness.uIndex]?.roles)
-            store.clearSelection()
-          }
-          return
-        }
-        if (!selectedId) return
-        if (selectedKind === 'group')      { store.deleteGroup(selectedId); return }
-        if (selectedKind === 'note')       { store.deleteNote(selectedId); return }
-        if (selectedKind === 'constraint') { store.deleteConstraint(selectedId); return }
-        if (selectedKind === 'subtype') { store.deleteSubtype(selectedId); return }
-        store.removeElementFromDiagram(selectedId, activeDiagramId)
-        return
-      }
 
       if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); store.selectAll(); return }
       if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); store.copySelection(); return }
@@ -313,6 +230,7 @@ export default function App() {
   const store = useOrmStoreIgnoring('pan', 'zoom')
 
   useElectronMenu()
+  useDocumentState()
   useWorkbenchBridge()
   useUndoRedo()
   useKeyboardShortcuts()
@@ -360,6 +278,7 @@ export default function App() {
         <SuggestDiagramsDialog />
         <TransformDialog />
         <DdlExportDialog />
+        <DeleteFromSchemaDialog />
       </div>
     </ErrorBoundary>
   )

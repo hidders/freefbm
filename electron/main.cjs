@@ -25,8 +25,64 @@ function createWindow() {
   }
 
   buildMenu(win)
+  guardUnsaved(win)
   return win
 }
+
+// Unsaved changes: the page refuses to unload while the model is dirty
+// (hooks/useDocumentState.js), and the question is asked here. Save asks the
+// page to save; once it has, it calls window:closeNow and the close (or
+// reload, or quit) goes ahead.
+let quitting = false
+app.on('before-quit', () => { quitting = true })
+
+function guardUnsaved(win) {
+  win.__pending = null   // 'reload' while a reload is waiting on the question
+  win.webContents.on('did-finish-load', () => { win.__pending = null })
+  win.webContents.on('will-prevent-unload', (event) => {
+    const reload = win.__pending === 'reload'
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'warning',
+      buttons: ['Save…', "Don't Save", 'Cancel'],
+      defaultId: 0, cancelId: 2,
+      message: 'Do you want to save the changes to this model?',
+      detail: reload ? 'Your changes are lost if the window reloads without saving.'
+                     : 'Your changes are lost if you close without saving.',
+    })
+    if (choice === 1) { event.preventDefault(); return }   // unload anyway
+    // Save or Cancel: the window stays for now. After a save the page calls
+    // window:closeNow, which finishes what was asked (close, quit or reload).
+    win.__quitAfterSave = quitting
+    quitting = false
+    if (choice === 0) win.webContents.send('app:saveThenClose')
+    else win.__pending = null
+  })
+}
+
+ipcMain.on('window:closeNow', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win) return
+  if (win.__pending === 'reload') { win.__pending = null; win.webContents.reload(); return }
+  const quit = win.__quitAfterSave
+  win.__quitAfterSave = false
+  win.close()
+  if (quit) app.quit()
+})
+
+ipcMain.on('window:document', (event, { path: filePath, dirty, title }) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win) return
+  if (title) win.setTitle(title)
+  if (process.platform === 'darwin') {
+    win.setRepresentedFilename(filePath || '')
+    win.setDocumentEdited(!!dirty)
+  }
+})
+
+const EDIT_COMMANDS = new Set(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll'])
+ipcMain.on('window:nativeEdit', (event, cmd) => {
+  if (EDIT_COMMANDS.has(cmd)) event.sender[cmd]()
+})
 
 // The verbalisation workbench: a second window of the same app (#workbench),
 // which gets the model from the main window through workbench:msg.
@@ -83,17 +139,30 @@ function buildMenu(win) {
     },
     {
       label: 'Edit',
+      // The model's own undo, clipboard and selection; in a text field the
+      // page passes them on as text editing (window:nativeEdit). The page
+      // handles these keys itself, so the accelerators are only shown on
+      // Windows and Linux (on macOS a key the page handled never reaches the menu).
       submenu: [
-        { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
-        { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
+        { label: 'Undo',       accelerator: 'CmdOrCtrl+Z',       registerAccelerator: false, click: send('menu:undo') },
+        { label: 'Redo',       accelerator: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', registerAccelerator: false, click: send('menu:redo') },
         { type: 'separator' },
-        { label: 'Delete Selected', accelerator: 'Delete', click: send('menu:deleteSelected') },
+        { label: 'Cut',        accelerator: 'CmdOrCtrl+X',       registerAccelerator: false, click: send('menu:cut') },
+        { label: 'Copy',       accelerator: 'CmdOrCtrl+C',       registerAccelerator: false, click: send('menu:copy') },
+        { label: 'Paste',      accelerator: 'CmdOrCtrl+V',       registerAccelerator: false, click: send('menu:paste') },
+        { label: 'Select All', accelerator: 'CmdOrCtrl+A',       registerAccelerator: false, click: send('menu:selectAll') },
+        { type: 'separator' },
+        // No accelerator on macOS: Backspace must keep deleting text in fields.
+        { label: 'Remove from Diagram', ...(isMac ? {} : { accelerator: 'Delete', registerAccelerator: false }), click: send('menu:removeFromDiagram') },
+        { label: 'Delete from Schema…', click: send('menu:deleteFromSchema') },
       ],
     },
     {
       label: 'View',
       submenu: [
-        { role: 'reload' }, { type: 'separator' },
+        // Reloading drops the model; only offered while developing, and the
+        // unsaved-changes question still applies.
+        ...(isDev ? [{ label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => { win.__pending = 'reload'; win.webContents.reload() } }, { type: 'separator' }] : []),
         { label: 'Zoom In',    accelerator: 'CmdOrCtrl+=', click: send('menu:zoomIn') },
         { label: 'Zoom Out',   accelerator: 'CmdOrCtrl+-', click: send('menu:zoomOut') },
         { label: 'Reset Zoom', accelerator: 'CmdOrCtrl+0', click: send('menu:zoomReset') },
@@ -149,8 +218,13 @@ ipcMain.handle('dialog:openFile', async () => {
   return { path: filePaths[0], content: fs.readFileSync(filePaths[0], 'utf-8') }
 })
 
-ipcMain.handle('dialog:saveFile', async (_, { defaultPath, content }) => {
-  const { canceled, filePath } = await dialog.showSaveDialog({
+ipcMain.handle('dialog:saveFile', async (event, { path: knownPath, defaultPath, content }) => {
+  // Save to the file the model came from: no question.
+  if (knownPath && /\.ffbm$/i.test(knownPath)) {
+    fs.writeFileSync(knownPath, content, 'utf-8')
+    return knownPath
+  }
+  const { canceled, filePath } = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
     // Offer .ffbm even when the model was opened from a legacy .orm2/.json file
     defaultPath: (defaultPath || 'model.ffbm').replace(/\.(orm2|json|orm)$/i, '.ffbm'),
     filters: [{ name: 'FreeFBM Model', extensions: ['ffbm'] }],
