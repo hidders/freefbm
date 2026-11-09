@@ -146,12 +146,18 @@ export function rmViolations(view, issues) {
   return out
 }
 
+// The RM object the selection is (selectRm's choice, else the first object
+// the selected ORM2 element stands for), or null.
+export function selectedRmObject(state, view) {
+  if (!state.selectedId) return null
+  return (state.selectedRm?.id === state.selectedId ? view.objects.get(state.selectedRm.rmId) : null)
+    ?? view.ofOrm.get(state.selectedId)?.map(id => view.objects.get(id)).find(Boolean) ?? null
+}
+
 // The table (entity id) the selection is about: a table, view or stored
 // part, a part of one (column, key, CHECK), or its entity type; or null.
 export function selectedTableId(state, view) {
-  if (!state.selectedId) return null
-  const obj = (state.selectedRm?.id === state.selectedId ? view.objects.get(state.selectedRm.rmId) : null)
-    ?? view.ofOrm.get(state.selectedId)?.map(id => view.objects.get(id)).find(Boolean)
+  const obj = selectedRmObject(state, view)
   const tbl = obj && (obj.kind === 'table' || obj.kind === 'view' ? obj : view.objects.get(obj.table))
   return tbl?.entityId ?? null
 }
