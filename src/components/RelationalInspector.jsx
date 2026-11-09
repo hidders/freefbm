@@ -66,7 +66,7 @@ export default function RelationalInspector({ schemaId, obj, tableRules }) {
       {obj.kind === 'column' && <ColumnBody c={obj} view={view} link={link} />}
       {!['table', 'view', 'column'].includes(obj.kind) && <ConstraintBody o={obj} view={view} link={link} />}
       {!obj.enforced && obj.kind !== 'assertion' && (
-        <Note>In PostgreSQL: not checked, as it is about a view or a derived column (the DDL export says so).</Note>
+        <Note>Not checked by the PostgreSQL DDL export, as it is about a view or a derived column (the export says so).</Note>
       )}
       {(obj.kind === 'table' || obj.kind === 'view' || obj.kind === 'column') && <Transformations schemaId={schemaId} obj={obj} table={table} />}
       {(obj.kind === 'table' || obj.kind === 'view') && !obj.of && tableRules}
@@ -179,7 +179,7 @@ function ConstraintBody({ o, view, link }) {
     {o.kind === 'assertion' && <AssertionAbout o={o} view={view} link={link} />}
     {o.kind === 'assertion' && <>
       <Note>{o.query
-        ? 'A constraint with no table form. PostgreSQL has no assertions, so the DDL export enforces it with constraint triggers that run the query below, or writes the query as a comment.'
+        ? 'A constraint with no table form. Many SQL databases do not support assertions, so the DDL export enforces it with constraint triggers that run the query below, or writes the query as a comment.'
         : `It has no SQL form${o.error ? `: ${o.error}` : ''}.`}</Note>
       {o.formula && <Sql text={o.formula} title="Formula" />}
       {o.query && <Sql text={`${o.query};`} title="Violations" />}
