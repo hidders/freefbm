@@ -293,7 +293,7 @@ export default function DiagramTabs() {
         +
       </div>
 
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'center' }}>
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'center', paddingRight: 8 }}>
         {/* A mapping diagram names its mapping and can fetch its rules' elements. */}
         {mapping && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--ink-3)', whiteSpace: 'nowrap', marginRight: 8 }}>

@@ -221,7 +221,7 @@ export function NewSchemaMenu({ variant = 'strip' }) {
         title="Add a schema to this file: a new one, generated tables, a guessed ORM2 schema, an import or a transformation"
         aria-haspopup="menu" aria-expanded={open}
         className="ui-btn new-schema-button"
-        style={tab ? { marginRight: 8 } : { height: 22, padding: '0 7px' }}
+        style={tab ? undefined : { height: 22, padding: '0 7px' }}
       >
         <span style={{ fontSize: 13, lineHeight: 1 }}>+</span>{tab && <span>Schema</span>}<span className="ui-caret">▾</span>
       </button>
