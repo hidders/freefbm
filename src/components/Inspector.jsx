@@ -1969,6 +1969,11 @@ function InternalFrequencyInspector({ fact, ifItem }) {
             onChange={v => store.updateInternalFrequency(fact.id, ifItem.id, { deontic: v })}/>
         </Row>
       )}
+      {!isImplicit && (
+        <LabelPositionRow label="Position" name={`ifpos-${fact.id}-${ifItem.id}`}
+          moved={store.frequencyLabelMoved(fact.id, ifItem.id)}
+          onDefault={() => store.resetFrequencyLabel(fact.id, ifItem.id)}/>
+      )}
       {!isImplicit && <GroupMembershipSection id={ifItem.id}/>}
       {!isImplicit && (
         <div style={{ marginTop: 8 }}>

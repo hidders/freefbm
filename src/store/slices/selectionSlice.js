@@ -653,6 +653,21 @@ export function createSelectionSlice(set, get) {
         isDirty: true,
       }))
     },
+    // Whether an internal frequency marker sits away from its default place
+    // beside the fact type as drawn on the active diagram, and putting it back.
+    frequencyLabelMoved(factId, ifId) {
+      const s = get()
+      const ifItem = s.facts.find(f => f.id === factId)?.internalFrequency?.find(i => i.id === ifId)
+      if (!ifItem || ifItem.x == null || ifItem.y == null) return false
+      const def = defaultFrequencyPos(factAsDrawn(s, factId), ifItem.roles ?? [])
+      return Math.abs(ifItem.x - def.x) > 0.5 || Math.abs(ifItem.y - def.y) > 0.5
+    },
+    resetFrequencyLabel(factId, ifId) {
+      const s = get()
+      const ifItem = s.facts.find(f => f.id === factId)?.internalFrequency?.find(i => i.id === ifId)
+      if (!ifItem) return
+      get().updateInternalFrequency(factId, ifId, defaultFrequencyPos(factAsDrawn(s, factId), ifItem.roles ?? []))
+    },
     removeInternalFrequency(factId, ifId) {
       set(s => {
         const fact = s.facts.find(f => f.id === factId)
