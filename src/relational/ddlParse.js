@@ -511,7 +511,14 @@ function parseScript(sql0, dialect, oracle) {
     // A unique index behind a primary key or UNIQUE constraint (as Oracle's
     // DBMS_METADATA writes them) is the same key.
     const same = (a, b) => a.length === b.length && a.every((c, i) => c === b[i])
+    // Tables Oracle makes for its own use (ORA$… behind assertions, BIN$…
+    // in the recycle bin) are not the schema's.
+    for (const [k, t] of tables) if (/^(ora\$|bin\$)/i.test(t.name)) { tables.delete(k); skip('Oracle system table (ORA$…, BIN$…)') }
     for (const t of tables.values()) {
+      // A foreign key written both in CREATE TABLE and as a separate ALTER
+      // TABLE (DBMS_METADATA's REF_CONSTRAINT) is one foreign key.
+      const fkKey = (fk) => `${fk.columns}|${fk.refSchema ?? ''}.${fk.refTable}|${fk.refColumns ?? ''}`
+      t.foreignKeys = t.foreignKeys.filter((fk, i) => t.foreignKeys.findIndex(g => fkKey(g) === fkKey(fk)) === i)
       t.uniques = t.uniques.filter((u, i) => !(t.primaryKey && same(u, t.primaryKey)) && t.uniques.findIndex(v => same(u, v)) === i)
       for (const [tk, col] of seqTriggers) {
         if (tk.name !== t.name || (tk.schema && t.schema && tk.schema !== t.schema)) continue
