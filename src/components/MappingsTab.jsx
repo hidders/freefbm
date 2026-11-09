@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
 import { sideContext, sideTokens, checkRule, SIDES, sideSchemaId } from '../mapping/mapping.js'
 import { PatternText, IssueList } from './MappingFormula.jsx'
-import { runMapping, roundTrip } from '../mapping/runMapping.js'
+import { runMappingNow, confirmDeleteMapping } from '../utils/mappingActions.js'
 import { AccountingReport, runAccounting } from './AccountingReport.jsx'
 import { EquivalenceReport, runEquivalence } from './EquivalenceReport.jsx'
 import { CarryPanel } from './CarryPanel.jsx'
@@ -23,6 +23,7 @@ export default function MappingsTab() {
     schemas: s.schemas, objectTypes: s.objectTypes, facts: s.facts, constraints: s.constraints,
     subtypes: s.subtypes, mappings: s.mappings ?? [], editing: s.mappingRuleEditor,
     accounting: s.mappingAccounting ?? {}, equivalence: s.mappingEquivalence ?? {}, advanced: s.advancedMode, focus: s.mappingRuleFocus,
+    runs: s.mappingRuns ?? {},
   })))
   const advanced = state.advanced
   // Under a mapping diagram the tab lists only that mapping's rules on the
@@ -42,18 +43,9 @@ export default function MappingsTab() {
   useEffect(() => { focusRef.current?.scrollIntoView?.({ block: 'nearest' }) }, [state.focus])
   const act = useOrmStore.getState
   const schemas = state.schemas
-  // The last run per mapping: { kind: 'run' | 'roundTrip', direction, result, ms } | { error }.
-  const [runs, setRuns] = useState({})
-  const doRun = (m, kind, direction) => {
-    const full = useOrmStore.getState()
-    const t0 = performance.now()
-    try {
-      const result = kind === 'run' ? runMapping(full, m, direction) : roundTrip(full, m, direction)
-      setRuns(r => ({ ...r, [m.id]: { kind, direction, result, ms: Math.round(performance.now() - t0) } }))
-    } catch (err) {
-      setRuns(r => ({ ...r, [m.id]: { error: String(err?.message ?? err) } }))
-    }
-  }
+  // The last run per mapping (store.mappingRuns, also filled by the Mapping menu).
+  const runs = state.runs
+  const doRun = (m, kind, direction) => runMappingNow(m, kind, direction)
   const [src, setSrc] = useState(schemas[0]?.id ?? '')
   const [tgt, setTgt] = useState(schemas[1]?.id ?? schemas[0]?.id ?? '')
   const name = (id) => schemas.find(s => s.id === id)?.name ?? '(deleted schema)'
@@ -130,17 +122,17 @@ export default function MappingsTab() {
               <button style={btn} title={`Build the population of ${name(m.targetSchemaId)} from that of ${name(m.sourceSchemaId)}`} onClick={() => doRun(m, 'run', 'forward')}>Run →</button>
               <button style={btn} title={`Build the population of ${name(m.sourceSchemaId)} from that of ${name(m.targetSchemaId)}`} onClick={() => doRun(m, 'run', 'backward')}>Run ←</button>
               <button style={btn} title={`Run the mapping from ${name(m.sourceSchemaId)} there and back, and compare what comes back`} onClick={() => doRun(m, 'roundTrip', 'forward')}>Round trip</button>
-              <button style={btn} title={`Whether ${name(m.sourceSchemaId)} and ${name(m.targetSchemaId)} are equivalent under this mapping: no information lost either way, every constraint kept, and how many need formula constraints`} onClick={() => runEquivalence(m)}>Equivalence</button>
-              <button style={btn} title={`For each constraint of either schema, whether the other schema keeps it under this mapping: native, implied, lost (with a counterexample) or unknown`} onClick={() => runAccounting(m)}>Accounting</button>
+              <button style={btn} title={`Whether ${name(m.sourceSchemaId)} and ${name(m.targetSchemaId)} are equivalent under this mapping: no information lost either way, every constraint kept, and how many need formula constraints`} onClick={() => { act().setActiveMapping(m.id); runEquivalence(m) }}>Equivalence</button>
+              <button style={btn} title={`For each constraint of either schema, whether the other schema keeps it under this mapping: native, implied, lost (with a counterexample) or unknown`} onClick={() => { act().setActiveMapping(m.id); runAccounting(m) }}>Accounting</button>
               <button style={btn} disabled={!!m.lock} title={m.lock ? 'Unlock the mapping to fold' : 'Fold the derived types and fact types of a schema into this mapping: each gets a mapping rule and becomes ordinary (a semi-derived one keeps its rule as a constraint), and the fact types it replaces can go'} onClick={() => useOrmStore.setState({ foldDialog: { mappingId: m.id } })}>Fold…</button>
               <button className="mapping-lock" style={{ ...btn, whiteSpace: 'nowrap', ...(m.lock ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : {}) }} aria-pressed={!!m.lock}
                 title={m.lock ? `Unlock: ${name(m.sourceSchemaId)} and ${name(m.targetSchemaId)} can be edited freely again` : `Lock ${name(m.sourceSchemaId)} and ${name(m.targetSchemaId)} to new constraints only, and carry the constraints added to one to the other`}
                 onClick={() => act().lockMapping(m.id, !m.lock)}>{m.lock ? '✓ ' : ''}Constraints only</button>
-              <button style={btn} title="Delete this mapping and its rules" onClick={() => act().deleteMapping(m.id)}>Delete</button>
+              <button style={btn} title="Delete this mapping and its rules" onClick={() => confirmDeleteMapping(m.id)}>Delete…</button>
             </div>
             {runs[m.id] && <RunReport run={runs[m.id]} mapping={m} name={name}
-              onApply={(run) => { act().applyMappingRun(run); setRuns(r => ({ ...r, [m.id]: { ...r[m.id], applied: true } })) }}
-              onClose={() => setRuns(r => { const n = { ...r }; delete n[m.id]; return n })} />}
+              onApply={(run) => { act().applyMappingRun(run); act().setMappingRun(m.id, { ...runs[m.id], applied: true }) }}
+              onClose={() => act().setMappingRun(m.id, null)} />}
             {m.lock && <CarryPanel mapping={m} name={name} />}
             {state.equivalence[m.id] && <EquivalenceReport eq={state.equivalence[m.id]} mapping={m} name={name} />}
             {state.accounting[m.id] && <AccountingReport acc={state.accounting[m.id]} mapping={m} name={name} />}

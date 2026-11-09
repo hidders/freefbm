@@ -79,14 +79,29 @@ ipcMain.on('window:document', (event, { path: filePath, dirty, title }) => {
   }
 })
 
-// The renderer says which Schema menu items apply to the active schema.
-ipcMain.on('window:menuState', (_event, enabled) => {
+// The renderer says which Schema and Mapping menu items apply, and what the
+// Mapping menu lists (src/utils/schemaActions.js, src/utils/mappingActions.js):
+// { enabled: { id: bool }, mapping: { activeId, mappings: [{ id, label }], labels, checked } }.
+// The menu is rebuilt when the Mapping menu's labels change, else only
+// enabled flags are set.
+let menuWin = null
+let menuEnabled = {}
+let mappingMenu = { activeId: null, mappings: [], labels: {}, checked: {} }
+function applyMenuEnabled() {
   const menu = Menu.getApplicationMenu()
-  for (const [id, on] of Object.entries(enabled ?? {})) {
-    if (!id.startsWith('schema:')) continue
+  for (const [id, on] of Object.entries(menuEnabled)) {
     const item = menu?.getMenuItemById(id)
     if (item) item.enabled = !!on
   }
+}
+ipcMain.on('window:menuState', (_event, state) => {
+  menuEnabled = state?.enabled ?? {}
+  const next = state?.mapping ?? mappingMenu
+  if (JSON.stringify(next) !== JSON.stringify(mappingMenu)) {
+    mappingMenu = next
+    if (menuWin && !menuWin.isDestroyed()) buildMenu(menuWin)
+  }
+  applyMenuEnabled()
 })
 
 const EDIT_COMMANDS = new Set(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll'])
@@ -127,6 +142,10 @@ function buildMenu(win) {
   const isMac = process.platform === 'darwin'
   const send = (ch) => () => win.webContents.send(ch)
   const schemaAction = (id) => () => win.webContents.send('menu:schema', id)
+  const mappingAction = (id, arg) => () => win.webContents.send('menu:mapping', id, arg)
+  menuWin = win
+  const mm = mappingMenu
+  const mItem = (id, label, extra = {}) => ({ id, label: mm.labels?.[id] ?? label, click: mappingAction(id), ...extra })
   const template = [
     ...(isMac ? [{ role: 'appMenu' }] : []),
     {
@@ -203,6 +222,32 @@ function buildMenu(win) {
         { id: 'schema:delete',         label: 'Delete schema…',         click: schemaAction('schema:delete') },
       ],
     },
+    {
+      // Acts on the active mapping (src/utils/mappingActions.js).
+      label: 'Mapping',
+      submenu: [
+        { label: 'Choose mapping', enabled: mm.mappings.length > 0, submenu: mm.mappings.length
+          ? mm.mappings.map(x => ({ label: x.label, type: 'radio', checked: x.id === mm.activeId, click: mappingAction('mapping:choose', x.id) }))
+          : [{ label: 'No mappings yet', enabled: false }] },
+        { type: 'separator' },
+        mItem('mapping:diagram', 'Show mapping diagram'),
+        mItem('mapping:suggest', 'Suggest diagrams…'),
+        mItem('mapping:addRule', 'Add rule'),
+        { type: 'separator' },
+        mItem('mapping:runForward', 'Run forward'),
+        mItem('mapping:runBackward', 'Run backward'),
+        mItem('mapping:roundTrip', 'Round trip'),
+        { type: 'separator' },
+        mItem('mapping:equivalence', 'Check equivalence'),
+        mItem('mapping:accounting', 'Account for constraints'),
+        { type: 'separator' },
+        mItem('mapping:fold', 'Fold…'),
+        mItem('mapping:lock', 'Constraints only', { type: 'checkbox', checked: !!mm.checked?.['mapping:lock'] }),
+        { type: 'separator' },
+        mItem('mapping:showTab', 'Show mappings tab'),
+        mItem('mapping:delete', 'Delete mapping…'),
+      ],
+    },
     { role: 'windowMenu' },
     {
       role: 'help',
@@ -214,6 +259,7 @@ function buildMenu(win) {
     },
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+  applyMenuEnabled()
 }
 
 ipcMain.handle('dialog:exportPdf', async (event, htmlContent) => {

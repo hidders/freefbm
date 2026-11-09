@@ -95,6 +95,20 @@ export const createMappingSlice = (set, get) => {
     // The rule the Mappings tab shows highlighted (Basic mode's stand-in for
     // the rule editor).
     mappingRuleFocus: null,
+    // The mapping the Mapping menu acts on when no mapping diagram is active
+    // (utils/mappingActions.js); session only.
+    activeMappingId: null,
+    setActiveMapping(id) { if (get().activeMappingId !== id) set({ activeMappingId: id }) },
+    // The last run or round trip per mapping, shown in the Mappings tab:
+    // { kind: 'run' | 'roundTrip', direction, result, ms, applied? } | { error }; session only.
+    mappingRuns: {},
+    setMappingRun(id, run) {
+      set(st => {
+        const next = { ...(st.mappingRuns ?? {}) }
+        if (run) next[id] = run; else delete next[id]
+        return { mappingRuns: next }
+      })
+    },
     // Adds a mapping from one schema to another; returns its id.
     addMapping(sourceSchemaId, targetSchemaId, name) {
       const used = new Set((get().mappings ?? []).map(m => m.name))
@@ -194,6 +208,7 @@ export const createMappingSlice = (set, get) => {
       const m = s.mappings?.find(x => x.id === mappingId) ?? s.views?.find(x => x.id === mappingId)
       if (!m) return null
       const existing = s.diagrams.find(d => d.mappingId === mappingId)
+      if (s.mappings?.some(x => x.id === mappingId)) set({ activeMappingId: mappingId })
       if (existing) { get().setActiveDiagram(existing.id); return existing.id }
       const d = { ...mkDiagram(m.name, m.sourceSchemaId), mappingId, mappingRuleIds: m.rules.map(r => r.id), mappingRulePositions: {} }
       set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
