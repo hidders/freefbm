@@ -680,7 +680,11 @@ export function composeExchangeSql(state, ex, { header = null, sourceSchema = ''
     const { order, cyclic } = fkOrder(lastModel.tables)
     const lines = []
     if (header) lines.push(...header.split('\n').map(l => `-- ${l}`), '')
-    if (cyclic) lines.push('-- Foreign keys form a cycle: run with deferred constraints.', 'BEGIN;', 'SET CONSTRAINTS ALL DEFERRED;', '')
+    // One transaction, so assertions exported as deferred constraint triggers
+    // (ddlExport.js) are checked once, on all the rows.
+    lines.push('BEGIN;')
+    if (cyclic) lines.push('-- Foreign keys form a cycle: run with deferred constraints.', 'SET CONSTRAINTS ALL DEFERRED;')
+    lines.push('')
     const written = []
     const empty = []
     for (const t of order) {
@@ -742,7 +746,7 @@ export function composeExchangeSql(state, ex, { header = null, sourceSchema = ''
       written.push({ name, rules: mine.length, columns: target.length })
       for (const c of t.columns) if (c.generated && colSelects.has(c.fact.id) || (c.generated && t.pk.includes(c))) lines.push(`SELECT setval(pg_get_serial_sequence('${full.replace(/'/g, "''")}', '${c.name.replace(/'/g, "''")}'), COALESCE(MAX(${q(c.name)}), 0) + 1, false) FROM ${full};`, '')
     }
-    if (cyclic) lines.push('COMMIT;', '')
+    lines.push('COMMIT;', '')
     if (empty.length) notes.push(`Nothing earlier in the chain gives rows of ${empty.length === 1 ? '' : 'these tables: '}${empty.join(', ')}${empty.length === 1 ? ', so it is left out' : ''}.`)
     if (!written.length) notes.push('No table of the last schema gets rows.')
     return { sql: lines.join('\n'), tables: written, notes }

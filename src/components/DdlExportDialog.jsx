@@ -1,13 +1,16 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useOrmStore } from '../store/ormStore'
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const MODE_KEY = 'freefbm.ddlExport.assertions'
 
 // File › Export PostgreSQL DDL…: a relational schema is a relational schema in
 // general, with any constraint over its tables (assertions included), so what
 // PostgreSQL itself can't enforce is reported here, before the script is
 // saved: the assertions the script writes as queries that return the rows
 // breaking them, and what it can't write at all (ddlExport.js warnings).
+// Assertions can be written as constraint triggers (enforced, the default,
+// kept in localStorage freefbm.ddlExport.assertions) or as commented queries.
 // Opened with store.ddlExportDialog = { schemaId } (useElectronMenu.js).
 export default function DdlExportDialog() {
   const schemaId = useOrmStore(s => s.ddlExportDialog?.schemaId ?? null)
@@ -18,9 +21,11 @@ export default function DdlExportDialog() {
 function Dialog({ schemaId }) {
   const close = () => useOrmStore.setState({ ddlExportDialog: null })
   const schema = useOrmStore(s => s.schemas.find(x => x.id === schemaId))
+  const [mode, setMode] = useState(() => { try { return localStorage.getItem(MODE_KEY) === 'comments' ? 'comments' : 'triggers' } catch { return 'triggers' } })
+  const choose = (m) => { setMode(m); try { localStorage.setItem(MODE_KEY, m) } catch { /* not kept */ } }
   const res = useMemo(() => {
-    try { return useOrmStore.getState().exportPostgresDdl(schemaId) } catch (e) { return { error: e.message } }
-  }, [schemaId])
+    try { return useOrmStore.getState().exportPostgresDdl(schemaId, { assertions: mode }) } catch (e) { return { error: e.message } }
+  }, [schemaId, mode])
   const save = async () => {
     close()
     const api = window.electronAPI
@@ -40,22 +45,33 @@ function Dialog({ schemaId }) {
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink-1)' }}>Export {schema?.name ?? 'schema'} as PostgreSQL DDL</div>
           <div style={{ fontSize: 12, color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.45 }}>
             {res.error ? `The export failed: ${res.error}`
-              : 'PostgreSQL can’t enforce everything this schema says. The script lists the following in comments; the rest is created as tables, keys, foreign keys and CHECKs.'}
+              : 'The schema says more than tables, keys, foreign keys and CHECKs can: what PostgreSQL does with the rest is listed below.'}
           </div>
         </div>
         {!res.error && (
           <div style={{ overflowY: 'auto', padding: '8px 14px', fontSize: 12 }} data-text-panel className="copyable">
             {assertions.length > 0 && <>
               <div style={{ fontWeight: 600, color: 'var(--ink-1)', margin: '4px 0 4px' }}>
-                {assertions.length} assertion{assertions.length === 1 ? '' : 's'}, not enforced
+                {assertions.length} assertion{assertions.length === 1 ? '' : 's'}
               </div>
               <div style={{ color: 'var(--ink-2)', marginBottom: 6, lineHeight: 1.45 }}>
-                PostgreSQL has no assertions (CREATE ASSERTION). Each is written as a query that returns the rows breaking it,
-                so it can be checked by hand or in a trigger.
+                PostgreSQL has no assertions (CREATE ASSERTION). The script can enforce them with constraint triggers, which run
+                each assertion's query at the end of every transaction that changes a table it reads (so load rows in one transaction),
+                or leave them as commented queries that return the rows breaking them.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 6 }}>
+                {[['triggers', 'Enforce them with constraint triggers'], ['comments', 'Write them as commented queries (not enforced)']].map(([m, text]) => (
+                  <label key={m} style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--ink-1)', cursor: 'pointer' }}>
+                    <input type="radio" name="ddl-assertions" checked={mode === m} onChange={() => choose(m)} />{text}
+                  </label>
+                ))}
               </div>
               {assertions.map((a, i) => (
                 <div key={i} style={{ borderTop: '1px solid var(--border-soft)', padding: '4px 0' }}>
-                  <div style={{ color: 'var(--ink-1)' }}>{a.label}{a.deontic ? ' (deontic)' : ''}</div>
+                  <div style={{ color: 'var(--ink-1)' }}>
+                    {a.label}
+                    <span style={{ color: 'var(--ink-3)', marginLeft: 6 }}>{a.trigger ? 'trigger' : a.deontic ? 'deontic: a commented query' : 'commented query, not enforced'}</span>
+                  </div>
                   {a.text && <div style={{ color: 'var(--ink-2)', fontFamily: 'var(--font-mono, monospace)', fontSize: 11, wordBreak: 'break-word' }}>{a.text}</div>}
                 </div>
               ))}

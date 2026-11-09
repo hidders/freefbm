@@ -56,10 +56,14 @@ export function populationSql(state, schemaId, { format = 'insert', header = nul
   const notes = []
   const lines = []
   if (header) lines.push(...header.split('\n').map(l => `-- ${l}`), '')
+  // One transaction, so assertions exported as deferred constraint triggers
+  // (ddlExport.js) are checked once, on all the rows.
+  lines.push('BEGIN;')
   if (cyclic) {
     notes.push('Some foreign keys form a cycle: load the script with the foreign keys deferred (or added after the data).')
-    lines.push('-- Foreign keys form a cycle: run with deferred constraints, or add the foreign keys afterwards.', 'BEGIN;', 'SET CONSTRAINTS ALL DEFERRED;', '')
+    lines.push('-- Foreign keys form a cycle: run with deferred constraints, or add the foreign keys afterwards.', 'SET CONSTRAINTS ALL DEFERRED;')
   }
+  lines.push('')
   const written = []
   const sequences = []
   let invented = 0
@@ -98,7 +102,7 @@ export function populationSql(state, schemaId, { format = 'insert', header = nul
     }
     lines.push('')
   }
-  if (cyclic) lines.push('COMMIT;', '')
+  lines.push('COMMIT;', '')
   if (invented) notes.push(`${invented} values were invented by a run (⟨…⟩) for columns that are not generated; they are written as text.`)
   if (!written.length) notes.push('The schema has no rows to write.')
   return { sql: lines.join('\n'), tables: written, notes }
