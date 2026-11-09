@@ -27,6 +27,14 @@ import { mkGroup, loadGroups, pruneGroups } from '../../utils/groups.js'
 import { mkPropertyDefinition, loadPropertyDefinitions, dropPropertyValues } from '../../utils/customProperties.js'
 import { loadMappings } from '../../mapping/mapping.js'
 import { compactMapping } from '../../mapping/sameModel.js'
+
+function readSidebar() {
+  const dflt = { open: true, tab: 'browser', width: 270 }
+  try { return { ...dflt, ...JSON.parse(localStorage.getItem('freefbm.sidebar') || '{}') } } catch { return dflt }
+}
+function readFlag(key) {
+  try { return localStorage.getItem(key) === '1' } catch { return false }
+}
 import { completeTables } from '../../relational/tableUnits.js'
 
 // The clipboard holds elements of the schema it was copied in; they may only be
@@ -103,6 +111,10 @@ export function createModelSlice(set, get) {
     bottomPanelHeight:    220,
     bottomPanelTab:       'population',
     bottomPanelCollapsed: true,
+    // The docked sidebar left of the canvas (Sidebar.jsx): Browser and
+    // Problems tabs; kept per user in localStorage, not in the file.
+    sidebar: readSidebar(),
+    validationAllSchemas: readFlag('freefbm.validation.allSchemas'),
 
     // The derivation rule editor, a floating panel that stays open while the
     // canvas is used, and the schema elements it highlights there.
@@ -457,6 +469,21 @@ export function createModelSlice(set, get) {
     setBottomPanelHeight(h)     { set({ bottomPanelHeight: h }) },
     setBottomPanelTab(t)        { set({ bottomPanelTab: t }) },
     setBottomPanelCollapsed(v)  { set({ bottomPanelCollapsed: v }) },
+    // { open, tab: 'browser' | 'problems', width }; showSidebarTab(tab)
+    // opens it on that tab, or closes it when it already shows that tab.
+    setSidebar(patch) {
+      const sidebar = { ...get().sidebar, ...patch }
+      try { localStorage.setItem('freefbm.sidebar', JSON.stringify(sidebar)) } catch {}
+      set({ sidebar })
+    },
+    showSidebarTab(tab, { toggle = true } = {}) {
+      const sb = get().sidebar
+      get().setSidebar(toggle && sb.open && sb.tab === tab ? { open: false } : { open: true, tab })
+    },
+    setValidationAllSchemas(v) {
+      try { localStorage.setItem('freefbm.validation.allSchemas', v ? '1' : '0') } catch {}
+      set({ validationAllSchemas: !!v })
+    },
     openRuleEditor(target)      { set({ ruleEditor: target, ruleHighlight: null }) },
     closeRuleEditor() {
       // A rule condition still being drawn goes with its editor.

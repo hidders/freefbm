@@ -18,8 +18,7 @@ import StatusBar from './components/StatusBar'
 import WelcomeScreen from './components/WelcomeScreen'
 import DiagramTabs from './components/DiagramTabs'
 import SchemaStrip from './components/SchemaStrip'
-import SchemaBrowser from './components/SchemaBrowser'
-import ValidationPanel from './components/ValidationPanel'
+import Sidebar from './components/Sidebar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useElectronMenu } from './hooks/useElectronMenu'
 import { useWorkbenchBridge } from './hooks/useWorkbenchBridge'
@@ -255,12 +254,11 @@ export default function App() {
           <div id="app-toolpanel" className="no-print" style={{ display: 'contents' }}><ToolPanel /></div>
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+              <Sidebar />
               <Canvas />
               {isEmpty && !welcomeDismissed && (
                 <WelcomeScreen onClose={() => setWelcomeDismissed(true)} />
               )}
-              <SchemaBrowser />
-              <ValidationPanel />
             </div>
             <BottomPanel />
           </div>

@@ -109,21 +109,22 @@ export default function Toolbar() {
         FreeFBM
       </span>
 
-      {/* The open file; • while it has unsaved changes. */}
-      <span title={storeRef.current.filePath || (storeRef.current.importedFrom ? `Imported from ${storeRef.current.importedFrom}` : 'Not saved yet')}
-        style={{ fontSize: 12, color: 'var(--ink-2)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
-          overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260, marginRight: 4, userSelect: 'none' }}>
-        {fileLabel(storeRef.current)}{storeRef.current.isDirty && <span style={{ color: 'var(--danger)' }}> •</span>}
-      </span>
-
-      <Divider/>
-
       <div style={{ display: 'flex', gap: 4, WebkitAppRegion: 'no-drag' }}>
         <Btn label="＋ New"   title="New Model"  onClick={handleNew}/>
         {isElectron && <Btn label="📂 Open" title="Open"   onClick={handleOpen}/>}
         {isElectron && <Btn label="💾 Save" title={isMac ? 'Save (⌘S)' : 'Save (Ctrl+S)'} onClick={handleSave}/>}
         {isElectron && <Btn label="⎙ PDF" title="Export to PDF (⌘⇧E)" onClick={handleExportPdf}/>}
       </div>
+
+      <Divider/>
+
+      {/* The open file; • while it has unsaved changes. After the buttons, so
+          a longer or shorter name does not move them. */}
+      <span title={storeRef.current.filePath || (storeRef.current.importedFrom ? `Imported from ${storeRef.current.importedFrom}` : 'Not saved yet')}
+        style={{ fontSize: 12, color: 'var(--ink-2)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
+          overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, maxWidth: 360, marginLeft: 4, userSelect: 'none' }}>
+        {fileLabel(storeRef.current)}{storeRef.current.isDirty && <span style={{ color: 'var(--danger)' }}> •</span>}
+      </span>
 
       <div style={{ flex: 1 }}/>
 

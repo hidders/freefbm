@@ -4,7 +4,6 @@ import ContextMenu from './ContextMenu'
 import { useOrmStore, useOrmStoreIgnoring, useScopedStore } from '../store/ormStore'
 import { openDeleteFromSchema } from '../utils/deleteSelection'
 import { activeSchemaIdOf, diagramRuleIds } from '../store/storeHelpers'
-import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import {
   EntityTypeIcon, ValueTypeIcon, NestedFactTypeIcon, FactTypeIcon, SubtypeIcon,
@@ -22,13 +21,7 @@ import { useMappingRuleInfos, mappingRuleSections, mappingRuleOrphanCount } from
 
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 
-const MIN_W  = 180
-const MIN_H  = 120
-const MAX_W  = 640
-const MAX_H  = 900
 const HDR_H  = 24
-const INIT_W = 240
-const INIT_H = 400
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -361,17 +354,9 @@ export default function SchemaBrowser() {
     ] })
   }
 
-  const [collapsed,   setCollapsed]   = useState(true)
-  const [expandFrom,  setExpandFrom]  = useState(null)
-  const [animating,   setAnimating]   = useState(false)
   const [showOrphans, setShowOrphans] = useState(false)
   const [showReady,   setShowReady]   = useState(false)
   const [occPicker,   setOccPicker]   = useState(null)
-  const [resizing,    setResizing]    = useState(false)
-  const [pos,  setPos]  = useState(null)
-  const [size, setSize] = useState({ w: INIT_W, h: INIT_H })
-  const [winW, setWinW] = useState(window.innerWidth)
-  const [winH, setWinH] = useState(window.innerHeight)
   // Name filter (src/utils/nameFilter.js): kept across diagrams, cleared when
   // the active schema changes.
   const [query, setQuery] = useState('')
@@ -379,111 +364,7 @@ export default function SchemaBrowser() {
   const searchRef = useRef(null)
   const activeSchemaId = activeSchemaIdOf(store)
   useEffect(() => { setQuery('') }, [activeSchemaId])
-  const animTimerRef = useRef(null)
-  const dragRef      = useRef(null)
-  const resizeRef    = useRef(null)
-  const panelRef     = useRef(null)
 
-  useEffect(() => {
-    const onResize = () => { setWinW(window.innerWidth); setWinH(window.innerHeight) }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-
-  const toolbarBottom = document.getElementById('app-toolbar')?.getBoundingClientRect().bottom ?? 36
-  const tabsBottom    = document.getElementById('diagram-tabs')?.getBoundingClientRect().bottom ?? (toolbarBottom + 35)
-  const posX = pos?.x ?? Math.max(8, winW - 248 - INIT_W - 8)
-  const posY = pos?.y ?? (tabsBottom + 8)
-
-  // ── drag to move ─────────────────────────────────────────────────────────
-  const handleHeaderMouseDown = useCallback((e) => {
-    if (e.button !== 0) return
-    e.preventDefault(); e.stopPropagation()
-    dragRef.current = { startMouseX: e.clientX, startMouseY: e.clientY, startPosX: posX, startPosY: posY }
-    const onMove = (me) => {
-      if (!dragRef.current) return
-      const { startMouseX, startMouseY, startPosX, startPosY } = dragRef.current
-      setPos({
-        x: Math.max(0, Math.min(window.innerWidth  - size.w - 2, startPosX + me.clientX - startMouseX)),
-        y: Math.max(0, Math.min(window.innerHeight - size.h - 2, startPosY + me.clientY - startMouseY)),
-      })
-    }
-    const onUp = () => { dragRef.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup',   onUp)
-  }, [posX, posY, size.w, size.h])
-
-  // ── resize ────────────────────────────────────────────────────────────────
-  const handleResizeMouseDown = useCallback((e, dir) => {
-    if (e.button !== 0) return
-    e.preventDefault(); e.stopPropagation()
-    setResizing(true)
-    resizeRef.current = { dir, startX: e.clientX, startY: e.clientY, startW: size.w, startH: size.h, startXPos: posX, startPosY: posY }
-    const panelEl = panelRef.current
-    const onMove = (me) => {
-      if (!resizeRef.current || !panelEl) return
-      const { dir, startX, startY, startW, startH, startXPos, startPosY } = resizeRef.current
-      const dx = me.clientX - startX, dy = me.clientY - startY
-      let newW = startW, newH = startH, newX = startXPos, newY = startPosY
-      if (dir === 'e' || dir === 'se') newW = Math.max(MIN_W, Math.min(MAX_W, startW + dx))
-      if (dir === 'w' || dir === 'sw') {
-        newW = Math.max(MIN_W, Math.min(MAX_W, startW - dx))
-        newX = startXPos + (startW - newW)
-      }
-      if (dir === 's' || dir === 'se' || dir === 'sw') newH = Math.max(MIN_H, Math.min(MAX_H, startH + dy))
-      panelEl.style.left = `${newX}px`
-      panelEl.style.top = `${newY}px`
-      panelEl.style.width = `${newW}px`
-      panelEl.style.height = `${newH}px`
-      resizeRef.current._live = { w: newW, h: newH, x: newX, y: newY }
-    }
-    const onUp = () => {
-      const live = resizeRef.current?._live
-      if (live) {
-        setSize({ w: live.w, h: live.h })
-        setPos({ x: live.x, y: live.y })
-      }
-      resizeRef.current = null
-      setResizing(false)
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup',   onUp)
-  }, [size, posX, posY])
-
-  const handleCollapse = useCallback(() => {
-    setCollapsed(true); setAnimating(true)
-    if (animTimerRef.current) clearTimeout(animTimerRef.current)
-    animTimerRef.current = setTimeout(() => setAnimating(false), 350)
-  }, [])
-
-  const handleExpand = useCallback(() => {
-    const pw = 128
-    const s   = useOrmStore.getState()
-    const bph = s.bottomPanelCollapsed ? BOTTOM_PANEL_TAB_STRIP_H : s.bottomPanelHeight
-    const px = window.innerWidth  - 258 - 114 - 6 - pw
-    const py = window.innerHeight - 26 - bph - 8  - HDR_H
-    setExpandFrom({ x: px, y: py }); setCollapsed(false); setAnimating(true)
-    if (animTimerRef.current) clearTimeout(animTimerRef.current)
-    animTimerRef.current = setTimeout(() => setAnimating(false), 350)
-    requestAnimationFrame(() => requestAnimationFrame(() => setExpandFrom(null)))
-  }, [])
-
-  // Cmd/Ctrl+F opens the browser and puts the cursor in the filter box.
-  const collapsedRef = useRef(collapsed)
-  collapsedRef.current = collapsed
-  useEffect(() => {
-    const onKey = (e) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || (e.key !== 'f' && e.key !== 'F')) return
-      e.preventDefault()
-      const wasCollapsed = collapsedRef.current
-      if (wasCollapsed) handleExpand()
-      setTimeout(() => { searchRef.current?.focus(); searchRef.current?.select() }, wasCollapsed ? 200 : 0)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [handleExpand])
 
   // ── data ──────────────────────────────────────────────────────────────────
 
@@ -728,28 +609,6 @@ export default function SchemaBrowser() {
     const ib = CONSTRAINT_TYPE_ORDER.indexOf(b.constraintType)
     return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
   })
-
-  const rHandle = (dir) => ({
-    position: 'absolute', zIndex: 2,
-    ...(dir === 'e'  ? { right: 0, top: 0, bottom: 0, width: 5, cursor: 'ew-resize' } : {}),
-    ...(dir === 'w'  ? { left: 0, top: 0, bottom: 0, width: 5, cursor: 'ew-resize' } : {}),
-    ...(dir === 's'  ? { bottom: 0, left: 0, right: 0, height: 5, cursor: 'ns-resize' } : {}),
-    ...(dir === 'se' ? { bottom: 0, right: 0, width: 12, height: 12, cursor: 'nwse-resize' } : {}),
-    ...(dir === 'sw' ? { bottom: 0, left: 0, width: 12, height: 12, cursor: 'nesw-resize' } : {}),
-  })
-
-  const PILL_W = 128
-  const MINIMAP_PILL_W = 114
-  const panelW = collapsed ? PILL_W    : size.w
-  const panelH = collapsed ? HDR_H     : size.h
-  const panelR = collapsed ? HDR_H / 2 : 6
-
-  const inspectorWidth = store.inspectorWidth
-  const bottomPanelH   = store.bottomPanelCollapsed ? BOTTOM_PANEL_TAB_STRIP_H : store.bottomPanelHeight
-  const pillLeft = winW - inspectorWidth - MINIMAP_PILL_W - 12 - PILL_W
-  const pillTop  = winH - 26 - bottomPanelH - 8 - HDR_H
-  const displayLeft = expandFrom?.x ?? (collapsed ? pillLeft : posX)
-  const displayTop  = expandFrom?.y ?? (collapsed ? pillTop  : posY)
 
   // Only center when the element is visible in the current diagram.
   // Exceptions: implied links (center on parent fact if fact is in diagram)
@@ -1049,73 +908,15 @@ export default function SchemaBrowser() {
 
   return (
     <>
-      <div
-        ref={panelRef}
-        onClick={collapsed ? handleExpand : undefined}
-        style={{
-          position: 'fixed',
-          left: displayLeft, top: displayTop,
-          width: panelW, height: panelH,
-          background: 'var(--bg-surface)',
-          border: '1px solid var(--border)',
-          borderRadius: panelR,
-          overflow: 'hidden',
-          boxShadow: 'var(--shadow-md)',
-          userSelect: 'none',
-          zIndex: 10,
-          WebkitAppRegion: 'no-drag',
-          fontFamily: FONT,
-          cursor: collapsed ? 'pointer' : 'default',
-          transition: resizing ? 'none' : (animating
-            ? 'width 0.28s ease, height 0.28s ease, border-radius 0.28s ease, left 0.28s ease, top 0.28s ease'
-            : 'width 0.28s ease, height 0.28s ease, border-radius 0.28s ease'),
-        }}
-      >
-        {/* Pill label */}
-        <div style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-          fontSize: 9, color: 'var(--ink-muted)',
-          letterSpacing: '0.05em', textTransform: 'uppercase',
-          fontFamily: FONT, whiteSpace: 'nowrap',
-          opacity: collapsed ? 1 : 0,
-          transition: collapsed ? 'opacity 0.14s ease 0.14s' : 'opacity 0.08s ease',
-          pointerEvents: 'none',
-        }}>
-          <span style={{ fontSize: 11 }}>⊞</span>
-          <span>schema</span>
-          {allOrphanCount > 0 && (
-            <span style={{
-              background: 'var(--danger)', color: 'white',
-              borderRadius: 8, fontSize: 9, padding: '0 4px', lineHeight: '14px',
-              minWidth: 14, textAlign: 'center',
-            }}>{allOrphanCount}</span>
-          )}
-          {readyCount > 0 && (
-            <span style={{
-              background: '#16a34a', color: 'white',
-              borderRadius: 8, fontSize: 9, padding: '0 4px', lineHeight: '14px',
-              minWidth: 14, textAlign: 'center',
-            }}>{readyCount}</span>
-          )}
-        </div>
-
-        {/* Panel content */}
-        <div style={{
-          display: 'flex', flexDirection: 'column', height: '100%',
-          opacity: collapsed ? 0 : 1,
-          transition: collapsed ? 'opacity 0.1s ease' : 'opacity 0.18s ease 0.12s',
-          pointerEvents: collapsed ? 'none' : 'auto',
-        }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0,
+        userSelect: 'none', fontFamily: FONT, WebkitAppRegion: 'no-drag' }}>
           {/* Header */}
           <div
-            onMouseDown={handleHeaderMouseDown}
             style={{
               height: HDR_H,
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '0 6px',
               borderBottom: '1px solid var(--border-soft)',
-              cursor: 'grab',
               background: 'var(--bg-raised)',
               flexShrink: 0,
             }}
@@ -1123,8 +924,8 @@ export default function SchemaBrowser() {
             <span style={{ fontSize: 9, color: 'var(--ink-muted)',
               letterSpacing: '0.07em', textTransform: 'uppercase',
               pointerEvents: 'none' }}>
-              {mapping ? '⠿ mapping rules'
-                : <>⠿ schema browser{(store.schemas?.length ?? 0) > 1 && ` · ${store.schemas.find(x => x.id === activeSchemaIdOf(store))?.name ?? ''}`}</>}
+              {mapping ? 'mapping rules'
+                : (store.schemas?.length ?? 0) > 1 ? store.schemas.find(x => x.id === activeSchemaIdOf(store))?.name ?? 'schema' : 'schema'}
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               {readyCount > 0 && (
@@ -1163,23 +964,13 @@ export default function SchemaBrowser() {
                   {allOrphanCount} orphan{allOrphanCount !== 1 ? 's' : ''}
                 </span>
               )}
-              <button
-                onMouseDown={e => e.stopPropagation()}
-                onClick={handleCollapse}
-                title="Collapse schema browser"
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '0 2px', fontSize: 11, lineHeight: 1,
-                  color: 'var(--ink-muted)', pointerEvents: 'all',
-                }}
-              >−</button>
             </div>
           </div>
 
           {/* Name filter */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 6px',
             borderBottom: '1px solid var(--border-soft)', flexShrink: 0 }}>
-            <input ref={searchRef} value={query} placeholder={mapping ? 'Filter rules' : 'Filter by name'}
+            <input ref={searchRef} data-browser-filter value={query} placeholder={mapping ? 'Filter rules' : 'Filter by name'}
               title={mapping ? 'Show only rules whose name or formula contains this text (⌘F / Ctrl+F)'
                 : 'Show only elements whose name contains this text (⌘F / Ctrl+F)'}
               onChange={e => setQuery(e.target.value)}
@@ -1212,13 +1003,6 @@ export default function SchemaBrowser() {
             ))}
           </div>
 
-          {/* Resize handles */}
-          <div style={rHandle('e')}  onMouseDown={e => handleResizeMouseDown(e, 'e')} />
-          <div style={rHandle('w')}  onMouseDown={e => handleResizeMouseDown(e, 'w')} />
-          <div style={rHandle('s')}  onMouseDown={e => handleResizeMouseDown(e, 's')} />
-          <div style={rHandle('se')} onMouseDown={e => handleResizeMouseDown(e, 'se')} />
-          <div style={rHandle('sw')} onMouseDown={e => handleResizeMouseDown(e, 'sw')} />
-        </div>
       </div>
 
       {occPicker && (
