@@ -85,6 +85,10 @@ export function createModelSlice(set, get) {
     showRoleNames: true,
     showSequenceMembership: true,
     showConstraintQueries: true,
+    // How sentences write object type names (src/verbalisation/nameStyle.js,
+    // NORMA's object type name display) and the characters dropped when not as is
+    objectTypeNameDisplay: 'asIs',
+    removeNameCharacters: '.:_',
     showMinimap: true,
     // Position of the minimap panel in screen px from top-left of canvas container
     minimapPos: { x: null, y: null },  // null = default (bottom-right corner)
@@ -445,6 +449,8 @@ export function createModelSlice(set, get) {
     setShowRoleNames(val)             { set({ showRoleNames: val }) },
     setShowSequenceMembership(val)    { set({ showSequenceMembership: val }) },
     setShowConstraintQueries(val)     { set({ showConstraintQueries: val }) },
+    setObjectTypeNameDisplay(val)     { set({ objectTypeNameDisplay: val, isDirty: true }) },
+    setRemoveNameCharacters(val)      { set({ removeNameCharacters: val, isDirty: true }) },
     setShowMinimap(val)         { set({ showMinimap: val }) },
     setMinimapPos(x, y)         { set({ minimapPos: { x, y } }) },
     setInspectorWidth(w)        { set({ inspectorWidth: w }) },
@@ -502,7 +508,7 @@ export function createModelSlice(set, get) {
             selectedUniqueness: null, multiSelectedIds: [], selectedOccurrenceId: null, multiSelectedOccurrenceIds: [],
             uniquenessConstruction: null, frequencyConstruction: null,
             linkDraft: null, roleReconnectDraft: null, ruleEditor: null, ruleHighlight: null,
-            pan: { x: 0, y: 0 }, zoom: 1 })
+            pan: { x: 0, y: 0 }, zoom: 1, objectTypeNameDisplay: 'asIs', removeNameCharacters: '.:_' })
     },
 
      loadModel(data, filePath = null) {
@@ -822,6 +828,9 @@ export function createModelSlice(set, get) {
         ...(schemaDisplaySettings.showRoleNames         != null && { showRoleNames:            schemaDisplaySettings.showRoleNames }),
         ...(schemaDisplaySettings.showSequenceMembership != null && { showSequenceMembership: schemaDisplaySettings.showSequenceMembership }),
         ...(schemaDisplaySettings.showConstraintQueries  != null && { showConstraintQueries:  schemaDisplaySettings.showConstraintQueries }),
+        // The name display belongs to the file: a file without it is as is
+        objectTypeNameDisplay: schemaDisplaySettings.objectTypeNameDisplay ?? 'asIs',
+        removeNameCharacters: schemaDisplaySettings.removeNameCharacters ?? '.:_',
         // Restore diagram-level display settings from the active diagram
         ...(diagDS.showMinimap != null && { showMinimap: diagDS.showMinimap }),
         ...(diagDS.minimapPos  != null && { minimapPos:  diagDS.minimapPos }),
@@ -857,7 +866,7 @@ export function createModelSlice(set, get) {
         populations, factPopulations, subtypeMappings, nestedEntityMappings,
         pan, zoom,
         mandatoryDotPosition, showReferenceMode, showRoleNames,
-        showSequenceMembership, showConstraintQueries,
+        showSequenceMembership, showConstraintQueries, objectTypeNameDisplay, removeNameCharacters,
         showMinimap, minimapPos, languages, groups, propertyDefinitions, schemas, mappings, views, exchanges,
       } = state
       // Strip in-memory-only selection state; flush current pan/zoom + display settings into diagrams
@@ -907,6 +916,8 @@ export function createModelSlice(set, get) {
             showRoleNames,
             showSequenceMembership,
             showConstraintQueries,
+            ...(objectTypeNameDisplay && objectTypeNameDisplay !== 'asIs' && { objectTypeNameDisplay }),
+            ...(removeNameCharacters != null && removeNameCharacters !== '.:_' && { removeNameCharacters }),
           },
         },
         diagrams: cleanDiagrams, activeDiagramId,

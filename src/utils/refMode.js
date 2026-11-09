@@ -95,24 +95,40 @@ export function playerName(player) {
 // Display label for a ref mode.
 //   refModeLabel('Employee', 'EmployeeCode') === '.code'
 //   refModeLabel('Employee', 'Code')         === 'Code'
-export function refModeLabel(entityName, vtName) {
+//   refModeLabel('Family', 'Family Name')    === '.name'   (a separator after the entity name is dropped)
+// refModeName is the entity's own name of its reference mode (`ot.refModeName`, as
+// typed or as a NORMA import gives it); it is shown as written when the value type's
+// suffix is that name:
+//   refModeLabel('Diplomat', 'DiplomatName', 'Name') === '.Name'
+export function refModeLabel(entityName, vtName, refModeName) {
   if (!entityName || !vtName) return vtName ?? ''
   if (vtName.length > entityName.length && vtName.startsWith(entityName)) {
-    const suffix = vtName.slice(entityName.length)
-    return '.' + suffix.charAt(0).toLowerCase() + suffix.slice(1)
+    const suffix = vtName.slice(entityName.length).replace(/^[\s_-]+/, '')
+    if (suffix) {
+      if (refModeName && suffix.toLowerCase() === refModeName.toLowerCase()) return '.' + refModeName
+      return '.' + suffix.charAt(0).toLowerCase() + suffix.slice(1)
+    }
   }
   return vtName
+}
+
+// The separator between the entity name and the suffix of a ref-mode value type's
+// name ('' for 'EmployeeCode', ' ' for 'Family Name').
+export function refModeSeparator(entityName, vtName) {
+  if (!entityName || !vtName || !vtName.startsWith(entityName)) return ''
+  return /^[\s_-]*/.exec(vtName.slice(entityName.length))[0]
 }
 
 // Inverse of refModeLabel — canonical VT name from a user-typed label.
 //   vtNameFromLabel('Employee', '.code') === 'EmployeeCode'
 //   vtNameFromLabel('Employee', 'Code')  === 'Code'
-export function vtNameFromLabel(entityName, label) {
+//   vtNameFromLabel('Family', '.Name', ' ') === 'Family Name'
+export function vtNameFromLabel(entityName, label, separator = '') {
   if (!label) return ''
   if (label.startsWith('.')) {
     const suffix = label.slice(1)
     if (!suffix) return label  // bare '.' is not a complete label yet; don't expand to entity name
-    return entityName + suffix.charAt(0).toUpperCase() + suffix.slice(1)
+    return entityName + separator + suffix.charAt(0).toUpperCase() + suffix.slice(1)
   }
   return label
 }
@@ -384,7 +400,7 @@ export function getEntityIdentifierShape(entity, facts, objectTypes, subtypes, c
         ownedBy: entity.id,
         factId: rm.factId,
         columns: [{
-          label: refModeLabel(entity.objectifiedName || entity.name || '', vt?.name || ''),
+          label: refModeLabel(entity.objectifiedName || entity.name || '', vt?.name || '', entity.refModeName),
           playerOtId: rm.vtId,
         }],
       }
@@ -435,7 +451,7 @@ export function getEntityIdentifierShape(entity, facts, objectTypes, subtypes, c
       ownedBy: entity.id,
       factId: rm.factId,
       columns: [{
-        label: refModeLabel(entity.name, vt?.name || ''),
+        label: refModeLabel(entity.name, vt?.name || '', entity.refModeName),
         playerOtId: rm.vtId,
       }],
     }

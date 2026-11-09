@@ -91,6 +91,7 @@ function OrmConstraintsTab() {
     selectedMandatoryDot: s.selectedMandatoryDot, selectedUniqueness: s.selectedUniqueness,
     selectedInternalFrequency: s.selectedInternalFrequency, selectedValueRange: s.selectedValueRange,
     selectedCardinalityRange: s.selectedCardinalityRange, viewLanguage: s.viewLanguage,
+    objectTypeNameDisplay: st.objectTypeNameDisplay, removeNameCharacters: st.removeNameCharacters,
     schemaName: st.schemas?.length > 1 ? st.schemas.find(x => x.id === activeSchemaIdOf(st))?.name : null,
   } }))
   const [showDisjoint, toggleDisjoint] = useToggle('freefbm.formalisation.disjointness')

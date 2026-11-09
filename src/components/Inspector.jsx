@@ -3,6 +3,7 @@ import { useOrmStore, useOrmStoreIgnoring, useScopedStore } from '../store/ormSt
 import { activeSchemaIdOf } from '../store/storeHelpers'
 import { activeRelationalFace } from '../relational/face'
 import RelationalInspector, { selectedRmObject, RelationalCounts } from './RelationalInspector'
+import { NAME_STYLES } from '../verbalisation/nameStyle.js'
 import { findRefMode, refModeLabel, findCompositePI, canBeExternalUniquenessPI } from '../utils/refMode'
 import { getDisplayReading, makeImplicitLinkFact } from './FactTypeNode'
 import { RingMiniSymbol } from './ConstraintNodes'
@@ -1208,7 +1209,7 @@ function ObjectTypeInspector({ ot }) {
   // Derived ref-mode info for entities.
   const refMode    = ot.kind === 'entity' ? findRefMode(ot, store.facts, store.objectTypes) : null
   const refVt      = refMode ? store.objectTypes.find(o => o.id === refMode.vtId) : null
-  const refLabel   = refVt ? refModeLabel(ot.name, refVt.name) : ''
+  const refLabel   = refVt ? refModeLabel(ot.name, refVt.name, ot.refModeName) : ''
 
   // Composite preferred identifier (non-ref-mode-binary PI scheme).
   const compositePi    = ot.kind === 'entity' && !refMode
@@ -4847,6 +4848,41 @@ export default function Inspector() {
                 </div>
               </div>
             </label>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
+              textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+              Object type names in sentences
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {NAME_STYLES.map(opt => (
+                <label key={opt.id} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 8,
+                  cursor: 'pointer', padding: '7px 9px',
+                  background: store.objectTypeNameDisplay === opt.id ? 'var(--bg-hover)' : 'var(--bg-raised)',
+                  border: `1px solid ${store.objectTypeNameDisplay === opt.id ? 'var(--accent)' : 'var(--border-soft)'}`,
+                  borderRadius: 4, transition: 'all 0.12s',
+                }}>
+                  <input type="radio" name="objectTypeNameDisplay" value={opt.id}
+                    checked={(store.objectTypeNameDisplay ?? 'asIs') === opt.id}
+                    onChange={() => store.setObjectTypeNameDisplay(opt.id)}
+                    style={{ marginTop: 2, accentColor: 'var(--accent)' }}/>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--ink-2)', fontWeight: 500 }}>{opt.label}</div>
+                    <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginTop: 1 }}>{opt.sub}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <span style={{ fontSize: 11, color: 'var(--ink-2)' }}>Remove characters</span>
+              <TInput value={store.removeNameCharacters ?? '.:_'}
+                onChange={v => store.setRemoveNameCharacters(v)}/>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginTop: 4 }}>
+              As NORMA’s Object Type Name Display; the characters are dropped when names are separated or combined. Formulas keep names as entered.
+            </div>
           </div>
 
           <div style={{ marginBottom: 16 }}>
