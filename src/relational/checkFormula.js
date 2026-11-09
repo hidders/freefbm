@@ -87,7 +87,7 @@ class Parser {
         { k: 'not', arg: { k: 'cmp', op: '=', l, r: { k: 'lit', kind: 'bool', v } } }] } })
       if (this.eatWord('true')) return truth('true')
       if (this.eatWord('false')) return truth('false')
-      no('IS DISTINCT FROM')
+      no(this.isWord('distinct') ? 'IS DISTINCT FROM' : `IS ${neg ? 'NOT ' : ''}${String(this.peek()?.raw ?? '').toUpperCase()}`)
     }
     const neg = this.isWord('not') && ['in', 'between', 'like', 'ilike'].some(w => this.isWord(w, 1)) ? (this.next(), true) : false
     if (this.eatWord('in')) {

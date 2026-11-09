@@ -38,6 +38,8 @@ export function oracleType(assignment, generated) {
   if (generated === 'serial' || generated === 'smallserial') return { type: identity('NUMBER(10)') }
   if (generated === 'bigserial') return { type: identity('NUMBER(19)') }
   if (!assignment?.datatypeId) return null
+  // A column read from Oracle DDL keeps its Oracle type.
+  if (assignment.oracle) return { type: generated === 'identity' ? identity(assignment.oracle) : assignment.oracle }
   const p = assignment.params ?? {}
   const id = assignment.datatypeId
   let type = null, warning = null

@@ -162,7 +162,7 @@ export const createSchemaSlice = (set, get) => ({
       set(s => ({ historyBatch: Math.max(0, (s.historyBatch ?? 1) - 1) }))
     }
     const st = built.stats
-    get().setImportLog({ kind: 'ddl', source: `${name} (PostgreSQL DDL)`, entries: [
+    get().setImportLog({ kind: 'ddl', source: `${name} (${built.dialect === 'oracle' ? 'Oracle' : 'PostgreSQL'} DDL)`, entries: [
       { level: 'note', text: `Read ${st.tables} tables with ${st.columns} columns into schema ${unique}: ${st.valueTypes} value types, ${st.keys} keys, ${st.foreignKeys} foreign keys${st.comparisons ? `, ${st.comparisons} value comparison${st.comparisons === 1 ? '' : 's'}` : ''}${st.checks ? `, ${st.checks} CHECK constraint${st.checks === 1 ? '' : 's'} as formula constraints` : ''}` },
       ...built.log,
       ...built.sample.log,

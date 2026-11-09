@@ -21,20 +21,40 @@
 //   skipped: Map(statement kind → count)
 //   problems:[text]
 
+import { quoteIdent } from './sqlNames.js'
+
 // ── Lexer ────────────────────────────────────────────────────────────────────
 // Tokens: { t: 'id' | 'qid' | 'str' | 'num' | 'op' | 'semi', v, raw }.
 // 'id' values are lower-cased (PostgreSQL folds unquoted names); 'qid' keeps
 // its case. Comments, and dollar-quoted bodies of functions, are skipped over
 // as strings so their semicolons don't end a statement.
-export function tokenize(sql) {
+export function tokenize(sql, { oracle = false } = {}) {
   const out = []
   let i = 0
   const n = sql.length
   while (i < n) {
     const c = sql[i]
     if (/\s/.test(c)) { i++; continue }
+    if (oracle) {
+      // A line holding only / ends a PL/SQL unit (SQL*Plus).
+      if (c === '/' && sql[i + 1] !== '*' && /(^|\n)[ \t]*$/.test(sql.slice(Math.max(0, i - 80), i)) && /^\/[ \t]*(\r?\n|$)/.test(sql.slice(i, i + 80))) {
+        out.push({ t: 'slash', v: '/', raw: '/' }); i++; continue
+      }
+      // q'[…]' quoting: the text up to the closing bracket and a quote.
+      const qm = /^[nN]?[qQ]'(.)/.exec(sql.slice(i, i + 4))
+      if (qm) {
+        const close = { '[': ']', '(': ')', '{': '}', '<': '>' }[qm[1]] ?? qm[1]
+        const start = i
+        const from = i + qm[0].length
+        const end = sql.indexOf(`${close}'`, from)
+        const stop = end < 0 ? n : end + 2
+        out.push({ t: 'str', v: sql.slice(from, end < 0 ? n : end), raw: sql.slice(start, stop) })
+        i = stop
+        continue
+      }
+    }
     // psql meta-commands (\c db, \set ...) run to the end of their line.
-    if (c === '\\' && /(^|\n)[ \t]*$/.test(sql.slice(Math.max(0, i - 80), i))) { while (i < n && sql[i] !== '\n') i++; continue }
+    if (!oracle && c === '\\' && /(^|\n)[ \t]*$/.test(sql.slice(Math.max(0, i - 80), i))) { while (i < n && sql[i] !== '\n') i++; continue }
     if (c === '-' && sql[i + 1] === '-') { while (i < n && sql[i] !== '\n') i++; continue }
     if (c === '/' && sql[i + 1] === '*') {
       let depth = 1; i += 2
@@ -45,7 +65,7 @@ export function tokenize(sql) {
       }
       continue
     }
-    if (c === "'" || ((c === 'E' || c === 'e') && sql[i + 1] === "'")) {
+    if (c === "'" || (!oracle && (c === 'E' || c === 'e') && sql[i + 1] === "'")) {
       const start = i
       if (c !== "'") i++
       i++
@@ -59,7 +79,7 @@ export function tokenize(sql) {
       out.push({ t: 'str', v, raw: sql.slice(start, i) })
       continue
     }
-    if (c === '$') {
+    if (c === '$' && !oracle) {
       const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i, i + 64))
       if (m) {
         const tag = m[0]
@@ -79,12 +99,20 @@ export function tokenize(sql) {
         if (sql[i] === '"') { i++; break }
         v += sql[i++]
       }
+      // Oracle folds unquoted names to upper case, so "EMPLOYEES" is the
+      // unquoted employees, read as PostgreSQL would read it unquoted.
+      if (oracle && /^[A-Z][A-Z0-9_$#]*$/.test(v)) {
+        const low = v.toLowerCase()
+        const plain = quoteIdent(low) === low
+        out.push(plain ? { t: 'id', v: low, raw: low } : { t: 'qid', v: low, raw: `"${low}"` })
+        continue
+      }
       out.push({ t: 'qid', v, raw: sql.slice(start, i) })
       continue
     }
     if (/[A-Za-z_\u0080-￿]/.test(c)) {
       const start = i
-      while (i < n && /[A-Za-z0-9_$\u0080-￿]/.test(sql[i])) i++
+      while (i < n && (/[A-Za-z0-9_$\u0080-￿]/.test(sql[i]) || (oracle && sql[i] === '#'))) i++
       const raw = sql.slice(start, i)
       out.push({ t: 'id', v: raw.toLowerCase(), raw })
       continue
@@ -104,17 +132,42 @@ export function tokenize(sql) {
   return out
 }
 
-// Splits tokens into statements at top-level semicolons.
-function statements(tokens) {
+// Splits tokens into statements at top-level semicolons. In Oracle scripts a
+// PL/SQL unit (a trigger, procedure, function, package, type or anonymous
+// block) holds semicolons and ends at a line holding only /.
+const PLSQL_UNITS = new Set(['trigger', 'procedure', 'function', 'package', 'type'])
+function plsqlUnit(cur) {
+  const ws = cur.slice(0, 6).filter(t => t.t === 'id').map(t => t.v)
+  if (ws[0] === 'begin' || ws[0] === 'declare') return true
+  if (ws[0] !== 'create') return false
+  const rest = ws.slice(1).filter(w => !['or', 'replace', 'editionable', 'noneditionable', 'force', 'nonforce'].includes(w))
+  return PLSQL_UNITS.has(rest[0])
+}
+function statements(tokens, oracle = false) {
   const out = []
   let cur = []
+  let unit = null
   for (const tk of tokens) {
-    if (tk.t === 'semi') { if (cur.length) out.push(cur); cur = [] }
-    else cur.push(tk)
+    if (tk.t === 'slash') { if (cur.length) out.push(cur); cur = []; unit = null; continue }
+    if (tk.t === 'semi') {
+      unit ??= oracle && plsqlUnit(cur)
+      if (unit) { cur.push(tk); continue }
+      if (cur.length) out.push(cur)
+      cur = []; unit = null
+    } else cur.push(tk)
   }
   if (cur.length) out.push(cur)
   return out
 }
+
+// Which SQL dialect a script is written in: 'oracle' when it uses Oracle's
+// types or SQL*Plus's / lines, else 'postgresql'.
+export function detectDialect(sql) {
+  return /\b(VARCHAR2|NVARCHAR2|NUMBER\s*\(|CLOB|NCLOB|BINARY_(FLOAT|DOUBLE))|^[ \t]*\/[ \t]*$|\bENABLE\s*[,;)]|\bLONG\s+RAW\b/im.test(sql) ? 'oracle' : 'postgresql'
+}
+
+// SQL*Plus commands (one line each, no semicolon) taken out of an Oracle script.
+const SQLPLUS_LINE = /^[ \t]*(rem(ark)?\b|prompt\b|spool\b|@@?|exit\b|quit\b|whenever\b|connect\b|conn\b|host\b|pause\b|accept\b|undefine\b|clear\b|timing\b|show\b|define\s+\w+\s*=|set\s+(define|echo|feedback|serveroutput|linesize|pagesize|verify|termout|heading|timing|trimspool|trimout|sqlblanklines|long|scan|escape|autocommit|sqlprompt|newpage|wrap|tab|colsep|numwidth|arraysize|concat|markup|errorlogging)\b|col(umn)?\s+\S+\s+(format|heading|new_value|noprint|clear)\b).*$/gim
 
 // ── Token stream helpers ─────────────────────────────────────────────────────
 
@@ -190,12 +243,24 @@ const nameList = (tokens) => splitCommas(tokens ?? []).map(part => {
 
 // Words that end a column's type.
 const TYPE_STOP = new Set(['constraint', 'not', 'null', 'default', 'primary', 'unique', 'references',
-  'check', 'collate', 'generated', 'identity', 'deferrable', 'initially'])
+  'check', 'collate', 'generated', 'identity', 'deferrable', 'initially',
+  // Oracle
+  'enable', 'disable', 'visible', 'invisible', 'encrypt', 'as'])
 
 // ── Statements ───────────────────────────────────────────────────────────────
 
-export function parseDdl(sql0) {
-  const { sql, copies } = extractCopies(sql0)
+let oracleMode = false
+export function parseDdl(sql0, { dialect = null } = {}) {
+  dialect ??= detectDialect(sql0)
+  const oracle = dialect === 'oracle'
+  const was = oracleMode
+  oracleMode = oracle
+  try { return parseScript(sql0, dialect, oracle) } finally { oracleMode = was }
+}
+
+function parseScript(sql0, dialect, oracle) {
+  const { sql: sql1, copies } = oracle ? { sql: sql0, copies: [] } : extractCopies(sql0)
+  const sql = oracle ? sql1.replace(SQLPLUS_LINE, '') : sql1
   const tables = new Map()   // key: qualified name
   const enums = new Map()
   const domains = new Map()
@@ -213,12 +278,31 @@ export function parseDdl(sql0) {
   const findTable = (q) => tables.get(keyOf(q)) ?? [...tables.values()].find(t => t.name === q.name && (!q.schema || t.schema === q.schema))
 
   const partitions = new Set()
+  const seqTriggers = []   // Oracle: [table, column] a BEFORE INSERT trigger fills from a sequence
   const handle = (tokens, defSchema) => {
     const s = new Stream(tokens)
     const qn = () => { const q = s.qname(); return q && !q.schema && defSchema ? { ...q, schema: defSchema } : q }
     try {
+      // Oracle: an anonymous PL/SQL block; the INSERTs in it are read as rows.
+      if (oracle && (s.isWord('begin') || s.isWord('declare'))) {
+        // EXECUTE IMMEDIATE 'CREATE ASSERTION …' (as FreeFBM's Oracle export
+        // writes assertions, with triggers if Oracle refuses one) is read as
+        // the assertion; the triggers are not read.
+        let cur = [], rows = 0
+        for (const t of tokens) {
+          if (t.t !== 'semi') { cur.push(t); continue }
+          const k = cur.findIndex(x => x.t === 'id' && x.v === 'insert')
+          const e = cur.findIndex((x, i) => x.t === 'id' && x.v === 'execute' && cur[i + 1]?.v === 'immediate' && cur[i + 2]?.t === 'str')
+          if (k >= 0 && cur[k + 1]?.t === 'id' && (cur[k + 1].v === 'into' || cur[k + 1].v === 'all')) { handle(cur.slice(k), defSchema); rows++ }
+          else if (e >= 0 && /^\s*create\s+assertion\b/i.test(cur[e + 2].v)) { handle(tokenize(cur[e + 2].v, { oracle }), defSchema); rows++ }
+          cur = []
+        }
+        if (!rows) skip('PL/SQL block')
+        return
+      }
       if (s.eatWord('create')) {
         s.eatWord('or', 'replace')
+        if (oracle) { s.eatWord('editionable'); s.eatWord('noneditionable'); s.eatWord('no', 'force'); s.eatWord('force'); s.eatWord('private') }
         s.eatWord('global'); s.eatWord('local')
         s.eatWord('temporary'); s.eatWord('temp'); s.eatWord('unlogged')
         if (s.eatWord('table')) { parseCreateTable(s, tables, keyOf, problems, skip, defSchema, parentOf); return }
@@ -273,12 +357,50 @@ export function parseDdl(sql0) {
           else skip('CREATE UNIQUE INDEX on expressions or with WHERE')
           return
         }
+        // Oracle: a BEFORE INSERT trigger that fills a column from a sequence
+        // (:NEW.col := seq.NEXTVAL, or SELECT seq.NEXTVAL INTO :NEW.col) makes
+        // the column a surrogate, as an identity column would.
+        if (oracle && s.eatWord('trigger')) {
+          const tq = s.qname()
+          const rest = s.tk.slice(s.i)
+          const at = rest.findIndex(t => t.t === 'id' && t.v === 'on')
+          const ws = rest.slice(0, at).filter(t => t.t === 'id').map(t => t.v)
+          const ts = new Stream(rest.slice(at + 1))
+          const q = ts.qname()
+          // A statement trigger that raises an error when a violation query
+          // has rows (SELECT COUNT(*) INTO v FROM dual WHERE EXISTS (query), as
+          // FreeFBM's Oracle export writes constraints Oracle can't assert):
+          // read as the assertion NOT EXISTS (query), once for all its tables.
+          const ex = rest.findIndex((t, i) => t.t === 'id' && t.v === 'dual' && rest[i + 1]?.v === 'where' && rest[i + 2]?.v === 'exists' && rest[i + 3]?.v === '(')
+          if (tq && q && ex >= 0 && rest.some(t => t.t === 'id' && t.v === 'raise_application_error') && !ws.includes('each')) {
+            const g = new Stream(rest.slice(ex + 3)).group()
+            const name = tq.name.endsWith(`_on_${q.name}`) ? tq.name.slice(0, -(q.name.length + 4)) : tq.name
+            const text = `NOT EXISTS (${conditionText(g)})`
+            if (!assertions.some(a => a.name === name || a.text === text)) assertions.push({ name, text })
+            skip('CREATE TRIGGER (read as the assertion it checks)')
+            return
+          }
+          const nv = rest.findIndex(t => t.t === 'id' && t.v === 'nextval')
+          if (q && ws.includes('before') && ws.includes('insert') && nv >= 0) {
+            // The :NEW.col nearest to NEXTVAL.
+            let best = null
+            rest.forEach((t, i) => {
+              if (t.t === 'op' && t.v === ':' && rest[i + 1]?.v === 'new' && rest[i + 2]?.v === '.' && rest[i + 3]) {
+                const d = Math.abs(i - nv)
+                if (!best || d < best.d) best = { d, col: rest[i + 3].v }
+              }
+            })
+            if (best) seqTriggers.push([q, best.col])
+          }
+          skip('CREATE TRIGGER')
+          return
+        }
         // CREATE ASSERTION name CHECK (condition) [DEFERRABLE …] (SQL standard).
         if (s.eatWord('assertion')) {
           const q = s.qname()
           if (!s.eatWord('check')) { problems.push(`CREATE ASSERTION ${q?.name ?? ''}: CHECK expected`); return }
           const g = s.group()
-          if (q && g) assertions.push({ name: q.name, text: tokensText(g) })
+          if (q && g) assertions.push({ name: q.name, text: conditionText(g) })
           return
         }
         // CREATE FUNCTION: kept so a CHECK that calls a SQL function can be
@@ -308,6 +430,17 @@ export function parseDdl(sql0) {
           .find(w => ['view', 'function', 'procedure', 'trigger', 'index', 'sequence', 'schema', 'extension',
             'materialized', 'aggregate', 'rule', 'policy', 'publication', 'operator', 'cast', 'language'].includes(w))
         skip(`CREATE ${(kind ?? tokens[1]?.v ?? '').toUpperCase()}`)
+        return
+      }
+      // Oracle: INSERT ALL INTO t [(cols)] VALUES (…) … SELECT … FROM dual.
+      if (oracle && s.eatWord('insert', 'all')) {
+        while (s.eatWord('into')) {
+          const q = qn()
+          const columns = s.isOp('(') ? nameList(s.group()) : null
+          if (!q || !s.eatWord('values')) { skip('INSERT ALL … (not VALUES)'); return }
+          const g = s.group()
+          if (g) inserts.push({ table: q, columns, rows: [splitCommas(g).map(literalValue)] })
+        }
         return
       }
       if (s.eatWord('insert', 'into')) {
@@ -345,6 +478,21 @@ export function parseDdl(sql0) {
             if (as.isWord('add') && !as.isWord('column', 1)) problems.push(`ALTER TABLE ${q?.name}: the table was not created in this script`)
             continue
           }
+          if (oracle && as.isWord('add') && as.isOp('(', 1)) {
+            as.next()
+            for (const item of splitCommas(as.group())) {
+              const is = new Stream(item)
+              if (['constraint', 'primary', 'unique', 'foreign', 'check'].some(w => is.isWord(w))) { if (readTableConstraint(is, t, problems)) used = true }
+              else if (alterColumn(new Stream([{ t: 'id', v: 'add', raw: 'ADD' }, ...item]), t, problems)) used = true
+            }
+            continue
+          }
+          if (oracle && as.eatWord('modify')) {
+            if (as.isWord('constraint') || as.isWord('primary') || as.isWord('unique')) continue
+            const items = as.isOp('(') ? splitCommas(as.group()) : [as.tk.slice(as.i)]
+            for (const item of items) if (modifyColumn(new Stream(item), t, problems)) used = true
+            continue
+          }
           if (alterColumn(as, t, problems)) { used = true; continue }
           if (!as.eatWord('add')) continue
           if (readTableConstraint(as, t, problems)) used = true
@@ -358,7 +506,20 @@ export function parseDdl(sql0) {
       problems.push(`Could not read: ${tokensText(tokens).slice(0, 120)}… (${err.message})`)
     }
   }
-  for (const tokens of statements(tokenize(sql))) handle(tokens, null)
+  for (const tokens of statements(tokenize(sql, { oracle }), oracle)) handle(tokens, null)
+  if (oracle) {
+    // A unique index behind a primary key or UNIQUE constraint (as Oracle's
+    // DBMS_METADATA writes them) is the same key.
+    const same = (a, b) => a.length === b.length && a.every((c, i) => c === b[i])
+    for (const t of tables.values()) {
+      t.uniques = t.uniques.filter((u, i) => !(t.primaryKey && same(u, t.primaryKey)) && t.uniques.findIndex(v => same(u, v)) === i)
+      for (const [tk, col] of seqTriggers) {
+        if (tk.name !== t.name || (tk.schema && t.schema && tk.schema !== t.schema)) continue
+        const c = t.columns.find(x => x.name === col)
+        if (c && !c.identity) c.defaultGenerated = 'sequence'
+      }
+    }
+  }
   // Partitions of a partitioned table hold its rows; they are not tables of their own.
   for (const k of partitions) if (tables.delete(k)) skip('partition (ALTER TABLE ... ATTACH PARTITION)')
   for (const c of copies) {
@@ -372,7 +533,7 @@ export function parseDdl(sql0) {
       q = parentOf.get(keyOf(q)) ?? parentOf.get([...parentOf.keys()].find(x => x.endsWith(`.${q.name}`)))
     ins.table = q
   }
-  return { tables: [...tables.values()], enums, domains, inserts, skipped, problems, assertions, functions }
+  return { tables: [...tables.values()], enums, domains, inserts, skipped, problems, assertions, functions, dialect }
 }
 
 // The value of a literal in a VALUES list: a string, null for NULL, or
@@ -380,6 +541,16 @@ export function parseDdl(sql0) {
 // (::type) are dropped.
 function literalValue(tokens) {
   let tks = tokens
+  if (oracleMode) {
+    // DATE '…', TIMESTAMP '…', TO_DATE('…', 'format'), TO_TIMESTAMP(…).
+    if (tks.length === 2 && tks[0].t === 'id' && (tks[0].v === 'date' || tks[0].v === 'timestamp') && tks[1].t === 'str') return tks[1].v
+    if (tks[0]?.t === 'id' && /^to_(date|timestamp)$/.test(tks[0].v) && tks[1]?.t === 'op' && tks[1].v === '(' && tks[tks.length - 1]?.v === ')') {
+      const args = splitCommas(tks.slice(2, -1))
+      if (args[0]?.length === 1 && args[0][0].t === 'str' && (!args[1] || (args[1].length === 1 && args[1][0].t === 'str')))
+        return oracleDate(args[0][0].v, args[1]?.[0].v ?? (tks[0].v === 'to_date' ? 'DD-MON-RR' : 'DD-MON-RR HH.MI.SSXFF AM')) ?? undefined
+      return undefined
+    }
+  }
   const cast = tks.findIndex(t => t.t === 'op' && t.v === '::')
   if (cast > 0) tks = tks.slice(0, cast)
   // E'...', B'...' and the like: the prefix is a word before the string.
@@ -414,8 +585,9 @@ function parseCreateTable(s, tables, keyOf, problems, skip, defSchema, parentOf)
   const t = { name: q.name, schema: q.schema, columns: [], primaryKey: null, uniques: [], foreignKeys: [], checks: [] }
   for (const item of splitCommas(body)) {
     const is = new Stream(item)
-    if (is.isWord('constraint') || is.isWord('primary') || is.isWord('unique') || is.isWord('foreign')
-        || is.isWord('check') || is.isWord('exclude')) {
+    // A table constraint, unless the word is a column's name (primary BOOLEAN).
+    if (is.isWord('constraint') || (is.isWord('primary') && is.isWord('key', 1)) || (is.isWord('unique') && (is.isOp('(', 1) || is.isWord('nulls', 1)))
+        || (is.isWord('foreign') && is.isWord('key', 1)) || (is.isWord('check') && is.isOp('(', 1)) || (is.isWord('exclude') && (is.isWord('using', 1) || is.isOp('(', 1)))) {
       readTableConstraint(is, t, problems)
       continue
     }
@@ -504,7 +676,7 @@ function readColumnConstraints(s, col, table, problems) {
       continue
     }
     if (s.eatWord('check')) {
-      col.checks.push(tokensText(s.group() ?? []))
+      col.checks.push(conditionText(s.group() ?? []))
       ;(col.checkNames ??= [])[col.checks.length - 1] = col._cname ?? null
       s.eatWord('no', 'inherit')
       continue
@@ -518,6 +690,8 @@ function readColumnConstraints(s, col, table, problems) {
       continue
     }
     if (s.eatWord('deferrable') || s.eatWord('not', 'deferrable') || s.eatWord('initially', 'deferred') || s.eatWord('initially', 'immediate')) continue
+    // Oracle: USING INDEX (CREATE …) | name | storage, ENABLE, NOVALIDATE…
+    if (s.eatWord('using', 'index')) { if (s.isOp('(')) s.group(); continue }
     s.next()
   }
 }
@@ -610,7 +784,7 @@ function readTableConstraint(s, t, problems) {
     return true
   }
   if (s.eatWord('check')) {
-    t.checks.push(tokensText(s.group() ?? []))
+    t.checks.push(conditionText(s.group() ?? []))
     ;(t.checkNames ??= [])[t.checks.length - 1] = cname
     return true
   }
@@ -733,4 +907,84 @@ function csvRows(lines, delim, nul) {
   }
   if (field !== '' || quoted || row.length) { end(); rows.push(row) }
   return rows
+}
+
+// ── Oracle ───────────────────────────────────────────────────────────────────
+
+// ALTER TABLE … MODIFY col [type] [constraints] | MODIFY (col …, col …).
+function modifyColumn(s, t, problems) {
+  const k = s.next()
+  const col = k && (k.t === 'id' || k.t === 'qid') ? t.columns.find(c => c.name === k.v) : null
+  if (!col) { if (k) problems.push(`${t.name}: MODIFY of an unknown column ${k.v}`); return false }
+  const type = readType(s)
+  if (type.name) col.type = type
+  // MODIFY col NULL drops NOT NULL.
+  if (s.isWord('null') || (s.isWord('constraint') && s.isWord('null', 2))) col.notNull = false
+  readColumnConstraints(s, col, t, problems)
+  return true
+}
+
+// A condition's text (a CHECK or an assertion), with Oracle's REGEXP_LIKE(a,
+// p [, 'i']) written as PostgreSQL's a ~ p (a ~* p), which the CHECK reader
+// knows.
+function conditionText(tks) {
+  if (!oracleMode) return tokensText(tks)
+  const out = []
+  for (let i = 0; i < tks.length; i++) {
+    const t = tks[i]
+    if (t.t === 'id' && t.v === 'regexp_like' && tks[i + 1]?.t === 'op' && tks[i + 1].v === '(') {
+      let depth = 0, j = i + 1
+      for (; j < tks.length; j++) {
+        if (tks[j].t === 'op' && tks[j].v === '(') depth++
+        if (tks[j].t === 'op' && tks[j].v === ')' && --depth === 0) break
+      }
+      const args = splitCommas(tks.slice(i + 2, j))
+      const flags = args[2]?.length === 1 && args[2][0].t === 'str' ? args[2][0].v : ''
+      if (args.length >= 2 && /^[ic]*$/.test(flags)) {
+        const ci = flags.lastIndexOf('i') > flags.lastIndexOf('c')
+        out.push({ t: 'op', v: '(', raw: '(' }, ...conditionTokens(args[0]), { t: 'op', v: ci ? '~*' : '~', raw: ci ? '~*' : '~' },
+          ...conditionTokens(args[1]), { t: 'op', v: ')', raw: ')' })
+        i = j
+        continue
+      }
+    }
+    out.push(t)
+  }
+  return tokensText(out)
+}
+const conditionTokens = (tks) => tokenize(conditionText(tks))
+
+// A date or timestamp written by TO_DATE / TO_TIMESTAMP with an Oracle
+// format model, as 'YYYY-MM-DD' (no time in the format) or 'YYYY-MM-DD
+// HH:MI:SS'; null when the value doesn't fit the format.
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+export function oracleDate(value, format) {
+  const parts = format.toUpperCase().replace(/^FX/, '').match(/YYYY|RRRR|SYYYY|YY|RR|MONTH|MON|MM|DD|HH24|HH12|HH|MI|SSSSS|SS|FF\d?|X|AM|PM|A\.M\.|P\.M\.|"[^"]*"|[^A-Z0-9"]+|[A-Z0-9]/g) ?? []
+  let v = value.trim(), y = null, mo = null, d = 1, h = 0, mi = 0, sec = 0, frac = '', pm = null, time = false
+  const take = (re) => { const m = re.exec(v); if (!m) return null; v = v.slice(m[0].length); return m }
+  for (const p of parts) {
+    let m
+    if (/^(YYYY|RRRR|SYYYY)$/.test(p)) { m = take(/^[+-]?\d{1,4}/); if (!m) return null; y = +m[0] }
+    else if (p === 'YY' || p === 'RR') {
+      m = take(/^\d{1,4}/); if (!m) return null
+      y = m[0].length > 2 ? +m[0] : (p === 'RR' ? (+m[0] < 50 ? 2000 : 1900) : 2000) + +m[0]
+    } else if (p === 'MONTH' || p === 'MON') {
+      m = take(/^[A-Za-z]+/); if (!m) return null
+      const k = MONTHS.indexOf(m[0].slice(0, 3).toLowerCase()); if (k < 0) return null
+      mo = k + 1
+    } else if (p === 'MM') { m = take(/^\d{1,2}/); if (!m) return null; mo = +m[0] }
+    else if (p === 'DD') { m = take(/^\d{1,2}/); if (!m) return null; d = +m[0] }
+    else if (/^HH/.test(p)) { m = take(/^\d{1,2}/); if (!m) return null; h = +m[0]; time = true; if (p !== 'HH24') pm ??= false }
+    else if (p === 'MI') { m = take(/^\d{1,2}/); if (!m) return null; mi = +m[0]; time = true }
+    else if (p === 'SS') { m = take(/^\d{1,2}/); if (!m) return null; sec = +m[0]; time = true }
+    else if (/^FF/.test(p)) { m = take(/^\d+/); if (m) frac = m[0] }
+    else if (p === 'X') take(/^[.,]/)
+    else if (/^(AM|PM|A\.M\.|P\.M\.)$/.test(p)) { m = take(/^[AaPp]\.?[Mm]\.?/); if (m) pm = /^p/i.test(m[0]) }
+    else take(/^[^A-Za-z0-9]*/)   // separators (Oracle is lenient about them)
+  }
+  if (y == null || mo == null || mo < 1 || mo > 12 || d < 1 || d > 31) return null
+  if (pm != null) h = (h % 12) + (pm ? 12 : 0)
+  const p2 = (x) => String(x).padStart(2, '0')
+  const date = `${String(y).padStart(4, '0')}-${p2(mo)}-${p2(d)}`
+  return time || frac ? `${date} ${p2(h)}:${p2(mi)}:${p2(sec)}${frac ? `.${frac}` : ''}` : date
 }
