@@ -38,6 +38,22 @@ function withTouchedConstraints(s, d, touched) {
   return { ...d, constraintOccurrences: [...(d.constraintOccurrences ?? []), ...add.map(c => mkConstraintOcc(c.id, c.x ?? 0, c.y ?? 0))] }
 }
 
+const ERD_MARGIN = 40
+
+// The extent of the ERD table boxes a diagram draws, or null.
+function erdBounds(state, diagram) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  try {
+    for (const part of erdPartsOfDiagram(state, diagram))
+      for (const b of part.boxes.values()) {
+        if (b.x == null) continue
+        minX = Math.min(minX, b.x); minY = Math.min(minY, b.y)
+        maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h)
+      }
+  } catch { return null }
+  return minX < Infinity ? { minX, minY, maxX, maxY } : null
+}
+
 export function createDiagramSlice(set, get) {
   return {
     // ── view ─────────────────────────────────────────────────────────────────
@@ -183,10 +199,26 @@ export function createDiagramSlice(set, get) {
     setPan(x, y)  { set({ pan: { x, y } }) },
     setZoom(z)    { set({ zoom: Math.min(3, Math.max(0.15, z)) }) },
     zoomBy(delta) { set(s => ({ zoom: Math.min(3, Math.max(0.15, s.zoom + delta)) })) },
-    resetView()   { set({ pan: { x: 0, y: 0 }, zoom: 1 }) },
+    // An ERD is shown at 100% with its top-left table a margin away from the
+    // canvas corner; other diagrams at the origin.
+    resetView() {
+      const s = get()
+      const diagram = s.diagrams?.find(d => d.id === s.activeDiagramId)
+      const b = isErdDiagram(s, diagram) ? erdBounds(s, diagram) : null
+      set({ pan: b ? { x: ERD_MARGIN - b.minX, y: ERD_MARGIN - b.minY } : { x: 0, y: 0 }, zoom: 1 })
+    },
     fitToContent(vpW = 1200, vpH = 700) {
       const { objectTypes, facts, constraints, diagrams, activeDiagramId } = get()
       const diagram = diagrams?.find(d => d.id === activeDiagramId)
+      // An ERD: its table boxes, at most 100%, top-left a margin from the
+      // corner (the ORM2 occurrences of its elements are not drawn).
+      if (isErdDiagram(get(), diagram)) {
+        const b = erdBounds(get(), diagram)
+        if (!b) return
+        const zoom = Math.max(0.15, Math.min(1, (vpW - 2 * ERD_MARGIN) / (b.maxX - b.minX), (vpH - 2 * ERD_MARGIN) / (b.maxY - b.minY)))
+        set({ zoom, pan: { x: ERD_MARGIN - b.minX * zoom, y: ERD_MARGIN - b.minY * zoom } })
+        return
+      }
       const getPos = (el) => {
         const occ = occOf(diagram, el.id)
         return occ ? { x: occ.x, y: occ.y } : { x: el.x, y: el.y }
@@ -196,6 +228,9 @@ export function createDiagramSlice(set, get) {
         ...facts.filter(f => inDiag(diagram, f.id)).map(f => ({ ...getPos(f), hw: f.arity * 16, hh: 16 })),
         ...constraints.filter(c => inDiag(diagram, c.id)).map(c => ({ ...getPos(c), hw: 16, hh: 16 })),
       ]
+      // The ERD tables of a mapping diagram's relational sides.
+      const eb = diagram?.mappingId ? erdBounds(get(), diagram) : null
+      if (eb) pts.push({ x: (eb.minX + eb.maxX) / 2, y: (eb.minY + eb.maxY) / 2, hw: (eb.maxX - eb.minX) / 2, hh: (eb.maxY - eb.minY) / 2 })
       if (!pts.length) return
       const PAD = 40
       const minX = Math.min(...pts.map(p => p.x - p.hw)) - PAD

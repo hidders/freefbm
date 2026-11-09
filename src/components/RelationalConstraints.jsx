@@ -20,6 +20,8 @@ const VIEWS = [
   { id: 'both', label: 'Both', title: 'Show each sentence with its formula underneath' },
 ]
 const KEY = 'freefbm.constraints.rmView'
+const NOTHING_SELECTED = { selectedId: null, multiSelectedIds: [], selectedMandatoryDot: null, selectedUniqueness: null,
+  selectedInternalFrequency: null, selectedValueRange: null, selectedCardinalityRange: null }
 const readView = () => { try { const v = localStorage.getItem(KEY); return VIEWS.some(x => x.id === v) ? v : 'sentences' } catch { return 'sentences' } }
 
 export default function RelationalConstraints() {
@@ -46,7 +48,10 @@ export default function RelationalConstraints() {
     // Assertions say in ORM2 terms what they require (they have no table
     // form); the formulas of the others are those of the ORM2 constraints
     // they stand for.
-    const scoped = scopeToSchema(st)
+    // formalise lists only the selected elements' constraints while
+    // something is selected, and this is not recomputed when the selection
+    // changes, so it reads the schema with nothing selected.
+    const scoped = { ...scopeToSchema(st), ...NOTHING_SELECTED }
     const { entries, ctx } = rm.assertions.length || needFormulas ? formalise(scoped, { wholeSchema: true }) : { entries: [], ctx: null }
     const formulas = new Map()
     const add = (rmId, f) => { if (!formulas.has(rmId)) formulas.set(rmId, []); formulas.get(rmId).push(f) }

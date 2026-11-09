@@ -145,6 +145,11 @@ export const createSchemaSlice = (set, get) => ({
       ...built.log,
       ...built.sample.log,
     ] })
+    {
+      const svg = typeof document !== 'undefined' ? document.querySelector('.canvas-bg')?.closest('svg') : null
+      const r = svg?.getBoundingClientRect()
+      get().fitToContent?.(r?.width || 1200, r?.height || 700)
+    }
     return { schemaId: schema.id, stats: st }
   },
 
