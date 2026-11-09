@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 
 const ITEM_STYLE = {
   display: 'flex', alignItems: 'center', gap: 6,

@@ -235,7 +235,7 @@ export default function Minimap() {
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
           fontSize: 9, color: 'var(--ink-muted)',
           letterSpacing: '0.05em', textTransform: 'uppercase',
-          fontFamily: "'Segoe UI', Helvetica, Arial, sans-serif",
+          fontFamily: 'var(--font-ui)',
           whiteSpace: 'nowrap',
           opacity: collapsed ? 1 : 0,
           transition: collapsed ? 'opacity 0.14s ease 0.14s' : 'opacity 0.08s ease',

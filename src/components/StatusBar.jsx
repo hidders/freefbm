@@ -7,6 +7,7 @@ import { activeRelationalFace, activeReadOnly } from '../relational/face'
 const NOTICE_MS = 4000
 const ORPHAN_NOTICE_MS = 8000
 import { relationalCounts } from '../relational/relationalView'
+import { visibleIssues } from './ValidationPanel'
 
 // ── Tier 1: Tool hints — workflow guidance while a tool is active ─────────────
 const TOOL_HINTS = {
@@ -204,7 +205,8 @@ export default function StatusBar() {
       padding: '0 14px', gap: 16,
       background: 'var(--bg-surface)', borderTop: '1px solid var(--border-soft)',
       flexShrink: 0 }}>
-      <span style={{ fontSize: 11, color: 'var(--ink-muted)', flex: 1 }}>{hint}</span>
+      <span style={{ fontSize: 11, color: 'var(--ink-muted)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hint}>{hint}</span>
+      <ProblemsLink store={store} />
       <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
         {Math.round(store.zoom * 100)}%
       </span>
@@ -221,5 +223,20 @@ export default function StatusBar() {
         })()}
       </span>
     </div>
+  )
+}
+
+// "⚠ n problems": opens the Problems tab of the sidebar (Sidebar.jsx).
+function ProblemsLink({ store }) {
+  const { errors } = visibleIssues(store)
+  if (!errors.length) return null
+  const hasError = errors.some(e => e.severity === 'error')
+  return (
+    <span role="button" title="Show the problems in the sidebar"
+      onClick={() => useOrmStore.getState().showSidebarTab('problems', { toggle: false })}
+      style={{ fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap',
+        color: hasError ? 'var(--danger)' : '#d97706' }}>
+      ⚠ {errors.length} problem{errors.length !== 1 ? 's' : ''}
+    </span>
   )
 }

@@ -1,152 +1,23 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react'
+import React from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { VALIDATION_CATEGORIES } from '../utils/validation.js'
-import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
 import { hasTextSelection } from '../utils/textPanel.js'
 import { activeSchemaIdOf, factTypeLabel } from '../store/storeHelpers'
 import { allImportNotes, elementKindOf, importNoteElementLabel, IMPORT_NOTE_SEVERITY } from '../utils/importNotes.js'
 import { activeRelationalFace } from '../relational/face'
 import { relationalView, rmObjectOf } from '../relational/relationalView'
 
-const FONT   = "'Segoe UI', Helvetica, Arial, sans-serif"
-const HDR_H  = 24
-const MIN_W  = 200
-const MIN_H  = 100
-const MAX_W  = 640
-const MAX_H  = 800
-const INIT_W = 280
-const INIT_H = 320
+const FONT = 'var(--font-ui)'
 
 const SEV_COLOUR = { error: '#dc2626', warning: '#d97706' }
 const SEV_ICON   = { error: '✕', warning: '!' }
 
-const rHandle = (dir) => ({
-  position: 'absolute', zIndex: 2,
-  ...(dir === 'e'  ? { right: 0, top: 0, bottom: 0, width: 5, cursor: 'ew-resize' } : {}),
-  ...(dir === 'w'  ? { left: 0, top: 0, bottom: 0, width: 5, cursor: 'ew-resize' } : {}),
-  ...(dir === 'n'  ? { top: 0, left: 0, right: 0, height: 5, cursor: 'ns-resize' } : {}),
-  ...(dir === 's'  ? { bottom: 0, left: 0, right: 0, height: 5, cursor: 'ns-resize' } : {}),
-  ...(dir === 'se' ? { bottom: 0, right: 0, width: 12, height: 12, cursor: 'nwse-resize' } : {}),
-  ...(dir === 'sw' ? { bottom: 0, left: 0, width: 12, height: 12, cursor: 'nesw-resize' } : {}),
-})
 
-export default function ValidationPanel() {
-  const store = useOrmStoreIgnoring('pan', 'zoom')
-  const [allSchemas, setAllSchemas] = useState(() => {
-    try { return localStorage.getItem('freefbm.validation.allSchemas') === '1' } catch { return false }
-  })
-  const toggleAllSchemas = () => setAllSchemas(v => {
-    try { localStorage.setItem('freefbm.validation.allSchemas', v ? '0' : '1') } catch {}
-    return !v
-  })
-
-  const [collapsed,  setCollapsed]  = useState(true)
-  const [animating,  setAnimating]  = useState(false)
-  const [resizing,   setResizing]   = useState(false)
-  const [size,       setSize]       = useState({ w: INIT_W, h: INIT_H })
-  const [pos,        setPos]        = useState(null)
-  const [expandFrom, setExpandFrom] = useState(null)
-  const [winW,       setWinW]       = useState(window.innerWidth)
-  const [winH,       setWinH]       = useState(window.innerHeight)
-
-  const animTimerRef = useRef(null)
-  const dragRef      = useRef(null)
-  const resizeRef    = useRef(null)
-  const panelRef     = useRef(null)
-
-  useEffect(() => {
-    const onResize = () => { setWinW(window.innerWidth); setWinH(window.innerHeight) }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-
-  // ── layout (fixed positioning, same as SchemaBrowser) ────────────────────
-  const inspectorWidth = store.inspectorWidth
-  const bottomPanelH   = store.bottomPanelCollapsed ? BOTTOM_PANEL_TAB_STRIP_H : store.bottomPanelHeight
-  const PILL_W         = 140
-  const SCHEMA_PILL_W  = 128
-  const MINIMAP_PILL_W = 114
-
-  const pillLeft = winW - inspectorWidth - MINIMAP_PILL_W - 12 - SCHEMA_PILL_W - 8 - PILL_W
-  const pillTop  = winH - 26 - bottomPanelH - 8 - HDR_H
-
-  const posX = pos?.x ?? Math.max(8, pillLeft - size.w + PILL_W)
-  const posY = pos?.y ?? Math.max(8, pillTop  - size.h - 8)
-
-  const panelW = collapsed ? PILL_W : size.w
-  const panelH = collapsed ? HDR_H  : size.h
-  const panelR = collapsed ? HDR_H / 2 : 6
-
-  const displayLeft = expandFrom?.x ?? (collapsed ? pillLeft : posX)
-  const displayTop  = expandFrom?.y ?? (collapsed ? pillTop  : posY)
-
-  // ── drag ─────────────────────────────────────────────────────────────────
-  const handleHeaderMouseDown = useCallback((e) => {
-    if (e.button !== 0) return
-    e.preventDefault(); e.stopPropagation()
-    dragRef.current = { startMouseX: e.clientX, startMouseY: e.clientY, startPosX: posX, startPosY: posY }
-    const onMove = (me) => {
-      if (!dragRef.current) return
-      const { startMouseX, startMouseY, startPosX, startPosY } = dragRef.current
-      setPos({
-        x: Math.max(0, Math.min(window.innerWidth  - size.w - 2, startPosX + me.clientX - startMouseX)),
-        y: Math.max(0, Math.min(window.innerHeight - size.h - 2, startPosY + me.clientY - startMouseY)),
-      })
-    }
-    const onUp = () => { dragRef.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup',   onUp)
-  }, [posX, posY, size.w, size.h])
-
-  // ── resize ────────────────────────────────────────────────────────────────
-  const handleResizeMouseDown = useCallback((e, dir) => {
-    if (e.button !== 0) return
-    e.preventDefault(); e.stopPropagation()
-    setResizing(true)
-    resizeRef.current = { dir, startX: e.clientX, startY: e.clientY, startW: size.w, startH: size.h, startPosX: posX, startPosY: posY }
-    const panelEl = panelRef.current
-    const onMove = (me) => {
-      if (!resizeRef.current || !panelEl) return
-      const { dir, startX, startY, startW, startH, startPosX, startPosY } = resizeRef.current
-      const dx = me.clientX - startX, dy = me.clientY - startY
-      let newW = startW, newH = startH, newX = startPosX, newY = startPosY
-      if (dir === 'e' || dir === 'se') newW = Math.max(MIN_W, Math.min(MAX_W, startW + dx))
-      if (dir === 'w' || dir === 'sw') { newW = Math.max(MIN_W, Math.min(MAX_W, startW - dx)); newX = startPosX + (startW - newW) }
-      if (dir === 's' || dir === 'se' || dir === 'sw') newH = Math.max(MIN_H, Math.min(MAX_H, startH + dy))
-      if (dir === 'n') { newH = Math.max(MIN_H, Math.min(MAX_H, startH - dy)); newY = startPosY + (startH - newH) }
-      panelEl.style.left = `${newX}px`; panelEl.style.top = `${newY}px`
-      panelEl.style.width = `${newW}px`; panelEl.style.height = `${newH}px`
-      resizeRef.current._live = { w: newW, h: newH, x: newX, y: newY }
-    }
-    const onUp = () => {
-      const live = resizeRef.current?._live
-      if (live) { setSize({ w: live.w, h: live.h }); setPos({ x: live.x, y: live.y }) }
-      resizeRef.current = null; setResizing(false)
-      window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup',   onUp)
-  }, [posX, posY, size])
-
-  const handleCollapse = useCallback(() => {
-    setCollapsed(true); setAnimating(true)
-    if (animTimerRef.current) clearTimeout(animTimerRef.current)
-    animTimerRef.current = setTimeout(() => setAnimating(false), 350)
-  }, [])
-
-  const handleExpand = useCallback(() => {
-    const s = useOrmStore.getState()
-    const bph = s.bottomPanelCollapsed ? BOTTOM_PANEL_TAB_STRIP_H : s.bottomPanelHeight
-    const pLeft = window.innerWidth - s.inspectorWidth - 114 - 12 - 128 - 8 - 140
-    const pTop  = window.innerHeight - 26 - bph - 8 - HDR_H
-    setExpandFrom({ x: pLeft, y: pTop }); setCollapsed(false); setAnimating(true)
-    if (animTimerRef.current) clearTimeout(animTimerRef.current)
-    animTimerRef.current = setTimeout(() => setAnimating(false), 350)
-    requestAnimationFrame(() => requestAnimationFrame(() => setExpandFrom(null)))
-  }, [store.inspectorWidth])
-
-  // ── data ──────────────────────────────────────────────────────────────────
+// The issues the Problems tab lists: those of the active schema (or of every
+// schema when All schemas is on), leaving out elements no diagram shows.
+export function visibleIssues(store) {
   const diagrams = store.diagrams || []
+  const allSchemas = !!store.validationAllSchemas
   const isElementOrphaned = (e) => {
     if (e.elementKind === 'mappingRule') return false
     if (e.elementKind === 'subtype') {
@@ -188,6 +59,15 @@ export default function ValidationPanel() {
   // issues so that notes on elements no diagram shows can be found too.
   const importNotes = allImportNotes(store).filter(({ element }) =>
     !multiSchema || allSchemas || !element.schemaId || element.schemaId === activeSchemaId)
+  return { errors, errorCount, byCategory, importNotes, multiSchema, allSchemas, schemaNameOf }
+}
+
+// The Problems tab of the sidebar (Sidebar.jsx): validation issues and
+// import notes; a click goes to the element.
+export default function ValidationPanel() {
+  const store = useOrmStoreIgnoring('pan', 'zoom')
+  const { errorCount, byCategory, importNotes, multiSchema, allSchemas, schemaNameOf } = visibleIssues(store)
+  const toggleAllSchemas = () => store.setValidationAllSchemas(!allSchemas)
   // A click that ends a text selection only selects; see utils/textPanel.js.
   // A relational schema showing its tables names each issue's table, column
   // or key first, and a click selects that object (RM schemas, step 4).
@@ -208,122 +88,28 @@ export default function ValidationPanel() {
     store.navigateToElement(e.elementId, e.elementKind)
   }
 
-  // ── render ────────────────────────────────────────────────────────────────
   return (
-    <div
-      ref={panelRef}
-      onClick={collapsed ? handleExpand : undefined}
-      style={{
-        position: 'fixed',
-        left: displayLeft, top: displayTop,
-        width: panelW, height: panelH,
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--border)',
-        borderRadius: panelR,
-        overflow: 'hidden',
-        boxShadow: 'var(--shadow-md)',
-        userSelect: 'none',
-        zIndex: 10,
-        WebkitAppRegion: 'no-drag',
-        fontFamily: FONT,
-        cursor: collapsed ? 'pointer' : 'default',
-        transition: resizing ? 'none' : (animating
-          ? 'width 0.28s ease, height 0.28s ease, border-radius 0.28s ease, left 0.28s ease, top 0.28s ease'
-          : 'width 0.28s ease, height 0.28s ease, border-radius 0.28s ease'),
-      }}
-    >
-      {/* Pill label — visible when collapsed */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-        fontSize: 9, color: 'var(--ink-muted)',
-        letterSpacing: '0.05em', textTransform: 'uppercase',
-        fontFamily: FONT, whiteSpace: 'nowrap',
-        opacity: collapsed ? 1 : 0,
-        transition: collapsed ? 'opacity 0.14s ease 0.14s' : 'opacity 0.08s ease',
-        pointerEvents: 'none',
-      }}>
-        <span style={{ fontSize: 11 }}>⚠</span>
-        <span>validation</span>
-        {errorCount > 0 && (
-          <span style={{
-            background: '#dc2626', color: 'white',
-            borderRadius: 8, fontSize: 9, padding: '0 4px', lineHeight: '14px',
-            minWidth: 14, textAlign: 'center',
-          }}>{errorCount}</span>
-        )}
-        {importNotes.length > 0 && (
-          <span title="Import notes" style={{
-            background: IMPORT_NOTE_SEVERITY.changed.colour, color: 'white',
-            borderRadius: 8, fontSize: 9, padding: '0 4px', lineHeight: '14px',
-            minWidth: 14, textAlign: 'center',
-          }}>✎{importNotes.length}</span>
-        )}
-      </div>
-
-      {/* Panel content — visible when expanded */}
-      <div style={{
-        display: 'flex', flexDirection: 'column', height: '100%',
-        opacity: collapsed ? 0 : 1,
-        transition: collapsed ? 'opacity 0.1s ease' : 'opacity 0.18s ease 0.12s',
-        pointerEvents: collapsed ? 'none' : 'auto',
-      }}>
-        {/* Header */}
-        <div
-          onMouseDown={handleHeaderMouseDown}
-          style={{
-            height: HDR_H, flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '0 6px',
-            borderBottom: '1px solid var(--border-soft)',
-            cursor: 'grab',
-            background: 'var(--bg-raised)',
-          }}
-        >
-          <span style={{ fontSize: 9, color: 'var(--ink-muted)',
-            letterSpacing: '0.07em', textTransform: 'uppercase',
-            pointerEvents: 'none' }}>
-            ⠿ validation
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            {multiSchema && (
-              <button
-                onMouseDown={e => e.stopPropagation()}
-                onClick={toggleAllSchemas}
-                title={allSchemas ? 'Show only the issues of the active schema' : 'Show the issues of every schema in the file'}
-                style={{
-                  border: '1px solid var(--border-soft)', borderRadius: 3, cursor: 'pointer',
-                  fontSize: 9, lineHeight: '13px', padding: '0 4px', fontFamily: FONT,
-                  background: allSchemas ? 'var(--ink-2)' : 'transparent',
-                  color: allSchemas ? 'var(--bg-surface)' : 'var(--ink-muted)', pointerEvents: 'all',
-                }}
-              >All schemas</button>
-            )}
-            {errorCount > 0 && (
-              <span style={{
-                background: '#dc2626', color: 'white',
-                borderRadius: 8, fontSize: 9, padding: '0 4px', lineHeight: '14px',
-                minWidth: 14, textAlign: 'center',
-              }}>{errorCount}</span>
-            )}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, fontFamily: FONT, userSelect: 'none' }}>
+        {multiSchema && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, padding: '4px 8px',
+            borderBottom: '1px solid var(--border-soft)', flexShrink: 0 }}>
             <button
-              onMouseDown={e => e.stopPropagation()}
-              onClick={handleCollapse}
-              title="Collapse validation panel"
+              onClick={toggleAllSchemas}
+              title={allSchemas ? 'Show only the issues of the active schema' : 'Show the issues of every schema in the file'}
               style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                padding: '0 2px', fontSize: 11, lineHeight: 1,
-                color: 'var(--ink-muted)', pointerEvents: 'all',
+                border: '1px solid var(--border-soft)', borderRadius: 3, cursor: 'pointer',
+                fontSize: 10, lineHeight: '15px', padding: '0 6px', fontFamily: FONT,
+                background: allSchemas ? 'var(--ink-2)' : 'transparent',
+                color: allSchemas ? 'var(--bg-surface)' : 'var(--ink-muted)',
               }}
-            >−</button>
+            >All schemas</button>
           </div>
-        </div>
-
+        )}
         {/* Body — focusable so the messages can be selected and copied (see App.jsx) */}
         <div data-text-panel tabIndex={0} className="copyable" style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
           {errorCount === 0 && importNotes.length === 0 ? (
             <div style={{ fontSize: 11, color: 'var(--ink-muted)', textAlign: 'center', marginTop: 12 }}>
-              No validation errors
+              No problems
             </div>
           ) : (<>
             {Object.entries(byCategory).map(([cat, errs]) => (
@@ -393,12 +179,6 @@ export default function ValidationPanel() {
             )}
           </>)}
         </div>
-      </div>
-
-      {/* Resize handles */}
-      {!collapsed && ['n','s','e','w','se','sw'].map(dir => (
-        <div key={dir} style={rHandle(dir)} onMouseDown={e => handleResizeMouseDown(e, dir)}/>
-      ))}
     </div>
   )
 }

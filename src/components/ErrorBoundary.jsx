@@ -13,7 +13,7 @@ export class ErrorBoundary extends React.Component {
       return (
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          height: '100vh', gap: 16, fontFamily: "'Segoe UI', Helvetica, Arial, sans-serif",
+          height: '100vh', gap: 16, fontFamily: 'var(--font-ui)',
           background: 'var(--bg-canvas)', color: 'var(--ink)',
         }}>
           <div style={{ fontSize: 18, fontWeight: 600 }}>Something went wrong</div>

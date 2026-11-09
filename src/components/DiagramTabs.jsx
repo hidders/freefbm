@@ -190,7 +190,7 @@ export default function DiagramTabs() {
               cursor: isBeingDragged ? 'grabbing' : isDragging ? 'default' : 'pointer',
               color: isActive ? 'var(--ink-1)' : 'var(--ink-muted)',
               fontSize: 12,
-              fontFamily: "'Segoe UI', Helvetica, Arial, sans-serif",
+              fontFamily: 'var(--font-ui)',
               whiteSpace: 'nowrap',
               userSelect: 'none',
               minWidth: 60,
@@ -224,7 +224,7 @@ export default function DiagramTabs() {
                   background: 'transparent',
                   color: 'var(--ink-1)',
                   fontSize: 12,
-                  fontFamily: "'Segoe UI', Helvetica, Arial, sans-serif",
+                  fontFamily: 'var(--font-ui)',
                   width: Math.max(60, draft.length * 8),
                 }}
               />
@@ -303,52 +303,40 @@ export default function DiagramTabs() {
               {isView ? ' ⇒ ' : ' ⟺ '}
               <span style={{ color: 'var(--map-target)', fontWeight: 600 }}>{schemaName(mapping.targetSchemaId)}</span>
             </span>
-            <span title="Add the elements the rules name that this diagram doesn't show yet"
-              className="mapping-add-elements"
+            <button title="Add the elements the rules name that this diagram doesn't show yet"
+              className="ui-btn mapping-add-elements"
               onClick={() => useOrmStore.getState().addMappingRuleElements(activeDiagram.id)}
-              style={{ cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'var(--border)' }}
-              onMouseEnter={e => { e.currentTarget.style.color = 'var(--ink-1)' }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'var(--ink-3)' }}
-            >Add rule elements</span>
-            <span title="Lay the diagram out afresh: source side left, the rules in a column in the middle level with their elements, target side right"
-              className="mapping-auto-layout"
+            >Add rule elements</button>
+            <button title="Lay the diagram out afresh: source side left, the rules in a column in the middle level with their elements, target side right"
+              className="ui-btn mapping-auto-layout"
               onClick={() => {
                 const s = useOrmStore.getState()
                 const res = layoutMappingDiagram(s, activeDiagram.id)
                 if (res) s.applyDiagramLayout(activeDiagram.id, res)
               }}
-              style={{ cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'var(--border)', marginLeft: 8 }}
-              onMouseEnter={e => { e.currentTarget.style.color = 'var(--ink-1)' }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'var(--ink-3)' }}
-            >Auto layout</span>
+            >Auto layout</button>
           </div>
         )}
         {/* Growing mode: "+n" badges where neighbours are not shown, and how much of the schema is on a diagram. */}
         {activeDiagram && !mapping && <GrowSwitch diagram={activeDiagram} />}
         {/* A relational schema shows tables (an ERD), or in Advanced mode its logical (ORM2) view. */}
         {activeDiagram && isRelational && isErdDiagram(store, activeDiagram) && (
-          <div title="Lay the tables out afresh (forgets the positions of moved tables)"
+          <button title="Lay the tables out afresh (forgets the positions of moved tables)" className="ui-btn"
             onClick={() => useOrmStore.getState().resetErdPositions(activeDiagram.id)}
-            style={{ fontSize: 11, color: 'var(--ink-3)', cursor: 'pointer', userSelect: 'none', padding: '0 4px', whiteSpace: 'nowrap' }}
-            onMouseEnter={e => { e.currentTarget.style.color = 'var(--ink-1)' }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'var(--ink-3)' }}
-          >Auto layout</div>
+          >Auto layout</button>
         )}
         {activeDiagram && isRelational && isErdDiagram(store, activeDiagram) && <ErdLinesSwitch diagram={activeDiagram} />}
         {activeDiagram && isRelational && isErdDiagram(store, activeDiagram) && <ErdAssertionsSwitch diagram={activeDiagram} />}
         {/* An ORM2 diagram (not a mapping diagram): lay out everything afresh. */}
         {activeDiagram && !mapping && !isErdDiagram(store, activeDiagram) && (activeDiagram.occurrences?.length ?? 0) > 0 && (
-          <div title="Lay the whole diagram out afresh: moves every element, collapses reference modes, and draws each attribute's value type next to its entity type"
-            className="orm-auto-layout"
+          <button title="Lay the whole diagram out afresh: moves every element, collapses reference modes, and draws each attribute's value type next to its entity type"
+            className="ui-btn orm-auto-layout"
             onClick={() => {
               const s = useOrmStore.getState()
               const result = layoutOrmDiagram(s, activeDiagram.id)
               if (result) s.applyDiagramLayout(activeDiagram.id, result)
             }}
-            style={{ fontSize: 11, color: 'var(--ink-3)', cursor: 'pointer', userSelect: 'none', padding: '0 4px', whiteSpace: 'nowrap' }}
-            onMouseEnter={e => { e.currentTarget.style.color = 'var(--ink-1)' }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'var(--ink-3)' }}
-          >Auto layout</div>
+          >Auto layout</button>
         )}
         {activeDiagram && isRelational && store.advancedMode && <FaceSwitch schemaId={activeDiagram.schemaId} logical={!!store.logicalViews?.[activeDiagram.schemaId]} />}
         {/* With one schema the schema strip is hidden; a new schema starts here. */}
@@ -375,14 +363,11 @@ function GrowSwitch({ diagram }) {
           {coverage.shown} of {coverage.total} {coverage.kind} on a diagram
         </span>
       )}
-      <span title={on ? 'Stop showing +n at elements with neighbours not on this diagram'
-        : 'Show +n at each element with neighbours not on this diagram (click one to add them)'}
+      <button className="ui-btn" aria-pressed={on}
+        title={on ? 'Stop showing +n at elements with neighbours not on this diagram'
+          : 'Show +n at each element with neighbours not on this diagram (click one to add them)'}
         onClick={() => useOrmStore.getState().setGrowMode(!on)}
-        style={{ cursor: 'pointer', padding: '1px 6px', borderRadius: 9, color: on ? '#fff' : 'var(--ink-3)',
-          background: on ? 'var(--accent)' : 'none', border: `1px solid ${on ? 'var(--accent)' : 'transparent'}` }}
-        onMouseEnter={e => { if (!on) e.currentTarget.style.color = 'var(--ink-1)' }}
-        onMouseLeave={e => { if (!on) e.currentTarget.style.color = 'var(--ink-3)' }}
-      >Grow</span>
+      >Grow</button>
     </div>
   )
 }
@@ -395,13 +380,13 @@ function ErdLinesSwitch({ diagram }) {
     ['orthogonal', 'Right-angled', 'Draw foreign keys as lines of horizontal and vertical stretches'],
   ]
   return (
-    <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 11, overflow: 'hidden', height: 20, marginRight: 8, flexShrink: 0 }}>
+    <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden', height: 22, boxSizing: 'border-box', flexShrink: 0, background: 'var(--bg-raised)' }}>
       {opts.map(([id, label, title]) => (
         <div key={id} title={title}
           onClick={() => { if (id !== current) useOrmStore.getState().setErdLines(diagram.id, id) }}
           style={{
             padding: '0 9px', display: 'flex', alignItems: 'center', fontSize: 11, cursor: 'pointer', userSelect: 'none',
-            fontWeight: id === current ? 700 : 400,
+            fontWeight: id === current ? 600 : 400,
             background: id === current ? 'var(--ink-3)' : 'transparent',
             color: id === current ? '#fff' : 'var(--ink-3)',
           }}>{label}</div>
@@ -419,12 +404,10 @@ function ErdAssertionsSwitch({ diagram }) {
   if (!n) return null
   const on = !!diagram.erdAssertions
   return (
-    <span title={on ? 'Stop drawing the assertions' : `Draw the schema's ${n} assertion${n === 1 ? '' : 's'} as constraint nodes linked to the tables they read`}
+    <button className="ui-btn" aria-pressed={on}
+      title={on ? 'Stop drawing the assertions' : `Draw the schema's ${n} assertion${n === 1 ? '' : 's'} as constraint nodes linked to the tables they read`}
       onClick={() => useOrmStore.getState().setErdAssertions(diagram.id, !on)}
-      style={{ cursor: 'pointer', padding: '1px 6px', borderRadius: 9, fontSize: 11, marginRight: 8, userSelect: 'none', whiteSpace: 'nowrap', flexShrink: 0,
-        color: on ? '#fff' : 'var(--ink-3)', background: on ? 'var(--col-constraint)' : 'none',
-        border: `1px solid ${on ? 'var(--col-constraint)' : 'var(--border)'}` }}
-    >Assertions {n}</span>
+    >Assertions {n}</button>
   )
 }
 
@@ -438,13 +421,13 @@ function FaceSwitch({ schemaId, logical }) {
     ['logical', 'Logical', 'Show the ORM2 schema that stores this relational schema (its logical view)'],
   ]
   return (
-    <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 11, overflow: 'hidden', height: 20, marginRight: 8, flexShrink: 0 }}>
+    <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden', height: 22, boxSizing: 'border-box', flexShrink: 0, background: 'var(--bg-raised)' }}>
       {opts.map(([id, label, title]) => (
         <div key={id} title={title}
           onClick={() => { if (id !== current) useOrmStore.getState().setSchemaLogicalView(schemaId, id === 'logical') }}
           style={{
             padding: '0 9px', display: 'flex', alignItems: 'center', fontSize: 11, cursor: 'pointer', userSelect: 'none',
-            fontWeight: id === current ? 700 : 400,
+            fontWeight: id === current ? 600 : 400,
             background: id === current ? 'var(--col-schema-relational)' : 'transparent',
             color: id === current ? '#fff' : 'var(--ink-3)',
           }}>{label}</div>

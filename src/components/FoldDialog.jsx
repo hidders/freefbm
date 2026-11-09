@@ -3,7 +3,7 @@ import { useOrmStore } from '../store/ormStore'
 import { planFold } from '../mapping/fold.js'
 import { sideContext, sideTokens, tokensText } from '../mapping/mapping.js'
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 
 // Fold (workbench step 12): the derived elements of one schema of a mapping,
 // each with the mapping rule its rule unfolds to, and the fact types they

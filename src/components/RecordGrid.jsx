@@ -24,7 +24,7 @@ const MAX_OPTIONS = 20000
 // Rows added with "+ Add tuple" that are not records yet (no key, or a key
 // that was refused), per table, so they survive switching tables.
 const draftsByTable = new Map()
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 
 export default function RelationalPopulation() {
   const schemaId = useOrmStore(s => activeSchemaIdOf(s))

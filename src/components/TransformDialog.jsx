@@ -8,7 +8,7 @@ import { useOrmStore } from '../store/ormStore'
 import { sideContext } from '../mapping/mapping'
 import { TRANSFORMATIONS } from '../mapping/transformations'
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 
 export default function TransformDialog() {
   const open = useOrmStore(s => s.transformDialog)

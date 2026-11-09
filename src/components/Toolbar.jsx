@@ -19,7 +19,7 @@ function Btn({ label, title, active, onClick, disabled = false }) {
       background: active ? 'var(--accent)' : 'var(--bg-raised)',
       color: active ? '#fff' : disabled ? 'var(--ink-muted)' : 'var(--ink-2)',
       border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-      borderRadius: 4, fontFamily: 'var(--font-mono)',
+      borderRadius: 4, fontFamily: 'var(--font-ui)',
       cursor: disabled ? 'not-allowed' : 'pointer',
       opacity: disabled ? 0.45 : 1,
       transition: 'all 0.12s', whiteSpace: 'nowrap',
@@ -35,7 +35,7 @@ function Divider() {
 }
 
 const selectStyle = (highlight) => ({
-  fontSize: 12, padding: '4px 6px', borderRadius: 4, fontFamily: 'var(--font-mono)', cursor: 'pointer',
+  fontSize: 12, padding: '4px 6px', borderRadius: 4, fontFamily: 'var(--font-ui)', cursor: 'pointer',
   border: `1px solid ${highlight ? 'var(--accent)' : 'var(--border)'}`,
   background: highlight ? 'var(--accent)' : 'var(--bg-raised)',
   color: highlight ? '#fff' : 'var(--ink-2)',
@@ -109,21 +109,22 @@ export default function Toolbar() {
         FreeFBM
       </span>
 
-      {/* The open file; • while it has unsaved changes. */}
-      <span title={storeRef.current.filePath || (storeRef.current.importedFrom ? `Imported from ${storeRef.current.importedFrom}` : 'Not saved yet')}
-        style={{ fontSize: 12, color: 'var(--ink-2)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
-          overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260, marginRight: 4, userSelect: 'none' }}>
-        {fileLabel(storeRef.current)}{storeRef.current.isDirty && <span style={{ color: 'var(--danger)' }}> •</span>}
-      </span>
-
-      <Divider/>
-
       <div style={{ display: 'flex', gap: 4, WebkitAppRegion: 'no-drag' }}>
         <Btn label="＋ New"   title="New Model"  onClick={handleNew}/>
         {isElectron && <Btn label="📂 Open" title="Open"   onClick={handleOpen}/>}
         {isElectron && <Btn label="💾 Save" title={isMac ? 'Save (⌘S)' : 'Save (Ctrl+S)'} onClick={handleSave}/>}
         {isElectron && <Btn label="⎙ PDF" title="Export to PDF (⌘⇧E)" onClick={handleExportPdf}/>}
       </div>
+
+      <Divider/>
+
+      {/* The open file; • while it has unsaved changes. After the buttons, so
+          a longer or shorter name does not move them. */}
+      <span title={storeRef.current.filePath || (storeRef.current.importedFrom ? `Imported from ${storeRef.current.importedFrom}` : 'Not saved yet')}
+        style={{ fontSize: 12, color: 'var(--ink-2)', fontFamily: 'var(--font-ui)', whiteSpace: 'nowrap',
+          overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, maxWidth: 360, marginLeft: 4, userSelect: 'none' }}>
+        {fileLabel(storeRef.current)}{storeRef.current.isDirty && <span style={{ color: 'var(--danger)' }}> •</span>}
+      </span>
 
       <div style={{ flex: 1 }}/>
 

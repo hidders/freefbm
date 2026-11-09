@@ -27,6 +27,9 @@
     "verbalisation:coverage": "node --no-warnings scripts/verbalisation-golden.mjs --coverage"
   },
   "dependencies": {
+    "@fontsource/fraunces": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^4.5.0"

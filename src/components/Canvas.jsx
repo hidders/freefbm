@@ -379,7 +379,7 @@ function FrequencyRangePopup({ range, onChange, x, y, onDone, onAbort }) {
         boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
         padding: '10px 12px',
         zIndex: 10200,
-        fontFamily: 'var(--font-mono)',
+        fontFamily: 'var(--font-ui)',
         fontSize: 12,
         color: 'var(--ink-2)',
       }}>
@@ -402,7 +402,7 @@ function FrequencyRangePopup({ range, onChange, x, y, onDone, onAbort }) {
           borderRadius: 4,
           cursor: 'pointer',
           fontSize: 11,
-          fontFamily: 'var(--font-mono)',
+          fontFamily: 'var(--font-ui)',
         }}>
         Done
       </button>
@@ -448,7 +448,7 @@ function ValueRangePopup({ title, initialRange, onCommit, x, y, onClose, natural
         boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
         padding: '10px 12px',
         zIndex: 10200,
-        fontFamily: 'var(--font-mono)',
+        fontFamily: 'var(--font-ui)',
         fontSize: 12,
         color: 'var(--ink-2)',
       }}>
@@ -471,7 +471,7 @@ function ValueRangePopup({ title, initialRange, onCommit, x, y, onClose, natural
           borderRadius: 4,
           cursor: 'pointer',
           fontSize: 11,
-          fontFamily: 'var(--font-mono)',
+          fontFamily: 'var(--font-ui)',
         }}>
         Done
       </button>
@@ -1828,7 +1828,7 @@ export default function Canvas() {
       <div style={{
         position: 'absolute', bottom: 6, left: 10,
         fontSize: 10, color: 'var(--ink-muted)',
-        fontFamily: 'var(--font-mono)',
+        fontFamily: 'var(--font-ui)',
         pointerEvents: 'none',
       }}>
         {snapEnabled ? '⊞ snap on' : '⊡ snap off'} · hold Shift to toggle · hold Space to pan

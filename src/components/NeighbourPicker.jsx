@@ -11,7 +11,7 @@ import { placeOrmUnits, placeErdUnits } from '../layout/growPlacement.js'
 // Enter adds the ticked units (store.addNeighbours), Esc closes. It sits
 // beside the element on the canvas and follows it when the view pans.
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 const W = 360
 
 export default function NeighbourPicker() {

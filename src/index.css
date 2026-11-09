@@ -72,6 +72,7 @@
   --radius-lg: 10px;
 
   --font-display: 'Fraunces', Georgia, serif;
+  --font-ui:      'IBM Plex Sans', 'Segoe UI', Helvetica, Arial, sans-serif;
   --font-mono:    'IBM Plex Mono', 'Courier New', monospace;
 
   --shadow-sm:  0 1px 4px rgba(0,0,0,0.12);
@@ -83,7 +84,7 @@ html, body, #root {
   width: 100%; height: 100%; overflow: hidden;
   background: var(--bg-canvas);
   color: var(--ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
   user-select: none;
@@ -95,14 +96,14 @@ html, body, #root {
 ::-webkit-scrollbar-thumb:hover { background: var(--border-dark); }
 
 button {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   cursor: pointer;
   border: none;
   outline: none;
 }
 
 input, select, textarea {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
   background: var(--bg-canvas);
   color: var(--ink);
@@ -221,3 +222,25 @@ input.cell-issue:-webkit-autofill:focus {
 input.range-field[type=number]::-webkit-inner-spin-button,
 input.range-field[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 input.range-field[type=number] { -moz-appearance: textfield; }
+
+/* Small buttons of the bars above the canvas (diagram tab bar, schema strip):
+   a control that does something looks like a button, one that switches a mode
+   on and off is pressed while on (aria-pressed), and one that opens a menu
+   ends in ▾. Links are kept for going somewhere. */
+.ui-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 22px; padding: 0 9px; flex-shrink: 0;
+  font-family: var(--font-ui); font-size: 11px; line-height: 1; white-space: nowrap;
+  color: var(--ink-2); background: var(--bg-raised);
+  border: 1px solid var(--border); border-radius: 4px;
+  cursor: pointer; user-select: none;
+  transition: border-color 0.12s, background 0.12s;
+}
+.ui-btn:hover { border-color: var(--border-dark); color: var(--ink); }
+.ui-btn:active { background: var(--bg-canvas); }
+.ui-btn:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 2px var(--selection); }
+.ui-btn[aria-pressed="true"] {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.25);
+}
+.ui-btn .ui-caret { font-size: 8px; opacity: 0.7; margin-left: 1px; }

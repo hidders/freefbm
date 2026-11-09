@@ -9,7 +9,7 @@ import React from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { Highlight } from '../utils/nameFilter.jsx'
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = 'var(--font-ui)'
 
 const ICON = { width: 14, height: 14, viewBox: '0 0 14 14', style: { display: 'block', flexShrink: 0 } }
 export function TableIcon({ view = false }) {
