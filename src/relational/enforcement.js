@@ -11,6 +11,9 @@
 //   foreignKey an assertion that is a foreign key (foreignKeyRewrite.js),
 //              written as one; with a UNIQUE first when its columns are more
 //              than a key
+//   indexedView an assertion whose violations are a join of different tables,
+//              as a SQL Server indexed view that can hold no rows (or no two
+//              for one key: uniqueness over a join)
 //   trigger    an assertion, as a trigger that runs its violation query
 //              (PostgreSQL: a constraint trigger, deferred to the end of the
 //              transaction)
@@ -61,7 +64,7 @@ export function sqlSettings(schema) {
 
 const TECHNIQUE = {
   table: 'table constraint', check: 'CHECK', foreignKey: 'FOREIGN KEY', assertion: 'CREATE ASSERTION', trigger: 'trigger',
-  audit: 'audit query', none: 'not written',
+  audit: 'audit query', none: 'not written', indexedView: 'indexed view',
 }
 export const techniqueName = (t) => TECHNIQUE[t] ?? t
 
@@ -150,6 +153,15 @@ export function planEnforcement(state, schemaId, settings0 = null) {
           return
         }
         item({ ...base, technique: 'audit', status: 'not', choice, viewsOnly: !stored.length, note: ora.reason })
+        return
+      }
+      // SQL Server: an indexed view when the violations are a join of
+      // different tables (declarative, so also safe under concurrency).
+      const iv = target.id === 'sqlserver' && choice !== 'audit' && !why ? e.view : null
+      if (iv && iv.from.every(x => !views.get(x.table.id))) {
+        item({ ...base, technique: 'indexedView', choice, status: 'enforced', entry: { ...entry, view: iv },
+          note: iv.kind === 'unique' ? 'an indexed view with a unique index on what may occur only once'
+            : 'an indexed view of the rows breaking it, which can hold none' })
         return
       }
       if (mode === 'audit') { item({ ...base, technique: 'audit', status: 'not', choice, note: why ?? null }); return }

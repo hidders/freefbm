@@ -54,8 +54,9 @@ function Dialog({ schemaId }) {
   const counts = res.plan?.counts ?? { enforced: 0, partly: 0, not: 0 }
   const total = counts.enforced + counts.partly + counts.not
   const oracle = settings.target === 'oracle'
-  const choosable = (x) => ['trigger', 'audit', 'assertion'].includes(x.technique) && !x.entry?.deontic && !x.viewsOnly
-  const defaultName = oracle ? 'assertion if possible' : settings.assertions === 'audit' ? 'audit query' : 'trigger'
+  const mssql = settings.target === 'sqlserver'
+  const choosable = (x) => ['trigger', 'audit', 'assertion', 'indexedView'].includes(x.technique) && !x.entry?.deontic && !x.viewsOnly
+  const defaultName = oracle ? 'assertion if possible' : mssql && settings.assertions !== 'audit' ? 'indexed view if possible' : settings.assertions === 'audit' ? 'audit query' : 'trigger'
 
   return (
     <div onMouseDown={e => { if (e.target === e.currentTarget) close() }}
@@ -78,7 +79,7 @@ function Dialog({ schemaId }) {
             {res.error ? `The export failed: ${res.error}`
               : <>{counts.enforced} of {total} constraints are enforced{counts.partly ? `, ${counts.partly} partly` : ''}:
                 {' '}{native.filter(x => x.status === 'enforced').length} by the tables, {rewritten.length + by('foreignKey')} rewritten as a CHECK or a FOREIGN KEY,
-                {' '}{by('assertion') ? `${by('assertion')} by CREATE ASSERTION, ` : ''}{by('trigger')} by triggers. {by('audit')} {by('audit') === 1 ? 'is an audit query' : 'are audit queries'} (run {by('audit') === 1 ? 'it' : 'them'} to find the rows breaking {by('audit') === 1 ? 'it' : 'them'}){counts.not - by('audit') > 0 ? `, ${counts.not - by('audit')} not written` : ''}.</>}
+                {' '}{by('assertion') ? `${by('assertion')} by CREATE ASSERTION, ` : ''}{by('indexedView') ? `${by('indexedView')} by indexed views, ` : ''}{by('trigger')} by triggers. {by('audit')} {by('audit') === 1 ? 'is an audit query' : 'are audit queries'} (run {by('audit') === 1 ? 'it' : 'them'} to find the rows breaking {by('audit') === 1 ? 'it' : 'them'}){counts.not - by('audit') > 0 ? `, ${counts.not - by('audit')} not written` : ''}.</>}
           </div>
         </div>
         {!res.error && (
@@ -94,9 +95,11 @@ function Dialog({ schemaId }) {
                     those that ask for rows are checked at commit. When Oracle can't, or refuses one when the script runs, they become
                     triggers, which Oracle runs after each statement (it has no deferred triggers), or audit queries: commented queries
                     that return the rows breaking them.</>
-                  : settings.target === 'sqlserver'
-                  ? <>Those that are a foreign key in disguise are written as one. SQL Server has no CREATE ASSERTION and no deferred
-                    triggers, so the others become triggers (AFTER INSERT, UPDATE, DELETE, raising an error with THROW) that check the
+                  : mssql
+                  ? <>Those that are a foreign key in disguise are written as one. SQL Server has no CREATE ASSERTION, but it keeps an
+                    indexed view up to date in the statement that changes its tables, so an assertion that is a join that must stay
+                    empty (an exclusion, a value comparison) or a uniqueness over a join becomes a view with a unique index that refuses
+                    a breaking change (error 2601). It has no deferred triggers, so the others become triggers (AFTER INSERT, UPDATE, DELETE, raising an error with THROW) that check the
                     assertion after each statement, so an assertion that asks for rows in another table can only be met when both are
                     written in one statement, or with its triggers disabled while loading; or audit queries: commented queries that
                     return the rows breaking them.</>
@@ -107,6 +110,8 @@ function Dialog({ schemaId }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 6 }}>
                 {(oracle
                   ? [['triggers', 'Where Oracle cannot assert one, enforce it with triggers'], ['audit', 'Where Oracle cannot assert one, write an audit query (not enforced)']]
+                  : mssql
+                  ? [['triggers', 'Where SQL Server cannot check one with an indexed view, enforce it with triggers'], ['audit', 'Write them as audit queries (not enforced)']]
                   : [['triggers', 'Enforce them with triggers'], ['audit', 'Write them as audit queries (not enforced)']]).map(([m, text]) => (
                   <label key={m} style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--ink-1)', cursor: 'pointer' }}>
                     <input type="radio" name="ddl-assertions" checked={settings.assertions === m} onChange={() => setSql(schemaId, { assertions: m })} />{text}
@@ -122,7 +127,7 @@ function Dialog({ schemaId }) {
                           onChange={e => setSql(schemaId, { overrides: { [a.rmId]: e.target.value || null } })}
                           style={{ fontSize: 11, padding: '1px 3px', border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg-raised)', color: 'var(--ink-1)' }}>
                           <option value="">as chosen above ({defaultName})</option>
-                          <option value="trigger">{oracle ? 'assertion or trigger' : 'trigger'}</option>
+                          <option value="trigger">{oracle ? 'assertion or trigger' : mssql ? 'indexed view or trigger' : 'trigger'}</option>
                           <option value="audit">audit query</option>
                         </select>
                       : <span style={{ color: 'var(--ink-2)' }}>{techniqueName(a.technique)}</span>}

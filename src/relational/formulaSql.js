@@ -509,6 +509,82 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
     return { query: withs ? `${withs}\n${body}\nOPTION (MAXRECURSION 0)` : body, body, with: withs, deontic, tables: [...readTables] }
   }
 
+  // T-SQL: the violations as a query an indexed view can hold (rows of
+  // different tables joined, no subqueries, no recursion), for SQL Server to
+  // check declaratively. ∀x̄ (φ → ¬ψ) and ∀x̄ ¬(φ ∧ ψ) have no violations when
+  // φ ∧ ψ has no rows ({ kind: 'empty' }); ∀x̄ (φ → ∃^{≤1} ȳ ψ) has none when
+  // φ ∧ ψ has at most one ȳ for each x̄ ({ kind: 'unique', key, counted }:
+  // SQL text of x̄'s and ȳ's values, keyCols: their columns' fact ids).
+  // A row the conditions say is another row of the same table (by its key)
+  // is that row; a table read twice still is a self-join, which indexed views
+  // can't hold. → { kind, from: [{ table, alias }], where: [sql], … } | null
+  const indexedView = (f) => {
+    const saved = ctes.length, n0 = n
+    try {
+      subqueries = false
+      const body = f.body
+      let [ante, cons] = body.t === 'implies' ? [conjuncts(body.left), body.right]
+        : body.t === 'not' ? [conjuncts(body.arg), null] : [[], body]
+      ante = [...ante]
+      let vars = [...f.vars], counted = null
+      if (cons?.t === 'not') { ante.push(...conjuncts(cons.arg)); cons = null }
+      else if (cons?.t === 'count' && cons.op === '≤' && Number(cons.n) === 1) {
+        counted = cons.vars; vars.push(...cons.vars); ante.push(...conjuncts(cons.body)); cons = null
+      }
+      const b = bind(vars, ante, new Map())
+      const where = [...b.where.map(w => w.sql), ...b.rest.map(a => cond(a, b.env))]
+      if (cons) where.push(...splitAnd(negate(cond(cons, b.env))))
+      if (subqueries || ctes.length > saved) return null
+      const aliases = new Map([...b.env.values()].filter(x => x.row).map(x => [x.row, x.table]))
+      const colsOf = (vs) => vs.map(v => {
+        const x = b.env.get(v)
+        return x.sql != null ? (x.col ? { sql: x.sql, fact: x.col.fact.id } : null)
+          : (x.table.pk ?? []).map(c => ({ sql: colSql(x.row, c), fact: c.fact.id }))
+      })
+      const keyParts = counted ? colsOf(f.vars) : [], countedParts = counted ? colsOf(counted) : []
+      if ([...keyParts, ...countedParts].some(p => !p)) return null
+      let key = keyParts.flat(), cnt = countedParts.flat()
+      if (counted && (!key.length || !cnt.length)) return null
+      let conds = where.flatMap(splitAnd)
+      // Rows that are the same row: their keys are equal.
+      const REF = /\b([a-z]+\d+)\.(\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_]*)/g
+      for (let merged = true; merged;) {
+        merged = false
+        const parent = new Map()
+        const find = (x) => { while (parent.has(x)) x = parent.get(x); return x }
+        for (const c of conds) {
+          const m = c.match(/^([a-z]+\d+\.(?:\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_]*)) = ([a-z]+\d+\.(?:\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_]*))$/)
+          if (m && find(m[1]) !== find(m[2])) parent.set(find(m[1]), find(m[2]))
+        }
+        const list = [...aliases]
+        outer: for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+          const [a1, t1] = list[i], [a2, t2] = list[j]
+          if (t1 !== t2 || !t1.pk?.length) continue
+          if (!t1.pk.every(c => find(`${a1}.${q(c.name)}`) === find(`${a2}.${q(c.name)}`))) continue
+          const re = (s) => s.replace(REF, (all, a, col) => (a === a2 ? `${a1}.${col}` : all))
+          conds = [...new Set(conds.map(re))].filter(c => { const m = c.match(/^(\S+) = (\S+)$/); return !m || m[1] !== m[2] })
+          key = key.map(p => ({ ...p, sql: re(p.sql) })); cnt = cnt.map(p => ({ ...p, sql: re(p.sql) }))
+          aliases.delete(a2)
+          merged = true
+          break outer
+        }
+      }
+      const tables = [...aliases.values()]
+      if (new Set(tables).size < tables.length) return null
+      // A row counted that is the same as a row of the key: nothing to count.
+      const keySql = new Set(key.map(p => p.sql))
+      if (counted && cnt.every(p => keySql.has(p.sql))) return null
+      return {
+        kind: counted ? 'unique' : 'empty', from: [...aliases].map(([alias, table]) => ({ table, alias })),
+        where: conds.filter(c => c !== 'TRUE').map(c => tsqlBooleans(hasTop(c, 'OR') ? `(${c})` : c)), key: key.map(p => p.sql), counted: cnt.map(p => p.sql),
+        keyCols: [...new Set([...key, ...cnt].map(p => p.fact))],
+      }
+    } catch (e) {
+      if (e instanceof Unsupported) return null
+      throw e
+    } finally { ctes.length = saved; n = n0 }
+  }
+
   try {
     if (!f) no('there is no formula')
     // One row of one table: a CHECK.
@@ -544,7 +620,9 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
       })
       const text = `SELECT ${cols.length ? `DISTINCT ${cols.join(', ')}` : `'violated' AS violation`}`
         + (b.from.length ? `\nFROM ${b.from.join(', ')}` : '') + (where.length ? `\nWHERE ${where.map(w => (where.length > 1 && hasTop(w, 'OR') ? `(${w})` : w)).join('\n  AND ')}` : '')
-      return finish(text)
+      const done = finish(text)
+      if (tsql && !deontic) done.view = indexedView(f)
+      return done
     }
     const where = negate(cond(f, new Map()))
     return finish(`SELECT 'violated' AS violation\nWHERE ${where}`)

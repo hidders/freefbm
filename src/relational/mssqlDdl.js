@@ -7,6 +7,11 @@
 // SQL Server has neither CREATE ASSERTION nor deferred triggers, so an
 // assertion is
 //
+//   indexedView a view WITH SCHEMABINDING of the rows breaking it, joined with
+//              a table of two equal rows, with a unique clustered index, so
+//              it can hold no rows; or, for uniqueness over a join, a view
+//              grouped by the key and what is counted, with a unique index on
+//              the key. SQL Server checks it in the statement itself.
 //   trigger    a trigger per table the query reads, AFTER INSERT, UPDATE,
 //              DELETE (once per statement), that throws when the query finds
 //              a row breaking it; the statement is then rolled back.
@@ -135,10 +140,18 @@ function write(state, schemaId, plan) {
     for (const u of t.uniques) for (const c of u) keyCols.add(c.fact.id)
   }
   for (const fk of fks) for (const c of [...fk.from, ...fk.to]) keyCols.add(c.fact.id)
+  // … nor index them in a view.
+  const viewed = queries.filter(x => x.technique === 'indexedView')
+  for (const x of viewed) if (x.view.kind === 'unique') for (const id of x.view.keyCols) keyCols.add(id)
   const typeOf = (a, g) => sqlServerType(a, g)?.type ?? null
 
   const lines = ['-- SQL Server DDL (2022 or later) written by FreeFBM',
     '-- Run it with sqlcmd or SSMS: batches end with a line holding GO.', '']
+  // Indexed views need these settings when their tables and they are made,
+  // and in every session that changes those tables (the defaults of SSMS and
+  // of the ODBC, OLE DB and .NET drivers; sqlcmd needs -I).
+  if (viewed.length) lines.push('SET ANSI_NULLS, ANSI_PADDING, ANSI_WARNINGS, ARITHABORT, CONCAT_NULL_YIELDS_NULL, QUOTED_IDENTIFIER ON;',
+    'SET NUMERIC_ROUNDABORT OFF;', 'GO', '')
   const views = tableViews(state, model, typeOf)
   const storedName = (t) => { const v = views.get(t.id); return v?.kind === 'base' ? v.baseName : t.name }
   const filtered = [], shortened = []
@@ -225,7 +238,38 @@ function write(state, schemaId, plan) {
     for (const id of order) lines.push(views.get(id).view, 'GO', '')
   }
 
-  // Assertions: triggers and audit queries.
+  // Assertions: indexed views, triggers and audit queries.
+  // Unnamed assertions are numbered across views and triggers.
+  const unnamed = new Map([...viewed, ...queries.filter(x => x.technique === 'trigger')].filter(x => !snakeName(x.name)).map((x, i) => [x, `assertion_${i + 1}`]))
+  if (viewed.length) {
+    const two = viewed.some(x => x.view.kind === 'empty') ? fresh('freefbm_two_rows') : null
+    lines.push('-- Assertions, enforced by indexed views: SQL Server keeps each view up to date',
+      '-- in the statement that changes its tables, and the view\'s unique index refuses',
+      '-- a change that breaks the assertion.', '')
+    if (two) lines.push(`-- Two equal rows: a view that joins them holds each row breaking an assertion`,
+      '-- twice, which a unique index refuses.',
+      `CREATE TABLE ${q(two)} (one INT NOT NULL CHECK (one = 1));`, `INSERT INTO ${q(two)} (one) VALUES (1), (1);`, 'GO', '')
+    viewed.forEach((x) => {
+      const v = x.view
+      const name = fresh(snakeName(x.name) || unnamed.get(x))
+      const from = v.from.map(({ table, alias }) => `dbo.${q(storedName(table))} ${alias}`)
+      const where = v.where.length ? [`  WHERE ${v.where.join('\n    AND ')}`] : []
+      lines.push(`-- ${x.label}`, `--   ${x.text}`)
+      if (v.kind === 'empty') {
+        const body = ['  SELECT two.one', `  FROM ${[...from, `dbo.${q(two)} two`].join(', ')}`, ...where]
+        body[body.length - 1] += ';'
+        lines.push(`CREATE VIEW dbo.${q(name)} WITH SCHEMABINDING AS`, ...body, 'GO',
+          `CREATE UNIQUE CLUSTERED INDEX ${q(`${name}_none`)} ON dbo.${q(name)} (one);`, 'GO', '')
+      } else {
+        const ks = v.key.map((k, j) => `k${j + 1}`), cs = v.counted.map((c, j) => `c${j + 1}`)
+        lines.push(`CREATE VIEW dbo.${q(name)} WITH SCHEMABINDING AS`,
+          `  SELECT ${[...v.key.map((k, j) => `${k} AS ${ks[j]}`), ...v.counted.map((c, j) => `${c} AS ${cs[j]}`), 'COUNT_BIG(*) AS n'].join(', ')}`,
+          `  FROM ${from.join(', ')}`, ...where, `  GROUP BY ${[...v.key, ...v.counted].join(', ')};`, 'GO',
+          `CREATE UNIQUE CLUSTERED INDEX ${q(`${name}_rows`)} ON dbo.${q(name)} (${[...ks, ...cs].join(', ')});`,
+          `CREATE UNIQUE INDEX ${q(`${name}_once`)} ON dbo.${q(name)} (${ks.join(', ')});`, 'GO', '')
+      }
+    })
+  }
   const indent = (text, pad) => text.split('\n').map(l => `${pad}${l}`)
   const tsqlString = (s) => `N'${String(s).replace(/'/g, "''")}'`
   const triggerSql = (x, base, table) => {
@@ -246,8 +290,8 @@ function write(state, schemaId, plan) {
       '-- assertion reads runs its query and fails (THROW, rolling the statement back)',
       '-- when it finds a row breaking it. SQL Server has no deferred triggers, so the',
       '-- check is after each statement: insert rows in an order that keeps it true.', '')
-    triggered.forEach((x, i) => {
-      const base = snakeName(x.name) || `assertion_${i + 1}`
+    triggered.forEach((x) => {
+      const base = snakeName(x.name) || unnamed.get(x)
       lines.push(`-- ${x.label}`, `--   ${x.text}`)
       for (const t of onTables(x)) lines.push(triggerSql(x, base, t))
       lines.push('')
