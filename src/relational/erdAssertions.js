@@ -58,15 +58,45 @@ function uses(n, out = new Set(), seen = new Set()) {
 
 // The kind of an assertion object, with what its glyph shows.
 export function assertionKind(obj) {
-  let g = null
-  if (obj.tree) { try { g = asGraphical(formulaToRule(obj.tree)) } catch { g = null } }
+  let g = null, rule = null
+  if (obj.tree) { try { rule = formulaToRule(obj.tree); g = asGraphical(rule) } catch { g = null } }
   if (g) return { kind: g.constraintType, operator: g.operator ?? null, frequency: g.frequency ?? null }
   if (GRAPHICAL.has(obj.constraintType)) return { kind: obj.constraintType, operator: null, frequency: null }
   const u = uses(obj.tree)
   if (u.has('tc')) return { kind: 'ring', operator: null, frequency: null }
   if (u.has('agg')) return { kind: 'aggregate', operator: null, frequency: null }
   if (u.has('count')) return { kind: 'frequency', operator: null, frequency: null }
+  const shape = rule && looseShape(rule)
+  if (shape) return { kind: shape, operator: null, frequency: null }
   return { kind: 'formula', operator: null, frequency: null }
+}
+
+// Whether a part is positive existential (∃, ∧, fact and type atoms, ≈).
+function positive(n) {
+  switch (n?.t) {
+    case 'true': case 'fact': case 'type': return true
+    case 'exists': return positive(n.body)
+    case 'and': return n.args.every(positive)
+    case 'vcmp': return n.op === '≈'
+    default: return false
+  }
+}
+
+// The shape of a formula asGraphical does not take, as SQL assertions are
+// often written (rows rather than values quantified, joins as ≈):
+// ∀x̄ (L → R) or ∀x̄ R with L, R positive, "every … has a matching …", is an
+// inclusion; ∀x̄ (L → ¬R) or ∀x̄ ¬(L ∧ R) an exclusion.
+function looseShape(rule) {
+  let n = rule, k = 0
+  while (n?.t === 'forall') { n = n.body; k++ }
+  if (!k || !n) return null
+  if (n.t === 'implies' && positive(n.left)) {
+    if (positive(n.right)) return 'subset'
+    if (n.right?.t === 'not' && positive(n.right.arg)) return 'exclusion'
+  }
+  if (n.t === 'not' && n.arg?.t === 'and' && positive(n.arg)) return 'exclusion'
+  if (positive(n) && n.t !== 'fact' && n.t !== 'type') return 'subset'
+  return null
 }
 
 // The tables an assertion's formula reads, each constrained or referenced,

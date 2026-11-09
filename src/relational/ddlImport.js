@@ -21,7 +21,7 @@
 // (namespace) when there are several.
 
 import { parseDdl, tokenize, uniqueKey } from './ddlParse.js'
-import { checkToFormula, splitCheck } from './checkFormula.js'
+import { checkToFormula, assertionToFormula, splitCheck } from './checkFormula.js'
 import { relationalModel } from './relationalModel.js'
 import { findRefMode, findCompositePI, identifyingFactIds } from '../utils/refMode.js'
 import { mkEntity, mkValue, mkFact, mkUniqueness, withMandatoryId, mkConstraint, mkDiagram, mkOcc, uid } from '../store/storeHelpers.js'
@@ -512,6 +512,16 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
   const facts = []
   const constraints = []
   const factByKey = new Map()   // column key → fact
+  // CHECKs are read once every table has its columns, since a subquery may
+  // read other tables (tableFor) and a CHECK may call a SQL function.
+  const later = []
+  const funcs = parsed.functions ?? null
+  const tableFor = (name, schema) => {
+    const t = findTable(name, schema)
+    if (!t || !entityOf.has(t)) return null
+    const cols = new Map(t.columns.map(c => [c.name, { factId: factByKey.get(colKey(t, c.name))?.id, vtId: vtByKey.get(colKey(t, c.name))?.id }]))
+    return { name: entityOf.get(t).name, typeId: entityOf.get(t).id, columns: cols }
+  }
   const entityOf = new Map()    // table → entity type
   for (const t of tables) {
     const e = { ...mkEntity(0, 0), name: tableName(t), schemaId }
@@ -575,13 +585,13 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
       usedNames.add(name)
       return name
     }
-    for (const ch of otherChecks) {
+    for (const ch of otherChecks) later.push(() => {
       const what = ch.domain ? `the CHECK (${ch.text}) of domain ${ch.domain}` : `CHECK (${ch.text})`
       let restTexts = [ch.text]
       let k = 0
       if (!ch.domain) {
-        const sp = splitCheck(ch.text)
-        if (sp.error) { warn(`${ch.where}: ${what} is left out: ${sp.error} is not read yet`); continue }
+        const sp = splitCheck(ch.text, funcs)
+        if (sp.error) { warn(`${ch.where}: ${what} is left out: ${sp.error} is not read yet`); return }
         for (const cmp of sp.comparisons) {
           const a = columns.get(cmp.left), b = columns.get(cmp.right)
           if (!a || !b) { sp.rest.push(cmp.text); continue }
@@ -599,13 +609,22 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
             note(`${ch.where}: ${text} is read as a value range of ${r.column}`)
           } else restTexts.push(text)
         }
-        if (!restTexts.length) continue
+        if (!restTexts.length) return
       }
       const text = restTexts.length === 1 ? restTexts[0] : restTexts.map(x => (wrapped(x) ? x : `(${x})`)).join(' AND ')
       const cols = ch.domain ? new Map([...columns, ['value', columns.get(ch.column)]]) : columns
-      const res = checkToFormula(text, cols, e.id)
-      if (res.error) { warn(`${ch.where}: ${what} is left out: ${res.error} is not read yet`); continue }
+      const res = checkToFormula(text, cols, e.id, { table: t.name, tables: tableFor, funcs })
+      if (res.error) { warn(`${ch.where}: ${what} is left out: ${res.error} is not read yet`); return }
       const name = nameFor(ch, k, ch.column ?? res.columns.find(n => n !== 'value'))
+      if (res.tables.length) {
+        // A CHECK that reads other tables (a subquery, or a SQL function that
+        // has one) is an assertion: PostgreSQL does not run such CHECKs, so
+        // the export writes it as one (constraint triggers).
+        constraints.push({ ...mkConstraint('formula', 0, 0), schemaId, name, rule: res.rule,
+          sqlSource: { kind: 'check', table: e.name, text }, _table: t })
+        note(`${ch.where}: ${text === ch.text ? what : `CHECK (${text})`} reads ${res.tables.join(', ')}, so it is read as the assertion ${name}`)
+        return
+      }
       // The SQL text is kept for the export, with the column of each name
       // (renamed columns are renamed in the text) and the formula as read
       // (an edited formula is no longer this CHECK).
@@ -614,7 +633,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
       constraints.push({ ...mkConstraint('formula', 0, 0), schemaId, name, rule: res.rule,
         sqlCheck: { text: sqlText, columns: sqlColumns, rule: JSON.stringify(res.rule) }, _table: t })
       note(`${ch.where}: ${text === ch.text ? what : `CHECK (${text})`} is read as the formula constraint ${name}`)
-    }
+    })
     // Composite keys: external uniqueness over the value roles.
     const composite = [...(pk.length > 1 ? [{ cols: pk, preferred: true }] : []),
       ...t.uniques.filter(u => u.length > 1 && !(u.length === pk.length && u.every(c => pk.includes(c)))).map(cols => ({ cols, preferred: false }))]
@@ -628,6 +647,18 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
     }
     // Columns of a single-column primary key or unique constraint are not repeated in uniques.
     for (const u of t.uniques) if (u.some(c => !colInfo.has(colKey(t, c)))) warn(`${e.name}: UNIQUE (${u.join(', ')}) names unknown columns and is left out`)
+  }
+  for (const f of later) f()
+
+  // CREATE ASSERTION: a formula constraint over the tables it reads (written
+  // back as an assertion by the export).
+  const tableOfName = new Map([...entityOf].map(([t, e]) => [e.name, t]))
+  for (const a of parsed.assertions ?? []) {
+    const res = assertionToFormula(a.text, { tables: tableFor, funcs })
+    if (res.error) { warn(`Assertion ${a.name} is left out: ${res.error} is not read yet`); continue }
+    constraints.push({ ...mkConstraint('formula', 0, 0), schemaId, name: a.name, rule: res.rule,
+      sqlSource: { kind: 'assertion', text: a.text }, _table: tableOfName.get(res.tables[0]) ?? null })
+    note(`Assertion ${a.name} is read as a formula constraint over ${res.tables.join(', ') || 'no table'}`)
   }
 
   // Foreign keys: subset constraints.

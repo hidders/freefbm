@@ -207,6 +207,8 @@ function AssertionAbout({ o, view, link }) {
     <Section title="Origin">
       {from
         ? <Line>Carried from {from.text ? <Code>{from.text}</Code> : 'a constraint'}{fromSchema ? <> of {fromSchema.name}</> : null}{fromMapping ? <> through the mapping {fromMapping.name}</> : null}</Line>
+        : c?.sqlSource?.kind === 'assertion' ? <Line>Read from the CREATE ASSERTION of an imported script: <Code>CHECK ({c.sqlSource.text})</Code></Line>
+        : c?.sqlSource?.kind === 'check' ? <Line>Read from a CHECK of {c.sqlSource.table} in an imported script that reads other tables: <Code>CHECK ({c.sqlSource.text})</Code></Line>
         : c?.sqlCheck ? <Line>Read from the CHECK <Code>{c.sqlCheck.text}</Code> of an imported script</Line>
         : <Line muted>Not recorded: added in this schema, or carried before origins were kept</Line>}
     </Section>
