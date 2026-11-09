@@ -20,7 +20,7 @@ function getEntityRefLabel(ot) {
   if (!rm) return null
   const vt = s.objectTypes.find(o => o.id === rm.vtId)
   if (!vt) return null
-  return refModeLabel(ot.name, vt.name, ot.refModeName)
+  return refModeLabel(ot.name, vt.name, ot)
 }
 
 // For an entity occurrence whose reference mode is collapsed in the active diagram,

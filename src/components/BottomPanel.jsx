@@ -1652,7 +1652,7 @@ function ObjectTypePopulation({ ot }) {
   // e.g., Employee subtype of Person with VT "PersonId" shows column ".id"
   // rather than the literal "PersonId".
   const labelEntityName = inheritedRefSupertype ? inheritedRefSupertype.name : ot.name
-  const columnLabel = isEntity ? refModeLabel(labelEntityName, refVt.name, inheritedRefSupertype ? inheritedRefSupertype.refModeName : ot.refModeName) : (ot.name || 'value')
+  const columnLabel = isEntity ? refModeLabel(labelEntityName, refVt.name, inheritedRefSupertype ?? ot) : (ot.name || 'value')
   const typeKind = isEntity ? null : typeKindFromOt(ot)
   const isBoolean = typeKind === 'boolean'
   // Index population issues for this OT by instance index (any issue that points
@@ -1756,7 +1756,7 @@ function DerivedSubtypePopulation({ ot, semi = false }) {
   const missing = semi && !result.error ? result.instances.filter(c => !stored.keys.has(ev.keyOf(c))) : []
   const inh = findInheritedPI(ot, store.facts, store.objectTypes, store.subtypes, store.constraints)
   const columnLabel = inh?.kind === 'refMode'
-    ? refModeLabel(inh.supertype.name, store.objectTypes.find(o => o.id === inh.refMode.vtId)?.name ?? '', inh.supertype.refModeName)
+    ? refModeLabel(inh.supertype.name, store.objectTypes.find(o => o.id === inh.refMode.vtId)?.name ?? '', inh.supertype)
     : 'identifier'
   const pick = () => store.select(ot.id, 'entity')
   return (

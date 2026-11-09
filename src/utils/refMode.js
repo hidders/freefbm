@@ -96,11 +96,18 @@ export function playerName(player) {
 //   refModeLabel('Employee', 'EmployeeCode') === '.code'
 //   refModeLabel('Employee', 'Code')         === 'Code'
 //   refModeLabel('Family', 'Family Name')    === '.name'   (a separator after the entity name is dropped)
-// refModeName is the entity's own name of its reference mode (`ot.refModeName`, as
-// typed or as a NORMA import gives it); it is shown as written when the value type's
-// suffix is that name:
-//   refModeLabel('Diplomat', 'DiplomatName', 'Name') === '.Name'
-export function refModeLabel(entityName, vtName, refModeName) {
+// owner is the entity type (or objectified fact type): its refModeName is its own
+// name of its reference mode (as typed or as a NORMA import gives it), shown as
+// written when the value type's suffix is that name, and refModeKind 'unit' marks
+// a unit-based reference mode, shown as 'kg:' (value type kgValue), and 'general'
+// one shown as its value type's name:
+//   refModeLabel('Diplomat', 'DiplomatName', { refModeName: 'Name' }) === '.Name'
+//   refModeLabel('Mass', 'kgValue', { refModeName: 'kg', refModeKind: 'unit' }) === 'kg:'
+export function refModeLabel(entityName, vtName, owner) {
+  const refModeName = owner?.refModeName
+  if (refModeName && owner.refModeKind === 'unit') return refModeName + ':'
+  // a general reference mode is its value type ('CapabilityType_#', 'ISBN')
+  if (owner?.refModeKind === 'general' && vtName) return vtName
   if (!entityName || !vtName) return vtName ?? ''
   if (vtName.length > entityName.length && vtName.startsWith(entityName)) {
     const suffix = vtName.slice(entityName.length).replace(/^[\s_-]+/, '')
@@ -123,8 +130,10 @@ export function refModeSeparator(entityName, vtName) {
 //   vtNameFromLabel('Employee', '.code') === 'EmployeeCode'
 //   vtNameFromLabel('Employee', 'Code')  === 'Code'
 //   vtNameFromLabel('Family', '.Name', ' ') === 'Family Name'
+//   vtNameFromLabel('Mass', 'kg:')       === 'kgValue'   (a unit-based reference mode)
 export function vtNameFromLabel(entityName, label, separator = '') {
   if (!label) return ''
+  if (label.length > 1 && label.endsWith(':')) return label.slice(0, -1) + 'Value'
   if (label.startsWith('.')) {
     const suffix = label.slice(1)
     if (!suffix) return label  // bare '.' is not a complete label yet; don't expand to entity name
@@ -400,7 +409,7 @@ export function getEntityIdentifierShape(entity, facts, objectTypes, subtypes, c
         ownedBy: entity.id,
         factId: rm.factId,
         columns: [{
-          label: refModeLabel(entity.objectifiedName || entity.name || '', vt?.name || '', entity.refModeName),
+          label: refModeLabel(entity.objectifiedName || entity.name || '', vt?.name || '', entity),
           playerOtId: rm.vtId,
         }],
       }
@@ -451,7 +460,7 @@ export function getEntityIdentifierShape(entity, facts, objectTypes, subtypes, c
       ownedBy: entity.id,
       factId: rm.factId,
       columns: [{
-        label: refModeLabel(entity.name, vt?.name || '', entity.refModeName),
+        label: refModeLabel(entity.name, vt?.name || '', entity),
         playerOtId: rm.vtId,
       }],
     }
