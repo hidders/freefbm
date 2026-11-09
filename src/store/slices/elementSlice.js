@@ -203,12 +203,22 @@ export function createElementSlice(set, get) {
       const current = findRefMode(entity, s.facts, s.objectTypes)
 
       // The ref mode's own name as typed ('.code' → 'code'), shown as written
-      const refModeName = trimmed.startsWith('.') && trimmed.length > 1 ? trimmed.slice(1) : null
-      const withName = (state, patch) => (entity.refModeName ?? null) === refModeName ? patch : {
-        ...patch,
-        objectTypes: (patch.objectTypes ?? state.objectTypes).map(o => o.id !== entityId ? o
-          : refModeName ? { ...o, refModeName } : (({ refModeName: _, ...rest }) => rest)(o)),
-      }
+      // ('kg:' is a unit-based reference mode kg, its value type kgValue; a name
+      // without a dot, 'ISBN', a general one, the value type itself)
+      const unit = trimmed.length > 1 && trimmed.endsWith(':')
+      const general = !unit && trimmed !== '' && !trimmed.startsWith('.')
+      const refModeName = unit ? trimmed.slice(0, -1) : general ? trimmed
+        : trimmed.startsWith('.') && trimmed.length > 1 ? trimmed.slice(1) : null
+      const refModeKind = unit ? 'unit' : general ? 'general' : null
+      const withName = (state, patch) =>
+        (entity.refModeName ?? null) === refModeName && (entity.refModeKind ?? null) === refModeKind ? patch : {
+          ...patch,
+          objectTypes: (patch.objectTypes ?? state.objectTypes).map(o => {
+            if (o.id !== entityId) return o
+            const { refModeName: _n, refModeKind: _k, ...rest } = o
+            return { ...rest, ...(refModeName && { refModeName }), ...(refModeKind && { refModeKind }) }
+          }),
+        }
 
       if (trimmed === '') {
         if (!current) return

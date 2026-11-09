@@ -36,6 +36,7 @@ import { narrowestNoteWidth, fittingNoteHeight } from '../components/NoteNode.js
 import { getDatatypeById } from '../data/datatypeProfiles.js'
 import { makePathTranslator, closeLinearRecursion } from './normaPaths.js'
 import { addImportNote } from '../utils/importNotes.js'
+import { findRefMode } from '../utils/refMode.js'
 import { VALUE_KINDS, valueKindName } from '../utils/datatypeValues.js'
 import { normaTemporal } from './normaTemporal.js'
 import { placeLabel, factLabelBox, readingLabelSize, rangeLabelSize, nameLabelSize, objectTypeLabelBox,
@@ -1341,9 +1342,28 @@ export function importNorma(xmlText) {
     for (const c of constraints) if (c.queries) check(c, c.queries)
   }
 
+  // ── reference mode kinds ─────────────────────────────────────────────────
+  // NORMA names a reference mode's value type by its kind's format string
+  // ({0} the entity type, {1} the mode). A custom mode names its kind; for a
+  // built-in mode the kind is the one whose format gives a value type of the
+  // model. Unit-based modes are shown as (kg:), general ones by the value type.
+  const modeKinds = new Map(kids(kid(model, 'ReferenceModeKinds'), 'ReferenceModeKind').map(k =>
+    [attr(k, 'id'), { type: attr(k, 'ReferenceModeType'), format: attr(k, 'FormatString') ?? '' }]))
+  const customModes = kids(kid(model, 'CustomReferenceModes'), 'CustomReferenceMode')
+  const customKind = new Map(customModes.map(m => [attr(m, 'Name'), modeKinds.get(attr(kid(m, 'Kind'), 'ref'))]))
+  const KIND = { UnitBased: 'unit', General: 'general' }
+  for (const ot of objectTypes) {
+    if (!ot.refModeName) continue
+    const rm = findRefMode(ot, facts, objectTypes)
+    const vtName = rm && otById.get(rm.vtId)?.name
+    const fill = k => k.format.replace(/\{0\}/g, ot.name).replace(/\{1\}/g, ot.refModeName)
+    const kind = customKind.get(ot.refModeName) ?? [...modeKinds.values()].find(k => vtName && fill(k) === vtName)
+    if (KIND[kind?.type]) ot.refModeKind = KIND[kind.type]
+  }
+
   // ── log ───────────────────────────────────────────────────────────────────
   const unused = (n, what) => n ? [`${n} ${what}`] : []
-  const crm = kids(kid(model, 'CustomReferenceModes')).length
+  const crm = customModes.length
   log.unshift({ level: 'note', text: `Imported ${objectTypes.length} object types, ${facts.length} fact types (${facts.filter(f => f.objectified).length} objectified), ${subtypes.length} subtype links, ${constraints.length} external constraints, ${groups.length} groups, ${propertyDefinitions.length} custom property definitions and ${diagrams.length} diagrams.` })
   if (counts.negatableUnaries) note(`${counts.negatableUnaries} unar${counts.negatableUnaries === 1 ? 'y is' : 'ies are'} paired with a negation in NORMA (true, false or unknown); each pair is kept as two unaries under the closed-world assumption ("is known to …", "is known not to …") with the exclusion NORMA gives them; see their import notes.`)
   const nImportNotes = [...objectTypes, ...facts, ...subtypes, ...constraints].reduce((n, el) => n + (el.importNotes?.length ?? 0), 0)
@@ -1363,7 +1383,7 @@ export function importNorma(xmlText) {
   if (counts.addedPlayers) note(`${counts.addedPlayers} object type shapes were added next to fact types whose players NORMA did not draw on that diagram.`)
   if (unplaced) note(`${unplaced} model notes had no shape and no element; they are on the “Imported notes” diagram.`)
   if (counts.groupMembersDropped) note(`${counts.groupMembersDropped} group members (internal constraints and similar) have no FreeFBM counterpart and were left out of their groups.`)
-  if (crm) note(`${crm} custom reference modes: the reference mode pattern is imported; NORMA's reference mode kinds and format strings are not.`)
+  if (crm) note(`${crm} reference mode${crm === 1 ? ' is' : 's are'} defined in the model (${customModes.map(m => attr(m, 'Name')).join(', ')}): each is imported as a value type with its identifying fact type, named as NORMA named it.`)
   const phrases = kids(kid(model, 'RecognizedPhrases')).length
   if (phrases) note(`${phrases} recognised phrases (used by NORMA for relational names) were not imported.`)
 
