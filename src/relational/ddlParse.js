@@ -243,6 +243,100 @@ function tsqlStatements(tokens) {
   return out
 }
 
+// SQL Server: the indexed views FreeFBM's export writes for assertions
+// (mssqlDdl.js), from the tokens after CREATE VIEW name.
+//   empty    SELECT two.one FROM t1 a1, …, freefbm_two_rows two WHERE w
+//            (its unique index on one lets it hold no rows): the assertion
+//            NOT EXISTS (query) with query SELECT 1 FROM t1 a1, … WHERE w
+//   unique   SELECT k AS k1, …, c AS c1, …, COUNT_BIG(*) AS n FROM … WHERE w
+//            GROUP BY … (a unique index on k1, … says that a key has one c):
+//            twice is a query of two rows with the same key and another c
+// → { kind: 'empty', query } | { kind: 'unique', key: [{ alias }], twice } | null
+const TWO_ROWS = /^freefbm_two_rows(_\d+)?$/i
+const word = (v) => ({ t: 'id', v: v.toLowerCase(), raw: v })
+function readIndexedView(tokens0, pkOf = () => null) {
+  const tks = tokens0.filter(t => t.t !== 'semi')
+  let i = 0
+  const isW = (t, w) => t?.t === 'id' && t.v === w
+  if (isW(tks[i], 'with')) { i++; while (tks[i] && !isW(tks[i], 'as')) i++ }
+  if (!isW(tks[i], 'as') || !isW(tks[i + 1], 'select')) return null
+  i += 2
+  // Clauses at depth 0.
+  const parts = { select: [] }
+  let cur = parts.select, depth = 0
+  for (; i < tks.length; i++) {
+    const t = tks[i]
+    if (t.t === 'op' && t.v === '(') depth++
+    if (t.t === 'op' && t.v === ')') depth--
+    if (!depth && t.t === 'id' && ['from', 'where', 'group'].includes(t.v)) {
+      cur = parts[t.v] = []
+      if (t.v === 'group' && isW(tks[i + 1], 'by')) i++
+      continue
+    }
+    cur.push(t)
+  }
+  if (!parts.from) return null
+  const items = splitCommas(parts.from).map(it => {
+    const ids = it.filter(t => t.t === 'id' || t.t === 'qid')
+    const name = ids.length >= 2 ? ids[ids.length - 2] : ids[0]
+    const alias = ids.length >= 2 ? ids[ids.length - 1] : null
+    // dbo.t a: t a (dbo is the default namespace).
+    const own = it.length > 2 && it[1]?.t === 'op' && it[1].v === '.' && String(nm(it[0])).toLowerCase() === 'dbo' ? it.slice(2) : it
+    return { name: name ? String(nm(name)) : '', alias: alias ? String(nm(alias)) : null, tokens: own }
+  })
+  const where = parts.where ?? []
+  const comma = { t: 'op', v: ',', raw: ',' }
+  const fromTokens = (list) => list.flatMap((it, k) => (k ? [comma, ...it.tokens] : it.tokens))
+  const query = (list, conds) => `SELECT 1 FROM ${conditionText(fromTokens(list))}${conds.length ? ` WHERE ${conds.join(' AND ')}` : ''}`
+  const two = items.find(it => TWO_ROWS.test(it.name))
+  if (two) {
+    const rest = items.filter(it => it !== two)
+    if (!rest.length) return null
+    return { kind: 'empty', query: query(rest, where.length ? [conditionText(where)] : []) }
+  }
+  if (!parts.group) return null
+  // k AS kN, c AS cN, COUNT_BIG(*) AS n
+  const sel = splitCommas(parts.select).map(p => {
+    const a = p.length >= 3 && isW(p[p.length - 2], 'as') ? String(nm(p[p.length - 1])) : null
+    return a && { alias: a, expr: p.slice(0, -2) }
+  })
+  if (sel.some(x => !x)) return null
+  const key = sel.filter(x => /^k\d+$/i.test(x.alias)), counted = sel.filter(x => /^c\d+$/i.test(x.alias))
+  if (!key.length || !counted.length) return null
+  // The same query again, its aliases renamed, for the second row.
+  const aliases = new Set(items.map(it => it.alias?.toLowerCase()).filter(Boolean))
+  const renamed = (ts) => ts.map((t, k) => ((t.t === 'id' || t.t === 'qid') && aliases.has(String(nm(t)).toLowerCase())
+    && (ts[k + 1]?.v === '.' || k === ts.length - 1) ? word(`${nm(t)}_2`) : t))
+  const items2 = items.map(it => ({ ...it, tokens: renamed(it.tokens) }))
+  // When what is counted is rows (their keys), as a count of them for each
+  // key, which reads back as the counting quantifier it was written from:
+  // SELECT 1 FROM key rows WHERE (SELECT COUNT(*) FROM counted rows WHERE
+  // EXISTS (SELECT 1 FROM the others WHERE w AND same key)) > 1.
+  const ref = (ts) => (ts.length === 3 && ts[1].v === '.' ? { alias: String(nm(ts[0])).toLowerCase(), col: String(nm(ts[2])).toLowerCase() } : null)
+  const cRefs = counted.map(c => ref(c.expr)), kRefs = key.map(k => ref(k.expr))
+  const byAlias = new Map(items.filter(it => it.alias).map(it => [it.alias.toLowerCase(), it]))
+  const cAliases = new Set(cRefs.map(r => r?.alias))
+  const rows = cRefs.every(Boolean) && kRefs.every(Boolean) && [...cAliases].every(a => {
+    const pk = byAlias.get(a) && pkOf(byAlias.get(a).name)
+    const cols = cRefs.filter(r => r.alias === a).map(r => r.col)
+    return pk?.length === cols.length && pk.every(c => cols.includes(c.toLowerCase()))
+  }) && kRefs.every(r => !cAliases.has(r.alias))
+  if (rows) {
+    const kAliases = new Set(kRefs.map(r => r.alias))
+    const ks = items.filter(it => kAliases.has(it.alias?.toLowerCase()))
+    const cs = items2.filter((it, k) => cAliases.has(items[k].alias?.toLowerCase()))
+    const os = items2.filter((it, k) => !cAliases.has(items[k].alias?.toLowerCase()))
+    const inner = [...(where.length ? [`(${conditionText(renamed(where))})`] : []),
+      ...key.map(k => `${conditionText(renamed(k.expr))} = ${conditionText(k.expr)}`)]
+    return { kind: 'unique', key,
+      twice: `SELECT 1 FROM ${conditionText(fromTokens(ks))} WHERE (SELECT COUNT(*) FROM ${conditionText(fromTokens(cs))} WHERE EXISTS (${query(os, inner)})) > 1` }
+  }
+  const conds = [...(where.length ? [`(${conditionText(where)})`, `(${conditionText(renamed(where))})`] : []),
+    ...key.map(k => `${conditionText(k.expr)} = ${conditionText(renamed(k.expr))}`),
+    `(${counted.map(c => `${conditionText(c.expr)} <> ${conditionText(renamed(c.expr))}`).join(' OR ')})`]
+  return { kind: 'unique', key, twice: query([...items, ...items2], conds) }
+}
+
 // Which SQL dialect a script is written in: 'sqlserver' when it has T-SQL's
 // GO lines, [names] or types, 'oracle' when it uses Oracle's types or
 // SQL*Plus's / lines, else 'postgresql'.
@@ -381,6 +475,10 @@ function parseScript(sql0, dialect, oracle) {
   const findTable = (q) => tables.get(keyOf(q)) ?? [...tables.values()].find(t => ci(t.name) === ci(q.name) && (!q.schema || ci(t.schema) === ci(q.schema)))
 
   let dateFormat = null   // SQL Server: SET DATEFORMAT dmy | mdy | …
+  // SQL Server: indexed views FreeFBM's export writes for assertions, by
+  // name: { kind: 'empty' } (read already) | { kind: 'unique', … } (read
+  // with the unique index on its key).
+  const indexedViews = new Map()
   const partitions = new Set()
   const seqTriggers = []   // Oracle: [table, column] a BEFORE INSERT trigger fills from a sequence
   const handle = (tokens, defSchema) => {
@@ -465,6 +563,17 @@ function parseScript(sql0, dialect, oracle) {
           const g = s.group()
           const cols = g && splitCommas(g).every(p => p.length === 1 && (p[0].t === 'id' || p[0].t === 'qid')) ? nameList(g) : null
           let rest = s.tk.slice(s.i)
+          const iv = tsql && q && indexedViews.get(ci(q.name))
+          if (iv) {
+            // The unique index on the key of a uniqueness view: the assertion
+            // that no key has two rows (the view's other indexes say nothing).
+            const ks = iv.key?.map(k => k.alias.toLowerCase())
+            if (iv.kind === 'unique' && cols && cols.length === ks.length && cols.every(c => ks.includes(c.toLowerCase()))) {
+              const text = `NOT EXISTS (${iv.twice})`
+              if (!assertions.some(a => a.name === q.name || a.text === text)) assertions.push({ name: q.name, text })
+            }
+            return
+          }
           const t = q && findTable(q)
           // WHERE c IS NOT NULL AND … over key columns only leaves out the
           // rows that standard SQL's UNIQUE does not compare: the same key
@@ -522,6 +631,18 @@ function parseScript(sql0, dialect, oracle) {
             if (best) seqTriggers.push([q, best.col])
           }
           skip('CREATE TRIGGER')
+          return
+        }
+        // SQL Server: an indexed view FreeFBM's export writes for an assertion.
+        if (tsql && s.eatWord('view')) {
+          const vq = s.qname()
+          const v = vq && readIndexedView(s.tk.slice(s.i), (name) => findTable({ name })?.primaryKey ?? null)
+          if (v?.kind === 'empty') {
+            const text = `NOT EXISTS (${v.query})`
+            if (!assertions.some(a => a.name === vq.name || a.text === text)) assertions.push({ name: vq.name, text })
+          }
+          if (v) { indexedViews.set(ci(vq.name), v); skip('CREATE VIEW (an indexed view, read as the assertion it checks)'); return }
+          skip('CREATE VIEW')
           return
         }
         // SQL Server: a trigger that throws when a violation query has rows
@@ -699,7 +820,15 @@ function parseScript(sql0, dialect, oracle) {
       }
     }
   }
-  if (tsql) caseFold([...tables.values()], inserts, domains)
+  if (tsql) {
+    // The table of two equal rows that FreeFBM's indexed views join with.
+    if ([...indexedViews.values()].some(v => v.kind === 'empty'))
+      for (const [k, t] of tables) if (TWO_ROWS.test(t.name)) {
+        tables.delete(k)
+        for (let i = inserts.length - 1; i >= 0; i--) if (TWO_ROWS.test(inserts[i].table?.name ?? '')) inserts.splice(i, 1)
+      }
+    caseFold([...tables.values()], inserts, domains)
+  }
   // Partitions of a partitioned table hold its rows; they are not tables of their own.
   for (const k of partitions) if (tables.delete(k)) skip('partition (ALTER TABLE ... ATTACH PARTITION)')
   for (const c of copies) {
