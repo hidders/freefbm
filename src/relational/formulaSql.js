@@ -22,9 +22,15 @@
 //   and names(Var) → a display name for a column of the query's result;
 //   qualify(table) → the table's name as written in FROM (default: quoted).
 
-import { quoteIdent, sqlDialect } from './sqlNames.js'
+import { quoteIdent, sqlDialect, tsqlBooleans } from './sqlNames.js'
 import { makeContext, constraintEntries } from '../logic/constraintFormulas.js'
 import { renderFormula, formulaToString } from '../logic/renderFormula.js'
+import { valueKindName } from '../utils/datatypeValues.js'
+
+// A column of text: a constant compared with it is a string, even when it
+// looks like a number ('0736').
+const isText = (col) => valueKindName(col?.vt?.datatypeAssignment) === 'string'
+const quoted = (text) => `'${String(text).replace(/'/g, "''")}'`
 
 class Unsupported extends Error {}
 const no = (what) => { throw new Unsupported(what) }
@@ -123,6 +129,57 @@ const distinctSql = (a, b, distinct = true) => (sqlDialect() === 'oracle'
 // Oracle's names for some data operators and casts (the rest are the same).
 const ORACLE_CASTS = { asInteger: 'NUMBER(19)', asDecimal: 'NUMBER', asFloat: 'BINARY_DOUBLE', asBoolean: 'BOOLEAN', asDate: 'DATE', asDatetime: 'TIMESTAMP' }
 const ORACLE_FUNC = { ceiling: 'ceil', truncate: 'trunc' }
+// A regular expression as a T-SQL LIKE pattern, or null: ^ and $ at the
+// ends, and in between only literal characters, . (any one), .* (any run)
+// and [classes] (T-SQL's LIKE has them).
+export function regexToLike(re) {
+  const m = /^\^(.*)\$$/s.exec(re)
+  if (!m) return null
+  let out = ''
+  const body = m[1]
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i]
+    if (c === '.' && body[i + 1] === '*') { out += '%'; i++; continue }
+    if (c === '.') { out += '_'; continue }
+    if (c === '[') {
+      const j = body.indexOf(']', i + 2)
+      if (j < 0) return null
+      const cls = body.slice(i, j + 1)
+      if (/\\/.test(cls)) return null
+      out += cls.replace(/^\[\^/, '[^')
+      i = j
+      continue
+    }
+    if (c === '\\') { const d = body[++i]; if (d == null || /[A-Za-z0-9]/.test(d)) return null; out += /[%_[]/.test(d) ? `[${d}]` : d; continue }
+    if (/[*+?(){}|^$]/.test(c)) return null
+    out += /[%_]/.test(c) ? `[${c}]` : c
+  }
+  return out
+}
+
+// T-SQL's (SQL Server 2022): casts, and the functions named or used otherwise.
+const TSQL_CASTS = { asInteger: 'BIGINT', asDecimal: 'DECIMAL(38, 10)', asFloat: 'FLOAT', asBoolean: 'BIT', asDate: 'DATE', asDatetime: 'DATETIME2', asTime: 'TIME' }
+const TSQL_DATEPART = { year: 'YEAR', month: 'MONTH', day: 'DAY', hour: 'HOUR', minute: 'MINUTE', second: 'SECOND' }
+function tsqlTerm(op, args) {
+  const [a, b] = args
+  switch (op) {
+    case 'concat': return `CONCAT(${args.join(', ')})`
+    case 'toText': return `CAST(${a} AS NVARCHAR(MAX))`
+    case 'round': return `ROUND(${a}, ${b ?? 0})`
+    case 'roundInt': return `ROUND(${a}, 0)`
+    case 'truncate': return `ROUND(${a}, ${b ?? 0}, 1)`
+    case 'length': return `LEN(${a})`
+    case 'substring': return `SUBSTRING(${a}, ${b}, ${args[2] ?? `LEN(${a})`})`
+    case 'mod': return `(${a} % ${b})`
+    case 'idiv': return `ROUND(${a} / ${b}, 0, 1)`
+    case 'makeDate': return `DATEFROMPARTS(${args.join(', ')})`
+    // ISO day of the week (Monday 1), whatever DATEFIRST is.
+    case 'dayOfWeek': return `((DATEPART(WEEKDAY, ${a}) + @@DATEFIRST + 5) % 7 + 1)`
+  }
+  if (TSQL_CASTS[op]) return `CAST(${a} AS ${TSQL_CASTS[op]})`
+  if (TSQL_DATEPART[op]) return `DATEPART(${TSQL_DATEPART[op]}, ${a})`
+  return null
+}
 
 // Data operators (dataOperators.js OPS) in PostgreSQL.
 const INFIX = { add: '+', sub: '-', mul: '*', div: '/', concat: '||' }
@@ -153,6 +210,8 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
   f = merged(f)
   let n = 0
   let subqueries = false
+  // T-SQL: recursive WITH queries, written at the top of the query.
+  const ctes = []
 
   // env: Var → { row: alias (null: the row of a CHECK), table } | { sql }
   const valueOf = (env, v) => {
@@ -170,12 +229,13 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
     return conj(ka.map((k, i) => `${k} = ${kb[i]}`))
   }
 
-  const term = (t, env) => {
+  const term = (t, env, text = false) => {
     if (t && !t.t) return valueOf(env, t)
     switch (t?.t) {
-      case 'const': return literal(t.text)
+      case 'const': return text ? quoted(t.text) : literal(t.text)
       case 'fn': {
         const args = t.args.map(a => term(a, env))
+        if (sqlDialect() === 'sqlserver') { const x = tsqlTerm(t.op, args); if (x) return x }
         if (INFIX[t.op]) return args.map(paren).join(` ${INFIX[t.op]} `)
         if (t.op === 'neg') return `-${paren(args[0])}`
         if (sqlDialect() === 'oracle') {
@@ -196,8 +256,8 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
       case 'ite': return `CASE WHEN ${cond(t.cond, env)} THEN ${term(t.then, env)} ELSE ${term(t.else, env)} END`
       case 'agg': {
         const b = bind(t.vars, conjuncts(t.cond), env, false)
-        if (t.fn === 'count' && sqlDialect() === 'oracle' && t.vars.flatMap(v => partsOf(v, b.env)).length > 1)
-          return `(SELECT COUNT(*) FROM (${select(`DISTINCT ${t.vars.flatMap(v => partsOf(v, b.env)).join(', ')}`, b)}))`
+        if (t.fn === 'count' && sqlDialect() !== 'postgresql' && t.vars.flatMap(v => partsOf(v, b.env)).length > 1)
+          return countRows(t.vars.flatMap(v => partsOf(v, b.env)), b)
         const what = t.fn === 'count' ? `COUNT(DISTINCT ${tupleOf(t.vars, b.env)})`
           : `${t.fn.toUpperCase()}(${t.distinct ? 'DISTINCT ' : ''}${term(t.term, b.env)})`
         return `(${select(what, b)})`
@@ -211,6 +271,11 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
     const parts = vars.flatMap(v => { const b = env.get(v); return b.sql != null ? [b.sql] : keyOf(b) })
     return parts.length === 1 ? parts[0] : `(${parts.join(', ')})`
   }
+  // COUNT(DISTINCT (a, b)) is PostgreSQL's: elsewhere the distinct rows of a
+  // subquery are counted (T-SQL wants names for a derived table and its columns).
+  const countRows = (parts, b) => (sqlDialect() === 'sqlserver'
+    ? `(SELECT COUNT(*) FROM (${select(`DISTINCT ${parts.map((p, i) => `${p} AS c${i + 1}`).join(', ')}`, b)}) AS d${++n})`
+    : `(SELECT COUNT(*) FROM (${select(`DISTINCT ${parts.join(', ')}`, b)}))`)
   const select = (what, b) => {
     subqueries = true
     return `SELECT ${what}${b.from.length ? ` FROM ${b.from.join(', ')}` : ''}${b.where.length ? ` WHERE ${conj(b.where.map(w => w.sql))}` : ''}`
@@ -251,11 +316,11 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
           if (r.table !== col.table) no('a column is read from a row of another table')
           const c = colSql(r.row, col)
           if (pending.has(v)) {
-            env.set(v, { sql: c }); pending.delete(v)
+            env.set(v, { sql: c, col }); pending.delete(v)
             // A NOT NULL column always has a value.
             if (!col.notNull && !col.pk) where.push({ sql: `${c} IS NOT NULL`, neg: `${c} IS NULL` })
           } else if (bound(v)) {
-            const e = term(v, env)
+            const e = term(v, env, isText(col))
             where.push({ sql: `${c} = ${e}`, neg: distinctSql(c, e) })
           } else return true
           changed = true
@@ -287,7 +352,7 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
       case 'or': return disj(g.args.map(a => cond(a, env)))
       case 'not': return negate(cond(g.arg, env))
       case 'implies': return disj([negate(cond(g.left, env)), cond(g.right, env)])
-      case 'iff': return sqlDialect() === 'oracle'
+      case 'iff': return sqlDialect() !== 'postgresql'
         ? `(CASE WHEN ${cond(g.left, env)} THEN 1 ELSE 0 END) = (CASE WHEN ${cond(g.right, env)} THEN 1 ELSE 0 END)`
         : `${paren(cond(g.left, env))} = ${paren(cond(g.right, env))}`
       case 'exists': {
@@ -312,8 +377,8 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
         const all = [...b.where.map(w => w.sql), ...b.rest.map(a => cond(a, b.env))]
         const parts = g.vars.flatMap(v => partsOf(v, b.env))
         const cnt = !b.from.length ? null
-          : sqlDialect() === 'oracle' && parts.length > 1
-            ? `(SELECT COUNT(*) FROM (${select(`DISTINCT ${parts.join(', ')}`, { ...b, where: all.map(sql => ({ sql })) })}))`
+          : sqlDialect() !== 'postgresql' && parts.length > 1
+            ? countRows(parts, { ...b, where: all.map(sql => ({ sql })) })
             : `(${select(`COUNT(DISTINCT ${tupleOf(g.vars, b.env)})`, { ...b, where: all.map(sql => ({ sql })) })})`
         const count = cnt ?? `CASE WHEN ${conj(all)} THEN 1 ELSE 0 END`
         return g.op === '..' ? `${count} BETWEEN ${g.n} AND ${g.m}` : `${count} ${COUNT[g.op] ?? no(`the count ${g.op}`)} ${g.n}`
@@ -323,7 +388,7 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
         const r = env.get(g.args[col.t])
         if (!r?.table) no('a column of a row that is not bound')
         const c = colSql(r.row, col)
-        return distinctSql(c, term(g.args[col.v], env), false)
+        return distinctSql(c, term(g.args[col.v], env, isText(col)), false)
       }
       case 'type': {
         const r = env.get(g.arg)
@@ -336,7 +401,10 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
         const eq = a.sql != null && b.sql != null ? `${a.sql} = ${b.sql}` : a.table && b.table ? rowsEqual(a, b) : no('a row compared with a value')
         return g.op === '≠' ? negate(eq) : eq
       }
-      case 'vcmp': return `${term(g.left, env)} ${VCMP[g.op] ?? no(`the comparison ${g.op}`)} ${term(g.right, env)}`
+      case 'vcmp': {
+        const text = [g.left, g.right].some(x => x && !x.t && isText(env.get(x)?.col))
+        return `${term(g.left, env, text)} ${VCMP[g.op] ?? no(`the comparison ${g.op}`)} ${term(g.right, env, text)}`
+      }
       case 'dpred': {
         const [a, b] = g.args
         const s = term(a, env)
@@ -345,6 +413,17 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
           return `${s} LIKE ${literal(pat)}`
         }
         const t = term(b, env)
+        if (sqlDialect() === 'sqlserver') switch (g.op) {
+          case 'matches': {
+            // A regular expression that LIKE can say (anchored; literal
+            // characters, ., .* and [classes]), as T-SQL's LIKE.
+            const like = b?.t === 'const' ? regexToLike(b.text) : null
+            return like != null ? `${s} LIKE ${literal(like)}` : no('a regular expression (SQL Server has them from version 2025)')
+          }
+          case 'startsWith': return `LEFT(${s}, LEN(${t})) = ${t}`
+          case 'endsWith': return `RIGHT(${s}, LEN(${t})) = ${t}`
+          case 'contains': return `CHARINDEX(${t}, ${s}) > 0`
+        }
         if (sqlDialect() === 'oracle') switch (g.op) {
           case 'matches': return `REGEXP_LIKE(${s}, ${t})`
           case 'startsWith': return `SUBSTR(${s}, 1, LENGTH(${t})) = ${t}`
@@ -368,7 +447,8 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
         if (!s || !t) no('a transitive closure with an open end')
         const sP = partsOf(s, env), tP = partsOf(t, env)
         const name = `tc${++n}`
-        const ora = sqlDialect() === 'oracle'
+        const ora = sqlDialect() !== 'postgresql'
+        const tsql = sqlDialect() === 'sqlserver'
         const cols = tP.map((_, i) => `r${i + 1}`)
         const sCols = sP.map((_, i) => `s${i + 1}`)
         const local = new Set([name])
@@ -386,7 +466,28 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
           return select(what.join(', '), { from: [...(from ? [name] : []), ...b.from], where: where.map(sql => ({ sql })) })
         }
         let reach
-        if (ora) {
+        if (tsql) {
+          // T-SQL: a recursive WITH at the top of the query (never inside a
+          // subquery), started at every row, that keeps where it started and
+          // the path it took, so it stops on cycles (T-SQL has no CYCLE).
+          const all = [...sCols, ...cols, `${name}_path`]
+          const key = (ps) => (ps.length > 1 ? ps.join(", '/', ") : ps[0])
+          const pathOf = (from, wP) => (from ? `CAST(CONCAT(${name}.${name}_path, ${key(wP)}, '|') AS NVARCHAR(MAX))` : `CAST(CONCAT('|', ${key(wP)}, '|') AS NVARCHAR(MAX))`)
+          const tstep = (from) => {
+            const b = bind([v, w], conjuncts(g.body), env)
+            for (const f of b.from) local.add(f.split(' ').pop())
+            const vP = partsOf(v, b.env), wP = partsOf(w, b.env)
+            if (vP.length !== sP.length || wP.length !== tP.length) no('a transitive closure over rows and values')
+            const start = from ? [...vP.map((p, i) => `${p} = ${name}.r${i + 1}`), `CHARINDEX(CONCAT('|', ${key(wP)}, '|'), ${name}.${name}_path) = 0`] : []
+            const what = [...(from ? sCols.map(c => `${name}.${c}`) : vP), ...wP, pathOf(from, wP)]
+            const where = [...b.where.map(x => x.sql), ...b.rest.map(a => cond(a, b.env)), ...start]
+            return select(what.join(', '), { from: [...(from ? [name] : []), ...b.from], where: where.map(sql => ({ sql })) })
+          }
+          const body = `${tstep(false)} UNION ALL ${tstep(true)}`
+          for (const m of body.matchAll(/\b([a-z]+\d+)\./g)) if (!local.has(m[1])) no('SQL Server cannot use a parameter of a transitive closure from outside it')
+          ctes.push(`${name}(${all.join(', ')}) AS (${body})`)
+          reach = `EXISTS (SELECT 1 FROM ${name} WHERE ${conj([...sP.map((p, i) => `${name}.${sCols[i]} = ${p}`), ...tP.map((p, i) => `${name}.${cols[i]} = ${p}`)])})`
+        } else if (ora) {
           const all = [...sCols, ...cols]
           const body = `${step(false)} UNION ALL ${step(true)}`
           for (const m of body.matchAll(/\b([a-z]+\d+)\./g)) if (!local.has(m[1])) no('Oracle cannot use a parameter of a transitive closure from outside it')
@@ -398,6 +499,16 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
     return no(`a ${g.t}`)
   }
 
+  // A query; in T-SQL with its recursive queries first (body is the query
+  // without them, with: the WITH clause or null).
+  const tsql = sqlDialect() === 'sqlserver'
+  const finish = (text0) => {
+    if (!tsql) return { query: text0, deontic, tables: [...readTables] }
+    const body = tsqlBooleans(text0)
+    const withs = ctes.length ? `WITH ${ctes.map(tsqlBooleans).join(',\n  ')}` : null
+    return { query: withs ? `${withs}\n${body}\nOPTION (MAXRECURSION 0)` : body, body, with: withs, deontic, tables: [...readTables] }
+  }
+
   try {
     if (!f) no('there is no formula')
     // One row of one table: a CHECK.
@@ -407,8 +518,9 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
         subqueries = false
         const body = f.vars.length > 1 ? { t: 'forall', vars: f.vars.slice(1), body: f.body } : f.body
         const text = cond(body, new Map([[f.vars[0], { row: null, table: row }]]))
-        if (!subqueries && text !== 'TRUE') return { check: { tableId: row.id, text } }
+        if (!subqueries && text !== 'TRUE') return { check: { tableId: row.id, text: tsql ? tsqlBooleans(text) : text } }
       } catch (e) { if (!(e instanceof Unsupported)) throw e }
+      ctes.length = 0
     }
     // Otherwise the query that finds its violations.
     if (f.t === 'forall') {
@@ -432,10 +544,10 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
       })
       const text = `SELECT ${cols.length ? `DISTINCT ${cols.join(', ')}` : `'violated' AS violation`}`
         + (b.from.length ? `\nFROM ${b.from.join(', ')}` : '') + (where.length ? `\nWHERE ${where.map(w => (where.length > 1 && hasTop(w, 'OR') ? `(${w})` : w)).join('\n  AND ')}` : '')
-      return { query: text, deontic, tables: [...readTables] }
+      return finish(text)
     }
     const where = negate(cond(f, new Map()))
-    return { query: `SELECT 'violated' AS violation\nWHERE ${where}`, deontic, tables: [...readTables] }
+    return finish(`SELECT 'violated' AS violation\nWHERE ${where}`)
   } catch (e) {
     if (e instanceof Unsupported) return { error: e.message }
     throw e

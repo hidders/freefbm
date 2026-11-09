@@ -27,7 +27,7 @@
 
 import { tableRulesOf } from './derivedTables.js'
 import { treeToSide, expandSide, sideContext } from '../mapping/mapping.js'
-import { quoteIdent as q, sqlDialect } from './sqlNames.js'
+import { quoteIdent as q, sqlDialect, tsqlBooleans } from './sqlNames.js'
 
 class Unsupported extends Error {}
 const no = (what) => { throw new Unsupported(what) }
@@ -87,7 +87,8 @@ function compile(side, model, outer, counter) {
       }
       const alias = `o${++counter.n}`
       const sel = got.length ? got.map(y => `${inner.ys.get(y)} AS ${q(y)}`).join(', ') : '1 AS present'
-      laterals.push(`LEFT JOIN LATERAL (${selectText(sel, inner)} ${sqlDialect() === 'oracle' ? 'FETCH FIRST 1 ROWS ONLY' : 'LIMIT 1'}) ${alias} ON TRUE`)
+      laterals.push(sqlDialect() === 'sqlserver' ? `OUTER APPLY (${selectText(sel, inner).replace(/^SELECT /, 'SELECT TOP 1 ')}) ${alias}`
+        : `LEFT JOIN LATERAL (${selectText(sel, inner)} ${sqlDialect() === 'oracle' ? 'FETCH FIRST 1 ROWS ONLY' : 'LIMIT 1'}) ${alias} ON TRUE`)
       for (const y of got) { ys.set(y, `${alias}.${q(y)}`); newYs.push(y) }
     } else if (a.t === 'not') {
       const inner = compile(a, model, { rows, vals, ys }, counter)
@@ -99,7 +100,7 @@ function compile(side, model, outer, counter) {
 
 function selectText(select, c, distinct = false) {
   const from = c.from.length ? ` FROM ${c.from.join(', ')}` : ''
-  const lat = c.laterals.length ? `${c.from.length ? '' : ' FROM (SELECT 1) one'} ${c.laterals.join(' ')}` : ''
+  const lat = c.laterals.length ? `${c.from.length ? '' : ` FROM (SELECT 1${sqlDialect() === 'sqlserver' ? ' AS one' : ''}) one`} ${c.laterals.join(' ')}` : ''
   const where = c.where.length ? ` WHERE ${c.where.join(' AND ')}` : ''
   return `SELECT ${distinct ? 'DISTINCT ' : ''}${select}${from}${lat}${where}`
 }
@@ -143,7 +144,7 @@ export function tableViews(state, model, typeSql) {
       if (!t.pk?.length) no(`${t.name} has no primary key`)
       const rowsView = rowRule?.mode === 'derived'
       if (rowsView) { res.kind = 'view'; res.baseName = null }
-      const typed = (c) => { const ty = typeSql(c.vt.datatypeAssignment, null); return ty ? (sqlDialect() === 'oracle' ? `CAST(NULL AS ${ty})` : `NULL::${ty}`) : 'NULL' }
+      const typed = (c) => { const ty = typeSql(c.vt.datatypeAssignment, null); return ty ? (sqlDialect() !== 'postgresql' ? `CAST(NULL AS ${ty})` : `NULL::${ty}`) : 'NULL' }
       // Columns a columns rule derives fully: never stored, never in the rows' query.
       const colDerived = new Set(colRules.filter(r => r.mode === 'derived').flatMap(r => Object.keys(r.head).filter(id => !key.has(id))))
       const baseCols = t.columns.filter(c => !(rowsView ? colDerived : derivedCols).has(c.fact.id))
@@ -181,6 +182,7 @@ export function tableViews(state, model, typeSql) {
         const fromB = !rowsView && !rowRule ? `${q(res.baseName)} b` : `(${base}) b`
         res.view = `CREATE VIEW ${q(t.name)} AS\n  SELECT ${list.join(', ')}\n  FROM ${fromB}${joins.map(j => `\n  ${j}`).join('')};`
       }
+      if (sqlDialect() === 'sqlserver') res.view = tsqlBooleans(res.view)
       res.uses.delete(t.id)
     } catch (err) {
       if (!(err instanceof Unsupported)) throw err

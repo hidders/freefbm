@@ -20,7 +20,7 @@
 // diagram is the one of all tables; diagrams adds one per SQL schema
 // (namespace) when there are several.
 
-import { parseDdl, tokenize, uniqueKey } from './ddlParse.js'
+import { parseDdl, tokenize, uniqueKey, detectDialect } from './ddlParse.js'
 import { checkToFormula, assertionToFormula, splitCheck } from './checkFormula.js'
 import { relationalModel } from './relationalModel.js'
 import { findRefMode, findCompositePI, identifyingFactIds } from '../utils/refMode.js'
@@ -53,9 +53,11 @@ export function importPostgresDdl(sql, opts) {
 // folds unquoted names to lower case): Map(lower → written).
 export function sqlSchemaNames(sql) {
   const out = new Map()
-  for (const m of sql.matchAll(/\bcreate\s+schema\s+(?:if\s+not\s+exists\s+)?("([^"]+)"|[A-Za-z_][\w$]*)/gi)) {
-    const name = m[2] ?? m[1]
-    const key = m[2] ?? name.toLowerCase()
+  // SQL Server keeps names as written, [quoted] or not.
+  const tsql = detectDialect(sql) === 'sqlserver'
+  for (const m of sql.matchAll(/\bcreate\s+schema\s+(?:if\s+not\s+exists\s+)?("([^"]+)"|\[([^\]]+)\]|[A-Za-z_][\w$]*)/gi)) {
+    const name = m[2] ?? m[3] ?? m[1]
+    const key = m[2] ?? m[3] ?? (tsql ? name : name.toLowerCase())
     if (!out.has(key)) out.set(key, name)
   }
   return out
@@ -66,13 +68,32 @@ export function sqlSchemaNames(sql) {
 // A value as the sample population writes it: booleans as true/false (COPY
 // writes t/f).
 const TRUE = new Set(['t', 'true', 'y', 'yes', 'on', '1']), FALSE = new Set(['f', 'false', 'n', 'no', 'off', '0'])
-function cellValue(col, v) {
+function cellValue(col, v0, dateOrder = null) {
   const id = col.vt.datatypeAssignment?.datatypeId
+  const v = dateOrder && (id === 'date' || id === 'timestamp') ? tsqlDate(v0, dateOrder) : v0
   // A date for a timestamp column (Oracle's DATE is read as timestamp(0)).
   if (id === 'timestamp' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v} 00:00:00`
   if (id !== 'boolean') return v
   const l = v.toLowerCase()
   return TRUE.has(l) ? 'true' : FALSE.has(l) ? 'false' : v
+}
+
+// A date as SQL Server reads it ('2021/1/2', '12/08/1948' in the script's
+// DATEFORMAT order, default mdy, '19480812', '2021-01-02T10:00:00') in ISO
+// form; anything else as it is.
+const pad = (x) => String(x).padStart(2, '0')
+export function tsqlDate(v, order = 'mdy') {
+  const time = (t) => (t ? ` ${t.replace(/^[ T]/, '').trim()}` : '')
+  let m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})([ T].*)?$/.exec(v)
+  if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}${time(m[4])}`
+  m = /^(\d{4})(\d{2})(\d{2})([ T].*)?$/.exec(v)
+  if (m) return `${m[1]}-${m[2]}-${m[3]}${time(m[4])}`
+  m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})([ T].*)?$/.exec(v)
+  if (m) {
+    const [mo, d] = order === 'dmy' ? [m[2], m[1]] : [m[1], m[2]]
+    return `${m[3]}-${pad(mo)}-${pad(d)}${time(m[4])}`
+  }
+  return v
 }
 
 // The rows of the script's INSERT statements (and COPY blocks) as the sample population of the
@@ -100,6 +121,8 @@ export function samplePopulation(parsed, built) {
     m.get(id).add(key)
     obj[id].push(cell)
   }
+  // SQL Server reads dates in the order SET DATEFORMAT gives (mdy by default).
+  const dateOrder = parsed.dialect === 'sqlserver' ? (parsed.dateFormat ?? 'mdy') : null
   let rows = 0, dropped = 0, expr = 0
   const noKey = new Set(), noKeyValue = new Set(), unknownCols = new Set(), cut = new Map()
   const tableOf = (ins) => byName.get(ins.table.name.toLowerCase()) ?? byName.get(`${ins.table.schema}_${ins.table.name}`.toLowerCase())
@@ -134,7 +157,7 @@ export function samplePopulation(parsed, built) {
       row.forEach((v, i) => {
         if (v === undefined) expr++
         // Leading and trailing spaces don't count in sample values.
-        if (colOf[i] && v != null && String(v).trim() !== '') val.set(colOf[i].fact.id, cellValue(colOf[i], String(v).trim()))
+        if (colOf[i] && v != null && String(v).trim() !== '') val.set(colOf[i].fact.id, cellValue(colOf[i], String(v).trim(), dateOrder))
       })
       const keyVals = keyFacts.map(fid => val.get(fid))
       if (keyVals.some(v => v == null)) { dropped++; noKeyValue.add(table.name); continue }
@@ -208,7 +231,7 @@ export function pgAssignment(type) {
 
 // The datatype assignment for an Oracle column type: the nearest PostgreSQL
 // type (relational schemas keep one type system), with the Oracle type as
-// written in `oracle`, so an Oracle export gives it back. null for a type
+// written in sqlTypes.oracle, so an Oracle export gives it back. null for a type
 // FreeFBM does not know.
 export function oracleAssignment(type) {
   if (!type?.name) return null
@@ -217,7 +240,7 @@ export function oracleAssignment(type) {
   const text = `${name.toUpperCase()}${args.length ? `(${args.join(', ').toUpperCase()})` : ''}`
   const as = (datatypeId, params = {}) => {
     const p = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== false && v !== ''))
-    return { profileId: 'postgresql', datatypeId, ...(Object.keys(p).length ? { params: p } : {}), oracle: text }
+    return { profileId: 'postgresql', datatypeId, ...(Object.keys(p).length ? { params: p } : {}), sqlTypes: { oracle: text } }
   }
   const p = intArg(args[0]), sc = args[1] != null ? intArg(args[1]) : undefined
   if (name === 'number' || name === 'numeric' || name === 'decimal' || name === 'dec') {
@@ -241,6 +264,48 @@ export function oracleAssignment(type) {
   if (name === 'boolean') return as('boolean')
   if (name === 'json') return as('jsonb')
   if (name === 'xmltype' || name === 'sys.xmltype') return as('xml')
+  return null
+}
+
+// The datatype assignment for a SQL Server column type: the nearest SQL type
+// (as for Oracle), with the type as written in sqlTypes.sqlserver. null for a
+// type FreeFBM does not know (hierarchyid, geography, sql_variant…).
+export function sqlserverAssignment(type) {
+  if (!type?.name) return null
+  const name = type.name.toLowerCase()
+  const args = (type.args ?? []).map(a => String(a).trim())
+  const text = `${name.toUpperCase()}${args.length && !(name === 'xml') ? `(${args.join(', ').toUpperCase()})` : ''}`
+  const as = (datatypeId, params = {}) => {
+    const p = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== false && v !== ''))
+    return { profileId: 'postgresql', datatypeId, ...(Object.keys(p).length ? { params: p } : {}), sqlTypes: { sqlserver: text } }
+  }
+  const max = /^max$/i.test(args[0] ?? '')
+  const p = max ? undefined : intArg(args[0]), sc = args[1] != null ? intArg(args[1]) : undefined
+  switch (name) {
+    case 'bit': return as('boolean')
+    case 'tinyint': case 'smallint': return as('smallint')
+    case 'int': case 'integer': return as('integer')
+    case 'bigint': return as('bigint')
+    case 'decimal': case 'dec': case 'numeric': return as('numeric', { precision: p ?? 18, scale: sc ?? 0 })
+    case 'money': return as('numeric', { precision: 19, scale: 4 })
+    case 'smallmoney': return as('numeric', { precision: 10, scale: 4 })
+    case 'real': return as('real')
+    case 'float': case 'double precision': return as(p != null && p <= 24 ? 'real' : 'double precision')
+    case 'char': case 'nchar': case 'character': case 'national character': return as('character', { length: p ?? 1 })
+    case 'varchar': case 'nvarchar': case 'character varying': case 'national character varying': case 'sysname':
+      return max ? as('text') : as('character varying', { length: name === 'sysname' ? 128 : p ?? 1 })
+    case 'text': case 'ntext': return as('text')
+    case 'binary': case 'varbinary': case 'image': case 'rowversion': case 'timestamp': return as('bytea')
+    case 'date': return as('date')
+    case 'time': return as('time', { precision: p != null ? Math.min(p, 6) : undefined })
+    case 'datetime': return as('timestamp', { precision: 3 })
+    case 'smalldatetime': return as('timestamp', { precision: 0 })
+    case 'datetime2': return as('timestamp', { precision: Math.min(p ?? 7, 6) })
+    case 'datetimeoffset': return as('timestamp', { precision: Math.min(p ?? 7, 6), withTimeZone: true })
+    case 'uniqueidentifier': return as('uuid')
+    case 'xml': return as('xml')
+    case 'json': return as('json')
+  }
   return null
 }
 
@@ -438,7 +503,10 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
   const note = (text) => log.push({ level: 'note', text })
   const warn = (text) => log.push({ level: 'warn', text })
   const { tables, enums, domains } = parsed
-  const oracle = parsed.dialect === 'oracle'
+  const oracle = parsed.dialect === 'oracle', sqlserver = parsed.dialect === 'sqlserver'
+  const assign = oracle ? oracleAssignment : sqlserver ? sqlserverAssignment : pgAssignment
+  // A type FreeFBM does not know, as the other DBMS wrote it.
+  const native = oracle || sqlserver ? (sql) => sql.toUpperCase() : null
 
   // Table names: bare unless two schemas use the same name.
   const nameCount = new Map()
@@ -471,7 +539,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
           else extraChecks.push({ domain: bare, text: ch })
         }
       }
-      let assignment = type.array ? null : oracle ? oracleAssignment(type) : pgAssignment(type)
+      let assignment = type.array ? null : assign(type)
       // A serial column is an integer column with generated values; its value
       // type is the plain integer type (so referencing columns get it too) and
       // the serial is kept on the column's role.
@@ -484,7 +552,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
         // export gives it back.
         unknownTypes.add(bare)
         const sql = `${bare}${type.args?.length ? `(${type.args.join(', ')})` : ''}`
-        assignment = { profileId: 'postgresql', datatypeId: 'user-defined', params: { sql }, ...(oracle ? { oracle: sql.toUpperCase() } : {}) }
+        assignment = { profileId: 'postgresql', datatypeId: 'user-defined', params: { sql }, ...(native ? { sqlTypes: { [parsed.dialect]: native(sql) } } : {}) }
       }
       colInfo.set(colKey(t, c.name), { table: t, col: c, assignment, vtSpecs, notNull, extraChecks, generated })
     }
@@ -500,6 +568,20 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
     if (kinds.has('date')) note(`Oracle's DATE holds a time of day too, so it is read as timestamp(0): ${list(kinds.get('date'))}`)
     const text = ['varchar2', 'nvarchar2', 'char', 'nchar'].flatMap(k => kinds.get(k) ?? [])
     if (text.length) note(`In Oracle an empty string is NULL, so these columns never hold '' there (a PostgreSQL export allows it): ${list(text)}`)
+  }
+  if (sqlserver) {
+    const of = (re) => [...colInfo.values()].filter(x => re.test(x.col.type.name)).map(x => `${tableName(x.table)}.${x.col.name}`)
+    const list = (xs) => xs.length > 12 ? `${xs.slice(0, 12).join(', ')} and ${xs.length - 12} more` : xs.join(', ')
+    note('Read as SQL Server DDL: each column has the nearest SQL type, and keeps its SQL Server type for the SQL Server export (DATETIME is timestamp(3), BIT boolean, MONEY numeric(19, 4), NVARCHAR(MAX) text)')
+    const tiny = of(/^tinyint$/)
+    if (tiny.length) note(`TINYINT (0 to 255) is read as smallint: ${list(tiny)}`)
+    // SQL Server's UNIQUE treats NULLs as equal (one NULL); standard SQL's,
+    // which FreeFBM reads, compares only rows without NULLs.
+    const nullableKeys = tables.flatMap(t => t.uniques.filter(u => u.some(c => !t.columns.find(x => x.name === c)?.notNull))
+      .map(u => `${tableName(t)} (${u.join(', ')})`))
+    if (nullableKeys.length) note(`These UNIQUE keys have columns that may be NULL. SQL Server allows one NULL in them, standard SQL (as FreeFBM reads them) any number; the SQL Server export keeps the standard meaning with a filtered unique index: ${list(nullableKeys)}`)
+    const computed = tables.flatMap(t => (t.computed ?? []).map(c => `${tableName(t)}.${c}`))
+    if (computed.length) note(`Computed columns (name AS expression) are left out: ${list(computed)}`)
   }
   if (unknownTypes.size) note(`Types FreeFBM does not know (from an extension or CREATE TYPE), kept as written: ${[...unknownTypes].sort().join(', ')}`)
 
@@ -547,7 +629,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
         note(`${tableName(colInfo.get(k).table)}.${colInfo.get(k).col.name} references a column of another type; it takes ${assignmentKey(assignment)}`)
     }
     const base = rootInfo.col.name
-    const typeKey = assignmentKey(assignment) + '|' + JSON.stringify(rootInfo.vtSpecs ?? null)
+    const typeKey = assignmentKey(assignment) + JSON.stringify(assignment?.sqlTypes ?? null) + '|' + JSON.stringify(rootInfo.vtSpecs ?? null)
     let vt = vtByNameType.get(`${base}\u0000${typeKey}`)
     if (!vt) {
       let name = base
@@ -805,11 +887,12 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
     return diagram
   }
   const diagram = drawTables(diagramName, tables, true)
-  const namespaces = [...new Set(tables.map(t => t.schema ?? 'public'))]
+  const defaultNs = sqlserver ? 'dbo' : 'public'
+  const namespaces = [...new Set(tables.map(t => t.schema ?? defaultNs))]
   const diagrams = [diagram]
   if (namespaces.length > 1) {
     for (const ns of namespaces) {
-      const subset = tables.filter(t => (t.schema ?? 'public') === ns)
+      const subset = tables.filter(t => (t.schema ?? defaultNs) === ns)
       diagrams.push(drawTables(schemaNames?.get(ns) ?? ns, subset, false))
     }
     note(`One diagram per SQL schema: ${namespaces.map(ns => schemaNames?.get(ns) ?? ns).join(', ')}`)

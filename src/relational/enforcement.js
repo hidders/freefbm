@@ -38,12 +38,12 @@ import { tableViews } from './viewSql.js'
 import { asForeignKey } from './foreignKeyRewrite.js'
 import { typeSql } from './ddlExport.js'
 
-// The SQL DBMSs a schema can be written for. PostgreSQL and Oracle are
-// written; the others are the plan's next stages.
+// The SQL DBMSs a schema can be written for. PostgreSQL, Oracle and SQL
+// Server are written; the others are the plan's next stages.
 export const SQL_TARGETS = [
   { id: 'postgresql', name: 'PostgreSQL', ready: true, deferredTriggers: true, assertions: false },
   { id: 'oracle', name: 'Oracle (23.26.1 or later)', ready: true, deferredTriggers: false, assertions: true },
-  { id: 'sqlserver', name: 'SQL Server', ready: false },
+  { id: 'sqlserver', name: 'SQL Server (2022 or later)', ready: true, deferredTriggers: false, assertions: false },
   { id: 'mysql', name: 'MySQL', ready: false },
   { id: 'sqlite', name: 'SQLite', ready: false },
 ]
@@ -154,8 +154,13 @@ export function planEnforcement(state, schemaId, settings0 = null) {
       }
       if (mode === 'audit') { item({ ...base, technique: 'audit', status: 'not', choice, note: why ?? null }); return }
       if (!stored.length) { item({ ...base, technique: 'audit', status: 'not', choice, viewsOnly: true, note: 'it reads only views, so no trigger can check it' }); return }
-      item({ ...base, technique: 'trigger', choice, status: stored.length < read.length ? 'partly' : 'enforced',
-        note: stored.length < read.length ? 'it also reads views, whose changes do not run it' : why ?? null })
+      // Without deferred triggers, one that asks for rows is checked after
+      // each statement: the rows it asks for must come in the same statement
+      // or before.
+      const mustHave = !target.deferredTriggers && (assertionTables(e.entry?.formula, model).positive ?? []).length > 0
+      item({ ...base, technique: 'trigger', choice, status: stored.length < read.length ? 'partly' : 'enforced', entry: { ...entry, mustHave },
+        note: [stored.length < read.length ? 'it also reads views, whose changes do not run it' : why ?? null,
+          mustHave ? `checked after each statement, as ${target.name.replace(/ \(.*/, '')} has no deferred triggers` : null].filter(Boolean).join('; ') || null })
     })
   }
 

@@ -23,7 +23,7 @@
 import { tableViews, viewOrder } from './viewSql.js'
 import { valueKindName } from '../utils/datatypeValues.js'
 import { relationalModel } from './relationalModel.js'
-import { quoteIdent, withDialect } from './sqlNames.js'
+import { quoteIdent, withDialect, nativeType } from './sqlNames.js'
 import { constraintsAsSql } from './formulaSql.js'
 import { rangeSql } from './ddlExport.js'
 import { planEnforcement, sqlSettings } from './enforcement.js'
@@ -39,7 +39,8 @@ export function oracleType(assignment, generated) {
   if (generated === 'bigserial') return { type: identity('NUMBER(19)') }
   if (!assignment?.datatypeId) return null
   // A column read from Oracle DDL keeps its Oracle type.
-  if (assignment.oracle) return { type: generated === 'identity' ? identity(assignment.oracle) : assignment.oracle }
+  const own = nativeType(assignment, 'oracle')
+  if (own) return { type: generated === 'identity' ? identity(own) : own }
   const p = assignment.params ?? {}
   const id = assignment.datatypeId
   let type = null, warning = null
