@@ -212,13 +212,19 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
         setCrLive({ dx: cd.origDx + rawDx / zoom, dy: cd.origDy + rawDy / zoom })
       }
     }
+    // per diagram occurrence when there is one, as fact types keep theirs
+    const setRangeOffset = (key, off) => {
+      const s = useOrmStore.getState()
+      if (occurrenceId) s.updateObjectTypeLayout(occurrenceId, { [key]: off })
+      else s.updateObjectType(ot.id, { [key]: off })
+    }
     const onUp = (e) => {
       const d = vrDragRef.current
       if (d) {
         const zoom = useOrmStore.getState().zoom
         const dx = d.origDx + (e.clientX - d.startX) / zoom
         const dy = d.origDy + (e.clientY - d.startY) / zoom
-        useOrmStore.getState().updateObjectType(ot.id, { valueRangeOffset: { dx, dy } })
+        setRangeOffset('valueRangeOffset', { dx, dy })
         vrDragRef.current = null
         setVrLive(null)
       }
@@ -227,7 +233,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
         const zoom = useOrmStore.getState().zoom
         const dx = cd.origDx + (e.clientX - cd.startX) / zoom
         const dy = cd.origDy + (e.clientY - cd.startY) / zoom
-        useOrmStore.getState().updateObjectType(ot.id, { cardinalityRangeOffset: { dx, dy } })
+        setRangeOffset('cardinalityRangeOffset', { dx, dy })
         crDragRef.current = null
         setCrLive(null)
       }
@@ -238,7 +244,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup',   onUp)
     }
-  }, [ot.id])
+  }, [ot.id, occurrenceId])
 
   useEffect(() => {
     if (editing && inputRef.current) {
