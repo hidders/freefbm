@@ -2044,6 +2044,41 @@ function useRangeSelectionInfo(sel) {
   return null
 }
 
+// A label's position on the active diagram, as the Reading Position row shows
+// it: Default puts a moved label back, Free only says it has been moved.
+function LabelPositionRow({ label, name, moved, onDefault }) {
+  return (
+    <>
+      <Label>{label}</Label>
+      <Row>
+        {[{ value: 'default', text: 'Default' }, { value: 'free', text: 'Free' }].map(opt => (
+          <label key={opt.value} style={{
+            display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 3,
+            cursor: opt.value === 'free' ? 'not-allowed' : 'pointer', color: 'var(--ink-2)',
+          }}>
+            <input type="radio" name={name} value={opt.value}
+              checked={(moved ? 'free' : 'default') === opt.value}
+              disabled={opt.value === 'free'}
+              onChange={onDefault}
+              style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: opt.value === 'free' ? 'not-allowed' : 'pointer' }}/>
+            {opt.text}
+          </label>
+        ))}
+      </Row>
+    </>
+  )
+}
+
+function RangeLabelPosition({ sel, cardinality = false }) {
+  const store = useOrmStore()
+  const key = sel.otId ?? sel.nestedFactId ?? `${sel.factId}:${sel.roleIndex}`
+  return (
+    <LabelPositionRow label="Position" name={`${cardinality ? 'cr' : 'vr'}pos-${key}`}
+      moved={store.rangeLabelMoved(sel, cardinality)}
+      onDefault={() => store.resetRangeLabel(sel, cardinality)}/>
+  )
+}
+
 // ── Value Range inspector ─────────────────────────────────────────────────────
 function ValueRangeConstraintInspector({ sel }) {
   const info = useRangeSelectionInfo(sel)
@@ -2073,6 +2108,7 @@ function ValueRangeConstraintInspector({ sel }) {
       <Label>Modality</Label>
       <DeonticCheckbox checked={info.valueRangeDeontic}
         onChange={v => info.onPatch({ valueRangeDeontic: v })}/>
+      <RangeLabelPosition sel={sel}/>
       <Label>Usage</Label>
       <DangerBtn onClick={info.onDeleteValueRange}>Delete Value Range</DangerBtn>
     </div>
@@ -2108,6 +2144,7 @@ function CardinalityRangeInspector({ sel }) {
       <Label>Modality</Label>
       <DeonticCheckbox checked={info.cardinalityRangeDeontic}
         onChange={v => info.onPatch({ cardinalityRangeDeontic: v })}/>
+      <RangeLabelPosition sel={sel} cardinality/>
       <Label>Usage</Label>
       <DangerBtn onClick={info.onDeleteCardinalityRange}>Delete Cardinality Range</DangerBtn>
     </div>
@@ -2749,6 +2786,11 @@ function FactPresentationSubsection({ fact, store }) {
           </Row>
         )
       })()}
+      {fact.objectified && (
+        <LabelPositionRow label="Name Position" name={`npos-${fact.id}`}
+          moved={!!fact.nameOffset && (fact.nameOffset.dx !== 0 || fact.nameOffset.dy !== 0)}
+          onDefault={() => store.updateFactLayout(fact.id, { nameOffset: null })}/>
+      )}
        <Row>
          <Label>Uniqueness Bar Position</Label>
        </Row>
@@ -4512,6 +4554,7 @@ export default function Inspector() {
     if (p.readingOffsetBelow  !== undefined) merged.readingOffsetBelow  = p.readingOffsetBelow
     if (p.uniquenessBelow     !== undefined) merged.uniquenessBelow     = p.uniquenessBelow
     if (p.nestedReading   !== undefined) merged.nestedReading   = p.nestedReading
+    if (p.nameOffset      !== undefined) merged.nameOffset      = p.nameOffset
     if (p.roleOrder       !== undefined) merged.roleOrder       = p.roleOrder
     if (p.readingOrder    !== undefined) merged.readingOrder    = p.readingOrder
     if (p.orientation     !== undefined) merged.orientation     = p.orientation
