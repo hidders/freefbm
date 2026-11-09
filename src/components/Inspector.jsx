@@ -3,7 +3,7 @@ import { useOrmStore, useOrmStoreIgnoring, useScopedStore } from '../store/ormSt
 import { openDeleteFromSchema, schemaDeletionIds } from '../utils/deleteSelection'
 import { activeSchemaIdOf } from '../store/storeHelpers'
 import { activeRelationalFace } from '../relational/face'
-import RelationalInspector, { selectedRmObject, RelationalCounts } from './RelationalInspector'
+import RelationalInspector, { selectedRmObject } from './RelationalInspector'
 import { NAME_STYLES } from '../verbalisation/nameStyle.js'
 import { findRefMode, refModeLabel, findCompositePI, canBeExternalUniquenessPI } from '../utils/refMode'
 import { getDisplayReading, makeImplicitLinkFact } from './FactTypeNode'
@@ -4650,14 +4650,6 @@ export default function Inspector() {
   const rmSchemaId = activeSchemaIdOf(store)
   const rmObj = relFace ? selectedRmObject(useOrmStore.getState(), rmSchemaId) : null
 
-  const counts = {
-    entities: store.objectTypes.filter(o => o.kind === 'entity').length,
-    values:   store.objectTypes.filter(o => o.kind === 'value').length,
-    facts:    store.facts.length,
-    subtypes: store.subtypes.length,
-    constraints: store.constraints.length,
-  }
-
   return (
     <div style={{ width, flexShrink: 0, display: 'flex', background: 'var(--bg-surface)' }}>
     {/* Resize handle — outside the scroller so it spans the full height */}
@@ -5007,24 +4999,6 @@ export default function Inspector() {
         </div>
       )}
 
-      {/* Summary footer */}
-      <div style={{ position: 'sticky', bottom: 0, marginTop: 'auto',
-        paddingTop: 10, borderTop: '1px solid var(--border-soft)',
-        background: 'var(--bg-surface)', fontSize: 10, color: 'var(--ink-muted)',
-        lineHeight: 1.8 }}>
-        {relFace ? <RelationalCounts schemaId={rmSchemaId} /> : <>
-        <div>{counts.entities} entities · {counts.values} values</div>
-        <div>{counts.facts} facts · {counts.subtypes} subtypes</div>
-        <div>{counts.constraints} constraints</div>
-        </>}
-        {store.filePath && (
-          <div style={{ marginTop: 2, fontSize: 10, overflow: 'hidden',
-            textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={store.filePath}>
-            {store.filePath.split(/[\\/]/).pop()}
-            {store.isDirty ? ' *' : ' ✓'}
-          </div>
-        )}
-      </div>
     </div>
     </div>
   )
