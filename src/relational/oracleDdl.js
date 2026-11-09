@@ -221,7 +221,7 @@ function write(state, schemaId, plan) {
       lines.push(`-- ${x.label}`, `--   ${x.text}`, 'BEGIN',
         `  EXECUTE IMMEDIATE ${qQuote(create)};`,
         'EXCEPTION WHEN OTHERS THEN',
-        `  DBMS_OUTPUT.PUT_LINE('${name.replace(/'/g, "''")}: ' || SQLERRM);`,
+        `  DBMS_OUTPUT.PUT_LINE('${name.replace(/'/g, "''")}: ' || RTRIM(REPLACE(DBMS_UTILITY.FORMAT_ERROR_STACK, CHR(10), ' '), ' '));`,
         ...(fallback.length
           ? ['  BEGIN', ...fallback, `    DBMS_OUTPUT.PUT_LINE('${name.replace(/'/g, "''")}: enforced by triggers instead');`, '  END;']
           : [`  DBMS_OUTPUT.PUT_LINE('${name.replace(/'/g, "''")}: not enforced (its query is in the export as a comment)');`]),

@@ -368,20 +368,30 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
         if (!s || !t) no('a transitive closure with an open end')
         const sP = partsOf(s, env), tP = partsOf(t, env)
         const name = `tc${++n}`
+        const ora = sqlDialect() === 'oracle'
+        const cols = tP.map((_, i) => `r${i + 1}`)
+        const sCols = sP.map((_, i) => `s${i + 1}`)
+        const local = new Set([name])
         const step = (from) => {
           const b = bind([v, w], conjuncts(g.body), env)
+          for (const f of b.from) local.add(f.split(' ').pop())
           const vP = partsOf(v, b.env), wP = partsOf(w, b.env)
           if (vP.length !== sP.length || wP.length !== tP.length) no('a transitive closure over rows and values')
-          const start = from ? vP.map((p, i) => `${p} = ${name}.r${i + 1}`) : vP.map((p, i) => `${p} = ${sP[i]}`)
+          // Oracle cannot correlate a WITH inside a subquery with the outer
+          // query, so its closure starts everywhere and keeps where it started.
+          const start = ora ? (from ? vP.map((p, i) => `${p} = ${name}.r${i + 1}`) : [])
+            : from ? vP.map((p, i) => `${p} = ${name}.r${i + 1}`) : vP.map((p, i) => `${p} = ${sP[i]}`)
+          const what = ora ? [...(from ? sCols.map(c => `${name}.${c}`) : vP), ...wP] : wP
           const where = [...b.where.map(x => x.sql), ...b.rest.map(a => cond(a, b.env)), ...start]
-          return select(wP.join(', '), { from: [...(from ? [name] : []), ...b.from], where: where.map(sql => ({ sql })) })
+          return select(what.join(', '), { from: [...(from ? [name] : []), ...b.from], where: where.map(sql => ({ sql })) })
         }
-        const cols = tP.map((_, i) => `r${i + 1}`)
-        // Oracle: recursive WITH without RECURSIVE, UNION ALL with a CYCLE
-        // clause so cycles stop.
-        const reach = sqlDialect() === 'oracle'
-          ? `EXISTS (WITH ${name}(${cols.join(', ')}) AS (${step(false)} UNION ALL ${step(true)}) CYCLE ${cols.join(', ')} SET ${name}_cycle TO 1 DEFAULT 0 SELECT 1 FROM ${name} WHERE ${conj(tP.map((p, i) => `${name}.${cols[i]} = ${p}`))})`
-          : `EXISTS (WITH RECURSIVE ${name}(${cols.join(', ')}) AS (${step(false)} UNION ${step(true)}) SELECT 1 FROM ${name} WHERE ${conj(tP.map((p, i) => `${name}.${cols[i]} = ${p}`))})`
+        let reach
+        if (ora) {
+          const all = [...sCols, ...cols]
+          const body = `${step(false)} UNION ALL ${step(true)}`
+          for (const m of body.matchAll(/\b([a-z]+\d+)\./g)) if (!local.has(m[1])) no('Oracle cannot use a parameter of a transitive closure from outside it')
+          reach = `EXISTS (WITH ${name}(${all.join(', ')}) AS (${body}) CYCLE ${all.join(', ')} SET ${name}_cycle TO 1 DEFAULT 0 SELECT 1 FROM ${name} WHERE ${conj([...sP.map((p, i) => `${name}.${sCols[i]} = ${p}`), ...tP.map((p, i) => `${name}.${cols[i]} = ${p}`)])})`
+        } else reach = `EXISTS (WITH RECURSIVE ${name}(${cols.join(', ')}) AS (${step(false)} UNION ${step(true)}) SELECT 1 FROM ${name} WHERE ${conj(tP.map((p, i) => `${name}.${cols[i]} = ${p}`))})`
         return g.star ? disj([conj(sP.map((p, i) => `${p} = ${tP[i]}`)), reach]) : reach
       }
     }
