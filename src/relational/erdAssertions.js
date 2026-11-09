@@ -148,7 +148,11 @@ export function assertionTables(tree, model) {
   go(tree, 1)
   const tables = model.tables.filter(t => parts.has(t.id))
     .map(t => ({ id: t.id, role: parts.get(t.id).has(-1) ? 'constrained' : 'referenced' }))
-  return { tables, columns }
+  // Tables whose rows the constraint asks for (positive occurrences): adding
+  // rows can mend a violation, so checking it may have to wait for the end of
+  // the transaction (enforcement.js).
+  const positive = model.tables.filter(t => parts.get(t.id)?.has(1)).map(t => t.id)
+  return { tables, columns, positive }
 }
 
 const cache = new WeakMap()

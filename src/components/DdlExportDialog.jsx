@@ -5,7 +5,7 @@ import { SQL_TARGETS, sqlSettings, techniqueName } from '../relational/enforceme
 const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
 const OLD_MODE_KEY = 'freefbm.ddlExport.assertions'
 
-// File › Export PostgreSQL DDL…: a relational schema is a relational schema in
+// File › Export SQL DDL…: a relational schema is a relational schema in
 // general, with any constraint over its tables (assertions included), so how
 // the target DBMS enforces each constraint is reported here before the script
 // is saved (planEnforcement, relational/enforcement.js): by the tables, as a
@@ -35,13 +35,13 @@ function Dialog({ schemaId }) {
     return schema?.sql?.assertions ? s : { ...s, assertions: oldMode() ?? s.assertions }
   }, [schema])
   const res = useMemo(() => {
-    try { return useOrmStore.getState().exportPostgresDdl(schemaId, { assertions: settings.assertions, overrides: settings.overrides }) }
+    try { return useOrmStore.getState().exportSqlDdl(schemaId, { target: settings.target, assertions: settings.assertions, overrides: settings.overrides }) }
     catch (e) { return { error: e.message } }
   }, [schemaId, settings])
   const save = async () => {
     close()
     const api = window.electronAPI
-    if (api?.saveSql) await api.saveSql({ defaultPath: `${(schema?.name ?? 'schema').replace(/[^A-Za-z0-9_-]+/g, '_')}.sql`, content: res.sql })
+    if (api?.saveSql) await api.saveSql({ defaultPath: `${(schema?.name ?? 'schema').replace(/[^A-Za-z0-9_-]+/g, '_')}${oracle ? '_oracle' : ''}.sql`, content: res.sql })
   }
   const items = res.plan?.items ?? []
   const warnings = res.warnings ?? []
@@ -53,8 +53,9 @@ function Dialog({ schemaId }) {
   const by = (t) => items.filter(x => x.technique === t).length
   const counts = res.plan?.counts ?? { enforced: 0, partly: 0, not: 0 }
   const total = counts.enforced + counts.partly + counts.not
-  const choosable = (x) => (x.technique === 'trigger' || x.technique === 'audit') && !x.entry?.deontic && !x.viewsOnly
-  const defaultName = settings.assertions === 'audit' ? 'audit query' : 'trigger'
+  const oracle = settings.target === 'oracle'
+  const choosable = (x) => ['trigger', 'audit', 'assertion'].includes(x.technique) && !x.entry?.deontic && !x.viewsOnly
+  const defaultName = oracle ? 'assertion if possible' : settings.assertions === 'audit' ? 'audit query' : 'trigger'
 
   return (
     <div onMouseDown={e => { if (e.target === e.currentTarget) close() }}
@@ -77,7 +78,7 @@ function Dialog({ schemaId }) {
             {res.error ? `The export failed: ${res.error}`
               : <>{counts.enforced} of {total} constraints are enforced{counts.partly ? `, ${counts.partly} partly` : ''}:
                 {' '}{native.filter(x => x.status === 'enforced').length} by the tables, {rewritten.length + by('foreignKey')} rewritten as a CHECK or a FOREIGN KEY,
-                {' '}{by('trigger')} by triggers. {by('audit')} {by('audit') === 1 ? 'is an audit query' : 'are audit queries'} (run {by('audit') === 1 ? 'it' : 'them'} to find the rows breaking {by('audit') === 1 ? 'it' : 'them'}){counts.not - by('audit') > 0 ? `, ${counts.not - by('audit')} not written` : ''}.</>}
+                {' '}{by('assertion') ? `${by('assertion')} by CREATE ASSERTION, ` : ''}{by('trigger')} by triggers. {by('audit')} {by('audit') === 1 ? 'is an audit query' : 'are audit queries'} (run {by('audit') === 1 ? 'it' : 'them'} to find the rows breaking {by('audit') === 1 ? 'it' : 'them'}){counts.not - by('audit') > 0 ? `, ${counts.not - by('audit')} not written` : ''}.</>}
           </div>
         </div>
         {!res.error && (
@@ -87,12 +88,20 @@ function Dialog({ schemaId }) {
                 {assertions.length} assertion{assertions.length === 1 ? '' : 's'} (constraints with no table form)
               </div>
               <div style={{ color: 'var(--ink-2)', marginBottom: 6, lineHeight: 1.45 }}>
-                Those that are a foreign key in disguise are written as one. PostgreSQL has no CREATE ASSERTION, so the others become
-                constraint triggers, which run the assertion's query at the end of every transaction that changes a table it reads
-                (so load rows in one transaction), or audit queries: commented queries that return the rows breaking them.
+                {oracle
+                  ? <>Those that are a foreign key in disguise are written as one. Oracle checks the others with CREATE ASSERTION when it can:
+                    no counts, aggregates or transitive closures, and only joins it can check fast (in practice along NOT NULL foreign keys);
+                    those that ask for rows are checked at commit. When Oracle can't, or refuses one when the script runs, they become
+                    triggers, which Oracle runs after each statement (it has no deferred triggers), or audit queries: commented queries
+                    that return the rows breaking them.</>
+                  : <>Those that are a foreign key in disguise are written as one. PostgreSQL has no CREATE ASSERTION, so the others become
+                    constraint triggers, which run the assertion's query at the end of every transaction that changes a table it reads
+                    (so load rows in one transaction), or audit queries: commented queries that return the rows breaking them.</>}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 6 }}>
-                {[['triggers', 'Enforce them with triggers'], ['audit', 'Write them as audit queries (not enforced)']].map(([m, text]) => (
+                {(oracle
+                  ? [['triggers', 'Where Oracle cannot assert one, enforce it with triggers'], ['audit', 'Where Oracle cannot assert one, write an audit query (not enforced)']]
+                  : [['triggers', 'Enforce them with triggers'], ['audit', 'Write them as audit queries (not enforced)']]).map(([m, text]) => (
                   <label key={m} style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--ink-1)', cursor: 'pointer' }}>
                     <input type="radio" name="ddl-assertions" checked={settings.assertions === m} onChange={() => setSql(schemaId, { assertions: m })} />{text}
                   </label>
@@ -107,7 +116,7 @@ function Dialog({ schemaId }) {
                           onChange={e => setSql(schemaId, { overrides: { [a.rmId]: e.target.value || null } })}
                           style={{ fontSize: 11, padding: '1px 3px', border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg-raised)', color: 'var(--ink-1)' }}>
                           <option value="">as chosen above ({defaultName})</option>
-                          <option value="trigger">trigger</option>
+                          <option value="trigger">{oracle ? 'assertion or trigger' : 'trigger'}</option>
                           <option value="audit">audit query</option>
                         </select>
                       : <span style={{ color: 'var(--ink-2)' }}>{techniqueName(a.technique)}</span>}

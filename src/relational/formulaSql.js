@@ -22,7 +22,7 @@
 //   and names(Var) → a display name for a column of the query's result;
 //   qualify(table) → the table's name as written in FROM (default: quoted).
 
-import { quoteIdent } from './sqlNames.js'
+import { quoteIdent, sqlDialect } from './sqlNames.js'
 import { makeContext, constraintEntries } from '../logic/constraintFormulas.js'
 import { renderFormula, formulaToString } from '../logic/renderFormula.js'
 
@@ -115,6 +115,15 @@ const negate = (s) => {
   return `NOT (${s})`
 }
 
+// Null-safe (in)equality: PostgreSQL's IS [NOT] DISTINCT FROM; Oracle has
+// none, and DECODE treats two NULLs as equal.
+const distinctSql = (a, b, distinct = true) => (sqlDialect() === 'oracle'
+  ? `DECODE(${a}, ${b}, ${distinct ? 0 : 1}, ${distinct ? 1 : 0}) = 1`
+  : `${a} IS ${distinct ? '' : 'NOT '}DISTINCT FROM ${b}`)
+// Oracle's names for some data operators and casts (the rest are the same).
+const ORACLE_CASTS = { asInteger: 'NUMBER(19)', asDecimal: 'NUMBER', asFloat: 'BINARY_DOUBLE', asBoolean: 'BOOLEAN', asDate: 'DATE', asDatetime: 'TIMESTAMP' }
+const ORACLE_FUNC = { ceiling: 'ceil', truncate: 'trunc' }
+
 // Data operators (dataOperators.js OPS) in PostgreSQL.
 const INFIX = { add: '+', sub: '-', mul: '*', div: '/', concat: '||' }
 const CASTS = { asInteger: 'integer', asDecimal: 'numeric', asFloat: 'double precision', asBoolean: 'boolean', asDate: 'date', asDatetime: 'timestamp', asTime: 'time' }
@@ -169,6 +178,15 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
         const args = t.args.map(a => term(a, env))
         if (INFIX[t.op]) return args.map(paren).join(` ${INFIX[t.op]} `)
         if (t.op === 'neg') return `-${paren(args[0])}`
+        if (sqlDialect() === 'oracle') {
+          if (t.op === 'toText') return `TO_CHAR(${args[0]})`
+          if (CASTS[t.op]) return ORACLE_CASTS[t.op] ? `CAST(${args[0]} AS ${ORACLE_CASTS[t.op]})` : no(`the cast ${t.op} in Oracle`)
+          if (t.op === 'dayOfWeek') return `(TRUNC(${args[0]}) - TRUNC(${args[0]}, 'IW') + 1)`
+          if (t.op === 'idiv') return `TRUNC(${args[0]} / ${args[1]})`
+          if (t.op === 'makeDate') return no('makeDate in Oracle')
+          if (EXTRACT[t.op]) return `EXTRACT(${EXTRACT[t.op]} FROM ${args[0]})`
+          if (FUNC[t.op]) return `${ORACLE_FUNC[t.op] ?? FUNC[t.op]}(${args.join(', ')})`
+        }
         if (t.op === 'toText') return `CAST(${args[0]} AS text)`
         if (CASTS[t.op]) return `CAST(${args[0]} AS ${CASTS[t.op]})`
         if (EXTRACT[t.op]) return `EXTRACT(${EXTRACT[t.op]} FROM ${args[0]})`
@@ -178,6 +196,8 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
       case 'ite': return `CASE WHEN ${cond(t.cond, env)} THEN ${term(t.then, env)} ELSE ${term(t.else, env)} END`
       case 'agg': {
         const b = bind(t.vars, conjuncts(t.cond), env, false)
+        if (t.fn === 'count' && sqlDialect() === 'oracle' && t.vars.flatMap(v => partsOf(v, b.env)).length > 1)
+          return `(SELECT COUNT(*) FROM (${select(`DISTINCT ${t.vars.flatMap(v => partsOf(v, b.env)).join(', ')}`, b)}))`
         const what = t.fn === 'count' ? `COUNT(DISTINCT ${tupleOf(t.vars, b.env)})`
           : `${t.fn.toUpperCase()}(${t.distinct ? 'DISTINCT ' : ''}${term(t.term, b.env)})`
         return `(${select(what, b)})`
@@ -236,7 +256,7 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
             if (!col.notNull && !col.pk) where.push({ sql: `${c} IS NOT NULL`, neg: `${c} IS NULL` })
           } else if (bound(v)) {
             const e = term(v, env)
-            where.push({ sql: `${c} = ${e}`, neg: `${c} IS DISTINCT FROM ${e}` })
+            where.push({ sql: `${c} = ${e}`, neg: distinctSql(c, e) })
           } else return true
           changed = true
           return false
@@ -267,7 +287,9 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
       case 'or': return disj(g.args.map(a => cond(a, env)))
       case 'not': return negate(cond(g.arg, env))
       case 'implies': return disj([negate(cond(g.left, env)), cond(g.right, env)])
-      case 'iff': return `${paren(cond(g.left, env))} = ${paren(cond(g.right, env))}`
+      case 'iff': return sqlDialect() === 'oracle'
+        ? `(CASE WHEN ${cond(g.left, env)} THEN 1 ELSE 0 END) = (CASE WHEN ${cond(g.right, env)} THEN 1 ELSE 0 END)`
+        : `${paren(cond(g.left, env))} = ${paren(cond(g.right, env))}`
       case 'exists': {
         const b = bind(g.vars, conjuncts(g.body), env)
         const all = [...b.where.map(w => w.sql), ...b.rest.map(a => cond(a, b.env))]
@@ -288,16 +310,20 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
       case 'count': {
         const b = bind(g.vars, conjuncts(g.body), env)
         const all = [...b.where.map(w => w.sql), ...b.rest.map(a => cond(a, b.env))]
-        const cnt = b.from.length ? `(${select(`COUNT(DISTINCT ${tupleOf(g.vars, b.env)})`, { ...b, where: all.map(sql => ({ sql })) })})`
-          : `CASE WHEN ${conj(all)} THEN 1 ELSE 0 END`
-        return g.op === '..' ? `${cnt} BETWEEN ${g.n} AND ${g.m}` : `${cnt} ${COUNT[g.op] ?? no(`the count ${g.op}`)} ${g.n}`
+        const parts = g.vars.flatMap(v => partsOf(v, b.env))
+        const cnt = !b.from.length ? null
+          : sqlDialect() === 'oracle' && parts.length > 1
+            ? `(SELECT COUNT(*) FROM (${select(`DISTINCT ${parts.join(', ')}`, { ...b, where: all.map(sql => ({ sql })) })}))`
+            : `(${select(`COUNT(DISTINCT ${tupleOf(g.vars, b.env)})`, { ...b, where: all.map(sql => ({ sql })) })})`
+        const count = cnt ?? `CASE WHEN ${conj(all)} THEN 1 ELSE 0 END`
+        return g.op === '..' ? `${count} BETWEEN ${g.n} AND ${g.m}` : `${count} ${COUNT[g.op] ?? no(`the count ${g.op}`)} ${g.n}`
       }
       case 'fact': {
         const col = model.columnByFact.get(g.factId) ?? no('a fact type that is not a column')
         const r = env.get(g.args[col.t])
         if (!r?.table) no('a column of a row that is not bound')
         const c = colSql(r.row, col)
-        return `${c} IS NOT DISTINCT FROM ${term(g.args[col.v], env)}`
+        return distinctSql(c, term(g.args[col.v], env), false)
       }
       case 'type': {
         const r = env.get(g.arg)
@@ -319,6 +345,12 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
           return `${s} LIKE ${literal(pat)}`
         }
         const t = term(b, env)
+        if (sqlDialect() === 'oracle') switch (g.op) {
+          case 'matches': return `REGEXP_LIKE(${s}, ${t})`
+          case 'startsWith': return `SUBSTR(${s}, 1, LENGTH(${t})) = ${t}`
+          case 'endsWith': return `SUBSTR(${s}, -LENGTH(${t})) = ${t}`
+          case 'contains': return `INSTR(${s}, ${t}) > 0`
+        }
         switch (g.op) {
           case 'matches': return `${s} ~ ${t}`
           case 'startsWith': return `starts_with(${s}, ${t})`
@@ -345,7 +377,11 @@ export function formulaToSql(formula, model, names = () => null, { qualify = nul
           return select(wP.join(', '), { from: [...(from ? [name] : []), ...b.from], where: where.map(sql => ({ sql })) })
         }
         const cols = tP.map((_, i) => `r${i + 1}`)
-        const reach = `EXISTS (WITH RECURSIVE ${name}(${cols.join(', ')}) AS (${step(false)} UNION ${step(true)}) SELECT 1 FROM ${name} WHERE ${conj(tP.map((p, i) => `${name}.${cols[i]} = ${p}`))})`
+        // Oracle: recursive WITH without RECURSIVE, UNION ALL with a CYCLE
+        // clause so cycles stop.
+        const reach = sqlDialect() === 'oracle'
+          ? `EXISTS (WITH ${name}(${cols.join(', ')}) AS (${step(false)} UNION ALL ${step(true)}) CYCLE ${cols.join(', ')} SET ${name}_cycle TO 1 DEFAULT 0 SELECT 1 FROM ${name} WHERE ${conj(tP.map((p, i) => `${name}.${cols[i]} = ${p}`))})`
+          : `EXISTS (WITH RECURSIVE ${name}(${cols.join(', ')}) AS (${step(false)} UNION ${step(true)}) SELECT 1 FROM ${name} WHERE ${conj(tP.map((p, i) => `${name}.${cols[i]} = ${p}`))})`
         return g.star ? disj([conj(sP.map((p, i) => `${p} = ${tP[i]}`)), reach]) : reach
       }
     }

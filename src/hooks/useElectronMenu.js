@@ -85,7 +85,7 @@ export function useElectronMenu() {
       const s = useOrmStore.getState()
       const schema = s.schemas.find(x => x.id === activeSchemaIdOf(s))
       if (schema?.profile !== 'relational') {
-        alert('Export PostgreSQL DDL writes a relational schema. Switch to a relational schema first (or set this schema\'s kind to Relational in Schema Settings).')
+        alert('Export SQL DDL writes a relational schema. Switch to a relational schema first (or set this schema\'s kind to Relational in Schema Settings).')
         return
       }
       // The dialog reports how each constraint is enforced before saving
