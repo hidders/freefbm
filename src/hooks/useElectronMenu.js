@@ -9,6 +9,7 @@ import { isErdDiagram } from '../components/ErdView'
 import { activeReadOnly } from '../relational/face'
 import { activeSchemaIdOf } from '../store/storeHelpers'
 import { runSchemaAction, schemaMenuState } from '../utils/schemaActions'
+import { runMappingAction, mappingMenuState } from '../utils/mappingActions'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
@@ -121,20 +122,23 @@ export function useElectronMenu() {
       if (path && notes.length) alert(notes.join('\n'))
     })
 
-    // Schema menu: actions on the active schema (utils/schemaActions.js);
-    // the main process greys out those that don't apply.
+    // Schema and Mapping menus: actions on the active schema and mapping
+    // (utils/schemaActions.js, utils/mappingActions.js); the main process
+    // greys out those that don't apply and lists the mappings.
     on('menu:schema', (_e, action) => runSchemaAction(action))
+    on('menu:mapping', (_e, action, arg) => runMappingAction(action, arg))
     let lastMenuState = '', lastRefs = []
     const syncMenu = (s) => {
       // Only what the menu state reads (dragging changes none of these).
-      const refs = [s.schemas, s.objectTypes, s.facts, s.diagrams, s.activeDiagramId]
+      const refs = [s.schemas, s.objectTypes, s.facts, s.diagrams, s.activeDiagramId, s.mappings, s.activeMappingId, s.advancedMode]
       if (refs.every((r, i) => r === lastRefs[i])) return
       lastRefs = refs
-      const enabled = schemaMenuState(s)
-      const key = JSON.stringify(enabled)
+      const { enabled: mappingEnabled, ...mapping } = mappingMenuState(s)
+      const state = { enabled: { ...schemaMenuState(s), ...mappingEnabled }, mapping }
+      const key = JSON.stringify(state)
       if (key === lastMenuState) return
       lastMenuState = key
-      api.setMenuState?.(enabled)
+      api.setMenuState?.(state)
     }
     syncMenu(useOrmStore.getState())
     unsubs.push(useOrmStore.subscribe(syncMenu))

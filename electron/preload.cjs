@@ -16,8 +16,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeNow:    ()    => ipcRenderer.send('window:closeNow'),
   // Text editing in a focused field: undo, redo, cut, copy, paste, selectAll.
   nativeEdit:  (cmd) => ipcRenderer.send('window:nativeEdit', cmd),
-  // Which items of the Schema menu apply to the active schema.
-  setMenuState: (enabled) => ipcRenderer.send('window:menuState', enabled),
+  // Which Schema and Mapping menu items apply, and the mappings to choose from.
+  setMenuState: (state) => ipcRenderer.send('window:menuState', state),
 
   // The verbalisation workbench window and its messages to and from the
   // main window.
@@ -37,7 +37,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       'menu:undo', 'menu:redo', 'menu:cut', 'menu:copy', 'menu:paste', 'menu:selectAll',
       'menu:removeFromDiagram', 'menu:deleteFromSchema',
       'menu:zoomIn', 'menu:zoomOut', 'menu:zoomReset',
-      'menu:sidebarBrowser', 'menu:sidebarProblems', 'menu:shortcuts', 'menu:schema',
+      'menu:sidebarBrowser', 'menu:sidebarProblems', 'menu:shortcuts', 'menu:schema', 'menu:mapping',
       'menu:exportPdf', 'menu:importSql', 'menu:exportSql', 'menu:loadSampleSql', 'menu:exportRowsSql',
       'app:saveThenClose',
     ]
