@@ -38,6 +38,8 @@ import { makePathTranslator, closeLinearRecursion } from './normaPaths.js'
 import { addImportNote } from '../utils/importNotes.js'
 import { VALUE_KINDS, valueKindName } from '../utils/datatypeValues.js'
 import { normaTemporal } from './normaTemporal.js'
+import { placeLabel, factLabelBox, readingLabelSize, rangeLabelSize, nameLabelSize, objectTypeLabelBox,
+  roleAnchor, nameAnchor } from './normaLabels.js'
 
 const SCALE = 200   // pixels per inch
 
@@ -51,6 +53,14 @@ const path = (el, ...names) => names.reduce((e, n) => kid(e, n), el)
 const attr = (el, name) => el?.getAttribute(name) ?? null
 const refsOf = (el) => el ? [...el.children].map(c => attr(c, 'ref')).filter(Boolean) : []
 const textOf = (el) => (el?.textContent ?? '').trim()
+
+// A shape's AbsoluteBounds as a rectangle in px.
+function rect(shape) {
+  const b = (attr(shape, 'AbsoluteBounds') ?? '').split(',').map(Number)
+  if (b.length !== 4 || b.some(n => !Number.isFinite(n))) return null
+  const [x, y, w, h] = b
+  return { l: x * SCALE, t: y * SCALE, r: (x + w) * SCALE, b: (y + h) * SCALE }
+}
 
 function bounds(shape) {
   const b = (attr(shape, 'AbsoluteBounds') ?? '').split(',').map(Number)
@@ -178,6 +188,7 @@ export function importNorma(xmlText) {
 
   const objectTypes = [], facts = [], subtypes = [], constraints = []
   const otById = new Map(), factById = new Map(), stById = new Map(), conById = new Map()
+  const rangeOwner = new Map()   // NORMA value/cardinality constraint id → { otId[, cardinality] } | { factId, roleId }
   const playerId = new Map()           // NORMA object type id → FreeFBM player id
   const implicitBoolean = new Set()    // NORMA value type ids
   const booleanAllowsFalse = new Set() // those whose value constraint is not just true
@@ -262,11 +273,13 @@ export function importNorma(xmlText) {
     }
     const vc = path(o, 'ValueRestriction', 'ValueConstraint')
     if (vc) {
+      rangeOwner.set(attr(vc, 'id'), { otId: id })
       ot.valueRange = valueRanges(vc)
       if (attr(vc, 'Modality') === 'Deontic') ot.valueRangeDeontic = true
     }
     const cc = path(o, 'CardinalityRestriction', 'CardinalityConstraint')
     if (cc) {
+      rangeOwner.set(attr(cc, 'id'), { otId: id, cardinality: true })
       const cr = kids(kid(cc, 'Ranges'), 'CardinalityRange')
       ot.cardinalityRange = cr.flatMap(r => countRange(attr(r, 'From') ?? 0, attr(r, 'To') ?? 0))
       if (attr(cc, 'Modality') === 'Deontic') ot.cardinalityRangeDeontic = true
@@ -330,6 +343,7 @@ export function importNorma(xmlText) {
         role._player = pref
         const rvc = path(r, 'ValueRestriction', 'RoleValueConstraint')
         if (rvc) {
+          rangeOwner.set(attr(rvc, 'id'), { factId: id, roleId: rid })
           role.valueRange = valueRanges(rvc)
           if (attr(rvc, 'Modality') === 'Deontic') role.valueRangeDeontic = true
         }
@@ -1051,6 +1065,14 @@ export function importNorma(xmlText) {
         const occ = { id: newOccId(), schemaElementId: ot.id, x: b.cx, y: b.cy }
         diag.occurrences.push(occ)
         if (attr(s, 'ExpandRefMode') === 'true') expandedOwners.push(occ)
+        const refShown = ot.kind === 'entity' && attr(s, 'ExpandRefMode') !== 'true' && !!refModeOf(ot.id)
+        for (const rs of relativeShapes(s, 'ValueConstraintShape', 'CardinalityConstraintShape')) {
+          const own = rangeOwner.get(attr(kid(rs, 'Subject'), 'ref'))
+          const range = own && rangeOf(own)
+          if (!range?.length) continue
+          const p = placeLabel(rect(rs), rect(s), objectTypeLabelBox(ot, refShown), rangeLabelSize(range, own.cardinality))
+          occ[own.cardinality ? 'cardinalityRangeOffset' : 'valueRangeOffset'] = rounded(p)
+        }
         if (!firstPos.has(ot.id)) firstPos.set(ot.id, { x: b.cx, y: b.cy })
       } else if (s.localName === 'FactTypeShape') {
         const f = factById.get(subj)
@@ -1069,6 +1091,7 @@ export function importNorma(xmlText) {
         if (turnedLeft) display.reverse()
         const ro = display.map(rid => f.roles.findIndex(r => r.id === rid))
         if (ro.length === f.arity && ro.every(i => i >= 0) && ro.some((r, i) => r !== i)) occ.roleOrder = ro
+        placeFactLabels(s, f, occ)
         diag.occurrences.push(occ)
         if (!firstPos.has(f.id)) firstPos.set(f.id, { x: b.cx, y: b.cy })
       } else if (s.localName === 'ModelNoteShape') {
@@ -1101,6 +1124,48 @@ export function importNorma(xmlText) {
     finishDiagram(diag, expandedOwners)
     diagrams.push(diag)
   }
+
+  // The labels NORMA draws as shapes of their own (RelativeShapes) keep
+  // their place: see normaLabels.js.
+  function relativeShapes(shape, ...names) {
+    return kids(kid(shape, 'RelativeShapes')).filter(r => names.includes(r.localName) && rect(r))
+  }
+  function rangeOf(own) {
+    if (own.otId) { const o = otById.get(own.otId); return own.cardinality ? o?.cardinalityRange : o?.valueRange }
+    return factById.get(own.factId)?.roles.find(r => r.id === own.roleId)?.valueRange
+  }
+  function placeFactLabels(s, f, occ) {
+    const S = rect(s)
+    const g = { ...f, ...occ }
+    const box = factLabelBox(g)
+    const [rs] = relativeShapes(s, 'ReadingShape')
+    if (rs) {
+      const p = placeLabel(rect(rs), S, box, readingLabelSize(g))
+      // FreeFBM's other place for a reading: above a horizontal fact type,
+      // right of a vertical one
+      const above = g.orientation === 'vertical' ? p.side === 'right' : p.side === 'above'
+      if (above) occ.readingAbove = true
+      occ[above ? 'readingOffsetAbove' : 'readingOffsetBelow'] = rounded(p)
+    }
+    for (const vs of relativeShapes(s, 'ValueConstraintShape')) {
+      const own = rangeOwner.get(attr(kid(vs, 'Subject'), 'ref'))
+      if (own?.factId !== f.id) continue
+      const ri = f.roles.findIndex(r => r.id === own.roleId)
+      const range = f.roles[ri]?.valueRange
+      if (!range?.length) continue
+      const p = placeLabel(rect(vs), S, box, rangeLabelSize(range))
+      const a = roleAnchor(g, ri)
+      occ.valueRangeOffsets = { ...(occ.valueRangeOffsets ?? {}), [ri]: rounded({ x: p.x - a.x, y: p.y - a.y }) }
+    }
+    const [ns] = relativeShapes(s, 'ObjectifiedFactTypeNameShape')
+    if (ns && f.objectified && f.objectifiedName) {
+      const p = placeLabel(rect(ns), S, box, nameLabelSize(f.objectifiedName))
+      const a = nameAnchor(g, !!refModeOf(f.id))
+      const off = rounded({ x: p.x - a.x, y: p.y - a.y })
+      if (off.dx || off.dy) occ.nameOffset = off
+    }
+  }
+  function rounded(p) { return { dx: Math.round(p.x), dy: Math.round(p.y) } }
 
   // Occurrences FreeFBM needs that NORMA does not draw: the players of every
   // shown fact type, and the value type and fact type of a collapsed

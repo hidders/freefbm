@@ -733,6 +733,15 @@ export function createElementSlice(set, get) {
       })
     },
 
+    // Per-diagram layout of one object type occurrence (its value and
+    // cardinality range offsets; the type's own offsets are the fallback).
+    updateObjectTypeLayout(occId, patch) {
+      set(s => ({
+        diagrams: s.diagrams.map(d => d.id !== s.activeDiagramId ? d : patchOccById(d, occId, patch)),
+        isDirty: true,
+      }))
+    },
+
     // Update per-diagram layout properties for a fact.
     updateFactLayout(id, patch) {
       set(s => ({
