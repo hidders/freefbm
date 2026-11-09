@@ -45,13 +45,14 @@ export function readingsFor(fact, langId, n = fact.roles?.length ?? 0, live = 'e
 }
 
 // { name, plural, gender } of a type in a language; name falls back to the
-// type's own name as entered (as NORMA's default verbalisation does:
-// "Diplomat has DiplomatName"), plural and gender to null.
+// type's own name as the name display setting writes it (nameStyle.js; as
+// entered by default, as NORMA does: "Diplomat has DiplomatName"), plural and
+// gender to null.
 export function typeLexicon(ctx, typeId, langId) {
   const el = ctx.otById.get(typeId) ?? ctx.factById.get(typeId)
   const lex = el?.lexicon?.[langId] ?? {}
   return {
-    name: (langId !== (ctx.liveLanguage ?? 'en') && lex.name?.trim()) || ctx.typeName(typeId),
+    name: (langId !== (ctx.liveLanguage ?? 'en') && lex.name?.trim()) || (ctx.sentenceName ?? ctx.typeName)(typeId),
     plural: lex.plural?.trim() || null,
     gender: lex.gender || null,
     forms: lex.forms ?? {},

@@ -23,6 +23,8 @@ import { isDerived, derivationEntry } from './derivationRule.js'
 import { isDerivedFact, factDerivationEntries } from './factDerivation.js'
 import { counterexample } from '../verbalisation/negative.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
+import { styleName } from '../verbalisation/nameStyle.js'
+import { findRefMode as findRefModeOf } from '../utils/refMode.js'
 import { isFormulaConstraint, formulaConstraintEntry, formulaElements } from './formulaConstraint.js'
 
 const SEQUENCE_TYPES = new Set([
@@ -756,6 +758,35 @@ export function makeContext(state) {
     if (name && shared?.has(name) && roles[p.schemaId]) return `${name} (${roles[p.schemaId]})`
     return name || 'Thing'
   }
+  // Sentences write names as the schema's name display setting says (NORMA's
+  // object type name display), spaces kept; a reference mode value type is
+  // written as the entity type's name and the reference mode's.
+  const style = state.objectTypeNameDisplay ?? 'asIs'
+  let refModeOf = null
+  const sentenceName = (id) => {
+    const p = otById.get(id) ?? factById.get(id)
+    const raw = (p?.name || p?.objectifiedName || '').trim()
+    if (!raw) return 'Thing'
+    let refMode = null
+    if (style !== 'asIs' && p.kind === 'value') {
+      if (!refModeOf) {
+        refModeOf = new Map()
+        for (const e of objectTypes) {
+          if (e.kind !== 'entity') continue
+          const rm = findRefModeOf(e, facts, objectTypes)
+          if (rm && !refModeOf.has(rm.vtId)) refModeOf.set(rm.vtId, e.name ?? '')
+        }
+      }
+      const entity = refModeOf.get(id)
+      if (entity && raw.length > entity.length && raw.startsWith(entity)) {
+        const mode = raw.slice(entity.length).replace(/^[\s_-]+/, '')
+        if (mode) refMode = { entity, mode }
+      }
+    }
+    const name = styleName(raw, style, state.removeNameCharacters ?? undefined, refMode)
+    if (shared?.has(bare(p)) && roles[p.schemaId]) return `${name} (${roles[p.schemaId]})`
+    return name
+  }
   // The implied link fact types of nested fact types, as fact-like objects:
   // roles [nested entity type, player of the base role], read "D involves A".
   const linkById = new Map()
@@ -768,7 +799,7 @@ export function makeContext(state) {
     }
   }
   return {
-    otById, factById, linkById, typeName,
+    otById, factById, linkById, typeName, sentenceName,
     // The language the names and readings are in (see store/viewLanguage.js).
     liveLanguage: state.viewLanguage ?? 'en',
     schema: { facts, objectTypes, subtypes: state.subtypes ?? [], constraints: state.constraints ?? [] },
