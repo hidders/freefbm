@@ -47,7 +47,8 @@
 //                           derived ('derived' | 'semiDerived' | null)
 //   kind 'notNull', 'primaryKey', 'unique', 'check': columns: [rmId]
 //   kind 'foreignKey':      columns, refTable, refColumns
-//   kind 'assertion':       query (SQL returning the violations) | null, formula (text), error
+//   kind 'assertion':       query (SQL returning the violations) | null, formula (text), error,
+//                           constraintType (of the constraint), tree (the formalised formula)
 // name is the SQL name (a column's own name, a constraint's name: its name in
 // the script, else PostgreSQL's default); label is how a panel names it
 // ("film.title", "PRIMARY KEY film_pkey"); sql its SQL text ("PRIMARY KEY
@@ -241,7 +242,8 @@ export function buildView(state, schemaId) {
       assertions.push(add({ rmId: `as:${c.id}${suffix}`, kind: 'assertion', name,
         label: name ? `${name} (${kind})` : kind, table: null, members: [c.id],
         query: e.query ?? null, formula: e.text ?? null, error: e.query ? null : e.error ?? null,
-        sql: e.query ?? null, enforced: false, deontic: !!e.deontic }))
+        sql: e.query ?? null, enforced: false, deontic: !!e.deontic,
+        constraintType: c.constraintType, tree: e.entry?.formula ?? null }))
     })
   }
 

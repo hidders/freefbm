@@ -46,7 +46,8 @@ export function carryLost(get, m, schemaId, elementIds, { to = 'the new version'
     }
     const p = proposeTranslation(get(), m, x, 'source')
     if (p.error || p.errors?.length || !['native', 'implied'].includes(p.status)) { out.push(`Kept by nothing in ${to}: ${what}${p.error ? ` (${p.error})` : ''}; the Equivalence report says more`); continue }
-    get().addCarriedConstraint(m.targetSchemaId, { rule: p.rule, deontic: p.deontic, graphical: p.graphical })
+    get().addCarriedConstraint(m.targetSchemaId, { rule: p.rule, deontic: p.deontic, graphical: p.graphical,
+      from: { mappingId: m.id, schemaId: m.sourceSchemaId, text: what } })
     out.push(`Added ${p.graphical ? GRAPHICAL_NAME[p.graphical.constraintType] : 'a formula constraint'} to ${to} for ${what}`)
   }
   return out
@@ -660,14 +661,16 @@ export const createMappingSlice = (set, get) => {
     // a value comparison when vc is ({ sequence, query, operator }), else a
     // formula constraint. It is drawn on the
     // diagram of that schema that shows most of the fact types it names,
-    // under them. One undo step; returns the new constraint's id.
-    addCarriedConstraint(schemaId, { rule, deontic = false, name = '', vc = null, graphical = null }) {
+    // under them. from ({ mappingId, schemaId, text }): the constraint it was
+    // carried from, kept as carriedFrom (the Inspector says so). One undo
+    // step; returns the new constraint's id.
+    addCarriedConstraint(schemaId, { rule, deontic = false, name = '', vc = null, graphical = null, from = null }) {
       const s = get()
       if (!graphical && vc) graphical = { constraintType: 'valueComparison', operator: vc.operator, sequences: [vc.sequence], queries: [vc.query] }
       const base = graphical
         ? { ...mkConstraint(graphical.constraintType, 0, 0), ...graphicalFields(graphical) }
         : { ...mkConstraint('formula', 0, 0), rule }
-      const c = { ...base, schemaId, name, ...(deontic ? { deontic: true } : {}) }
+      const c = { ...base, schemaId, name, ...(deontic ? { deontic: true } : {}), ...(from ? { carriedFrom: from } : {}) }
       const named = graphical ? new Set(graphical.sequences.flat().map(m => m?.factId)) : formulaElements(rule).facts
       const shown = (d) => (d.occurrences ?? []).filter(o => named.has(o.schemaElementId))
       const diagrams = s.diagrams.filter(d => d.schemaId === schemaId && !d.mappingId)

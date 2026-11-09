@@ -1163,7 +1163,8 @@ function carryFormulas(api, run, ids, rw) {
     const deontic = e.formula.t === 'obligatory'
     let rule
     try { rule = rw(renameIds(formulaToRule(deontic ? e.formula.arg : e.formula), run.idMap)) } catch (err) { run.report.push(`Not carried over: ${e.subject ?? e.kind} (${err.message})`); continue }
-    api.getState().addCarriedConstraint(run.mapping.targetSchemaId, { rule, deontic })
+    api.getState().addCarriedConstraint(run.mapping.targetSchemaId, { rule, deontic,
+      from: { mappingId: run.mapping.id, schemaId: run.mapping.sourceSchemaId, text: `${e.label ?? e.kind}${e.subject ? `: ${e.subject}` : ''}` } })
     run.report.push(`Added a formula constraint for ${e.label ?? e.kind}${e.subject ? `: ${e.subject}` : ''}`)
   }
 }

@@ -9,7 +9,9 @@
 // diagram.erdLines 'orthogonal', right-angled lines (src/relational/erdRouting.js),
 // each with its own point on the box sides. Selecting a line (or a column) highlights the
 // foreign key and its columns. A click selects the table (header) or the column (row) for the
-// Inspector; dragging a box moves it, as one undo step.
+// Inspector; dragging a box moves it, as one undo step. With the Assertions
+// switch on (diagram.erdAssertions) the schema's assertions are drawn as
+// constraint nodes linked to their tables (ErdAssertions.jsx).
 
 import React, { useMemo, useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
@@ -24,6 +26,7 @@ import { FONT, HEAD_H, ROW_H, PAD_X, columnType, columnMarks, erdLayout, mapping
 import { relationalView, rmObjectOf } from '../relational/relationalView'
 import { rmViolations } from '../relational/rmText'
 import { BadgePopup, BADGE_SEV_COLOUR } from './BadgePopup'
+import ErdAssertions, { useErdAssertions, assertionHighlight } from './ErdAssertions'
 
 export { isErdDiagram, erdLayout, mappingErdBoxes } from '../relational/erdBoxes'
 
@@ -132,7 +135,8 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
   const constraints = useOrmStore(s => s.constraints)
   const diagram     = useOrmStore(s => s.diagrams.find(d => d.id === s.activeDiagramId))
   const selectedId  = useOrmStore(s => s.selectedId)
-  const ruleHl      = useOrmStore(s => (sideSchemaId ? s.ruleHighlight : null))
+  const sideRuleHl  = useOrmStore(s => (sideSchemaId ? s.ruleHighlight : null))
+  const selectedRm  = useOrmStore(s => s.selectedRm)
   const schemaId    = sideSchemaId ?? diagram?.schemaId
 
   const { model, boxes } = useMemo(() => {
@@ -141,6 +145,15 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
     const model = relationalModel(st, schemaId)
     return { model, boxes: diagram ? erdLayout(model, diagram) : new Map() }
   }, [objectTypes, facts, constraints, schemaId, diagram, sideSchemaId])
+
+  // Assertion nodes (plain ERDs only), and the highlight of the one hovered
+  // or selected: its tables and the columns it reads.
+  const { shapes: assertions, places: assertionPlaces } = useErdAssertions(schemaId, diagram, boxes, !sideSchemaId && !!diagram?.erdAssertions)
+  const [hoveredAssertion, setHoveredAssertion] = useState(null)
+  const [assertionDrag, setAssertionDrag] = useState(null)   // { rmId, dx, dy }
+  const hlAssertion = assertions.find(s => s.rmId === hoveredAssertion)
+    ?? assertions.find(s => s.obj.members[0] === selectedId && (selectedRm?.id !== selectedId || selectedRm.rmId === s.rmId))
+  const ruleHl = sideSchemaId ? sideRuleHl : assertionHighlight(hlAssertion)
 
   // While a box is dragged its offset is local; it is stored on mouse up.
   const [drag, setDrag] = useState(null)  // { id, dx, dy }
@@ -281,8 +294,11 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
     useOrmStore.getState().select(fk.constraintId, 'constraint')
   }
 
+  const assertionProps = { diagram, shapes: assertions, places: assertionPlaces, boxes: shown, selectedId, selectedRm,
+    hovered: hoveredAssertion, onHover: setHoveredAssertion, drag: assertionDrag, setDrag: setAssertionDrag }
   return (
     <g className={sideSchemaId ? 'mapping-erd' : 'erd-view'}>
+      {assertions.length > 0 && <ErdAssertions layer="edges" {...assertionProps}/>}
       {[...model.fks].sort((p, q) => selectedFks.has(p) - selectedFks.has(q)).map(fk => (
         <FkLine key={fk.constraintId} fk={fk} selected={selectedFks.has(fk)} onDown={selectFk}
           route={dragRoutes?.get(fk.constraintId) ?? routes.get(fk.constraintId)}/>
@@ -291,6 +307,9 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
         <TableBox key={b.table.id} box={b} selectedId={selectedId} highlighted={highlighted} tint={tint} ruleHl={ruleHl}
           onHeaderDown={startDrag} onRowDown={selectColumn} onMenu={sideSchemaId ? null : openMenu}/>
       ))}
+      {assertions.length > 0 && (
+        <ErdAssertions layer="nodes" {...assertionProps}/>
+      )}
       {[...shown.values()].map(b => {
         const bd = badges.get(b.table.id)
         if (!bd) return null

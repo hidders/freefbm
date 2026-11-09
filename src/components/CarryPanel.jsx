@@ -80,7 +80,9 @@ function CarryItem({ it, ctx, language, here, there, mapping }) {
     const st = useOrmStore.getState()
     const sid = it.side === 'source' ? mapping.targetSchemaId : mapping.sourceSchemaId
     if (p.kind === 'simple') st.addSimpleConstraint(sid, p.simple)
-    else st.addCarriedConstraint(p.carry.schemaId, { rule: p.carry.rule, deontic: p.carry.deontic, graphical: p.carry.graphical })
+    else st.addCarriedConstraint(p.carry.schemaId, { rule: p.carry.rule, deontic: p.carry.deontic, graphical: p.carry.graphical,
+      from: { mappingId: mapping.id, schemaId: it.side === 'source' ? mapping.sourceSchemaId : mapping.targetSchemaId,
+        text: x.label || x.entry?.subject || x.entry?.kind || null } })
     setAdded(true)
   }
   const proposalKept = p && !p.error && (p.status === 'native' || p.status === 'implied')

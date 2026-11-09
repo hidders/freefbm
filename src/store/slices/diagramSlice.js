@@ -254,10 +254,26 @@ export function createDiagramSlice(set, get) {
       }))
     },
 
-    // Forgets the ERD box positions, so the tables are laid out afresh.
+    // Whether an ERD draws the schema's assertions as constraint nodes
+    // (ErdAssertions.jsx), and where (centres by assertion RM id).
+    setErdAssertions(id, on) {
+      set(s => ({
+        diagrams: s.diagrams.map(d => d.id === id ? { ...d, erdAssertions: !!on } : d),
+        isDirty: true,
+      }))
+    },
+    setErdAssertionPositions(id, positions) {
+      set(s => ({
+        diagrams: s.diagrams.map(d => d.id === id ? { ...d, erdAssertionPositions: { ...(d.erdAssertionPositions ?? {}), ...positions } } : d),
+        isDirty: true,
+      }))
+    },
+
+    // Forgets the ERD box positions (and those of assertion nodes), so the
+    // tables are laid out afresh.
     resetErdPositions(id) {
       set(s => ({
-        diagrams: s.diagrams.map(d => d.id === id ? { ...d, erdPositions: {} } : d),
+        diagrams: s.diagrams.map(d => d.id === id ? { ...d, erdPositions: {}, erdAssertionPositions: {} } : d),
         isDirty: true,
       }))
     },

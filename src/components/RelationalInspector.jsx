@@ -11,6 +11,7 @@ import { exportPostgresDdl } from '../relational/ddlExport.js'
 import { quoteIdent } from '../relational/sqlNames.js'
 import { sideContext } from '../mapping/mapping.js'
 import { TRANSFORMATIONS } from '../mapping/transformations.js'
+import { assertionShapes, ASSERTION_KINDS } from '../relational/erdAssertions.js'
 
 const KIND_TITLE = {
   table: 'Table', view: 'View', column: 'Column', notNull: 'NOT NULL', primaryKey: 'Primary key',
@@ -175,6 +176,7 @@ function ConstraintBody({ o, view, link }) {
       })})</Line>
     )}
     {o.kind !== 'assertion' && o.sql && <Sql text={o.sql} title="SQL" />}
+    {o.kind === 'assertion' && <AssertionAbout o={o} view={view} link={link} />}
     {o.kind === 'assertion' && <>
       <Note>{o.query
         ? 'A constraint with no table form. PostgreSQL has no assertions, so the DDL export enforces it with constraint triggers that run the query below, or writes the query as a comment.'
@@ -182,6 +184,32 @@ function ConstraintBody({ o, view, link }) {
       {o.formula && <Sql text={o.formula} title="Formula" />}
       {o.query && <Sql text={`${o.query};`} title="Violations" />}
     </>}
+  </>
+}
+
+// What an assertion checks (the kind its formula has the shape of), the
+// tables it constrains and refers to (relational/erdAssertions.js), and where
+// it comes from.
+function AssertionAbout({ o, view, link }) {
+  const shape = assertionShapes(view).find(s => s.rmId === o.rmId)
+  const st = useOrmStore.getState()
+  const c = st.constraints.find(x => x.id === o.members[0])
+  const tableLinks = (role) => (shape?.tables ?? []).filter(t => t.role === role).map(t => view.objects.get(`table:${t.id}`)).filter(Boolean)
+  const list = (ts) => ts.map((t, i) => <React.Fragment key={t.rmId}>{i ? ', ' : ''}{link(t)}</React.Fragment>)
+  const constrained = tableLinks('constrained'), referenced = tableLinks('referenced')
+  const from = c?.carriedFrom
+  const fromSchema = from && st.schemas?.find(x => x.id === from.schemaId)
+  const fromMapping = from && st.mappings?.find(m => m.id === from.mappingId)
+  return <>
+    {shape && <Line>Kind: {ASSERTION_KINDS[shape.kind] ?? shape.kind}</Line>}
+    {constrained.length > 0 && <Line>Constrains {list(constrained)}</Line>}
+    {referenced.length > 0 && <Line>Refers to {list(referenced)}</Line>}
+    <Section title="Origin">
+      {from
+        ? <Line>Carried from {from.text ? <Code>{from.text}</Code> : 'a constraint'}{fromSchema ? <> of {fromSchema.name}</> : null}{fromMapping ? <> through the mapping {fromMapping.name}</> : null}</Line>
+        : c?.sqlCheck ? <Line>Read from the CHECK <Code>{c.sqlCheck.text}</Code> of an imported script</Line>
+        : <Line muted>Not recorded: added in this schema, or carried before origins were kept</Line>}
+    </Section>
   </>
 }
 
