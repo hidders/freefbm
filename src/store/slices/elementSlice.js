@@ -742,6 +742,62 @@ export function createElementSlice(set, get) {
       }))
     },
 
+    // Whether a value or cardinality range label (sel as in selectedValueRange)
+    // has been moved on the active diagram, and putting it back. An object
+    // type's and a role's offsets are per occurrence (the type's or role's own
+    // offset is the older fallback); a nested entity type's is the fact's own.
+    rangeLabelMoved(sel, cardinality = false) {
+      const s = get()
+      const d = s.diagrams.find(x => x.id === s.activeDiagramId)
+      const occs = (id) => (d?.occurrences ?? []).filter(o => o.schemaElementId === id)
+      const moved = (o) => !!o && (o.dx !== 0 || o.dy !== 0)
+      if (sel?.otId) {
+        const key = cardinality ? 'cardinalityRangeOffset' : 'valueRangeOffset'
+        const ot = s.objectTypes.find(o => o.id === sel.otId)
+        return occs(sel.otId).some(o => moved(o[key] !== undefined ? o[key] : ot?.[key]))
+      }
+      if (sel?.factId != null) {
+        const key = cardinality ? 'cardinalityRangeOffsets' : 'valueRangeOffsets'
+        const role = s.facts.find(f => f.id === sel.factId)?.roles?.[sel.roleIndex]
+        const own = role?.[cardinality ? 'cardinalityRangeOffset' : 'valueRangeOffset']
+        return occs(sel.factId).some(o => moved(o[key]?.[sel.roleIndex] ?? own))
+      }
+      if (sel?.nestedFactId) {
+        const f = s.facts.find(x => x.id === sel.nestedFactId)
+        return moved(f?.[cardinality ? 'cardinalityRangeOffset' : 'valueRangeOffset'])
+      }
+      return false
+    },
+    resetRangeLabel(sel, cardinality = false) {
+      set(s => {
+        const patchDiag = (fn) => s.diagrams.map(d => d.id !== s.activeDiagramId ? d : fn(d))
+        if (sel?.otId) {
+          const key = cardinality ? 'cardinalityRangeOffset' : 'valueRangeOffset'
+          return { diagrams: patchDiag(d => patchOcc(d, sel.otId, { [key]: null })), isDirty: true }
+        }
+        if (sel?.factId != null) {
+          const key = cardinality ? 'cardinalityRangeOffsets' : 'valueRangeOffsets'
+          const ownKey = cardinality ? 'cardinalityRangeOffset' : 'valueRangeOffset'
+          return {
+            diagrams: patchDiag(d => ({ ...d, occurrences: (d.occurrences ?? []).map(o => {
+              if (o.schemaElementId !== sel.factId || !o[key]) return o
+              const { [sel.roleIndex]: _, ...rest } = o[key]
+              return { ...o, [key]: rest }
+            }) })),
+            // the role's own offset is the older, diagram-wide fallback
+            facts: s.facts.map(f => f.id !== sel.factId || f.roles[sel.roleIndex]?.[ownKey] == null ? f
+              : { ...f, roles: f.roles.map((r, i) => i === sel.roleIndex ? { ...r, [ownKey]: null } : r) }),
+            isDirty: true,
+          }
+        }
+        if (sel?.nestedFactId) {
+          const key = cardinality ? 'cardinalityRangeOffset' : 'valueRangeOffset'
+          return { facts: s.facts.map(f => f.id === sel.nestedFactId ? { ...f, [key]: null } : f), isDirty: true }
+        }
+        return {}
+      })
+    },
+
     // Update per-diagram layout properties for a fact.
     updateFactLayout(id, patch) {
       set(s => ({
