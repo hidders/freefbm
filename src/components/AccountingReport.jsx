@@ -176,7 +176,9 @@ function Carried({ carry, x, mapping, side, language, there, onClose }) {
   )
   const kept = carry.status === 'native' || carry.status === 'implied'
   const add = () => {
-    useOrmStore.getState().addCarriedConstraint(carry.schemaId, { rule: carry.rule, deontic: carry.deontic, graphical: carry.graphical })
+    useOrmStore.getState().addCarriedConstraint(carry.schemaId, { rule: carry.rule, deontic: carry.deontic, graphical: carry.graphical,
+      from: { mappingId: mapping.id, schemaId: side === 'source' ? mapping.sourceSchemaId : mapping.targetSchemaId,
+        text: x.label || x.entry?.subject || x.entry?.kind || null } })
     markKept(mapping.id, side, x.key, carry.status ?? 'unknown',
       kept ? `Kept by a constraint added to ${there} from this one.` : `A constraint was added to ${there} from this one; check again to see whether it keeps it.`)
     setAdded(true)

@@ -3,6 +3,7 @@ import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { activeSchemaIdOf, mappingOfDiagram, isViewMapping } from '../store/storeHelpers'
 import { NewSchemaMenu } from './SchemaStrip'
 import { isErdDiagram } from './ErdView'
+import { relationalView } from '../relational/relationalView'
 import { layoutOrmDiagram } from '../layout/ormLayout'
 import { layoutMappingDiagram } from '../layout/mappingLayout'
 import { diagramCoverage } from '../utils/neighbourhood.js'
@@ -334,6 +335,7 @@ export default function DiagramTabs() {
           >Auto layout</div>
         )}
         {activeDiagram && isRelational && isErdDiagram(store, activeDiagram) && <ErdLinesSwitch diagram={activeDiagram} />}
+        {activeDiagram && isRelational && isErdDiagram(store, activeDiagram) && <ErdAssertionsSwitch diagram={activeDiagram} />}
         {/* An ORM2 diagram (not a mapping diagram): lay out everything afresh. */}
         {activeDiagram && !mapping && !isErdDiagram(store, activeDiagram) && (activeDiagram.occurrences?.length ?? 0) > 0 && (
           <div title="Lay the whole diagram out afresh: moves every element, collapses reference modes, and draws each attribute's value type next to its entity type"
@@ -405,6 +407,24 @@ function ErdLinesSwitch({ diagram }) {
           }}>{label}</div>
       ))}
     </div>
+  )
+}
+
+// Assertions switch of an ERD: draws the schema's assertions as constraint
+// nodes linked to their tables (ErdAssertions.jsx). Shown when it has any.
+function ErdAssertionsSwitch({ diagram }) {
+  useOrmStore(s => s.constraints)
+  useOrmStore(s => s.facts)
+  const n = relationalView(useOrmStore.getState(), diagram.schemaId).assertions.length
+  if (!n) return null
+  const on = !!diagram.erdAssertions
+  return (
+    <span title={on ? 'Stop drawing the assertions' : `Draw the schema's ${n} assertion${n === 1 ? '' : 's'} as constraint nodes linked to the tables they read`}
+      onClick={() => useOrmStore.getState().setErdAssertions(diagram.id, !on)}
+      style={{ cursor: 'pointer', padding: '1px 6px', borderRadius: 9, fontSize: 11, marginRight: 8, userSelect: 'none', whiteSpace: 'nowrap', flexShrink: 0,
+        color: on ? '#fff' : 'var(--ink-3)', background: on ? 'var(--col-constraint)' : 'none',
+        border: `1px solid ${on ? 'var(--col-constraint)' : 'var(--border)'}` }}
+    >Assertions {n}</span>
   )
 }
 
