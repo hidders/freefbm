@@ -14,8 +14,13 @@
 // query returns a row, run after each change of a table the query reads,
 // deferred to the end of the transaction (deontic ones stay comments).
 //
-// exportPostgresDdl(state, schemaId, { assertions: 'comments'|'triggers' })
-//   → { sql, warnings, queries, assertions }
+// What each constraint becomes is planned by planEnforcement (enforcement.js):
+// besides the above, an assertion that is a foreign key is written as one.
+// The schema's SQL settings (schema.sql) say whether assertions become
+// triggers or commented queries (audit), per constraint too; options override.
+//
+// exportPostgresDdl(state, schemaId, { assertions: 'triggers'|'audit'|'comments', overrides })
+//   → { sql, warnings, queries, assertions, plan }
 
 import { tableRulesOf, tableRuleAsMapping } from './derivedTables.js'
 import { tableViews, viewOrder } from './viewSql.js'
@@ -24,6 +29,7 @@ import { valueKindName } from '../utils/datatypeValues.js'
 import { relationalModel } from './relationalModel.js'
 import { quoteIdent } from './sqlNames.js'
 import { constraintsAsSql } from './formulaSql.js'
+import { planEnforcement, sqlSettings } from './enforcement.js'
 
 export { quoteIdent }
 
@@ -78,23 +84,31 @@ export function rangeSql(col, specs, numeric) {
   return parts.length === 1 ? parts[0] : parts.map(p => `(${p})`).join(' OR ')
 }
 
-export function exportPostgresDdl(state, schemaId, { assertions: assertionMode = 'comments' } = {}) {
+export function exportPostgresDdl(state, schemaId, options = {}) {
   const inSchema = (x) => !schemaId || x.schemaId === schemaId
+  const own = sqlSettings((state.schemas ?? []).find(x => x.id === schemaId))
+  const settings = { ...own, target: 'postgresql',
+    ...(options.assertions && { assertions: options.assertions === 'triggers' ? 'triggers' : 'audit' }),
+    ...(options.overrides && { overrides: options.overrides }) }
+  const plan = planEnforcement(state, schemaId, settings)
   const model = relationalModel(state, schemaId)
   const { tables, fks, notColumns } = model
   const warnings = []
   // Constraints without a table form, written from their formulas.
   const tableById = new Map(tables.map(t => [t.id, t]))
-  const queries = [], unwrittenNotes = []
+  const unwrittenNotes = []
   constraintsAsSql(state, model).forEach(({ c, entries }, i) => {
-    const label = `${c.name ? `${c.name}: ` : ''}${entries[0]?.entry.kind ?? c.constraintType}`
-    for (const e of entries) {
+    for (const e of entries)
       if (e.check) tableById.get(e.check.tableId).checks.push({ name: entries.length === 1 ? c.name || null : null, text: e.check.text })
-      else if (e.query) queries.push({ label: e.entry.kind === entries[0].entry.kind ? label : `${label}, ${e.entry.kind}`, name: c.name || null, kind: e.entry.kind, ...e })
-    }
     const bad = entries.filter(e => !e.check && !e.query)
     if (bad.length) unwrittenNotes.push(`${model.notExported[i]}: ${bad.map(e => e.error).join('; ')}`)
   })
+  // Assertions with a query: foreign keys, triggers or audit queries (the plan).
+  const planned = plan.items.filter(x => x.kind === 'assertion' && x.entry?.query)
+  const queries = planned.map(x => ({ ...x.entry, technique: x.technique, viewsOnly: !!x.viewsOnly }))
+  // A foreign key to columns that are not a key is refused by SQL: it is an
+  // assertion instead (the plan lists it).
+  const badFks = new Set(planned.filter(x => x.rmId.startsWith('fk:')).map(x => x.entry.constraintId))
   for (const f of notColumns) warnings.push(`Fact type ${(f.readingParts ?? []).join(' ').trim() || f.id} is not a column and is not exported`)
   for (const t of tables) for (const col of t.columns)
     if (!col.singleValued) warnings.push(`${t.name}.${col.name} has no uniqueness constraint on the table's role; it is exported as an ordinary column`)
@@ -150,13 +164,25 @@ export function exportPostgresDdl(state, schemaId, { assertions: assertionMode =
   }
   // Foreign keys between stored columns; a view's are not enforced.
   const isStored = (t, cols) => views.get(t.id)?.kind !== 'view' && cols.every(c => !views.get(t.id)?.derivedCols?.has(c.fact.id))
-  const storedFks = fks.filter(fk => isStored(fk.fromTable, fk.from) && isStored(fk.toTable, fk.to))
-  for (const fk of fks) if (!storedFks.includes(fk)) warnings.push(`FOREIGN KEY ${fk.fromTable.name}(${fk.from.map(c => c.name).join(', ')}) → ${fk.toTable.name}(${fk.to.map(c => c.name).join(', ')}) is about a view or a derived column and is not enforced`)
+  const storedFks = fks.filter(fk => !badFks.has(fk.constraintId) && isStored(fk.fromTable, fk.from) && isStored(fk.toTable, fk.to))
+  for (const fk of fks) if (!storedFks.includes(fk) && !badFks.has(fk.constraintId)) warnings.push(`FOREIGN KEY ${fk.fromTable.name}(${fk.from.map(c => c.name).join(', ')}) → ${fk.toTable.name}(${fk.to.map(c => c.name).join(', ')}) is about a view or a derived column and is not enforced`)
   for (const fk of storedFks) {
     lines.push(`ALTER TABLE ${q(storedName(fk.fromTable))} ADD ${fk.name?.explicit ? `CONSTRAINT ${q(fk.name.name)} ` : ''}FOREIGN KEY (${fk.from.map(c => q(c.name)).join(', ')})`
       + ` REFERENCES ${q(storedName(fk.toTable))} (${fk.to.map(c => q(c.name)).join(', ')});`)
   }
   if (storedFks.length) lines.push('')
+  // Assertions that are foreign keys (foreignKeyRewrite.js).
+  const asFks = queries.filter(x => x.technique === 'foreignKey')
+  if (asFks.some(x => !x.fk.existing)) lines.push('-- Assertions that are foreign keys:', '')
+  for (const x of asFks) {
+    const { fk } = x
+    if (fk.existing) continue
+    const cols = (cs) => cs.map(c => q(c.name)).join(', ')
+    lines.push(`-- ${x.label}`, `--   ${x.text}`)
+    if (fk.addUnique) lines.push(`ALTER TABLE ${q(storedName(fk.toTable))} ADD UNIQUE (${cols(fk.to)});`)
+    lines.push(`ALTER TABLE ${q(storedName(fk.fromTable))} ADD ${x.name ? `CONSTRAINT ${q(snakeName(x.name).slice(0, 63))} ` : ''}FOREIGN KEY (${cols(fk.from)})`
+      + ` REFERENCES ${q(storedName(fk.toTable))} (${cols(fk.to)});`, '')
+  }
   const order = viewOrder(views)
   if (order.length) {
     lines.push('-- Tables with derived rows or columns (table rules), as views:', '')
@@ -165,10 +191,14 @@ export function exportPostgresDdl(state, schemaId, { assertions: assertionMode =
   // Assertions: constraint triggers (enforced) or commented queries.
   const triggers = [], commented = []
   for (const x of queries) {
-    if (assertionMode !== 'triggers' || x.deontic) { commented.push(x); continue }
+    if (x.technique === 'foreignKey') continue
+    if (x.technique !== 'trigger') {
+      commented.push(x)
+      if (x.viewsOnly) warnings.push(`${x.label}: it reads only views, so it gets no trigger`)
+      continue
+    }
     // Triggers go on the stored tables the query reads; a view has none.
     const on = [...new Set((x.tables ?? []).map(id => tableById.get(id)).filter(t => t && views.get(t.id)?.kind !== 'view').map(storedName))]
-    if (!on.length) { commented.push(x); warnings.push(`${x.label}: it reads only views, so it gets no trigger`); continue }
     triggers.push({ ...x, on, src: x })
   }
   if (triggers.length) {
@@ -229,6 +259,7 @@ export function exportPostgresDdl(state, schemaId, { assertions: assertionMode =
     // What PostgreSQL will not enforce, for the export report
     // (DdlExportDialog.jsx): assertions written as violation queries, and
     // the other warnings.
-    assertions: queries.map(x => ({ label: x.label, text: x.text, deontic: !!x.deontic, trigger: triggers.some(t => t.src === x) })),
+    assertions: queries.map(x => ({ label: x.label, text: x.text, deontic: !!x.deontic, trigger: triggers.some(t => t.src === x), technique: x.technique })),
+    plan,
   }
 }

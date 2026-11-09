@@ -1098,6 +1098,7 @@ export function loadSchemas(raw, collections) {
       id: x.id,
       name: typeof x.name === 'string' && x.name.trim() ? x.name : 'Schema',
       profile: SCHEMA_PROFILES.includes(x.profile) ? x.profile : 'orm2',
+      ...(x.sql && typeof x.sql === 'object' && { sql: x.sql }),
     }))
   if (!schemas.length) schemas.push(mkSchema('Schema'))
   const known = new Set(schemas.map(x => x.id))

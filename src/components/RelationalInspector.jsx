@@ -8,6 +8,7 @@ import React, { useMemo } from 'react'
 import { useOrmStore } from '../store/ormStore'
 import { relationalView, rmObjectOf, relationalCounts } from '../relational/relationalView.js'
 import { exportPostgresDdl } from '../relational/ddlExport.js'
+import { planEnforcement, sqlSettings, targetOf } from '../relational/enforcement.js'
 import { quoteIdent } from '../relational/sqlNames.js'
 import { sideContext } from '../mapping/mapping.js'
 import { TRANSFORMATIONS } from '../mapping/transformations.js'
@@ -64,7 +65,7 @@ export default function RelationalInspector({ schemaId, obj, tableRules }) {
       </div>
       {(obj.kind === 'table' || obj.kind === 'view') && <TableBody t={obj} view={view} link={link} />}
       {obj.kind === 'column' && <ColumnBody c={obj} view={view} link={link} />}
-      {!['table', 'view', 'column'].includes(obj.kind) && <ConstraintBody o={obj} view={view} link={link} />}
+      {!['table', 'view', 'column'].includes(obj.kind) && <ConstraintBody o={obj} view={view} link={link} schemaId={schemaId} />}
       {!obj.enforced && obj.kind !== 'assertion' && (
         <Note>Not checked by the PostgreSQL DDL export, as it is about a view or a derived column (the export says so).</Note>
       )}
@@ -165,7 +166,7 @@ function ColumnBody({ c, view, link }) {
   </>
 }
 
-function ConstraintBody({ o, view, link }) {
+function ConstraintBody({ o, view, link, schemaId }) {
   const cols = (o.columns ?? []).map(id => view.objects.get(id)).filter(Boolean)
   return <>
     {o.table && <Line>On {link(view.objects.get(o.table))}{cols.length > 0 && <> ({cols.map((c, i) => <React.Fragment key={c.rmId}>{i ? ', ' : ''}{link(c)}</React.Fragment>)})</>}</Line>}
@@ -178,13 +179,27 @@ function ConstraintBody({ o, view, link }) {
     {o.kind !== 'assertion' && o.sql && <Sql text={o.sql} title="SQL" />}
     {o.kind === 'assertion' && <AssertionAbout o={o} view={view} link={link} />}
     {o.kind === 'assertion' && <>
-      <Note>{o.query
-        ? 'A constraint with no table form. Many SQL databases do not support assertions, so the DDL export enforces it with constraint triggers that run the query below, or writes the query as a comment.'
-        : `It has no SQL form${o.error ? `: ${o.error}` : ''}.`}</Note>
+      <Note>{o.query ? <EnforcedAs o={o} schemaId={schemaId} /> : `It has no SQL form${o.error ? `: ${o.error}` : ''}.`}</Note>
       {o.formula && <Sql text={o.formula} title="Formula" />}
       {o.query && <Sql text={`${o.query};`} title="Violations" />}
     </>}
   </>
+}
+
+// How the schema's SQL target enforces an assertion (relational/enforcement.js).
+function EnforcedAs({ o, schemaId }) {
+  const state = useOrmStore.getState()
+  const schemas = useOrmStore(s => s.schemas)
+  const item = useMemo(() => {
+    try { return planEnforcement(state, schemaId).items.find(x => x.rmId === o.rmId) ?? null } catch { return null }
+  }, [o, schemaId, schemas])   // eslint-disable-line react-hooks/exhaustive-deps
+  const target = targetOf(sqlSettings(schemas.find(x => x.id === schemaId)).target).name
+  const lead = 'A constraint with no table form. Many SQL databases do not support assertions'
+  if (!item) return `${lead}.`
+  if (item.technique === 'foreignKey' && item.entry?.fk?.existing) return `${lead}, but this one says ${item.note}, which enforces it.`
+  if (item.technique === 'foreignKey') return `${lead}, but this one is a foreign key: the ${target} DDL export writes it as FOREIGN KEY ${item.note}.`
+  if (item.technique === 'trigger') return `${lead}, so the ${target} DDL export enforces it with a trigger that runs the query below${item.note ? ` (${item.note})` : ''}.`
+  return `${lead}. The ${target} DDL export writes the query below as an audit query (not enforced)${item.note ? `: ${item.note}` : ''}.`
 }
 
 // What an assertion checks (the kind its formula has the shape of), the

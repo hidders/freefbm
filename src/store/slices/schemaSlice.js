@@ -45,6 +45,27 @@ export const createSchemaSlice = (set, get) => ({
     })
   },
 
+  // A relational schema's SQL settings (relational/enforcement.js): the target
+  // DBMS the DDL export writes for by default, whether assertions become
+  // triggers or audit queries, and per-constraint overrides ({ rmId: 'trigger'
+  // | 'audit' }; null removes one). Preferences: the schema stays DBMS-neutral.
+  setSchemaSql(id, patch) {
+    set(s => ({
+      schemas: s.schemas.map(x => {
+        if (x.id !== id) return x
+        const cur = x.sql ?? {}
+        const next = { ...cur, ...patch }
+        if (patch.overrides) {
+          const o = { ...(cur.overrides ?? {}) }
+          for (const [k, v] of Object.entries(patch.overrides)) if (v) o[k] = v; else delete o[k]
+          next.overrides = o
+        }
+        return { ...x, sql: next }
+      }),
+      isDirty: true,
+    }))
+  },
+
   setSchemaProfile(id, profile) {
     if (!SCHEMA_PROFILES.includes(profile)) return
     // A schema made relational gets PostgreSQL datatypes on its diagrams that

@@ -88,11 +88,9 @@ export function useElectronMenu() {
         alert('Export PostgreSQL DDL writes a relational schema. Switch to a relational schema first (or set this schema\'s kind to Relational in Schema Settings).')
         return
       }
-      // What PostgreSQL will not enforce is reported before saving
-      // (DdlExportDialog.jsx); with nothing to report the script is saved at once.
-      const { sql, warnings, assertions } = s.exportPostgresDdl(schema.id)
-      if (warnings.length || assertions.length) { useOrmStore.setState({ ddlExportDialog: { schemaId: schema.id } }); return }
-      await api.saveSql({ defaultPath: `${schema.name.replace(/[^A-Za-z0-9_-]+/g, '_')}.sql`, content: sql })
+      // The dialog reports how each constraint is enforced before saving
+      // (DdlExportDialog.jsx, relational/enforcement.js).
+      useOrmStore.setState({ ddlExportDialog: { schemaId: schema.id } })
     })
 
     // The sample rows of the active relational schema as INSERT statements
