@@ -48,6 +48,17 @@ export default function DiagramTabs() {
     }
   }, [editingId])
 
+  // Keep the active tab in view in the scrolling tab list (a new diagram's tab is added at the end).
+  const activeIndex = diagrams.findIndex(d => d.id === activeDiagramId)
+  useEffect(() => {
+    const list = containerRef.current?.querySelector('.diagram-tab-list')
+    const tab = list?.querySelector(`[data-tab-idx="${activeIndex}"]`)
+    if (!tab) return
+    const l = list.getBoundingClientRect(), t = tab.getBoundingClientRect()
+    if (t.left < l.left) list.scrollLeft -= l.left - t.left + 8
+    else if (t.right > l.right) list.scrollLeft += t.right - l.right + 8
+  }, [activeIndex, diagrams.length])
+
   useEffect(() => {
     if (!editingId) return
     const onDown = (e) => {
@@ -157,13 +168,25 @@ export default function DiagramTabs() {
         alignItems: 'flex-end',
         background: 'var(--bg-raised)',
         borderBottom: '1px solid var(--border)',
-        paddingLeft: 8,
-        paddingTop: 5,
-        gap: 2,
         flexShrink: 0,
-        overflowX: 'auto',
       }}
     >
+      {/* Only the tabs scroll sideways; the controls on the right stay put. */}
+      <div
+        className="diagram-tab-list"
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          paddingLeft: 8,
+          paddingTop: 5,
+          gap: 2,
+          flex: '1 1 auto',
+          minWidth: 0,
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          alignSelf: 'stretch',
+        }}
+      >
       {diagrams.map((d, i) => {
         const isActive  = d.id === activeDiagramId
         const isEditing = editingId === d.id
@@ -292,8 +315,9 @@ export default function DiagramTabs() {
       >
         +
       </div>
+      </div>
 
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'center', paddingRight: 8 }}>
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'center', paddingLeft: 8, paddingRight: 8, flexShrink: 0 }}>
         {/* A mapping diagram names its mapping and can fetch its rules' elements. */}
         {mapping && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--ink-3)', whiteSpace: 'nowrap', marginRight: 8 }}>
