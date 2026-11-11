@@ -2588,10 +2588,22 @@
         ],
         "readingParts": [
           "",
-          "has office",
+          "has an office in",
           ""
         ],
-        "alternativeReadings": [],
+        "alternativeReadings": [
+          {
+            "roleOrder": [
+              1,
+              0
+            ],
+            "parts": [
+              "",
+              "is the office of",
+              ""
+            ]
+          }
+        ],
         "readingDisplay": "forward",
         "shownReadingOrder": null,
         "uniqueness": [
