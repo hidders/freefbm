@@ -98,6 +98,15 @@ export const frenchLibrary = romanceLibrary({
     totalMonths: '{0} en mois', totalDays: '{0} en jours', totalSeconds: '{0} en secondes',
   },
   operationFallback: (label) => `${label} de`,
+  population: {
+    the: (g) => (g === 'f' ? 'la' : 'le'),
+    with: 'avec',
+    inPrep: 'dans',
+    thereIs: 'il existe',
+    // On désigne les Personnes et les Étudiants par PersonNr.
+    referredTo: (names, join, vt, kw) => [kw('on désigne'), join(names.map(n => [kw('les'), n])), kw('par'), vt],
+    derived: 'dérivé',
+  },
   pluralWord,
   pluralVerb,
   contract: makeContract([

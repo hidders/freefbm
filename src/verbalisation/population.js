@@ -23,6 +23,7 @@
 // English.
 
 import { tok, linearise, phraseKit } from './engine.js'
+import { englishPopulation } from './languages/english.js'
 import { findRefMode, findCompositePI, findInheritedPI, findRolePlayer, identifyingFactIds } from '../utils/refMode.js'
 import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
 import { makePopulationEvaluator } from '../logic/derivedPopulation.js'
@@ -53,11 +54,12 @@ export function identifierOf(player, schema) {
   return null
 }
 
-// The phrase builder for one language: { np(typeId, cell), keyLines() }.
-// keyLines gives, for the popular reference modes the phrases used, the
-// sentences saying what the values are ("Persons are referred to by PersonNr.").
+// The phrase builder for one language: { np(typeId, cell), rest(typeId,
+// cell), keyLines() }. keyLines gives, for the popular reference modes the
+// phrases used, the sentences saying what the values are ("Persons are
+// referred to by PersonNr.").
 function makeWriter(ctx, language) {
-  const w = language.population ?? englishWords
+  const w = language.population ?? englishPopulation
   const h = phraseKit(ctx, language)
   const schema = ctx.schema
   const otById = ctx.otById
@@ -91,42 +93,77 @@ function makeWriter(ctx, language) {
     if (!ident || visiting.has(p.id)) return valueToken(null, Array.isArray(cell) ? JSON.stringify(cell) : cell)
     return tuple(typeId, cell, new Set([...visiting, p.id]))
   }
+  // The filler of a slot: a function of the slot's case (languages with cases).
+  const filler = (typeId, cell, depth, visiting, dflt) => (c) => np(typeId, cell, depth, visiting, c || dflt)
 
-  // The noun phrase of an instance of typeId (a cell as the population holds it).
-  function np(typeId, cell, depth = 0, visiting = new Set()) {
+  // What follows an instance's type name: the reference value ('P1', 12 kg,
+  // with ISBN '…'), a relative clause on its identifying facts, "in which"
+  // and its fact, or the tuple shorthand ('MAL', '151'). def says whether the
+  // phrase is definite (the Room that …) and so takes an article.
+  function rest(typeId, cell, depth = 0, visiting = new Set(), { record = true } = {}) {
     const p = player(typeId)
-    const name = tok(h.typeLabel(typeId), 'type')
-    if (!p) return [name, valueToken(null, cell)]
-    if (p.kind === 'value') return [name, valueToken(typeId, cell)]
+    if (!p) return { phrase: valueToken(null, cell) }
+    if (p.kind === 'value') return { phrase: valueToken(typeId, cell) }
     const ident = identifierOf(p, schema)
-    if (!ident) return [name, valueToken(null, cell)]
+    if (!ident) return { phrase: valueToken(null, cell) }
     if (ident.kind === 'refMode') {
       const { owner, rm } = ident
       const value = valueToken(rm.vtId, cell)
-      if (owner.refModeKind === 'unit' && owner.refModeName) return [name, value, tok(owner.refModeName, 'kw')]
-      if (owner.refModeKind === 'general') return [name, w.with, tok(h.typeLabel(rm.vtId), 'type'), value]
+      if (owner.refModeKind === 'unit' && owner.refModeName) return { phrase: [value, tok(owner.refModeName, 'kw')] }
+      if (owner.refModeKind === 'general' || !record) return { phrase: w.withValue(h, rm.vtId, value), general: true }
       if (!used.has(rm.vtId)) used.set(rm.vtId, new Set())
       used.get(rm.vtId).add(typeId)
-      return [name, value]
+      return { phrase: value }
     }
-    const short = () => [name, tuple(typeId, cell, new Set([...visiting, p.id]))]
+    const short = () => ({ phrase: tuple(typeId, cell, new Set([...visiting, p.id])) })
     if (visiting.has(p.id) || depth >= MAX_DEPTH || !Array.isArray(cell)) return short()
     const inner = new Set([...visiting, p.id])
     if (ident.kind === 'objectified') {
       const fact = ident.fact
       const args = fact.roles.map(r => v(r.objectTypeId))
-      const overrides = new Map(args.map((a, i) => [a, np(fact.roles[i].objectTypeId, cell[i], depth + 1, inner)]))
-      const clause = h.reading({ t: 'fact', factId: fact.id, args }, undefined, overrides)
-      return clause ? [w.the, name, w.inWhich, clause] : short()
+      const overrides = new Map(args.map((a, i) => [a, filler(fact.roles[i].objectTypeId, cell[i], depth + 1, inner)]))
+      const clause = w.inWhich(h, typeId, (hh) => hh.reading({ t: 'fact', factId: fact.id, args }, undefined, overrides))
+      return clause ? { phrase: clause, def: true } : short()
     }
-    const clauses = identifyingClauses(ident, typeId, cell, depth, inner)
-    return clauses ? [w.the, name, w.rel(h, v(typeId)), w.join(clauses)] : short()
+    const clause = w.relative(h, typeId, (hh) => identifyingClauses(hh, ident, cell, depth, inner))
+    return clause ? { phrase: clause, def: true } : short()
+  }
+
+  // The noun phrase of an instance of typeId (a cell as the population holds
+  // it), in case c: Person 'P1', the Room that …, the enrolment of … (an
+  // objectified fact type's nominal reading in the language, when it has one).
+  function np(typeId, cell, depth = 0, visiting = new Set(), c) {
+    const p = player(typeId)
+    const nominal = p?.objectified && identifierOf(p, schema)?.kind === 'objectified'
+      && depth < MAX_DEPTH && !visiting.has(p.id) && Array.isArray(cell)
+      && nominalPhrase(p, cell, depth, new Set([...visiting, p.id]), c)
+    if (nominal) return nominal
+    const r = rest(typeId, cell, depth, visiting)
+    const name = w.name(h, typeId, c)
+    return r.def ? [...definite(w.the(h, typeId, h.typeLabel(typeId), c), name), r.phrase] : [name, r.phrase]
+  }
+
+  // An objectified fact type's nominal reading filled in: "the enrolment of
+  // Student 'P1' in Course 'DB1'"; null when it has none in the language.
+  function nominalPhrase(fact, cell, depth, visiting, c) {
+    const nr = nominalReading(fact, language.id)
+    if (!nr || cell.length !== fact.roles.length) return null
+    const out = []
+    nr.roleOrder.forEach((ri, k) => {
+      const part = k || !w.nominalHead ? nr.parts[k]?.trim() : w.nominalHead(h, fact.id, nr.parts[0]?.trim() ?? '', c)
+      if (part) out.push(...(k ? [tok(part, 'reading')] : definite(w.the(h, fact.id, part, c), tok(part, 'reading'))))
+      out.push(np(fact.roles[ri].objectTypeId, cell[ri], depth + 1, visiting, nr.cases?.[k] || w.nominalCase))
+    })
+    const last = nr.parts[nr.roleOrder.length]
+    if (last?.trim()) out.push(tok(last.trim(), 'reading'))
+    return out
   }
 
   // The identifying facts of a composite identifier as verb phrases about the
   // entity: "is in Building 'MAL'", "has RoomNr '151'"; null when one of them
-  // has no reading that starts at the entity.
-  function identifyingClauses(ident, typeId, cell, depth, visiting) {
+  // has no reading that starts at the entity. hh is the helper set the
+  // language asks for (Dutch: subordinate order).
+  function identifyingClauses(hh, ident, cell, depth, visiting) {
     const { cp } = ident
     const segments = cp.identifyingRoleIndices.map((ri, ci) => ({
       factId: cp.factIds ? cp.factIds[ci] : cp.factId,
@@ -145,8 +182,8 @@ function makeWriter(ctx, language) {
       if (!fact) return null
       const args = fact.roles.map(r => v(r.objectTypeId))
       const subject = args[segs[0].ei]
-      const overrides = new Map(segs.map(s => [args[s.ri], np(fact.roles[s.ri].objectTypeId, cell[s.ci], depth + 1, visiting)]))
-      const vp = h.reading({ t: 'fact', factId, args }, subject, overrides)
+      const overrides = new Map(segs.map(s => [args[s.ri], filler(fact.roles[s.ri].objectTypeId, cell[s.ci], depth + 1, visiting)]))
+      const vp = hh.reading({ t: 'fact', factId, args }, subject, overrides)
       if (!vp) return null
       out.push(vp)
     }
@@ -156,7 +193,26 @@ function makeWriter(ctx, language) {
   const keyLines = () => [...used].map(([vtId, typeIds]) =>
     linearise(w.referredTo(h, [...typeIds], vtId), language))
 
-  return { h, w, np, valueToken, keyLines }
+  return { h, w, np, rest, filler, valueToken, keyLines }
+}
+
+// An article followed by the token it goes with; an elided article (l')
+// is glued to it.
+function definite(article, head) {
+  const art = [article].flat().filter(Boolean)
+  const last = art[art.length - 1]
+  return [...art, last?.text?.endsWith("'") ? { ...head, glue: true } : head]
+}
+
+// An objectified fact type's nominal reading in a language, from its lexicon
+// entry: { roleOrder, parts, cases? } with parts[k] before the role
+// roleOrder[k] and no article ("enrolment of … in …"); null when it has none.
+export function nominalReading(fact, langId) {
+  const nr = fact?.lexicon?.[langId]?.nominal
+  const n = fact?.roles?.length ?? 0
+  if (!nr || !Array.isArray(nr.roleOrder) || nr.roleOrder.length !== n || !Array.isArray(nr.parts)) return null
+  if (!nr.parts.some(p => p?.trim())) return null
+  return nr
 }
 
 // The parts of an identifier with their types, in the order a cell holds them.
@@ -173,28 +229,6 @@ function identifierParts(ident, schema) {
   return null
 }
 
-// The fixed words, English (also the fallback for languages without their own).
-const kw = (s) => tok(s, 'kw')
-const article = (word) => (/^[aeiou]/i.test(word) ? 'an' : 'a')
-export const englishWords = {
-  the: kw('the'),
-  with: kw('with'),
-  inWhich: kw('in which'),
-  rel: (h, v) => kw(h.objectType(v)?.isPersonal ? 'who' : 'that'),
-  join: (parts) => parts.flatMap((p, i) => (i ? [kw('and'), p] : [p])),
-  // There is a Person with PersonNr 'P1'.
-  thereIs: (name, rest) => [kw('there is'), kw(article(name.text)), name, ...rest],
-  // 'Alice' is a PersonName. / Person 'P1' is a Student.
-  isA: (subject, name) => [subject, kw('is'), kw(article(name.text)), name],
-  // Persons and Students are referred to by PersonNr.
-  referredTo: (h, typeIds, vtId) => {
-    const names = typeIds.map(t => tok(h.typePlural(t), 'type'))
-    const list = names.flatMap((n, i) => (i === 0 ? [n] : [i === names.length - 1 ? kw('and') : tok(',', 'punct'), n]))
-    return [...list, kw('are referred to by'), tok(h.typeLabel(vtId), 'type')]
-  },
-  derived: 'derived',
-}
-
 // The sentences of the population of element (an object type or fact type id
 // of data, a scoped store state): { rows: [{ tokens, text, derived, problems }],
 // keyLines: [{ tokens, text }], note? }. issues are the population issues
@@ -202,7 +236,7 @@ export const englishWords = {
 export function populationSentences(data, ctx, language, elementId, issues = []) {
   const ev = makePopulationEvaluator(data)
   const writer = makeWriter(ctx, language)
-  const { h, w, np, valueToken } = writer
+  const { h, w, np, rest, filler, valueToken } = writer
   const ot = ctx.otById.get(elementId)
   const fact = ctx.factById.get(elementId)
   const rows = []
@@ -218,7 +252,7 @@ export function populationSentences(data, ctx, language, elementId, issues = [])
     if (identified) return { ...populationSentences(data, ctx, language, identified, issues), note: 'identifies', identified }
     const args = fact.roles.map((r, i) => ({ typeId: r.objectTypeId, id: `row:${i}` }))
     const sentence = (tuple) => {
-      const overrides = new Map(args.map((a, i) => [a, np(fact.roles[i].objectTypeId, tuple[i])]))
+      const overrides = new Map(args.map((a, i) => [a, filler(fact.roles[i].objectTypeId, tuple[i], 0, new Set())]))
       return h.reading({ t: 'fact', factId: fact.id, args }, undefined, overrides)
     }
     const problemsOf = (ti) => issues.filter(i => i.factId === fact.id
@@ -232,7 +266,7 @@ export function populationSentences(data, ctx, language, elementId, issues = [])
     }
     if (fact.derivation === 'derived' || fact.derivation === 'semiDerived') {
       const r = ev.derivedFact(fact.id)
-      if (r.error) return { rows, keyLines: writer.keyLines(), error: String(r.error?.message ?? r.error) }
+      if (r.error) return { rows, keyLines: writer.keyLines(), derivedLabel: w.derived, error: String(r.error?.message ?? r.error) }
       const stored = fact.derivation === 'semiDerived' ? ev.storedTuples(fact).keys : new Set()
       for (const t of r.tuples) {
         if (stored.has(JSON.stringify(t.map(ev.keyOf)))) continue
@@ -240,27 +274,18 @@ export function populationSentences(data, ctx, language, elementId, issues = [])
         if (s) say(s, { derived: true })
       }
     }
-    return { rows, keyLines: writer.keyLines() }
+    return { rows, keyLines: writer.keyLines(), derivedLabel: w.derived }
   }
 
   if (ot) {
     const problemsOf = (idx) => issues.filter(i => i.otId === ot.id && i.instanceIndex === idx).map(i => i.message)
-    const name = tok(h.typeLabel(ot.id), 'type')
     const ident = ot.kind === 'entity' ? identifierOf(ot, ctx.schema) : null
     // An instance as an "is a" or "there is" sentence: a subtype that
     // inherits its identifier is named by the type that owns it.
     const instance = (cell) => {
-      if (ot.kind === 'value') return w.isA(valueToken(ot.id, cell), name)
-      if (ident && ident.owner && ident.owner.id !== ot.id) return w.isA(np(ident.owner.id, cell), name)
-      if (ident?.kind === 'refMode') {
-        const { rm, owner } = ident
-        if (owner.refModeKind === 'unit' && owner.refModeName)
-          return w.thereIs(name, [valueToken(rm.vtId, cell), tok(owner.refModeName, 'kw')])
-        return w.thereIs(name, [w.with, tok(h.typeLabel(rm.vtId), 'type'), valueToken(rm.vtId, cell)])
-      }
-      const phrase = np(ot.id, cell)
-      // "the Room that …" → "There is a Room that …"
-      return phrase[0] === w.the ? w.thereIs(name, phrase.slice(2)) : w.thereIs(name, phrase.slice(1))
+      if (ot.kind === 'value') return w.isA(h, valueToken(ot.id, cell), ot.id)
+      if (ident && ident.owner && ident.owner.id !== ot.id) return w.isA(h, np(ident.owner.id, cell), ot.id)
+      return w.thereIs(h, ot.id, rest(ot.id, cell, 0, new Set(), { record: false }).phrase)
     }
     if (ot.derivation !== 'derived') {
       ;(data.populations?.[ot.id] ?? []).forEach((cell, idx) => {
@@ -270,14 +295,14 @@ export function populationSentences(data, ctx, language, elementId, issues = [])
     }
     if (ot.derivation === 'derived' || ot.derivation === 'semiDerived') {
       const r = ev.derived(ot.id)
-      if (r.error) return { rows, keyLines: writer.keyLines(), error: String(r.error?.message ?? r.error) }
+      if (r.error) return { rows, keyLines: writer.keyLines(), derivedLabel: w.derived, error: String(r.error?.message ?? r.error) }
       const stored = ot.derivation === 'semiDerived' ? ev.population(ot.id).keys : new Set()
       for (const cell of r.instances) {
         if (stored.has(ev.keyOf(cell))) continue
         say(instance(cell), { derived: true })
       }
     }
-    return { rows, keyLines: writer.keyLines() }
+    return { rows, keyLines: writer.keyLines(), derivedLabel: w.derived }
   }
   return { rows, keyLines: [] }
 }

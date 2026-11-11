@@ -76,7 +76,7 @@
 
 # Possible (roles not unique) · Student is supervised by Professor
 ◇∃ Professor ∃^{>1} Student (Student is supervised by Professor)
-È possibile che più di uno Studente è seguito da lo stesso Professore.
+È possibile che più di uno Studente è seguito dallo stesso Professore.
 
 # Possible (role not mandatory) · Student is supervised by Professor
 ◇∃ Student ¬(∃ Professor (Student is supervised by Professor))
@@ -100,7 +100,7 @@
 
 # Possible (roles not unique) · Room is in Building
 ◇∃ Building ∃^{>1} Room (Room is in Building)
-È possibile che più di una Stanza si trova in lo stesso Edificio.
+È possibile che più di una Stanza si trova nello stesso Edificio.
 
 # Mandatory role · Room is in Building
 ¬(∃ Room ¬(∃ Building (Room is in Building)))
@@ -118,16 +118,16 @@
 ¬(∃ Room ¬(∃ RoomNr (Room has RoomNr)))
 È impossibile che una Stanza non ha nessun Numero di stanza.
 
-# Uniqueness · Staff has office Room
-¬(∃ Staff ∃^{>1} Room (Staff has office Room))
+# Uniqueness · Staff has an office in Room
+¬(∃ Staff ∃^{>1} Room (Staff has an office in Room))
 È impossibile che un Dipendente ha più di una Stanza come ufficio.
 
-# Possible (roles not unique) · Staff has office Room
-◇∃ Room ∃^{>1} Staff (Staff has office Room)
+# Possible (roles not unique) · Staff has an office in Room
+◇∃ Room ∃^{>1} Staff (Staff has an office in Room)
 È possibile che più di un Dipendente ha la stessa Stanza come ufficio.
 
-# Possible (role not mandatory) · Staff has office Room
-◇∃ Staff ¬(∃ Room (Staff has office Room))
+# Possible (role not mandatory) · Staff has an office in Room
+◇∃ Staff ¬(∃ Room (Staff has an office in Room))
 È possibile che un Dipendente non ha nessuna Stanza come ufficio.
 
 # Uniqueness · Staff has Extension
@@ -228,7 +228,7 @@
 
 # Possible (roles not unique) · Student assists in Course
 ◇∃ Course ∃^{>1} Student (Student assists in Course)
-È possibile che più di uno Studente è assistente in lo stesso Corso.
+È possibile che più di uno Studente è assistente nello stesso Corso.
 
 # Possible (role not mandatory) · Student assists in Course
 ◇∃ Student ¬(∃ Course (Student assists in Course))
@@ -292,7 +292,7 @@
 
 # Possible (roles not unique) · Term is in Season
 ◇∃ Season ∃^{>1} Term (Term is in Season)
-È possibile che più di un Periodo cade in la stessa Stagione.
+È possibile che più di un Periodo cade nella stessa Stagione.
 
 # Mandatory role · Term is in Season
 ¬(∃ Term ¬(∃ Season (Term is in Season)))
@@ -304,7 +304,7 @@
 
 # Possible (roles not unique) · Term is in AcademicYear
 ◇∃ AcademicYear ∃^{>1} Term (Term is in AcademicYear)
-È possibile che più di un Periodo fa parte di lo stesso Anno accademico.
+È possibile che più di un Periodo fa parte dello stesso Anno accademico.
 
 # Mandatory role · Term is in AcademicYear
 ¬(∃ Term ¬(∃ AcademicYear (Term is in AcademicYear)))
@@ -312,7 +312,7 @@
 
 # Uniqueness (preferred identifier) · AcademicYear starts in Year
 ¬(∃ Year ∃^{>1} AcademicYear (AcademicYear starts in Year))
-È impossibile che più di un Anno accademico inizia in lo stesso Anno.
+È impossibile che più di un Anno accademico inizia nello stesso Anno.
 
 # Preferred identifier (exactly one identifier) · AcademicYear starts in Year
 ¬(∃ AcademicYear (¬(∃ Year (AcademicYear starts in Year)) ∨ ∃^{>1} Year (AcademicYear starts in Year)))
@@ -328,7 +328,7 @@
 
 # Possible (roles not unique) · Course is offered in Term
 ◇∃ Term ∃^{>1} Course (Course is offered in Term)
-È possibile che più di un Corso è offerto in lo stesso Periodo.
+È possibile che più di un Corso è offerto nello stesso Periodo.
 
 # Possible (role not mandatory) · Course is offered in Term
 ◇∃ Course ¬(∃ Term (Course is offered in Term))
@@ -348,14 +348,14 @@
 
 # External uniqueness (preferred identifier)
 ¬(∃ Building ∃ RoomNr ∃^{>1} Room ((Room is in Building) ∧ (Room has RoomNr)))
-È impossibile che più di una Stanza si trova in lo stesso Edificio e ha lo stesso Numero di stanza.
+È impossibile che più di una Stanza si trova nello stesso Edificio e ha lo stesso Numero di stanza.
 
 # Preferred identifier (exactly one identifying combination)
 ¬(∃ Room ¬(∃^{=1} Building, RoomNr ((Room is in Building) ∧ (Room has RoomNr))))
 È impossibile che c'è una Stanza tale che non è vero che c'è esattamente una combinazione di Edificio e Numero di stanza tale che quella Stanza si trova in quell'Edificio e quella Stanza ha quel Numero di stanza.
 
 # Equality
-∀ Staff ((∃ Room (Staff has office Room)) ↔ ∃ Extension (Staff has Extension))
+∀ Staff ((∃ Room (Staff has an office in Room)) ↔ ∃ Extension (Staff has Extension))
 Per ogni Dipendente, quel Dipendente ha una Stanza come ufficio se e solo se quel Dipendente ha un Interno.
 
 # Ring (acyclic)
@@ -376,7 +376,7 @@ Per ogni Dipendente, quel Dipendente ha una Stanza come ufficio se e solo se que
 
 # External uniqueness (preferred identifier)
 ¬(∃ Season ∃ AcademicYear ∃^{>1} Term ((Term is in Season) ∧ (Term is in AcademicYear)))
-È impossibile che più di un Periodo cade in la stessa Stagione e fa parte di lo stesso Anno accademico.
+È impossibile che più di un Periodo cade nella stessa Stagione e fa parte dello stesso Anno accademico.
 
 # Preferred identifier (exactly one identifying combination)
 ¬(∃ Term ¬(∃^{=1} Season, AcademicYear ((Term is in Season) ∧ (Term is in AcademicYear))))
@@ -495,7 +495,7 @@ Per ogni Dipendente, quel Dipendente ha una Stanza come ufficio se e solo se que
 È impossibile che un'Iscrizione è un'Offerta.
 
 # Participation (not independent) · Person
-¬(∃ Person (¬(∃ PersonName (Person has PersonName)) ∧ ¬(∃ Email (Person has Email)) ∧ ¬(∃ Phone (Person has Phone)) ∧ ¬(∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∧ ¬(∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∧ ¬(∃ Room (Staff(Person) ∧ (Person has office Room))) ∧ ¬(∃ Extension (Staff(Person) ∧ (Person has Extension))) ∧ ¬(∃ Course (Student(Person) ∧ (Person enrols in Course))) ∧ ¬(∃ Course (Student(Person) ∧ (Person assists in Course))) ∧ ¬(∃ Course (Staff(Person) ∧ (Person is qualified to teach Course))) ∧ ¬(∃ Offering (Staff(Person) ∧ (Person teaches Offering))) ∧ ¬(∃ Course (Staff(Person) ∧ (Person coordinates Course)))))
+¬(∃ Person (¬(∃ PersonName (Person has PersonName)) ∧ ¬(∃ Email (Person has Email)) ∧ ¬(∃ Phone (Person has Phone)) ∧ ¬(∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∧ ¬(∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∧ ¬(∃ Room (Staff(Person) ∧ (Person has an office in Room))) ∧ ¬(∃ Extension (Staff(Person) ∧ (Person has Extension))) ∧ ¬(∃ Course (Student(Person) ∧ (Person enrols in Course))) ∧ ¬(∃ Course (Student(Person) ∧ (Person assists in Course))) ∧ ¬(∃ Course (Staff(Person) ∧ (Person is qualified to teach Course))) ∧ ¬(∃ Offering (Staff(Person) ∧ (Person teaches Offering))) ∧ ¬(∃ Course (Staff(Person) ∧ (Person coordinates Course)))))
 È impossibile che c'è una Persona tale che quella Persona non ha nessun Nome e quella Persona non ha nessun Indirizzo e-mail e quella Persona non ha nessun Numero di telefono e al massimo una delle seguenti affermazioni è vera: quella Persona è uno Studente; quella Persona è seguito da un Professore e al massimo una delle seguenti affermazioni è vera: quella Persona è un Professore; quella Persona segue uno Studente e al massimo una delle seguenti affermazioni è vera: quella Persona è un Dipendente; quella Persona ha una Stanza come ufficio e al massimo una delle seguenti affermazioni è vera: quella Persona è un Dipendente; quella Persona ha un Interno e al massimo una delle seguenti affermazioni è vera: quella Persona è uno Studente; quella Persona frequenta un Corso e al massimo una delle seguenti affermazioni è vera: quella Persona è uno Studente; quella Persona è assistente in un Corso e al massimo una delle seguenti affermazioni è vera: quella Persona è un Dipendente; quella Persona è abilitato a insegnare un Corso e al massimo una delle seguenti affermazioni è vera: quella Persona è un Dipendente; quella Persona insegna un'Offerta e al massimo una delle seguenti affermazioni è vera: quella Persona è un Dipendente; quella Persona coordina un Corso.
 
 # Participation (not independent) · PersonNr
@@ -515,19 +515,19 @@ Per ogni Dipendente, quel Dipendente ha una Stanza come ufficio se e solo se que
 È impossibile che c'è un Numero di telefono tale che nessuna Persona ha quel Numero di telefono.
 
 # Participation (not independent) · Student
-¬(∃ Student₁ (¬(∃ PersonName (Student₁ has PersonName)) ∧ ¬(∃ Email (Student₁ has Email)) ∧ ¬(∃ Phone (Student₁ has Phone)) ∧ ¬(∃ Professor (Student₁ is supervised by Professor)) ∧ ¬(∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∧ ¬(∃ Room (Staff(Student₁) ∧ (Student₁ has office Room))) ∧ ¬(∃ Extension (Staff(Student₁) ∧ (Student₁ has Extension))) ∧ ¬(∃ Course (Student₁ enrols in Course)) ∧ ¬(∃ Course (Student₁ assists in Course)) ∧ ¬(∃ Course (Staff(Student₁) ∧ (Student₁ is qualified to teach Course))) ∧ ¬(∃ Offering (Staff(Student₁) ∧ (Student₁ teaches Offering))) ∧ ¬(∃ Course (Staff(Student₁) ∧ (Student₁ coordinates Course)))))
+¬(∃ Student₁ (¬(∃ PersonName (Student₁ has PersonName)) ∧ ¬(∃ Email (Student₁ has Email)) ∧ ¬(∃ Phone (Student₁ has Phone)) ∧ ¬(∃ Professor (Student₁ is supervised by Professor)) ∧ ¬(∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∧ ¬(∃ Room (Staff(Student₁) ∧ (Student₁ has an office in Room))) ∧ ¬(∃ Extension (Staff(Student₁) ∧ (Student₁ has Extension))) ∧ ¬(∃ Course (Student₁ enrols in Course)) ∧ ¬(∃ Course (Student₁ assists in Course)) ∧ ¬(∃ Course (Staff(Student₁) ∧ (Student₁ is qualified to teach Course))) ∧ ¬(∃ Offering (Staff(Student₁) ∧ (Student₁ teaches Offering))) ∧ ¬(∃ Course (Staff(Student₁) ∧ (Student₁ coordinates Course)))))
 È impossibile che c'è uno Studente₁ tale che quello Studente₁ non ha nessun Nome e quello Studente₁ non ha nessun Indirizzo e-mail e quello Studente₁ non ha nessun Numero di telefono e quello Studente₁ non è seguito da nessun Professore e al massimo una delle seguenti affermazioni è vera: quello Studente₁ è un Professore; quello Studente₁ segue uno Studente e al massimo una delle seguenti affermazioni è vera: quello Studente₁ è un Dipendente; quello Studente₁ ha una Stanza come ufficio e al massimo una delle seguenti affermazioni è vera: quello Studente₁ è un Dipendente; quello Studente₁ ha un Interno e quello Studente₁ non frequenta nessun Corso e quello Studente₁ non è assistente in nessun Corso e al massimo una delle seguenti affermazioni è vera: quello Studente₁ è un Dipendente; quello Studente₁ è abilitato a insegnare un Corso e al massimo una delle seguenti affermazioni è vera: quello Studente₁ è un Dipendente; quello Studente₁ insegna un'Offerta e al massimo una delle seguenti affermazioni è vera: quello Studente₁ è un Dipendente; quello Studente₁ coordina un Corso.
 
 # Participation (not independent) · Staff
-¬(∃ Staff (¬(∃ PersonName (Staff has PersonName)) ∧ ¬(∃ Email (Staff has Email)) ∧ ¬(∃ Phone (Staff has Phone)) ∧ ¬(∃ Professor (Student(Staff) ∧ (Staff is supervised by Professor))) ∧ ¬(∃ Student (Professor(Staff) ∧ (Student is supervised by Staff))) ∧ ¬(∃ Room (Staff has office Room)) ∧ ¬(∃ Extension (Staff has Extension)) ∧ ¬(∃ Course (Student(Staff) ∧ (Staff enrols in Course))) ∧ ¬(∃ Course (Student(Staff) ∧ (Staff assists in Course))) ∧ ¬(∃ Course (Staff is qualified to teach Course)) ∧ ¬(∃ Offering (Staff teaches Offering)) ∧ ¬(∃ Course (Staff coordinates Course))))
+¬(∃ Staff (¬(∃ PersonName (Staff has PersonName)) ∧ ¬(∃ Email (Staff has Email)) ∧ ¬(∃ Phone (Staff has Phone)) ∧ ¬(∃ Professor (Student(Staff) ∧ (Staff is supervised by Professor))) ∧ ¬(∃ Student (Professor(Staff) ∧ (Student is supervised by Staff))) ∧ ¬(∃ Room (Staff has an office in Room)) ∧ ¬(∃ Extension (Staff has Extension)) ∧ ¬(∃ Course (Student(Staff) ∧ (Staff enrols in Course))) ∧ ¬(∃ Course (Student(Staff) ∧ (Staff assists in Course))) ∧ ¬(∃ Course (Staff is qualified to teach Course)) ∧ ¬(∃ Offering (Staff teaches Offering)) ∧ ¬(∃ Course (Staff coordinates Course))))
 È impossibile che c'è un Dipendente tale che quel Dipendente non ha nessun Nome e quel Dipendente non ha nessun Indirizzo e-mail e quel Dipendente non ha nessun Numero di telefono e al massimo una delle seguenti affermazioni è vera: quel Dipendente è uno Studente; quel Dipendente è seguito da un Professore e al massimo una delle seguenti affermazioni è vera: quel Dipendente è un Professore; quel Dipendente segue uno Studente e quel Dipendente non ha nessuna Stanza come ufficio e quel Dipendente non ha nessun Interno e al massimo una delle seguenti affermazioni è vera: quel Dipendente è uno Studente; quel Dipendente frequenta un Corso e al massimo una delle seguenti affermazioni è vera: quel Dipendente è uno Studente; quel Dipendente è assistente in un Corso e quel Dipendente non è abilitato a insegnare nessun Corso e quel Dipendente non insegna nessun'Offerta e quel Dipendente non coordina nessun Corso.
 
 # Participation (not independent) · Professor
-¬(∃ Professor₁ (¬(∃ PersonName (Professor₁ has PersonName)) ∧ ¬(∃ Email (Professor₁ has Email)) ∧ ¬(∃ Phone (Professor₁ has Phone)) ∧ ¬(∃ Professor₂ (Student(Professor₁) ∧ (Professor₁ is supervised by Professor₂))) ∧ ¬(∃ Student (Student is supervised by Professor₁)) ∧ ¬(∃ Room (Professor₁ has office Room)) ∧ ¬(∃ Extension (Professor₁ has Extension)) ∧ ¬(∃ Course (Student(Professor₁) ∧ (Professor₁ enrols in Course))) ∧ ¬(∃ Course (Student(Professor₁) ∧ (Professor₁ assists in Course))) ∧ ¬(∃ Course (Professor₁ is qualified to teach Course)) ∧ ¬(∃ Offering (Professor₁ teaches Offering)) ∧ ¬(∃ Course (Professor₁ coordinates Course))))
+¬(∃ Professor₁ (¬(∃ PersonName (Professor₁ has PersonName)) ∧ ¬(∃ Email (Professor₁ has Email)) ∧ ¬(∃ Phone (Professor₁ has Phone)) ∧ ¬(∃ Professor₂ (Student(Professor₁) ∧ (Professor₁ is supervised by Professor₂))) ∧ ¬(∃ Student (Student is supervised by Professor₁)) ∧ ¬(∃ Room (Professor₁ has an office in Room)) ∧ ¬(∃ Extension (Professor₁ has Extension)) ∧ ¬(∃ Course (Student(Professor₁) ∧ (Professor₁ enrols in Course))) ∧ ¬(∃ Course (Student(Professor₁) ∧ (Professor₁ assists in Course))) ∧ ¬(∃ Course (Professor₁ is qualified to teach Course)) ∧ ¬(∃ Offering (Professor₁ teaches Offering)) ∧ ¬(∃ Course (Professor₁ coordinates Course))))
 È impossibile che c'è un Professore₁ tale che quel Professore₁ non ha nessun Nome e quel Professore₁ non ha nessun Indirizzo e-mail e quel Professore₁ non ha nessun Numero di telefono e al massimo una delle seguenti affermazioni è vera: quel Professore₁ è uno Studente; quel Professore₁ è seguito da un Professore e quel Professore₁ non segue nessuno Studente e quel Professore₁ non ha nessuna Stanza come ufficio e quel Professore₁ non ha nessun Interno e al massimo una delle seguenti affermazioni è vera: quel Professore₁ è uno Studente; quel Professore₁ frequenta un Corso e al massimo una delle seguenti affermazioni è vera: quel Professore₁ è uno Studente; quel Professore₁ è assistente in un Corso e quel Professore₁ non è abilitato a insegnare nessun Corso e quel Professore₁ non insegna nessun'Offerta e quel Professore₁ non coordina nessun Corso.
 
 # Participation (not independent) · Lecturer
-¬(∃ Lecturer (¬(∃ PersonName (Lecturer has PersonName)) ∧ ¬(∃ Email (Lecturer has Email)) ∧ ¬(∃ Phone (Lecturer has Phone)) ∧ ¬(∃ Professor (Student(Lecturer) ∧ (Lecturer is supervised by Professor))) ∧ ¬(∃ Student (Professor(Lecturer) ∧ (Student is supervised by Lecturer))) ∧ ¬(∃ Room (Lecturer has office Room)) ∧ ¬(∃ Extension (Lecturer has Extension)) ∧ ¬(∃ Course (Student(Lecturer) ∧ (Lecturer enrols in Course))) ∧ ¬(∃ Course (Student(Lecturer) ∧ (Lecturer assists in Course))) ∧ ¬(∃ Course (Lecturer is qualified to teach Course)) ∧ ¬(∃ Offering (Lecturer teaches Offering)) ∧ ¬(∃ Course (Lecturer coordinates Course))))
+¬(∃ Lecturer (¬(∃ PersonName (Lecturer has PersonName)) ∧ ¬(∃ Email (Lecturer has Email)) ∧ ¬(∃ Phone (Lecturer has Phone)) ∧ ¬(∃ Professor (Student(Lecturer) ∧ (Lecturer is supervised by Professor))) ∧ ¬(∃ Student (Professor(Lecturer) ∧ (Student is supervised by Lecturer))) ∧ ¬(∃ Room (Lecturer has an office in Room)) ∧ ¬(∃ Extension (Lecturer has Extension)) ∧ ¬(∃ Course (Student(Lecturer) ∧ (Lecturer enrols in Course))) ∧ ¬(∃ Course (Student(Lecturer) ∧ (Lecturer assists in Course))) ∧ ¬(∃ Course (Lecturer is qualified to teach Course)) ∧ ¬(∃ Offering (Lecturer teaches Offering)) ∧ ¬(∃ Course (Lecturer coordinates Course))))
 È impossibile che c'è un Docente tale che quel Docente non ha nessun Nome e quel Docente non ha nessun Indirizzo e-mail e quel Docente non ha nessun Numero di telefono e al massimo una delle seguenti affermazioni è vera: quel Docente è uno Studente; quel Docente è seguito da un Professore e al massimo una delle seguenti affermazioni è vera: quel Docente è un Professore; quel Docente segue uno Studente e quel Docente non ha nessuna Stanza come ufficio e quel Docente non ha nessun Interno e al massimo una delle seguenti affermazioni è vera: quel Docente è uno Studente; quel Docente frequenta un Corso e al massimo una delle seguenti affermazioni è vera: quel Docente è uno Studente; quel Docente è assistente in un Corso e quel Docente non è abilitato a insegnare nessun Corso e quel Docente non insegna nessun'Offerta e quel Docente non coordina nessun Corso.
 
 # Participation (not independent) · Building
@@ -543,7 +543,7 @@ Per ogni Dipendente, quel Dipendente ha una Stanza come ufficio se e solo se que
 È impossibile che c'è un Numero di stanza tale che nessuna Stanza ha quel Numero di stanza.
 
 # Participation (not independent) · Room
-¬(∃ Room ¬(∃ Staff (Staff has office Room)))
+¬(∃ Room ¬(∃ Staff (Staff has an office in Room)))
 È impossibile che c'è una Stanza tale che nessun Dipendente ha quella Stanza come ufficio.
 
 # Participation (not independent) · Extension

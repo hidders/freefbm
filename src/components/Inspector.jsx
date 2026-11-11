@@ -2431,6 +2431,71 @@ function FactLexiconSection({ fact, store }) {
   )
 }
 
+// The nominal reading of an objectified fact type in the view language
+// ("enrolment of … in …", kept in lexicon[lang].nominal, see
+// src/verbalisation/population.js), which population sentences use to name
+// its instances: "the enrolment of Student 'P1' in Course 'DB1'".
+function NominalReadingSection({ fact, store }) {
+  const tab = store.viewLanguage ?? 'en'
+  const n = fact.arity
+  if (n < 1) return null
+  const lang = LEXICON_LANGS.find(t => t.id === tab) ?? LEXICON_LANGS[0]
+  const nr = fact.lexicon?.[tab]?.nominal
+  const perms = generatePermutations(n)
+  const order = nr?.roleOrder?.length === n ? nr.roleOrder : perms[0]
+  const parts = nr?.parts?.length === n + 1 ? nr.parts : Array(n + 1).fill('')
+  const playerName = (ri) => {
+    const id = fact.roles?.[ri]?.objectTypeId
+    const p = store.objectTypes.find(o => o.id === id) ?? store.facts.find(f => f.id === id)
+    return p?.name || p?.objectifiedName || '?'
+  }
+  const save = (patch) => {
+    const next = { roleOrder: order, parts, ...(nr?.cases ? { cases: nr.cases } : {}), ...patch }
+    if (next.cases && !next.cases.some(Boolean)) delete next.cases
+    const lexicon = { ...(fact.lexicon ?? {}) }
+    const entry = { ...(lexicon[tab] ?? {}) }
+    if (next.parts.some(p => p?.trim()) || next.cases) entry.nominal = next
+    else delete entry.nominal
+    if (Object.keys(entry).length) lexicon[tab] = entry
+    else delete lexicon[tab]
+    store.updateFact(fact.id, { lexicon: Object.keys(lexicon).length ? lexicon : undefined })
+  }
+  const example = { en: 'enrolment of … in …', nl: 'inschrijving van … voor …', fr: 'inscription de … à …',
+    it: 'iscrizione di … a …', es: 'inscripción de … en …', pl: 'zapis … na …' }[lang.id] ?? 'enrolment of … in …'
+  return (
+    <Section title="Nominal reading">
+      <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginBottom: 6, lineHeight: 1.4 }}>
+        Names an instance in population sentences, without the article: {example}.
+        {lang.cases ? ' A reading that starts with the type\'s name declines it.' : ''}
+        {' '}Without one, the sentences say "the {fact.objectifiedName || 'type'} in which …".
+      </div>
+      {n > 1 && (
+        <select value={JSON.stringify(order)} onChange={e => save({ roleOrder: JSON.parse(e.target.value) })}
+          style={{ width: '100%', marginBottom: 4, fontSize: 11 }} title="The order of the roles in the nominal reading">
+          {perms.map(p => <option key={p.join()} value={JSON.stringify(p)}>{p.map(playerName).join(', ')}</option>)}
+        </select>
+      )}
+      <ReadingEditor fact={fact} store={store} roleOrder={order} parts={parts}
+        onUpdatePart={(k, val) => { const next = [...parts]; next[k] = val; save({ parts: next }) }}/>
+      {lang.cases && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 4, alignItems: 'center', marginTop: 6 }}
+          title="The case each object type takes in the nominal reading; empty: genitive">
+          {order.map((ri, k) => (
+            <React.Fragment key={k}>
+              <span style={{ fontSize: 11 }}>{playerName(ri)}</span>
+              <select value={nr?.cases?.[k] ?? ''} style={{ width: '100%' }}
+                onChange={e => { const cases = [...(nr?.cases ?? Array(n).fill(''))]; cases[k] = e.target.value; save({ cases }) }}>
+                <option value="">genitive (default)</option>
+                {Object.entries(CASE_LABELS).map(([c, label]) => <option key={c} value={c}>{label.toLowerCase()}</option>)}
+              </select>
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+    </Section>
+  )
+}
+
 // ── Reading rows ────────────────────────────────────────────────────────────
 // The readings of a fact type or implied link (readingList in
 // src/store/readings.js). A role order may have several readings; the first
@@ -3022,6 +3087,7 @@ function FactInspector({ fact }) {
         <TypeLexiconSection name={fact.objectifiedName || ''} lexicon={fact.lexicon}
           onChange={lexicon => store.updateFact(fact.id, { lexicon })}/>
       )}
+      {fact.objectified && <NominalReadingSection fact={fact} store={store}/>}
 
       {!fact.objectified && (fact.tableRuleId ? <ColumnRuleNote fact={fact} store={store}/> : <FactDerivationSection fact={fact} store={store}/>)}
 
