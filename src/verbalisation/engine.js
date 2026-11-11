@@ -55,6 +55,12 @@ export function verbalise(input, ctx, language, options = {}) {
   return { ...linearise(out, language), trace, formula }
 }
 
+// The helpers rules get (h.reading, h.typeLabel, …), for phrases built
+// outside the rules: the population sentences (population.js).
+export function phraseKit(ctx, language, env = {}) {
+  return makePhraser(ctx, language, new Map(), [], null).helpers(env)
+}
+
 function makePhraser(ctx, lang, names, trace, stats) {
   // Names come from the language's lexicon; subscripts (Course₁) from the
   // names the formula shows.
@@ -124,6 +130,7 @@ function makePhraser(ctx, lang, names, trace, stats) {
     }
     return h
   }
+  phrase.helpers = helpers
 
   // The fact type (or implied link) of a fact atom.
   const factOf = (atom) => ctx.factById.get(atom.factId) ?? ctx.linkById?.get(atom.factId)

@@ -4,7 +4,8 @@ import { findRefMode, refModeLabel, getVtEffectivePopulation, getEntityEffective
 import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
 import { computeRingConstraintRelation, computeUniquenessProjection, computeSequenceProjections, computeValueComparisonData, computeInclusiveOrTable, computeExclusiveOrTable, computeExclusionTable, computeEqualityTable, computeSubsetTable, freqRangeSatisfies, projCellKey, findLCAsForTypes, checkC1ForTypes } from '../utils/populationValidation.js'
 import { BOTTOM_PANEL_TAB_STRIP_H } from '../constants.js'
-import ConstraintsTab from './ConstraintsTab.jsx'
+import ConstraintsTab, { Segmented, useChoice } from './ConstraintsTab.jsx'
+import PopulationSentences from './PopulationSentences.jsx'
 import MappingsTab from './MappingsTab.jsx'
 import { makePopulationEvaluator, formatCell } from '../logic/derivedPopulation.js'
 import RelationalPopulation from './RecordGrid'
@@ -152,7 +153,33 @@ function PopulationTab() {
   return <OrmPopulationTab />
 }
 
+// The population of an object type or fact type as a table (to edit) or as
+// sentences (to read).
+const POPULATION_VIEWS = [
+  { id: 'table', label: 'Table', title: 'Show the population as a table you can edit' },
+  { id: 'sentences', label: 'Sentences', title: 'Show each fact and instance as a sentence: “Person \'P1\' has PersonName \'Alice\'”' },
+]
+
 function OrmPopulationTab() {
+  const [view, setView] = useChoice('freefbm.population.view', POPULATION_VIEWS)
+  // The object type or fact type whose population can be read as sentences.
+  const elementId = useOrmStore(s => {
+    const { selectedId, selectedRole, selectedKind } = s
+    if (s.objectTypes.some(o => o.id === selectedId)) return selectedId
+    if (selectedKind === 'implicitLink') return null
+    if (s.facts.some(f => f.id === selectedId)) return selectedId
+    return selectedRole && s.facts.some(f => f.id === selectedRole.factId) ? selectedRole.factId : null
+  })
+  if (!elementId) return <OrmPopulationContent/>
+  return <>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, fontSize: 11, color: 'var(--ink-2)' }}>
+      <Segmented options={POPULATION_VIEWS} value={view} onChange={setView} label="Show the population as"/>
+    </div>
+    {view === 'sentences' ? <PopulationSentences elementId={elementId}/> : <OrmPopulationContent/>}
+  </>
+}
+
+function OrmPopulationContent() {
   const store = useScopedStore()
   const { selectedId, selectedRole, selectedKind } = store
 

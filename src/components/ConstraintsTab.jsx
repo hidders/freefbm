@@ -54,7 +54,7 @@ const MODES = [
 ]
 
 // A choice among options, remembered across sessions; the first by default.
-function useChoice(key, options) {
+export function useChoice(key, options) {
   const read = () => {
     try { const v = localStorage.getItem(key); return options.some(x => x.id === v) ? v : options[0].id } catch { return options[0].id }
   }
@@ -223,7 +223,7 @@ export function Sentence({ formula, ctx, language, negative = false }) {
 }
 
 // A segmented switch: Sentences | Formulas | Both, Positive | Negative.
-function Segmented({ options, value, onChange, label }) {
+export function Segmented({ options, value, onChange, label }) {
   return (
     <span role="radiogroup" aria-label={label} style={{
       display: 'inline-flex', border: '1px solid var(--border-soft)', borderRadius: 10, overflow: 'hidden',
