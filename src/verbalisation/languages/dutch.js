@@ -372,6 +372,30 @@ function aggregate(h, t) {
   return seq(kw(`${label} van`), distinct, term(h, t.term), kw('over alle'), what, kw('zodanig dat'), cond)
 }
 
+// ── Population sentences (src/verbalisation/population.js) ──────────────────
+// The same functions as englishPopulation (english.js). Relative clauses
+// and "waarin" take the subordinate word order: "de Ruimte die in Gebouw
+// 'MAL' ligt", "de Inschrijving waarin Student 'P1' Vak 'DB1' volgt".
+
+const typeName = (h, typeId) => tok(h.typeLabel(typeId), 'type')
+const sub = (h) => h.with({ form: 'sub', verb: undefined })
+
+export const dutchPopulation = {
+  name: (h, typeId) => typeName(h, typeId),
+  the: (h, typeId) => kw(h.gender(typeId) === 'het' ? 'het' : 'de'),
+  withValue: (h, vtId, value) => [kw('met'), typeName(h, vtId), value],
+  inWhich: (h, typeId, build) => { const c = build(sub(h)); return c && [kw('waarin'), c] },
+  relative: (h, typeId, build) => {
+    const vps = build(sub(h))
+    return vps && [relPron(h, typeId), joinList(vps, 'en')]
+  },
+  thereIs: (h, typeId, rest) => [kw('er is een'), typeName(h, typeId), rest],
+  isA: (h, subject, typeId) => [subject, kw('is een'), typeName(h, typeId)],
+  referredTo: (h, typeIds, vtId) => [joinList(typeIds.map(t => tok(h.typePlural(t), 'type')), 'en'),
+    kw('worden aangeduid met'), typeName(h, vtId)],
+  derived: 'afgeleid',
+}
+
 export const dutchLibrary = {
   id: 'nl',
   label: 'Nederlands',
@@ -384,4 +408,5 @@ export const dutchLibrary = {
   reflexive: () => kw('zichzelf'),
   pluralise,
   shapeReading,
+  population: dutchPopulation,
 }

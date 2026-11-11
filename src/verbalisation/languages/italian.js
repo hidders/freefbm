@@ -93,10 +93,26 @@ export const italianLibrary = romanceLibrary({
     totalMonths: '{0} in mesi', totalDays: '{0} in giorni', totalSeconds: '{0} in secondi',
   },
   operationFallback: (label) => `${label} di`,
+  population: {
+    // il, lo, l', la before the word that follows.
+    the: (g, next) => (VOWEL.test(next) ? "l'" : g === 'f' ? 'la' : IMPURE.test(next) ? 'lo' : 'il'),
+    with: 'con',
+    inPrep: 'in',
+    thereIs: 'esiste',
+    // Si fa riferimento a Persone e Studenti tramite PersonNr.
+    referredTo: (names, join, vt, kw) => [kw('si fa riferimento a'), join(names), kw('tramite'), vt],
+    derived: 'derivato',
+  },
   pluralWord,
   pluralVerb,
   contract: makeContract([
     { word: 'e', next: /^[eè]/iu, to: 'ed' },
+    { word: 'a', next: /^a/iu, to: 'ad' },
+    // Articulated prepositions (the definite articles of population sentences).
+    ...[['a', 'al', 'allo', 'alla'], ['di', 'del', 'dello', 'della'], ['da', 'dal', 'dallo', 'dalla'],
+      ['in', 'nel', 'nello', 'nella'], ['su', 'sul', 'sullo', 'sulla']]
+      .flatMap(([word, m, lo, f]) => [{ word, nextWord: 'il', to: m }, { word, nextWord: 'lo', to: lo }, { word, nextWord: 'la', to: f },
+        { word, nextWord: "l'", to: `${lo.slice(0, -1)}'` }]),
     { word: 'un', next: IMPURE, to: 'uno' },
     { word: 'una', next: VOWEL, to: "un'", glue: true },
     { word: 'nessun', next: IMPURE, to: 'nessuno' },

@@ -118,16 +118,16 @@ Het is mogelijk dat meer dan één Kamer hetzelfde Kamernummer heeft.
 ¬(∃ Room ¬(∃ RoomNr (Room has RoomNr)))
 Het is onmogelijk dat een Kamer geen Kamernummer heeft.
 
-# Uniqueness · Staff has office Room
-¬(∃ Staff ∃^{>1} Room (Staff has office Room))
+# Uniqueness · Staff has an office in Room
+¬(∃ Staff ∃^{>1} Room (Staff has an office in Room))
 Het is onmogelijk dat een Medewerker meer dan één Kamer als werkkamer heeft.
 
-# Possible (roles not unique) · Staff has office Room
-◇∃ Room ∃^{>1} Staff (Staff has office Room)
+# Possible (roles not unique) · Staff has an office in Room
+◇∃ Room ∃^{>1} Staff (Staff has an office in Room)
 Het is mogelijk dat meer dan één Medewerker dezelfde Kamer als werkkamer heeft.
 
-# Possible (role not mandatory) · Staff has office Room
-◇∃ Staff ¬(∃ Room (Staff has office Room))
+# Possible (role not mandatory) · Staff has an office in Room
+◇∃ Staff ¬(∃ Room (Staff has an office in Room))
 Het is mogelijk dat een Medewerker geen Kamer als werkkamer heeft.
 
 # Uniqueness · Staff has Extension
@@ -355,7 +355,7 @@ Het is onmogelijk dat meer dan één Kamer in hetzelfde Gebouw ligt en hetzelfde
 Het is onmogelijk dat er een Kamer is zodanig dat het niet zo is dat er precies één combinatie van Gebouw en Kamernummer is zodanig dat die Kamer in dat Gebouw ligt en die Kamer dat Kamernummer heeft.
 
 # Equality
-∀ Staff ((∃ Room (Staff has office Room)) ↔ ∃ Extension (Staff has Extension))
+∀ Staff ((∃ Room (Staff has an office in Room)) ↔ ∃ Extension (Staff has Extension))
 Voor elke Medewerker geldt: die Medewerker heeft een Kamer als werkkamer als en slechts als die Medewerker een Toestelnummer heeft.
 
 # Ring (acyclic)
@@ -495,7 +495,7 @@ Het is onmogelijk dat een Periode een Vakaanbieding is.
 Het is onmogelijk dat een Inschrijving een Vakaanbieding is.
 
 # Participation (not independent) · Person
-¬(∃ Person (¬(∃ PersonName (Person has PersonName)) ∧ ¬(∃ Email (Person has Email)) ∧ ¬(∃ Phone (Person has Phone)) ∧ ¬(∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∧ ¬(∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∧ ¬(∃ Room (Staff(Person) ∧ (Person has office Room))) ∧ ¬(∃ Extension (Staff(Person) ∧ (Person has Extension))) ∧ ¬(∃ Course (Student(Person) ∧ (Person enrols in Course))) ∧ ¬(∃ Course (Student(Person) ∧ (Person assists in Course))) ∧ ¬(∃ Course (Staff(Person) ∧ (Person is qualified to teach Course))) ∧ ¬(∃ Offering (Staff(Person) ∧ (Person teaches Offering))) ∧ ¬(∃ Course (Staff(Person) ∧ (Person coordinates Course)))))
+¬(∃ Person (¬(∃ PersonName (Person has PersonName)) ∧ ¬(∃ Email (Person has Email)) ∧ ¬(∃ Phone (Person has Phone)) ∧ ¬(∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∧ ¬(∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∧ ¬(∃ Room (Staff(Person) ∧ (Person has an office in Room))) ∧ ¬(∃ Extension (Staff(Person) ∧ (Person has Extension))) ∧ ¬(∃ Course (Student(Person) ∧ (Person enrols in Course))) ∧ ¬(∃ Course (Student(Person) ∧ (Person assists in Course))) ∧ ¬(∃ Course (Staff(Person) ∧ (Person is qualified to teach Course))) ∧ ¬(∃ Offering (Staff(Person) ∧ (Person teaches Offering))) ∧ ¬(∃ Course (Staff(Person) ∧ (Person coordinates Course)))))
 Het is onmogelijk dat er een Persoon is zodanig dat die Persoon geen Naam heeft en die Persoon geen E-mailadres heeft en die Persoon geen Telefoonnummer heeft en het niet zo is dat die Persoon een Student is en die Persoon door een Hoogleraar begeleid wordt en het niet zo is dat die Persoon een Hoogleraar is en die Persoon een Student begeleidt en het niet zo is dat die Persoon een Medewerker is en die Persoon een Kamer als werkkamer heeft en het niet zo is dat die Persoon een Medewerker is en die Persoon een Toestelnummer heeft en het niet zo is dat die Persoon een Student is en die Persoon een Vak volgt en het niet zo is dat die Persoon een Student is en die Persoon bij een Vak assisteert en het niet zo is dat die Persoon een Medewerker is en die Persoon bevoegd is om een Vak te doceren en het niet zo is dat die Persoon een Medewerker is en die Persoon een Vakaanbieding doceert en het niet zo is dat die Persoon een Medewerker is en die Persoon een Vak coördineert.
 
 # Participation (not independent) · PersonNr
@@ -515,19 +515,19 @@ Het is onmogelijk dat er een E-mailadres is zodanig dat geen Persoon dat E-maila
 Het is onmogelijk dat er een Telefoonnummer is zodanig dat geen Persoon dat Telefoonnummer heeft.
 
 # Participation (not independent) · Student
-¬(∃ Student₁ (¬(∃ PersonName (Student₁ has PersonName)) ∧ ¬(∃ Email (Student₁ has Email)) ∧ ¬(∃ Phone (Student₁ has Phone)) ∧ ¬(∃ Professor (Student₁ is supervised by Professor)) ∧ ¬(∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∧ ¬(∃ Room (Staff(Student₁) ∧ (Student₁ has office Room))) ∧ ¬(∃ Extension (Staff(Student₁) ∧ (Student₁ has Extension))) ∧ ¬(∃ Course (Student₁ enrols in Course)) ∧ ¬(∃ Course (Student₁ assists in Course)) ∧ ¬(∃ Course (Staff(Student₁) ∧ (Student₁ is qualified to teach Course))) ∧ ¬(∃ Offering (Staff(Student₁) ∧ (Student₁ teaches Offering))) ∧ ¬(∃ Course (Staff(Student₁) ∧ (Student₁ coordinates Course)))))
+¬(∃ Student₁ (¬(∃ PersonName (Student₁ has PersonName)) ∧ ¬(∃ Email (Student₁ has Email)) ∧ ¬(∃ Phone (Student₁ has Phone)) ∧ ¬(∃ Professor (Student₁ is supervised by Professor)) ∧ ¬(∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∧ ¬(∃ Room (Staff(Student₁) ∧ (Student₁ has an office in Room))) ∧ ¬(∃ Extension (Staff(Student₁) ∧ (Student₁ has Extension))) ∧ ¬(∃ Course (Student₁ enrols in Course)) ∧ ¬(∃ Course (Student₁ assists in Course)) ∧ ¬(∃ Course (Staff(Student₁) ∧ (Student₁ is qualified to teach Course))) ∧ ¬(∃ Offering (Staff(Student₁) ∧ (Student₁ teaches Offering))) ∧ ¬(∃ Course (Staff(Student₁) ∧ (Student₁ coordinates Course)))))
 Het is onmogelijk dat er een Student₁ is zodanig dat die Student₁ geen Naam heeft en die Student₁ geen E-mailadres heeft en die Student₁ geen Telefoonnummer heeft en die Student₁ door geen Hoogleraar begeleid wordt en het niet zo is dat die Student₁ een Hoogleraar is en die Student₁ een Student begeleidt en het niet zo is dat die Student₁ een Medewerker is en die Student₁ een Kamer als werkkamer heeft en het niet zo is dat die Student₁ een Medewerker is en die Student₁ een Toestelnummer heeft en die Student₁ geen Vak volgt en die Student₁ bij geen Vak assisteert en het niet zo is dat die Student₁ een Medewerker is en die Student₁ bevoegd is om een Vak te doceren en het niet zo is dat die Student₁ een Medewerker is en die Student₁ een Vakaanbieding doceert en het niet zo is dat die Student₁ een Medewerker is en die Student₁ een Vak coördineert.
 
 # Participation (not independent) · Staff
-¬(∃ Staff (¬(∃ PersonName (Staff has PersonName)) ∧ ¬(∃ Email (Staff has Email)) ∧ ¬(∃ Phone (Staff has Phone)) ∧ ¬(∃ Professor (Student(Staff) ∧ (Staff is supervised by Professor))) ∧ ¬(∃ Student (Professor(Staff) ∧ (Student is supervised by Staff))) ∧ ¬(∃ Room (Staff has office Room)) ∧ ¬(∃ Extension (Staff has Extension)) ∧ ¬(∃ Course (Student(Staff) ∧ (Staff enrols in Course))) ∧ ¬(∃ Course (Student(Staff) ∧ (Staff assists in Course))) ∧ ¬(∃ Course (Staff is qualified to teach Course)) ∧ ¬(∃ Offering (Staff teaches Offering)) ∧ ¬(∃ Course (Staff coordinates Course))))
+¬(∃ Staff (¬(∃ PersonName (Staff has PersonName)) ∧ ¬(∃ Email (Staff has Email)) ∧ ¬(∃ Phone (Staff has Phone)) ∧ ¬(∃ Professor (Student(Staff) ∧ (Staff is supervised by Professor))) ∧ ¬(∃ Student (Professor(Staff) ∧ (Student is supervised by Staff))) ∧ ¬(∃ Room (Staff has an office in Room)) ∧ ¬(∃ Extension (Staff has Extension)) ∧ ¬(∃ Course (Student(Staff) ∧ (Staff enrols in Course))) ∧ ¬(∃ Course (Student(Staff) ∧ (Staff assists in Course))) ∧ ¬(∃ Course (Staff is qualified to teach Course)) ∧ ¬(∃ Offering (Staff teaches Offering)) ∧ ¬(∃ Course (Staff coordinates Course))))
 Het is onmogelijk dat er een Medewerker is zodanig dat die Medewerker geen Naam heeft en die Medewerker geen E-mailadres heeft en die Medewerker geen Telefoonnummer heeft en het niet zo is dat die Medewerker een Student is en die Medewerker door een Hoogleraar begeleid wordt en het niet zo is dat die Medewerker een Hoogleraar is en die Medewerker een Student begeleidt en die Medewerker geen Kamer als werkkamer heeft en die Medewerker geen Toestelnummer heeft en het niet zo is dat die Medewerker een Student is en die Medewerker een Vak volgt en het niet zo is dat die Medewerker een Student is en die Medewerker bij een Vak assisteert en die Medewerker bevoegd is om geen Vak te doceren en die Medewerker geen Vakaanbieding doceert en die Medewerker geen Vak coördineert.
 
 # Participation (not independent) · Professor
-¬(∃ Professor₁ (¬(∃ PersonName (Professor₁ has PersonName)) ∧ ¬(∃ Email (Professor₁ has Email)) ∧ ¬(∃ Phone (Professor₁ has Phone)) ∧ ¬(∃ Professor₂ (Student(Professor₁) ∧ (Professor₁ is supervised by Professor₂))) ∧ ¬(∃ Student (Student is supervised by Professor₁)) ∧ ¬(∃ Room (Professor₁ has office Room)) ∧ ¬(∃ Extension (Professor₁ has Extension)) ∧ ¬(∃ Course (Student(Professor₁) ∧ (Professor₁ enrols in Course))) ∧ ¬(∃ Course (Student(Professor₁) ∧ (Professor₁ assists in Course))) ∧ ¬(∃ Course (Professor₁ is qualified to teach Course)) ∧ ¬(∃ Offering (Professor₁ teaches Offering)) ∧ ¬(∃ Course (Professor₁ coordinates Course))))
+¬(∃ Professor₁ (¬(∃ PersonName (Professor₁ has PersonName)) ∧ ¬(∃ Email (Professor₁ has Email)) ∧ ¬(∃ Phone (Professor₁ has Phone)) ∧ ¬(∃ Professor₂ (Student(Professor₁) ∧ (Professor₁ is supervised by Professor₂))) ∧ ¬(∃ Student (Student is supervised by Professor₁)) ∧ ¬(∃ Room (Professor₁ has an office in Room)) ∧ ¬(∃ Extension (Professor₁ has Extension)) ∧ ¬(∃ Course (Student(Professor₁) ∧ (Professor₁ enrols in Course))) ∧ ¬(∃ Course (Student(Professor₁) ∧ (Professor₁ assists in Course))) ∧ ¬(∃ Course (Professor₁ is qualified to teach Course)) ∧ ¬(∃ Offering (Professor₁ teaches Offering)) ∧ ¬(∃ Course (Professor₁ coordinates Course))))
 Het is onmogelijk dat er een Hoogleraar₁ is zodanig dat die Hoogleraar₁ geen Naam heeft en die Hoogleraar₁ geen E-mailadres heeft en die Hoogleraar₁ geen Telefoonnummer heeft en het niet zo is dat die Hoogleraar₁ een Student is en die Hoogleraar₁ door een Hoogleraar begeleid wordt en die Hoogleraar₁ geen Student begeleidt en die Hoogleraar₁ geen Kamer als werkkamer heeft en die Hoogleraar₁ geen Toestelnummer heeft en het niet zo is dat die Hoogleraar₁ een Student is en die Hoogleraar₁ een Vak volgt en het niet zo is dat die Hoogleraar₁ een Student is en die Hoogleraar₁ bij een Vak assisteert en die Hoogleraar₁ bevoegd is om geen Vak te doceren en die Hoogleraar₁ geen Vakaanbieding doceert en die Hoogleraar₁ geen Vak coördineert.
 
 # Participation (not independent) · Lecturer
-¬(∃ Lecturer (¬(∃ PersonName (Lecturer has PersonName)) ∧ ¬(∃ Email (Lecturer has Email)) ∧ ¬(∃ Phone (Lecturer has Phone)) ∧ ¬(∃ Professor (Student(Lecturer) ∧ (Lecturer is supervised by Professor))) ∧ ¬(∃ Student (Professor(Lecturer) ∧ (Student is supervised by Lecturer))) ∧ ¬(∃ Room (Lecturer has office Room)) ∧ ¬(∃ Extension (Lecturer has Extension)) ∧ ¬(∃ Course (Student(Lecturer) ∧ (Lecturer enrols in Course))) ∧ ¬(∃ Course (Student(Lecturer) ∧ (Lecturer assists in Course))) ∧ ¬(∃ Course (Lecturer is qualified to teach Course)) ∧ ¬(∃ Offering (Lecturer teaches Offering)) ∧ ¬(∃ Course (Lecturer coordinates Course))))
+¬(∃ Lecturer (¬(∃ PersonName (Lecturer has PersonName)) ∧ ¬(∃ Email (Lecturer has Email)) ∧ ¬(∃ Phone (Lecturer has Phone)) ∧ ¬(∃ Professor (Student(Lecturer) ∧ (Lecturer is supervised by Professor))) ∧ ¬(∃ Student (Professor(Lecturer) ∧ (Student is supervised by Lecturer))) ∧ ¬(∃ Room (Lecturer has an office in Room)) ∧ ¬(∃ Extension (Lecturer has Extension)) ∧ ¬(∃ Course (Student(Lecturer) ∧ (Lecturer enrols in Course))) ∧ ¬(∃ Course (Student(Lecturer) ∧ (Lecturer assists in Course))) ∧ ¬(∃ Course (Lecturer is qualified to teach Course)) ∧ ¬(∃ Offering (Lecturer teaches Offering)) ∧ ¬(∃ Course (Lecturer coordinates Course))))
 Het is onmogelijk dat er een Docent is zodanig dat die Docent geen Naam heeft en die Docent geen E-mailadres heeft en die Docent geen Telefoonnummer heeft en het niet zo is dat die Docent een Student is en die Docent door een Hoogleraar begeleid wordt en het niet zo is dat die Docent een Hoogleraar is en die Docent een Student begeleidt en die Docent geen Kamer als werkkamer heeft en die Docent geen Toestelnummer heeft en het niet zo is dat die Docent een Student is en die Docent een Vak volgt en het niet zo is dat die Docent een Student is en die Docent bij een Vak assisteert en die Docent bevoegd is om geen Vak te doceren en die Docent geen Vakaanbieding doceert en die Docent geen Vak coördineert.
 
 # Participation (not independent) · Building
@@ -543,7 +543,7 @@ Het is onmogelijk dat een Gebouwcode bij geen Gebouw hoort.
 Het is onmogelijk dat er een Kamernummer is zodanig dat geen Kamer dat Kamernummer heeft.
 
 # Participation (not independent) · Room
-¬(∃ Room ¬(∃ Staff (Staff has office Room)))
+¬(∃ Room ¬(∃ Staff (Staff has an office in Room)))
 Het is onmogelijk dat er een Kamer is zodanig dat geen Medewerker die Kamer als werkkamer heeft.
 
 # Participation (not independent) · Extension

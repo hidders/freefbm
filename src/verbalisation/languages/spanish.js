@@ -92,6 +92,15 @@ export const spanishLibrary = romanceLibrary({
     totalMonths: '{0} en meses', totalDays: '{0} en días', totalSeconds: '{0} en segundos',
   },
   operationFallback: (label) => `${label} de`,
+  population: {
+    the: (g) => (g === 'f' ? 'la' : 'el'),
+    with: 'con',
+    inPrep: 'en',
+    thereIs: 'existe',
+    // Se hace referencia a Personas y Estudiantes mediante PersonNr.
+    referredTo: (names, join, vt, kw) => [kw('se hace referencia a'), join(names), kw('mediante'), vt],
+    derived: 'derivado',
+  },
   pluralWord,
   pluralVerb,
   contract: makeContract([

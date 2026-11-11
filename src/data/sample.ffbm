@@ -3946,7 +3946,18 @@
               }
             ],
             "name": "Inschrijving",
-            "gender": "de"
+            "gender": "de",
+            "nominal": {
+              "roleOrder": [
+                0,
+                1
+              ],
+              "parts": [
+                "inschrijving van",
+                "voor",
+                ""
+              ]
+            }
           },
           "fr": {
             "readings": [
@@ -3964,7 +3975,18 @@
             ],
             "name": "Inscription",
             "gender": "f",
-            "plural": "Inscriptions"
+            "plural": "Inscriptions",
+            "nominal": {
+              "roleOrder": [
+                0,
+                1
+              ],
+              "parts": [
+                "inscription de",
+                "à",
+                ""
+              ]
+            }
           },
           "it": {
             "readings": [
@@ -3982,7 +4004,18 @@
             ],
             "name": "Iscrizione",
             "gender": "f",
-            "plural": "Iscrizioni"
+            "plural": "Iscrizioni",
+            "nominal": {
+              "roleOrder": [
+                0,
+                1
+              ],
+              "parts": [
+                "iscrizione di",
+                "a",
+                ""
+              ]
+            }
           },
           "es": {
             "readings": [
@@ -4000,7 +4033,18 @@
             ],
             "name": "Inscripción",
             "gender": "f",
-            "plural": "Inscripciones"
+            "plural": "Inscripciones",
+            "nominal": {
+              "roleOrder": [
+                0,
+                1
+              ],
+              "parts": [
+                "inscripción de",
+                "en",
+                ""
+              ]
+            }
           },
           "pl": {
             "readings": [
@@ -4034,6 +4078,34 @@
               "accPl": "Zapisy",
               "insPl": "Zapisami",
               "locPl": "Zapisach"
+            },
+            "nominal": {
+              "roleOrder": [
+                0,
+                1
+              ],
+              "parts": [
+                "zapis",
+                "na",
+                ""
+              ],
+              "cases": [
+                "gen",
+                "acc"
+              ]
+            }
+          },
+          "en": {
+            "nominal": {
+              "roleOrder": [
+                0,
+                1
+              ],
+              "parts": [
+                "enrolment of",
+                "in",
+                ""
+              ]
             }
           }
         }
@@ -5672,7 +5744,18 @@
               }
             ],
             "name": "Vakaanbieding",
-            "gender": "de"
+            "gender": "de",
+            "nominal": {
+              "roleOrder": [
+                0,
+                1
+              ],
+              "parts": [
+                "aanbieding van",
+                "in",
+                ""
+              ]
+            }
           },
           "fr": {
             "readings": [
@@ -5695,7 +5778,18 @@
             ],
             "name": "Offre de cours",
             "gender": "f",
-            "plural": "Offres de cours"
+            "plural": "Offres de cours",
+            "nominal": {
+              "roleOrder": [
+                0,
+                1
+              ],
+              "parts": [
+                "offre de",
+                "pendant",
+                ""
+              ]
+            }
           },
           "it": {
             "readings": [
@@ -5718,7 +5812,18 @@
             ],
             "name": "Offerta",
             "gender": "f",
-            "plural": "Offerte"
+            "plural": "Offerte",
+            "nominal": {
+              "roleOrder": [
+                0,
+                1
+              ],
+              "parts": [
+                "offerta di",
+                "in",
+                ""
+              ]
+            }
           },
           "es": {
             "readings": [
@@ -5741,7 +5846,18 @@
             ],
             "name": "Oferta",
             "gender": "f",
-            "plural": "Ofertas"
+            "plural": "Ofertas",
+            "nominal": {
+              "roleOrder": [
+                0,
+                1
+              ],
+              "parts": [
+                "oferta de",
+                "en",
+                ""
+              ]
+            }
           },
           "pl": {
             "readings": [
@@ -5780,6 +5896,34 @@
               "accPl": "Oferty",
               "insPl": "Ofertami",
               "locPl": "Ofertach"
+            },
+            "nominal": {
+              "roleOrder": [
+                0,
+                1
+              ],
+              "parts": [
+                "oferta",
+                "w",
+                ""
+              ],
+              "cases": [
+                "gen",
+                "loc"
+              ]
+            }
+          },
+          "en": {
+            "nominal": {
+              "roleOrder": [
+                0,
+                1
+              ],
+              "parts": [
+                "offering of",
+                "in",
+                ""
+              ]
             }
           }
         }

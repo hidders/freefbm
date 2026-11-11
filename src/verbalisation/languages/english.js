@@ -376,6 +376,36 @@ function aggregate(h, t) {
 }
 
 // The English library: everything but the rules, which are in english.vr.
+// ── Population sentences (src/verbalisation/population.js) ──────────────────
+
+const typeName = (h, typeId) => tok(h.typeLabel(typeId), 'type')
+
+// The fixed words and phrase shapes of population sentences; every language
+// gives the same functions (c is the case of a slot, for languages with cases).
+export const englishPopulation = {
+  name: (h, typeId) => typeName(h, typeId),
+  // The definite article before a type's name.
+  the: () => kw('the'),
+  // Book with ISBN '…'
+  withValue: (h, vtId, value) => [kw('with'), typeName(h, vtId), value],
+  // the Enrolment in which Student 'P1' enrols in Course 'DB1': build(h)
+  // gives the clause in the word order h asks for.
+  inWhich: (h, typeId, build) => { const c = build(h); return c && [kw('in which'), c] },
+  // the Room that is in Building 'MAL' and has RoomNr '151': build(h) gives
+  // the verb phrases about the instance.
+  relative: (h, typeId, build) => {
+    const vps = build(h)
+    return vps && [relPron(h, { typeId }), joinList(vps, 'and')]
+  },
+  // There is a Person with PersonNr 'P1'.
+  thereIs: (h, typeId, rest) => [kw('there is'), kw(article(h.typeLabel(typeId))), typeName(h, typeId), rest],
+  // 'Alice' is a PersonName. / Person 'P1' is a Student.
+  isA: (h, subject, typeId) => [subject, kw('is'), kw(article(h.typeLabel(typeId))), typeName(h, typeId)],
+  // Persons and Students are referred to by PersonNr.
+  referredTo: (h, typeIds, vtId) => [joinList(typeIds.map(t => tok(h.typePlural(t), 'type')), 'and'), kw('are referred to by'), typeName(h, vtId)],
+  derived: 'derived',
+}
+
 export const englishLibrary = {
   id: 'en',
   label: 'English',
@@ -390,4 +420,5 @@ export const englishLibrary = {
   verbForm: (h, text) => inflect(text, h.env.verb),
   pluralise: (name) => plural(name),
   reflexive: (h, v) => kw(h.objectType(v)?.isPersonal ? 'themselves' : 'itself'),
+  population: englishPopulation,
 }

@@ -118,16 +118,16 @@ Il est possible que plus d'une Salle a le même Numéro de salle.
 ∀ Room ∃ RoomNr (Room has RoomNr)
 Chaque Salle a un Numéro de salle.
 
-# Uniqueness · Staff has office Room
-∀ Staff ∃^{≤1} Room (Staff has office Room)
+# Uniqueness · Staff has an office in Room
+∀ Staff ∃^{≤1} Room (Staff has an office in Room)
 Chaque Membre du personnel a au plus une Salle comme bureau.
 
-# Possible (roles not unique) · Staff has office Room
-◇∃ Room ∃^{>1} Staff (Staff has office Room)
+# Possible (roles not unique) · Staff has an office in Room
+◇∃ Room ∃^{>1} Staff (Staff has an office in Room)
 Il est possible que plus d'un Membre du personnel a la même Salle comme bureau.
 
-# Possible (role not mandatory) · Staff has office Room
-◇∃ Staff ¬(∃ Room (Staff has office Room))
+# Possible (role not mandatory) · Staff has an office in Room
+◇∃ Staff ¬(∃ Room (Staff has an office in Room))
 Il est possible qu'un Membre du personnel n'a aucune Salle comme bureau.
 
 # Uniqueness · Staff has Extension
@@ -355,7 +355,7 @@ Pour chaque Bâtiment et chaque Numéro de salle, au plus une Salle est située 
 Chaque Salle est située dans exactement un Bâtiment et a exactement un Numéro de salle.
 
 # Equality
-∀ Staff ((∃ Room (Staff has office Room)) ↔ ∃ Extension (Staff has Extension))
+∀ Staff ((∃ Room (Staff has an office in Room)) ↔ ∃ Extension (Staff has Extension))
 Pour chaque Membre du personnel, ce Membre du personnel a une Salle comme bureau si et seulement si ce Membre du personnel a un Poste téléphonique.
 
 # Ring (acyclic)
@@ -495,7 +495,7 @@ Aucune Période n'est une Offre de cours.
 Aucune Inscription n'est une Offre de cours.
 
 # Participation (not independent) · Person
-∀ Person ((∃ PersonName (Person has PersonName)) ∨ (∃ Email (Person has Email)) ∨ (∃ Phone (Person has Phone)) ∨ (∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∨ (∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∨ (∃ Room (Staff(Person) ∧ (Person has office Room))) ∨ (∃ Extension (Staff(Person) ∧ (Person has Extension))) ∨ (∃ Course (Student(Person) ∧ (Person enrols in Course))) ∨ (∃ Course (Student(Person) ∧ (Person assists in Course))) ∨ (∃ Course (Staff(Person) ∧ (Person is qualified to teach Course))) ∨ (∃ Offering (Staff(Person) ∧ (Person teaches Offering))) ∨ ∃ Course (Staff(Person) ∧ (Person coordinates Course)))
+∀ Person ((∃ PersonName (Person has PersonName)) ∨ (∃ Email (Person has Email)) ∨ (∃ Phone (Person has Phone)) ∨ (∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∨ (∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∨ (∃ Room (Staff(Person) ∧ (Person has an office in Room))) ∨ (∃ Extension (Staff(Person) ∧ (Person has Extension))) ∨ (∃ Course (Student(Person) ∧ (Person enrols in Course))) ∨ (∃ Course (Student(Person) ∧ (Person assists in Course))) ∨ (∃ Course (Staff(Person) ∧ (Person is qualified to teach Course))) ∨ (∃ Offering (Staff(Person) ∧ (Person teaches Offering))) ∨ ∃ Course (Staff(Person) ∧ (Person coordinates Course)))
 Pour chaque Personne, au moins une des affirmations suivantes est vraie : cette Personne a un Nom ; cette Personne a une Adresse e-mail ; cette Personne a un Numéro de téléphone ; cette Personne est un Étudiant et cette Personne est encadré par un Professeur ; cette Personne est un Professeur et cette Personne encadre un Étudiant ; cette Personne est un Membre du personnel et cette Personne a une Salle comme bureau ; cette Personne est un Membre du personnel et cette Personne a un Poste téléphonique ; cette Personne est un Étudiant et cette Personne suit un Cours ; cette Personne est un Étudiant et cette Personne assiste à un Cours ; cette Personne est un Membre du personnel et cette Personne est qualifié pour enseigner un Cours ; cette Personne est un Membre du personnel et cette Personne enseigne une Offre de cours ; cette Personne est un Membre du personnel et cette Personne coordonne un Cours.
 
 # Participation (not independent) · PersonNr
@@ -515,19 +515,19 @@ Pour chaque Adresse e-mail, une Personne a cette Adresse e-mail.
 Pour chaque Numéro de téléphone, une Personne a ce Numéro de téléphone.
 
 # Participation (not independent) · Student
-∀ Student₁ ((∃ PersonName (Student₁ has PersonName)) ∨ (∃ Email (Student₁ has Email)) ∨ (∃ Phone (Student₁ has Phone)) ∨ (∃ Professor (Student₁ is supervised by Professor)) ∨ (∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∨ (∃ Room (Staff(Student₁) ∧ (Student₁ has office Room))) ∨ (∃ Extension (Staff(Student₁) ∧ (Student₁ has Extension))) ∨ (∃ Course (Student₁ enrols in Course)) ∨ (∃ Course (Student₁ assists in Course)) ∨ (∃ Course (Staff(Student₁) ∧ (Student₁ is qualified to teach Course))) ∨ (∃ Offering (Staff(Student₁) ∧ (Student₁ teaches Offering))) ∨ ∃ Course (Staff(Student₁) ∧ (Student₁ coordinates Course)))
+∀ Student₁ ((∃ PersonName (Student₁ has PersonName)) ∨ (∃ Email (Student₁ has Email)) ∨ (∃ Phone (Student₁ has Phone)) ∨ (∃ Professor (Student₁ is supervised by Professor)) ∨ (∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∨ (∃ Room (Staff(Student₁) ∧ (Student₁ has an office in Room))) ∨ (∃ Extension (Staff(Student₁) ∧ (Student₁ has Extension))) ∨ (∃ Course (Student₁ enrols in Course)) ∨ (∃ Course (Student₁ assists in Course)) ∨ (∃ Course (Staff(Student₁) ∧ (Student₁ is qualified to teach Course))) ∨ (∃ Offering (Staff(Student₁) ∧ (Student₁ teaches Offering))) ∨ ∃ Course (Staff(Student₁) ∧ (Student₁ coordinates Course)))
 Pour chaque Étudiant₁, au moins une des affirmations suivantes est vraie : cet Étudiant₁ a un Nom ; cet Étudiant₁ a une Adresse e-mail ; cet Étudiant₁ a un Numéro de téléphone ; cet Étudiant₁ est encadré par un Professeur ; cet Étudiant₁ est un Professeur et cet Étudiant₁ encadre un Étudiant ; cet Étudiant₁ est un Membre du personnel et cet Étudiant₁ a une Salle comme bureau ; cet Étudiant₁ est un Membre du personnel et cet Étudiant₁ a un Poste téléphonique ; cet Étudiant₁ suit un Cours ; cet Étudiant₁ assiste à un Cours ; cet Étudiant₁ est un Membre du personnel et cet Étudiant₁ est qualifié pour enseigner un Cours ; cet Étudiant₁ est un Membre du personnel et cet Étudiant₁ enseigne une Offre de cours ; cet Étudiant₁ est un Membre du personnel et cet Étudiant₁ coordonne un Cours.
 
 # Participation (not independent) · Staff
-∀ Staff ((∃ PersonName (Staff has PersonName)) ∨ (∃ Email (Staff has Email)) ∨ (∃ Phone (Staff has Phone)) ∨ (∃ Professor (Student(Staff) ∧ (Staff is supervised by Professor))) ∨ (∃ Student (Professor(Staff) ∧ (Student is supervised by Staff))) ∨ (∃ Room (Staff has office Room)) ∨ (∃ Extension (Staff has Extension)) ∨ (∃ Course (Student(Staff) ∧ (Staff enrols in Course))) ∨ (∃ Course (Student(Staff) ∧ (Staff assists in Course))) ∨ (∃ Course (Staff is qualified to teach Course)) ∨ (∃ Offering (Staff teaches Offering)) ∨ ∃ Course (Staff coordinates Course))
+∀ Staff ((∃ PersonName (Staff has PersonName)) ∨ (∃ Email (Staff has Email)) ∨ (∃ Phone (Staff has Phone)) ∨ (∃ Professor (Student(Staff) ∧ (Staff is supervised by Professor))) ∨ (∃ Student (Professor(Staff) ∧ (Student is supervised by Staff))) ∨ (∃ Room (Staff has an office in Room)) ∨ (∃ Extension (Staff has Extension)) ∨ (∃ Course (Student(Staff) ∧ (Staff enrols in Course))) ∨ (∃ Course (Student(Staff) ∧ (Staff assists in Course))) ∨ (∃ Course (Staff is qualified to teach Course)) ∨ (∃ Offering (Staff teaches Offering)) ∨ ∃ Course (Staff coordinates Course))
 Pour chaque Membre du personnel, au moins une des affirmations suivantes est vraie : ce Membre du personnel a un Nom ; ce Membre du personnel a une Adresse e-mail ; ce Membre du personnel a un Numéro de téléphone ; ce Membre du personnel est un Étudiant et ce Membre du personnel est encadré par un Professeur ; ce Membre du personnel est un Professeur et ce Membre du personnel encadre un Étudiant ; ce Membre du personnel a une Salle comme bureau ; ce Membre du personnel a un Poste téléphonique ; ce Membre du personnel est un Étudiant et ce Membre du personnel suit un Cours ; ce Membre du personnel est un Étudiant et ce Membre du personnel assiste à un Cours ; ce Membre du personnel est qualifié pour enseigner un Cours ; ce Membre du personnel enseigne une Offre de cours ; ce Membre du personnel coordonne un Cours.
 
 # Participation (not independent) · Professor
-∀ Professor₁ ((∃ PersonName (Professor₁ has PersonName)) ∨ (∃ Email (Professor₁ has Email)) ∨ (∃ Phone (Professor₁ has Phone)) ∨ (∃ Professor₂ (Student(Professor₁) ∧ (Professor₁ is supervised by Professor₂))) ∨ (∃ Student (Student is supervised by Professor₁)) ∨ (∃ Room (Professor₁ has office Room)) ∨ (∃ Extension (Professor₁ has Extension)) ∨ (∃ Course (Student(Professor₁) ∧ (Professor₁ enrols in Course))) ∨ (∃ Course (Student(Professor₁) ∧ (Professor₁ assists in Course))) ∨ (∃ Course (Professor₁ is qualified to teach Course)) ∨ (∃ Offering (Professor₁ teaches Offering)) ∨ ∃ Course (Professor₁ coordinates Course))
+∀ Professor₁ ((∃ PersonName (Professor₁ has PersonName)) ∨ (∃ Email (Professor₁ has Email)) ∨ (∃ Phone (Professor₁ has Phone)) ∨ (∃ Professor₂ (Student(Professor₁) ∧ (Professor₁ is supervised by Professor₂))) ∨ (∃ Student (Student is supervised by Professor₁)) ∨ (∃ Room (Professor₁ has an office in Room)) ∨ (∃ Extension (Professor₁ has Extension)) ∨ (∃ Course (Student(Professor₁) ∧ (Professor₁ enrols in Course))) ∨ (∃ Course (Student(Professor₁) ∧ (Professor₁ assists in Course))) ∨ (∃ Course (Professor₁ is qualified to teach Course)) ∨ (∃ Offering (Professor₁ teaches Offering)) ∨ ∃ Course (Professor₁ coordinates Course))
 Pour chaque Professeur₁, au moins une des affirmations suivantes est vraie : ce Professeur₁ a un Nom ; ce Professeur₁ a une Adresse e-mail ; ce Professeur₁ a un Numéro de téléphone ; ce Professeur₁ est un Étudiant et ce Professeur₁ est encadré par un Professeur ; ce Professeur₁ encadre un Étudiant ; ce Professeur₁ a une Salle comme bureau ; ce Professeur₁ a un Poste téléphonique ; ce Professeur₁ est un Étudiant et ce Professeur₁ suit un Cours ; ce Professeur₁ est un Étudiant et ce Professeur₁ assiste à un Cours ; ce Professeur₁ est qualifié pour enseigner un Cours ; ce Professeur₁ enseigne une Offre de cours ; ce Professeur₁ coordonne un Cours.
 
 # Participation (not independent) · Lecturer
-∀ Lecturer ((∃ PersonName (Lecturer has PersonName)) ∨ (∃ Email (Lecturer has Email)) ∨ (∃ Phone (Lecturer has Phone)) ∨ (∃ Professor (Student(Lecturer) ∧ (Lecturer is supervised by Professor))) ∨ (∃ Student (Professor(Lecturer) ∧ (Student is supervised by Lecturer))) ∨ (∃ Room (Lecturer has office Room)) ∨ (∃ Extension (Lecturer has Extension)) ∨ (∃ Course (Student(Lecturer) ∧ (Lecturer enrols in Course))) ∨ (∃ Course (Student(Lecturer) ∧ (Lecturer assists in Course))) ∨ (∃ Course (Lecturer is qualified to teach Course)) ∨ (∃ Offering (Lecturer teaches Offering)) ∨ ∃ Course (Lecturer coordinates Course))
+∀ Lecturer ((∃ PersonName (Lecturer has PersonName)) ∨ (∃ Email (Lecturer has Email)) ∨ (∃ Phone (Lecturer has Phone)) ∨ (∃ Professor (Student(Lecturer) ∧ (Lecturer is supervised by Professor))) ∨ (∃ Student (Professor(Lecturer) ∧ (Student is supervised by Lecturer))) ∨ (∃ Room (Lecturer has an office in Room)) ∨ (∃ Extension (Lecturer has Extension)) ∨ (∃ Course (Student(Lecturer) ∧ (Lecturer enrols in Course))) ∨ (∃ Course (Student(Lecturer) ∧ (Lecturer assists in Course))) ∨ (∃ Course (Lecturer is qualified to teach Course)) ∨ (∃ Offering (Lecturer teaches Offering)) ∨ ∃ Course (Lecturer coordinates Course))
 Pour chaque Maître de conférences, au moins une des affirmations suivantes est vraie : ce Maître de conférences a un Nom ; ce Maître de conférences a une Adresse e-mail ; ce Maître de conférences a un Numéro de téléphone ; ce Maître de conférences est un Étudiant et ce Maître de conférences est encadré par un Professeur ; ce Maître de conférences est un Professeur et ce Maître de conférences encadre un Étudiant ; ce Maître de conférences a une Salle comme bureau ; ce Maître de conférences a un Poste téléphonique ; ce Maître de conférences est un Étudiant et ce Maître de conférences suit un Cours ; ce Maître de conférences est un Étudiant et ce Maître de conférences assiste à un Cours ; ce Maître de conférences est qualifié pour enseigner un Cours ; ce Maître de conférences enseigne une Offre de cours ; ce Maître de conférences coordonne un Cours.
 
 # Participation (not independent) · Building
@@ -543,7 +543,7 @@ Chaque Code de bâtiment désigne un Bâtiment.
 Pour chaque Numéro de salle, une Salle a ce Numéro de salle.
 
 # Participation (not independent) · Room
-∀ Room ∃ Staff (Staff has office Room)
+∀ Room ∃ Staff (Staff has an office in Room)
 Pour chaque Salle, un Membre du personnel a cette Salle comme bureau.
 
 # Participation (not independent) · Extension

@@ -498,6 +498,45 @@ function aggregate(h, t) {
   return seq(kw(label), distinct, term(h, t.term, 'gen'), kw('po wszystkich'), what, punct(','), kw('takich'), punct(','), kw('że'), cond)
 }
 
+// ── Population sentences (src/verbalisation/population.js) ──────────────────
+// The same functions as englishPopulation (english.js), with cases: a name
+// fills its slot in the slot's case, "z" takes the instrumental, and "jest"
+// a predicate noun in the instrumental. Polish has no articles.
+
+export const polishPopulation = {
+  name: (h, typeId, c = 'nom') => noun(h, typeId, c),
+  the: () => [],
+  // Książka z ISBN '…'
+  withValue: (h, vtId, value) => [kw('z'), noun(h, vtId, 'ins'), value],
+  // Zapis, w którym Student 'P1' studiuje Przedmiot 'DB1'
+  inWhich: (h, typeId, build) => {
+    const c = build(h)
+    return c && [punct(','), kw(`w ${DETERMINERS.which(gender(h, typeId), 'loc', false)}`), c]
+  },
+  // Sala, która znajduje się w Budynku 'MAL' i ma Numer '151'
+  relative: (h, typeId, build) => {
+    const vps = build(h)
+    return vps && [punct(','), kw(DETERMINERS.which(gender(h, typeId), 'nom', false)), joinList(vps, 'i')]
+  },
+  thereIs: (h, typeId, rest) => [kw('istnieje'), noun(h, typeId), rest],
+  isA: (h, subject, typeId) => [subject, kw('jest'), noun(h, typeId, 'ins')],
+  // Do Osób i Studentów odwołuje się przez Numer.
+  referredTo: (h, typeIds, vtId) => [kw('do'), joinList(typeIds.map(t => noun(h, t, 'gen', true)), 'i'), kw('odwołuje się przez'), noun(h, vtId, 'acc')],
+  derived: 'pochodny',
+  // The case of a slot of a nominal reading when it gives none: zapis
+  // Studenta (genitive).
+  nominalCase: 'gen',
+  // A nominal reading that starts with the type's own name takes the case
+  // of its slot from the type's case forms: "prowadzi ofertę Przedmiotu".
+  nominalHead: (h, typeId, text, c = 'nom') => {
+    const [first, more] = splitFirst(text)
+    const entry = h.entry(typeId)
+    if (c === 'nom' || first.toLowerCase() !== entry.name?.toLowerCase()) return text
+    const form = nounForm(entry, c)
+    return words(first[0] === first[0].toLowerCase() ? form[0].toLowerCase() + form.slice(1) : form, more)
+  },
+}
+
 export const polishLibrary = {
   id: 'pl',
   label: 'Polski',
@@ -514,4 +553,5 @@ export const polishLibrary = {
   reflexive: (h, v, c) => kw({ dat: 'sobie', loc: 'sobie', ins: 'sobą' }[c] ?? 'siebie'),
   pluralise: (name) => pluralise(name),
   shapeReading,
+  population: polishPopulation,
 }

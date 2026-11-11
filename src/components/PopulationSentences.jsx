@@ -83,7 +83,7 @@ export default function PopulationSentences({ elementId }) {
               <div key={i} title={r.problems.length ? r.problems.join('\n') : undefined}
                 style={{ fontSize: 13, lineHeight: 1.5, userSelect: 'text', display: 'flex', gap: 6, alignItems: 'baseline' }}>
                 <span><Tokens tokens={r.tokens}/>
-                  {r.derived && <span style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic' }}> (derived)</span>}
+                  {r.derived && <span style={{ fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic' }}> ({result.derivedLabel ?? 'derived'})</span>}
                 </span>
                 {r.problems.length > 0 && (
                   <span style={{ fontSize: 11, color: 'var(--danger, #b91c1c)' }}>⚠ {r.problems.join('; ')}</span>

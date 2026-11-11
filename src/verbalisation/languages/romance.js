@@ -345,9 +345,33 @@ export function romanceLibrary(P) {
     return seq(kw(label), kw(P.of), distinct, term(h, t.term), kw(P.overAll), what, such, cond)
   }
 
+  // Population sentences (src/verbalisation/population.js): the same
+  // functions as englishPopulation (english.js), with the profile's words
+  // (P.population: the, with, inPrep, thereIs, referredTo, derived).
+  const W = P.population
+  const population = {
+    name: (h, typeId) => typeTok(h.typeLabel(typeId)),
+    the: (h, typeId, next = h.typeLabel(typeId)) => kw(W.the(gender(h, typeId), next)),
+    withValue: (h, vtId, value) => [kw(W.with), typeTok(h.typeLabel(vtId)), value],
+    inWhich: (h, typeId, build) => {
+      const c = build(h)
+      return c && [kw(P.relPrep(W.inPrep, gender(h, typeId), false)), c]
+    },
+    relative: (h, typeId, build) => {
+      const vps = build(h)
+      return vps && [kw(P.relSubj), joinList(vps, P.and)]
+    },
+    thereIs: (h, typeId, rest) => [kw(W.thereIs), kw(P.some(gender(h, typeId))), typeTok(h.typeLabel(typeId)), rest],
+    isA: (h, subject, typeId) => [subject, kw(P.isA.verb), kw(P.some(gender(h, typeId))), typeTok(h.typeLabel(typeId))],
+    referredTo: (h, typeIds, vtId) => W.referredTo(
+      typeIds.map(t => typeTok(h.typePlural(t))), (list) => joinList(list, P.and), typeTok(h.typeLabel(vtId)), kw),
+    derived: W.derived,
+  }
+
   return {
     id: P.id,
     label: P.label,
+    population,
     functions,
     term,
     // "la même Adresse e-mail" for the variables in env.same (negative.js).
