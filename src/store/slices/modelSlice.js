@@ -709,7 +709,9 @@ export function createModelSlice(set, get) {
           // old format (elementIds + positions)
           return migrateSubtypeOccurrences(migrateRefModeExpansion(migrateOldDiagram(diag, parsedOts, facts, constraints, constraintIdSet), parsedOts, facts), parsedSts)
         })
-        activeDiagramId = d.activeDiagramId ?? d.diagrams[0].id
+        // A file always opens on its first diagram (Jan, 2026-11-11), not on
+        // the one that was active when it was saved; see below for schemas.
+        activeDiagramId = diagrams[0].id
       } else {
         // v1: no diagrams at all — create one from element x,y positions
         const occurrences = [
@@ -827,7 +829,15 @@ export function createModelSlice(set, get) {
       if (completed !== scoped.diagrams)
         scoped.diagrams = syncConstraints(completed, scoped.constraints, scoped.subtypes, scoped.facts)
 
-      const activeDiag = diagrams.find(d => d.id === activeDiagramId)
+      // The first diagram of the first schema, as the schema strip and the
+      // diagram tabs order them (mapping diagrams after plain ones).
+      {
+        const first = scoped.schemas?.[0]?.id
+        const pick = scoped.diagrams.find(dg => !dg.mappingId && (!first || !dg.schemaId || dg.schemaId === first))
+          ?? scoped.diagrams[0]
+        if (pick) activeDiagramId = pick.id
+      }
+      const activeDiag = scoped.diagrams.find(d => d.id === activeDiagramId) ?? diagrams.find(d => d.id === activeDiagramId)
       const diagDS = activeDiag?.displaySettings ?? {}
       set({
         ...scoped,
