@@ -503,6 +503,18 @@ function aggregate(h, t) {
 // fills its slot in the slot's case, "z" takes the instrumental, and "jest"
 // a predicate noun in the instrumental. Polish has no articles.
 
+// The opening words text of a nominal reading in case c (see
+// polishPopulation.nominalHead); entry is the type's lexicon entry
+// ({ name, gender, plural, forms }), forms the reading's own case forms.
+export function declineNominalHead(entry, text, c = 'nom', forms) {
+  if (c === 'nom') return text
+  if (forms?.[c]?.trim()) return forms[c].trim()
+  const [first, more] = splitFirst(text)
+  if (!first || first.toLowerCase() !== entry?.name?.toLowerCase()) return text
+  const form = nounForm(entry, c)
+  return words(first[0] === first[0].toLowerCase() ? form[0].toLowerCase() + form.slice(1) : form, more)
+}
+
 export const polishPopulation = {
   name: (h, typeId, c = 'nom') => noun(h, typeId, c),
   the: () => [],
@@ -526,15 +538,10 @@ export const polishPopulation = {
   // The case of a slot of a nominal reading when it gives none: zapis
   // Studenta (genitive).
   nominalCase: 'gen',
-  // A nominal reading that starts with the type's own name takes the case
-  // of its slot from the type's case forms: "prowadzi ofertę Przedmiotu".
-  nominalHead: (h, typeId, text, c = 'nom') => {
-    const [first, more] = splitFirst(text)
-    const entry = h.entry(typeId)
-    if (c === 'nom' || first.toLowerCase() !== entry.name?.toLowerCase()) return text
-    const form = nounForm(entry, c)
-    return words(first[0] === first[0].toLowerCase() ? form[0].toLowerCase() + form.slice(1) : form, more)
-  },
+  // The opening words of a nominal reading in case c: the reading's own
+  // form for c (forms, set in the Inspector), else, when they start with the
+  // type's own name, that name declined: "prowadzi ofertę Przedmiotu".
+  nominalHead: (h, typeId, text, c = 'nom', forms) => declineNominalHead(h.entry(typeId), text, c, forms),
 }
 
 export const polishLibrary = {
