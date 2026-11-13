@@ -302,7 +302,7 @@
       {
         "id": "ot_Staff",
         "kind": "entity",
-        "name": "Staff",
+        "name": "Staff member",
         "x": 580,
         "y": 360,
         "isPersonal": false,
@@ -314,7 +314,7 @@
             "gender": "de"
           },
           "en": {
-            "plural": "Staff"
+            "plural": "Staff members"
           },
           "fr": {
             "name": "Membre du personnel",

@@ -42,12 +42,12 @@ Niemożliwe jest, że istnieje więcej niż 100 Przedmiotów.
 ¬(∃^{>50} Course ∃ Student (Student enrols in Course))
 Niemożliwe jest, że istnieje więcej niż 50 Przedmiotów, które jakiś Student studiuje.
 
-# Cardinality (role 1) (deontic) · Staff coordinates Course
-F(∃^{≤4} Staff ∃ Course (Staff coordinates Course))
+# Cardinality (role 1) (deontic) · Staffmember coordinates Course
+F(∃^{≤4} Staffmember ∃ Course (Staffmember coordinates Course))
 Niedopuszczalne jest, że istnieje co najwyżej 4 Pracowników, którzy koordynują jakiś Przedmiot.
 
-# Derivation rule · Student studies with Staff
-∀ Student ∀ Staff ((Student studies with Staff) ↔ ∃ Course ((Student enrols in Course) ∧ (Staff coordinates Course)))
+# Derivation rule · Student studies with Staffmember
+∀ Student ∀ Staffmember ((Student studies with Staffmember) ↔ ∃ Course ((Student enrols in Course) ∧ (Staffmember coordinates Course)))
 Student studies with Pracownika wtedy i tylko wtedy, gdy Student studiuje jakiś Przedmiot, który Pracownik koordynuje.
 
 # Derivation rule, every derived fact holds · Student has TotalCredits
@@ -70,16 +70,16 @@ Niemożliwe jest, że istnieją jakiś Przedmiot i jakiś EnrolmentCount takie, 
 ¬(∃ Student ∃ Course ∃ Credits ((Student assists in Course) ∧ (Course is worth Credits) ∧ ¬(∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))))
 Niemożliwe jest, że istnieją jakiś Student, jakiś Przedmiot i jakaś Punktacja takie, że ten Student asystuje przy tym Przedmiocie i ten Przedmiot ma tę Punktację i nieprawda, że ten Student has credit load jakiś TotalCredits, który wynosi (ta Punktacja plus 5) razy 2.
 
-# Uniqueness (deontic) · Staff mentors Student
-F(∃ Student ∃^{>1} Staff (Staff mentors Student))
+# Uniqueness (deontic) · Staffmember mentors Student
+F(∃ Student ∃^{>1} Staffmember (Staffmember mentors Student))
 Niedopuszczalne jest, że więcej niż jeden Pracownik mentors tego samego Studenta.
 
-# Mandatory role (deontic) · Staff mentors Student
-F(∃ Student ¬(∃ Staff (Staff mentors Student)))
+# Mandatory role (deontic) · Staffmember mentors Student
+F(∃ Student ¬(∃ Staffmember (Staffmember mentors Student)))
 Niedopuszczalne jest, że istnieje jakiś Student taki, że żaden Pracownik nie mentors tego Studenta.
 
-# Frequency (deontic) · Staff mentors Student
-F(∃ Staff ∃^{>5} Student (Staff mentors Student))
+# Frequency (deontic) · Staffmember mentors Student
+F(∃ Staffmember ∃^{>5} Student (Staffmember mentors Student))
 Niedopuszczalne jest, że jakiś Pracownik mentors więcej niż 5 Studentów.
 
 # Uniqueness · Person has first given PersonName
@@ -99,15 +99,15 @@ Niemożliwe jest, że jakaś Osoba nie has żadnego first given Nazwiska.
 Niemożliwe jest, że więcej niż jedna Osoba₂ has tę samą Osobę₁-in-law.
 
 # External uniqueness (outer join)
-¬(∃ CourseTitle ∃ Staff ∃^{>1} Course ((Course has CourseTitle) ∧ (Course is run by Staff)))
+¬(∃ CourseTitle ∃ Staffmember ∃^{>1} Course ((Course has CourseTitle) ∧ (Course is run by Staffmember)))
 Niemożliwe jest, że więcej niż jeden Przedmiot ma ten sam Tytuł przedmiotu i is run by tego samego Pracownika.
 
 # External uniqueness (outer join): no value at position 2
-¬(∃ CourseTitle ∃^{>1} Course ((Course has CourseTitle) ∧ ¬(∃ Staff (Course is run by Staff))))
+¬(∃ CourseTitle ∃^{>1} Course ((Course has CourseTitle) ∧ ¬(∃ Staffmember (Course is run by Staffmember))))
 Niemożliwe jest, że więcej niż jeden Przedmiot ma ten sam Tytuł przedmiotu i nie is run by żadnego Pracownika.
 
 # Subset (deontic)
-F(∃ Student ((∃ Staff (Staff mentors Student)) ∧ ¬(∃ Course (Student enrols in Course))))
+F(∃ Student ((∃ Staffmember (Staffmember mentors Student)) ∧ ¬(∃ Course (Student enrols in Course))))
 Niedopuszczalne jest, że istnieje jakiś Student taki, że jakiś Pracownik mentors tego Studenta i ten Student nie studiuje żadnego Przedmiotu.
 
 # Ring (irreflexive) (deontic)
