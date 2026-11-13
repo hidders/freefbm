@@ -20,7 +20,7 @@ import {
   EMPTY, loadSchemas, activeSchemaIdOf,
   mkUniqueness, withMandatoryId,
 } from '../storeHelpers'
-import { BASE_LANGUAGE, swapLanguage } from '../viewLanguage.js'
+import { BASE_LANGUAGE, baseOf, swapLanguage } from '../viewLanguage.js'
 import { makeContext } from '../../logic/constraintFormulas.js'
 import { withRuleForms } from '../../logic/query.js'
 import { mkGroup, loadGroups, pruneGroups } from '../../utils/groups.js'
@@ -45,6 +45,10 @@ function sameSchemaClipboard(state) {
   const cb = state.clipboard
   return !!cb && (!cb.schemaId || cb.schemaId === activeSchemaIdOf(state))
 }
+
+
+// A file's base language (schema.language), English when it has none.
+const fileLanguage = (lang) => typeof lang === 'string' && /^[a-z]{2,3}(-[A-Za-z0-9]+)?$/.test(lang) ? lang : BASE_LANGUAGE
 
 export function createModelSlice(set, get) {
   return {
@@ -842,7 +846,9 @@ export function createModelSlice(set, get) {
       set({
         ...scoped,
         ruleEditor: null, ruleHighlight: null,
-        viewLanguage: BASE_LANGUAGE,
+        // every open starts in the model's own language
+        baseLanguage: fileLanguage(d.schema?.language),
+        viewLanguage: fileLanguage(d.schema?.language),
         languages: Array.isArray(d.schema?.languages) ? d.schema.languages.filter(l => typeof l === 'string') : [],
         propertyDefinitions: loadPropertyDefinitions(d.schema?.propertyDefinitions),
         mappings,
@@ -886,6 +892,24 @@ export function createModelSlice(set, get) {
       set({ ...swapLanguage(s, s.viewLanguage, lang), viewLanguage: lang })
     },
 
+    // Makes lang the model's own language (one undo step): the model is
+    // shown in it, its text there becomes the elements' own when saved, and
+    // the old base language's text stays as a translation. Elements without
+    // text in lang keep the old text, shown as untranslated.
+    setBaseLanguage(lang) {
+      const s = get()
+      const old = baseOf(s)
+      if (typeof lang !== 'string' || !lang || lang === old) return
+      const shown = lang === s.viewLanguage ? {} : swapLanguage(s, s.viewLanguage, lang)
+      set({
+        ...shown,
+        viewLanguage: lang,
+        baseLanguage: lang,
+        languages: [...new Set([...(s.languages ?? []), old])].filter(l => l !== lang),
+        isDirty: true,
+      })
+    },
+
     // Adds a language to the model and shows it.
     addLanguage(lang) {
       const s = get()
@@ -895,9 +919,10 @@ export function createModelSlice(set, get) {
 
     serialize() {
       const state = get()
-      const { objectTypes, facts } = swapLanguage(state, state.viewLanguage, BASE_LANGUAGE)
+      const base = baseOf(state)
+      const { objectTypes, facts } = swapLanguage(state, state.viewLanguage, base)
       const strip = ({ _fb: _, ...el }) => el
-      const ctx = makeContext({ ...state, objectTypes, facts })
+      const ctx = makeContext({ ...state, objectTypes, facts, viewLanguage: base })
       const {
         subtypes, constraints, diagrams, activeDiagramId,
         populations, factPopulations, subtypeMappings, nestedEntityMappings,
@@ -937,6 +962,7 @@ export function createModelSlice(set, get) {
           schemas,
           objectTypes:          objectTypes.map(strip),
           factTypes:            facts.map(f => strip(f.implicitLinks ? { ...f, implicitLinks: f.implicitLinks.map(strip) } : f)),
+          ...(base !== BASE_LANGUAGE && { language: base }),
           ...(languages?.length && { languages }),
           subtypes,
           // Each query graph also carries its formula (query.js), so the file

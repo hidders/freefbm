@@ -1135,8 +1135,10 @@ export const EMPTY = () => {
     diagrams:        [d],
     activeDiagramId: d.id,
     // The language names and readings are shown in (session only; the file
-    // is in the base language) and the languages added to the model.
+    // is in the base language), the base language (the model's own, saved
+    // as schema.language) and the languages added to the model.
     viewLanguage:    'en',
+    baseLanguage:    'en',
     languages:       [],
     // Schema-wide sample population: otId → array of instance values (strings).
     // Value type:  instance = the literal value.

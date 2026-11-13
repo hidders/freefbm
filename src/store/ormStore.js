@@ -22,7 +22,7 @@ export { subtypeKindOf } from './storeHelpers'
 // not an edit of the model).
 const RELATIONAL_EDITS = ['addTableRule', 'updateTableRules', 'updateTableRule', 'deleteTableRule', 'addTableRuleColumn',
   'setTablePrimaryKey', 'addDerivedTable', 'addCarriedConstraint', 'formulaToGraphical', 'applyMappingRun', 'loadSampleRows', 'addSimpleConstraint', 'applyView', 'applyExchangeRun',
-  'setViewLanguage', 'addLanguage']
+  'setViewLanguage', 'addLanguage', 'setBaseLanguage']
 
 export const useOrmStore = create((rawSet, get) => {
   // Every update passes through here so that new elements and diagrams get
