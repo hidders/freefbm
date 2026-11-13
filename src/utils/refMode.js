@@ -96,6 +96,8 @@ export function playerName(player) {
 //   refModeLabel('Employee', 'EmployeeCode') === '.code'
 //   refModeLabel('Employee', 'Code')         === 'Code'
 //   refModeLabel('Family', 'Family Name')    === '.name'   (a separator after the entity name is dropped)
+//   refModeLabel('Person', 'Personennummer') === '.nummer' (a linking element is dropped:
+//   Persoon/Persoonsnummer, Jahr/Jahreszeit; Kurs/Kurscode stays '.code')
 // owner is the entity type (or objectified fact type): its refModeName is its own
 // name of its reference mode (as typed or as a NORMA import gives it), shown as
 // written when the value type's suffix is that name, and refModeKind 'unit' marks
@@ -110,7 +112,12 @@ export function refModeLabel(entityName, vtName, owner) {
   if (owner?.refModeKind === 'general' && vtName) return vtName
   if (!entityName || !vtName) return vtName ?? ''
   if (vtName.length > entityName.length && vtName.startsWith(entityName)) {
-    const suffix = vtName.slice(entityName.length).replace(/^[\s_-]+/, '')
+    const rest = vtName.slice(entityName.length)
+    let suffix = rest.replace(/^[\s_-]+/, '')
+    // A compound written as one word may join its parts with a linking
+    // element (German Person-en-nummer, Jahr-es-zeit, Dutch Persoon-s-nummer):
+    // drop it from a lower-case suffix, so the label is '.nummer'.
+    if (suffix === rest) suffix = suffix.replace(/^(?:en|es)(?=[^aeiouyäöü\s])/, '').replace(/^s(?=[^aeiouyäöü\s])(?!ch|p|t|l)/, '')
     if (suffix) {
       if (refModeName && suffix.toLowerCase() === refModeName.toLowerCase()) return '.' + refModeName
       return '.' + suffix.charAt(0).toLowerCase() + suffix.slice(1)
