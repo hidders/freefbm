@@ -1,0 +1,115 @@
+# Derivation rule · Student is a TeachingAssistant if and only if …
+∀ Student (TeachingAssistant(Student) ↔ ∃ Course (Student assists in Course))
+Student ist ein TeachingAssistant genau dann, wenn Student in einem Kurs assistiert.
+
+# Semi-derivation rule · Student is a BusyStudent if …
+∀ Student ((∃^{≥4} Course (Student enrols in Course)) → BusyStudent(Student))
+Jeder Student, der mindestens 4 Kurse belegt, ist ein BusyStudent.
+
+# Derivation rule · Course is a HeavyCourse if and only if …
+∀ Course (HeavyCourse(Course) ↔ ∃ Credits ((Course is worth Credits) ∧ Credits ≥ 30))
+Kurs ist eine HeavyCourse genau dann, wenn Kurs eine Leistungspunktzahl, die mindestens 30 ist, hat.
+
+# Derivation rule · Student is a FreeStudent if and only if …
+∀ Student (FreeStudent(Student) ↔ ¬(∃ Course (Student enrols in Course)))
+Student ist ein FreeStudent genau dann, wenn Student keinen Kurs belegt.
+
+# Derivation rule · Course is an IntroCourse if and only if …
+∀ Course (IntroCourse(Course) ↔ ∃ CourseTitle ((Course has CourseTitle) ∧ startsWith(CourseTitle, 'Introduction')))
+Kurs ist eine IntroCourse genau dann, wenn Kurs einen Kurstitel, der mit 'Introduction' beginnt, hat.
+
+# Semi-derivation rule · Course is a LongTitleCourse if …
+∀ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) → LongTitleCourse(Course))
+Jeder Kurs, der einen Kurstitel derart, dass die Länge von diesem Kurstitel größer als 40 ist, hat, ist eine LongTitleCourse.
+
+# Value range (deontic) · Score
+O(∀ Score ((Score > 0 ∧ Score ≤ 100) ∨ Score > 200))
+Es ist geboten, dass die möglichen Werte von Score mehr als 0 und höchstens 100, mehr als 200 sind.
+
+# Cardinality · Professor
+∃^{2..20} Professor ⊤
+Es gibt mindestens 2 und höchstens 20 Professoren.
+
+# Cardinality (deontic) · Building
+O(∃^{=3} Building ⊤)
+Es ist geboten, dass es genau 3 Gebäude gibt.
+
+# Cardinality · Course
+∃^{≤100} Course ⊤
+Es gibt höchstens 100 Kurse.
+
+# Cardinality (role 2) · Student enrols in Course
+∃^{≤50} Course ∃ Student (Student enrols in Course)
+Es gibt höchstens 50 Kurse, die ein Student belegt.
+
+# Cardinality (role 1) (deontic) · StaffMember coordinates Course
+O(∃^{≥5} StaffMember ∃ Course (StaffMember coordinates Course))
+Es ist geboten, dass es mindestens 5 Mitarbeiter, die einen Kurs koordinieren, gibt.
+
+# Derivation rule · Student studies with StaffMember
+∀ Student ∀ StaffMember ((Student studies with StaffMember) ↔ ∃ Course ((Student enrols in Course) ∧ (StaffMember coordinates Course)))
+Student studies with Mitarbeiter genau dann, wenn Student einen Kurs, den Mitarbeiter koordiniert, belegt.
+
+# Derivation rule, every derived fact holds · Student has TotalCredits
+∀ Student ∃ TotalCredits (Student has TotalCredits)
+Jeder Student has einen TotalCredits.
+
+# Derivation rule, only derived facts hold · Student has TotalCredits
+∀ Student ∀ TotalCredits ((Student has TotalCredits) → TotalCredits ≈ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)})
+Wenn Student TotalCredits has, dann ist TotalCredits die Summe der Leistungspunktzahlen, die jeder Kurs, den Student belegt, hat.
+
+# Derivation rule, every derived fact holds · Course has EnrolmentCount
+∀ Course ∃ EnrolmentCount (Course has EnrolmentCount)
+Jeder Kurs has einen EnrolmentCount.
+
+# Derivation rule, only derived facts hold · Course has EnrolmentCount
+∀ Course ∀ EnrolmentCount ((Course has EnrolmentCount) → EnrolmentCount ≈ Count{Student : (Student enrols in Course)})
+Wenn Kurs EnrolmentCount has, dann ist EnrolmentCount die Anzahl der Studenten, die Kurs belegen.
+
+# Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
+∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
+Wenn Student in Kurs assistiert und Kurs Leistungspunktzahl hat, dann has Student credit load einen TotalCredits, der (Leistungspunktzahl plus 5) mal 2 ist.
+
+# Uniqueness (deontic) · StaffMember mentors Student
+O(∀ Student ∃^{≤1} StaffMember (StaffMember mentors Student))
+Es ist geboten, dass für jeden Studenten gilt: höchstens ein Mitarbeiter diesen Studenten mentors.
+
+# Mandatory role (deontic) · StaffMember mentors Student
+O(∀ Student ∃ StaffMember (StaffMember mentors Student))
+Es ist geboten, dass für jeden Studenten gilt: ein Mitarbeiter diesen Studenten mentors.
+
+# Frequency (deontic) · StaffMember mentors Student
+O(∀ StaffMember ((∃ Student (StaffMember mentors Student)) → ∃^{≤5} Student (StaffMember mentors Student)))
+Es ist geboten, dass jeder Mitarbeiter höchstens 5 Studenten mentors.
+
+# Uniqueness · Person has first given PersonName
+∀ Person ∃^{≤1} PersonName (Person has first given PersonName)
+Jede Person has höchstens einen first given Personennamen.
+
+# Uniqueness · Person has first given PersonName
+∀ PersonName ∃^{≤1} Person (Person has first given PersonName)
+Jeder Personenname is the first given name of höchstens eine Person.
+
+# Mandatory role · Person has first given PersonName
+∀ Person ∃ PersonName (Person has first given PersonName)
+Jede Person has einen first given Personennamen.
+
+# Uniqueness · Person has Person -in-law
+∀ Person₁ ∃^{≤1} Person₂ (Person₂ has Person₁ -in-law)
+Für jede Person₁ gilt: höchstens eine Person₂ has diese Person₁-in-law.
+
+# External uniqueness (outer join)
+∀ CourseTitle ∀ StaffMember ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by StaffMember))
+Für jeden Kurstitel und jeden Mitarbeiter gilt: höchstens ein Kurs hat diesen Kurstitel und is run by diesen Mitarbeiter.
+
+# External uniqueness (outer join): no value at position 2
+∀ CourseTitle ∃^{≤1} Course ((Course has CourseTitle) ∧ ¬(∃ StaffMember (Course is run by StaffMember)))
+Für jeden Kurstitel gilt: höchstens ein Kurs hat diesen Kurstitel und is run by keinen Mitarbeiter.
+
+# Subset (deontic)
+O(∀ Student ((∃ StaffMember (StaffMember mentors Student)) → ∃ Course (Student enrols in Course)))
+Es ist geboten, dass jeder Student, den ein Mitarbeiter mentors, einen Kurs belegt.
+
+# Ring (irreflexive) (deontic)
+O(∀ Course ¬(Course is a prerequisite for Course))
+Es ist geboten, dass kein Kurs Voraussetzung für sich selbst ist.

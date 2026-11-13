@@ -24,6 +24,7 @@ import { frenchLibrary } from '../src/verbalisation/languages/french.js'
 import { italianLibrary } from '../src/verbalisation/languages/italian.js'
 import { spanishLibrary } from '../src/verbalisation/languages/spanish.js'
 import { polishLibrary } from '../src/verbalisation/languages/polish.js'
+import { germanLibrary } from '../src/verbalisation/languages/german.js'
 import { compileLanguage } from '../src/verbalisation/rules.js'
 import { coverage, overlaps, newStats } from '../src/verbalisation/analysis.js'
 import { extend, isExtra } from '../tests/verbalisation/extras.mjs'
@@ -35,6 +36,7 @@ const load = (file, lib) => compileLanguage(fs.readFileSync(path.join(root, 'src
 const languages = {
   en: load('english.vr', englishLibrary), nl: load('dutch.vr', dutchLibrary), fr: load('french.vr', frenchLibrary),
   it: load('italian.vr', italianLibrary), es: load('spanish.vr', spanishLibrary), pl: load('polish.vr', polishLibrary),
+  de: load('german.vr', germanLibrary),
 }
 
 const d = JSON.parse(fs.readFileSync(path.join(root, 'src/data/sample.ffbm'), 'utf8'))

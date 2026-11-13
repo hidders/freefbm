@@ -1,0 +1,353 @@
+# German verbalisation rules.
+#
+# The phrase kinds are as in English. Word order follows Dutch (see
+# dutch.vr): clauses and verb phrases look at env.form, none for a main
+# clause ("Student belegt Kurs"), "sub" for a subordinate one ("…, dass
+# Student Kurs belegt") and "inv" for the inverted order after "dann" ("dann
+# belegt Student Kurs"). Noun phrases decline as in Polish (see polish.vr):
+# the rules build them with np(?y, kind, case), where kind is "some" (ein),
+# "none" (kein), "each" (jeder), "that" (dieser), "bare" or a counting
+# quantifier, and the case one of "nom", "gen", "dat", "acc" (the
+# nominative by default). Where a noun phrase fills a slot of a reading
+# (objectQuantified, anchoredClause), the rules pass only its kind, and it
+# takes the case the reading gives the slot. Subordinate clauses are set off
+# by commas: "es ist möglich, dass …", "jeder Raum, der …, hat …".
+#
+# The functions the rules call that are not built in are in german.js.
+
+language de "Deutsch"
+
+# ── Sentences ────────────────────────────────────────────────────────────────
+
+sentence rule impossible {
+  # Negative verbalisation (negative.js): the situation the constraint rules
+  # out, as NORMA's negative mode says it.
+  match:    { t: "not", mode: "impossible", arg: ?x }
+  template: "es ist unmöglich" comma "dass" clause(?x, form: "sub")
+}
+
+sentence rule possible {
+  # Default verbalisation: what a missing constraint allows (◇X, see
+  # factEntries in constraintFormulas.js).
+  match:    { t: "possible", arg: ?x }
+  template: "es ist möglich" comma "dass" clause(?x, form: "sub")
+}
+
+sentence rule obligatory {
+  # A deontic constraint O(X) (modality.js): what ought to hold, said as the
+  # sentence X would be.
+  match:    { t: "obligatory", arg: ?x }
+  template: "es ist geboten" comma "dass" with(form: "sub") { sentence(?x) }
+}
+
+sentence rule forbidden {
+  # Negative verbalisation of a deontic constraint: what ought not to hold.
+  match:    { t: "forbidden", arg: ?x }
+  template: "es ist verboten" comma "dass" clause(?x, form: "sub")
+}
+
+# Subordinate form (under "es ist geboten, dass"): the verb goes last.
+sentence rule value-range-sub {
+  match:    ForAll([?x], ?body)
+  guard:    env.form == "sub" and rangeItems(?body, ?x)
+  template: "die möglichen Werte von" np(?x, "bare", "dat") commaList(rangeItems(?body, ?x)) "sind"
+}
+
+sentence rule value-range {
+  match:    ForAll([?x], ?body)
+  guard:    not env.form and rangeItems(?body, ?x)
+  template: "die möglichen Werte von" np(?x, "bare", "dat") "sind" commaList(rangeItems(?body, ?x))
+}
+
+sentence rule exactly-one-of {
+  match:    ForAll([?x], ?body)
+  guard:    exclusiveOrItems(?body)
+  template: "für" np(?x, "each", "acc") "gilt" clauseList("genau eine der folgenden Aussagen", exclusiveOrItems(?body))
+}
+
+sentence rule no {
+  # "Kein Gebäude ist ein Raum"
+  match:    ForAll([?x], Not(?a))
+  template: np(?x, "none") vp(?a, ?x, negative: true)
+}
+
+sentence rule each-at-most {
+  # ∀x (∃ys R → ∃^{≤n} ys R) says no more than ∀x ∃^{≤n} ys R.
+  match:    ForAll([?x], Implies(?a, ?q @ Count(<=, ?n, ?ys, ?c)))
+  guard:    sameUpToWild(?a, ?c, ?ys)
+  template: np(?x, "each") vp(?q, ?x)
+}
+
+sentence rule each-that {
+  # "Jedes Jahr, in dem ein Studienjahr beginnt, ist …"
+  match:    ForAll([?x], Implies(?a, ?c))
+  template: np(?x, "each") relative(?a, ?x) comma vp(?c, ?x)
+}
+
+sentence rule at-least-one-of {
+  match:    ForAll([?x], Or(?args))
+  guard:    len(?args) > 2 or any(?args, isComplex)
+  template: "für" np(?x, "each", "acc") "gilt" clauseList("mindestens eine der folgenden Aussagen", ?args)
+}
+
+sentence rule each {
+  match:    ForAll([?x], ?body)
+  template: np(?x, "each") vp(?body, ?x)
+}
+
+sentence rule definition {
+  # "Student ist ein Tutor genau dann, wenn Student in einem Kurs assistiert"
+  match:    ForAll(?vs, Iff(?a, ?c))
+  guard:    (?a.t == "type" or (?a.t == "fact" and all(?a.args, isVar))) and occursAll(?a, ?vs)
+  template: with(refStyle: "bare") { clause(?a) "genau dann" comma "wenn" clause(?c, form: "sub") }
+}
+
+sentence rule if-then {
+  # "Wenn Student Kurs belegt, dann belegt Student …"
+  match:    ForAll(?vs, Implies(?a, ?c))
+  guard:    len(?vs) > 1 and occursAll(?a, ?vs)
+  template: with(refStyle: "bare") { "wenn" clause(?a, form: "sub") comma "dann" clause(?c, form: "inv") }
+}
+
+sentence rule if-then-holds {
+  # The consequent has no inverted form: "…, dann gilt, dass …"
+  match:    ForAll(?vs, Implies(?a, ?c))
+  guard:    len(?vs) > 1 and occursAll(?a, ?vs)
+  template: with(refStyle: "bare") { "wenn" clause(?a, form: "sub") comma "dann gilt" comma "dass" clause(?c, form: "sub") }
+}
+
+sentence rule for-each {
+  match:    ForAll(?vs, ?body)
+  template: "für" eachList(?vs, "acc") "gilt" colon clause(?body)
+}
+
+sentence rule clause {
+  match:    ?f
+  template: clause(?f)
+}
+
+# ── Clauses ──────────────────────────────────────────────────────────────────
+
+clause rule more-than-one-same {
+  # In negative sentences (negative.js), uniqueness over roles other than the
+  # subject's: "mehr als eine Person hat dieselbe E-Mail-Adresse".
+  match:    Exists(?xs, ?q @ Count(>, ?n, [?y], ?body))
+  guard:    singular(?q)
+  template: with(same: ?xs) { np(?y, ?q) vp(?body, ?y) }
+}
+
+clause rule at-most-one-of {
+  match:    ?f
+  guard:    not env.form and exclusionItems(?f)
+  template: clauseList("höchstens eine der folgenden Aussagen gilt", exclusionItems(?f))
+}
+
+clause rule none {
+  # ¬R(x, some Y): "Student belegt keinen Kurs"
+  match:    Not(?f @ Node("fact"))
+  guard:    wildCount(?f) == 1
+  template: with(none: true) { reading(?f) }
+}
+
+clause rule not {
+  match:    Not(?a)
+  template: notTrue(clause(?a, form: "sub"))
+}
+
+clause rule and {
+  match:    And(?args)
+  template: clauses(?args, "und")
+}
+
+clause rule or {
+  match:    Or(?args)
+  template: clauses(?args, "oder")
+}
+
+clause rule implies {
+  match:    Implies(?a, ?c)
+  guard:    not env.form
+  template: "wenn" clause(?a, form: "sub") comma "dann" clause(?c, form: "inv")
+}
+
+clause rule implies-holds {
+  match:    Implies(?a, ?c)
+  guard:    not env.form
+  template: "wenn" clause(?a, form: "sub") comma "dann gilt" comma "dass" clause(?c, form: "sub")
+}
+
+clause rule iff {
+  match:    Iff(?a, ?c)
+  guard:    env.form != "inv"
+  template: clause(?a) "genau dann" comma "wenn" clause(?c, form: "sub")
+}
+
+clause rule for-each {
+  match:    ForAll(?vs, ?body)
+  guard:    not env.form
+  template: "für" eachList(?vs, "acc") "gilt" colon clause(?body)
+}
+
+clause rule some-subject {
+  match:    Exists([?y], ?body)
+  guard:    env.form != "inv"
+  template: np(?y, "some") vp(?body, ?y)
+}
+
+clause rule some-object {
+  match:    Exists([?y], ?body)
+  template: anchoredClause(?y, ?body, "some")
+}
+
+clause rule quantified-subject {
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  guard:    singular(?q) and env.form != "inv"
+  template: np(?y, ?q) vp(?body, ?y)
+}
+
+clause rule there-are-n-objects {
+  # Cardinality: "es gibt höchstens 100 Kurse".
+  match:    ?q @ Count(?op, ?n, [?y], True)
+  template: thereIs(np(?y, ?q, "acc"))
+}
+
+clause rule there-are-n-that {
+  # "es gibt mindestens 5 Mitarbeiter, die einen Kurs koordinieren",
+  # "es gibt höchstens 50 Kurse, die ein Student belegt"
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  guard:    not singular(?q)
+  template: thereIs((np(?y, ?q, "acc") relativeBody(?body, ?y, ?q)))
+}
+
+clause rule quantified-object {
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  guard:    singular(?q)
+  template: anchoredClause(?y, ?body, ?q)
+}
+
+clause rule there-is-some {
+  match:    Exists(?ys, ?body)
+  template: thereIs(someList(?ys)) forWhich(?ys) clause(?body, form: "sub")
+}
+
+clause rule there-are-n {
+  match:    ?q @ Count(?op, ?n, ?ys, ?body)
+  template: thereIs(countedNP(?q, ?ys)) forWhich(?ys, ?q) clause(?body, form: "sub")
+}
+
+clause rule fact {
+  match:    ?f @ Node("fact")
+  template: reading(?f)
+}
+
+clause rule is-a {
+  match:    Type(?T, ?x)
+  template: isAClause(?T, ?x)
+}
+
+clause rule subject-vp {
+  match:    ?f
+  guard:    env.form != "inv" and ?f.t in ["cmp", "tc"] and subjectOf(?f) != null
+  template: ref(subjectOf(?f)) vp(?f, subjectOf(?f))
+}
+
+clause rule value-comparison {
+  match:    VCmp(?op, ?l, ?r)
+  template: valueClause(?op, ?l, ?r)
+}
+
+clause rule data-predicate {
+  match:    ?f @ { t: "dpred", args: [?a, ?b] }
+  template: predicateClause(?f)
+}
+
+clause rule closure {
+  match:    ?f @ Node("tc")
+  guard:    not env.form
+  template: closure(?f)
+}
+
+clause rule true {
+  match:    True
+  template: "wahr"
+}
+
+clause rule unknown {
+  match:    ?f
+  template: unknownNode(?f)
+}
+
+# ── Verb phrases ─────────────────────────────────────────────────────────────
+
+vp rule fact {
+  match:    ?f @ Fact(?P, {?subj}, ?rest*)
+  template: reading(?f, subject: ?subj)
+}
+
+vp rule is-a {
+  match:    Type(?T, ?subj)
+  template: isA(?T)
+}
+
+vp rule value-comparison {
+  match:    VCmp(?op, ?subj, ?r)
+  template: valueVP(?op, ?r)
+}
+
+vp rule same-object {
+  match:    Cmp(?op, ?subj, ?r)
+  template: sameVP(?op, ?r)
+}
+
+vp rule data-predicate {
+  match:    ?f @ { t: "dpred", args: [?subj, ?r] }
+  template: predicateVP(?f)
+}
+
+vp rule directly-or-indirectly {
+  # [TC_{v,w} R(v, w)](x, t): "ist Voraussetzung für t, direkt oder indirekt"
+  match:    ?f @ TC([?v, ?w], Fact(?P, {?v, ?w}), [?subj, ?t])
+  guard:    ?v != ?w
+  template: directlyOrIndirectly(?f, ?subj, ?t)
+}
+
+vp rule and {
+  match:    And(?args)
+  template: vps(?args, ?subj, "und")
+}
+
+vp rule or {
+  match:    Or(?args)
+  guard:    len(?args) <= 2 and not any(?args, isComplex)
+  template: vps(?args, ?subj, "oder")
+}
+
+vp rule exactly-one-each {
+  # "liegt in genau einem Gebäude und hat genau eine Raumnummer"
+  match:    Count(=, 1, ?ys, And(?args))
+  guard:    distributable(?ys, ?args, ?subj)
+  template: exactlyOneEach(?ys, ?args, ?subj)
+}
+
+vp rule quantified-object {
+  match:    ?q @ Count(?op, ?n, [?y], ?body)
+  template: objectQuantified(?subj, ?y, ?body, ?q)
+}
+
+vp rule some-object {
+  match:    Exists([?y], ?body)
+  template: objectQuantified(?subj, ?y, ?body, "some")
+}
+
+vp rule not-a {
+  # In negative sentences (negative.js): "kein Mitarbeiter ist"
+  match:    Not(Type(?T, ?subj))
+  template: notA(?T)
+}
+
+vp rule none {
+  # In negative sentences: "keinen Namen hat"
+  match:    Not(?f @ Fact(?P, {?subj}, ?rest*))
+  guard:    wildCount(?f) == 1
+  template: with(none: true) { reading(?f, subject: ?subj) }
+}

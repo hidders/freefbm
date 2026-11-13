@@ -39,7 +39,8 @@ import { pluralise as dutchPlural } from '../verbalisation/languages/dutch.js'
 import { pluralise as frenchPlural } from '../verbalisation/languages/french.js'
 import { pluralise as italianPlural } from '../verbalisation/languages/italian.js'
 import { pluralise as spanishPlural } from '../verbalisation/languages/spanish.js'
-import { pluralise as polishPlural, declineNominalHead } from '../verbalisation/languages/polish.js'
+import { pluralise as polishPlural, declineNominalHead as polishNominalHead } from '../verbalisation/languages/polish.js'
+import { pluralise as germanPlural, declineNominalHead as germanNominalHead, defaultForm as germanForm } from '../verbalisation/languages/german.js'
 
 // ── Validation error components ───────────────────────────────────────────────
 
@@ -2293,8 +2294,10 @@ const lexWithout = (lexicon, lang, entry) => {
 }
 
 // The languages of the lexicon: how a type is named in each (plural rule for
-// the placeholder, genders, and for Polish the case forms) and which forms of
-// a reading each adds.
+// the placeholder, genders, and for Polish and German the case forms: cases
+// lists the cases besides the nominative, formOf gives a form's placeholder,
+// declineHead declines a nominal reading's opening words, nominalCase is the
+// default case of its slots) and which forms of a reading each adds.
 const ROMANCE_GENDERS = [['m', 'masculine (default)'], ['f', 'feminine']]
 const LEXICON_LANGS = [
   { id: 'en', label: 'English', pluralise: englishPlural, forms: [
@@ -2311,10 +2314,18 @@ const LEXICON_LANGS = [
   ].map(([id, label, pluralise, example, plural, genderHint]) => ({ id, label, pluralise, genders: ROMANCE_GENDERS, genderHint, forms: [
     { key: 'pluralParts', label: 'Plural form', hint: `With a plural subject: ${plural}. Empty: the verb is made plural.` },
   ] })),
-  { id: 'pl', label: 'Polish', pluralise: polishPlural, cases: true,
+  { id: 'pl', label: 'Polish', pluralise: polishPlural, cases: ['gen', 'dat', 'acc', 'ins', 'loc'],
+    declineHead: polishNominalHead, nominalCase: 'gen',
     genders: [['mi', 'masc. inanimate (default)'], ['ma', 'masc. animate'], ['mp', 'masc. personal'], ['f', 'feminine'], ['n', 'neuter']],
     genderHint: 'Chooses każdy/każda/każde, ten/ta/to and the numeral forms', forms: [
       { key: 'pluralParts', label: 'Plural form', hint: 'With a plural subject: Studenci studiują Przedmiot. Empty: the verb is made plural.' },
+    ] },
+  { id: 'de', label: 'German', pluralise: germanPlural, cases: ['gen', 'dat', 'acc'], formOf: germanForm,
+    declineHead: germanNominalHead, nominalCase: 'dat',
+    genders: [['m', 'masculine'], ['f', 'feminine'], ['n', 'neuter']], genderDefault: 'from the ending (default)',
+    genderHint: 'Chooses der/die/das, jeder/jede/jedes and ein/eine. Empty: guessed from the ending (-ung, -heit, -keit, -ion, -e: feminine; -chen, -um, Ge…e: neuter; else masculine)', forms: [
+      { key: 'subParts', label: 'Subordinate form', hint: 'Verb last: …, dass Student Kurs belegt. Empty: the first verb moves to the end (a separable particle joins it: teilnimmt).' },
+      { key: 'pluralParts', label: 'Plural form', hint: 'With a plural subject: Studenten belegen Kurs. Empty: the verb is made plural.' },
     ] },
 ]
 const CASE_LABELS = { nom: 'Nominative', gen: 'Genitive', dat: 'Dative', acc: 'Accusative', ins: 'Instrumental', loc: 'Locative' }
@@ -2345,20 +2356,20 @@ function TypeLexiconSection({ name, lexicon, onChange }) {
         <Row>
           <Label>Gender</Label>
           <select value={entry.gender ?? ''} onChange={e => set('gender', e.target.value)} title={lang.genderHint} style={{ width: '100%' }}>
-            <option value="">{lang.genders[0][1]}</option>
+            <option value="">{lang.genderDefault ?? lang.genders[0][1]}</option>
             {lang.genders.map(([v, label]) => <option key={v} value={v}>{label.replace(' (default)', '')}</option>)}
           </select>
         </Row>
       )}
       {lang.cases && (
         <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) minmax(0, 1fr)', gap: 4, alignItems: 'center' }}
-          title="Empty: the accusative follows the gender, other cases use the nominative">
+          title={lang.formOf ? 'Empty: the form shown, from the gender and the ending' : 'Empty: the accusative follows the gender, other cases use the nominative'}>
           <span/><Label>Singular</Label><Label>Plural</Label>
-          {['gen', 'dat', 'acc', 'ins', 'loc'].map(c => (
+          {lang.cases.map(c => (
             <React.Fragment key={c}>
               <span style={{ fontSize: 10, color: 'var(--ink-muted)' }} title={CASE_LABELS[c]}>{CASE_SHORT[c]}</span>
-              <TInput value={entry.forms?.[c] ?? ''} placeholder={name} onChange={v => setForm(c, v)}/>
-              <TInput value={entry.forms?.[`${c}Pl`] ?? ''} placeholder={plural} onChange={v => setForm(`${c}Pl`, v)}/>
+              <TInput value={entry.forms?.[c] ?? ''} placeholder={lang.formOf && name ? lang.formOf({ ...entry, name }, c) : name} onChange={v => setForm(c, v)}/>
+              <TInput value={entry.forms?.[`${c}Pl`] ?? ''} placeholder={lang.formOf && name ? lang.formOf({ ...entry, name }, `${c}Pl`) : plural} onChange={v => setForm(`${c}Pl`, v)}/>
             </React.Fragment>
           ))}
         </div>
@@ -2368,8 +2379,8 @@ function TypeLexiconSection({ name, lexicon, onChange }) {
 }
 
 // The forms of a fact type's readings in the view language (Dutch
-// subordinate form, plural form), one per reading; in Polish with the case
-// of each slot.
+// subordinate form, plural form), one per reading; in Polish and German with
+// the case of each slot.
 function FactLexiconSection({ fact, store }) {
   const tab = store.viewLanguage
   const n = fact.arity
@@ -2417,7 +2428,7 @@ function FactLexiconSection({ fact, store }) {
                       <span style={{ fontSize: 11 }}>{playerName(ri)}</span>
                       <select value={forms.cases?.[k] ?? ''} onChange={e => update(r, 'cases', k, e.target.value)} style={{ width: '100%' }}>
                         <option value="">{k ? 'accusative' : 'nominative'} (default)</option>
-                        {Object.entries(CASE_LABELS).map(([c, label]) => <option key={c} value={c}>{label.toLowerCase()}</option>)}
+                        {['nom', ...lang.cases].map(c => <option key={c} value={c}>{CASE_LABELS[c].toLowerCase()}</option>)}
                       </select>
                     </React.Fragment>
                   ))}
@@ -2462,7 +2473,7 @@ function NominalReadingSection({ fact, store }) {
     store.updateFact(fact.id, { lexicon: Object.keys(lexicon).length ? lexicon : undefined })
   }
   const example = { en: 'enrolment of … in …', nl: 'inschrijving van … voor …', fr: 'inscription de … à …',
-    it: 'iscrizione di … a …', es: 'inscripción de … en …', pl: 'zapis … na …' }[lang.id] ?? 'enrolment of … in …'
+    it: 'iscrizione di … a …', es: 'inscripción de … en …', pl: 'zapis … na …', de: 'Einschreibung von … in …' }[lang.id] ?? 'enrolment of … in …'
   return (
     <Section title="Nominal reading">
       <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginBottom: 6, lineHeight: 1.4 }}>
@@ -2480,14 +2491,14 @@ function NominalReadingSection({ fact, store }) {
         onUpdatePart={(k, val) => { const next = [...parts]; next[k] = val; save({ parts: next }) }}/>
       {lang.cases && (
         <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 4, alignItems: 'center', marginTop: 6 }}
-          title="The case each object type takes in the nominal reading; empty: genitive">
+          title={`The case each object type takes in the nominal reading; empty: ${CASE_LABELS[lang.nominalCase].toLowerCase()}`}>
           {order.map((ri, k) => (
             <React.Fragment key={k}>
               <span style={{ fontSize: 11 }}>{playerName(ri)}</span>
               <select value={nr?.cases?.[k] ?? ''} style={{ width: '100%' }}
                 onChange={e => { const cases = [...(nr?.cases ?? Array(n).fill(''))]; cases[k] = e.target.value; save({ cases }) }}>
-                <option value="">genitive (default)</option>
-                {Object.entries(CASE_LABELS).map(([c, label]) => <option key={c} value={c}>{label.toLowerCase()}</option>)}
+                <option value="">{CASE_LABELS[lang.nominalCase].toLowerCase()} (default)</option>
+                {['nom', ...lang.cases].map(c => <option key={c} value={c}>{CASE_LABELS[c].toLowerCase()}</option>)}
               </select>
             </React.Fragment>
           ))}
@@ -2506,10 +2517,10 @@ function NominalReadingSection({ fact, store }) {
           <div style={{ fontSize: 10, color: 'var(--ink-muted)', margin: '8px 0 2px' }}>Opening words in other cases</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 4, alignItems: 'center' }}
             title="The opening words of the nominal reading in each case, used when it fills a slot in that case">
-            {['gen', 'dat', 'acc', 'ins', 'loc'].map(c => (
+            {lang.cases.map(c => (
               <React.Fragment key={c}>
                 <span style={{ fontSize: 11 }}>{CASE_LABELS[c]}</span>
-                <TInput value={nr?.forms?.[c] ?? ''} placeholder={declineNominalHead(entry, parts[0].trim(), c)}
+                <TInput value={nr?.forms?.[c] ?? ''} placeholder={lang.declineHead(entry, parts[0].trim(), c)}
                   onChange={v => setForm(c, v)}/>
               </React.Fragment>
             ))}

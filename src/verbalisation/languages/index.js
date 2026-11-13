@@ -7,12 +7,14 @@ import { frenchLibrary } from './french.js'
 import { italianLibrary } from './italian.js'
 import { spanishLibrary } from './spanish.js'
 import { polishLibrary } from './polish.js'
+import { germanLibrary } from './german.js'
 import englishRules from './english.vr?raw'
 import dutchRules from './dutch.vr?raw'
 import frenchRules from './french.vr?raw'
 import italianRules from './italian.vr?raw'
 import spanishRules from './spanish.vr?raw'
 import polishRules from './polish.vr?raw'
+import germanRules from './german.vr?raw'
 
 const entry = (id, label, file, rules, library) => ({ id, label, file, rules, library, language: compileLanguage(rules, library) })
 
@@ -24,6 +26,7 @@ export const LANGUAGES = [
   entry('it', 'Italiano', 'italian.vr', italianRules, italianLibrary),
   entry('es', 'Español', 'spanish.vr', spanishRules, spanishLibrary),
   entry('pl', 'Polski', 'polish.vr', polishRules, polishLibrary),
+  entry('de', 'Deutsch', 'german.vr', germanRules, germanLibrary),
 ]
 
 export const english = LANGUAGES[0].language

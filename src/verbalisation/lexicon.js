@@ -4,7 +4,8 @@
 //   lexicon: { [lang]: { name?, plural?, gender? } }
 // where gender is the language's own word class ('de' or 'het' in Dutch, 'm'
 // or 'f' in French, Italian and Spanish, 'mp', 'ma', 'mi', 'f' or 'n' in
-// Polish), and in a language with cases (Polish)
+// Polish, 'm', 'f' or 'n' in German), and in a language with cases (Polish,
+// German without ins and loc)
 //   forms: { gen, dat, acc, ins, loc, genPl, datPl, accPl, insPl, locPl }
 // the name in the other cases (the nominative is name and plural).
 // The language the element's own name and readings are in (the view
@@ -17,8 +18,8 @@
 // with parts as in readingParts (parts[k] precedes the role roleOrder[k]),
 // subParts the subordinate-clause word order (Dutch: "… Course volgt"),
 // pluralParts the reading with a plural subject ("are prerequisites for"),
-// and cases the grammatical case of each slot in reading order (Polish:
-// ['nom', 'acc']).
+// and cases the grammatical case of each slot in reading order (Polish,
+// German: ['nom', 'acc']).
 // A role order may have several readings, the first of them preferred
 // (src/store/readings.js). For the live language, entries add subParts,
 // pluralParts or cases to the reading with the same roleOrder and the same
