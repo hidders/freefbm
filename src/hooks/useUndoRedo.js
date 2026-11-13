@@ -21,6 +21,8 @@ function snapshot(state) {
     populations:    state.populations,
     factPopulations: state.factPopulations,
     viewLanguage:   state.viewLanguage,
+    baseLanguage:   state.baseLanguage,
+    languages:      state.languages,
   })
 }
 
@@ -59,7 +61,9 @@ export function useUndoRedo() {
         state.queryEditDraft  === prev.queryEditDraft &&
         state.populations    === prev.populations &&
         state.factPopulations === prev.factPopulations &&
-        state.viewLanguage   === prev.viewLanguage
+        state.viewLanguage   === prev.viewLanguage &&
+        state.baseLanguage   === prev.baseLanguage &&
+        state.languages      === prev.languages
       ) return
       const snap = snapshot(state)
       if (snap === lastSnap.current) return

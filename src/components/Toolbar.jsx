@@ -4,7 +4,7 @@ import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { triggerPdfExport } from '../utils/pdfExport'
 import { newModel, openModel, saveModel, fileLabel } from '../utils/fileActions'
 import { LANGUAGES } from '../verbalisation/languages/index.js'
-import { BASE_LANGUAGE, modelLanguages } from '../store/viewLanguage.js'
+import { baseOf, modelLanguages } from '../store/viewLanguage.js'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
@@ -44,15 +44,19 @@ const selectStyle = (highlight) => ({
 // The language the model is shown in. A model in one language shows only a
 // button to add another; with more, a menu switches between them. The
 // switch stands out while the model is shown in another language than its
-// own (the base language).
+// own (the base language), and then offers to make that language the
+// model's own.
 function LanguageSwitch() {
-  const state = useOrmStore(useShallow(s => ({ objectTypes: s.objectTypes, facts: s.facts, languages: s.languages, viewLanguage: s.viewLanguage })))
+  const state = useOrmStore(useShallow(s => ({ objectTypes: s.objectTypes, facts: s.facts, languages: s.languages, viewLanguage: s.viewLanguage, baseLanguage: s.baseLanguage })))
   const setViewLanguage = useOrmStore(s => s.setViewLanguage)
   const addLanguage = useOrmStore(s => s.addLanguage)
+  const setBaseLanguage = useOrmStore(s => s.setBaseLanguage)
+  const base = baseOf(state)
+  const nameOf = (id) => LANGUAGES.find(l => l.id === id)?.label ?? id
   const [adding, setAdding] = useState(false)
   const langs = modelLanguages(state, LANGUAGES)
   const others = LANGUAGES.filter(l => !langs.includes(l))
-  const label = (l) => l.id === BASE_LANGUAGE ? `${l.label} (model language)` : l.label
+  const label = (l) => l.id === base ? `${l.label} (model language)` : l.label
 
   if (adding) {
     return (
@@ -68,14 +72,15 @@ function LanguageSwitch() {
   if (langs.length < 2) {
     return others.length ? <Btn label="🌐" title="Add a language to show and edit the model in" onClick={() => setAdding(true)}/> : null
   }
-  const away = state.viewLanguage !== BASE_LANGUAGE
+  const away = state.viewLanguage !== base
   return (
     <select value={state.viewLanguage} style={selectStyle(away)}
-      title={away ? `Shown in ${LANGUAGES.find(l => l.id === state.viewLanguage)?.label}; the model's own language is ${LANGUAGES.find(l => l.id === BASE_LANGUAGE)?.label}`
+      title={away ? `Shown in ${nameOf(state.viewLanguage)}; the model's own language is ${nameOf(base)}`
         : 'Language the names, readings and sentences are shown in'}
-      onChange={e => e.target.value === '+' ? setAdding(true) : setViewLanguage(e.target.value)}>
+      onChange={e => e.target.value === '+' ? setAdding(true) : e.target.value === '!base' ? setBaseLanguage(state.viewLanguage) : setViewLanguage(e.target.value)}>
       {langs.map(l => <option key={l.id} value={l.id}>🌐 {label(l)}</option>)}
       {others.length > 0 && <option value="+">Add language…</option>}
+      {away && <option value="!base">Make {nameOf(state.viewLanguage)} the model language</option>}
     </select>
   )
 }

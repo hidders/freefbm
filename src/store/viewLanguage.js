@@ -7,7 +7,10 @@
 // other languages sit in each element's lexicon (see
 // src/verbalisation/lexicon.js). Switching the view moves the live text into
 // lexicon[from] and takes lexicon[to] out into the live fields. The file is
-// always saved in the base language.
+// always saved in the base language, the model's own language
+// (state.baseLanguage, saved as schema.language; English when a file has
+// none). setBaseLanguage changes it: the text shown in it is then saved as
+// the elements' own, and the old base's text moves to its lexicon.
 //
 // Where the view language has no name or readings for an element, the live
 // fields show the base language's text instead, and the element records it
@@ -19,6 +22,9 @@
 import { occurrences, nthOfOrder, pruneEntries } from './readings.js'
 
 export const BASE_LANGUAGE = 'en'
+
+// The model's own language.
+export const baseOf = (state) => state?.baseLanguage ?? BASE_LANGUAGE
 
 const hasText = (parts) => Array.isArray(parts) && parts.some(p => p?.trim())
 const keyOf = (order) => JSON.stringify(order)
@@ -116,23 +122,25 @@ function lift(el, lang, { nameKey, n }, fallbackLangs) {
   return out
 }
 
-function swapElement(el, from, to, shape) {
+function swapElement(el, from, to, shape, base) {
   if (from === to) return el
-  return lift(flatten(el, from, shape), to, shape, [BASE_LANGUAGE, from])
+  return lift(flatten(el, from, shape), to, shape, [base, from])
 }
 
 const factShape = (f) => ({ nameKey: f.objectified ? 'objectifiedName' : null, n: f.arity ?? f.roles?.length ?? 0 })
 
 // The model's object types and fact types with the live text moved from
-// language from to language to.
-export function swapLanguage({ objectTypes, facts }, from, to) {
+// language from to language to; text missing in to falls back to the base
+// language's (state.baseLanguage), else from's.
+export function swapLanguage({ objectTypes, facts, baseLanguage }, from, to) {
   if (from === to) return { objectTypes, facts }
+  const base = baseLanguage ?? BASE_LANGUAGE
   return {
-    objectTypes: objectTypes.map(o => swapElement(o, from, to, { nameKey: 'name' })),
+    objectTypes: objectTypes.map(o => swapElement(o, from, to, { nameKey: 'name' }, base)),
     facts: facts.map(f => {
-      const g = swapElement(f, from, to, factShape(f))
+      const g = swapElement(f, from, to, factShape(f), base)
       if (!f.implicitLinks?.length) return g
-      return { ...g, implicitLinks: f.implicitLinks.map(il => swapElement(il, from, to, { n: 2 })) }
+      return { ...g, implicitLinks: f.implicitLinks.map(il => swapElement(il, from, to, { n: 2 }, base)) }
     }),
   }
 }
@@ -140,7 +148,7 @@ export function swapLanguage({ objectTypes, facts }, from, to) {
 // The model's languages: the base language, the ones added explicitly, and
 // every language some element has lexicon entries for, in LANGUAGES order.
 export function modelLanguages(state, all) {
-  const found = new Set([BASE_LANGUAGE, state.viewLanguage ?? BASE_LANGUAGE, ...(state.languages ?? [])])
+  const found = new Set([baseOf(state), state.viewLanguage ?? baseOf(state), ...(state.languages ?? [])])
   const scan = (el) => { for (const [lang, entry] of Object.entries(el?.lexicon ?? {})) if (!isEmpty(entry)) found.add(lang) }
   for (const o of state.objectTypes ?? []) scan(o)
   for (const f of state.facts ?? []) {

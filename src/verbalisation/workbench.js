@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { compileLanguage } from './rules.js'
 import { LANGUAGES } from './languages/index.js'
-import { BASE_LANGUAGE, swapLanguage } from '../store/viewLanguage.js'
+import { baseOf, swapLanguage } from '../store/viewLanguage.js'
 
 export { LANGUAGES }
 export const languageInfo = (id) => LANGUAGES.find(l => l.id === id) ?? LANGUAGES[0]
@@ -103,6 +103,7 @@ export function openWorkbench() {
 // The parts of the model the workbench verbalises, in the base language
 // whatever the main window shows.
 export const modelSnapshot = (s) => JSON.parse(JSON.stringify({
-  ...swapLanguage(s, s.viewLanguage ?? BASE_LANGUAGE, BASE_LANGUAGE), subtypes: s.subtypes, constraints: s.constraints,
+  ...swapLanguage(s, s.viewLanguage ?? baseOf(s), baseOf(s)), viewLanguage: baseOf(s), baseLanguage: baseOf(s),
+  subtypes: s.subtypes, constraints: s.constraints,
   diagrams: s.diagrams, activeDiagramId: s.activeDiagramId,
 }))
