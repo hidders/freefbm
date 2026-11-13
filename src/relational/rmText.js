@@ -5,7 +5,7 @@
 // logical view; these sentences are what the tables view shows.
 
 // "a, b and c" in a language.
-const AND = { en: 'and', nl: 'en', fr: 'et', it: 'e', es: 'y', pl: 'i' }
+const AND = { en: 'and', nl: 'en', fr: 'et', it: 'e', es: 'y', pl: 'i', de: 'und' }
 const listIn = (lang) => (xs) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} ${AND[lang] ?? 'and'} ${xs.at(-1)}`)
 const list = listIn('en')
 
@@ -74,11 +74,20 @@ const SENTENCES = {
     checkIn: (x) => `Każda wartość kolumny ${x.c} podana w wierszu tabeli ${x.t} jest jedną z ${x.vals}.`,
     check: (x) => `Każdy wiersz tabeli ${x.t} spełnia ${x.cond}, chyba że wartość NULL w wierszu czyni to nieokreślonym.`,
   },
+  de: {
+    notNull: (x) => `Jede Zeile von ${x.t} hat einen Wert in ${x.cols[0]}.`,
+    primaryKey: (x) => `Jede Zeile von ${x.t} wird durch ${x.l(x.cols)} identifiziert: ${x.several ? 'keine dieser Spalten ist' : `${x.cols[0]} ist nie`} NULL, und keine zwei Zeilen haben ${x.several ? `dieselbe Kombination von ${x.l(x.cols)}` : `denselben Wert in ${x.cols[0]}`}.`,
+    unique: (x) => `Keine zwei Zeilen von ${x.t} haben ${x.several ? `dieselbe Kombination von ${x.l(x.cols)}` : `denselben Wert in ${x.cols[0]}`}${x.several ? ' (Zeilen, in denen eine dieser Spalten NULL ist, werden nicht verglichen)' : ''}.`,
+    fk1: (x) => `Jeder Wert von ${x.cols[0]}, der in einer Zeile von ${x.t} angegeben ist, ist der Wert von ${x.refCols[0]} einer Zeile von ${x.ref}.`,
+    fkN: (x) => `Für jede Zeile von ${x.t}, in der die Werte von ${x.l(x.cols)} angegeben sind, hat eine Zeile von ${x.ref} dieselben Werte${x.same ? '' : ` in ${x.l(x.refCols)}`}.`,
+    checkIn: (x) => `Jeder Wert von ${x.c}, der in einer Zeile von ${x.t} angegeben ist, ist einer von ${x.vals}.`,
+    check: (x) => `Jede Zeile von ${x.t} erfüllt ${x.cond}, außer wenn ein NULL in der Zeile das offen lässt.`,
+  },
 }
 export const RM_SENTENCE_LANGUAGES = Object.keys(SENTENCES)
 
 // One sentence for an object (kind notNull, primaryKey, unique, foreignKey,
-// check, assertion), or null, in a language (en, nl, fr, it, es, pl; English
+// check, assertion), or null, in a language (en, nl, fr, it, es, pl, de; English
 // for any other). sentence: the assertion's ORM2 sentence, if any.
 export function rmSentence(view, obj, { sentence = null, lang = 'en' } = {}) {
   const S = SENTENCES[lang] ?? SENTENCES.en

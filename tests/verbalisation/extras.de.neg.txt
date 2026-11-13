@@ -1,0 +1,115 @@
+# Derivation rule · Student is a TeachingAssistant if and only if …
+∀ Student (TeachingAssistant(Student) ↔ ∃ Course (Student assists in Course))
+Student ist ein TeachingAssistant genau dann, wenn Student in einem Kurs assistiert.
+
+# Semi-derivation rule · Student is a BusyStudent if …
+¬(∃ Student ((∃^{≥4} Course (Student enrols in Course)) ∧ ¬BusyStudent(Student)))
+Es ist unmöglich, dass ein Student mindestens 4 Kurse belegt und kein BusyStudent ist.
+
+# Derivation rule · Course is a HeavyCourse if and only if …
+∀ Course (HeavyCourse(Course) ↔ ∃ Credits ((Course is worth Credits) ∧ Credits ≥ 30))
+Kurs ist eine HeavyCourse genau dann, wenn Kurs eine Leistungspunktzahl, die mindestens 30 ist, hat.
+
+# Derivation rule · Student is a FreeStudent if and only if …
+∀ Student (FreeStudent(Student) ↔ ¬(∃ Course (Student enrols in Course)))
+Student ist ein FreeStudent genau dann, wenn Student keinen Kurs belegt.
+
+# Derivation rule · Course is an IntroCourse if and only if …
+∀ Course (IntroCourse(Course) ↔ ∃ CourseTitle ((Course has CourseTitle) ∧ startsWith(CourseTitle, 'Introduction')))
+Kurs ist eine IntroCourse genau dann, wenn Kurs einen Kurstitel, der mit 'Introduction' beginnt, hat.
+
+# Semi-derivation rule · Course is a LongTitleCourse if …
+¬(∃ Course ((∃ CourseTitle ((Course has CourseTitle) ∧ length(CourseTitle) > 40)) ∧ ¬LongTitleCourse(Course)))
+Es ist unmöglich, dass ein Kurs einen Kurstitel derart, dass die Länge von diesem Kurstitel größer als 40 ist, hat und keine LongTitleCourse ist.
+
+# Value range (deontic) · Score
+F(∃ Score ((Score ≤ 0 ∨ Score > 100) ∧ Score ≤ 200))
+Es ist verboten, dass eine Score höchstens 0 ist oder größer als 100 ist und höchstens 200 ist.
+
+# Cardinality · Professor
+¬((∃^{≤1} Professor ⊤) ∨ ∃^{>20} Professor ⊤)
+Es ist unmöglich, dass es höchstens einen Professor gibt oder es mehr als 20 Professoren gibt.
+
+# Cardinality (deontic) · Building
+F((∃^{≤2} Building ⊤) ∨ ∃^{>3} Building ⊤)
+Es ist verboten, dass es höchstens 2 Gebäude gibt oder es mehr als 3 Gebäude gibt.
+
+# Cardinality · Course
+¬(∃^{>100} Course ⊤)
+Es ist unmöglich, dass es mehr als 100 Kurse gibt.
+
+# Cardinality (role 2) · Student enrols in Course
+¬(∃^{>50} Course ∃ Student (Student enrols in Course))
+Es ist unmöglich, dass es mehr als 50 Kurse, die ein Student belegt, gibt.
+
+# Cardinality (role 1) (deontic) · StaffMember coordinates Course
+F(∃^{≤4} StaffMember ∃ Course (StaffMember coordinates Course))
+Es ist verboten, dass es höchstens 4 Mitarbeiter, die einen Kurs koordinieren, gibt.
+
+# Derivation rule · Student studies with StaffMember
+∀ Student ∀ StaffMember ((Student studies with StaffMember) ↔ ∃ Course ((Student enrols in Course) ∧ (StaffMember coordinates Course)))
+Student studies with Mitarbeiter genau dann, wenn Student einen Kurs, den Mitarbeiter koordiniert, belegt.
+
+# Derivation rule, every derived fact holds · Student has TotalCredits
+¬(∃ Student ¬(∃ TotalCredits (Student has TotalCredits)))
+Es ist unmöglich, dass ein Student keinen TotalCredits has.
+
+# Derivation rule, only derived facts hold · Student has TotalCredits
+¬(∃ Student ∃ TotalCredits ((Student has TotalCredits) ∧ TotalCredits ≉ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)}))
+Es ist unmöglich, dass es einen Studenten und einen TotalCredits gibt, für die gilt, dass dieser Student diesen TotalCredits has und dieser TotalCredits nicht die Summe der Leistungspunktzahlen, die jeder Kurs, den dieser Student belegt, hat, ist.
+
+# Derivation rule, every derived fact holds · Course has EnrolmentCount
+¬(∃ Course ¬(∃ EnrolmentCount (Course has EnrolmentCount)))
+Es ist unmöglich, dass ein Kurs keinen EnrolmentCount has.
+
+# Derivation rule, only derived facts hold · Course has EnrolmentCount
+¬(∃ Course ∃ EnrolmentCount ((Course has EnrolmentCount) ∧ EnrolmentCount ≉ Count{Student : (Student enrols in Course)}))
+Es ist unmöglich, dass es einen Kurs und einen EnrolmentCount gibt, für die gilt, dass dieser Kurs diesen EnrolmentCount has und dieser EnrolmentCount nicht die Anzahl der Studenten, die diesen Kurs belegen, ist.
+
+# Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
+¬(∃ Student ∃ Course ∃ Credits ((Student assists in Course) ∧ (Course is worth Credits) ∧ ¬(∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))))
+Es ist unmöglich, dass es einen Studenten, einen Kurs und eine Leistungspunktzahl gibt, für die gilt, dass dieser Student in diesem Kurs assistiert und dieser Kurs diese Leistungspunktzahl hat und es nicht der Fall ist, dass dieser Student credit load einen TotalCredits, der (diese Leistungspunktzahl plus 5) mal 2 ist, has.
+
+# Uniqueness (deontic) · StaffMember mentors Student
+F(∃ Student ∃^{>1} StaffMember (StaffMember mentors Student))
+Es ist verboten, dass mehr als ein Mitarbeiter denselben Studenten mentors.
+
+# Mandatory role (deontic) · StaffMember mentors Student
+F(∃ Student ¬(∃ StaffMember (StaffMember mentors Student)))
+Es ist verboten, dass es einen Studenten gibt, für den gilt, dass kein Mitarbeiter diesen Studenten mentors.
+
+# Frequency (deontic) · StaffMember mentors Student
+F(∃ StaffMember ∃^{>5} Student (StaffMember mentors Student))
+Es ist verboten, dass ein Mitarbeiter mehr als 5 Studenten mentors.
+
+# Uniqueness · Person has first given PersonName
+¬(∃ Person ∃^{>1} PersonName (Person has first given PersonName))
+Es ist unmöglich, dass mehr als ein Personenname the first given name of dieselbe Person is.
+
+# Uniqueness · Person has first given PersonName
+¬(∃ PersonName ∃^{>1} Person (Person has first given PersonName))
+Es ist unmöglich, dass mehr als eine Person denselben first given Personennamen has.
+
+# Mandatory role · Person has first given PersonName
+¬(∃ Person ¬(∃ PersonName (Person has first given PersonName)))
+Es ist unmöglich, dass eine Person keinen first given Personennamen has.
+
+# Uniqueness · Person has Person -in-law
+¬(∃ Person₁ ∃^{>1} Person₂ (Person₂ has Person₁ -in-law))
+Es ist unmöglich, dass mehr als eine Person₂ dieselbe Person₁-in-law has.
+
+# External uniqueness (outer join)
+¬(∃ CourseTitle ∃ StaffMember ∃^{>1} Course ((Course has CourseTitle) ∧ (Course is run by StaffMember)))
+Es ist unmöglich, dass mehr als ein Kurs denselben Kurstitel hat und run by denselben Mitarbeiter is.
+
+# External uniqueness (outer join): no value at position 2
+¬(∃ CourseTitle ∃^{>1} Course ((Course has CourseTitle) ∧ ¬(∃ StaffMember (Course is run by StaffMember))))
+Es ist unmöglich, dass mehr als ein Kurs denselben Kurstitel hat und run by keinen Mitarbeiter is.
+
+# Subset (deontic)
+F(∃ Student ((∃ StaffMember (StaffMember mentors Student)) ∧ ¬(∃ Course (Student enrols in Course))))
+Es ist verboten, dass es einen Studenten gibt, für den gilt, dass ein Mitarbeiter diesen Studenten mentors und dieser Student keinen Kurs belegt.
+
+# Ring (irreflexive) (deontic)
+F(∃ Course (Course is a prerequisite for Course))
+Es ist verboten, dass ein Kurs Voraussetzung für sich selbst ist.

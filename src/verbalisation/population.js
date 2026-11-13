@@ -139,7 +139,7 @@ function makeWriter(ctx, language) {
       && nominalPhrase(p, cell, depth, new Set([...visiting, p.id]), c)
     if (nominal) return nominal
     const r = rest(typeId, cell, depth, visiting)
-    const name = w.name(h, typeId, c)
+    const name = w.name(h, typeId, c, r.def)
     return r.def ? [...definite(w.the(h, typeId, h.typeLabel(typeId), c), name), r.phrase] : [name, r.phrase]
   }
 
