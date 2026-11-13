@@ -742,6 +742,12 @@ export function sharedNames(items, nameOf) {
   return new Set([...where].filter(([, ids]) => ids.size > 1).map(([n]) => n))
 }
 
+// A type's name as one word in formulas: the words of a name with spaces
+// are joined, each after the first starting with a capital ("Staff member"
+// → StaffMember).
+export const compactName = (name) => (name ?? '').trim().split(/\s+/)
+  .map((w, i) => i === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('')
+
 export function makeContext(state) {
   const objectTypes = state.objectTypes ?? []
   const facts = state.facts ?? []
@@ -750,7 +756,7 @@ export function makeContext(state) {
   // A view mapping reads two schemas (state.schemaRoles: schema id → 'source'
   // | 'target'); a name that occurs in both is followed by that word.
   const roles = state.schemaRoles ?? null
-  const bare = (p) => (p?.name || p?.objectifiedName || '').replace(/\s+/g, '')
+  const bare = (p) => compactName(p?.name || p?.objectifiedName || '')
   const shared = roles ? sharedNames([...objectTypes, ...facts.filter(f => f.objectified)], bare) : null
   const typeName = (id) => {
     const p = otById.get(id) ?? factById.get(id)

@@ -2,16 +2,16 @@
 ¬(∃ Student ¬Person(Student))
 Il est impossible qu'un Étudiant n'est pas une Personne.
 
-# Subtype · Staff is a Person
-¬(∃ Staff ¬Person(Staff))
+# Subtype · StaffMember is a Person
+¬(∃ StaffMember ¬Person(StaffMember))
 Il est impossible qu'un Membre du personnel n'est pas une Personne.
 
-# Subtype · Professor is a Staff
-¬(∃ Professor ¬Staff(Professor))
+# Subtype · Professor is a StaffMember
+¬(∃ Professor ¬StaffMember(Professor))
 Il est impossible qu'un Professeur n'est pas un Membre du personnel.
 
-# Subtype · Lecturer is a Staff
-¬(∃ Lecturer ¬Staff(Lecturer))
+# Subtype · Lecturer is a StaffMember
+¬(∃ Lecturer ¬StaffMember(Lecturer))
 Il est impossible qu'un Maître de conférences n'est pas un Membre du personnel.
 
 # Value range · Credits
@@ -118,28 +118,28 @@ Il est possible que plus d'une Salle a le même Numéro de salle.
 ¬(∃ Room ¬(∃ RoomNr (Room has RoomNr)))
 Il est impossible qu'une Salle n'a aucun Numéro de salle.
 
-# Uniqueness · Staff has an office in Room
-¬(∃ Staff ∃^{>1} Room (Staff has an office in Room))
+# Uniqueness · StaffMember has an office in Room
+¬(∃ StaffMember ∃^{>1} Room (StaffMember has an office in Room))
 Il est impossible qu'un Membre du personnel a plus d'une Salle comme bureau.
 
-# Possible (roles not unique) · Staff has an office in Room
-◇∃ Room ∃^{>1} Staff (Staff has an office in Room)
+# Possible (roles not unique) · StaffMember has an office in Room
+◇∃ Room ∃^{>1} StaffMember (StaffMember has an office in Room)
 Il est possible que plus d'un Membre du personnel a la même Salle comme bureau.
 
-# Possible (role not mandatory) · Staff has an office in Room
-◇∃ Staff ¬(∃ Room (Staff has an office in Room))
+# Possible (role not mandatory) · StaffMember has an office in Room
+◇∃ StaffMember ¬(∃ Room (StaffMember has an office in Room))
 Il est possible qu'un Membre du personnel n'a aucune Salle comme bureau.
 
-# Uniqueness · Staff has Extension
-¬(∃ Staff ∃^{>1} Extension (Staff has Extension))
+# Uniqueness · StaffMember has Extension
+¬(∃ StaffMember ∃^{>1} Extension (StaffMember has Extension))
 Il est impossible qu'un Membre du personnel a plus d'un Poste téléphonique.
 
-# Possible (roles not unique) · Staff has Extension
-◇∃ Extension ∃^{>1} Staff (Staff has Extension)
+# Possible (roles not unique) · StaffMember has Extension
+◇∃ Extension ∃^{>1} StaffMember (StaffMember has Extension)
 Il est possible que plus d'un Membre du personnel a le même Poste téléphonique.
 
-# Possible (role not mandatory) · Staff has Extension
-◇∃ Staff ¬(∃ Extension (Staff has Extension))
+# Possible (role not mandatory) · StaffMember has Extension
+◇∃ StaffMember ¬(∃ Extension (StaffMember has Extension))
 Il est possible qu'un Membre du personnel n'a aucun Poste téléphonique.
 
 # Uniqueness (preferred identifier) · Course has CourseCode
@@ -238,52 +238,52 @@ Il est possible qu'un Étudiant n'assiste à aucun Cours.
 ◇∃ Course ¬(∃ Student (Student assists in Course))
 Il est possible qu'il existe un Cours tel qu'aucun Étudiant n'assiste à ce Cours.
 
-# Possible (roles not unique) · Staff is qualified to teach Course
-◇∃ Staff ∃^{>1} Course (Staff is qualified to teach Course)
+# Possible (roles not unique) · StaffMember is qualified to teach Course
+◇∃ StaffMember ∃^{>1} Course (StaffMember is qualified to teach Course)
 Il est possible qu'un Membre du personnel est qualifié pour enseigner plus d'un Cours.
 
-# Possible (roles not unique) · Staff is qualified to teach Course
-◇∃ Course ∃^{>1} Staff (Staff is qualified to teach Course)
+# Possible (roles not unique) · StaffMember is qualified to teach Course
+◇∃ Course ∃^{>1} StaffMember (StaffMember is qualified to teach Course)
 Il est possible que plus d'un Membre du personnel est qualifié pour enseigner le même Cours.
 
-# Possible (role not mandatory) · Staff is qualified to teach Course
-◇∃ Staff ¬(∃ Course (Staff is qualified to teach Course))
+# Possible (role not mandatory) · StaffMember is qualified to teach Course
+◇∃ StaffMember ¬(∃ Course (StaffMember is qualified to teach Course))
 Il est possible qu'un Membre du personnel n'est qualifié pour enseigner aucun Cours.
 
-# Possible (role not mandatory) · Staff is qualified to teach Course
-◇∃ Course ¬(∃ Staff (Staff is qualified to teach Course))
+# Possible (role not mandatory) · StaffMember is qualified to teach Course
+◇∃ Course ¬(∃ StaffMember (StaffMember is qualified to teach Course))
 Il est possible qu'il existe un Cours tel qu'aucun Membre du personnel n'est qualifié pour enseigner ce Cours.
 
-# Possible (roles not unique) · Staff teaches Offering
-◇∃ Staff ∃^{>1} Offering (Staff teaches Offering)
+# Possible (roles not unique) · StaffMember teaches Offering
+◇∃ StaffMember ∃^{>1} Offering (StaffMember teaches Offering)
 Il est possible qu'un Membre du personnel enseigne plus d'une Offre de cours.
 
-# Possible (roles not unique) · Staff teaches Offering
-◇∃ Offering ∃^{>1} Staff (Staff teaches Offering)
+# Possible (roles not unique) · StaffMember teaches Offering
+◇∃ Offering ∃^{>1} StaffMember (StaffMember teaches Offering)
 Il est possible que plus d'un Membre du personnel enseigne la même Offre de cours.
 
-# Possible (role not mandatory) · Staff teaches Offering
-◇∃ Staff ¬(∃ Offering (Staff teaches Offering))
+# Possible (role not mandatory) · StaffMember teaches Offering
+◇∃ StaffMember ¬(∃ Offering (StaffMember teaches Offering))
 Il est possible qu'un Membre du personnel n'enseigne aucune Offre de cours.
 
-# Possible (role not mandatory) · Staff teaches Offering
-◇∃ Offering ¬(∃ Staff (Staff teaches Offering))
+# Possible (role not mandatory) · StaffMember teaches Offering
+◇∃ Offering ¬(∃ StaffMember (StaffMember teaches Offering))
 Il est possible qu'il existe une Offre de cours telle qu'aucun Membre du personnel n'enseigne cette Offre de cours.
 
-# Uniqueness · Staff coordinates Course
-¬(∃ Course ∃^{>1} Staff (Staff coordinates Course))
+# Uniqueness · StaffMember coordinates Course
+¬(∃ Course ∃^{>1} StaffMember (StaffMember coordinates Course))
 Il est impossible que plus d'un Membre du personnel coordonne le même Cours.
 
-# Possible (roles not unique) · Staff coordinates Course
-◇∃ Staff ∃^{>1} Course (Staff coordinates Course)
+# Possible (roles not unique) · StaffMember coordinates Course
+◇∃ StaffMember ∃^{>1} Course (StaffMember coordinates Course)
 Il est possible qu'un Membre du personnel coordonne plus d'un Cours.
 
-# Possible (role not mandatory) · Staff coordinates Course
-◇∃ Staff ¬(∃ Course (Staff coordinates Course))
+# Possible (role not mandatory) · StaffMember coordinates Course
+◇∃ StaffMember ¬(∃ Course (StaffMember coordinates Course))
 Il est possible qu'un Membre du personnel ne coordonne aucun Cours.
 
-# Mandatory role · Staff coordinates Course
-¬(∃ Course ¬(∃ Staff (Staff coordinates Course)))
+# Mandatory role · StaffMember coordinates Course
+¬(∃ Course ¬(∃ StaffMember (StaffMember coordinates Course)))
 Il est impossible qu'il existe un Cours tel qu'aucun Membre du personnel ne coordonne ce Cours.
 
 # Uniqueness · Term is in Season
@@ -339,11 +339,11 @@ Il est possible qu'un Cours n'est proposé pendant aucune Période.
 Il est impossible qu'une Personne n'a aucune Adresse e-mail et n'a aucun Numéro de téléphone.
 
 # Inclusive-or
-¬(∃ Person (¬Student(Person) ∧ ¬Staff(Person)))
+¬(∃ Person (¬Student(Person) ∧ ¬StaffMember(Person)))
 Il est impossible qu'une Personne n'est pas un Étudiant et n'est pas un Membre du personnel.
 
 # Exclusive-or
-¬(∃ Staff ((¬Professor(Staff) ∧ ¬Lecturer(Staff)) ∨ (Professor(Staff) ∧ Lecturer(Staff))))
+¬(∃ StaffMember ((¬Professor(StaffMember) ∧ ¬Lecturer(StaffMember)) ∨ (Professor(StaffMember) ∧ Lecturer(StaffMember))))
 Il est impossible qu'il existe un Membre du personnel tel que ce Membre du personnel n'est pas un Professeur et ce Membre du personnel n'est pas un Maître de conférences ou ce Membre du personnel est un Professeur et ce Membre du personnel est un Maître de conférences.
 
 # External uniqueness (preferred identifier)
@@ -355,7 +355,7 @@ Il est impossible que plus d'une Salle est située dans le même Bâtiment et a 
 Il est impossible qu'il existe une Salle telle qu'il n'est pas vrai qu'il existe exactement une combinaison de Bâtiment et Numéro de salle telle que cette Salle est située dans ce Bâtiment et cette Salle a ce Numéro de salle.
 
 # Equality
-∀ Staff ((∃ Room (Staff has an office in Room)) ↔ ∃ Extension (Staff has Extension))
+∀ StaffMember ((∃ Room (StaffMember has an office in Room)) ↔ ∃ Extension (StaffMember has Extension))
 Pour chaque Membre du personnel, ce Membre du personnel a une Salle comme bureau si et seulement si ce Membre du personnel a un Poste téléphonique.
 
 # Ring (acyclic)
@@ -371,7 +371,7 @@ Il est impossible qu'il existe un Cours₁, un Cours₂ et un Cours₃ telles qu
 Il est impossible qu'il existe un Étudiant et un Cours telles que cet Étudiant suit ce Cours et cet Étudiant assiste à ce Cours.
 
 # Subset
-¬(∃ Staff ∃ Course ((∃ Offering ∃ Term ((Staff teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) ∧ ¬(Staff is qualified to teach Course)))
+¬(∃ StaffMember ∃ Course ((∃ Offering ∃ Term ((StaffMember teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) ∧ ¬(StaffMember is qualified to teach Course)))
 Il est impossible qu'il existe un Membre du personnel et un Cours telles que ce Membre du personnel enseigne une Offre de cours qui concerne ce Cours et concerne une Période et ce Membre du personnel n'est pas qualifié pour enseigner ce Cours.
 
 # External uniqueness (preferred identifier)
@@ -495,7 +495,7 @@ Il est impossible qu'une Période est une Offre de cours.
 Il est impossible qu'une Inscription est une Offre de cours.
 
 # Participation (not independent) · Person
-¬(∃ Person (¬(∃ PersonName (Person has PersonName)) ∧ ¬(∃ Email (Person has Email)) ∧ ¬(∃ Phone (Person has Phone)) ∧ ¬(∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∧ ¬(∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∧ ¬(∃ Room (Staff(Person) ∧ (Person has an office in Room))) ∧ ¬(∃ Extension (Staff(Person) ∧ (Person has Extension))) ∧ ¬(∃ Course (Student(Person) ∧ (Person enrols in Course))) ∧ ¬(∃ Course (Student(Person) ∧ (Person assists in Course))) ∧ ¬(∃ Course (Staff(Person) ∧ (Person is qualified to teach Course))) ∧ ¬(∃ Offering (Staff(Person) ∧ (Person teaches Offering))) ∧ ¬(∃ Course (Staff(Person) ∧ (Person coordinates Course)))))
+¬(∃ Person (¬(∃ PersonName (Person has PersonName)) ∧ ¬(∃ Email (Person has Email)) ∧ ¬(∃ Phone (Person has Phone)) ∧ ¬(∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∧ ¬(∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∧ ¬(∃ Room (StaffMember(Person) ∧ (Person has an office in Room))) ∧ ¬(∃ Extension (StaffMember(Person) ∧ (Person has Extension))) ∧ ¬(∃ Course (Student(Person) ∧ (Person enrols in Course))) ∧ ¬(∃ Course (Student(Person) ∧ (Person assists in Course))) ∧ ¬(∃ Course (StaffMember(Person) ∧ (Person is qualified to teach Course))) ∧ ¬(∃ Offering (StaffMember(Person) ∧ (Person teaches Offering))) ∧ ¬(∃ Course (StaffMember(Person) ∧ (Person coordinates Course)))))
 Il est impossible qu'il existe une Personne telle que cette Personne n'a aucun Nom et cette Personne n'a aucune Adresse e-mail et cette Personne n'a aucun Numéro de téléphone et au plus une des affirmations suivantes est vraie : cette Personne est un Étudiant ; cette Personne est encadré par un Professeur et au plus une des affirmations suivantes est vraie : cette Personne est un Professeur ; cette Personne encadre un Étudiant et au plus une des affirmations suivantes est vraie : cette Personne est un Membre du personnel ; cette Personne a une Salle comme bureau et au plus une des affirmations suivantes est vraie : cette Personne est un Membre du personnel ; cette Personne a un Poste téléphonique et au plus une des affirmations suivantes est vraie : cette Personne est un Étudiant ; cette Personne suit un Cours et au plus une des affirmations suivantes est vraie : cette Personne est un Étudiant ; cette Personne assiste à un Cours et au plus une des affirmations suivantes est vraie : cette Personne est un Membre du personnel ; cette Personne est qualifié pour enseigner un Cours et au plus une des affirmations suivantes est vraie : cette Personne est un Membre du personnel ; cette Personne enseigne une Offre de cours et au plus une des affirmations suivantes est vraie : cette Personne est un Membre du personnel ; cette Personne coordonne un Cours.
 
 # Participation (not independent) · PersonNr
@@ -515,11 +515,11 @@ Il est impossible qu'il existe une Adresse e-mail telle qu'aucune Personne n'a c
 Il est impossible qu'il existe un Numéro de téléphone tel qu'aucune Personne n'a ce Numéro de téléphone.
 
 # Participation (not independent) · Student
-¬(∃ Student₁ (¬(∃ PersonName (Student₁ has PersonName)) ∧ ¬(∃ Email (Student₁ has Email)) ∧ ¬(∃ Phone (Student₁ has Phone)) ∧ ¬(∃ Professor (Student₁ is supervised by Professor)) ∧ ¬(∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∧ ¬(∃ Room (Staff(Student₁) ∧ (Student₁ has an office in Room))) ∧ ¬(∃ Extension (Staff(Student₁) ∧ (Student₁ has Extension))) ∧ ¬(∃ Course (Student₁ enrols in Course)) ∧ ¬(∃ Course (Student₁ assists in Course)) ∧ ¬(∃ Course (Staff(Student₁) ∧ (Student₁ is qualified to teach Course))) ∧ ¬(∃ Offering (Staff(Student₁) ∧ (Student₁ teaches Offering))) ∧ ¬(∃ Course (Staff(Student₁) ∧ (Student₁ coordinates Course)))))
+¬(∃ Student₁ (¬(∃ PersonName (Student₁ has PersonName)) ∧ ¬(∃ Email (Student₁ has Email)) ∧ ¬(∃ Phone (Student₁ has Phone)) ∧ ¬(∃ Professor (Student₁ is supervised by Professor)) ∧ ¬(∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∧ ¬(∃ Room (StaffMember(Student₁) ∧ (Student₁ has an office in Room))) ∧ ¬(∃ Extension (StaffMember(Student₁) ∧ (Student₁ has Extension))) ∧ ¬(∃ Course (Student₁ enrols in Course)) ∧ ¬(∃ Course (Student₁ assists in Course)) ∧ ¬(∃ Course (StaffMember(Student₁) ∧ (Student₁ is qualified to teach Course))) ∧ ¬(∃ Offering (StaffMember(Student₁) ∧ (Student₁ teaches Offering))) ∧ ¬(∃ Course (StaffMember(Student₁) ∧ (Student₁ coordinates Course)))))
 Il est impossible qu'il existe un Étudiant₁ tel que cet Étudiant₁ n'a aucun Nom et cet Étudiant₁ n'a aucune Adresse e-mail et cet Étudiant₁ n'a aucun Numéro de téléphone et cet Étudiant₁ n'est encadré par aucun Professeur et au plus une des affirmations suivantes est vraie : cet Étudiant₁ est un Professeur ; cet Étudiant₁ encadre un Étudiant et au plus une des affirmations suivantes est vraie : cet Étudiant₁ est un Membre du personnel ; cet Étudiant₁ a une Salle comme bureau et au plus une des affirmations suivantes est vraie : cet Étudiant₁ est un Membre du personnel ; cet Étudiant₁ a un Poste téléphonique et cet Étudiant₁ ne suit aucun Cours et cet Étudiant₁ n'assiste à aucun Cours et au plus une des affirmations suivantes est vraie : cet Étudiant₁ est un Membre du personnel ; cet Étudiant₁ est qualifié pour enseigner un Cours et au plus une des affirmations suivantes est vraie : cet Étudiant₁ est un Membre du personnel ; cet Étudiant₁ enseigne une Offre de cours et au plus une des affirmations suivantes est vraie : cet Étudiant₁ est un Membre du personnel ; cet Étudiant₁ coordonne un Cours.
 
-# Participation (not independent) · Staff
-¬(∃ Staff (¬(∃ PersonName (Staff has PersonName)) ∧ ¬(∃ Email (Staff has Email)) ∧ ¬(∃ Phone (Staff has Phone)) ∧ ¬(∃ Professor (Student(Staff) ∧ (Staff is supervised by Professor))) ∧ ¬(∃ Student (Professor(Staff) ∧ (Student is supervised by Staff))) ∧ ¬(∃ Room (Staff has an office in Room)) ∧ ¬(∃ Extension (Staff has Extension)) ∧ ¬(∃ Course (Student(Staff) ∧ (Staff enrols in Course))) ∧ ¬(∃ Course (Student(Staff) ∧ (Staff assists in Course))) ∧ ¬(∃ Course (Staff is qualified to teach Course)) ∧ ¬(∃ Offering (Staff teaches Offering)) ∧ ¬(∃ Course (Staff coordinates Course))))
+# Participation (not independent) · StaffMember
+¬(∃ StaffMember (¬(∃ PersonName (StaffMember has PersonName)) ∧ ¬(∃ Email (StaffMember has Email)) ∧ ¬(∃ Phone (StaffMember has Phone)) ∧ ¬(∃ Professor (Student(StaffMember) ∧ (StaffMember is supervised by Professor))) ∧ ¬(∃ Student (Professor(StaffMember) ∧ (Student is supervised by StaffMember))) ∧ ¬(∃ Room (StaffMember has an office in Room)) ∧ ¬(∃ Extension (StaffMember has Extension)) ∧ ¬(∃ Course (Student(StaffMember) ∧ (StaffMember enrols in Course))) ∧ ¬(∃ Course (Student(StaffMember) ∧ (StaffMember assists in Course))) ∧ ¬(∃ Course (StaffMember is qualified to teach Course)) ∧ ¬(∃ Offering (StaffMember teaches Offering)) ∧ ¬(∃ Course (StaffMember coordinates Course))))
 Il est impossible qu'il existe un Membre du personnel tel que ce Membre du personnel n'a aucun Nom et ce Membre du personnel n'a aucune Adresse e-mail et ce Membre du personnel n'a aucun Numéro de téléphone et au plus une des affirmations suivantes est vraie : ce Membre du personnel est un Étudiant ; ce Membre du personnel est encadré par un Professeur et au plus une des affirmations suivantes est vraie : ce Membre du personnel est un Professeur ; ce Membre du personnel encadre un Étudiant et ce Membre du personnel n'a aucune Salle comme bureau et ce Membre du personnel n'a aucun Poste téléphonique et au plus une des affirmations suivantes est vraie : ce Membre du personnel est un Étudiant ; ce Membre du personnel suit un Cours et au plus une des affirmations suivantes est vraie : ce Membre du personnel est un Étudiant ; ce Membre du personnel assiste à un Cours et ce Membre du personnel n'est qualifié pour enseigner aucun Cours et ce Membre du personnel n'enseigne aucune Offre de cours et ce Membre du personnel ne coordonne aucun Cours.
 
 # Participation (not independent) · Professor
@@ -543,15 +543,15 @@ Il est impossible qu'un Code de bâtiment ne désigne aucun Bâtiment.
 Il est impossible qu'il existe un Numéro de salle tel qu'aucune Salle n'a ce Numéro de salle.
 
 # Participation (not independent) · Room
-¬(∃ Room ¬(∃ Staff (Staff has an office in Room)))
+¬(∃ Room ¬(∃ StaffMember (StaffMember has an office in Room)))
 Il est impossible qu'il existe une Salle telle qu'aucun Membre du personnel n'a cette Salle comme bureau.
 
 # Participation (not independent) · Extension
-¬(∃ Extension ¬(∃ Staff (Staff has Extension)))
+¬(∃ Extension ¬(∃ StaffMember (StaffMember has Extension)))
 Il est impossible qu'il existe un Poste téléphonique tel qu'aucun Membre du personnel n'a ce Poste téléphonique.
 
 # Participation (not independent) · Course
-¬(∃ Course₁ (¬(∃ CourseTitle (Course₁ has CourseTitle)) ∧ ¬(∃ Credits (Course₁ is worth Credits)) ∧ ¬(∃ Course₂ (Course₁ is a prerequisite for Course₂)) ∧ ¬(∃ Course₂ (Course₂ is a prerequisite for Course₁)) ∧ ¬(∃ Student (Student enrols in Course₁)) ∧ ¬(∃ Student (Student assists in Course₁)) ∧ ¬(∃ Staff (Staff is qualified to teach Course₁)) ∧ ¬(∃ Staff (Staff coordinates Course₁)) ∧ ¬(∃ Term (Course₁ is offered in Term))))
+¬(∃ Course₁ (¬(∃ CourseTitle (Course₁ has CourseTitle)) ∧ ¬(∃ Credits (Course₁ is worth Credits)) ∧ ¬(∃ Course₂ (Course₁ is a prerequisite for Course₂)) ∧ ¬(∃ Course₂ (Course₂ is a prerequisite for Course₁)) ∧ ¬(∃ Student (Student enrols in Course₁)) ∧ ¬(∃ Student (Student assists in Course₁)) ∧ ¬(∃ StaffMember (StaffMember is qualified to teach Course₁)) ∧ ¬(∃ StaffMember (StaffMember coordinates Course₁)) ∧ ¬(∃ Term (Course₁ is offered in Term))))
 Il est impossible qu'il existe un Cours₁ tel que ce Cours₁ n'a aucun Intitulé de cours et ce Cours₁ n'a aucun Nombre de crédits et ce Cours₁ n'est un prérequis pour aucun Cours et aucun Cours n'est un prérequis pour ce Cours₁ et aucun Étudiant ne suit ce Cours₁ et aucun Étudiant n'assiste à ce Cours₁ et aucun Membre du personnel n'est qualifié pour enseigner ce Cours₁ et aucun Membre du personnel ne coordonne ce Cours₁ et ce Cours₁ n'est proposé pendant aucune Période.
 
 # Participation (not independent) · CourseCode

@@ -41,6 +41,7 @@
 import { uid } from '../store/storeHelpers.js'
 import { relationalModel } from '../relational/relationalModel.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
+import { compactName } from '../logic/constraintFormulas.js'
 
 export const mkMapping = (name, sourceSchemaId, targetSchemaId) =>
   ({ id: uid(), name, sourceSchemaId, targetSchemaId, rules: [] })
@@ -491,7 +492,7 @@ export function variableNames(side, ctx) {
     for (const a of atoms ?? []) if (a.t === 'opt' || a.t === 'not') collect(a.vars, a.atoms)
   }
   collect(side.vars, side.atoms)
-  const base = (v) => (ctx.otById.get(v.typeId)?.name ?? ctx.factById?.get(v.typeId)?.objectifiedName ?? '').replace(/\s+/g, '') || 'x'
+  const base = (v) => compactName(ctx.otById.get(v.typeId)?.name ?? ctx.factById?.get(v.typeId)?.objectifiedName ?? '') || 'x'
   const count = new Map()
   for (const v of all) count.set(base(v), (count.get(base(v)) ?? 0) + 1)
   const seen = new Map(), out = new Map()
