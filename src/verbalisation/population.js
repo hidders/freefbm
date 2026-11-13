@@ -150,7 +150,7 @@ function makeWriter(ctx, language) {
     if (!nr || cell.length !== fact.roles.length) return null
     const out = []
     nr.roleOrder.forEach((ri, k) => {
-      const part = k || !w.nominalHead ? nr.parts[k]?.trim() : w.nominalHead(h, fact.id, nr.parts[0]?.trim() ?? '', c)
+      const part = k || !w.nominalHead ? nr.parts[k]?.trim() : w.nominalHead(h, fact.id, nr.parts[0]?.trim() ?? '', c, nr.forms)
       if (part) out.push(...(k ? [tok(part, 'reading')] : definite(w.the(h, fact.id, part, c), tok(part, 'reading'))))
       out.push(np(fact.roles[ri].objectTypeId, cell[ri], depth + 1, visiting, nr.cases?.[k] || w.nominalCase))
     })
@@ -205,7 +205,7 @@ function definite(article, head) {
 }
 
 // An objectified fact type's nominal reading in a language, from its lexicon
-// entry: { roleOrder, parts, cases? } with parts[k] before the role
+// entry: { roleOrder, parts, cases?, forms? } with parts[k] before the role
 // roleOrder[k] and no article ("enrolment of … in …"); null when it has none.
 export function nominalReading(fact, langId) {
   const nr = fact?.lexicon?.[langId]?.nominal

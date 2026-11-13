@@ -39,7 +39,7 @@ import { pluralise as dutchPlural } from '../verbalisation/languages/dutch.js'
 import { pluralise as frenchPlural } from '../verbalisation/languages/french.js'
 import { pluralise as italianPlural } from '../verbalisation/languages/italian.js'
 import { pluralise as spanishPlural } from '../verbalisation/languages/spanish.js'
-import { pluralise as polishPlural } from '../verbalisation/languages/polish.js'
+import { pluralise as polishPlural, declineNominalHead } from '../verbalisation/languages/polish.js'
 
 // ── Validation error components ───────────────────────────────────────────────
 
@@ -2450,7 +2450,8 @@ function NominalReadingSection({ fact, store }) {
     return p?.name || p?.objectifiedName || '?'
   }
   const save = (patch) => {
-    const next = { roleOrder: order, parts, ...(nr?.cases ? { cases: nr.cases } : {}), ...patch }
+    const next = { roleOrder: order, parts, ...(nr?.cases ? { cases: nr.cases } : {}), ...(nr?.forms ? { forms: nr.forms } : {}), ...patch }
+    if (!next.forms) delete next.forms
     if (next.cases && !next.cases.some(Boolean)) delete next.cases
     const lexicon = { ...(fact.lexicon ?? {}) }
     const entry = { ...(lexicon[tab] ?? {}) }
@@ -2466,7 +2467,7 @@ function NominalReadingSection({ fact, store }) {
     <Section title="Nominal reading">
       <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginBottom: 6, lineHeight: 1.4 }}>
         Names an instance in population sentences, without the article: {example}.
-        {lang.cases ? ' A reading that starts with the type\'s name declines it.' : ''}
+        {lang.cases ? ' An empty case form declines the type\'s name when the reading starts with it, else keeps the words as written.' : ''}
         {' '}Without one, the sentences say "the {fact.objectifiedName || 'type'} in which …".
       </div>
       {n > 1 && (
@@ -2492,6 +2493,29 @@ function NominalReadingSection({ fact, store }) {
           ))}
         </div>
       )}
+      {lang.cases && parts[0]?.trim() && (() => {
+        // The opening words in each case, as the sentences decline them.
+        const lex = fact.lexicon?.[tab] ?? {}
+        const entry = { ...lex, name: lex.name?.trim() || fact.objectifiedName || '', forms: lex.forms ?? {} }
+        const setForm = (c, val) => {
+          const forms = { ...(nr?.forms ?? {}), [c]: val }
+          if (!val.trim()) delete forms[c]
+          save({ forms: Object.keys(forms).length ? forms : undefined })
+        }
+        return (<>
+          <div style={{ fontSize: 10, color: 'var(--ink-muted)', margin: '8px 0 2px' }}>Opening words in other cases</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 4, alignItems: 'center' }}
+            title="The opening words of the nominal reading in each case, used when it fills a slot in that case">
+            {['gen', 'dat', 'acc', 'ins', 'loc'].map(c => (
+              <React.Fragment key={c}>
+                <span style={{ fontSize: 11 }}>{CASE_LABELS[c]}</span>
+                <TInput value={nr?.forms?.[c] ?? ''} placeholder={declineNominalHead(entry, parts[0].trim(), c)}
+                  onChange={v => setForm(c, v)}/>
+              </React.Fragment>
+            ))}
+          </div>
+        </>)
+      })()}
     </Section>
   )
 }
