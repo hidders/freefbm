@@ -42,12 +42,12 @@ Er zijn hoogstens 100 Vakken.
 ∃^{≤50} Course ∃ Student (Student enrols in Course)
 Er zijn hoogstens 50 Vakken die een Student volgt.
 
-# Cardinality (role 1) (deontic) · Staffmember coordinates Course
-O(∃^{≥5} Staffmember ∃ Course (Staffmember coordinates Course))
+# Cardinality (role 1) (deontic) · StaffMember coordinates Course
+O(∃^{≥5} StaffMember ∃ Course (StaffMember coordinates Course))
 Het is verplicht dat er minstens 5 Medewerkers die een Vak coördineren zijn.
 
-# Derivation rule · Student studies with Staffmember
-∀ Student ∀ Staffmember ((Student studies with Staffmember) ↔ ∃ Course ((Student enrols in Course) ∧ (Staffmember coordinates Course)))
+# Derivation rule · Student studies with StaffMember
+∀ Student ∀ StaffMember ((Student studies with StaffMember) ↔ ∃ Course ((Student enrols in Course) ∧ (StaffMember coordinates Course)))
 Student studies with Medewerker als en slechts als Student een Vak dat Medewerker coördineert volgt.
 
 # Derivation rule, every derived fact holds · Student has TotalCredits
@@ -70,16 +70,16 @@ Als Vak EnrolmentCount has, dan is EnrolmentCount het aantal Studenten die Vak v
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
 Als Student bij Vak assisteert en Vak Studielast heeft, dan has Student credit load een TotalCredits die (Studielast plus 5) maal 2 is.
 
-# Uniqueness (deontic) · Staffmember mentors Student
-O(∀ Student ∃^{≤1} Staffmember (Staffmember mentors Student))
+# Uniqueness (deontic) · StaffMember mentors Student
+O(∀ Student ∃^{≤1} StaffMember (StaffMember mentors Student))
 Het is verplicht dat voor elke Student geldt: hoogstens één Medewerker die Student mentors.
 
-# Mandatory role (deontic) · Staffmember mentors Student
-O(∀ Student ∃ Staffmember (Staffmember mentors Student))
+# Mandatory role (deontic) · StaffMember mentors Student
+O(∀ Student ∃ StaffMember (StaffMember mentors Student))
 Het is verplicht dat voor elke Student geldt: een Medewerker die Student mentors.
 
-# Frequency (deontic) · Staffmember mentors Student
-O(∀ Staffmember ((∃ Student (Staffmember mentors Student)) → ∃^{≤5} Student (Staffmember mentors Student)))
+# Frequency (deontic) · StaffMember mentors Student
+O(∀ StaffMember ((∃ Student (StaffMember mentors Student)) → ∃^{≤5} Student (StaffMember mentors Student)))
 Het is verplicht dat elke Medewerker hoogstens 5 Studenten mentors.
 
 # Uniqueness · Person has first given PersonName
@@ -99,15 +99,15 @@ Elke Persoon heeft een eerste Naam.
 Voor elke Persoon₁ geldt: hoogstens één Persoon₂ has die Persoon₁-in-law.
 
 # External uniqueness (outer join)
-∀ CourseTitle ∀ Staffmember ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by Staffmember))
+∀ CourseTitle ∀ StaffMember ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by StaffMember))
 Voor elke Vaktitel en elke Medewerker geldt: hoogstens één Vak heeft die Vaktitel en is run by die Medewerker.
 
 # External uniqueness (outer join): no value at position 2
-∀ CourseTitle ∃^{≤1} Course ((Course has CourseTitle) ∧ ¬(∃ Staffmember (Course is run by Staffmember)))
+∀ CourseTitle ∃^{≤1} Course ((Course has CourseTitle) ∧ ¬(∃ StaffMember (Course is run by StaffMember)))
 Voor elke Vaktitel geldt: hoogstens één Vak heeft die Vaktitel en is run by geen Medewerker.
 
 # Subset (deontic)
-O(∀ Student ((∃ Staffmember (Staffmember mentors Student)) → ∃ Course (Student enrols in Course)))
+O(∀ Student ((∃ StaffMember (StaffMember mentors Student)) → ∃ Course (Student enrols in Course)))
 Het is verplicht dat elke Student die een Medewerker mentors, een Vak volgt.
 
 # Ring (irreflexive) (deontic)

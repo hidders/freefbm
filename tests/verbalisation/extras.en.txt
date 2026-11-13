@@ -42,12 +42,12 @@ There are at most 100 Courses.
 ∃^{≤50} Course ∃ Student (Student enrols in Course)
 There are at most 50 Courses that some Student enrols in.
 
-# Cardinality (role 1) (deontic) · Staffmember coordinates Course
-O(∃^{≥5} Staffmember ∃ Course (Staffmember coordinates Course))
+# Cardinality (role 1) (deontic) · StaffMember coordinates Course
+O(∃^{≥5} StaffMember ∃ Course (StaffMember coordinates Course))
 It is obligatory that there are at least 5 Staff members that coordinate some Course.
 
-# Derivation rule · Student studies with Staffmember
-∀ Student ∀ Staffmember ((Student studies with Staffmember) ↔ ∃ Course ((Student enrols in Course) ∧ (Staffmember coordinates Course)))
+# Derivation rule · Student studies with StaffMember
+∀ Student ∀ StaffMember ((Student studies with StaffMember) ↔ ∃ Course ((Student enrols in Course) ∧ (StaffMember coordinates Course)))
 Student studies with Staff member if and only if Student enrols in some Course that Staff member coordinates.
 
 # Derivation rule, every derived fact holds · Student has TotalCredits
@@ -70,16 +70,16 @@ If Course has EnrolmentCount then EnrolmentCount is the number of Students that 
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
 If Student assists in Course and Course is worth Credits then Student has credit load some TotalCredits that is (Credits plus 5) times 2.
 
-# Uniqueness (deontic) · Staffmember mentors Student
-O(∀ Student ∃^{≤1} Staffmember (Staffmember mentors Student))
+# Uniqueness (deontic) · StaffMember mentors Student
+O(∀ Student ∃^{≤1} StaffMember (StaffMember mentors Student))
 It is obligatory that for each Student, at most one Staff member mentors that Student.
 
-# Mandatory role (deontic) · Staffmember mentors Student
-O(∀ Student ∃ Staffmember (Staffmember mentors Student))
+# Mandatory role (deontic) · StaffMember mentors Student
+O(∀ Student ∃ StaffMember (StaffMember mentors Student))
 It is obligatory that for each Student, some Staff member mentors that Student.
 
-# Frequency (deontic) · Staffmember mentors Student
-O(∀ Staffmember ((∃ Student (Staffmember mentors Student)) → ∃^{≤5} Student (Staffmember mentors Student)))
+# Frequency (deontic) · StaffMember mentors Student
+O(∀ StaffMember ((∃ Student (StaffMember mentors Student)) → ∃^{≤5} Student (StaffMember mentors Student)))
 It is obligatory that each Staff member mentors at most 5 Students.
 
 # Uniqueness · Person has first given PersonName
@@ -99,15 +99,15 @@ Each Person has some first given PersonName.
 For each Person₁, at most one Person₂ has that Person₁-in-law.
 
 # External uniqueness (outer join)
-∀ CourseTitle ∀ Staffmember ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by Staffmember))
+∀ CourseTitle ∀ StaffMember ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by StaffMember))
 For each CourseTitle and Staff member, at most one Course has that CourseTitle and is run by that Staff member.
 
 # External uniqueness (outer join): no value at position 2
-∀ CourseTitle ∃^{≤1} Course ((Course has CourseTitle) ∧ ¬(∃ Staffmember (Course is run by Staffmember)))
+∀ CourseTitle ∃^{≤1} Course ((Course has CourseTitle) ∧ ¬(∃ StaffMember (Course is run by StaffMember)))
 For each CourseTitle, at most one Course has that CourseTitle and is not run by any Staff member.
 
 # Subset (deontic)
-O(∀ Student ((∃ Staffmember (Staffmember mentors Student)) → ∃ Course (Student enrols in Course)))
+O(∀ Student ((∃ StaffMember (StaffMember mentors Student)) → ∃ Course (Student enrols in Course)))
 It is obligatory that each Student that some Staff member mentors enrols in some Course.
 
 # Ring (irreflexive) (deontic)

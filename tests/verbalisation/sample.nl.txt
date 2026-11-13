@@ -2,16 +2,16 @@
 ∀ Student Person(Student)
 Elke Student is een Persoon.
 
-# Subtype · Staffmember is a Person
-∀ Staffmember Person(Staffmember)
+# Subtype · StaffMember is a Person
+∀ StaffMember Person(StaffMember)
 Elke Medewerker is een Persoon.
 
-# Subtype · Professor is a Staffmember
-∀ Professor Staffmember(Professor)
+# Subtype · Professor is a StaffMember
+∀ Professor StaffMember(Professor)
 Elke Hoogleraar is een Medewerker.
 
-# Subtype · Lecturer is a Staffmember
-∀ Lecturer Staffmember(Lecturer)
+# Subtype · Lecturer is a StaffMember
+∀ Lecturer StaffMember(Lecturer)
 Elke Docent is een Medewerker.
 
 # Value range · Credits
@@ -118,28 +118,28 @@ Het is mogelijk dat meer dan één Kamer hetzelfde Kamernummer heeft.
 ∀ Room ∃ RoomNr (Room has RoomNr)
 Elke Kamer heeft een Kamernummer.
 
-# Uniqueness · Staffmember has an office in Room
-∀ Staffmember ∃^{≤1} Room (Staffmember has an office in Room)
+# Uniqueness · StaffMember has an office in Room
+∀ StaffMember ∃^{≤1} Room (StaffMember has an office in Room)
 Elke Medewerker heeft hoogstens één Kamer als werkkamer.
 
-# Possible (roles not unique) · Staffmember has an office in Room
-◇∃ Room ∃^{>1} Staffmember (Staffmember has an office in Room)
+# Possible (roles not unique) · StaffMember has an office in Room
+◇∃ Room ∃^{>1} StaffMember (StaffMember has an office in Room)
 Het is mogelijk dat meer dan één Medewerker dezelfde Kamer als werkkamer heeft.
 
-# Possible (role not mandatory) · Staffmember has an office in Room
-◇∃ Staffmember ¬(∃ Room (Staffmember has an office in Room))
+# Possible (role not mandatory) · StaffMember has an office in Room
+◇∃ StaffMember ¬(∃ Room (StaffMember has an office in Room))
 Het is mogelijk dat een Medewerker geen Kamer als werkkamer heeft.
 
-# Uniqueness · Staffmember has Extension
-∀ Staffmember ∃^{≤1} Extension (Staffmember has Extension)
+# Uniqueness · StaffMember has Extension
+∀ StaffMember ∃^{≤1} Extension (StaffMember has Extension)
 Elke Medewerker heeft hoogstens één Toestelnummer.
 
-# Possible (roles not unique) · Staffmember has Extension
-◇∃ Extension ∃^{>1} Staffmember (Staffmember has Extension)
+# Possible (roles not unique) · StaffMember has Extension
+◇∃ Extension ∃^{>1} StaffMember (StaffMember has Extension)
 Het is mogelijk dat meer dan één Medewerker hetzelfde Toestelnummer heeft.
 
-# Possible (role not mandatory) · Staffmember has Extension
-◇∃ Staffmember ¬(∃ Extension (Staffmember has Extension))
+# Possible (role not mandatory) · StaffMember has Extension
+◇∃ StaffMember ¬(∃ Extension (StaffMember has Extension))
 Het is mogelijk dat een Medewerker geen Toestelnummer heeft.
 
 # Uniqueness (preferred identifier) · Course has CourseCode
@@ -238,52 +238,52 @@ Het is mogelijk dat een Student bij geen Vak assisteert.
 ◇∃ Course ¬(∃ Student (Student assists in Course))
 Het is mogelijk dat er een Vak is zodanig dat geen Student bij dat Vak assisteert.
 
-# Possible (roles not unique) · Staffmember is qualified to teach Course
-◇∃ Staffmember ∃^{>1} Course (Staffmember is qualified to teach Course)
+# Possible (roles not unique) · StaffMember is qualified to teach Course
+◇∃ StaffMember ∃^{>1} Course (StaffMember is qualified to teach Course)
 Het is mogelijk dat een Medewerker bevoegd is om meer dan één Vak te doceren.
 
-# Possible (roles not unique) · Staffmember is qualified to teach Course
-◇∃ Course ∃^{>1} Staffmember (Staffmember is qualified to teach Course)
+# Possible (roles not unique) · StaffMember is qualified to teach Course
+◇∃ Course ∃^{>1} StaffMember (StaffMember is qualified to teach Course)
 Het is mogelijk dat meer dan één Medewerker bevoegd is om hetzelfde Vak te doceren.
 
-# Possible (role not mandatory) · Staffmember is qualified to teach Course
-◇∃ Staffmember ¬(∃ Course (Staffmember is qualified to teach Course))
+# Possible (role not mandatory) · StaffMember is qualified to teach Course
+◇∃ StaffMember ¬(∃ Course (StaffMember is qualified to teach Course))
 Het is mogelijk dat een Medewerker bevoegd is om geen Vak te doceren.
 
-# Possible (role not mandatory) · Staffmember is qualified to teach Course
-◇∃ Course ¬(∃ Staffmember (Staffmember is qualified to teach Course))
+# Possible (role not mandatory) · StaffMember is qualified to teach Course
+◇∃ Course ¬(∃ StaffMember (StaffMember is qualified to teach Course))
 Het is mogelijk dat er een Vak is zodanig dat geen Medewerker bevoegd is om dat Vak te doceren.
 
-# Possible (roles not unique) · Staffmember teaches Offering
-◇∃ Staffmember ∃^{>1} Offering (Staffmember teaches Offering)
+# Possible (roles not unique) · StaffMember teaches Offering
+◇∃ StaffMember ∃^{>1} Offering (StaffMember teaches Offering)
 Het is mogelijk dat een Medewerker meer dan één Vakaanbieding doceert.
 
-# Possible (roles not unique) · Staffmember teaches Offering
-◇∃ Offering ∃^{>1} Staffmember (Staffmember teaches Offering)
+# Possible (roles not unique) · StaffMember teaches Offering
+◇∃ Offering ∃^{>1} StaffMember (StaffMember teaches Offering)
 Het is mogelijk dat meer dan één Medewerker dezelfde Vakaanbieding doceert.
 
-# Possible (role not mandatory) · Staffmember teaches Offering
-◇∃ Staffmember ¬(∃ Offering (Staffmember teaches Offering))
+# Possible (role not mandatory) · StaffMember teaches Offering
+◇∃ StaffMember ¬(∃ Offering (StaffMember teaches Offering))
 Het is mogelijk dat een Medewerker geen Vakaanbieding doceert.
 
-# Possible (role not mandatory) · Staffmember teaches Offering
-◇∃ Offering ¬(∃ Staffmember (Staffmember teaches Offering))
+# Possible (role not mandatory) · StaffMember teaches Offering
+◇∃ Offering ¬(∃ StaffMember (StaffMember teaches Offering))
 Het is mogelijk dat er een Vakaanbieding is zodanig dat geen Medewerker die Vakaanbieding doceert.
 
-# Uniqueness · Staffmember coordinates Course
-∀ Course ∃^{≤1} Staffmember (Staffmember coordinates Course)
+# Uniqueness · StaffMember coordinates Course
+∀ Course ∃^{≤1} StaffMember (StaffMember coordinates Course)
 Voor elk Vak geldt: hoogstens één Medewerker coördineert dat Vak.
 
-# Possible (roles not unique) · Staffmember coordinates Course
-◇∃ Staffmember ∃^{>1} Course (Staffmember coordinates Course)
+# Possible (roles not unique) · StaffMember coordinates Course
+◇∃ StaffMember ∃^{>1} Course (StaffMember coordinates Course)
 Het is mogelijk dat een Medewerker meer dan één Vak coördineert.
 
-# Possible (role not mandatory) · Staffmember coordinates Course
-◇∃ Staffmember ¬(∃ Course (Staffmember coordinates Course))
+# Possible (role not mandatory) · StaffMember coordinates Course
+◇∃ StaffMember ¬(∃ Course (StaffMember coordinates Course))
 Het is mogelijk dat een Medewerker geen Vak coördineert.
 
-# Mandatory role · Staffmember coordinates Course
-∀ Course ∃ Staffmember (Staffmember coordinates Course)
+# Mandatory role · StaffMember coordinates Course
+∀ Course ∃ StaffMember (StaffMember coordinates Course)
 Voor elk Vak geldt: een Medewerker coördineert dat Vak.
 
 # Uniqueness · Term is in Season
@@ -339,11 +339,11 @@ Het is mogelijk dat een Vak in geen Periode wordt aangeboden.
 Elke Persoon heeft een E-mailadres of heeft een Telefoonnummer.
 
 # Inclusive-or
-∀ Person (Student(Person) ∨ Staffmember(Person))
+∀ Person (Student(Person) ∨ StaffMember(Person))
 Elke Persoon is een Student of is een Medewerker.
 
 # Exclusive-or
-∀ Staffmember ((Professor(Staffmember) ∨ Lecturer(Staffmember)) ∧ ¬(Professor(Staffmember) ∧ Lecturer(Staffmember)))
+∀ StaffMember ((Professor(StaffMember) ∨ Lecturer(StaffMember)) ∧ ¬(Professor(StaffMember) ∧ Lecturer(StaffMember)))
 Voor elke Medewerker geldt precies één van de volgende: die Medewerker is een Hoogleraar; die Medewerker is een Docent.
 
 # External uniqueness (preferred identifier)
@@ -355,7 +355,7 @@ Voor elk Gebouw en elk Kamernummer geldt: hoogstens één Kamer ligt in dat Gebo
 Elke Kamer ligt in precies één Gebouw en heeft precies één Kamernummer.
 
 # Equality
-∀ Staffmember ((∃ Room (Staffmember has an office in Room)) ↔ ∃ Extension (Staffmember has Extension))
+∀ StaffMember ((∃ Room (StaffMember has an office in Room)) ↔ ∃ Extension (StaffMember has Extension))
 Voor elke Medewerker geldt: die Medewerker heeft een Kamer als werkkamer als en slechts als die Medewerker een Toestelnummer heeft.
 
 # Ring (acyclic)
@@ -371,7 +371,7 @@ Als Vak₁ een voorkennisvak voor Vak₂ is en Vak₂ een voorkennisvak voor Vak
 Voor elke Student en elk Vak geldt: hoogstens één van de volgende geldt: die Student volgt dat Vak; die Student assisteert bij dat Vak.
 
 # Subset
-∀ Staffmember ∀ Course ((∃ Offering ∃ Term ((Staffmember teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) → (Staffmember is qualified to teach Course))
+∀ StaffMember ∀ Course ((∃ Offering ∃ Term ((StaffMember teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) → (StaffMember is qualified to teach Course))
 Als Medewerker een Vakaanbieding die Vak betreft en een Periode betreft doceert, dan is Medewerker bevoegd om Vak te doceren.
 
 # External uniqueness (preferred identifier)
@@ -495,7 +495,7 @@ Geen Periode is een Vakaanbieding.
 Geen Inschrijving is een Vakaanbieding.
 
 # Participation (not independent) · Person
-∀ Person ((∃ PersonName (Person has PersonName)) ∨ (∃ Email (Person has Email)) ∨ (∃ Phone (Person has Phone)) ∨ (∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∨ (∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∨ (∃ Room (Staffmember(Person) ∧ (Person has an office in Room))) ∨ (∃ Extension (Staffmember(Person) ∧ (Person has Extension))) ∨ (∃ Course (Student(Person) ∧ (Person enrols in Course))) ∨ (∃ Course (Student(Person) ∧ (Person assists in Course))) ∨ (∃ Course (Staffmember(Person) ∧ (Person is qualified to teach Course))) ∨ (∃ Offering (Staffmember(Person) ∧ (Person teaches Offering))) ∨ ∃ Course (Staffmember(Person) ∧ (Person coordinates Course)))
+∀ Person ((∃ PersonName (Person has PersonName)) ∨ (∃ Email (Person has Email)) ∨ (∃ Phone (Person has Phone)) ∨ (∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∨ (∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∨ (∃ Room (StaffMember(Person) ∧ (Person has an office in Room))) ∨ (∃ Extension (StaffMember(Person) ∧ (Person has Extension))) ∨ (∃ Course (Student(Person) ∧ (Person enrols in Course))) ∨ (∃ Course (Student(Person) ∧ (Person assists in Course))) ∨ (∃ Course (StaffMember(Person) ∧ (Person is qualified to teach Course))) ∨ (∃ Offering (StaffMember(Person) ∧ (Person teaches Offering))) ∨ ∃ Course (StaffMember(Person) ∧ (Person coordinates Course)))
 Voor elke Persoon geldt minstens één van de volgende: die Persoon heeft een Naam; die Persoon heeft een E-mailadres; die Persoon heeft een Telefoonnummer; die Persoon is een Student en die Persoon wordt begeleid door een Hoogleraar; die Persoon is een Hoogleraar en die Persoon begeleidt een Student; die Persoon is een Medewerker en die Persoon heeft een Kamer als werkkamer; die Persoon is een Medewerker en die Persoon heeft een Toestelnummer; die Persoon is een Student en die Persoon volgt een Vak; die Persoon is een Student en die Persoon assisteert bij een Vak; die Persoon is een Medewerker en die Persoon is bevoegd om een Vak te doceren; die Persoon is een Medewerker en die Persoon doceert een Vakaanbieding; die Persoon is een Medewerker en die Persoon coördineert een Vak.
 
 # Participation (not independent) · PersonNr
@@ -515,11 +515,11 @@ Voor elk E-mailadres geldt: een Persoon heeft dat E-mailadres.
 Voor elk Telefoonnummer geldt: een Persoon heeft dat Telefoonnummer.
 
 # Participation (not independent) · Student
-∀ Student₁ ((∃ PersonName (Student₁ has PersonName)) ∨ (∃ Email (Student₁ has Email)) ∨ (∃ Phone (Student₁ has Phone)) ∨ (∃ Professor (Student₁ is supervised by Professor)) ∨ (∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∨ (∃ Room (Staffmember(Student₁) ∧ (Student₁ has an office in Room))) ∨ (∃ Extension (Staffmember(Student₁) ∧ (Student₁ has Extension))) ∨ (∃ Course (Student₁ enrols in Course)) ∨ (∃ Course (Student₁ assists in Course)) ∨ (∃ Course (Staffmember(Student₁) ∧ (Student₁ is qualified to teach Course))) ∨ (∃ Offering (Staffmember(Student₁) ∧ (Student₁ teaches Offering))) ∨ ∃ Course (Staffmember(Student₁) ∧ (Student₁ coordinates Course)))
+∀ Student₁ ((∃ PersonName (Student₁ has PersonName)) ∨ (∃ Email (Student₁ has Email)) ∨ (∃ Phone (Student₁ has Phone)) ∨ (∃ Professor (Student₁ is supervised by Professor)) ∨ (∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∨ (∃ Room (StaffMember(Student₁) ∧ (Student₁ has an office in Room))) ∨ (∃ Extension (StaffMember(Student₁) ∧ (Student₁ has Extension))) ∨ (∃ Course (Student₁ enrols in Course)) ∨ (∃ Course (Student₁ assists in Course)) ∨ (∃ Course (StaffMember(Student₁) ∧ (Student₁ is qualified to teach Course))) ∨ (∃ Offering (StaffMember(Student₁) ∧ (Student₁ teaches Offering))) ∨ ∃ Course (StaffMember(Student₁) ∧ (Student₁ coordinates Course)))
 Voor elke Student₁ geldt minstens één van de volgende: die Student₁ heeft een Naam; die Student₁ heeft een E-mailadres; die Student₁ heeft een Telefoonnummer; die Student₁ wordt begeleid door een Hoogleraar; die Student₁ is een Hoogleraar en die Student₁ begeleidt een Student; die Student₁ is een Medewerker en die Student₁ heeft een Kamer als werkkamer; die Student₁ is een Medewerker en die Student₁ heeft een Toestelnummer; die Student₁ volgt een Vak; die Student₁ assisteert bij een Vak; die Student₁ is een Medewerker en die Student₁ is bevoegd om een Vak te doceren; die Student₁ is een Medewerker en die Student₁ doceert een Vakaanbieding; die Student₁ is een Medewerker en die Student₁ coördineert een Vak.
 
-# Participation (not independent) · Staffmember
-∀ Staffmember ((∃ PersonName (Staffmember has PersonName)) ∨ (∃ Email (Staffmember has Email)) ∨ (∃ Phone (Staffmember has Phone)) ∨ (∃ Professor (Student(Staffmember) ∧ (Staffmember is supervised by Professor))) ∨ (∃ Student (Professor(Staffmember) ∧ (Student is supervised by Staffmember))) ∨ (∃ Room (Staffmember has an office in Room)) ∨ (∃ Extension (Staffmember has Extension)) ∨ (∃ Course (Student(Staffmember) ∧ (Staffmember enrols in Course))) ∨ (∃ Course (Student(Staffmember) ∧ (Staffmember assists in Course))) ∨ (∃ Course (Staffmember is qualified to teach Course)) ∨ (∃ Offering (Staffmember teaches Offering)) ∨ ∃ Course (Staffmember coordinates Course))
+# Participation (not independent) · StaffMember
+∀ StaffMember ((∃ PersonName (StaffMember has PersonName)) ∨ (∃ Email (StaffMember has Email)) ∨ (∃ Phone (StaffMember has Phone)) ∨ (∃ Professor (Student(StaffMember) ∧ (StaffMember is supervised by Professor))) ∨ (∃ Student (Professor(StaffMember) ∧ (Student is supervised by StaffMember))) ∨ (∃ Room (StaffMember has an office in Room)) ∨ (∃ Extension (StaffMember has Extension)) ∨ (∃ Course (Student(StaffMember) ∧ (StaffMember enrols in Course))) ∨ (∃ Course (Student(StaffMember) ∧ (StaffMember assists in Course))) ∨ (∃ Course (StaffMember is qualified to teach Course)) ∨ (∃ Offering (StaffMember teaches Offering)) ∨ ∃ Course (StaffMember coordinates Course))
 Voor elke Medewerker geldt minstens één van de volgende: die Medewerker heeft een Naam; die Medewerker heeft een E-mailadres; die Medewerker heeft een Telefoonnummer; die Medewerker is een Student en die Medewerker wordt begeleid door een Hoogleraar; die Medewerker is een Hoogleraar en die Medewerker begeleidt een Student; die Medewerker heeft een Kamer als werkkamer; die Medewerker heeft een Toestelnummer; die Medewerker is een Student en die Medewerker volgt een Vak; die Medewerker is een Student en die Medewerker assisteert bij een Vak; die Medewerker is bevoegd om een Vak te doceren; die Medewerker doceert een Vakaanbieding; die Medewerker coördineert een Vak.
 
 # Participation (not independent) · Professor
@@ -543,15 +543,15 @@ Elke Gebouwcode hoort bij een Gebouw.
 Voor elk Kamernummer geldt: een Kamer heeft dat Kamernummer.
 
 # Participation (not independent) · Room
-∀ Room ∃ Staffmember (Staffmember has an office in Room)
+∀ Room ∃ StaffMember (StaffMember has an office in Room)
 Voor elke Kamer geldt: een Medewerker heeft die Kamer als werkkamer.
 
 # Participation (not independent) · Extension
-∀ Extension ∃ Staffmember (Staffmember has Extension)
+∀ Extension ∃ StaffMember (StaffMember has Extension)
 Voor elk Toestelnummer geldt: een Medewerker heeft dat Toestelnummer.
 
 # Participation (not independent) · Course
-∀ Course₁ ((∃ CourseTitle (Course₁ has CourseTitle)) ∨ (∃ Credits (Course₁ is worth Credits)) ∨ (∃ Course₂ (Course₁ is a prerequisite for Course₂)) ∨ (∃ Course₂ (Course₂ is a prerequisite for Course₁)) ∨ (∃ Student (Student enrols in Course₁)) ∨ (∃ Student (Student assists in Course₁)) ∨ (∃ Staffmember (Staffmember is qualified to teach Course₁)) ∨ (∃ Staffmember (Staffmember coordinates Course₁)) ∨ ∃ Term (Course₁ is offered in Term))
+∀ Course₁ ((∃ CourseTitle (Course₁ has CourseTitle)) ∨ (∃ Credits (Course₁ is worth Credits)) ∨ (∃ Course₂ (Course₁ is a prerequisite for Course₂)) ∨ (∃ Course₂ (Course₂ is a prerequisite for Course₁)) ∨ (∃ Student (Student enrols in Course₁)) ∨ (∃ Student (Student assists in Course₁)) ∨ (∃ StaffMember (StaffMember is qualified to teach Course₁)) ∨ (∃ StaffMember (StaffMember coordinates Course₁)) ∨ ∃ Term (Course₁ is offered in Term))
 Voor elk Vak₁ geldt minstens één van de volgende: dat Vak₁ heeft een Vaktitel; dat Vak₁ heeft een Studielast; dat Vak₁ is een voorkennisvak voor een Vak; een Vak is een voorkennisvak voor dat Vak₁; een Student volgt dat Vak₁; een Student assisteert bij dat Vak₁; een Medewerker is bevoegd om dat Vak₁ te doceren; een Medewerker coördineert dat Vak₁; dat Vak₁ wordt aangeboden in een Periode.
 
 # Participation (not independent) · CourseCode

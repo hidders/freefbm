@@ -2,16 +2,16 @@
 ∀ Student Person(Student)
 Każdy Student jest Osobą.
 
-# Subtype · Staffmember is a Person
-∀ Staffmember Person(Staffmember)
+# Subtype · StaffMember is a Person
+∀ StaffMember Person(StaffMember)
 Każdy Pracownik jest Osobą.
 
-# Subtype · Professor is a Staffmember
-∀ Professor Staffmember(Professor)
+# Subtype · Professor is a StaffMember
+∀ Professor StaffMember(Professor)
 Każdy Profesor jest Pracownikiem.
 
-# Subtype · Lecturer is a Staffmember
-∀ Lecturer Staffmember(Lecturer)
+# Subtype · Lecturer is a StaffMember
+∀ Lecturer StaffMember(Lecturer)
 Każdy Wykładowca jest Pracownikiem.
 
 # Value range · Credits
@@ -118,28 +118,28 @@ Możliwe jest, że więcej niż jedna Sala ma ten sam Numer sali.
 ∀ Room ∃ RoomNr (Room has RoomNr)
 Każda Sala ma jakiś Numer sali.
 
-# Uniqueness · Staffmember has an office in Room
-∀ Staffmember ∃^{≤1} Room (Staffmember has an office in Room)
+# Uniqueness · StaffMember has an office in Room
+∀ StaffMember ∃^{≤1} Room (StaffMember has an office in Room)
 Każdy Pracownik ma co najwyżej jedną Salę jako gabinet.
 
-# Possible (roles not unique) · Staffmember has an office in Room
-◇∃ Room ∃^{>1} Staffmember (Staffmember has an office in Room)
+# Possible (roles not unique) · StaffMember has an office in Room
+◇∃ Room ∃^{>1} StaffMember (StaffMember has an office in Room)
 Możliwe jest, że więcej niż jeden Pracownik ma tę samą Salę jako gabinet.
 
-# Possible (role not mandatory) · Staffmember has an office in Room
-◇∃ Staffmember ¬(∃ Room (Staffmember has an office in Room))
+# Possible (role not mandatory) · StaffMember has an office in Room
+◇∃ StaffMember ¬(∃ Room (StaffMember has an office in Room))
 Możliwe jest, że jakiś Pracownik nie ma żadnej Sali jako gabinet.
 
-# Uniqueness · Staffmember has Extension
-∀ Staffmember ∃^{≤1} Extension (Staffmember has Extension)
+# Uniqueness · StaffMember has Extension
+∀ StaffMember ∃^{≤1} Extension (StaffMember has Extension)
 Każdy Pracownik ma co najwyżej jeden Numer wewnętrzny.
 
-# Possible (roles not unique) · Staffmember has Extension
-◇∃ Extension ∃^{>1} Staffmember (Staffmember has Extension)
+# Possible (roles not unique) · StaffMember has Extension
+◇∃ Extension ∃^{>1} StaffMember (StaffMember has Extension)
 Możliwe jest, że więcej niż jeden Pracownik ma ten sam Numer wewnętrzny.
 
-# Possible (role not mandatory) · Staffmember has Extension
-◇∃ Staffmember ¬(∃ Extension (Staffmember has Extension))
+# Possible (role not mandatory) · StaffMember has Extension
+◇∃ StaffMember ¬(∃ Extension (StaffMember has Extension))
 Możliwe jest, że jakiś Pracownik nie ma żadnego Numeru wewnętrznego.
 
 # Uniqueness (preferred identifier) · Course has CourseCode
@@ -238,52 +238,52 @@ Możliwe jest, że jakiś Student nie asystuje przy żadnym Przedmiocie.
 ◇∃ Course ¬(∃ Student (Student assists in Course))
 Możliwe jest, że istnieje jakiś Przedmiot taki, że żaden Student nie asystuje przy tym Przedmiocie.
 
-# Possible (roles not unique) · Staffmember is qualified to teach Course
-◇∃ Staffmember ∃^{>1} Course (Staffmember is qualified to teach Course)
+# Possible (roles not unique) · StaffMember is qualified to teach Course
+◇∃ StaffMember ∃^{>1} Course (StaffMember is qualified to teach Course)
 Możliwe jest, że jakiś Pracownik ma uprawnienia do nauczania więcej niż jednego Przedmiotu.
 
-# Possible (roles not unique) · Staffmember is qualified to teach Course
-◇∃ Course ∃^{>1} Staffmember (Staffmember is qualified to teach Course)
+# Possible (roles not unique) · StaffMember is qualified to teach Course
+◇∃ Course ∃^{>1} StaffMember (StaffMember is qualified to teach Course)
 Możliwe jest, że więcej niż jeden Pracownik ma uprawnienia do nauczania tego samego Przedmiotu.
 
-# Possible (role not mandatory) · Staffmember is qualified to teach Course
-◇∃ Staffmember ¬(∃ Course (Staffmember is qualified to teach Course))
+# Possible (role not mandatory) · StaffMember is qualified to teach Course
+◇∃ StaffMember ¬(∃ Course (StaffMember is qualified to teach Course))
 Możliwe jest, że jakiś Pracownik nie ma uprawnienia do nauczania żadnego Przedmiotu.
 
-# Possible (role not mandatory) · Staffmember is qualified to teach Course
-◇∃ Course ¬(∃ Staffmember (Staffmember is qualified to teach Course))
+# Possible (role not mandatory) · StaffMember is qualified to teach Course
+◇∃ Course ¬(∃ StaffMember (StaffMember is qualified to teach Course))
 Możliwe jest, że istnieje jakiś Przedmiot taki, że żaden Pracownik nie ma uprawnienia do nauczania tego Przedmiotu.
 
-# Possible (roles not unique) · Staffmember teaches Offering
-◇∃ Staffmember ∃^{>1} Offering (Staffmember teaches Offering)
+# Possible (roles not unique) · StaffMember teaches Offering
+◇∃ StaffMember ∃^{>1} Offering (StaffMember teaches Offering)
 Możliwe jest, że jakiś Pracownik prowadzi więcej niż jedną Ofertę.
 
-# Possible (roles not unique) · Staffmember teaches Offering
-◇∃ Offering ∃^{>1} Staffmember (Staffmember teaches Offering)
+# Possible (roles not unique) · StaffMember teaches Offering
+◇∃ Offering ∃^{>1} StaffMember (StaffMember teaches Offering)
 Możliwe jest, że więcej niż jeden Pracownik prowadzi tę samą Ofertę.
 
-# Possible (role not mandatory) · Staffmember teaches Offering
-◇∃ Staffmember ¬(∃ Offering (Staffmember teaches Offering))
+# Possible (role not mandatory) · StaffMember teaches Offering
+◇∃ StaffMember ¬(∃ Offering (StaffMember teaches Offering))
 Możliwe jest, że jakiś Pracownik nie prowadzi żadnej Oferty.
 
-# Possible (role not mandatory) · Staffmember teaches Offering
-◇∃ Offering ¬(∃ Staffmember (Staffmember teaches Offering))
+# Possible (role not mandatory) · StaffMember teaches Offering
+◇∃ Offering ¬(∃ StaffMember (StaffMember teaches Offering))
 Możliwe jest, że istnieje jakaś Oferta taka, że żaden Pracownik nie prowadzi tej Oferty.
 
-# Uniqueness · Staffmember coordinates Course
-∀ Course ∃^{≤1} Staffmember (Staffmember coordinates Course)
+# Uniqueness · StaffMember coordinates Course
+∀ Course ∃^{≤1} StaffMember (StaffMember coordinates Course)
 Dla każdego Przedmiotu co najwyżej jeden Pracownik koordynuje ten Przedmiot.
 
-# Possible (roles not unique) · Staffmember coordinates Course
-◇∃ Staffmember ∃^{>1} Course (Staffmember coordinates Course)
+# Possible (roles not unique) · StaffMember coordinates Course
+◇∃ StaffMember ∃^{>1} Course (StaffMember coordinates Course)
 Możliwe jest, że jakiś Pracownik koordynuje więcej niż jeden Przedmiot.
 
-# Possible (role not mandatory) · Staffmember coordinates Course
-◇∃ Staffmember ¬(∃ Course (Staffmember coordinates Course))
+# Possible (role not mandatory) · StaffMember coordinates Course
+◇∃ StaffMember ¬(∃ Course (StaffMember coordinates Course))
 Możliwe jest, że jakiś Pracownik nie koordynuje żadnego Przedmiotu.
 
-# Mandatory role · Staffmember coordinates Course
-∀ Course ∃ Staffmember (Staffmember coordinates Course)
+# Mandatory role · StaffMember coordinates Course
+∀ Course ∃ StaffMember (StaffMember coordinates Course)
 Dla każdego Przedmiotu jakiś Pracownik koordynuje ten Przedmiot.
 
 # Uniqueness · Term is in Season
@@ -339,11 +339,11 @@ Możliwe jest, że jakiś Przedmiot nie jest oferowany w żadnym Semestrze.
 Każda Osoba ma jakiś Adres e-mail lub ma jakiś Telefon.
 
 # Inclusive-or
-∀ Person (Student(Person) ∨ Staffmember(Person))
+∀ Person (Student(Person) ∨ StaffMember(Person))
 Każda Osoba jest Studentem lub jest Pracownikiem.
 
 # Exclusive-or
-∀ Staffmember ((Professor(Staffmember) ∨ Lecturer(Staffmember)) ∧ ¬(Professor(Staffmember) ∧ Lecturer(Staffmember)))
+∀ StaffMember ((Professor(StaffMember) ∨ Lecturer(StaffMember)) ∧ ¬(Professor(StaffMember) ∧ Lecturer(StaffMember)))
 Dla każdego Pracownika zachodzi dokładnie jedno z poniższych: ten Pracownik jest Profesorem; ten Pracownik jest Wykładowcą.
 
 # External uniqueness (preferred identifier)
@@ -355,7 +355,7 @@ Dla każdego Budynku i każdego Numeru sali co najwyżej jedna Sala znajduje si�
 Każda Sala znajduje się w dokładnie jednym Budynku i ma dokładnie jeden Numer sali.
 
 # Equality
-∀ Staffmember ((∃ Room (Staffmember has an office in Room)) ↔ ∃ Extension (Staffmember has Extension))
+∀ StaffMember ((∃ Room (StaffMember has an office in Room)) ↔ ∃ Extension (StaffMember has Extension))
 Dla każdego Pracownika ten Pracownik ma jakąś Salę jako gabinet wtedy i tylko wtedy, gdy ten Pracownik ma jakiś Numer wewnętrzny.
 
 # Ring (acyclic)
@@ -371,7 +371,7 @@ Jeśli Przedmiot₁ jest prerekwizytem dla Przedmiotu₂ i Przedmiot₂ jest pre
 Dla każdego Studenta i każdego Przedmiotu zachodzi co najwyżej jedno z poniższych: ten Student studiuje ten Przedmiot; ten Student asystuje przy tym Przedmiocie.
 
 # Subset
-∀ Staffmember ∀ Course ((∃ Offering ∃ Term ((Staffmember teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) → (Staffmember is qualified to teach Course))
+∀ StaffMember ∀ Course ((∃ Offering ∃ Term ((StaffMember teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) → (StaffMember is qualified to teach Course))
 Jeśli Pracownik prowadzi jakąś Ofertę, która dotyczy Przedmiotu i która dotyczy jakiegoś Semestru, to Pracownik ma uprawnienia do nauczania Przedmiotu.
 
 # External uniqueness (preferred identifier)
@@ -495,7 +495,7 @@ Każdy Semestr przypada na dokładnie jedną Porę roku i należy do dokładnie 
 Żaden Zapis nie jest Ofertą.
 
 # Participation (not independent) · Person
-∀ Person ((∃ PersonName (Person has PersonName)) ∨ (∃ Email (Person has Email)) ∨ (∃ Phone (Person has Phone)) ∨ (∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∨ (∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∨ (∃ Room (Staffmember(Person) ∧ (Person has an office in Room))) ∨ (∃ Extension (Staffmember(Person) ∧ (Person has Extension))) ∨ (∃ Course (Student(Person) ∧ (Person enrols in Course))) ∨ (∃ Course (Student(Person) ∧ (Person assists in Course))) ∨ (∃ Course (Staffmember(Person) ∧ (Person is qualified to teach Course))) ∨ (∃ Offering (Staffmember(Person) ∧ (Person teaches Offering))) ∨ ∃ Course (Staffmember(Person) ∧ (Person coordinates Course)))
+∀ Person ((∃ PersonName (Person has PersonName)) ∨ (∃ Email (Person has Email)) ∨ (∃ Phone (Person has Phone)) ∨ (∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∨ (∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∨ (∃ Room (StaffMember(Person) ∧ (Person has an office in Room))) ∨ (∃ Extension (StaffMember(Person) ∧ (Person has Extension))) ∨ (∃ Course (Student(Person) ∧ (Person enrols in Course))) ∨ (∃ Course (Student(Person) ∧ (Person assists in Course))) ∨ (∃ Course (StaffMember(Person) ∧ (Person is qualified to teach Course))) ∨ (∃ Offering (StaffMember(Person) ∧ (Person teaches Offering))) ∨ ∃ Course (StaffMember(Person) ∧ (Person coordinates Course)))
 Dla każdej Osoby zachodzi co najmniej jedno z poniższych: ta Osoba ma jakieś Nazwisko; ta Osoba ma jakiś Adres e-mail; ta Osoba ma jakiś Telefon; ta Osoba jest Studentem i ta Osoba jest nadzorowany przez jakiegoś Profesora; ta Osoba jest Profesorem i ta Osoba nadzoruje jakiegoś Studenta; ta Osoba jest Pracownikiem i ta Osoba ma jakąś Salę jako gabinet; ta Osoba jest Pracownikiem i ta Osoba ma jakiś Numer wewnętrzny; ta Osoba jest Studentem i ta Osoba studiuje jakiś Przedmiot; ta Osoba jest Studentem i ta Osoba asystuje przy jakimś Przedmiocie; ta Osoba jest Pracownikiem i ta Osoba ma uprawnienia do nauczania jakiegoś Przedmiotu; ta Osoba jest Pracownikiem i ta Osoba prowadzi jakąś Ofertę; ta Osoba jest Pracownikiem i ta Osoba koordynuje jakiś Przedmiot.
 
 # Participation (not independent) · PersonNr
@@ -515,11 +515,11 @@ Dla każdego Adresu e-mail jakaś Osoba ma ten Adres e-mail.
 Dla każdego Telefonu jakaś Osoba ma ten Telefon.
 
 # Participation (not independent) · Student
-∀ Student₁ ((∃ PersonName (Student₁ has PersonName)) ∨ (∃ Email (Student₁ has Email)) ∨ (∃ Phone (Student₁ has Phone)) ∨ (∃ Professor (Student₁ is supervised by Professor)) ∨ (∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∨ (∃ Room (Staffmember(Student₁) ∧ (Student₁ has an office in Room))) ∨ (∃ Extension (Staffmember(Student₁) ∧ (Student₁ has Extension))) ∨ (∃ Course (Student₁ enrols in Course)) ∨ (∃ Course (Student₁ assists in Course)) ∨ (∃ Course (Staffmember(Student₁) ∧ (Student₁ is qualified to teach Course))) ∨ (∃ Offering (Staffmember(Student₁) ∧ (Student₁ teaches Offering))) ∨ ∃ Course (Staffmember(Student₁) ∧ (Student₁ coordinates Course)))
+∀ Student₁ ((∃ PersonName (Student₁ has PersonName)) ∨ (∃ Email (Student₁ has Email)) ∨ (∃ Phone (Student₁ has Phone)) ∨ (∃ Professor (Student₁ is supervised by Professor)) ∨ (∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∨ (∃ Room (StaffMember(Student₁) ∧ (Student₁ has an office in Room))) ∨ (∃ Extension (StaffMember(Student₁) ∧ (Student₁ has Extension))) ∨ (∃ Course (Student₁ enrols in Course)) ∨ (∃ Course (Student₁ assists in Course)) ∨ (∃ Course (StaffMember(Student₁) ∧ (Student₁ is qualified to teach Course))) ∨ (∃ Offering (StaffMember(Student₁) ∧ (Student₁ teaches Offering))) ∨ ∃ Course (StaffMember(Student₁) ∧ (Student₁ coordinates Course)))
 Dla każdego Studenta₁ zachodzi co najmniej jedno z poniższych: ten Student₁ ma jakieś Nazwisko; ten Student₁ ma jakiś Adres e-mail; ten Student₁ ma jakiś Telefon; ten Student₁ jest nadzorowany przez jakiegoś Profesora; ten Student₁ jest Profesorem i ten Student₁ nadzoruje jakiegoś Studenta; ten Student₁ jest Pracownikiem i ten Student₁ ma jakąś Salę jako gabinet; ten Student₁ jest Pracownikiem i ten Student₁ ma jakiś Numer wewnętrzny; ten Student₁ studiuje jakiś Przedmiot; ten Student₁ asystuje przy jakimś Przedmiocie; ten Student₁ jest Pracownikiem i ten Student₁ ma uprawnienia do nauczania jakiegoś Przedmiotu; ten Student₁ jest Pracownikiem i ten Student₁ prowadzi jakąś Ofertę; ten Student₁ jest Pracownikiem i ten Student₁ koordynuje jakiś Przedmiot.
 
-# Participation (not independent) · Staffmember
-∀ Staffmember ((∃ PersonName (Staffmember has PersonName)) ∨ (∃ Email (Staffmember has Email)) ∨ (∃ Phone (Staffmember has Phone)) ∨ (∃ Professor (Student(Staffmember) ∧ (Staffmember is supervised by Professor))) ∨ (∃ Student (Professor(Staffmember) ∧ (Student is supervised by Staffmember))) ∨ (∃ Room (Staffmember has an office in Room)) ∨ (∃ Extension (Staffmember has Extension)) ∨ (∃ Course (Student(Staffmember) ∧ (Staffmember enrols in Course))) ∨ (∃ Course (Student(Staffmember) ∧ (Staffmember assists in Course))) ∨ (∃ Course (Staffmember is qualified to teach Course)) ∨ (∃ Offering (Staffmember teaches Offering)) ∨ ∃ Course (Staffmember coordinates Course))
+# Participation (not independent) · StaffMember
+∀ StaffMember ((∃ PersonName (StaffMember has PersonName)) ∨ (∃ Email (StaffMember has Email)) ∨ (∃ Phone (StaffMember has Phone)) ∨ (∃ Professor (Student(StaffMember) ∧ (StaffMember is supervised by Professor))) ∨ (∃ Student (Professor(StaffMember) ∧ (Student is supervised by StaffMember))) ∨ (∃ Room (StaffMember has an office in Room)) ∨ (∃ Extension (StaffMember has Extension)) ∨ (∃ Course (Student(StaffMember) ∧ (StaffMember enrols in Course))) ∨ (∃ Course (Student(StaffMember) ∧ (StaffMember assists in Course))) ∨ (∃ Course (StaffMember is qualified to teach Course)) ∨ (∃ Offering (StaffMember teaches Offering)) ∨ ∃ Course (StaffMember coordinates Course))
 Dla każdego Pracownika zachodzi co najmniej jedno z poniższych: ten Pracownik ma jakieś Nazwisko; ten Pracownik ma jakiś Adres e-mail; ten Pracownik ma jakiś Telefon; ten Pracownik jest Studentem i ten Pracownik jest nadzorowany przez jakiegoś Profesora; ten Pracownik jest Profesorem i ten Pracownik nadzoruje jakiegoś Studenta; ten Pracownik ma jakąś Salę jako gabinet; ten Pracownik ma jakiś Numer wewnętrzny; ten Pracownik jest Studentem i ten Pracownik studiuje jakiś Przedmiot; ten Pracownik jest Studentem i ten Pracownik asystuje przy jakimś Przedmiocie; ten Pracownik ma uprawnienia do nauczania jakiegoś Przedmiotu; ten Pracownik prowadzi jakąś Ofertę; ten Pracownik koordynuje jakiś Przedmiot.
 
 # Participation (not independent) · Professor
@@ -543,15 +543,15 @@ Każdy Kod budynku identyfikuje jakiś Budynek.
 Dla każdego Numeru sali jakaś Sala ma ten Numer sali.
 
 # Participation (not independent) · Room
-∀ Room ∃ Staffmember (Staffmember has an office in Room)
+∀ Room ∃ StaffMember (StaffMember has an office in Room)
 Dla każdej Sali jakiś Pracownik ma tę Salę jako gabinet.
 
 # Participation (not independent) · Extension
-∀ Extension ∃ Staffmember (Staffmember has Extension)
+∀ Extension ∃ StaffMember (StaffMember has Extension)
 Dla każdego Numeru wewnętrznego jakiś Pracownik ma ten Numer wewnętrzny.
 
 # Participation (not independent) · Course
-∀ Course₁ ((∃ CourseTitle (Course₁ has CourseTitle)) ∨ (∃ Credits (Course₁ is worth Credits)) ∨ (∃ Course₂ (Course₁ is a prerequisite for Course₂)) ∨ (∃ Course₂ (Course₂ is a prerequisite for Course₁)) ∨ (∃ Student (Student enrols in Course₁)) ∨ (∃ Student (Student assists in Course₁)) ∨ (∃ Staffmember (Staffmember is qualified to teach Course₁)) ∨ (∃ Staffmember (Staffmember coordinates Course₁)) ∨ ∃ Term (Course₁ is offered in Term))
+∀ Course₁ ((∃ CourseTitle (Course₁ has CourseTitle)) ∨ (∃ Credits (Course₁ is worth Credits)) ∨ (∃ Course₂ (Course₁ is a prerequisite for Course₂)) ∨ (∃ Course₂ (Course₂ is a prerequisite for Course₁)) ∨ (∃ Student (Student enrols in Course₁)) ∨ (∃ Student (Student assists in Course₁)) ∨ (∃ StaffMember (StaffMember is qualified to teach Course₁)) ∨ (∃ StaffMember (StaffMember coordinates Course₁)) ∨ ∃ Term (Course₁ is offered in Term))
 Dla każdego Przedmiotu₁ zachodzi co najmniej jedno z poniższych: ten Przedmiot₁ ma jakiś Tytuł przedmiotu; ten Przedmiot₁ ma jakąś Punktację; ten Przedmiot₁ jest prerekwizytem dla jakiegoś Przedmiotu; jakiś Przedmiot jest prerekwizytem dla tego Przedmiotu₁; jakiś Student studiuje ten Przedmiot₁; jakiś Student asystuje przy tym Przedmiocie₁; jakiś Pracownik ma uprawnienia do nauczania tego Przedmiotu₁; jakiś Pracownik koordynuje ten Przedmiot₁; ten Przedmiot₁ jest oferowany w jakimś Semestrze.
 
 # Participation (not independent) · CourseCode

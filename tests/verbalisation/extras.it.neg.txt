@@ -42,12 +42,12 @@ F((∃^{≤2} Building ⊤) ∨ ∃^{>3} Building ⊤)
 ¬(∃^{>50} Course ∃ Student (Student enrols in Course))
 È impossibile che ci sono più di 50 Corsi che uno Studente frequenta.
 
-# Cardinality (role 1) (deontic) · Staffmember coordinates Course
-F(∃^{≤4} Staffmember ∃ Course (Staffmember coordinates Course))
+# Cardinality (role 1) (deontic) · StaffMember coordinates Course
+F(∃^{≤4} StaffMember ∃ Course (StaffMember coordinates Course))
 È vietato che ci sono al massimo 4 Dipendenti che coordinano un Corso.
 
-# Derivation rule · Student studies with Staffmember
-∀ Student ∀ Staffmember ((Student studies with Staffmember) ↔ ∃ Course ((Student enrols in Course) ∧ (Staffmember coordinates Course)))
+# Derivation rule · Student studies with StaffMember
+∀ Student ∀ StaffMember ((Student studies with StaffMember) ↔ ∃ Course ((Student enrols in Course) ∧ (StaffMember coordinates Course)))
 Studente studies with Dipendente se e solo se Studente frequenta un Corso che Dipendente coordina.
 
 # Derivation rule, every derived fact holds · Student has TotalCredits
@@ -70,16 +70,16 @@ Studente studies with Dipendente se e solo se Studente frequenta un Corso che Di
 ¬(∃ Student ∃ Course ∃ Credits ((Student assists in Course) ∧ (Course is worth Credits) ∧ ¬(∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))))
 È impossibile che ci sono uno Studente, un Corso e un Numero di crediti tali che quello Studente è assistente in quel Corso e quel Corso ha quel Numero di crediti e non è vero che quello Studente has credit load un TotalCredits che è (quel Numero di crediti più 5) per 2.
 
-# Uniqueness (deontic) · Staffmember mentors Student
-F(∃ Student ∃^{>1} Staffmember (Staffmember mentors Student))
+# Uniqueness (deontic) · StaffMember mentors Student
+F(∃ Student ∃^{>1} StaffMember (StaffMember mentors Student))
 È vietato che più di un Dipendente mentors lo stesso Studente.
 
-# Mandatory role (deontic) · Staffmember mentors Student
-F(∃ Student ¬(∃ Staffmember (Staffmember mentors Student)))
+# Mandatory role (deontic) · StaffMember mentors Student
+F(∃ Student ¬(∃ StaffMember (StaffMember mentors Student)))
 È vietato che c'è uno Studente tale che nessun Dipendente mentors quello Studente.
 
-# Frequency (deontic) · Staffmember mentors Student
-F(∃ Staffmember ∃^{>5} Student (Staffmember mentors Student))
+# Frequency (deontic) · StaffMember mentors Student
+F(∃ StaffMember ∃^{>5} Student (StaffMember mentors Student))
 È vietato che un Dipendente mentors più di 5 Studenti.
 
 # Uniqueness · Person has first given PersonName
@@ -99,15 +99,15 @@ F(∃ Staffmember ∃^{>5} Student (Staffmember mentors Student))
 È impossibile che più di una Persona₂ has la stessa Persona₁-in-law.
 
 # External uniqueness (outer join)
-¬(∃ CourseTitle ∃ Staffmember ∃^{>1} Course ((Course has CourseTitle) ∧ (Course is run by Staffmember)))
+¬(∃ CourseTitle ∃ StaffMember ∃^{>1} Course ((Course has CourseTitle) ∧ (Course is run by StaffMember)))
 È impossibile che più di un Corso ha lo stesso Titolo del corso e is run by lo stesso Dipendente.
 
 # External uniqueness (outer join): no value at position 2
-¬(∃ CourseTitle ∃^{>1} Course ((Course has CourseTitle) ∧ ¬(∃ Staffmember (Course is run by Staffmember))))
+¬(∃ CourseTitle ∃^{>1} Course ((Course has CourseTitle) ∧ ¬(∃ StaffMember (Course is run by StaffMember))))
 È impossibile che più di un Corso ha lo stesso Titolo del corso e non is run by nessun Dipendente.
 
 # Subset (deontic)
-F(∃ Student ((∃ Staffmember (Staffmember mentors Student)) ∧ ¬(∃ Course (Student enrols in Course))))
+F(∃ Student ((∃ StaffMember (StaffMember mentors Student)) ∧ ¬(∃ Course (Student enrols in Course))))
 È vietato che c'è uno Studente tale che un Dipendente mentors quello Studente e quello Studente non frequenta nessun Corso.
 
 # Ring (irreflexive) (deontic)

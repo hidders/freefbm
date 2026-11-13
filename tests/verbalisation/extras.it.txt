@@ -42,12 +42,12 @@ Ci sono al massimo 100 Corsi.
 ∃^{≤50} Course ∃ Student (Student enrols in Course)
 Ci sono al massimo 50 Corsi che uno Studente frequenta.
 
-# Cardinality (role 1) (deontic) · Staffmember coordinates Course
-O(∃^{≥5} Staffmember ∃ Course (Staffmember coordinates Course))
+# Cardinality (role 1) (deontic) · StaffMember coordinates Course
+O(∃^{≥5} StaffMember ∃ Course (StaffMember coordinates Course))
 È obbligatorio che ci sono almeno 5 Dipendenti che coordinano un Corso.
 
-# Derivation rule · Student studies with Staffmember
-∀ Student ∀ Staffmember ((Student studies with Staffmember) ↔ ∃ Course ((Student enrols in Course) ∧ (Staffmember coordinates Course)))
+# Derivation rule · Student studies with StaffMember
+∀ Student ∀ StaffMember ((Student studies with StaffMember) ↔ ∃ Course ((Student enrols in Course) ∧ (StaffMember coordinates Course)))
 Studente studies with Dipendente se e solo se Studente frequenta un Corso che Dipendente coordina.
 
 # Derivation rule, every derived fact holds · Student has TotalCredits
@@ -70,16 +70,16 @@ Se Corso has EnrolmentCount, allora EnrolmentCount è il numero di Studenti che 
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
 Se Studente è assistente in Corso e Corso ha Numero di crediti, allora Studente has credit load un TotalCredits che è (Numero di crediti più 5) per 2.
 
-# Uniqueness (deontic) · Staffmember mentors Student
-O(∀ Student ∃^{≤1} Staffmember (Staffmember mentors Student))
+# Uniqueness (deontic) · StaffMember mentors Student
+O(∀ Student ∃^{≤1} StaffMember (StaffMember mentors Student))
 È obbligatorio che per ogni Studente, al massimo un Dipendente mentors quello Studente.
 
-# Mandatory role (deontic) · Staffmember mentors Student
-O(∀ Student ∃ Staffmember (Staffmember mentors Student))
+# Mandatory role (deontic) · StaffMember mentors Student
+O(∀ Student ∃ StaffMember (StaffMember mentors Student))
 È obbligatorio che per ogni Studente, un Dipendente mentors quello Studente.
 
-# Frequency (deontic) · Staffmember mentors Student
-O(∀ Staffmember ((∃ Student (Staffmember mentors Student)) → ∃^{≤5} Student (Staffmember mentors Student)))
+# Frequency (deontic) · StaffMember mentors Student
+O(∀ StaffMember ((∃ Student (StaffMember mentors Student)) → ∃^{≤5} Student (StaffMember mentors Student)))
 È obbligatorio che ogni Dipendente mentors al massimo 5 Studenti.
 
 # Uniqueness · Person has first given PersonName
@@ -99,15 +99,15 @@ Ogni Persona has un first given Nome.
 Per ogni Persona₁, al massimo una Persona₂ has quella Persona₁-in-law.
 
 # External uniqueness (outer join)
-∀ CourseTitle ∀ Staffmember ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by Staffmember))
+∀ CourseTitle ∀ StaffMember ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by StaffMember))
 Per ogni Titolo del corso e ogni Dipendente, al massimo un Corso ha quel Titolo del corso e is run by quel Dipendente.
 
 # External uniqueness (outer join): no value at position 2
-∀ CourseTitle ∃^{≤1} Course ((Course has CourseTitle) ∧ ¬(∃ Staffmember (Course is run by Staffmember)))
+∀ CourseTitle ∃^{≤1} Course ((Course has CourseTitle) ∧ ¬(∃ StaffMember (Course is run by StaffMember)))
 Per ogni Titolo del corso, al massimo un Corso ha quel Titolo del corso e non is run by nessun Dipendente.
 
 # Subset (deontic)
-O(∀ Student ((∃ Staffmember (Staffmember mentors Student)) → ∃ Course (Student enrols in Course)))
+O(∀ Student ((∃ StaffMember (StaffMember mentors Student)) → ∃ Course (Student enrols in Course)))
 È obbligatorio che ogni Studente che un Dipendente mentors frequenta un Corso.
 
 # Ring (irreflexive) (deontic)

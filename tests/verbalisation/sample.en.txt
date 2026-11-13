@@ -2,16 +2,16 @@
 ∀ Student Person(Student)
 Each Student is a Person.
 
-# Subtype · Staffmember is a Person
-∀ Staffmember Person(Staffmember)
+# Subtype · StaffMember is a Person
+∀ StaffMember Person(StaffMember)
 Each Staff member is a Person.
 
-# Subtype · Professor is a Staffmember
-∀ Professor Staffmember(Professor)
+# Subtype · Professor is a StaffMember
+∀ Professor StaffMember(Professor)
 Each Professor is a Staff member.
 
-# Subtype · Lecturer is a Staffmember
-∀ Lecturer Staffmember(Lecturer)
+# Subtype · Lecturer is a StaffMember
+∀ Lecturer StaffMember(Lecturer)
 Each Lecturer is a Staff member.
 
 # Value range · Credits
@@ -118,28 +118,28 @@ It is possible that more than one Room has the same RoomNr.
 ∀ Room ∃ RoomNr (Room has RoomNr)
 Each Room has some RoomNr.
 
-# Uniqueness · Staffmember has an office in Room
-∀ Staffmember ∃^{≤1} Room (Staffmember has an office in Room)
+# Uniqueness · StaffMember has an office in Room
+∀ StaffMember ∃^{≤1} Room (StaffMember has an office in Room)
 Each Staff member has an office in at most one Room.
 
-# Possible (roles not unique) · Staffmember has an office in Room
-◇∃ Room ∃^{>1} Staffmember (Staffmember has an office in Room)
+# Possible (roles not unique) · StaffMember has an office in Room
+◇∃ Room ∃^{>1} StaffMember (StaffMember has an office in Room)
 It is possible that more than one Staff member has an office in the same Room.
 
-# Possible (role not mandatory) · Staffmember has an office in Room
-◇∃ Staffmember ¬(∃ Room (Staffmember has an office in Room))
+# Possible (role not mandatory) · StaffMember has an office in Room
+◇∃ StaffMember ¬(∃ Room (StaffMember has an office in Room))
 It is possible that some Staff member does not have an office in any Room.
 
-# Uniqueness · Staffmember has Extension
-∀ Staffmember ∃^{≤1} Extension (Staffmember has Extension)
+# Uniqueness · StaffMember has Extension
+∀ StaffMember ∃^{≤1} Extension (StaffMember has Extension)
 Each Staff member has at most one Extension.
 
-# Possible (roles not unique) · Staffmember has Extension
-◇∃ Extension ∃^{>1} Staffmember (Staffmember has Extension)
+# Possible (roles not unique) · StaffMember has Extension
+◇∃ Extension ∃^{>1} StaffMember (StaffMember has Extension)
 It is possible that more than one Staff member has the same Extension.
 
-# Possible (role not mandatory) · Staffmember has Extension
-◇∃ Staffmember ¬(∃ Extension (Staffmember has Extension))
+# Possible (role not mandatory) · StaffMember has Extension
+◇∃ StaffMember ¬(∃ Extension (StaffMember has Extension))
 It is possible that some Staff member does not have any Extension.
 
 # Uniqueness (preferred identifier) · Course has CourseCode
@@ -238,52 +238,52 @@ It is possible that some Student does not assist in any Course.
 ◇∃ Course ¬(∃ Student (Student assists in Course))
 It is possible that there is some Course such that no Student assists in that Course.
 
-# Possible (roles not unique) · Staffmember is qualified to teach Course
-◇∃ Staffmember ∃^{>1} Course (Staffmember is qualified to teach Course)
+# Possible (roles not unique) · StaffMember is qualified to teach Course
+◇∃ StaffMember ∃^{>1} Course (StaffMember is qualified to teach Course)
 It is possible that some Staff member is qualified to teach more than one Course.
 
-# Possible (roles not unique) · Staffmember is qualified to teach Course
-◇∃ Course ∃^{>1} Staffmember (Staffmember is qualified to teach Course)
+# Possible (roles not unique) · StaffMember is qualified to teach Course
+◇∃ Course ∃^{>1} StaffMember (StaffMember is qualified to teach Course)
 It is possible that more than one Staff member is qualified to teach the same Course.
 
-# Possible (role not mandatory) · Staffmember is qualified to teach Course
-◇∃ Staffmember ¬(∃ Course (Staffmember is qualified to teach Course))
+# Possible (role not mandatory) · StaffMember is qualified to teach Course
+◇∃ StaffMember ¬(∃ Course (StaffMember is qualified to teach Course))
 It is possible that some Staff member is not qualified to teach any Course.
 
-# Possible (role not mandatory) · Staffmember is qualified to teach Course
-◇∃ Course ¬(∃ Staffmember (Staffmember is qualified to teach Course))
+# Possible (role not mandatory) · StaffMember is qualified to teach Course
+◇∃ Course ¬(∃ StaffMember (StaffMember is qualified to teach Course))
 It is possible that there is some Course such that no Staff member is qualified to teach that Course.
 
-# Possible (roles not unique) · Staffmember teaches Offering
-◇∃ Staffmember ∃^{>1} Offering (Staffmember teaches Offering)
+# Possible (roles not unique) · StaffMember teaches Offering
+◇∃ StaffMember ∃^{>1} Offering (StaffMember teaches Offering)
 It is possible that some Staff member teaches more than one Offering.
 
-# Possible (roles not unique) · Staffmember teaches Offering
-◇∃ Offering ∃^{>1} Staffmember (Staffmember teaches Offering)
+# Possible (roles not unique) · StaffMember teaches Offering
+◇∃ Offering ∃^{>1} StaffMember (StaffMember teaches Offering)
 It is possible that more than one Staff member teaches the same Offering.
 
-# Possible (role not mandatory) · Staffmember teaches Offering
-◇∃ Staffmember ¬(∃ Offering (Staffmember teaches Offering))
+# Possible (role not mandatory) · StaffMember teaches Offering
+◇∃ StaffMember ¬(∃ Offering (StaffMember teaches Offering))
 It is possible that some Staff member does not teach any Offering.
 
-# Possible (role not mandatory) · Staffmember teaches Offering
-◇∃ Offering ¬(∃ Staffmember (Staffmember teaches Offering))
+# Possible (role not mandatory) · StaffMember teaches Offering
+◇∃ Offering ¬(∃ StaffMember (StaffMember teaches Offering))
 It is possible that there is some Offering such that no Staff member teaches that Offering.
 
-# Uniqueness · Staffmember coordinates Course
-∀ Course ∃^{≤1} Staffmember (Staffmember coordinates Course)
+# Uniqueness · StaffMember coordinates Course
+∀ Course ∃^{≤1} StaffMember (StaffMember coordinates Course)
 For each Course, at most one Staff member coordinates that Course.
 
-# Possible (roles not unique) · Staffmember coordinates Course
-◇∃ Staffmember ∃^{>1} Course (Staffmember coordinates Course)
+# Possible (roles not unique) · StaffMember coordinates Course
+◇∃ StaffMember ∃^{>1} Course (StaffMember coordinates Course)
 It is possible that some Staff member coordinates more than one Course.
 
-# Possible (role not mandatory) · Staffmember coordinates Course
-◇∃ Staffmember ¬(∃ Course (Staffmember coordinates Course))
+# Possible (role not mandatory) · StaffMember coordinates Course
+◇∃ StaffMember ¬(∃ Course (StaffMember coordinates Course))
 It is possible that some Staff member does not coordinate any Course.
 
-# Mandatory role · Staffmember coordinates Course
-∀ Course ∃ Staffmember (Staffmember coordinates Course)
+# Mandatory role · StaffMember coordinates Course
+∀ Course ∃ StaffMember (StaffMember coordinates Course)
 For each Course, some Staff member coordinates that Course.
 
 # Uniqueness · Term is in Season
@@ -339,11 +339,11 @@ It is possible that some Course is not offered in any Term.
 Each Person has some Email or has some Phone.
 
 # Inclusive-or
-∀ Person (Student(Person) ∨ Staffmember(Person))
+∀ Person (Student(Person) ∨ StaffMember(Person))
 Each Person is a Student or is a Staff member.
 
 # Exclusive-or
-∀ Staffmember ((Professor(Staffmember) ∨ Lecturer(Staffmember)) ∧ ¬(Professor(Staffmember) ∧ Lecturer(Staffmember)))
+∀ StaffMember ((Professor(StaffMember) ∨ Lecturer(StaffMember)) ∧ ¬(Professor(StaffMember) ∧ Lecturer(StaffMember)))
 For each Staff member, exactly one of the following holds: that Staff member is a Professor; that Staff member is a Lecturer.
 
 # External uniqueness (preferred identifier)
@@ -355,7 +355,7 @@ For each Building and RoomNr, at most one Room is in that Building and has that 
 Each Room is in exactly one Building and has exactly one RoomNr.
 
 # Equality
-∀ Staffmember ((∃ Room (Staffmember has an office in Room)) ↔ ∃ Extension (Staffmember has Extension))
+∀ StaffMember ((∃ Room (StaffMember has an office in Room)) ↔ ∃ Extension (StaffMember has Extension))
 For each Staff member, that Staff member has an office in some Room if and only if that Staff member has some Extension.
 
 # Ring (acyclic)
@@ -371,7 +371,7 @@ If Course₁ is a prerequisite for Course₂ and Course₂ is a prerequisite for
 For each Student and Course, at most one of the following holds: that Student enrols in that Course; that Student assists in that Course.
 
 # Subset
-∀ Staffmember ∀ Course ((∃ Offering ∃ Term ((Staffmember teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) → (Staffmember is qualified to teach Course))
+∀ StaffMember ∀ Course ((∃ Offering ∃ Term ((StaffMember teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) → (StaffMember is qualified to teach Course))
 If Staff member teaches some Offering that involves Course and involves some Term then Staff member is qualified to teach Course.
 
 # External uniqueness (preferred identifier)
@@ -495,7 +495,7 @@ No Term is an Offering.
 No Enrolment is an Offering.
 
 # Participation (not independent) · Person
-∀ Person ((∃ PersonName (Person has PersonName)) ∨ (∃ Email (Person has Email)) ∨ (∃ Phone (Person has Phone)) ∨ (∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∨ (∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∨ (∃ Room (Staffmember(Person) ∧ (Person has an office in Room))) ∨ (∃ Extension (Staffmember(Person) ∧ (Person has Extension))) ∨ (∃ Course (Student(Person) ∧ (Person enrols in Course))) ∨ (∃ Course (Student(Person) ∧ (Person assists in Course))) ∨ (∃ Course (Staffmember(Person) ∧ (Person is qualified to teach Course))) ∨ (∃ Offering (Staffmember(Person) ∧ (Person teaches Offering))) ∨ ∃ Course (Staffmember(Person) ∧ (Person coordinates Course)))
+∀ Person ((∃ PersonName (Person has PersonName)) ∨ (∃ Email (Person has Email)) ∨ (∃ Phone (Person has Phone)) ∨ (∃ Professor (Student(Person) ∧ (Person is supervised by Professor))) ∨ (∃ Student (Professor(Person) ∧ (Student is supervised by Person))) ∨ (∃ Room (StaffMember(Person) ∧ (Person has an office in Room))) ∨ (∃ Extension (StaffMember(Person) ∧ (Person has Extension))) ∨ (∃ Course (Student(Person) ∧ (Person enrols in Course))) ∨ (∃ Course (Student(Person) ∧ (Person assists in Course))) ∨ (∃ Course (StaffMember(Person) ∧ (Person is qualified to teach Course))) ∨ (∃ Offering (StaffMember(Person) ∧ (Person teaches Offering))) ∨ ∃ Course (StaffMember(Person) ∧ (Person coordinates Course)))
 For each Person, at least one of the following holds: that Person has some PersonName; that Person has some Email; that Person has some Phone; that Person is a Student and that Person is supervised by some Professor; that Person is a Professor and that Person supervises some Student; that Person is a Staff member and that Person has an office in some Room; that Person is a Staff member and that Person has some Extension; that Person is a Student and that Person enrols in some Course; that Person is a Student and that Person assists in some Course; that Person is a Staff member and that Person is qualified to teach some Course; that Person is a Staff member and that Person teaches some Offering; that Person is a Staff member and that Person coordinates some Course.
 
 # Participation (not independent) · PersonNr
@@ -515,11 +515,11 @@ For each Email, some Person has that Email.
 For each Phone, some Person has that Phone.
 
 # Participation (not independent) · Student
-∀ Student₁ ((∃ PersonName (Student₁ has PersonName)) ∨ (∃ Email (Student₁ has Email)) ∨ (∃ Phone (Student₁ has Phone)) ∨ (∃ Professor (Student₁ is supervised by Professor)) ∨ (∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∨ (∃ Room (Staffmember(Student₁) ∧ (Student₁ has an office in Room))) ∨ (∃ Extension (Staffmember(Student₁) ∧ (Student₁ has Extension))) ∨ (∃ Course (Student₁ enrols in Course)) ∨ (∃ Course (Student₁ assists in Course)) ∨ (∃ Course (Staffmember(Student₁) ∧ (Student₁ is qualified to teach Course))) ∨ (∃ Offering (Staffmember(Student₁) ∧ (Student₁ teaches Offering))) ∨ ∃ Course (Staffmember(Student₁) ∧ (Student₁ coordinates Course)))
+∀ Student₁ ((∃ PersonName (Student₁ has PersonName)) ∨ (∃ Email (Student₁ has Email)) ∨ (∃ Phone (Student₁ has Phone)) ∨ (∃ Professor (Student₁ is supervised by Professor)) ∨ (∃ Student₂ (Professor(Student₁) ∧ (Student₂ is supervised by Student₁))) ∨ (∃ Room (StaffMember(Student₁) ∧ (Student₁ has an office in Room))) ∨ (∃ Extension (StaffMember(Student₁) ∧ (Student₁ has Extension))) ∨ (∃ Course (Student₁ enrols in Course)) ∨ (∃ Course (Student₁ assists in Course)) ∨ (∃ Course (StaffMember(Student₁) ∧ (Student₁ is qualified to teach Course))) ∨ (∃ Offering (StaffMember(Student₁) ∧ (Student₁ teaches Offering))) ∨ ∃ Course (StaffMember(Student₁) ∧ (Student₁ coordinates Course)))
 For each Student₁, at least one of the following holds: that Student₁ has some PersonName; that Student₁ has some Email; that Student₁ has some Phone; that Student₁ is supervised by some Professor; that Student₁ is a Professor and that Student₁ supervises some Student; that Student₁ is a Staff member and that Student₁ has an office in some Room; that Student₁ is a Staff member and that Student₁ has some Extension; that Student₁ enrols in some Course; that Student₁ assists in some Course; that Student₁ is a Staff member and that Student₁ is qualified to teach some Course; that Student₁ is a Staff member and that Student₁ teaches some Offering; that Student₁ is a Staff member and that Student₁ coordinates some Course.
 
-# Participation (not independent) · Staffmember
-∀ Staffmember ((∃ PersonName (Staffmember has PersonName)) ∨ (∃ Email (Staffmember has Email)) ∨ (∃ Phone (Staffmember has Phone)) ∨ (∃ Professor (Student(Staffmember) ∧ (Staffmember is supervised by Professor))) ∨ (∃ Student (Professor(Staffmember) ∧ (Student is supervised by Staffmember))) ∨ (∃ Room (Staffmember has an office in Room)) ∨ (∃ Extension (Staffmember has Extension)) ∨ (∃ Course (Student(Staffmember) ∧ (Staffmember enrols in Course))) ∨ (∃ Course (Student(Staffmember) ∧ (Staffmember assists in Course))) ∨ (∃ Course (Staffmember is qualified to teach Course)) ∨ (∃ Offering (Staffmember teaches Offering)) ∨ ∃ Course (Staffmember coordinates Course))
+# Participation (not independent) · StaffMember
+∀ StaffMember ((∃ PersonName (StaffMember has PersonName)) ∨ (∃ Email (StaffMember has Email)) ∨ (∃ Phone (StaffMember has Phone)) ∨ (∃ Professor (Student(StaffMember) ∧ (StaffMember is supervised by Professor))) ∨ (∃ Student (Professor(StaffMember) ∧ (Student is supervised by StaffMember))) ∨ (∃ Room (StaffMember has an office in Room)) ∨ (∃ Extension (StaffMember has Extension)) ∨ (∃ Course (Student(StaffMember) ∧ (StaffMember enrols in Course))) ∨ (∃ Course (Student(StaffMember) ∧ (StaffMember assists in Course))) ∨ (∃ Course (StaffMember is qualified to teach Course)) ∨ (∃ Offering (StaffMember teaches Offering)) ∨ ∃ Course (StaffMember coordinates Course))
 For each Staff member, at least one of the following holds: that Staff member has some PersonName; that Staff member has some Email; that Staff member has some Phone; that Staff member is a Student and that Staff member is supervised by some Professor; that Staff member is a Professor and that Staff member supervises some Student; that Staff member has an office in some Room; that Staff member has some Extension; that Staff member is a Student and that Staff member enrols in some Course; that Staff member is a Student and that Staff member assists in some Course; that Staff member is qualified to teach some Course; that Staff member teaches some Offering; that Staff member coordinates some Course.
 
 # Participation (not independent) · Professor
@@ -543,15 +543,15 @@ Each BuildingCode refers to some Building.
 For each RoomNr, some Room has that RoomNr.
 
 # Participation (not independent) · Room
-∀ Room ∃ Staffmember (Staffmember has an office in Room)
+∀ Room ∃ StaffMember (StaffMember has an office in Room)
 Each Room is the office of some Staff member.
 
 # Participation (not independent) · Extension
-∀ Extension ∃ Staffmember (Staffmember has Extension)
+∀ Extension ∃ StaffMember (StaffMember has Extension)
 For each Extension, some Staff member has that Extension.
 
 # Participation (not independent) · Course
-∀ Course₁ ((∃ CourseTitle (Course₁ has CourseTitle)) ∨ (∃ Credits (Course₁ is worth Credits)) ∨ (∃ Course₂ (Course₁ is a prerequisite for Course₂)) ∨ (∃ Course₂ (Course₂ is a prerequisite for Course₁)) ∨ (∃ Student (Student enrols in Course₁)) ∨ (∃ Student (Student assists in Course₁)) ∨ (∃ Staffmember (Staffmember is qualified to teach Course₁)) ∨ (∃ Staffmember (Staffmember coordinates Course₁)) ∨ ∃ Term (Course₁ is offered in Term))
+∀ Course₁ ((∃ CourseTitle (Course₁ has CourseTitle)) ∨ (∃ Credits (Course₁ is worth Credits)) ∨ (∃ Course₂ (Course₁ is a prerequisite for Course₂)) ∨ (∃ Course₂ (Course₂ is a prerequisite for Course₁)) ∨ (∃ Student (Student enrols in Course₁)) ∨ (∃ Student (Student assists in Course₁)) ∨ (∃ StaffMember (StaffMember is qualified to teach Course₁)) ∨ (∃ StaffMember (StaffMember coordinates Course₁)) ∨ ∃ Term (Course₁ is offered in Term))
 For each Course₁, at least one of the following holds: that Course₁ has some CourseTitle; that Course₁ is worth some Credits; that Course₁ is a prerequisite for some Course; some Course is a prerequisite for that Course₁; some Student enrols in that Course₁; some Student assists in that Course₁; some Staff member is qualified to teach that Course₁; some Staff member coordinates that Course₁; that Course₁ is offered in some Term.
 
 # Participation (not independent) · CourseCode

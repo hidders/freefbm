@@ -42,12 +42,12 @@ Istnieje co najwyżej 100 Przedmiotów.
 ∃^{≤50} Course ∃ Student (Student enrols in Course)
 Istnieje co najwyżej 50 Przedmiotów, które jakiś Student studiuje.
 
-# Cardinality (role 1) (deontic) · Staffmember coordinates Course
-O(∃^{≥5} Staffmember ∃ Course (Staffmember coordinates Course))
+# Cardinality (role 1) (deontic) · StaffMember coordinates Course
+O(∃^{≥5} StaffMember ∃ Course (StaffMember coordinates Course))
 Obowiązuje zasada, że istnieje co najmniej 5 Pracowników, którzy koordynują jakiś Przedmiot.
 
-# Derivation rule · Student studies with Staffmember
-∀ Student ∀ Staffmember ((Student studies with Staffmember) ↔ ∃ Course ((Student enrols in Course) ∧ (Staffmember coordinates Course)))
+# Derivation rule · Student studies with StaffMember
+∀ Student ∀ StaffMember ((Student studies with StaffMember) ↔ ∃ Course ((Student enrols in Course) ∧ (StaffMember coordinates Course)))
 Student studies with Pracownika wtedy i tylko wtedy, gdy Student studiuje jakiś Przedmiot, który Pracownik koordynuje.
 
 # Derivation rule, every derived fact holds · Student has TotalCredits
@@ -70,16 +70,16 @@ Jeśli Przedmiot has EnrolmentCount, to EnrolmentCount wynosi liczba Studentów,
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
 Jeśli Student asystuje przy Przedmiocie i Przedmiot ma Punktację, to Student has credit load jakiś TotalCredits, który wynosi (Punktacja plus 5) razy 2.
 
-# Uniqueness (deontic) · Staffmember mentors Student
-O(∀ Student ∃^{≤1} Staffmember (Staffmember mentors Student))
+# Uniqueness (deontic) · StaffMember mentors Student
+O(∀ Student ∃^{≤1} StaffMember (StaffMember mentors Student))
 Obowiązuje zasada, że dla każdego Studenta co najwyżej jeden Pracownik mentors tego Studenta.
 
-# Mandatory role (deontic) · Staffmember mentors Student
-O(∀ Student ∃ Staffmember (Staffmember mentors Student))
+# Mandatory role (deontic) · StaffMember mentors Student
+O(∀ Student ∃ StaffMember (StaffMember mentors Student))
 Obowiązuje zasada, że dla każdego Studenta jakiś Pracownik mentors tego Studenta.
 
-# Frequency (deontic) · Staffmember mentors Student
-O(∀ Staffmember ((∃ Student (Staffmember mentors Student)) → ∃^{≤5} Student (Staffmember mentors Student)))
+# Frequency (deontic) · StaffMember mentors Student
+O(∀ StaffMember ((∃ Student (StaffMember mentors Student)) → ∃^{≤5} Student (StaffMember mentors Student)))
 Obowiązuje zasada, że każdy Pracownik mentors co najwyżej 5 Studentów.
 
 # Uniqueness · Person has first given PersonName
@@ -99,15 +99,15 @@ Każda Osoba has jakieś first given Nazwisko.
 Dla każdej Osoby₁ co najwyżej jedna Osoba₂ has tę Osobę₁-in-law.
 
 # External uniqueness (outer join)
-∀ CourseTitle ∀ Staffmember ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by Staffmember))
+∀ CourseTitle ∀ StaffMember ∃^{≤1} Course ((Course has CourseTitle) ∧ (Course is run by StaffMember))
 Dla każdego Tytułu przedmiotu i każdego Pracownika co najwyżej jeden Przedmiot ma ten Tytuł przedmiotu i is run by tego Pracownika.
 
 # External uniqueness (outer join): no value at position 2
-∀ CourseTitle ∃^{≤1} Course ((Course has CourseTitle) ∧ ¬(∃ Staffmember (Course is run by Staffmember)))
+∀ CourseTitle ∃^{≤1} Course ((Course has CourseTitle) ∧ ¬(∃ StaffMember (Course is run by StaffMember)))
 Dla każdego Tytułu przedmiotu co najwyżej jeden Przedmiot ma ten Tytuł przedmiotu i nie is run by żadnego Pracownika.
 
 # Subset (deontic)
-O(∀ Student ((∃ Staffmember (Staffmember mentors Student)) → ∃ Course (Student enrols in Course)))
+O(∀ Student ((∃ StaffMember (StaffMember mentors Student)) → ∃ Course (Student enrols in Course)))
 Obowiązuje zasada, że każdy Student, którego jakiś Pracownik mentors, studiuje jakiś Przedmiot.
 
 # Ring (irreflexive) (deontic)
