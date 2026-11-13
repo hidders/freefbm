@@ -1,4 +1,4 @@
-import { findRefMode, vtNameFromLabel, refModeSeparator, refModeCollapseBlockers } from '../../utils/refMode.js'
+import { findRefMode, refModeLabel, vtNameFromLabel, refModeSeparator, refModeCollapseBlockers } from '../../utils/refMode.js'
 import { readingList, readingsPatch, editReadings } from '../readings.js'
 import {
   uid, mkEntity, mkValue, mkFact, mkRole, mkSubtype, mkConstraint, mkDiagram, mkNote, mkImplicitLink,
@@ -228,7 +228,11 @@ export function createElementSlice(set, get) {
 
       // Keep the value type's separator ('Family Name' stays spaced)
       const currentVt = current && s.objectTypes.find(o => o.id === current.vtId)
-      const targetVtName = vtNameFromLabel(entity.name, trimmed, refModeSeparator(entity.name, currentVt?.name))
+      // the label as shown, committed unchanged, keeps its value type
+      // ('.nummer' of Personennummer would otherwise become PersonNummer)
+      const targetVtName = currentVt && trimmed === refModeLabel(entity.name, currentVt.name, entity)
+        ? currentVt.name
+        : vtNameFromLabel(entity.name, trimmed, refModeSeparator(entity.name, currentVt?.name))
       if (current) {
         const existingMatch = s.objectTypes.find(o => o.id !== current.vtId && o.kind === 'value' && o.name === targetVtName)
         if (existingMatch) {
