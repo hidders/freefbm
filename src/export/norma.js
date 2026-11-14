@@ -955,7 +955,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     if (!shapesEl) { shapesEl = el('ormDiagram:Shapes', {}, []); de.children.unshift(shapesEl) }
     shapesEl.children.push(...extra)
   }
-  if (ffNotes.length) note(`${ffNotes.length} note${ffNotes.length === 1 ? '' : 's'} starting with “FreeFBM:” say what NORMA could not take as it is, beside the elements concerned; a summary note is on the first diagram.`)
+  if (ffNotes.length) note(`${ffNotes.length} note${ffNotes.length === 1 ? '' : 's'} starting with “FreeFBM:” ${ffNotes.length === 1 ? 'says' : 'say'} what NORMA could not take as it is, beside the elements concerned; a summary note is on the first diagram.`)
 
   // ── groups ───────────────────────────────────────────────────────────────
   // Element groups with their colours (NORMA's shape grouping extension)
