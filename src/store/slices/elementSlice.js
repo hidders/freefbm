@@ -1329,7 +1329,7 @@ export function createElementSlice(set, get) {
           const exists = f.uniqueness.some(u => JSON.stringify([...u.roles].sort()) === key)
           const uniqueness = exists
             ? f.uniqueness.filter(u => JSON.stringify([...u.roles].sort()) !== key)
-            : [...f.uniqueness, mkUniqueness(roleIndices, id)].sort((a, b) => a.roles.length - b.roles.length)
+            : [mkUniqueness(roleIndices, id), ...f.uniqueness].sort((a, b) => a.roles.length - b.roles.length)
           const preferredUniqueness = (f.preferredUniqueness || []).filter(pu =>
             JSON.stringify([...pu].sort()) !== key
           )

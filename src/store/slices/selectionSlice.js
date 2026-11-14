@@ -701,7 +701,7 @@ export function createSelectionSlice(set, get) {
           const internalFrequency = (f.internalFrequency || []).filter(i => i.id !== ifId)
           if (alreadyExists) return { ...f, internalFrequency }
           // The uniqueness constraint keeps the frequency constraint's id
-          const uniqueness = [...f.uniqueness, mkUniqueness(roles, ifId)].sort((a, b) => a.roles.length - b.roles.length)
+          const uniqueness = [mkUniqueness(roles, ifId), ...f.uniqueness].sort((a, b) => a.roles.length - b.roles.length)
           const deonticUniqueness = ifItem.deontic ? [...(f.deonticUniqueness || []), roles] : f.deonticUniqueness
           return { ...f, internalFrequency, uniqueness, deonticUniqueness }
         }),

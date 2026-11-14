@@ -1336,6 +1336,16 @@ export function importNorma(xmlText) {
     const p = firstPos.get(el.id)
     if (p) { el.x = p.x; el.y = p.y }
   }
+  // NORMA stacks bars of the same length in the order of the fact type's
+  // constraints, the first outermost (FactTypeShape's ConstraintBoxComparer);
+  // FreeFBM puts the last of the same length outermost, so those go in
+  // reverse order.
+  const factElById = new Map(factEls.map(e => [attr(e, 'id'), e]))
+  for (const f of facts) {
+    const order = new Map(refsOf(kid(factElById.get(f.id), 'InternalConstraints')).map((r, i) => [r, i]))
+    const at = u => order.get(u.id) ?? -1
+    f.uniqueness.sort((a, b) => a.roles.length - b.roles.length || at(b) - at(a))
+  }
   for (const f of facts) {
     for (const ifr of f.internalFrequency) {
       const p = ifPos.get(ifr.id)
