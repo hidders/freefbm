@@ -41,6 +41,7 @@ import { pluralise as italianPlural } from '../verbalisation/languages/italian.j
 import { pluralise as spanishPlural } from '../verbalisation/languages/spanish.js'
 import { pluralise as polishPlural, declineNominalHead as polishNominalHead } from '../verbalisation/languages/polish.js'
 import { pluralise as germanPlural, declineNominalHead as germanNominalHead, defaultForm as germanForm } from '../verbalisation/languages/german.js'
+import { DIAGRAM_LOOKS } from '../diagram/diagramLook.js'
 
 // ── Validation error components ───────────────────────────────────────────────
 
@@ -5034,6 +5035,33 @@ export default function Inspector() {
             </div>
             <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginTop: 4 }}>
               Characters left out of names when they are separated or combined (not with As is). Formulas keep names as entered.
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
+              textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+              Diagram look
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {DIAGRAM_LOOKS.map(opt => (
+                <label key={opt.id} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 8,
+                  cursor: 'pointer', padding: '7px 9px',
+                  background: (store.diagramLook ?? 'norma') === opt.id ? 'var(--bg-raised)' : 'transparent',
+                  border: '1px solid var(--border-soft)',
+                  borderRadius: 4,
+                }}>
+                  <input type="radio" name="diagramLook"
+                    checked={(store.diagramLook ?? 'norma') === opt.id}
+                    onChange={() => store.setDiagramLook(opt.id)}
+                    style={{ marginTop: 2, accentColor: 'var(--accent)' }}/>
+                  <div>
+                    <div style={{ fontSize: 12, color: 'var(--ink-2)', fontWeight: 500 }}>{opt.label}</div>
+                    <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginTop: 1 }}>{opt.sub}</div>
+                  </div>
+                </label>
+              ))}
             </div>
           </div>
 

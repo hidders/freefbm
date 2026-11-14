@@ -39,7 +39,7 @@ function EndMarker({ x, y, side, kind, stroke }) {
   const px = -dy, py = dx                     // across the line
   const at = (t, s = 0) => [x + dx * t + px * s, y + dy * t + py * s]
   const bar = (t) => { const [x1, y1] = at(t, -6), [x2, y2] = at(t, 6); return <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth={1.3}/> }
-  const circle = (t) => { const [cx, cy] = at(t); return <circle cx={cx} cy={cy} r={3.8} fill="var(--bg-canvas)" stroke={stroke} strokeWidth={1.3}/> }
+  const circle = (t) => { const [cx, cy] = at(t); return <circle cx={cx} cy={cy} r={3.8} fill="var(--bg-diagram)" stroke={stroke} strokeWidth={1.3}/> }
   if (kind === 'one') return <g>{bar(9)}{bar(14)}</g>
   if (kind === 'zeroOne') return <g>{bar(9)}{circle(19)}</g>
   const [ax, ay] = at(0, -7), [bx, by] = at(0, 7), [tx, ty] = at(12)

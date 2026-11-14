@@ -17,12 +17,20 @@ export const NORMA = {
   // numbers shown while a constraint's roles are picked.
   fontSizePt: 7,
   smallFontSizePt: 5,
+  // One line of text (the height NORMA gives a reading shape, and the step
+  // between an object type's name and its reference mode): 0.1295 in.
+  lineHeight: 0.1295,
 
   // Object types (ObjectTypeShape): a rounded rectangle around the name and
   // the reference mode, both in the title font.
-  objectType: { marginX: 0.06, marginY: 0.05, penPt: 1.2 },
+  // A one-line shape is 0.2295 in high, a two-line one 0.359 in (NORMA's
+  // SampleModel.orm). Corner radius 1.5 mm, as NORMA's web viewer draws it.
+  objectType: { marginX: 0.06, marginY: 0.05, penPt: 1.2, radius: 0.0590551 },
 
-  // Fact types (FactTypeShape)
+  // Fact types (FactTypeShape). A shape's bounds are its role boxes plus a
+  // band per level of bars on the bars' side, plus factBorder all round
+  // (half on each side) and one pen width (1/72 in): a binary with one
+  // level of bars is 0.3839 × 0.2439 in, a unary without bars 0.2239 × 0.1739.
   roleBox: { width: 0.16, height: 0.11, penPt: 1 },
   collapsedRoleBox: { width: 0.05, height: 0.035 },
   constraintBand: 0.07,          // height of one level of uniqueness bars

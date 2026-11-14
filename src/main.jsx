@@ -18,6 +18,9 @@ import '@fontsource/fraunces/300-italic.css'
 import './assets/fonts/diagram-fonts.css'
 import './index.css'
 import { diagramFontsReady } from './diagram/diagramFont.js'
+import { applyDiagramLook, readDiagramLook } from './diagram/diagramLook.js'
+
+applyDiagramLook(readDiagramLook())
 
 // Shape sizes are measured from text, so the diagram fonts load first.
 diagramFontsReady().then(() => ReactDOM.createRoot(document.getElementById('root')).render(

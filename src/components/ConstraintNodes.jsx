@@ -10,11 +10,17 @@ import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { groupStyle } from '../utils/groups.js'
 import { isFormulaConstraint, formulaElements } from '../logic/formulaConstraint.js'
 import { DIAGRAM_FONT } from '../diagram/diagramFont.js'
+import { NORMA, px, pt } from '../diagram/normaGeometry.js'
 
-const CONSTRAINT_R = 14        // radius of standard constraint circle
-const EXTERNAL_CONSTRAINT_R = 10 // radius of external constraint circle
+// NORMA's sizes (src/diagram/normaGeometry.js): external constraints 0.16 in
+// across, ring constraints 0.2133 in, pens 1.35 pt, connectors 1 pt
+const CONSTRAINT_R = px(NORMA.ringConstraint.diameter) / 2          // ring constraint circle
+const EXTERNAL_CONSTRAINT_R = px(NORMA.externalConstraint.diameter) / 2 // external constraint circle
+const SHAPE_W = pt(NORMA.externalConstraint.penPt)   // pen of constraint shapes and glyphs
+const CONN_W  = pt(NORMA.rolePlayerPenPt) // pen of constraint connectors
+const GLYPH_SIZE = pt(7)
 
-const FREQ_FONT_SIZE = 13
+const FREQ_FONT_SIZE = pt(7)
 const FREQ_PAD_X     = 6   // horizontal padding inside stadium, each side
 
 let _freqCanvas = null
@@ -54,7 +60,7 @@ const CONSTRAINT_SYMBOL = {
 // Arch symbols: feet at cy+4, apex at cy-4 (radius 8).
 // Triangle symbols: same vertical span.
 export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
-  const sw  = 1.4
+  const sw  = SHAPE_W
   const hw  = 8 * scale
   const bot = cy + 4 * scale
   const top = cy - 4 * scale
@@ -826,7 +832,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
 
   // Geometry helper: line from constraint centre to a member (role or subtype midpoint)
   function memberArcLine(member, key, cx, cy, r0, color, selected, markerEnd, fMap = factMap, refOwner = null) {
-    const sw = selected ? 2.2 : 1.2
+    const sw = selected ? CONN_W + 1 : CONN_W
     const op = selected ? 1   : 0.75
     if (member.kind === 'role') {
       const fact = fMap[member.factId]
@@ -933,7 +939,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                 // to the range of lit tooth attachment points.
                 const litTeeth = rake.teeth.map((_, ti) => isArcHighlighted(gi, ti))
                 const anyLit   = litTeeth.some(Boolean)
-                const connSw   = anyLit ? 2.2 : 1.2, connOp = anyLit ? 1 : 0.75
+                const connSw   = anyLit ? CONN_W + 1 : CONN_W, connOp = anyLit ? 1 : 0.75
                 const dx = rake.anchor.x - c.x, dy = rake.anchor.y - c.y
                 const len = Math.sqrt(dx * dx + dy * dy) || 1
 
@@ -961,7 +967,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                   <line key={`${c.id}-g${gi}-rake-spine`}
                     x1={rake.spineStart.x} y1={rake.spineStart.y}
                     x2={rake.spineEnd.x} y2={rake.spineEnd.y}
-                    stroke={color} strokeWidth={1.2} opacity={0.75}/>,
+                    stroke={color} strokeWidth={CONN_W} opacity={0.75}/>,
                   ...(litSpine ? [
                     <line key={`${c.id}-g${gi}-rake-spine-lit`}
                       x1={litSpine.x1} y1={litSpine.y1}
@@ -975,7 +981,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                         x1={t.from.x} y1={t.from.y}
                         x2={t.to.x} y2={t.to.y}
                         stroke={litT ? HIGHLIGHT_ARC_COLOR : color}
-                        strokeWidth={litT ? 2.2 : 1.2}
+                        strokeWidth={litT ? CONN_W + 1 : CONN_W}
                         opacity={litT ? 1 : 0.75}/>
                     )
                   }),
@@ -986,7 +992,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                 const mid = consecutiveRoleMidpoint(seq[0].factId, seq[0].roleIndex, seq[1].factId, seq[1].roleIndex, c.x, c.y, localFactMap)
                 if (mid) {
                   const lit = isArcHighlighted(gi, 0) || isArcHighlighted(gi, 1)
-                  const sw = lit ? 2.2 : 1.2, op = lit ? 1 : 0.75
+                  const sw = lit ? CONN_W + 1 : CONN_W, op = lit ? 1 : 0.75
                   const dx = mid.x - c.x, dy = mid.y - c.y
                   const len = Math.sqrt(dx * dx + dy * dy) || 1
                   return [<line key={`${c.id}-g${gi}-mid`}
@@ -1015,17 +1021,17 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                   <line key={`${c.id}-g${gi}-rake-conn`}
                     x1={c.x + dx / len * r0} y1={c.y + dy / len * r0}
                     x2={rake.anchor.x} y2={rake.anchor.y}
-                    stroke={color} strokeWidth={1.2} strokeDasharray={dashArray} opacity={0.75}
+                    stroke={color} strokeWidth={CONN_W} strokeDasharray={dashArray} opacity={0.75}
                     markerEnd={markerEnd}/>,
                   <line key={`${c.id}-g${gi}-rake-spine`}
                     x1={rake.spineStart.x} y1={rake.spineStart.y}
                     x2={rake.spineEnd.x} y2={rake.spineEnd.y}
-                    stroke={color} strokeWidth={1.2} opacity={0.75}/>,
+                    stroke={color} strokeWidth={CONN_W} opacity={0.75}/>,
                   ...rake.teeth.map((t, ti) => (
                     <line key={`${c.id}-g${gi}-rake-t${ti}`}
                       x1={t.from.x} y1={t.from.y}
                       x2={t.to.x} y2={t.to.y}
-                      stroke={color} strokeWidth={1.2} opacity={0.75}/>
+                      stroke={color} strokeWidth={CONN_W} opacity={0.75}/>
                   )),
                 ]
               }
@@ -1038,7 +1044,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                   return [<line key={`${c.id}-g${gi}-mid`}
                     x1={c.x + dx / len * r0} y1={c.y + dy / len * r0}
                     x2={mid.x} y2={mid.y}
-                    stroke={color} strokeWidth={1.2}
+                    stroke={color} strokeWidth={CONN_W}
                     strokeDasharray={dashArray} opacity={0.75}
                     markerEnd={markerEnd}/>]
                 }
@@ -1055,7 +1061,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                   <line key={key}
                     x1={c.x + dx / len * r0} y1={c.y + dy / len * r0}
                     x2={rc.x} y2={rc.y}
-                    stroke={color} strokeWidth={1.2}
+                    stroke={color} strokeWidth={CONN_W}
                     strokeDasharray={dashArray} opacity={0.75}
                     markerEnd={markerEnd}/>
                 )
@@ -1131,7 +1137,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                 <line
                   x1={c.x + dx / len * r0} y1={c.y + dy / len * r0}
                   x2={mousePos.x} y2={mousePos.y}
-                  stroke={color} strokeWidth={1.2}
+                  stroke={color} strokeWidth={CONN_W}
                   strokeDasharray="4 2" opacity={0.5}
                   style={{ pointerEvents: 'none' }}/>
               )
@@ -1168,7 +1174,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                   r={c.constraintType === 'ring' ? CONSTRAINT_R : EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) ? EXTERNAL_CONSTRAINT_R : CONSTRAINT_R}
                   fill={ringEmpty ? 'transparent' : '#ffffff'}
                   stroke={color}
-                  strokeWidth={isSelected ? 2 : 1.5}
+                  strokeWidth={isSelected ? SHAPE_W + 1 : SHAPE_W}
                   strokeDasharray={c.constraintType === 'ring' ? '3 2' : 'none'}
                 />
               )
@@ -1178,7 +1184,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
             {!EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) && c.constraintType !== 'ring' && (
               <text x={c.x} y={c.y}
                 textAnchor="middle" dominantBaseline="central"
-                fontSize={c.constraintType === 'ring' ? 14 : 13}
+                fontSize={GLYPH_SIZE}
                 fill={color}
                 fontFamily="var(--font-mono)"
                 fontWeight={600}
@@ -1197,19 +1203,19 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                   {(c.constraintType === 'exclusiveOr' || c.constraintType === 'exclusion') && (
                     <>
                       <line x1={c.x - d} y1={c.y - d} x2={c.x + d} y2={c.y + d}
-                        stroke={color} strokeWidth={2} strokeLinecap="round"/>
+                        stroke={color} strokeWidth={SHAPE_W} strokeLinecap="round"/>
                       <line x1={c.x + d} y1={c.y - d} x2={c.x - d} y2={c.y + d}
-                        stroke={color} strokeWidth={2} strokeLinecap="round"/>
+                        stroke={color} strokeWidth={SHAPE_W} strokeLinecap="round"/>
                     </>
                   )}
                   {/* Dot — Inclusive Or and Exclusive Or */}
                   {(c.constraintType === 'exclusiveOr' || c.constraintType === 'inclusiveOr') && (
-                    <circle cx={c.x} cy={c.y} r={3.5} fill={color}/>
+                    <circle cx={c.x} cy={c.y} r={EXTERNAL_CONSTRAINT_R * 0.35} fill={color}/>
                   )}
                   {/* Symbol — Equality and Subset */}
                   {(c.constraintType === 'equality' || c.constraintType === 'subset') && (
                     <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central"
-                      fontSize={13} fill={color}
+                      fontSize={GLYPH_SIZE} fill={color}
                       fontFamily="var(--font-mono)" fontWeight={600}
                       style={{ pointerEvents: 'none' }}>
                       {c.constraintType === 'equality' ? '=' : '⊆'}
@@ -1218,12 +1224,12 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                   {/* Symbol + dots — Value Comparison */}
                   {c.constraintType === 'valueComparison' && (
                     <>
-                      <circle cx={c.x - EXTERNAL_CONSTRAINT_R} cy={c.y} r={3}
+                      <circle cx={c.x - EXTERNAL_CONSTRAINT_R} cy={c.y} r={EXTERNAL_CONSTRAINT_R * 0.3}
                         fill={color}/>
-                      <circle cx={c.x + EXTERNAL_CONSTRAINT_R} cy={c.y} r={3}
+                      <circle cx={c.x + EXTERNAL_CONSTRAINT_R} cy={c.y} r={EXTERNAL_CONSTRAINT_R * 0.3}
                         fill={color}/>
                       <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central"
-                        fontSize={13} fill={color}
+                        fontSize={GLYPH_SIZE} fill={color}
                         fontFamily="var(--font-mono)" fontWeight={600}
                         style={{ pointerEvents: 'none' }}>
                         {c.operator ?? '='}
@@ -1233,18 +1239,18 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                   {/* Horizontal diameter line(s) — External Uniqueness */}
                   {c.constraintType === 'uniqueness' && (c.isPreferredIdentifier ? (
                     <>
-                      <line x1={c.x - EXTERNAL_CONSTRAINT_R} y1={c.y - 1.5} x2={c.x + EXTERNAL_CONSTRAINT_R} y2={c.y - 1.5}
-                        stroke={color} strokeWidth={1.5} strokeLinecap="round"/>
-                      <line x1={c.x - EXTERNAL_CONSTRAINT_R} y1={c.y + 1.5} x2={c.x + EXTERNAL_CONSTRAINT_R} y2={c.y + 1.5}
-                        stroke={color} strokeWidth={1.5} strokeLinecap="round"/>
+                      <line x1={c.x - EXTERNAL_CONSTRAINT_R} y1={c.y - 0.75 * SHAPE_W} x2={c.x + EXTERNAL_CONSTRAINT_R} y2={c.y - 0.75 * SHAPE_W}
+                        stroke={color} strokeWidth={SHAPE_W / 2} strokeLinecap="round"/>
+                      <line x1={c.x - EXTERNAL_CONSTRAINT_R} y1={c.y + 0.75 * SHAPE_W} x2={c.x + EXTERNAL_CONSTRAINT_R} y2={c.y + 0.75 * SHAPE_W}
+                        stroke={color} strokeWidth={SHAPE_W / 2} strokeLinecap="round"/>
                     </>
                   ) : (
                     <line x1={c.x - EXTERNAL_CONSTRAINT_R} y1={c.y} x2={c.x + EXTERNAL_CONSTRAINT_R} y2={c.y}
-                      stroke={color} strokeWidth={2} strokeLinecap="round"/>
+                      stroke={color} strokeWidth={SHAPE_W} strokeLinecap="round"/>
                   ))}
                   {/* Outer join: a small "o" through the bar (Halpin & Morgan 2024, sec. 10.1) */}
                   {c.constraintType === 'uniqueness' && c.outerJoin && (
-                    <circle cx={c.x} cy={c.y} r={2.75} fill="#ffffff" stroke={color} strokeWidth={1.25}/>
+                    <circle cx={c.x} cy={c.y} r={EXTERNAL_CONSTRAINT_R * 0.28} fill="#ffffff" stroke={color} strokeWidth={SHAPE_W * 0.9}/>
                   )}
                 </g>
               )
@@ -1263,7 +1269,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                     rx={sh}
                     fill='#ffffff'
                     stroke={color}
-                    strokeWidth={isSelected ? 2 : 1.5}
+                    strokeWidth={isSelected ? SHAPE_W + 1 : SHAPE_W}
                   />
                   <text x={c.x} y={c.y}
                     textAnchor="middle" dominantBaseline="central"
@@ -1423,7 +1429,7 @@ function FormulaBadge({ c, color, isSelected, factMap, otMap, store, onDragStart
       filter={isSelected ? 'url(#selectGlow)' : undefined}>
       {/* from the centre: the white pill drawn after them hides the inner part */}
       {links.map(l => <line key={l.key} x1={c.x} y1={c.y} x2={l.x} y2={l.y} stroke={color} strokeWidth={1.1} strokeDasharray="2 3" opacity={0.75} />)}
-      <rect x={c.x - w / 2} y={c.y - h / 2} width={w} height={h} rx={h / 2} fill="#ffffff" stroke={color} strokeWidth={isSelected ? 2 : 1.5} />
+      <rect x={c.x - w / 2} y={c.y - h / 2} width={w} height={h} rx={h / 2} fill="#ffffff" stroke={color} strokeWidth={isSelected ? SHAPE_W + 1 : SHAPE_W} />
       <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central" fontSize={FREQ_FONT_SIZE} fill={color}
         fontFamily={DIAGRAM_FONT} style={{ pointerEvents: 'none' }}>{label}</text>
     </g>

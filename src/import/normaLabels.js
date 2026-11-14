@@ -8,12 +8,12 @@
 // FreeFBM's own box and label size. A label that overlaps its shape keeps
 // its centre's offset.
 
-import { nestedFactBounds, factBounds, getDisplayReading, roleCenter } from '../components/FactTypeNode.jsx'
-import { formatValueRange, formatCardinalityRange } from '../components/ObjectTypeNode.jsx'
+import { nestedFactBounds, factBounds, getDisplayReading, roleCenter, NAME_LINE, LABEL_SIZE } from '../components/FactTypeNode.jsx'
+import { formatValueRange, formatCardinalityRange, otBoxSize, OT_SIZE_NAME } from '../components/ObjectTypeNode.jsx'
 import { measureDiagramText } from '../diagram/diagramFont.js'
 
-function textWidth(text, size) {
-  try { return measureDiagramText(text, size) } catch { return text.length * size * 0.55 }
+function textWidth(text, size, weight = 400) {
+  try { return measureDiagramText(text, size, weight) } catch { return text.length * size * 0.55 }
 }
 
 const TOUCH = 6   // px a label may reach into its shape and still count as beside it
@@ -59,22 +59,21 @@ export function factLabelBox(fact) {
 }
 
 export function readingLabelSize(fact) {
-  return { w: textWidth(getDisplayReading(fact) || '', 14), h: 16 }
+  return { w: textWidth(getDisplayReading(fact) || '', LABEL_SIZE), h: NAME_LINE }
 }
 
 export function rangeLabelSize(range, cardinality = false) {
   const text = (cardinality ? formatCardinalityRange(range) : formatValueRange(range)) ?? ''
-  return { w: textWidth(text, 13) + 6, h: 19 }
+  return { w: textWidth(text, LABEL_SIZE) + 6, h: NAME_LINE + 3 }
 }
 
 export function nameLabelSize(name) {
-  return { w: textWidth(`“${name}”`, 18), h: 22 }
+  return { w: textWidth(`“${name}”`, OT_SIZE_NAME, 700), h: NAME_LINE }
 }
 
 // FreeFBM's object type box (ObjectTypeNode's computeOtSize without the store).
 export function objectTypeLabelBox(ot, refShown) {
-  const w = Math.max(60, textWidth((ot.name ?? '') + (ot.isIndependent ? ' !' : ''), 18) + 16)
-  const h = refShown ? 48 : 32
+  const { w, h } = otBoxSize((ot.name ?? '') + (ot.isIndependent ? ' !' : ''), refShown ? ' ' : null)
   return { l: -w / 2, r: w / 2, t: -h / 2, b: h / 2 }
 }
 
@@ -86,5 +85,5 @@ export function roleAnchor(fact, roleIndex) {
 
 export function nameAnchor(fact, refShown) {
   const b = nestedFactBounds({ ...fact, x: 0, y: 0 })
-  return { x: 0, y: b.top - (refShown ? 22 : 10) }
+  return { x: 0, y: b.top - NAME_LINE * (refShown ? 1.5 : 0.5) }
 }

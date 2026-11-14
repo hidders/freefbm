@@ -5,6 +5,7 @@ import { entityBounds } from './ObjectTypeNode'
 import { nestedFactBounds } from './FactTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { queryElements } from '../logic/query.js'
+import { NORMA, pt } from '../diagram/normaGeometry.js'
 
 export function rectBorderPoint(b, tx, ty) {
   const cx = b.cx, cy = b.cy
@@ -77,7 +78,7 @@ export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes,
             })
           : false
 
-        const sw = 4.5
+        const sw = pt(NORMA.subtypeLink.penPt)   // NORMA 1.8 pt
         const arrowLen = 4 * sw
         const edgeDx = to.x - from.x, edgeDy = to.y - from.y
         const edgeDist = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy)

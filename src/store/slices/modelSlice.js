@@ -1,4 +1,5 @@
 import { loadViews } from '../../mapping/views.js'
+import { readDiagramLook, saveDiagramLook } from '../../diagram/diagramLook.js'
 import { withExplicitRuleIds } from '../../mapping/diagramRules.js'
 import { loadExchanges } from '../../mapping/exchanges.js'
 import { runValidation as runValidationRules, DEFAULT_VALIDATION_CATEGORIES } from '../../utils/validation.js'
@@ -92,6 +93,9 @@ export function createModelSlice(set, get) {
     // 'role'   → mandatory dot sits at the role-box end of the connector
     // 'object' → mandatory dot sits at the object-type border end
     mandatoryDotPosition: 'role',
+    // NORMA's colours or the parchment ones (src/diagram/diagramLook.js; a
+    // setting of the user, not saved in the file)
+    diagramLook: readDiagramLook(),
     // Whether to show the reference mode label inside entity/value type nodes
     showReferenceMode: true,
     showRoleNames: true,
@@ -462,6 +466,7 @@ export function createModelSlice(set, get) {
 
     setMandatoryDotPosition(pos) { set({ mandatoryDotPosition: pos }) },
     setShowReferenceMode(val)   { set({ showReferenceMode: val }) },
+    setDiagramLook(look)        { saveDiagramLook(look); set({ diagramLook: look }) },
     setShowRoleNames(val)             { set({ showRoleNames: val }) },
     setShowSequenceMembership(val)    { set({ showSequenceMembership: val }) },
     setShowConstraintQueries(val)     { set({ showConstraintQueries: val }) },
