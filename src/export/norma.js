@@ -25,8 +25,14 @@ import { otBoxSize } from '../components/ObjectTypeNode.jsx'
 import { findRefMode, refModeLabel } from '../utils/refMode.js'
 import { derivationMark } from '../logic/derivationRule.js'
 import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
+import { makeContext, constraintEntry } from '../logic/constraintFormulas.js'
+import { factDerivationEntries } from '../logic/factDerivation.js'
+import { derivationEntry } from '../logic/derivationRule.js'
+import { renderFormula } from '../logic/renderFormula.js'
 
 const NS = {
+  cp: 'http://schemas.neumont.edu/ORM/2007-11/CustomProperties',
+  shapeGroup: 'http://www.ormsolutions.com/NORMA/2009-01/ShapeGrouping',
   orm: 'http://schemas.neumont.edu/ORM/2006-04/ORMCore',
   ormDiagram: 'http://schemas.neumont.edu/ORM/2006-04/ORMDiagram',
   ormRoot: 'http://schemas.neumont.edu/ORM/2006-04/ORMRoot',
@@ -79,7 +85,7 @@ function el(name, attrs = {}, children = null) {
 function write(node, depth, out) {
   const pad = '\t'.repeat(depth)
   const a = Object.entries(node.attrs).filter(([, v]) => v != null && v !== false)
-    .map(([k, v]) => ` ${k}="${esc(v)}"`).join('')
+    .map(([k, v]) => ` ${k}="${esc(v).replace(/\r/g, '&#xD;').replace(/\n/g, '&#xA;').replace(/\t/g, '&#x9;')}"`).join('')
   const kids = Array.isArray(node.children) ? node.children.filter(Boolean) : node.children
   if (kids == null || (Array.isArray(kids) && !kids.length)) { out.push(`${pad}<${node.name}${a} />`); return }
   if (!Array.isArray(kids)) { out.push(`${pad}<${node.name}${a}>${esc(kids)}</${node.name}>`); return }
@@ -136,20 +142,17 @@ function frequencyText(ranges) {
 const RING_NAMES = { 'purely-reflexive': 'PurelyReflexive', 'strongly-intransitive': 'StronglyIntransitive', irreflexive: 'Irreflexive',
   reflexive: 'Reflexive', antisymmetric: 'Antisymmetric', asymmetric: 'Asymmetric', symmetric: 'Symmetric', intransitive: 'Intransitive',
   transitive: 'Transitive', acyclic: 'Acyclic' }
-// NORMA's ring types (RingConstraintTypeValues) are fixed combinations, written in this order
-const RING_ORDER = ['PurelyReflexive', 'Reflexive', 'Irreflexive', 'Acyclic', 'Asymmetric', 'Antisymmetric', 'Symmetric', 'Transitive', 'Intransitive', 'StronglyIntransitive']
-const RING_TYPES = new Set(['Reflexive', 'Irreflexive', 'Symmetric', 'Asymmetric', 'Antisymmetric', 'Transitive', 'Intransitive', 'StronglyIntransitive',
-  'Acyclic', 'PurelyReflexive', 'AcyclicTransitive', 'AcyclicIntransitive', 'AcyclicStronglyIntransitive', 'AsymmetricIntransitive',
-  'AsymmetricStronglyIntransitive', 'SymmetricIntransitive', 'SymmetricStronglyIntransitive', 'SymmetricIrreflexive', 'ReflexiveSymmetric',
-  'ReflexiveAntisymmetric', 'ReflexiveTransitive', 'ReflexiveTransitiveAntisymmetric', 'TransitiveIrreflexive', 'TransitiveAntisymmetric',
-  'TransitiveAsymmetric', 'ReflexiveSymmetricTransitive'])
+// NORMA's ring types (RingConstraintTypeValues in ORM2Core.xsd): fixed combinations
+const RING_TYPES = new Set(['Reflexive', 'Irreflexive', 'PurelyReflexive', 'Symmetric', 'Antisymmetric', 'Asymmetric', 'Transitive',
+  'Intransitive', 'StronglyIntransitive', 'Acyclic', 'AcyclicTransitive', 'AcyclicIntransitive', 'AcyclicStronglyIntransitive',
+  'ReflexiveSymmetric', 'ReflexiveAntisymmetric', 'ReflexiveTransitive', 'ReflexiveTransitiveAntisymmetric', 'SymmetricTransitive',
+  'SymmetricIrreflexive', 'SymmetricIntransitive', 'SymmetricStronglyIntransitive', 'AsymmetricIntransitive',
+  'AsymmetricStronglyIntransitive', 'TransitiveIrreflexive', 'TransitiveAntisymmetric', 'TransitiveAsymmetric'])
+const permutations = (xs) => xs.length <= 1 ? [xs] : xs.flatMap((x, i) => permutations([...xs.slice(0, i), ...xs.slice(i + 1)]).map(p => [x, ...p]))
 function ringTypeName(types) {
-  const words = (types ?? []).map(t => RING_NAMES[t]).filter(Boolean)
-  if (!words.length) return null
-  const sorted = [...words].sort((a, b) => RING_ORDER.indexOf(a) - RING_ORDER.indexOf(b))
-  // try the order NORMA's names use, then the order given
-  for (const cand of [sorted.join(''), words.join(''), [...sorted].reverse().join('')]) if (RING_TYPES.has(cand)) return cand
-  return null
+  const words = [...new Set((types ?? []).map(t => RING_NAMES[t]).filter(Boolean))]
+  if (!words.length || words.length > 3) return null
+  return permutations(words).map(p => p.join('')).find(n => RING_TYPES.has(n)) ?? null
 }
 const VC_OPS = { Equal: '=', NotEqual: '≠', LessThan: '<', LessThanOrEqual: '≤', GreaterThan: '>', GreaterThanOrEqual: '≥' }
 
@@ -173,6 +176,19 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
 
   const otById = new Map(objectTypes.map(o => [o.id, o]))
   const factById = new Map(facts.map(f => [f.id, f]))
+  // FreeFBM's formulas as text, for informal rules and notes
+  let ctx = null
+  try { ctx = makeContext(state) } catch { ctx = null }
+  const formulaText = (entry) => {
+    if (!entry?.formula || !ctx) return null
+    try { return renderFormula(entry.formula, ctx).map(t => t.text).join('') } catch { return null }
+  }
+  const safe = (fn) => { try { return fn() } catch { return null } }
+  // "FreeFBM:" notes: { targets: FreeFBM element ids, text }, shown beside the elements
+  const ffNotes = []
+  const ffNote = (targets, text) => ffNotes.push({ targets: targets.filter(Boolean), text: `FreeFBM: ${text}` })
+  const propDefs = (state.propertyDefinitions ?? []).filter(d => d?.id)
+  const propDefIds = new Set(propDefs.map(d => d.id))
   const skipped = {}   // what milestone 1 leaves out → count
   const skip = (what, n = 1) => { skipped[what] = (skipped[what] ?? 0) + n }
 
@@ -186,9 +202,8 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   for (const f of facts) {
     const deonticKeys = new Set((f.deonticUniqueness ?? []).map(r => [...r].sort((a, b) => a - b).join(',')))
     if (f.objectified) nests.set(f.id, { implied: false })
-    // (fully derived ones are exempt in NORMA, but derivation rules are not
-    // exported yet, so NORMA sees every fact type as stored)
-    else if ((f.roles.length > 2
+    // (fully derived ones are exempt; their rules are exported as informal rules)
+    else if (f.derivation !== 'derived' && (f.roles.length > 2
       || (f.uniqueness ?? []).some(u => u.roles.length > 1 && !deonticKeys.has([...u.roles].sort((a, b) => a - b).join(',')))))
       nests.set(f.id, { implied: true })
   }
@@ -254,6 +269,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     else if (a) {
       normaDt = KIND_TO_NORMA[datatypeAssignmentToKind(a)] ?? 'TextVariableLength'
       approximated.push(`${ot.name} (${a.datatypeId} → ${normaDt})`)
+      ffNote([ot.id], `the data type of ${ot.name} is ${a.datatypeId} (${a.profileId} profile) in FreeFBM; NORMA has no such type, so it is written as the nearest NORMA type, ${normaDt.replace(/([a-z])([A-Z])/g, '$1 $2')}.`)
     }
     const elName = normaDt ? normaDataTypeElement(normaDt) : null
     if (!elName) { unspecified.push(ot.name); return el('orm:ConceptualDataType', { id: normaId(ot.id, 'cdt'), ref: dataTypeId('UnspecifiedDataType'), Scale: 0, Length: 0 }) }
@@ -338,7 +354,6 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       conEls.push(el('orm:FrequencyConstraint', { id: normaId(ifr.id), Name: autoName('FrequencyConstraint'), ...frequencyAttrs(ifr.range),
         Modality: ifr.deontic ? 'Deontic' : null }, [seqEl(ifr.id, ifr.roles.map(ri => roleIdOf(f, ri)))]))
     }
-    if (f.derivation || f.derivationRule) skip('fact type derivation rules')
   }
 
   // ── external constraints ─────────────────────────────────────────────────
@@ -364,7 +379,12 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   for (const c of constraints) {
     const seqs = (c.sequences ?? []).map(sq => sq.map(memberRef))
     const label = c.name || conNames[c.constraintType] || c.constraintType
-    if (!seqs.length || seqs.some(sq => !sq.length || sq.some(r => !r))) { skip(`external constraints on elements the export leaves out (${label})`); continue }
+    if (!seqs.length || seqs.some(sq => !sq.length || sq.some(r => !r))) {
+      skip(`external constraints on elements the export leaves out (${label})`)
+      const text = formulaText(safe(() => constraintEntry(c, ctx)))
+      ffNote((c.sequences ?? []).flat().map(m => m.factId?.split('_il_')[0] ?? null), `the constraint ${label} is about elements NORMA does not have, so it was left out.${text ? ` FreeFBM's formula: ${text}` : ''}`)
+      continue
+    }
     const id = normaId(c.id)
     const name = c.name || autoName(conNames[c.constraintType] ?? 'Constraint')
     const modality = c.deontic ? 'Deontic' : null
@@ -405,7 +425,11 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       }
       case 'ring': {
         const type = ringTypeName(c.ringTypes)
-        if (!type) { skip(`ring constraints with a combination NORMA does not have (${label})`); continue }
+        if (!type) {
+          skip(`ring constraints with a combination NORMA does not have (${label})`)
+          ffNote(c.sequences[0].map(m => m.factId), `the ring constraint ${label} combines ${c.ringTypes.join(', ')}, which is not one of NORMA's ring types, so it was left out.`)
+          continue
+        }
         conEls.push(el('orm:RingConstraint', { id, Name: name, Type: type, Modality: modality }, [roleSeq('r', seqs[0])]))
         shapeOf.set(c.id, { id, shape: 'RingConstraintShape' })
         break
@@ -426,7 +450,11 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     }
     // NORMA builds a join path itself when the roles of a sequence lie in
     // binaries joined through one object type; other queries are not exported yet.
-    if ((c.sequences ?? []).some((sq, k) => sq.length && !autoJoinable(sq) && c.queries?.[k])) joinsLeft.push(label)
+    if ((c.sequences ?? []).some((sq, k) => sq.length && !autoJoinable(sq) && c.queries?.[k])) {
+      joinsLeft.push(label)
+      const text = formulaText(safe(() => constraintEntry(c, ctx)))
+      ffNote([c.id], `the join path of this ${conNames[c.constraintType]?.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase() ?? 'constraint'} is a FreeFBM query that this export does not write as a NORMA join path yet, so NORMA asks for one.${text ? ` FreeFBM's formula: ${text}` : ''}`)
+    }
   }
   function autoJoinable(sq) {
     const roles = sq.filter(m => m.kind === 'role')
@@ -447,7 +475,9 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   const subtypeEls = []
   const pathTaken = new Set()
   for (const st of subtypes) {
-    if (!otById.has(st.subId) || !otById.has(st.superId)) continue
+    // a subtype or supertype may be an objectified fact type
+    const isType = (id) => otById.has(id) || nests.get(id)?.implied === false
+    if (!isType(st.subId) || !isType(st.superId)) continue
     const subRole = normaId(st.id, 'sub'), superRole = normaId(st.id, 'super')
     plays(st.subId, 'SubtypeMetaRole', subRole); plays(st.superId, 'SupertypeMetaRole', superRole)
     const ownPI = preferredFor.has(st.subId) || refModes.has(st.subId)
@@ -459,11 +489,12 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       el('orm:UniquenessConstraint', { id: ids.us, Name: autoName('InternalUniquenessConstraint'), IsInternal: 'true' }, [seqEl(`${st.id}#uc-sub`, [subRole])]),
       el('orm:UniquenessConstraint', { id: ids.up, Name: autoName('InternalUniquenessConstraint'), IsInternal: 'true' }, [seqEl(`${st.id}#uc-super`, [superRole])]),
     )
-    const subName = otById.get(st.subId).name, superName = otById.get(st.superId).name
+    const typeName = (id) => otById.get(id)?.name ?? factById.get(id)?.objectifiedName ?? ''
+    const subName = typeName(st.subId), superName = typeName(st.superId)
     subtypeEls.push(el('orm:SubtypeFact', { id: normaId(st.id), _Name: `${subName}IsASubtypeOf${superName}`, PreferredIdentificationPath: path ? 'true' : null }, [
       el('orm:FactRoles', {}, [
-        el('orm:SubtypeMetaRole', { id: subRole, _IsMandatory: 'true', _Multiplicity: 'ZeroToOne', Name: '' }, [el('orm:RolePlayer', { ref: normaId(st.subId) })]),
-        el('orm:SupertypeMetaRole', { id: superRole, _IsMandatory: 'false', _Multiplicity: 'ExactlyOne', Name: '' }, [el('orm:RolePlayer', { ref: normaId(st.superId) })]),
+        el('orm:SubtypeMetaRole', { id: subRole, _IsMandatory: 'true', _Multiplicity: 'ZeroToOne', Name: '' }, [el('orm:RolePlayer', { ref: playerRef(st.subId) })]),
+        el('orm:SupertypeMetaRole', { id: superRole, _IsMandatory: 'false', _Multiplicity: 'ExactlyOne', Name: '' }, [el('orm:RolePlayer', { ref: playerRef(st.superId) })]),
       ]),
       el('orm:InternalConstraints', {}, [
         el('orm:MandatoryConstraint', { ref: ids.m }), el('orm:UniquenessConstraint', { ref: ids.us }), el('orm:UniquenessConstraint', { ref: ids.up }),
@@ -484,21 +515,52 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       const rm = refModes.get(ot.id)
       const pi = preferredFor.get(ot.id)
       objectEls.push(el('orm:EntityType', { ...common, IsPersonal: ot.isPersonal ? 'true' : null, _ReferenceMode: rm?.mode ?? '' }, [
+        ...docEls(ot),
         cardinality,
         played && el('orm:PlayedRoles', {}, played),
+        subtypeDerivationEl(ot),
         pi && el('orm:PreferredIdentifier', { ref: pi }),
+        extensionsOf(ot),
       ]))
     } else {
       objectEls.push(el('orm:ValueType', common, [
+        ...docEls(ot),
         cardinality,
         played && el('orm:PlayedRoles', {}, played),
+        subtypeDerivationEl(ot),
         conceptualDataType(ot),
         ot.valueRange?.length && el('orm:ValueRestriction', {}, [valueConstraintEl('orm:ValueConstraint', ot.id, ot.valueRange, ot.valueRangeDeontic, 'ValueTypeValueConstraint')]),
+        extensionsOf(ot),
       ]))
     }
     // an entity type's value range is its reference mode's: on that role
     if (ot.kind === 'entity' && ot.valueRange?.length && !refModes.has(ot.id)) skip('value ranges of entity types without a reference mode')
-    if (ot.derivation || ot.derivationRule) skip('subtype derivation rules')
+  }
+
+  // A derived subtype: NORMA's subtype derivation rule with FreeFBM's formula
+  // as its informal rule.
+  function subtypeDerivationEl(ot) {
+    if (!ot.derivation || !subtypes.some(st => st.subId === ot.id)) return null
+    const text = formulaText(safe(() => derivationEntry(ot, state, ctx)))
+    ffNote([ot.id], `${ot.name} is a ${ot.derivation === 'semiDerived' ? 'semi-derived' : 'derived'} subtype in FreeFBM, by a formula that this export does not write as a NORMA derivation path yet; it is kept as the informal rule.${text ? ` FreeFBM's formula: ${text}` : ''}`)
+    return el('orm:SubtypeDerivationRule', {}, [
+      el('orm:SubtypeDerivationPath', { id: normaId(ot.id, 'derivation'), DerivationCompleteness: ot.derivation === 'semiDerived' ? 'PartiallyDerived' : null }, [
+        el('orm:InformalRule', {}, [el('orm:DerivationNote', { id: normaId(ot.id, 'derivation-note') }, [el('orm:Body', {}, text ?? 'Derived in FreeFBM.')])]),
+      ]),
+    ])
+  }
+  // NORMA's own definition and note of an element
+  function docEls(x) {
+    return [
+      x.definition && el('orm:Definitions', {}, [el('orm:Definition', { id: normaId(x.id, 'definition') }, [el('orm:Text', {}, x.definition)])]),
+      x.note && el('orm:Notes', {}, [el('orm:Note', { id: normaId(x.id, 'note') }, [el('orm:Text', {}, x.note)])]),
+    ]
+  }
+  // custom property values (NORMA's CustomProperties extension)
+  function extensionsOf(x) {
+    const vals = Object.entries(x.properties ?? {}).filter(([k, v]) => propDefIds.has(k) && v !== '' && v != null)
+    if (!vals.length) return null
+    return el('orm:Extensions', {}, vals.map(([k, v]) => el('cp:CustomProperty', { id: normaId(x.id, `property:${k}`), value: String(v) }, [el('cp:Definition', { ref: normaId(k, 'property-definition') })])))
   }
 
   // ── fact types ───────────────────────────────────────────────────────────
@@ -521,8 +583,9 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     let k = 0
     const name = pascal(factLabel(f))
     return el('orm:Fact', { id: normaId(f.id), _Name: name || null }, [
+      ...docEls(f),
       el('orm:FactRoles', {}, f.roles.map(r => el('orm:Role', { id: normaId(r.id), Name: r.roleName ?? '' },
-        [playerOf(r) && el('orm:RolePlayer', { ref: playerRef(playerOf(r)) }), roleValueEl(f, r)]))),
+        [playerOf(r) && el('orm:RolePlayer', { ref: playerRef(playerOf(r)) }), roleValueEl(f, r), extensionsOf(r)]))),
       orders.size && el('orm:ReadingOrders', {}, [...orders.values()].map(o => {
         const roId = normaId(f.id, `ro:${o.order.join(',')}`)
         return el('orm:ReadingOrder', { id: roId }, [
@@ -531,8 +594,24 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         ])
       })),
       internalRefs.get(f.id) && el('orm:InternalConstraints', {}, internalRefs.get(f.id)),
+      derivationEl(f),
+      extensionsOf(f),
     ])
   })
+  // A derived fact type: NORMA's derivation rule with FreeFBM's formula as its
+  // informal rule (NORMA's role paths are not written yet).
+  function derivationEl(f) {
+    if (!f.derivation) return null
+    const entries = safe(() => factDerivationEntries(f, state, ctx)) ?? []
+    const text = entries.map(formulaText).filter(Boolean).join('\n') || null
+    const name = pascal(factLabel(f))
+    ffNote([f.id], `${name} is ${f.derivation === 'semiDerived' ? 'semi-derived' : 'derived'} in FreeFBM by a formula that this export does not write as a NORMA derivation path yet; it is kept as the informal rule.${text ? ` FreeFBM's formula: ${text}` : ' FreeFBM has no complete rule for it yet.'}`)
+    return el('orm:DerivationRule', {}, [
+      el('orm:FactTypeDerivationPath', { id: normaId(f.id, 'derivation'), DerivationCompleteness: f.derivation === 'semiDerived' ? 'PartiallyDerived' : null }, [
+        el('orm:InformalRule', {}, [el('orm:DerivationNote', { id: normaId(f.id, 'derivation-note') }, [el('orm:Body', {}, text ?? 'Derived in FreeFBM (no complete rule yet).')])]),
+      ]),
+    ])
+  }
   // Each objectification: the objectifying type, and per role a link fact
   // type (ImpliedFact) between it and the role's player, with a role proxy for
   // the player's side and NORMA's uniqueness and mandatory on its own role.
@@ -604,7 +683,6 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   }
 
   if (joinsLeft.length) warn(`${joinsLeft.length} constraint${joinsLeft.length === 1 ? ' has a join' : 's have joins'} that NORMA cannot build by itself; their join paths are not exported yet, so NORMA may report that a join path is required: ${joinsLeft.join(', ')}.`)
-  if (state.groups?.length) skip('groups')
 
   // ── data type elements ───────────────────────────────────────────────────
   const dataTypeEls = [...dataTypes].map(([elName, id]) => el(`orm:${elName}`, { id }))
@@ -650,7 +728,6 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       const f = factById.get(occ.schemaElementId)
       if (f) { shapes.push(factShape(f, occ, shapeId(occ))); continue }
     }
-    if (d.notes?.length) skip('diagram notes', d.notes.length)
     for (const co of d.constraintOccurrences ?? []) {
       const sh = shapeOf.get(co.schemaConstraintId)
       if (!sh) continue
@@ -784,8 +861,149 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   const left = Object.entries(skipped)
   if (left.length) warn(`Not exported yet (later milestones of the export): ${left.map(([what, k]) => `${k} ${what}`).join(', ')}.`)
 
+  // ── notes ────────────────────────────────────────────────────────────────
+  // Diagram notes become NORMA model notes with a shape on each diagram that
+  // shows them (FreeFBM's copies of one NORMA note, id_1, id_2, are one note);
+  // a note's connectors become the elements it refers to. FreeFBM's own
+  // import notes are left out. The "FreeFBM:" notes are added beside their
+  // elements, on the first diagram that shows one of them.
+  const idOf = new Map()   // FreeFBM element id → NORMA id, for references
+  for (const ot of objectTypes) idOf.set(ot.id, ['ObjectType', normaId(ot.id)])
+  for (const f of facts) idOf.set(f.id, ['FactType', normaId(f.id)])
+  for (const c of constraints) if (shapeOf.has(c.id)) idOf.set(c.id, [['exclusion', 'equality', 'subset'].includes(c.constraintType) ? 'SetComparisonConstraint' : 'SetConstraint', shapeOf.get(c.id).id])
+  const modelNotes = new Map()   // note key → { id, text, refs }
+  const noteShapes = new Map()   // diagram id → [shape elements]
+  const addNoteShape = (diagramId, noteId, x, y, w, h) =>
+    noteShapes.set(diagramId, [...(noteShapes.get(diagramId) ?? []), el('ormDiagram:ModelNoteShape', { id: normaId(`${diagramId}:${noteId}`, 'note-shape'), IsExpanded: 'true',
+      AbsoluteBounds: boundsAttr(inches(x), inches(y), inches(w), inches(h)) }, [el('ormDiagram:Subject', { ref: noteId })])])
+  let importNotesLeft = 0
+  for (const d of diagrams) for (const n of d.notes ?? []) {
+    if (n.importNote) { importNotesLeft++; continue }
+    if (/^FreeFBM:/.test(n.text ?? '')) continue
+    const key = /^(_[0-9A-Fa-f-]{36})_\d+$/.exec(n.id)?.[1] ?? n.id
+    if (!modelNotes.has(key)) modelNotes.set(key, { id: normaId(key, GUID_RE.test(key) ? '' : 'note'), text: n.text ?? '', refs: new Set() })
+    const mn = modelNotes.get(key)
+    for (const c of n.connectors ?? []) if (idOf.has(c.targetId)) mn.refs.add(c.targetId)
+    addNoteShape(d.id, mn.id, n.x - (n.w ?? 0) / 2, n.y - (n.h ?? 0) / 2, n.w ?? 120, n.h ?? 40)
+  }
+  if (importNotesLeft) note(`${importNotesLeft} FreeFBM import note${importNotesLeft === 1 ? '' : 's'} shown on diagrams ${importNotesLeft === 1 ? 'was' : 'were'} left out; they describe the import from NORMA.`)
+  // wrap long lines: NORMA does not wrap a note's text
+  const wrap = (text, width = 72) => text.split('\n').map(line => {
+    const out = []; let cur = ''
+    for (const w of line.split(/\s+/)) { if (cur && (cur + ' ' + w).length > width) { out.push(cur); cur = w } else cur = cur ? `${cur} ${w}` : w }
+    out.push(cur); return out.join('\n')
+  }).join('\n')
+  const noteSize = (text) => {
+    const lines = text.split('\n')
+    return { w: Math.max(...lines.map(l => l.length)) * 4.4 + 16, h: lines.length * NORMA.lineHeight * PX + 12 }
+  }
+  // where an element is drawn: first diagram and occurrence
+  const drawnAt = (elId) => {
+    for (const d of diagrams) {
+      const o = (d.occurrences ?? []).find(o => o.schemaElementId === elId && !o.refModeOwnerOccId)
+        ?? (d.constraintOccurrences ?? []).find(o => o.schemaConstraintId === elId)
+      if (o) return { d, x: o.x, y: o.y }
+    }
+    return null
+  }
+  // the summary note
+  const leftOut = []
+  const others = schemas.filter(x => x.id !== sid)
+  if (others.length) leftOut.push(`${others.length} other schema${others.length === 1 ? '' : 's'} (${others.map(x => x.name).join(', ')}): only “${modelName}” is exported`)
+  if (state.mappings?.length) leftOut.push(`${state.mappings.length} mapping${state.mappings.length === 1 ? '' : 's'} between schemas`)
+  const popCount = Object.keys(state.factPopulations ?? {}).length + Object.keys(state.populations ?? {}).length
+  if (popCount) leftOut.push('sample populations')
+  if ((state.languages ?? []).length > 1) leftOut.push(`names and readings in other languages (${state.languages.join(', ')}); NORMA has one`)
+  for (const [what, k] of Object.entries(skipped)) leftOut.push(`${k} ${what}`)
+  if (joinsLeft.length) leftOut.push(`the join paths of ${joinsLeft.length} constraint${joinsLeft.length === 1 ? '' : 's'}`)
+  const nDerived = facts.filter(f => f.derivation).length + objectTypes.filter(o => o.derivation && subtypes.some(st => st.subId === o.id)).length
+  if (nDerived) leftOut.push(`${nDerived} derivation rule${nDerived === 1 ? '' : 's'} as NORMA paths (kept as informal rules)`)
+  const summary = wrap(`FreeFBM: this model was exported from FreeFBM. ${leftOut.length ? `Not in NORMA's form: ${leftOut.join('; ')}. The notes starting with “FreeFBM:” say more where it concerns one element.` : 'Everything in it is in NORMA\'s form.'}`)
+  // the FreeFBM notes, beside their elements
+  let ffCount = 0
+  const placed = new Map()   // diagram id → count of notes placed beside elements, to stagger them
+  for (const fn of ffNotes) {
+    const id = normaId(`freefbm-note:${ffCount++}:${fn.text}`)
+    const text = wrap(fn.text)
+    modelNotes.set(id, { id, text, refs: new Set(fn.targets.filter(t => idOf.has(t))) })
+    const at = fn.targets.map(drawnAt).find(Boolean)
+    if (!at) continue
+    const k = placed.get(at.d.id) ?? 0; placed.set(at.d.id, k + 1)
+    const { w, h } = noteSize(text)
+    addNoteShape(at.d.id, id, at.x + 60, at.y + 40 + (k % 3) * 12, w, h)
+  }
+  {
+    const id = normaId(`freefbm-summary:${modelName}`)
+    modelNotes.set(id, { id, text: summary, refs: new Set() })
+    const d = diagrams[0]
+    if (d) {
+      const xs = (d.occurrences ?? []).map(o => o.x), ys = (d.occurrences ?? []).map(o => o.y)
+      const { w, h } = noteSize(summary)
+      addNoteShape(d.id, id, Math.max(10, (xs.length ? Math.min(...xs) : 100) - 60), Math.max(10, (ys.length ? Math.min(...ys) : 100) - 60 - h), w, h)
+    }
+  }
+  const modelNoteEls = [...modelNotes.values()].map(mn => el('orm:ModelNote', { id: mn.id }, [
+    el('orm:Text', {}, mn.text),
+    mn.refs.size && el('orm:ReferencedBy', {}, [...mn.refs].map(r => el(`orm:${idOf.get(r)[0]}`, { ref: idOf.get(r)[1] }))),
+  ]))
+  for (const de of diagramEls) {
+    const did = diagrams[diagramEls.indexOf(de)].id
+    const extra = noteShapes.get(did)
+    if (!extra?.length) continue
+    let shapesEl = de.children.find(c => c && c.name === 'ormDiagram:Shapes')
+    if (!shapesEl) { shapesEl = el('ormDiagram:Shapes', {}, []); de.children.unshift(shapesEl) }
+    shapesEl.children.push(...extra)
+  }
+  if (ffNotes.length) note(`${ffNotes.length} note${ffNotes.length === 1 ? '' : 's'} starting with “FreeFBM:” say what NORMA could not take as it is, beside the elements concerned; a summary note is on the first diagram.`)
+
+  // ── groups ───────────────────────────────────────────────────────────────
+  // Element groups with their colours (NORMA's shape grouping extension)
+  const COLOR_ROLES = { outline: 'Outline', fill: 'Background', text: 'ForegroundText', graphics: 'ForegroundGraphics',
+    floating: 'FloatingText', constraint: 'Constraint', deontic: 'DeonticConstraint', connector: 'RolePlayerConnector' }
+  const rgb = (hex) => { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex ?? ''); return m ? m.slice(1).map(h => parseInt(h, 16)).join(', ') : null }
+  const memberRefOf = (mid) => {
+    if (idOf.has(mid)) return idOf.get(mid)[1]
+    for (const f of facts) {
+      if (f.roles.some(r => r.id === mid)) return normaId(mid)
+      if ((f.uniqueness ?? []).some(u => u.id === mid) || f.roles.some(r => r.mandatoryId === mid) || (f.internalFrequency ?? []).some(q => q.id === mid)) return normaId(mid)
+    }
+    if (subtypes.some(st => st.id === mid)) return normaId(mid)
+    const key = /^(_[0-9A-Fa-f-]{36})_\d+$/.exec(mid)?.[1] ?? mid
+    return modelNotes.get(key)?.id ?? null
+  }
+  const groups = (state.groups ?? []).filter(g => !sid || schemas.length <= 1 || (g.members ?? []).some(m => memberRefOf(m)))
+  let usesShapeGroups = false
+  const groupEls = groups.map(g => {
+    const colors = Object.entries(g.colors ?? {}).map(([ch, hex]) => [COLOR_ROLES[ch], rgb(hex)]).filter(([r, v]) => r && v)
+    if (colors.length) usesShapeGroups = true
+    const refs = [...new Set((g.members ?? []).map(memberRefOf).filter(Boolean))]
+    return el('orm:Group', { id: normaId(g.id, GUID_RE.test(g.id) ? '' : 'group'), Name: g.name || 'Group', Priority: g.priority || null }, [
+      ...docEls(g),
+      colors.length && el('orm:GroupTypes', {}, [el('shapeGroup:ORMShapeColorGroupType', { id: normaId(g.id, 'colors') },
+        colors.map(([role, value]) => el('ormDiagram:ORMDiagramDynamicColor', { ColorRole: role, ColorValue: value })))]),
+      refs.length && el('orm:Elements', {}, refs.map(r => el('orm:IncludedElement', { ref: r }))),
+    ])
+  })
+
+  // ── custom property definitions ──────────────────────────────────────────
+  const ORM_TYPES = { entity: ['EntityType'], value: ['ValueType'], fact: ['FactType'], role: ['Role'], subtype: ['SubtypeFact'],
+    constraint: ['UniquenessConstraint', 'MandatoryConstraint', 'FrequencyConstraint', 'RingConstraint', 'EqualityConstraint', 'ExclusionConstraint', 'SubsetConstraint', 'ValueComparisonConstraint'],
+    group: ['ElementGrouping'] }
+  const CP_TYPES = { string: 'String', number: 'Decimal', date: 'DateTime' }
+  const cpGroups = new Map()
+  for (const d of propDefs) {
+    const cat = d.category || 'FreeFBM'
+    if (!cpGroups.has(cat)) cpGroups.set(cat, [])
+    const types = [...new Set((d.appliesTo ?? []).flatMap(k => ORM_TYPES[k] ?? []))]
+    if (!CP_TYPES[d.type]) ffNote([], `the custom property ${d.name} is a ${d.type} in FreeFBM; NORMA has no such property type, so it is a text property.`)
+    cpGroups.get(cat).push(el('cp:Definition', { id: normaId(d.id, 'property-definition'), name: d.name, description: d.description || null, category: cat,
+      dataType: CP_TYPES[d.type] ?? 'String', defaultValue: d.default || null, ORMTypes: (types.length ? types : ['EntityType', 'ValueType', 'FactType']).join(', ') }))
+  }
+  const cpEls = [...cpGroups].map(([cat, defs]) => el('cp:CustomPropertyGroup', { id: normaId(`property-group:${cat}`), name: cat, isDefault: 'false' }, [el('cp:PropertyDefinitions', {}, defs)]))
+
   // ── the file ─────────────────────────────────────────────────────────────
-  const root = el('ormRoot:ORM2', { 'xmlns:orm': NS.orm, 'xmlns:ormDiagram': NS.ormDiagram, 'xmlns:ormRoot': NS.ormRoot }, [
+  const root = el('ormRoot:ORM2', { 'xmlns:orm': NS.orm, 'xmlns:ormDiagram': NS.ormDiagram,
+    'xmlns:cp': cpEls.length ? NS.cp : null, 'xmlns:shapeGroup': usesShapeGroups ? NS.shapeGroup : null, 'xmlns:ormRoot': NS.ormRoot }, [
     el('orm:ORMModel', { id: modelId, Name: modelName }, [
       (objectEls.length || nestEls.length) && el('orm:Objects', {}, [...objectEls, ...nestEls]),
       (factEls.length || subtypeEls.length) && el('orm:Facts', {}, [...factEls, ...subtypeEls, ...linkEls]),
@@ -796,10 +1014,13 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
           el('orm:CustomFormatString', {}, c.format),
           el('orm:Kind', { ref: kindId(c.kind) }),
         ]))),
+      modelNoteEls.length && el('orm:ModelNotes', {}, modelNoteEls),
       el('orm:ReferenceModeKinds', {}, modeKinds.map(([k, format]) =>
         el('orm:ReferenceModeKind', { id: kindId(k), FormatString: format, ReferenceModeType: k }))),
     ]),
     ...diagramEls,
+    groupEls.length && el('orm:Grouping', { id: normaId(`grouping:${modelName}`) }, [el('orm:ORMModel', { ref: modelId }), el('orm:Groups', {}, groupEls)]),
+    ...cpEls,
   ])
   const out = ['<?xml version="1.0" encoding="utf-8"?>']
   write(root, 0, out)

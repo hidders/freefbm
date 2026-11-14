@@ -191,8 +191,9 @@ other languages (NORMA has one language).
    constraints on subtype links, unaries as current NORMA
    writes them, reading and label positions.
 3. **The rest NORMA has.** Groups and colours, custom properties, model notes
-   and element notes, derivation rules as paths where possible, and the
-   "FreeFBM:" notes for everything left out (with the summary note).
+   and element notes, derivation rules (informal now; as paths where
+   possible later), and the "FreeFBM:" notes for everything left out (with
+   the summary note).
 4. **Faithful re-export.** The import keeps, hidden in the .ffbm file, what
    it needs from the original: shape ids, element order, exact geometry in
    inches, implied elements and the NORMA-only parts it skips (generated
@@ -284,6 +285,26 @@ itself (roles in binaries joined through one object type); other queries
 are reported and wait for milestone 3. The checks pass on the sample model
 and all 104 current-format NORMA samples; labels come back within 6 px (the
 importer keeps a label reaching a little into its shape beside it).
+
+Milestone 3 (v1.2.28): diagram notes as NORMA model notes with their
+shapes and references; definitions and notes of elements; groups with
+their members and colours (NORMA's shape grouping extension); custom
+property definitions and values; derived fact types and derived subtypes
+as NORMA derivation rules whose informal rule holds FreeFBM's formula
+(NORMA's role paths are not written yet), so NORMA marks them derived and
+no longer objectifies derived fact types implicitly. The "FreeFBM:" notes
+are in: one beside each element whose content NORMA cannot hold as it is
+(derivation rules, join paths, data types of other profiles, constraints
+NORMA has no form for), with FreeFBM's formula where there is one, and a
+summary note on the first diagram. The importer leaves "FreeFBM:" notes
+out. The check now also runs export → import on imported NORMA files: all
+104 samples pass except one (two value type shapes NORMA did not draw,
+which the import adds), and a 4 MB real model (ATOP, 58 diagrams) passes
+but for six labels that come back at their default place.
+
+Still open after milestone 3: derivation rules and join paths as NORMA
+role paths (formal), sample populations, and milestone 4 (faithful
+re-export of imported files).
 
 Open points for the NORMA check: whether a value type without a data type should get NORMA's error or a
 default type.
