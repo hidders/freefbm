@@ -1257,7 +1257,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
   // ── Uniqueness bar level assignment ────────────────────────────────────────
   // The uniqueness array is kept sorted in the store (ascending role count),
-  // so level assignment here is simply positional.
+  // so level assignment here is simply positional. Among bars of one length a
+  // new one goes first, nearest the role boxes, as in NORMA (an import keeps
+  // NORMA's stacking).
   // Implied unary UCs are treated as if explicitly specified for level purposes,
   // so that explicit multi-role UCs are pushed to higher levels and don't overlap.
   const hasUnary = fact.uniqueness.some(u => u.roles.length === 1) || impliedRoles.length > 0
