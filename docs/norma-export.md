@@ -308,6 +308,17 @@ out. The check now also runs export → import on imported NORMA files: all
 which the import adds), and a 4 MB real model (ATOP, 58 diagrams) passes
 but for six labels that come back at their default place.
 
+Formal derivation paths (v1.2.32): conjunctive rules (∃, ∧, fact atoms,
+link fact types of objectifications, subtype tests, equalities) are written
+as NORMA role paths (`src/export/normaPathsOut.js`): one lead path from the
+subject, split (And) into one subpath per atom, each with its own root;
+object unifiers join the places that are one variable; a derived fact
+type's roles are projected from them. Re-importing gives the same rule up
+to typing (a subtype test comes back as the variable's type). Rules with
+negation, disjunction, closures, value conditions or computed roles stay
+informal, with a remark in the element's note saying why (SamplePopulation:
+6 of 15 formal).
+
 Still open after milestone 3: derivation rules and join paths as NORMA
 role paths (formal), sample populations, and milestone 4 (faithful
 re-export of imported files).

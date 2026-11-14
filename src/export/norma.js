@@ -29,6 +29,8 @@ import { makeContext, constraintEntry } from '../logic/constraintFormulas.js'
 import { factDerivationEntries } from '../logic/factDerivation.js'
 import { derivationEntry } from '../logic/derivationRule.js'
 import { renderFormula } from '../logic/renderFormula.js'
+import { SUBJECT } from '../logic/derivationRule.js'
+import { conjunctivePath } from './normaPathsOut.js'
 
 const NS = {
   cp: 'http://schemas.neumont.edu/ORM/2007-11/CustomProperties',
@@ -190,7 +192,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   // the element concerned (NORMA's Notes window shows it), starting with
   // "FreeFBM:" so that the importer can leave them out again
   const ffNotes = []
-  let derivedInformal = 0
+  let derivedInformal = 0, derivedFormal = 0
   const elementRemarks = new Map()   // FreeFBM element id → remarks
   const ffNote = (targets, text) => {
     const t = targets.filter(Boolean)
@@ -552,7 +554,22 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   // as its informal rule.
   function subtypeDerivationEl(ot) {
     if (!ot.derivation || !subtypes.some(st => st.subId === ot.id)) return null
+    const sup = subtypes.find(st => st.subId === ot.id).superId
+    const formal = ot.derivationRule && safe(() => conjunctivePath(ot.derivationRule, {
+      el, id: (part) => normaId(ot.id, `path:${part}`), factById,
+      subject: SUBJECT, subjectType: sup,
+      roleRef: (fid, i) => normaId(factById.get(fid).roles[i].id), playerOf: (fid, i) => factById.get(fid).roles[i].objectTypeId,
+      linkRoleRef: (fid, k, i) => i === 0 ? normaId(fid, `link${k}-role`) : normaId(fid, `link${k}-proxy`), isNested: (fid) => nests.has(fid),
+      typeRef: (tid) => playerRef(tid),
+    }))
+    if (formal && !formal.error) {
+      derivedFormal++
+      return el('orm:SubtypeDerivationRule', {}, [
+        el('orm:SubtypeDerivationPath', { id: normaId(ot.id, 'derivation'), DerivationCompleteness: ot.derivation === 'semiDerived' ? 'PartiallyDerived' : null }, [formal.path]),
+      ])
+    }
     const text = formulaText(safe(() => derivationEntry(ot, state, ctx)))
+    if (formal?.error) ffNote([ot.id], `the derivation rule is NORMA's informal rule only: FreeFBM's rule has ${formal.error}, which this export cannot write as a NORMA derivation path yet.`)
     derivedInformal++
     return el('orm:SubtypeDerivationRule', {}, [
       el('orm:SubtypeDerivationPath', { id: normaId(ot.id, 'derivation'), DerivationCompleteness: ot.derivation === 'semiDerived' ? 'PartiallyDerived' : null }, [
@@ -617,12 +634,28 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   // informal rule (NORMA's role paths are not written yet).
   function derivationEl(f) {
     if (!f.derivation) return null
+    const completeness = f.derivation === 'semiDerived' ? 'PartiallyDerived' : null
+    // a conjunctive rule as NORMA's role path (src/export/normaPathsOut.js)
+    const formal = f.derivationRule && f.roles.length && safe(() => conjunctivePath(f.derivationRule, {
+      el, id: (part) => normaId(f.id, `path:${part}`), factById,
+      subject: `role:${f.roles[0].id}`, subjectType: f.roles[0].objectTypeId,
+      projected: f.roles.map(r => ({ roleId: normaId(r.id), varId: `role:${r.id}` })),
+      roleRef: (fid, i) => normaId(factById.get(fid).roles[i].id), playerOf: (fid, i) => factById.get(fid).roles[i].objectTypeId,
+      linkRoleRef: (fid, k, i) => i === 0 ? normaId(fid, `link${k}-role`) : normaId(fid, `link${k}-proxy`), isNested: (fid) => nests.has(fid),
+      typeRef: (tid) => playerRef(tid),
+    }))
+    if (formal && !formal.error) {
+      derivedFormal++
+      return el('orm:DerivationRule', {}, [
+        el('orm:FactTypeDerivationPath', { id: normaId(f.id, 'derivation'), DerivationCompleteness: completeness }, [formal.path, formal.projections]),
+      ])
+    }
     const entries = safe(() => factDerivationEntries(f, state, ctx)) ?? []
     const text = entries.map(formulaText).filter(Boolean).join('\n') || null
-    const name = pascal(factLabel(f))
     derivedInformal++
+    if (formal?.error) ffNote([f.id], `the derivation rule is NORMA's informal rule only: FreeFBM's rule has ${formal.error}, which this export cannot write as a NORMA derivation path yet.`)
     return el('orm:DerivationRule', {}, [
-      el('orm:FactTypeDerivationPath', { id: normaId(f.id, 'derivation'), DerivationCompleteness: f.derivation === 'semiDerived' ? 'PartiallyDerived' : null }, [
+      el('orm:FactTypeDerivationPath', { id: normaId(f.id, 'derivation'), DerivationCompleteness: completeness }, [
         el('orm:InformalRule', {}, [el('orm:DerivationNote', { id: normaId(f.id, 'derivation-note') }, [el('orm:Body', {}, text ?? 'Derived in FreeFBM (no complete rule yet).')])]),
       ]),
     ])
@@ -932,8 +965,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   if ((state.languages ?? []).length > 1) leftOut.push(`names and readings in other languages (${state.languages.join(', ')}); NORMA has one`)
   for (const [what, k] of Object.entries(skipped)) leftOut.push(`${k} ${what}`)
   if (joinsLeft.length) leftOut.push(`the join paths of ${joinsLeft.length} constraint${joinsLeft.length === 1 ? '' : 's'}`)
-  const nDerived = facts.filter(f => f.derivation).length + objectTypes.filter(o => o.derivation && subtypes.some(st => st.subId === o.id)).length
-  if (nDerived) leftOut.push(`${nDerived} derivation rule${nDerived === 1 ? '' : 's'} as NORMA paths (kept as informal rules)`)
+  if (derivedInformal) leftOut.push(`${derivedInformal} derivation rule${derivedInformal === 1 ? '' : 's'} as NORMA paths (kept as informal rules)`)
   const summary = wrap(`FreeFBM: this model was exported from FreeFBM. ${leftOut.length ? `Not in NORMA's form: ${leftOut.join('; ')}. Where it concerns one element, the element's note (NORMA's Notes window) says more, after “FreeFBM:”.` : 'Everything in it is in NORMA\'s form.'}`)
   // remarks about no element in particular (custom property types) go to the summary
   const general = ffNotes.filter(fn => !fn.targets.length).map(fn => fn.text.replace(/^FreeFBM: /, ''))
@@ -963,7 +995,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     shapesEl.children.push(...extra)
   }
   const nRemarks = [...elementRemarks.values()].reduce((n, r) => n + r.length, 0)
-  note(`A summary note on the first diagram says what NORMA could not take as it is${nRemarks ? `; ${nRemarks} remark${nRemarks === 1 ? '' : 's'} starting with “FreeFBM:” in the notes of the elements concerned ${nRemarks === 1 ? 'says' : 'say'} more` : ''}.${derivedInformal ? ` ${derivedInformal} derivation rule${derivedInformal === 1 ? ' is' : 's are'} written as NORMA informal rules holding FreeFBM's formula.` : ''}`)
+  note(`A summary note on the first diagram says what NORMA could not take as it is${nRemarks ? `; ${nRemarks} remark${nRemarks === 1 ? '' : 's'} starting with “FreeFBM:” in the notes of the elements concerned ${nRemarks === 1 ? 'says' : 'say'} more` : ''}.${derivedFormal ? ` ${derivedFormal} derivation rule${derivedFormal === 1 ? ' is' : 's are'} written as NORMA derivation paths.` : ''}${derivedInformal ? ` ${derivedInformal} derivation rule${derivedInformal === 1 ? ' is' : 's are'} written as NORMA informal rules holding FreeFBM's formula.` : ''}`)
 
   // ── groups ───────────────────────────────────────────────────────────────
   // Element groups with their colours (NORMA's shape grouping extension)
