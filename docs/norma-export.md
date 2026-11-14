@@ -125,6 +125,7 @@ the same file, and diffs between exports are readable.
 |---|---|
 | fact type | `orm:Fact` with `FactRoles`, `ReadingOrders`, `InternalConstraints` |
 | role | `orm:Role` `Name` (role name), `RolePlayer`; the player's `PlayedRoles` lists it |
+| objectified fact type, and NORMA's implied objectification (more than two roles, or an alethic internal uniqueness over more than one role, not fully derived) | `orm:ObjectifiedType` with `NestedPredicate` (`IsImplied` for implied ones), its preferred identifier (`objectifiedIdentifier`, else the first such uniqueness), and per role an `orm:ImpliedFact` link fact type: a `RoleProxy` for the role, the objectifying type's role with a uniqueness and a simple mandatory, readings "is involved in" / "involves" (or the link's own) |
 | unary | a fact type with one role, `UnaryPattern="Negatable"` not written (milestone 2 checks what current NORMA expects) |
 | readings: `readingParts` (role order 0…n−1), `alternativeReadings` (`roleOrder`, `parts`) | one `ReadingOrder` per role order (`RoleSequence`), a `Reading` per text; `Data` is the parts around `{0}`…`{n−1}` (placeholders numbered in the order's sequence), hyphen binding written as typed |
 | internal uniqueness `uniqueness[]` | `orm:UniquenessConstraint IsInternal="true"` in `Constraints`, referenced from the fact's `InternalConstraints`; `Modality="Deontic"` when in `deonticUniqueness` |
@@ -180,13 +181,14 @@ other languages (NORMA has one language).
 
 1. **Core model and its diagrams.** Entity and value types (data types,
    reference modes), fact types with readings, internal uniqueness
-   (preferred ones included), simple mandatory roles, subtype links, and the
+   (preferred ones included), simple mandatory roles, subtype links,
+   objectifications (implied ones too, as NORMA keeps them), and the
    diagram shapes for all of them, with the export report. Enough for most
    models people draw, and enough to judge in NORMA whether the diagrams look
    right.
 2. **The other constraints.** External constraints with their shapes, value
    and cardinality ranges, internal frequency, ring constraints,
-   objectification, constraints on subtype links, unaries as current NORMA
+   constraints on subtype links, unaries as current NORMA
    writes them, reading and label positions.
 3. **The rest NORMA has.** Groups and colours, custom properties, model notes
    and element notes, derivation rules as paths where possible, and the
@@ -249,7 +251,17 @@ Chrome):
   namespaces are not read by the importer.
 - Not yet tried in NORMA itself (test 5).
 
-Open points for the NORMA check: whether NORMA rebuilds the implied
-mandatory constraints of value types it writes (`ImpliedByObjectType`), and
-whether a value type without a data type should get NORMA's error or a
+First check in NORMA (sample model, 2026-11-14): the file opens and the
+diagram looks as in FreeFBM; NORMA's error list has only the model's own
+errors (two value types without a data type, Room and Term without a
+reference scheme because external constraints are milestone 2). NORMA's
+debug build stopped once with a failed assertion while loading: it had to
+add the implied objectifications it keeps for every fact type with more
+than two roles or a uniqueness over more than one role. The export now
+writes them (and explicit objectifications) as NORMA saves them, with their
+link fact types, so this moved from milestone 2 into milestone 1. A file
+saved by NORMA also showed that NORMA rebuilds implied mandatory
+constraints (ImpliedByObjectType) and reading shapes itself.
+
+Open points for the NORMA check: whether a value type without a data type should get NORMA's error or a
 default type.

@@ -176,8 +176,10 @@ async function runInPage({ name, content, isOrm }) {
       const what = `fact type ${f.id}`
       if (!b) { diffs.push(`${what} is missing`); continue }
       if (b.roles.length !== f.roles.length) { diffs.push(`${what} has ${b.roles.length} roles`); continue }
+      if (!!b.objectified !== !!f.objectified) diffs.push(`${what}: objectified ${!!b.objectified}`)
+      if (f.objectified && (b.objectifiedName ?? '') !== (f.objectifiedName ?? '')) diffs.push(`${what}: objectified as ${b.objectifiedName}`)
       f.roles.forEach((r, i) => {
-        const p = objectified.has(r.objectTypeId) ? null : nid(r.objectTypeId)
+        const p = nid(r.objectTypeId)
         if ((b.roles[i].objectTypeId ?? null) !== p) diffs.push(`${what}: role ${i + 1} is played by ${b.roles[i].objectTypeId}`)
         if ((b.roles[i].roleName ?? '') !== (r.roleName ?? '')) diffs.push(`${what}: role ${i + 1} is named ${b.roles[i].roleName}`)
       })
@@ -210,7 +212,7 @@ async function runInPage({ name, content, isOrm }) {
       for (const o of d.occurrences) {
         if (o.refModeOwnerOccId && !expanded.has(o.refModeOwnerOccId)) continue
         const el = st.objectTypes.find(x => x.id === o.schemaElementId) ?? st.facts.find(x => x.id === o.schemaElementId)
-        if (!el || (el.roles && el.objectified)) continue
+        if (!el) continue
         const cands = db.occurrences.filter(x => x.schemaElementId === nid(o.schemaElementId) && !x.refModeOwnerOccId === !o.refModeOwnerOccId)
         const best = cands.map(x => ({ x, d: Math.hypot(x.x - o.x, x.y - o.y) })).sort((p, q) => p.d - q.d)[0]
         occs++
