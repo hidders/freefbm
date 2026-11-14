@@ -123,10 +123,8 @@ export function conjunctivePath(rule, opts) {
         addNode(t.t.arg, { kind: 'PathedRole', id: id(`t${k}r0`) })
         return [el('orm:SubPath', { id: id(`t${k}`) }, [
           el('orm:RootObjectType', { id: id(`t${k}root`), ref: opts.typeRef(link.superId) }),
-          el('orm:PathedRoles', {}, [
-            el('orm:PathedRole', { id: id(`t${k}r0`), ref: link.superRole, Purpose: 'PostInnerJoin' }),
-            el('orm:PathedRole', { id: id(`t${k}r1`), ref: link.subRole, Purpose: 'SameFactType' }),
-          ]),
+          // NORMA joins the supertype's meta role alone to step into the subtype
+          el('orm:PathedRoles', {}, [el('orm:PathedRole', { id: id(`t${k}r0`), ref: link.superRole, Purpose: 'PostInnerJoin' })]),
         ])]
       }
       if (!t.top) { fail = 'a test for a type without a supertype inside a negation or disjunction'; return [] }

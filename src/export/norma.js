@@ -559,7 +559,9 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       el, id: (part) => normaId(ot.id, `path:${part}`), factById,
       subject: SUBJECT, subjectType: sup,
       roleRef: (fid, i) => normaId(factById.get(fid).roles[i].id), playerOf: (fid, i) => factById.get(fid).roles[i].objectTypeId,
-      linkRoleRef: (fid, k, i) => i === 0 ? normaId(fid, `link${k}-role`) : normaId(fid, `link${k}-proxy`), isNested: (fid) => nests.has(fid),
+      // a path walks a link fact type through its own role and, on the far
+      // side, the role of F it stands for (NORMA refuses its role proxy there)
+      linkRoleRef: (fid, k, i) => i === 0 ? normaId(fid, `link${k}-role`) : normaId(factById.get(fid).roles[k].id), isNested: (fid) => nests.has(fid),
       subtypeLinkOf: subtypeLinkOf,
       typeRef: (tid) => playerRef(tid),
     }))
@@ -647,7 +649,9 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       subject: `role:${f.roles[0].id}`, subjectType: f.roles[0].objectTypeId,
       projected: f.roles.map(r => ({ roleId: normaId(r.id), varId: `role:${r.id}` })),
       roleRef: (fid, i) => normaId(factById.get(fid).roles[i].id), playerOf: (fid, i) => factById.get(fid).roles[i].objectTypeId,
-      linkRoleRef: (fid, k, i) => i === 0 ? normaId(fid, `link${k}-role`) : normaId(fid, `link${k}-proxy`), isNested: (fid) => nests.has(fid),
+      // a path walks a link fact type through its own role and, on the far
+      // side, the role of F it stands for (NORMA refuses its role proxy there)
+      linkRoleRef: (fid, k, i) => i === 0 ? normaId(fid, `link${k}-role`) : normaId(factById.get(fid).roles[k].id), isNested: (fid) => nests.has(fid),
       subtypeLinkOf: subtypeLinkOf,
       typeRef: (tid) => playerRef(tid),
     }))
