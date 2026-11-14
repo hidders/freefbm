@@ -159,9 +159,19 @@ export function conjunctivePath(rule, opts) {
     ])]
     return [el('orm:SubPath', { id: id(`s${k}`), SplitIsNegated: 'true' }, [el('orm:SubPaths', {}, block(t.items.flatMap(flatAnd), v))])]
   }
-  pending = flatAnd(body)
-  const subPaths = gather(opts.subject)
-  if (!fail && pending.length) fail = 'a part that is not joined to the subject'
+  // A rule that is a disjunction as a whole splits the lead path Or, as
+  // NORMA's own paths do: NORMA projects the roles from each branch (their
+  // places unified), and refuses a disjunction nested below the lead path.
+  const top = flatAnd(body)
+  const leadOr = top.length === 1 && top[0].k === 'or'
+  let subPaths
+  if (leadOr) {
+    subPaths = top[0].items.map((x, j) => el('orm:SubPath', { id: id(`b${j}`) }, [el('orm:SubPaths', {}, block(flatAnd(x), opts.subject))]))
+  } else {
+    pending = top
+    subPaths = gather(opts.subject)
+    if (!fail && pending.length) fail = 'a part that is not joined to the subject'
+  }
   if (fail) return refuse(fail)
 
   // every projected variable must be bound by the body
@@ -174,7 +184,7 @@ export function conjunctivePath(rule, opts) {
   const unifiers = [...nodes.values()].filter(ns => ns.length > 1).map((ns, k) =>
     el('orm:ObjectUnifier', { id: id(`u${k}`) }, ns.map(n => el(`orm:${n.kind}`, { ref: n.id }))))
   const path = el('orm:PathComponents', {}, [
-    el('orm:RolePath', { id: leadId }, [
+    el('orm:RolePath', { id: leadId, SplitCombinationOperator: leadOr ? 'Or' : null }, [
       el('orm:RootObjectType', { id: leadRoot, ref: opts.typeRef(opts.subjectType) }),
       el('orm:SubPaths', {}, subPaths),
       unifiers.length && el('orm:ObjectUnifiers', {}, unifiers),
