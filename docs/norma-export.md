@@ -314,10 +314,14 @@ as NORMA role paths (`src/export/normaPathsOut.js`): one lead path from the
 subject, split (And) into one subpath per atom, each with its own root;
 object unifiers join the places that are one variable; a derived fact
 type's roles are projected from them. Re-importing gives the same rule up
-to typing (a subtype test comes back as the variable's type). Rules with
-negation, disjunction, closures, value conditions or computed roles stay
+to typing (a subtype test comes back as the variable's type). Since v1.2.33 negation
+and disjunction nest (a disjunction is a subpath split Or into one subpath
+per part, a negation a subpath whose split is negated), and a type test
+walks the subtype link into the type, so that it stays in its branch.
+Rules with closures, value conditions, comparisons or computed roles stay
 informal, with a remark in the element's note saying why (SamplePopulation:
-6 of 15 formal).
+11 of 15 formal; the ATOP model's 81 fact type rules all come back the
+same).
 
 Still open after milestone 3: derivation rules and join paths as NORMA
 role paths (formal), sample populations, and milestone 4 (faithful

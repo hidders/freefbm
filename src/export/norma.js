@@ -560,6 +560,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       subject: SUBJECT, subjectType: sup,
       roleRef: (fid, i) => normaId(factById.get(fid).roles[i].id), playerOf: (fid, i) => factById.get(fid).roles[i].objectTypeId,
       linkRoleRef: (fid, k, i) => i === 0 ? normaId(fid, `link${k}-role`) : normaId(fid, `link${k}-proxy`), isNested: (fid) => nests.has(fid),
+      subtypeLinkOf: subtypeLinkOf,
       typeRef: (tid) => playerRef(tid),
     }))
     if (formal && !formal.error) {
@@ -632,6 +633,11 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   })
   // A derived fact type: NORMA's derivation rule with FreeFBM's formula as its
   // informal rule (NORMA's role paths are not written yet).
+  // the subtype link into a type, for type tests in derivation paths
+  function subtypeLinkOf(typeId) {
+    const st = subtypes.find(x => x.subId === typeId && (otById.has(x.superId) || nests.get(x.superId)?.implied === false))
+    return st ? { superId: st.superId, superRole: normaId(st.id, 'super'), subRole: normaId(st.id, 'sub') } : null
+  }
   function derivationEl(f) {
     if (!f.derivation) return null
     const completeness = f.derivation === 'semiDerived' ? 'PartiallyDerived' : null
@@ -642,6 +648,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       projected: f.roles.map(r => ({ roleId: normaId(r.id), varId: `role:${r.id}` })),
       roleRef: (fid, i) => normaId(factById.get(fid).roles[i].id), playerOf: (fid, i) => factById.get(fid).roles[i].objectTypeId,
       linkRoleRef: (fid, k, i) => i === 0 ? normaId(fid, `link${k}-role`) : normaId(fid, `link${k}-proxy`), isNested: (fid) => nests.has(fid),
+      subtypeLinkOf: subtypeLinkOf,
       typeRef: (tid) => playerRef(tid),
     }))
     if (formal && !formal.error) {
