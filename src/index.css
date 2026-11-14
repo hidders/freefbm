@@ -23,12 +23,12 @@
   --ink-3:        #6b5f4e;
   --ink-muted:    #9a8e7e;
 
-  /* ORM2 element colours: NORMA's look by default (src/diagram/normaGeometry.js
-     NORMA_COLOURS); the parchment look below is the older FreeFBM one
-     (store.diagramLook, html[data-diagram-look]). */
-  --bg-diagram:   #ffffff;   /* the diagram canvas */
-  --dg-grid-sm:   #f0f0f0;
-  --dg-grid-lg:   #e4e4e4;
+  /* ORM2 element colours: NORMA's (src/diagram/normaGeometry.js NORMA_COLOURS),
+     on a parchment background by default or a white one as in NORMA
+     (store.diagramBackground, html[data-diagram-background]). */
+  --bg-diagram:   var(--bg-canvas);   /* the diagram canvas */
+  --dg-grid-sm:   #ddd4c8;
+  --dg-grid-lg:   #ccc3b8;
   --dg-text:      #000000;   /* object type names, readings */
   --dg-ref-text:  #000000;   /* reference modes */
   --col-entity:   #00008b;   /* dark blue — entity type outlines */
@@ -88,18 +88,10 @@
 }
 
 /* The parchment look (Settings › Diagram look): FreeFBM's older colours. */
-:root[data-diagram-look="parchment"] {
-  --bg-diagram:   var(--bg-canvas);
-  --dg-grid-sm:   #ddd4c8;
-  --dg-grid-lg:   #ccc3b8;
-  --dg-text:      #3d2b1f;
-  --dg-ref-text:  var(--ink-3);
-  --col-entity:   #3d2b1f;
-  --col-value:    #3d2b1f;
-  --col-fact:     #3d2b1f;
-  --col-constraint: #7c4dbd;
-  --col-deontic:  #1f4fd1;
-  --col-role-name: #1a7fd4;
+:root[data-diagram-background="white"] {
+  --bg-diagram:   #ffffff;
+  --dg-grid-sm:   #f0f0f0;
+  --dg-grid-lg:   #e4e4e4;
 }
 
 html, body, #root {
