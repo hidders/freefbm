@@ -158,6 +158,7 @@ function buildMenu(win) {
         { label: 'Save as…',  accelerator: 'CmdOrCtrl+Shift+S', click: send('menu:saveAs') },
         { type: 'separator' },
         { label: 'Export to PDF…', accelerator: 'CmdOrCtrl+Shift+E', click: send('menu:exportPdf') },
+        { label: 'Export NORMA .orm…', click: send('menu:exportNorma') },
         { type: 'separator' },
         { label: 'Import SQL DDL (PostgreSQL, Oracle or SQL Server)…', click: send('menu:importSql') },
         { label: 'Export SQL DDL…', click: send('menu:exportSql') },
@@ -313,6 +314,16 @@ ipcMain.handle('dialog:saveFile', async (event, { path: knownPath, defaultPath, 
     // Offer .ffbm even when the model was opened from a legacy .orm2/.json file
     defaultPath: (defaultPath || 'model.ffbm').replace(/\.(orm2|json|orm)$/i, '.ffbm'),
     filters: [{ name: 'FreeFBM Model', extensions: ['ffbm'] }],
+  })
+  if (canceled || !filePath) return null
+  fs.writeFileSync(filePath, content, 'utf-8')
+  return filePath
+})
+
+// NORMA .orm files written from an ORM2 schema (src/export/norma.js).
+ipcMain.handle('dialog:saveOrm', async (event, { defaultPath, content }) => {
+  const { canceled, filePath } = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+    defaultPath: defaultPath || 'model.orm', filters: [{ name: 'NORMA Model', extensions: ['orm'] }],
   })
   if (canceled || !filePath) return null
   fs.writeFileSync(filePath, content, 'utf-8')

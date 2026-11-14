@@ -18,7 +18,7 @@ export default function ImportLogPanel() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
         borderBottom: '1px solid var(--border-soft)' }}>
         <span style={{ fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {log.kind === 'guess' ? 'Guessed from' : log.kind === 'generate' ? 'Tables generated from' : log.kind === 'fold' ? 'Fold:' : log.kind === 'transform' ? 'Transformed:' : 'Imported from'} {log.source}
+          {log.kind === 'guess' ? 'Guessed from' : log.kind === 'generate' ? 'Tables generated from' : log.kind === 'fold' ? 'Fold:' : log.kind === 'transform' ? 'Transformed:' : log.kind === 'export' ? 'Exported to' : 'Imported from'} {log.source}
         </span>
         <button onClick={close} title="Close" style={{ border: 'none', background: 'none',
           cursor: 'pointer', color: 'var(--ink-3)', fontSize: 16, lineHeight: 1 }}>×</button>

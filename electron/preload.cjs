@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveRules: (opts) => ipcRenderer.invoke('dialog:saveRules', opts),
   openSql:   ()     => ipcRenderer.invoke('dialog:openSql'),
   saveSql:   (opts) => ipcRenderer.invoke('dialog:saveSql', opts),
+  saveOrm:   (opts) => ipcRenderer.invoke('dialog:saveOrm', opts),
 
   // The open file and whether it has unsaved changes (title bar, close guard).
   setDocument: (doc) => ipcRenderer.send('window:document', doc),
