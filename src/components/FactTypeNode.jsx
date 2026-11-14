@@ -164,50 +164,10 @@ export function buildDisplayReading(parts, n) {
   return tokens.join(' ')
 }
 
-export function buildShownReading(parts, roleOrder, fact, otMap, nestedMap) {
-  if (!parts || parts.every(p => !p?.trim())) return ''
-  const t = i => parts[i]?.trim() || ''
-  const n = fact.arity
-
-  if (n === 1) return unaryReading(t(0), t(1))
-
-  // For names that appear multiple times, compute subscript disambiguation
-  const subscriptNums = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉']
-  const nameOccurrences = new Map()
-  const defaultOrder = Array.from({ length: n }, (_, i) => i)
-  for (const ri of defaultOrder) {
-    const oid = fact.roles[ri]?.objectTypeId
-    const ot = otMap?.[oid]
-    const nf = nestedMap?.[oid]
-    const name = ot?.name ?? nf?.objectifiedName ?? '?'
-    const prev = nameOccurrences.get(name) ?? []
-    prev.push({ ri, idx: prev.length })
-    nameOccurrences.set(name, prev)
-  }
-
-  const tokens = []
-  for (let i = 0; i <= n; i++) {
-    if (t(i)) tokens.push(t(i))
-    if (i < n) {
-      const oid = fact.roles[roleOrder[i]]?.objectTypeId
-      const ot = otMap?.[oid]
-      const nf = nestedMap?.[oid]
-      const name = ot?.name ?? nf?.objectifiedName ?? '?'
-      const occ = nameOccurrences.get(name)
-      let label = `[${name}]`
-      if (occ && occ.length > 1) {
-        const occIdx = occ.find(o => o.ri === roleOrder[i])?.idx ?? 0
-        const subscript = occIdx + 1 < 10 ? subscriptNums[occIdx + 1] : `(${occIdx + 1})`
-        label = `[${name}${subscript}]`
-      }
-      tokens.push(label)
-    }
-  }
-  if (n === 2 && !t(0) && !t(n)) {
-    while (tokens.length && tokens[0].startsWith('[') && tokens[0].endsWith(']')) tokens.shift()
-    while (tokens.length && tokens[tokens.length - 1].startsWith('[') && tokens[tokens.length - 1].endsWith(']')) tokens.pop()
-  }
-  return tokens.join(' ')
+// A reading in another role order than the role boxes', as drawn: with "..."
+// for the players, as NORMA shows it (Jan's choice; it used to name them).
+export function buildShownReading(parts, roleOrder, fact) {
+  return buildDisplayReading(parts, fact.arity)
 }
 
 export function getDisplayReading(fact) {
