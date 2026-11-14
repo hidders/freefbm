@@ -229,8 +229,17 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   const pascal = (text) => text.split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join('')
 
   // ── names NORMA wants unique ─────────────────────────────────────────────
+  // NORMA's own names, kept by the import, are reserved
   const counters = {}
-  const autoName = (base) => `${base}${counters[base] = (counters[base] ?? 0) + 1}`
+  const reserved = new Set([
+    ...constraints.flatMap(c => [c.normaName, c.normaExclusion?.name]),
+    ...facts.flatMap(f => [...(f.uniqueness ?? []).map(u => u.normaName), ...(f.internalFrequency ?? []).map(q => q.normaName),
+      ...f.roles.flatMap(r => [r.mandatoryName, r.normaValueConstraint?.name])]),
+    ...objectTypes.flatMap(o => [o.normaValueConstraint?.name, o.normaCardinality?.name]),
+  ].filter(Boolean))
+  const autoName = (base) => { let nm; do nm = `${base}${counters[base] = (counters[base] ?? 0) + 1}`; while (reserved.has(nm)); return nm }
+  const keptName = (nm) => nm && !usedNames.has(nm) ? (usedNames.add(nm), nm) : null
+  const usedNames = new Set()
 
   // ── reference modes ──────────────────────────────────────────────────────
   // NORMA finds a reference mode from the value type's name and the format
@@ -349,7 +358,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         : u.roles.length > 1 && !deontic.has(key(u.roles)))) pif = f.id
       if (pif && !preferredFor.has(pif)) preferredFor.set(pif, id)
       else pif = null
-      conEls.push(el('orm:UniquenessConstraint', { id, Name: autoName('InternalUniquenessConstraint'), IsInternal: 'true',
+      conEls.push(el('orm:UniquenessConstraint', { id, Name: keptName(u.normaName) ?? autoName('InternalUniquenessConstraint'), IsInternal: 'true',
         Modality: deontic.has(key(u.roles)) ? 'Deontic' : null }, [
         seqEl(u.id, u.roles.map(ri => roleIdOf(f, ri))),
         pif && el('orm:PreferredIdentifierFor', { ref: playerRef(pif) }),
@@ -360,14 +369,14 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       if (!mandatory[ri]) return
       const cid = mandatory[ri] === 'implied' ? `${f.id}#implied-m${ri}` : (r.mandatoryId ?? `${r.id}#mandatory`)
       const id = normaId(cid)
-      conEls.push(el('orm:MandatoryConstraint', { id, Name: autoName('SimpleMandatoryConstraint'), IsSimple: 'true',
+      conEls.push(el('orm:MandatoryConstraint', { id, Name: (mandatory[ri] !== 'implied' && keptName(r.mandatoryName)) || autoName('SimpleMandatoryConstraint'), IsSimple: 'true',
         Modality: r.mandatoryDeontic ? 'Deontic' : null }, [seqEl(cid, [roleIdOf(f, ri)])]))
       addInternal(f.id, 'MandatoryConstraint', id)
     })
     // internal frequency: a frequency constraint over roles of this fact type
     for (const ifr of f.internalFrequency ?? []) {
       if (!ifr.roles?.length || ifr.roles.some(ri => !f.roles[ri])) continue
-      conEls.push(el('orm:FrequencyConstraint', { id: normaId(ifr.id), Name: autoName('FrequencyConstraint'), ...frequencyAttrs(ifr.range),
+      conEls.push(el('orm:FrequencyConstraint', { id: normaId(ifr.id), Name: keptName(ifr.normaName) ?? autoName('FrequencyConstraint'), ...frequencyAttrs(ifr.range),
         Modality: ifr.deontic ? 'Deontic' : null }, [seqEl(ifr.id, ifr.roles.map(ri => roleIdOf(f, ri)))]))
     }
   }
@@ -402,7 +411,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       continue
     }
     const id = normaId(c.id)
-    const name = c.name || autoName(conNames[c.constraintType] ?? 'Constraint')
+    const name = c.name || keptName(c.normaName) || autoName(conNames[c.constraintType] ?? 'Constraint')
     const modality = c.deontic ? 'Deontic' : null
     // A sequence whose roles NORMA cannot join by itself gets FreeFBM's query
     // as a join path (src/export/normaPathsOut.js), its roles projected from it.
@@ -447,10 +456,10 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         break
       case 'exclusiveOr': {
         // NORMA's exclusive-or: a disjunctive mandatory and an exclusion that refer to each other
-        const ex = normaId(c.id, 'exclusion')
+        const ex = c.normaExclusion?.id ?? normaId(c.id, 'exclusion')
         conEls.push(
           el('orm:MandatoryConstraint', { id, Name: name, Modality: modality }, [...docEls(c), roleSeq('r', flat), el('orm:ExclusiveOrExclusionConstraint', { ref: ex })]),
-          el('orm:ExclusionConstraint', { id: ex, Name: `${name}Exclusion`, Modality: modality }, [
+          el('orm:ExclusionConstraint', { id: ex, Name: keptName(c.normaExclusion?.name) ?? `${name}Exclusion`, Modality: modality }, [
             el('orm:RoleSequences', {}, flat.map((r, k) => el('orm:RoleSequence', { id: normaId(c.id, `xseq${k}`) }, [el('orm:Role', { id: normaId(c.id, `xseq${k}r`), ref: r })]))),
             el('orm:ExclusiveOrMandatoryConstraint', { ref: id }),
           ]))
@@ -548,7 +557,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     const common = { id: normaId(ot.id), Name: ot.name, IsIndependent: ot.isIndependent ? 'true' : null }
     const played = playedRoles.get(ot.id)
     const cardinality = ot.cardinalityRange?.length ? el('orm:CardinalityRestriction', {}, [
-      el('orm:CardinalityConstraint', { id: normaId(ot.id, 'cardinality'), Name: autoName('ObjectTypeCardinalityConstraint'), Modality: ot.cardinalityRangeDeontic ? 'Deontic' : null }, [
+      el('orm:CardinalityConstraint', { id: ot.normaCardinality?.id ?? normaId(ot.id, 'cardinality'), Name: keptName(ot.normaCardinality?.name) ?? autoName('ObjectTypeCardinalityConstraint'), Modality: ot.cardinalityRangeDeontic ? 'Deontic' : null }, [
         el('orm:Ranges', {}, ot.cardinalityRange.map((r, i) => { const [from, to] = countBounds([r]); return el('orm:CardinalityRange', { id: normaId(ot.id, `cardinality${i}`), From: from, To: to || null }) })),
       ])]) : null
     if (ot.kind === 'entity') {
@@ -569,7 +578,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         played && el('orm:PlayedRoles', {}, played),
         subtypeDerivationEl(ot),
         conceptualDataType(ot),
-        ot.valueRange?.length && el('orm:ValueRestriction', {}, [valueConstraintEl('orm:ValueConstraint', ot.id, ot.valueRange, ot.valueRangeDeontic, 'ValueTypeValueConstraint')]),
+        ot.valueRange?.length && el('orm:ValueRestriction', {}, [valueConstraintEl('orm:ValueConstraint', ot.id, ot.valueRange, ot.valueRangeDeontic, 'ValueTypeValueConstraint', ot.normaValueConstraint)]),
         extensionsOf(ot),
       ]))
     }
@@ -649,9 +658,10 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       el('orm:FactRoles', {}, f.roles.map(r => el('orm:Role', { id: normaId(r.id), Name: r.roleName ?? '' },
         [playerOf(r) && el('orm:RolePlayer', { ref: playerRef(playerOf(r)) }), roleValueEl(f, r), extensionsOf(r)]))),
       orders.size && el('orm:ReadingOrders', {}, [...orders.values()].map(o => {
-        const roId = normaId(f.id, `ro:${o.order.join(',')}`)
+        const key = o.order.join(',')
+        const roId = roIdOf(f, key)
         return el('orm:ReadingOrder', { id: roId }, [
-          el('orm:Readings', {}, o.texts.map(t => el('orm:Reading', { id: normaId(f.id, `reading${k++}`) }, [el('orm:Data', {}, t)]))),
+          el('orm:Readings', {}, o.texts.map(t => el('orm:Reading', { id: f.normaIds?.rd?.[`${key}|${t}`] ?? normaId(f.id, `reading${k++}`) }, [el('orm:Data', {}, t)]))),
           el('orm:RoleSequence', {}, o.order.map(ri => el('orm:Role', { ref: roleIdOf(f, ri) }))),
         ])
       })),
@@ -745,8 +755,8 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     })
   }
 
-  function valueConstraintEl(tag, ownerId, ranges, deontic, base) {
-    return el(tag, { id: normaId(ownerId, 'valueconstraint'), Name: autoName(base), Modality: deontic ? 'Deontic' : null }, [
+  function valueConstraintEl(tag, ownerId, ranges, deontic, base, kept = null) {
+    return el(tag, { id: kept?.id ?? normaId(ownerId, 'valueconstraint'), Name: keptName(kept?.name) ?? autoName(base), Modality: deontic ? 'Deontic' : null }, [
       el('orm:ValueRanges', {}, ranges.map(valueRangeAttrs).filter(Boolean).map((a, i) => el('orm:ValueRange', { id: normaId(ownerId, `valuerange${i}`), ...a }))),
     ])
   }
@@ -758,9 +768,11 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       if (rm.factId === f.id && f.roles[rm.vtRoleIndex] === r && ent?.valueRange?.length) { ranges = ent.valueRange; deontic = ent.valueRangeDeontic }
     }
     if (!ranges?.length) return null
-    return el('orm:ValueRestriction', {}, [valueConstraintEl('orm:RoleValueConstraint', r.id, ranges, deontic, 'RoleValueConstraint')])
+    return el('orm:ValueRestriction', {}, [valueConstraintEl('orm:RoleValueConstraint', r.id, ranges, deontic, 'RoleValueConstraint', r.valueRange?.length ? r.normaValueConstraint : null)])
   }
 
+  // a reading order's id: NORMA's own (kept by the import) or a new one
+  function roIdOf(f, key) { return f.normaIds?.ro?.[key] ?? normaId(f.id, `ro:${key}`) }
   function factLabel(f) {
     const parts = f.readingParts
     const names = f.roles.map(r => otById.get(r.objectTypeId)?.name ?? factById.get(r.objectTypeId)?.objectifiedName ?? '…')
@@ -805,10 +817,10 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         const S = { l: -w / 2, r: w / 2, t: -h / 2, b: h / 2 }
         const vOff = occ.valueRangeOffset ?? ot.valueRangeOffset
         if (ot.kind === 'value' && ot.valueRange?.length && vOff)
-          rel.push(labelShape('ValueConstraintShape', `${shapeId(occ)}:vr`, occ, { x: vOff.dx, y: vOff.dy }, rangeLabelSize(ot.valueRange), otBox, S, normaId(ot.id, 'valueconstraint'), vOff, keptBounds(occ, otShapeKey)))
+          rel.push(labelShape('ValueConstraintShape', `${shapeId(occ)}:vr`, occ, { x: vOff.dx, y: vOff.dy }, rangeLabelSize(ot.valueRange), otBox, S, ot.normaValueConstraint?.id ?? normaId(ot.id, 'valueconstraint'), vOff, keptBounds(occ, otShapeKey)))
         const cOff = occ.cardinalityRangeOffset ?? ot.cardinalityRangeOffset
         if (ot.cardinalityRange?.length && cOff)
-          rel.push(labelShape('CardinalityConstraintShape', `${shapeId(occ)}:cr`, occ, { x: cOff.dx, y: cOff.dy }, rangeLabelSize(ot.cardinalityRange, true), otBox, S, normaId(ot.id, 'cardinality'), cOff, keptBounds(occ, otShapeKey)))
+          rel.push(labelShape('CardinalityConstraintShape', `${shapeId(occ)}:cr`, occ, { x: cOff.dx, y: cOff.dy }, rangeLabelSize(ot.cardinalityRange, true), otBox, S, ot.normaCardinality?.id ?? normaId(ot.id, 'cardinality'), cOff, keptBounds(occ, otShapeKey)))
         shapes.push(el('ormDiagram:ObjectTypeShape', { id: shapeId(occ), IsExpanded: 'true',
           AbsoluteBounds: keptBounds(occ, otShapeKey) ?? boundsAttr(inches(occ.x) - W / 2, inches(occ.y) - H / 2, W, H),
           ExpandRefMode: rm && expanded.has(occ.id) ? 'true' : null }, [
@@ -923,11 +935,11 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     const rOff = g.readingAbove ? g.readingOffsetAbove : g.readingOffsetBelow
     const firstOrder = f.readingParts ? f.roles.map((_, i) => i) : f.alternativeReadings?.[0]?.roleOrder
     const unchanged = keptBounds(occ, factShapeKey)
-    if (rOff && firstOrder) rel.push(labelShape('ReadingShape', `${id}:reading`, occ, { x: rOff.dx, y: rOff.dy }, readingLabelSize(g), box, S, normaId(f.id, `ro:${firstOrder.join(',')}`), rOff, unchanged))
+    if (rOff && firstOrder) rel.push(labelShape('ReadingShape', `${id}:reading`, occ, { x: rOff.dx, y: rOff.dy }, readingLabelSize(g), box, S, roIdOf(f, firstOrder.join(',')), rOff, unchanged))
     f.roles.forEach((r, ri) => {
       const a = roleAnchor(g, ri)
       const vo = occ.valueRangeOffsets?.[ri]
-      if (vo && r.valueRange?.length) rel.push(labelShape('ValueConstraintShape', `${id}:vr${ri}`, occ, { x: a.x + vo.dx, y: a.y + vo.dy }, rangeLabelSize(r.valueRange), box, S, normaId(r.id, 'valueconstraint'), vo, unchanged))
+      if (vo && r.valueRange?.length) rel.push(labelShape('ValueConstraintShape', `${id}:vr${ri}`, occ, { x: a.x + vo.dx, y: a.y + vo.dy }, rangeLabelSize(r.valueRange), box, S, r.normaValueConstraint?.id ?? normaId(r.id, 'valueconstraint'), vo, unchanged))
       const no = occ.roleNameOffsets?.[ri]
       if (no && r.roleName) rel.push(labelShape('RoleNameShape', `${id}:rn${ri}`, occ, { x: a.x + no.dx, y: a.y + no.dy }, roleNameLabelSize(r.roleName), box, S, normaId(r.id), no, unchanged))
     })

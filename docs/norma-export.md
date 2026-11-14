@@ -345,6 +345,17 @@ gets an id of its own. Over NORMA's samples 3,479 of 3,522 shapes come back
 with the same id and bounds (the rest are shapes the import adds or
 merges).
 
+Milestone 4b (v1.2.39): the import also keeps NORMA's names of
+constraints (external, internal uniqueness, simple mandatory, frequency,
+exclusive-or's exclusion half) and the ids and names of value and
+cardinality constraints and of reading orders and readings; the export
+writes them back (names are reserved, so new ones do not clash). Over
+NORMA's samples: 1,604 of 2,363 readings, 1,627 of 2,658 uniqueness and 816
+of 1,370 mandatory constraints keep their id; the rest belong mostly to
+objectification link fact types and subtype links, whose parts the
+import does not keep yet (milestone 4c, with NORMA-only parts such as
+generation settings and element order).
+
 Check in NORMA (2026-11-14, SamplePopulationExtraction): the error list
 holds only the five rules that stay informal (closures, a value
 condition, rules without a complete FreeFBM formula); join paths and the

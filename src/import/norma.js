@@ -298,11 +298,13 @@ export function importNorma(xmlText) {
     if (vc) {
       rangeOwner.set(attr(vc, 'id'), { otId: id })
       ot.valueRange = valueRanges(vc)
+      ot.normaValueConstraint = { id: attr(vc, 'id'), name: attr(vc, 'Name') }
       if (attr(vc, 'Modality') === 'Deontic') ot.valueRangeDeontic = true
     }
     const cc = path(o, 'CardinalityRestriction', 'CardinalityConstraint')
     if (cc) {
       rangeOwner.set(attr(cc, 'id'), { otId: id, cardinality: true })
+      ot.normaCardinality = { id: attr(cc, 'id'), name: attr(cc, 'Name') }
       const cr = kids(kid(cc, 'Ranges'), 'CardinalityRange')
       ot.cardinalityRange = cr.flatMap(r => countRange(attr(r, 'From') ?? 0, attr(r, 'To') ?? 0))
       if (attr(cc, 'Modality') === 'Deontic') ot.cardinalityRangeDeontic = true
@@ -351,7 +353,9 @@ export function importNorma(xmlText) {
     const orders = kids(kid(f, 'ReadingOrders'), 'ReadingOrder').map(ro => ({
       seq: refsOf(kid(ro, 'RoleSequence')).filter(r => real.some(e => attr(e, 'id') === r)),
       readings: kids(kid(ro, 'Readings'), 'Reading').map(rd => textOf(kid(rd, 'Data'))),
+      readingIds: kids(kid(ro, 'Readings'), 'Reading').map(rd => attr(rd, 'id')),
       rawSeq: refsOf(kid(ro, 'RoleSequence')),
+      id: attr(ro, 'id'),
     }))
     const realIds = real.map(r => attr(r, 'id'))
     const first = orders.find(o => o.seq.length === realIds.length && new Set(o.seq).size === realIds.length)
@@ -368,6 +372,7 @@ export function importNorma(xmlText) {
         if (rvc) {
           rangeOwner.set(attr(rvc, 'id'), { factId: id, roleId: rid })
           role.valueRange = valueRanges(rvc)
+          role.normaValueConstraint = { id: attr(rvc, 'id'), name: attr(rvc, 'Name') }
           if (attr(rvc, 'Modality') === 'Deontic') role.valueRangeDeontic = true
         }
         return role
@@ -394,6 +399,15 @@ export function importNorma(xmlText) {
     const dflt = /DefaultTrue$/.test(pattern ?? '') ? 'true' : /DefaultFalse$/.test(pattern ?? '') ? 'false' : roleIds.length === 1 ? dv : null
     if (dflt) changed(fact, `NORMA gives this unary the default value ${dflt}; FreeFBM has no default values, so it was left out.`)
 
+    // NORMA's ids of the reading orders (by role order) and readings (by
+    // their text), for the export (milestone 4)
+    fact.normaIds = { ro: {}, rd: {} }
+    for (const o of orders) {
+      if (o.seq.length !== roleIds.length || o.rawSeq.length !== roleIds.length) continue
+      const key = o.seq.map(r => roleIds.indexOf(r)).join(',')
+      fact.normaIds.ro[key] = o.id
+      o.readings.forEach((data, k) => { fact.normaIds.rd[`${key}|${data.replace(/\s+/g, ' ').trim()}`] = o.readingIds[k] })
+    }
     // readings
     for (const o of orders) {
       // A unary's reading orders may list the boolean role; its placeholders
@@ -681,7 +695,7 @@ export function importNorma(xmlText) {
   const mandatoryIds = new Set() // simple mandatory: NORMA id = role.mandatoryId
 
   const mkCon = (c, type, extra = {}) => ({
-    id: attr(c, 'id'), kind: 'constraint', constraintType: type, x: 0, y: 0,
+    id: attr(c, 'id'), kind: 'constraint', constraintType: type, x: 0, y: 0, normaName: attr(c, 'Name'),
     sequences: [], queries: [], frequency: null, exhaustive: true, exclusive: false, subtypeIds: [],
     ...(attr(c, 'Modality') === 'Deontic' && { deontic: true }),
     ...extra,
@@ -892,7 +906,7 @@ export function importNorma(xmlText) {
         const roles = real.map(m => m.roleIndex).sort((a, b) => a - b)
         const same = f.uniqueness.find(u => u.roles.join() === roles.join())
         if (same) ucById.set(id, same)
-        else { const uc = { id, roles }; f.uniqueness.push(uc); ucById.set(id, uc) }
+        else { const uc = { id, roles, normaName: attr(c, 'Name') }; f.uniqueness.push(uc); ucById.set(id, uc) }
         // A preferred identifier for the player of the one role left over, or
         // the uniqueness that identifies the objectified fact type itself.
         const pif = playerId.get(attr(kid(c, 'PreferredIdentifierFor'), 'ref'))
@@ -932,6 +946,7 @@ export function importNorma(xmlText) {
         const role = factById.get(m.factId).roles[m.roleIndex]
         role.mandatory = true
         role.mandatoryId = id
+        role.mandatoryName = attr(c, 'Name')
         mandatoryIds.add(id)
         if (attr(c, 'Modality') === 'Deontic') role.mandatoryDeontic = true
         continue
@@ -943,7 +958,11 @@ export function importNorma(xmlText) {
         targetObjectTypeId: commonPlayer(ms),
       })
       pushCon(con, c)
-      if (isXor) conAlias.set(attr(kid(c, 'ExclusiveOrExclusionConstraint'), 'ref'), con.id)
+      if (isXor) {
+        const ex = attr(kid(c, 'ExclusiveOrExclusionConstraint'), 'ref')
+        conAlias.set(ex, con.id)
+        con.normaExclusion = { id: ex, name: attr(byId.get(ex), 'Name') }
+      }
     } else if (t === 'ExclusionConstraint' || t === 'SubsetConstraint' || t === 'EqualityConstraint') {
       if (xorPair.has(id)) continue
       const sms = seqs.map(members)
@@ -971,7 +990,7 @@ export function importNorma(xmlText) {
       const inOneFact = ms.every(m => m.kind === 'role' && !m.link && m.factId === ms[0].factId)
       if (inOneFact) {
         const f = factById.get(ms[0].factId)
-        f.internalFrequency.push({ id, roles: ms.map(m => m.roleIndex), range,
+        f.internalFrequency.push({ id, roles: ms.map(m => m.roleIndex), range, normaName: attr(c, 'Name'),
           ...(attr(c, 'Modality') === 'Deontic' && { deontic: true }) })
         ifById.set(id, f.internalFrequency.at(-1))
         conAlias.set(id, `if:${f.id}`)
