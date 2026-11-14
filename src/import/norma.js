@@ -1174,7 +1174,7 @@ export function importNorma(xmlText) {
   function placeFactLabels(s, f, occ) {
     const S = rect(s)
     const g = { ...f, ...occ }
-    const box = factLabelBox(g)
+    const box = factLabelBox(g, S)
     const [rs] = relativeShapes(s, 'ReadingShape')
     if (rs) {
       const p = placeLabel(rect(rs), S, box, readingLabelSize(g))
