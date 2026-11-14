@@ -263,5 +263,12 @@ link fact types, so this moved from milestone 2 into milestone 1. A file
 saved by NORMA also showed that NORMA rebuilds implied mandatory
 constraints (ImpliedByObjectType) and reading shapes itself.
 
+Second check (2026-11-14): the sample model and the re-export of a real
+NORMA model (SamplePopulationExtraction) both load in NORMA without the
+assertion; their error lists hold only the models' own errors and what
+milestone 2 adds (identification by external uniqueness: Room, Term,
+DataValue). Fact types whose derivation rule is not exported also get
+NORMA's implied objectification, since NORMA sees them as stored.
+
 Open points for the NORMA check: whether a value type without a data type should get NORMA's error or a
 default type.
