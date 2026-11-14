@@ -9,7 +9,7 @@ import { EXTERNAL_CONSTRAINT_TYPES, RAKE_TOOTH, RAKE_STAGGER, RAKE_TOOTH_GAP } f
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { groupStyle } from '../utils/groups.js'
 import { isFormulaConstraint, formulaElements } from '../logic/formulaConstraint.js'
-import { DIAGRAM_FONT } from '../diagram/diagramFont.js'
+import { DIAGRAM_FONT, measureDiagramText } from '../diagram/diagramFont.js'
 import { NORMA, px, pt } from '../diagram/normaGeometry.js'
 
 // NORMA's sizes (src/diagram/normaGeometry.js): external constraints 0.16 in
@@ -21,14 +21,17 @@ const CONN_W  = pt(NORMA.rolePlayerPenPt) // pen of constraint connectors
 const GLYPH_SIZE = pt(7)
 
 const FREQ_FONT_SIZE = pt(7)
-const FREQ_PAD_X     = 6   // horizontal padding inside stadium, each side
+const FREQ_PAD_X     = 6   // horizontal padding inside a pill, each side
 
-let _freqCanvas = null
 function measureFreqText(text) {
-  if (!_freqCanvas) _freqCanvas = document.createElement('canvas')
-  const ctx = _freqCanvas.getContext('2d')
-  ctx.font = `${FREQ_FONT_SIZE}px monospace`
-  return ctx.measureText(text).width
+  return measureDiagramText(text, FREQ_FONT_SIZE)
+}
+
+// A frequency constraint is a circle at least D across, else as wide as its
+// text plus half the text's height (NORMA's FrequencyConstraintShape).
+function freqRadius(label) {
+  if (!label) return EXTERNAL_CONSTRAINT_R
+  return Math.max(EXTERNAL_CONSTRAINT_R, (measureFreqText(label) + px(NORMA.lineHeight) / 2) / 2)
 }
 
 function formatFrequencyRange(frequency) {
@@ -46,6 +49,70 @@ function freqStadiumW(label) {
   const minW = EXTERNAL_CONSTRAINT_R * 2   // never narrower than a circle
   if (!label) return minW
   return Math.max(minW, measureFreqText(label) + FREQ_PAD_X * 2)
+}
+
+// The symbol inside an external constraint's circle (diameter D = 0.16 in,
+// pen p = 1.35 pt), with NORMA's proportions:
+//  equality: two lines from 0.3 D to 0.7 D, p above and below the centre;
+//  inclusive-or: a dot 0.56 D across; exclusion: a cross whose ends are
+//  (D + p)(1 − cos 45°)/2 in from the box; exclusive-or: both;
+//  uniqueness: a line across, inset p/2 (two at ±0.7 p for a preferred one);
+//  subset: a half circle 0.3 D across, shifted left by 0.1225 D and up by
+//  0.7 p, with lines from its centre to the right, and a line 1.4 p below;
+//  value comparison: dots 0.35 D across on the left and right edge, and the
+//  operator drawn in a 1 pt pen inside the box inscribed at 60°.
+function ExternalSymbol({ c, color }) {
+  const D = EXTERNAL_CONSTRAINT_R * 2, p = SHAPE_W
+  const L = c.x - D / 2, T = c.y - D / 2, R = c.x + D / 2, B = c.y + D / 2
+  const ln = (x1, y1, x2, y2, k, w = p) => <line key={k} x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={w}/>
+  const t = c.constraintType
+  const parts = []
+  if (t === 'equality') {
+    parts.push(ln(L + 0.3 * D, c.y - p, R - 0.3 * D, c.y - p, 'a'), ln(L + 0.3 * D, c.y + p, R - 0.3 * D, c.y + p, 'b'))
+  }
+  if (t === 'exclusion' || t === 'exclusiveOr') {
+    const o = (D + p) * (1 - Math.SQRT1_2) / 2
+    parts.push(ln(L + o, T + o, R - o, B - o, 'x1'), ln(L + o, B - o, R - o, T + o, 'x2'))
+  }
+  if (t === 'inclusiveOr' || t === 'exclusiveOr') {
+    parts.push(<circle key="dot" cx={c.x} cy={c.y} r={0.28 * D} fill={color}/>)
+  }
+  if (t === 'uniqueness') {
+    if (c.isPreferredIdentifier) parts.push(ln(L + p / 2, c.y - 0.7 * p, R - p / 2, c.y - 0.7 * p, 'u1'), ln(L + p / 2, c.y + 0.7 * p, R - p / 2, c.y + 0.7 * p, 'u2'))
+    else parts.push(ln(L + p / 2, c.y, R - p / 2, c.y, 'u'))
+    if (c.outerJoin) parts.push(<circle key="oj" cx={c.x} cy={c.y} r={0.14 * D} fill="#ffffff" stroke={color} strokeWidth={p * 0.9}/>)
+  }
+  if (t === 'subset') {
+    const s = 0.35 * D, dx = -0.35 * s, dy = -0.7 * p
+    const al = L + s + dx, ar = R - s + dx, at = T + s + dy, ab = B - s + dy
+    const r = (ab - at) / 2, acx = (al + ar) / 2
+    const xr = R - s - dx
+    parts.push(<path key="arc" d={`M ${acx} ${ab} A ${r} ${r} 0 0 1 ${acx} ${at}`} fill="none" stroke={color} strokeWidth={p}/>)
+    parts.push(ln(acx, at, xr, at, 's1'), ln(acx, ab, xr, ab, 's2'), ln(al, ab + 2 * (0.7 * p), xr, ab + 2 * (0.7 * p), 's3'))
+  }
+  if (t === 'valueComparison') {
+    const dr = 0.35 * D / 2
+    parts.push(<circle key="dl" cx={L} cy={c.y} r={dr} fill={color}/>, <circle key="dr" cx={R} cy={c.y} r={dr} fill={color}/>)
+    const op = c.operator ?? '='
+    const w = 0.5 * D, h = Math.sin(Math.PI / 3) * D
+    const bl = c.x - w / 2, br = c.x + w / 2, bt = c.y - h / 2
+    const opw = pt(NORMA.rolePlayerPenPt)
+    if (op === '=' || op === '≠') {
+      const e = 1.5 * opw
+      parts.push(ln(bl, c.y - e, br, c.y - e, 'e1', opw), ln(bl, c.y + e, br, c.y + e, 'e2', opw))
+      if (op === '≠') parts.push(ln(bl + opw, c.y + h / 2 - opw * 1.25, br - opw, c.y - h / 2 + opw * 1.25, 'sl', opw))
+    } else {
+      const eq = op === '≤' || op === '≥' || op === '<=' || op === '>='
+      const less = op === '<' || op === '≤' || op === '<='
+      const open = less ? br : bl, closed = less ? bl + opw / 2 : br - opw / 2
+      const sinA = Math.sin(Math.PI / (eq ? 7.5 : 6))
+      const off = eq ? 0.8 * opw : 0
+      const top = bt + h / 2 * (1 - sinA), bot = bt + h / 2 * (1 + sinA)
+      parts.push(<polyline key="cmp" points={`${open},${top - off} ${closed},${c.y - off} ${open},${bot - off}`} fill="none" stroke={color} strokeWidth={opw}/>)
+      if (eq) parts.push(ln(bl, bot + off, br, bot + off, 'ceq', opw))
+    }
+  }
+  return <>{parts}</>
 }
 
 const CONSTRAINT_SYMBOL = {
@@ -1194,79 +1261,24 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
               </text>
             )}
 
-            {/* Subtype-like constraints — graphical symbols (not frequency, which uses a stadium) */}
-            {EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) && c.constraintType !== 'frequency' && (() => {
-              const d = EXTERNAL_CONSTRAINT_R * 0.707
-              return (
-                <g style={{ pointerEvents: 'none' }}>
-                  {/* Cross — Exclusion and Exclusive Or */}
-                  {(c.constraintType === 'exclusiveOr' || c.constraintType === 'exclusion') && (
-                    <>
-                      <line x1={c.x - d} y1={c.y - d} x2={c.x + d} y2={c.y + d}
-                        stroke={color} strokeWidth={SHAPE_W} strokeLinecap="round"/>
-                      <line x1={c.x + d} y1={c.y - d} x2={c.x - d} y2={c.y + d}
-                        stroke={color} strokeWidth={SHAPE_W} strokeLinecap="round"/>
-                    </>
-                  )}
-                  {/* Dot — Inclusive Or and Exclusive Or */}
-                  {(c.constraintType === 'exclusiveOr' || c.constraintType === 'inclusiveOr') && (
-                    <circle cx={c.x} cy={c.y} r={EXTERNAL_CONSTRAINT_R * 0.35} fill={color}/>
-                  )}
-                  {/* Symbol — Equality and Subset */}
-                  {(c.constraintType === 'equality' || c.constraintType === 'subset') && (
-                    <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central"
-                      fontSize={GLYPH_SIZE} fill={color}
-                      fontFamily="var(--font-mono)" fontWeight={600}
-                      style={{ pointerEvents: 'none' }}>
-                      {c.constraintType === 'equality' ? '=' : '⊆'}
-                    </text>
-                  )}
-                  {/* Symbol + dots — Value Comparison */}
-                  {c.constraintType === 'valueComparison' && (
-                    <>
-                      <circle cx={c.x - EXTERNAL_CONSTRAINT_R} cy={c.y} r={EXTERNAL_CONSTRAINT_R * 0.3}
-                        fill={color}/>
-                      <circle cx={c.x + EXTERNAL_CONSTRAINT_R} cy={c.y} r={EXTERNAL_CONSTRAINT_R * 0.3}
-                        fill={color}/>
-                      <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central"
-                        fontSize={GLYPH_SIZE} fill={color}
-                        fontFamily="var(--font-mono)" fontWeight={600}
-                        style={{ pointerEvents: 'none' }}>
-                        {c.operator ?? '='}
-                      </text>
-                    </>
-                  )}
-                  {/* Horizontal diameter line(s) — External Uniqueness */}
-                  {c.constraintType === 'uniqueness' && (c.isPreferredIdentifier ? (
-                    <>
-                      <line x1={c.x - EXTERNAL_CONSTRAINT_R} y1={c.y - 0.75 * SHAPE_W} x2={c.x + EXTERNAL_CONSTRAINT_R} y2={c.y - 0.75 * SHAPE_W}
-                        stroke={color} strokeWidth={SHAPE_W / 2} strokeLinecap="round"/>
-                      <line x1={c.x - EXTERNAL_CONSTRAINT_R} y1={c.y + 0.75 * SHAPE_W} x2={c.x + EXTERNAL_CONSTRAINT_R} y2={c.y + 0.75 * SHAPE_W}
-                        stroke={color} strokeWidth={SHAPE_W / 2} strokeLinecap="round"/>
-                    </>
-                  ) : (
-                    <line x1={c.x - EXTERNAL_CONSTRAINT_R} y1={c.y} x2={c.x + EXTERNAL_CONSTRAINT_R} y2={c.y}
-                      stroke={color} strokeWidth={SHAPE_W} strokeLinecap="round"/>
-                  ))}
-                  {/* Outer join: a small "o" through the bar (Halpin & Morgan 2024, sec. 10.1) */}
-                  {c.constraintType === 'uniqueness' && c.outerJoin && (
-                    <circle cx={c.x} cy={c.y} r={EXTERNAL_CONSTRAINT_R * 0.28} fill="#ffffff" stroke={color} strokeWidth={SHAPE_W * 0.9}/>
-                  )}
-                </g>
-              )
-            })()}
+            {/* External constraint symbols, drawn as NORMA draws them
+                (ExternalConstraintShape, ValueComparisonConstraintShape:
+                measurements only), inside a circle of diameter D */}
+            {EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) && c.constraintType !== 'frequency' && (
+              <g style={{ pointerEvents: 'none' }}>
+                <ExternalSymbol c={c} color={color}/>
+              </g>
+            )}
 
-            {/* Frequency stadium — rounded rect sized to fit the range label */}
+            {/* Frequency — a circle wide enough for its range, as in NORMA
+                (FrequencyConstraintShape: at least D, else the text's width
+                plus half its height) */}
             {c.constraintType === 'frequency' && (() => {
               const lbl = formatFrequencyRange(c.frequency) ?? ''
-              const sw  = freqStadiumW(lbl)
-              const sh  = EXTERNAL_CONSTRAINT_R   // half-height
+              const r  = freqRadius(lbl)
               return (
                 <g>
-                  <rect
-                    x={c.x - sw / 2} y={c.y - sh}
-                    width={sw} height={sh * 2}
-                    rx={sh}
+                  <circle cx={c.x} cy={c.y} r={r}
                     fill='#ffffff'
                     stroke={color}
                     strokeWidth={isSelected ? SHAPE_W + 1 : SHAPE_W}
@@ -1358,12 +1370,9 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
               )
             })()}
             {/* Hover ring — expanded 3–4px outward so it shows as a halo around the element */}
-            {c.constraintType === 'frequency' ? (() => {
-              const lbl_ = formatFrequencyRange(c.frequency) ?? ''
-              const sw_  = freqStadiumW(lbl_)
-              const sh_  = EXTERNAL_CONSTRAINT_R
-              return <rect className="hover-ring" x={c.x - sw_/2 - 3} y={c.y - sh_ - 3} width={sw_ + 6} height={sh_*2 + 6} rx={sh_ + 3}/>
-            })() : (
+            {c.constraintType === 'frequency' ? (
+              <circle className="hover-ring" cx={c.x} cy={c.y} r={freqRadius(formatFrequencyRange(c.frequency) ?? '') + 4}/>
+            ) : (
               <circle className="hover-ring" cx={c.x} cy={c.y}
                 r={(EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) && c.constraintType !== 'ring' ? EXTERNAL_CONSTRAINT_R : CONSTRAINT_R) + 4}/>
             )}
@@ -1371,12 +1380,12 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
             {/* Deontic mark — a small open circle on the top-left of the shape, as
                 in NORMA (not for ring and value comparison constraints). */}
             {c.deontic && c.constraintType !== 'ring' && c.constraintType !== 'valueComparison' && (() => {
-              const R = EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) || c.constraintType === 'frequency' ? EXTERNAL_CONSTRAINT_R : CONSTRAINT_R
-              const left = c.constraintType === 'frequency' ? c.x - freqStadiumW(formatFrequencyRange(c.frequency) ?? '') / 2 : c.x - R
+              const R = c.constraintType === 'frequency' ? freqRadius(formatFrequencyRange(c.frequency) ?? '')
+                : EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) ? EXTERNAL_CONSTRAINT_R : CONSTRAINT_R
               const d = (1 - 0.7071) * 2 * R
               return (
-                <circle cx={left + d / 2} cy={c.y - R + d / 2} r={d / 2}
-                  fill="#ffffff" stroke={color} strokeWidth={1.1} style={{ pointerEvents: 'none' }}/>
+                <circle cx={c.x - R + d / 2} cy={c.y - R + d / 2} r={d / 2}
+                  fill="#ffffff" stroke={color} strokeWidth={SHAPE_W * 0.7} style={{ pointerEvents: 'none' }}/>
               )
             })()}
           </g>
