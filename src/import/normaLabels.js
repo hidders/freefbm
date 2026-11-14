@@ -8,7 +8,7 @@
 // FreeFBM's own box and label size. A label that overlaps its shape keeps
 // its centre's offset.
 
-import { nestedFactBounds, factBounds, getDisplayReading, roleCenter, NAME_LINE, LABEL_SIZE } from '../components/FactTypeNode.jsx'
+import { nestedFactBounds, factBounds, getDisplayReading, buildDisplayReading, roleCenter, NAME_LINE, LABEL_SIZE } from '../components/FactTypeNode.jsx'
 import { formatValueRange, formatCardinalityRange, otBoxSize, OT_SIZE_NAME } from '../components/ObjectTypeNode.jsx'
 import { measureDiagramText } from '../diagram/diagramFont.js'
 
@@ -59,7 +59,25 @@ export function factLabelBox(fact) {
 }
 
 export function readingLabelSize(fact) {
-  return { w: textWidth(getDisplayReading(fact) || '', LABEL_SIZE), h: NAME_LINE }
+  return { w: textWidth(shownReading(fact), LABEL_SIZE), h: NAME_LINE }
+}
+
+// The reading text FactTypeNode draws (without the store: a binary's readings
+// whose outer parts are empty, as NORMA's mostly are, need no player names).
+function shownReading(fact) {
+  if (fact.arity !== 2) return getDisplayReading(fact) || ''
+  const order = fact.roleOrder?.length === 2 ? fact.roleOrder : [0, 1]
+  const all = [{ roleOrder: [0, 1], parts: fact.readingParts }, ...(fact.alternativeReadings ?? [])]
+    .filter(r => r.parts?.some(p => p?.trim()))
+  const text = o => {
+    const r = all.find(r => r.roleOrder[0] === o[0] && r.roleOrder[1] === o[1])
+    return r ? buildDisplayReading(r.parts, 2) : ''
+  }
+  const fwd = text(order), rev = text([order[1], order[0]])
+  if (all.length === 1) return (fwd ? '' : '◀ ') + (fwd || rev)
+  if (fact.readingDisplay === 'both') return [fwd, rev].filter(Boolean).join(' / ')
+  if (fact.readingDisplay === 'reverse') return rev ? '◀ ' + rev : ''
+  return fwd
 }
 
 export function rangeLabelSize(range, cardinality = false) {

@@ -418,6 +418,9 @@ export function importNorma(xmlText) {
         else fact.alternativeReadings.push({ roleOrder, parts })
       }
     }
+    // NORMA shows both readings of a binary, "forward / reverse", unless its
+    // DisplayReverseReadings option says otherwise (the default shows them).
+    if (fact.arity === 2 && fact.readingParts && fact.alternativeReadings.some(r => r.roleOrder[0] === 1)) fact.readingDisplay = 'both'
 
     // derivation
     const dRule = kid(f, 'DerivationRule')
