@@ -42,14 +42,14 @@ function measureNoteText(text, w, measure) {
 }
 
 // Where the text of a note of width w breaks into lines: the character
-// offsets that start a new line.
+// offsets that start a new line (after whitespace, or inside a long word).
 export function noteLineBreaks(text, w) {
   return measureNoteText(text, w, (box, node) => {
     const breaks = []
     const range = document.createRange()
     let lastTop = null
     for (let i = 0; i < text.length; i++) {
-      if (i > 0 && !/\s/.test(text[i - 1])) continue   // lines only break after whitespace
+      // a line may also break inside a word too long for it (break-word)
       if (/\s/.test(text[i])) continue
       range.setStart(node, i); range.setEnd(node, i + 1)
       const top = range.getClientRects()[0]?.top
