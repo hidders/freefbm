@@ -41,7 +41,7 @@ import { pluralise as italianPlural } from '../verbalisation/languages/italian.j
 import { pluralise as spanishPlural } from '../verbalisation/languages/spanish.js'
 import { pluralise as polishPlural, declineNominalHead as polishNominalHead } from '../verbalisation/languages/polish.js'
 import { pluralise as germanPlural, declineNominalHead as germanNominalHead, defaultForm as germanForm } from '../verbalisation/languages/german.js'
-import { DIAGRAM_LOOKS } from '../diagram/diagramLook.js'
+import { DIAGRAM_BACKGROUNDS } from '../diagram/diagramBackground.js'
 
 // ── Validation error components ───────────────────────────────────────────────
 
@@ -5057,20 +5057,20 @@ export default function Inspector() {
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
               textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
-              Diagram look
+              Diagram background
             </label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {DIAGRAM_LOOKS.map(opt => (
+              {DIAGRAM_BACKGROUNDS.map(opt => (
                 <label key={opt.id} style={{
                   display: 'flex', alignItems: 'flex-start', gap: 8,
                   cursor: 'pointer', padding: '7px 9px',
-                  background: (store.diagramLook ?? 'norma') === opt.id ? 'var(--bg-raised)' : 'transparent',
+                  background: (store.diagramBackground ?? 'parchment') === opt.id ? 'var(--bg-raised)' : 'transparent',
                   border: '1px solid var(--border-soft)',
                   borderRadius: 4,
                 }}>
-                  <input type="radio" name="diagramLook"
-                    checked={(store.diagramLook ?? 'norma') === opt.id}
-                    onChange={() => store.setDiagramLook(opt.id)}
+                  <input type="radio" name="diagramBackground"
+                    checked={(store.diagramBackground ?? 'parchment') === opt.id}
+                    onChange={() => store.setDiagramBackground(opt.id)}
                     style={{ marginTop: 2, accentColor: 'var(--accent)' }}/>
                   <div>
                     <div style={{ fontSize: 12, color: 'var(--ink-2)', fontWeight: 500 }}>{opt.label}</div>
