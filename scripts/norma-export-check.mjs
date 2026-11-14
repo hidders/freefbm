@@ -323,7 +323,14 @@ async function runInPage({ name, content, isOrm }) {
     }
     worst.sort((p, q) => q.d - p.d)
     if (moved) diffs.push(`${moved} of ${occs} occurrences moved by more than a pixel, most ${worst.slice(0, 3).map(w => `${w.what} ${w.d.toFixed(1)} px`).join(', ')}`)
-    return { diffs, occs }
+    // derivation rules that come back as formal rules (not only informal ones)
+    const rules = { orig: 0, back: 0 }
+    for (const x of [...st.facts.filter(inS), ...st.objectTypes.filter(inS)]) {
+      if (!x.derivation || !x.derivationRule) continue
+      rules.orig++
+      if ((fB.get(nid(x.id)) ?? otB.get(nid(x.id)))?.derivationRule) rules.back++
+    }
+    return { diffs, occs, rules }
   }
 
   // The original NORMA file against the export.
@@ -403,6 +410,7 @@ for (const file of files) {
     fail('schema validation (xmllint)', xsd)
     fail('references', r.refProblems)
     if (r.roundTrip) fail(`export → import (${r.roundTrip.occs} occurrences)`, r.roundTrip.diffs)
+    if (r.roundTrip?.rules?.orig) console.log(`   · derivation rules: ${r.roundTrip.rules.back} of ${r.roundTrip.rules.orig} come back as formal rules (the others as informal ones)`)
     if (r.comparison) {
       console.log('   import → export, compared with the original (definitions, kept ids):')
       for (const row of r.comparison.rows) console.log(`       ${row.kind.padEnd(22)} ${String(row.original).padStart(5)} → ${String(row.exported).padStart(5)}   same id ${row.sameId}`)
