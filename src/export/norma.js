@@ -269,7 +269,8 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     else if (a) {
       normaDt = KIND_TO_NORMA[datatypeAssignmentToKind(a)] ?? 'TextVariableLength'
       approximated.push(`${ot.name} (${a.datatypeId} → ${normaDt})`)
-      ffNote([ot.id], `the data type of ${ot.name} is ${a.datatypeId} (${a.profileId} profile) in FreeFBM; NORMA has no such type, so it is written as the nearest NORMA type, ${normaDt.replace(/([a-z])([A-Z])/g, '$1 $2')}.`)
+      // FreeFBM's abstract types (text, integer, …) each have a NORMA type; others are a choice worth a note
+      if (a.profileId !== 'abstract') ffNote([ot.id], `the data type of ${ot.name} is ${a.datatypeId} (${a.profileId} profile) in FreeFBM; NORMA has no such type, so it is written as the nearest NORMA type, ${normaDt.replace(/([a-z])([A-Z])/g, '$1 $2')}.`)
     }
     const elName = normaDt ? normaDataTypeElement(normaDt) : null
     if (!elName) { unspecified.push(ot.name); return el('orm:ConceptualDataType', { id: normaId(ot.id, 'cdt'), ref: dataTypeId('UnspecifiedDataType'), Scale: 0, Length: 0 }) }
