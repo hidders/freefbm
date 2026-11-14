@@ -356,6 +356,19 @@ objectification link fact types and subtype links, whose parts the
 import does not keep yet (milestone 4c, with NORMA-only parts such as
 generation settings and element order).
 
+Milestone 4c (v1.2.40): the import also keeps the ids and names of the
+parts of subtype links (meta roles and their constraints) and of
+objectifications, implied ones included (objectifying type, nested
+predicate, link fact types with their roles, role proxies, readings and
+constraints), and each object type's and fact type's place in the file.
+The export writes them back, Objects and Facts in the imported order (new
+elements follow the one they came after). Over NORMA's samples every
+entity type, fact type, subtype fact, objectified type, link fact type and
+mandatory constraint keeps its id, and so do 2,514 of 2,658 uniqueness
+constraints and 2,044 of 2,363 readings (the rest belong to old-style
+unaries, which FreeFBM reads as unaries). Not kept: NORMA-only parts that
+NORMA regenerates (relational and Barker views, generation settings).
+
 Check in NORMA (2026-11-14, SamplePopulationExtraction): the error list
 holds only the five rules that stay informal (closures, a value
 condition, rules without a complete FreeFBM formula); join paths and the
