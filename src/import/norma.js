@@ -32,7 +32,7 @@
 // the meaning changed or something was lost, 'rewritten' when it says the
 // same. Adaptations of layout only are in the log.
 
-import { narrowestNoteWidth, fittingNoteHeight } from '../components/NoteNode.jsx'
+import { narrowestNoteWidth, fittingNoteHeight, TEXT_X, FOLD } from '../components/NoteNode.jsx'
 import { getDatatypeById } from '../data/datatypeProfiles.js'
 import { makePathTranslator, closeLinearRecursion } from './normaPaths.js'
 import { addImportNote } from '../utils/importNotes.js'
@@ -41,7 +41,7 @@ import { VALUE_KINDS, valueKindName } from '../utils/datatypeValues.js'
 import { normaTemporal } from './normaTemporal.js'
 import { placeLabel, factLabelBox, readingLabelSize, rangeLabelSize, nameLabelSize, roleNameLabelSize, objectTypeLabelBox,
   roleAnchor, nameAnchor } from './normaLabels.js'
-import { PX_PER_INCH } from '../diagram/normaGeometry.js'
+import { PX_PER_INCH, NORMA } from '../diagram/normaGeometry.js'
 
 const SCALE = PX_PER_INCH   // pixels per inch (src/diagram/normaGeometry.js)
 
@@ -62,6 +62,26 @@ function rect(shape) {
   if (b.length !== 4 || b.some(n => !Number.isFinite(n))) return null
   const [x, y, w, h] = b
   return { l: x * SCALE, t: y * SCALE, r: (x + w) * SCALE, b: (y + h) * SCALE }
+}
+
+// The middle of a fact type shape's role boxes, in px. NORMA's shape is its
+// role boxes, a band of NORMA.constraintBand per level of bars on the bars'
+// side, a margin all round (factBorder, or the objectified margins) and
+// one pen width (1/72 in); the levels are read from its size.
+function factRoleMiddle(shape, fact, occ) {
+  const b = (attr(shape, 'AbsoluteBounds') ?? '').split(',').map(Number)
+  const [x, y, w, h] = b
+  const vertical = occ.orientation === 'vertical'
+  // across the roles (turned with the shape when vertical)
+  const margin = fact.objectified ? NORMA.objectified.marginY : NORMA.factBorder
+  const across = vertical ? w : h
+  const levels = Math.max(0, Math.round((across - NORMA.roleBox.height - 2 * margin - 1 / 72) / NORMA.constraintBand))
+  const shift = levels * NORMA.constraintBand / 2
+  let cx = x + w / 2, cy = y + h / 2
+  // bars above (horizontal) or right (vertical) unless uniquenessBelow
+  if (vertical) cx += occ.uniquenessBelow ? shift : -shift
+  else cy += occ.uniquenessBelow ? -shift : shift
+  return { x: Math.round(cx * SCALE), y: Math.round(cy * SCALE) }
 }
 
 function bounds(shape) {
@@ -1093,13 +1113,18 @@ export function importNorma(xmlText) {
         if (turnedLeft) display.reverse()
         const ro = display.map(rid => f.roles.findIndex(r => r.id === rid))
         if (ro.length === f.arity && ro.every(i => i >= 0) && ro.some((r, i) => r !== i)) occ.roleOrder = ro
+        // FreeFBM's point of a fact type is the middle of its role boxes;
+        // NORMA's shape also holds its bars, a band per level on one side
+        // (and, objectified, the margins around it).
+        const roleMiddle = factRoleMiddle(s, f, occ)
+        occ.x = roleMiddle.x; occ.y = roleMiddle.y
         placeFactLabels(s, f, occ)
         // NORMA's DisplayRoleNames: per fact type shape, else the diagram's
         // (Default follows the diagram, which by default shows them)
         const shown = attr(s, 'DisplayRoleNames') ?? 'Default'
         if (shown === 'Off' || (shown === 'Default' && attr(d, 'DisplayRoleNames') === 'Off')) occ.roleNamesShown = false
         diag.occurrences.push(occ)
-        if (!firstPos.has(f.id)) firstPos.set(f.id, { x: b.cx, y: b.cy })
+        if (!firstPos.has(f.id)) firstPos.set(f.id, { x: occ.x, y: occ.y })
       } else if (s.localName === 'ModelNoteShape') {
         const mn = modelNotes.get(subj)
         if (!mn) continue
@@ -1107,14 +1132,17 @@ export function importNorma(xmlText) {
         const nid = copies.length ? `${subj}_${copies.length}` : subj
         noteCopies.set(subj, [...copies, nid])
         notesShown.add(subj)
-        // FreeFBM's note font is smaller than NORMA's: keep the left edge and
-        // take the narrowest width that wraps the text the same way, and
-        // the height that leaves as much room below the text as above it.
-        // The top left corner stays where NORMA has it.
-        const w0 = Math.max(80, b.w), h0 = Math.max(40, b.h)
+        // A note's text is in NORMA's font, which NORMA lays out without
+        // wrapping (the note grows to fit it). FreeFBM's note has more room
+        // around its text and a dog-ear, so the note takes the narrowest
+        // width that wraps the text as a wide note would (only at its own
+        // line breaks), and the height that leaves as much room below the
+        // text as above it. The top left corner stays where NORMA has it.
+        const w0 = Math.max(80, b.w + 2 * TEXT_X + FOLD), h0 = Math.max(40, b.h)
         const w = narrowestNoteWidth(mn.text, w0)
         const h = fittingNoteHeight(mn.text, w) ?? h0
-        diag.notes.push({ id: nid, x: b.cx - (w0 - w) / 2, y: b.cy - (h0 - h) / 2, w, h, text: mn.text,
+        const left = b.cx - b.w / 2, top = b.cy - b.h / 2
+        diag.notes.push({ id: nid, x: left + w / 2, y: top + h / 2, w, h, text: mn.text,
           connectors: mn.refs.map((targetId, i) => ({ id: `${nid}_c${i}`, targetId })) })
       } else if (/ConstraintShape$/.test(s.localName)) {
         const cid = conAlias.get(subj)

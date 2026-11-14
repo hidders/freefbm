@@ -1,14 +1,19 @@
 import React, { useRef, useState, useLayoutEffect } from 'react'
 import { IMPORT_NOTE_STYLE } from '../utils/importNotes.js'
 import { DIAGRAM_FONT } from '../diagram/diagramFont.js'
+import { NORMA, pt } from '../diagram/normaGeometry.js'
 
 const FONT = DIAGRAM_FONT
-const FOLD = 16  // dog-ear size
+export const FOLD = 16  // dog-ear size
 
+// Note text is NORMA's: Tahoma 7 pt, lines at the font's own height (Tahoma's
+// ascent plus descent, 1.207 em), so a NORMA note's text wraps the same way.
+export const NOTE_FONT_SIZE = pt(NORMA.fontSizePt)
+export const NOTE_LINE_HEIGHT = Math.round(NOTE_FONT_SIZE * 1.207 * 10) / 10
 const textStyle = {
-  fontSize: 11,
+  fontSize: NOTE_FONT_SIZE,
   fontFamily: FONT,
-  lineHeight: '14px',
+  lineHeight: `${NOTE_LINE_HEIGHT}px`,
   whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
   overflow: 'hidden',
@@ -19,7 +24,7 @@ const textStyle = {
 // Note text keeps TEXT_X clear of the left and right edges, and a float keeps
 // the first line(s) TEXT_X clear of the dog-ear too; NoteNode and
 // noteLineBreaks share these.
-const TEXT_X = 7
+export const TEXT_X = 7
 const TEXT_Y = 5
 
 // Lays the text of a note of width w out in a hidden element styled like the
