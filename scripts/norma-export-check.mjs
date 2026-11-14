@@ -168,6 +168,14 @@ async function runInPage({ name, content, isOrm }) {
       if (a?.profileId === 'norma' && b.datatypeAssignment?.datatypeId !== a.datatypeId) diffs.push(`object type ${ot.name}: data type ${b.datatypeAssignment?.datatypeId}`)
     }
     const key = (rs) => [...rs].sort((x, y) => x - y).join(',')
+    const extImplied = new Map()
+    for (const c of (st.constraints ?? []).filter(inS)) {
+      if (c.constraintType !== 'uniqueness' || !c.isPreferredIdentifier || !c.targetObjectTypeId) continue
+      for (const m of c.sequences?.[0] ?? []) {
+        const f = m.kind === 'role' && st.facts.find(x => x.id === m.factId)
+        if (f && f.roles.length === 2 && f.roles[1 - m.roleIndex].objectTypeId === c.targetObjectTypeId) extImplied.set(f.id, new Set([...(extImplied.get(f.id) ?? []), 1 - m.roleIndex]))
+      }
+    }
     const readings = (f) => new Set([
       ...(f.readingParts ? [`${f.roles.map((_, i) => i)}:${f.readingParts.map(p => p.trim()).join('|')}`] : []),
       ...(f.alternativeReadings ?? []).map(r => `${r.roleOrder}:${r.parts.map(p => p.trim()).join('|')}`)])
@@ -189,15 +197,51 @@ async function runInPage({ name, content, isOrm }) {
       const ua = new Set((f.uniqueness ?? []).map(u => key(u.roles))), ub = new Set((b.uniqueness ?? []).map(u => key(u.roles)))
       // the export adds what preferred identifiers imply
       for (const pu of f.preferredUniqueness ?? []) f.roles.forEach((_, ri) => { if (!pu.includes(ri)) ua.add(String(ri)) })
+      for (const ri of extImplied.get(f.id) ?? []) ua.add(String(ri))
       for (const x of ua) if (!ub.has(x)) diffs.push(`${what}: uniqueness over roles ${x} is missing`)
       for (const x of ub) if (!ua.has(x)) diffs.push(`${what}: uniqueness over roles ${x} was added`)
       const pa = new Set((f.preferredUniqueness ?? []).map(key)), pb = new Set((b.preferredUniqueness ?? []).map(key))
       for (const x of pa) if (!pb.has(x)) diffs.push(`${what}: preferred identifier over roles ${x} is missing`)
       const implied = new Set((f.preferredUniqueness ?? []).flatMap(pu => f.roles.map((_, ri) => ri).filter(ri => !pu.includes(ri))))
+      for (const ri of extImplied.get(f.id) ?? []) implied.add(ri)
       f.roles.forEach((r, i) => {
         const want = !!r.mandatory || implied.has(i)
         if (!!b.roles[i].mandatory !== want) diffs.push(`${what}: role ${i + 1} mandatory ${!!b.roles[i].mandatory}`)
       })
+    }
+    // ranges
+    const rk = (rs) => JSON.stringify((rs ?? []).map(r => ({ ...r, value: r.value ?? undefined })))
+    // count ranges: "at most u" is 1..u in NORMA
+    const ck = (rs) => rk((rs ?? []).map(r => r.type === 'upper' ? { type: 'range', lower: '1', upper: r.upper } : r))
+    for (const ot of st.objectTypes.filter(inS)) {
+      const b = otB.get(nid(ot.id))
+      if (!b) continue
+      if (ot.kind === 'value' && rk(ot.valueRange) !== rk(b.valueRange)) diffs.push(`object type ${ot.name}: value range ${rk(b.valueRange)}`)
+      if (ck(ot.cardinalityRange) !== ck(b.cardinalityRange)) diffs.push(`object type ${ot.name}: cardinality ${rk(b.cardinalityRange)}`)
+    }
+    for (const f of st.facts.filter(inS)) {
+      const b = fB.get(nid(f.id))
+      if (!b) continue
+      f.roles.forEach((r, i) => { if (r.valueRange?.length && rk(r.valueRange) !== rk(b.roles[i]?.valueRange)) diffs.push(`fact type ${f.id}: role ${i + 1} value range ${rk(b.roles[i]?.valueRange)}`) })
+      const ifs = (x) => (x.internalFrequency ?? []).map(q => `${key(q.roles)}:${ck(q.range)}${q.deontic ? 'd' : ''}`).sort().join(' ')
+      if (ifs(f) !== ifs(b)) diffs.push(`fact type ${f.id}: internal frequency ${ifs(b)}`)
+    }
+    // external constraints
+    const mem = (m) => m.kind === 'subtype' ? `st:${nid(m.subtypeId)}` : `${/_il_/.test(m.factId) ? nid(m.factId.split('_il_')[0]) + '_il_' + m.factId.split('_il_')[1] : nid(m.factId)}/${m.roleIndex}`
+    const memB = (m) => m.kind === 'subtype' ? `st:${m.subtypeId}` : `${m.factId}/${m.roleIndex}`
+    const cB = new Map((back.externalConstraints ?? []).map(c => [c.id, c]))
+    for (const c of (st.constraints ?? []).filter(inS)) {
+      const b = cB.get(nid(c.id))
+      const what = `constraint ${c.name || c.id} (${c.constraintType})`
+      if (!b) { diffs.push(`${what} is missing`); continue }
+      if (b.constraintType !== c.constraintType) diffs.push(`${what} came back as ${b.constraintType}`)
+      const sa = JSON.stringify(c.sequences.map(sq => sq.map(mem))), sb = JSON.stringify(b.sequences.map(sq => sq.map(memB)))
+      if (sa !== sb) diffs.push(`${what}: sequences ${sb} instead of ${sa}`)
+      if (!!c.deontic !== !!b.deontic) diffs.push(`${what}: deontic ${!!b.deontic}`)
+      if (c.constraintType === 'ring' && [...c.ringTypes].sort().join() !== [...(b.ringTypes ?? [])].sort().join()) diffs.push(`${what}: ring ${b.ringTypes}`)
+      if (c.constraintType === 'frequency' && ck(c.frequency) !== ck(b.frequency)) diffs.push(`${what}: frequency ${rk(b.frequency)}`)
+      if (c.constraintType === 'valueComparison' && c.operator !== b.operator) diffs.push(`${what}: operator ${b.operator}`)
+      if (c.constraintType === 'uniqueness' && !!c.isPreferredIdentifier !== !!b.isPreferredIdentifier) diffs.push(`${what}: preferred identifier ${!!b.isPreferredIdentifier}`)
     }
     const stB = new Set(back.subtypes.map(s => `${s.subId}<${s.superId}`))
     for (const s of st.subtypes.filter(inS)) if (!stB.has(`${nid(s.subId)}<${nid(s.superId)}`)) diffs.push(`subtype link ${s.id} is missing`)
@@ -218,6 +262,19 @@ async function runInPage({ name, content, isOrm }) {
         occs++
         if (!best) { diffs.push(`diagram ${d.name}: ${el.name ?? el.id} is not drawn`); continue }
         if (best.d > 1.01) { moved++; worst.push({ what: `${d.name}: ${el.name ?? el.id}`, d: best.d }) }
+        // moved labels come back within 6 px: the importer keeps a label that
+        // reaches up to 6 px into its shape beside it, at no gap (normaLabels.js)
+        const near = (a, b) => !a || (!a.dx && !a.dy && !b) || (b && Math.abs(a.dx - b.dx) <= 6 && Math.abs(a.dy - b.dy) <= 6)
+        const lab = (k, a, b) => { if (!near(a, b)) diffs.push(`diagram ${d.name}: ${el.name ?? el.id} ${k} at ${b ? `${b.dx},${b.dy}` : 'default'} instead of ${a.dx},${a.dy}`) }
+        if (el.roles) {
+          const ra = o.readingAbove ?? el.readingAbove
+          lab('reading', ra ? (o.readingOffsetAbove ?? el.readingOffsetAbove) : (o.readingOffsetBelow ?? el.readingOffsetBelow), ra ? best.x.readingOffsetAbove : best.x.readingOffsetBelow)
+          el.roles.forEach((r, ri) => {
+            if (r.roleName) lab(`role name ${ri + 1}`, o.roleNameOffsets?.[ri], best.x.roleNameOffsets?.[ri])
+            if (r.valueRange?.length) lab(`value range ${ri + 1}`, o.valueRangeOffsets?.[ri], best.x.valueRangeOffsets?.[ri])
+          })
+          if (el.objectified) lab('name', o.nameOffset, best.x.nameOffset)
+        } else if (el.kind === 'value' && el.valueRange?.length) lab('value range', o.valueRangeOffset ?? el.valueRangeOffset, best.x.valueRangeOffset)
         if (el.roles) {
           const ro = (o.roleOrder ?? el.roleOrder ?? []).join(), rb = (best.x.roleOrder ?? []).join()
           const ident = el.roles.map((_, i) => i).join()
