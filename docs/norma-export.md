@@ -334,6 +334,11 @@ paths are, from the query's target (or its first position). The sample
 model, SamplePopulation and ATOP (195 external constraints) come back with
 the same constraint formulas.
 
+Check in NORMA (2026-11-14, SamplePopulationExtraction): the error list
+holds only the five rules that stay informal (closures, a value
+condition, rules without a complete FreeFBM formula); join paths and the
+other eleven derivation rules are accepted.
+
 Still open after milestone 3: derivation rules with closures or value
 conditions as NORMA paths, sample populations, and milestone 4 (faithful
 re-export of imported files).
