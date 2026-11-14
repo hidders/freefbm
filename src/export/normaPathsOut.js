@@ -1,5 +1,5 @@
 // FreeFBM rule trees → NORMA role paths, for the NORMA export (the inverse
-// of src/import/normaPaths.js, for conjunctive rules).
+// of src/import/normaPaths.js, for rules without data conditions).
 //
 // A rule whose body is built from ∃, ∧, fact atoms, type atoms (subtype
 // tests) and equalities between variables is a conjunctive query. It is
@@ -13,9 +13,15 @@
 // (one variable). A derived fact type's roles are projected from a pathed
 // role (or the lead root) of their variable.
 //
-// Other rules (negation, disjunction, closures, value and data conditions,
-// computed roles, link fact types of objectifications) are refused with a
-// reason; the export keeps those as informal rules.
+// Negation and disjunction nest: a disjunction is a subpath that splits Or
+// into one subpath per part, a negation a subpath whose (And) split is
+// negated (SplitIsNegated); variables shared across them are unified, and
+// the importer binds each where all its uses are. Equalities between
+// variables are taken outside negations and disjunctions only.
+//
+// Other rules (closures, value and data conditions, computed roles,
+// comparisons) are refused with a reason; the export keeps those as
+// informal rules.
 
 const refuse = (why) => ({ error: why })
 
@@ -32,34 +38,35 @@ export function conjunctivePath(rule, opts) {
   const { el, id } = opts
   if (!rule?.body) return refuse('no rule')
   if (rule.terms && Object.keys(rule.terms).length) return refuse('computed roles')
-  const atoms = [], types = [], eqs = [], varType = new Map()
-  const walk = (n) => {
-    if (!n || typeof n !== 'object') return refuse('an empty part')
+  // The body as a tree: { k: 'and' | 'or' | 'not', items } | { k: 'atom', a } | { k: 'type', t }.
+  // Equalities between variables are only taken where they hold for the
+  // whole rule (outside negations and disjunctions).
+  const eqs = []
+  let fail = null
+  const tree = (n, positive) => {
+    if (fail) return null
+    if (!n || typeof n !== 'object') { fail = 'an empty part'; return null }
     switch (n.t) {
-      case 'exists': {
-        for (const v of [].concat(n.v ?? n.vars ?? [])) varType.set(v.id, v.typeId)
-        return walk(n.body)
-      }
-      case 'and': { for (const a of n.args ?? []) { const r = walk(a); if (r?.error) return r } return null }
+      case 'exists': return tree(n.body, positive)
+      case 'and': return { k: 'and', items: (n.args ?? []).map(a => tree(a, positive)).filter(Boolean) }
+      case 'or': return { k: 'or', items: (n.args ?? []).map(a => tree(a, false)).filter(Boolean) }
+      case 'not': return { k: 'not', items: [tree(n.body ?? n.arg ?? n.args?.[0], false)].filter(Boolean) }
       case 'fact': {
         const arity = arityOf(n.factId)
-        if (arity == null) return refuse('a fact type the export leaves out')
-        if ((n.args ?? []).length !== arity || n.args.some(a => typeof a !== 'string')) return refuse('a fact atom with terms')
-        atoms.push(n); return null
+        if (arity == null) { fail = 'a fact type the export leaves out'; return null }
+        if ((n.args ?? []).length !== arity || n.args.some(a => typeof a !== 'string')) { fail = 'a fact atom with terms'; return null }
+        return { k: 'atom', a: n }
       }
-      case 'type': {
-        if (typeof n.arg !== 'string') return refuse('a type test of a term')
-        types.push(n); return null
-      }
+      case 'type':
+        if (typeof n.arg !== 'string') { fail = 'a type test of a term'; return null }
+        return { k: 'type', t: n, top: positive }
       case 'cmp':
-        if (n.op === '=' && typeof n.left === 'string' && typeof n.right === 'string') { eqs.push([n.left, n.right]); return null }
-        return refuse('a comparison')
+        if (n.op === '=' && positive && typeof n.left === 'string' && typeof n.right === 'string') { eqs.push([n.left, n.right]); return null }
+        fail = 'a comparison'; return null
       case 'true': return null
-      case 'not': return refuse('a negation')
-      case 'or': return refuse('a disjunction')
-      case 'tc': return refuse('a transitive closure')
-      case 'vcmp': case 'pred': return refuse('a value condition')
-      default: return refuse(`a ${n.t ?? 'part'} FreeFBM cannot write as a role path yet`)
+      case 'tc': fail = 'a transitive closure'; return null
+      case 'vcmp': case 'pred': fail = 'a value condition'; return null
+      default: fail = `a ${n.t ?? 'part'} FreeFBM cannot write as a role path yet`; return null
     }
   }
   // A link fact type F_il_k of an objectification is a binary: the
@@ -72,9 +79,10 @@ export function conjunctivePath(rule, opts) {
   }
   const roleRef = (fid, i) => { const l = link(fid); return l ? opts.linkRoleRef(l[1], Number(l[2]), i) : opts.roleRef(fid, i) }
   const playerOf = (fid, i) => { const l = link(fid); return l ? (i === 0 ? l[1] : opts.playerOf(l[1], Number(l[2]))) : opts.playerOf(fid, i) }
-  const err = walk(rule.body)
-  if (err?.error) return err
-  if (!atoms.length && !types.length) return refuse('no fact types')
+  const body = tree(rule.body, true)
+  if (fail) return refuse(fail)
+  const leaves = (t) => !t ? 0 : t.k === 'atom' || t.k === 'type' ? 1 : t.items.reduce((n, x) => n + leaves(x), 0)
+  if (!leaves(body)) return refuse('no fact types')
 
   // one class per object: variables made equal are one
   const parent = new Map()
@@ -89,19 +97,50 @@ export function conjunctivePath(rule, opts) {
   const leadId = id('lead'), leadRoot = id('lead-root')
   addNode(opts.subject, { kind: 'PathRoot', id: leadRoot })
 
-  const subPaths = []
-  atoms.forEach((a, k) => {
-    const pathed = a.args.map((_, i) => el('orm:PathedRole', { id: id(`a${k}r${i}`), ref: roleRef(a.factId, i), Purpose: i === 0 ? 'PostInnerJoin' : 'SameFactType' }))
-    a.args.forEach((v, i) => addNode(v, { kind: 'PathedRole', id: id(`a${k}r${i}`) }))
-    subPaths.push(el('orm:SubPath', { id: id(`a${k}`) }, [
-      el('orm:RootObjectType', { id: id(`a${k}root`), ref: opts.typeRef(playerOf(a.factId, 0)) }),
-      el('orm:PathedRoles', {}, pathed),
-    ]))
-  })
-  types.forEach((t, k) => {
-    addNode(t.arg, { kind: 'PathRoot', id: id(`t${k}root`) })
-    subPaths.push(el('orm:SubPath', { id: id(`t${k}`) }, [el('orm:RootObjectType', { id: id(`t${k}root`), ref: opts.typeRef(t.typeId) })]))
-  })
+  // Subpaths: an atom or a type test is a subpath with a root of its own; a
+  // conjunction is its parts side by side (And), a disjunction a subpath
+  // that splits Or into one subpath per part, a negation a subpath whose
+  // And split is negated.
+  let n = 0
+  const emit = (t) => {
+    if (!t) return []
+    if (t.k === 'and') return t.items.flatMap(emit)
+    if (t.k === 'atom') {
+      const k = n++, a = t.a
+      a.args.forEach((v, i) => addNode(v, { kind: 'PathedRole', id: id(`a${k}r${i}`) }))
+      return [el('orm:SubPath', { id: id(`a${k}`) }, [
+        el('orm:RootObjectType', { id: id(`a${k}root`), ref: opts.typeRef(playerOf(a.factId, 0)) }),
+        el('orm:PathedRoles', {}, a.args.map((_, i) => el('orm:PathedRole', { id: id(`a${k}r${i}`), ref: roleRef(a.factId, i), Purpose: i === 0 ? 'PostInnerJoin' : 'SameFactType' }))),
+      ])]
+    }
+    if (t.k === 'type') {
+      // A type test walks the subtype link into the type, from its supertype
+      // (the importer reads it as a type test in place); a type with no
+      // supertype is a root of its own (read as the variable's type).
+      const k = n++
+      const link = opts.subtypeLinkOf?.(t.t.typeId)
+      if (link) {
+        addNode(t.t.arg, { kind: 'PathedRole', id: id(`t${k}r0`) })
+        return [el('orm:SubPath', { id: id(`t${k}`) }, [
+          el('orm:RootObjectType', { id: id(`t${k}root`), ref: opts.typeRef(link.superId) }),
+          el('orm:PathedRoles', {}, [
+            el('orm:PathedRole', { id: id(`t${k}r0`), ref: link.superRole, Purpose: 'PostInnerJoin' }),
+            el('orm:PathedRole', { id: id(`t${k}r1`), ref: link.subRole, Purpose: 'SameFactType' }),
+          ]),
+        ])]
+      }
+      if (!t.top) { fail = 'a test for a type without a supertype inside a negation or disjunction'; return [] }
+      addNode(t.t.arg, { kind: 'PathRoot', id: id(`t${k}root`) })
+      return [el('orm:SubPath', { id: id(`t${k}`) }, [el('orm:RootObjectType', { id: id(`t${k}root`), ref: opts.typeRef(t.t.typeId) })])]
+    }
+    const k = n++
+    if (t.k === 'or') return [el('orm:SubPath', { id: id(`s${k}`), SplitCombinationOperator: 'Or' }, [
+      el('orm:SubPaths', {}, t.items.map((x, j) => el('orm:SubPath', { id: id(`s${k}b${j}`) }, [el('orm:SubPaths', {}, emit(x))]))),
+    ])]
+    return [el('orm:SubPath', { id: id(`s${k}`), SplitIsNegated: 'true' }, [el('orm:SubPaths', {}, t.items.flatMap(emit))])]
+  }
+  const subPaths = emit(body)
+  if (fail) return refuse(fail)
 
   // every projected variable must be bound by the body
   for (const p of opts.projected ?? []) {
