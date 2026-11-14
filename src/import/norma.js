@@ -1062,6 +1062,8 @@ export function importNorma(xmlText) {
   // ── model notes ───────────────────────────────────────────────────────────
   const modelNotes = new Map()   // id → { text, refs: [FreeFBM ids], el }
   for (const n of kids(kid(model, 'ModelNotes'), 'ModelNote')) {
+    // notes FreeFBM's export added about what NORMA could not take (src/export/norma.js)
+    if (/^FreeFBM:/.test(textOf(kid(n, 'Text')))) { count('freefbmNotes'); continue }
     const refs = refsOf(kid(n, 'ReferencedBy')).map(r => elementFor(r)?.id).filter(Boolean)
     modelNotes.set(attr(n, 'id'), { text: textOf(kid(n, 'Text')), refs, el: n })
   }
@@ -1436,6 +1438,7 @@ export function importNorma(xmlText) {
   if (counts.pendingJoins) warn(`${counts.pendingJoins} constraints have a join path that could not be translated; their sequences are imported without it.`)
   if (counts.addedPlayers) note(`${counts.addedPlayers} object type shapes were added next to fact types whose players NORMA did not draw on that diagram.`)
   if (unplaced) note(`${unplaced} model notes had no shape and no element; they are on the “Imported notes” diagram.`)
+  if (counts.freefbmNotes) note(`${counts.freefbmNotes} note${counts.freefbmNotes === 1 ? '' : 's'} starting with “FreeFBM:”, which FreeFBM's export added about what NORMA could not take, ${counts.freefbmNotes === 1 ? 'was' : 'were'} left out.`)
   if (counts.groupMembersDropped) note(`${counts.groupMembersDropped} group members (internal constraints and similar) have no FreeFBM counterpart and were left out of their groups.`)
   if (crm) note(`${crm} reference mode${crm === 1 ? ' is' : 's are'} defined in the model (${customModes.map(m => attr(m, 'Name')).join(', ')}): each is imported as a value type with its identifying fact type, named as NORMA named it.`)
   const phrases = kids(kid(model, 'RecognizedPhrases')).length

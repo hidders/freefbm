@@ -73,6 +73,23 @@ const imports = NEEDED.map(n => xsdFiles.find(f => path.basename(f) === n)).filt
 }).filter(Boolean)
 if (imports.length < 3) { console.error(`NORMA's schemas (${NEEDED.slice(0, 3).join(', ')}) not found under ${normaDir}`); process.exit(1) }
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'norma-export-'))
+// NORMA's shape grouping extension (group colours) has no schema in NORMA's
+// sources: a stub lets its group type and colours through.
+const ormCore = xsdFiles.find(f => path.basename(f) === 'ORM2Core.xsd')
+const diagramXsd = xsdFiles.find(f => path.basename(f) === 'ORM2Diagram.xsd')
+fs.writeFileSync(path.join(tmp, 'shapeGroup.xsd'), `<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:orm="http://schemas.neumont.edu/ORM/2006-04/ORMCore"
+  targetNamespace="http://www.ormsolutions.com/NORMA/2009-01/ShapeGrouping" elementFormDefault="qualified">
+  <xs:import namespace="http://schemas.neumont.edu/ORM/2006-04/ORMCore" schemaLocation="${path.resolve(ormCore)}"/>
+  <xs:import namespace="http://schemas.neumont.edu/ORM/2006-04/ORMDiagram" schemaLocation="${path.resolve(diagramXsd)}"/>
+  <xs:element name="ORMShapeColorGroupType" substitutionGroup="orm:GroupType">
+    <xs:complexType><xs:complexContent><xs:extension base="orm:GroupTypeType">
+      <xs:sequence><xs:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded"/></xs:sequence>
+    </xs:extension></xs:complexContent></xs:complexType>
+  </xs:element>
+</xs:schema>
+`)
+imports.push(`<xs:import namespace="http://www.ormsolutions.com/NORMA/2009-01/ShapeGrouping" schemaLocation="${path.join(tmp, 'shapeGroup.xsd')}"/>`)
 const schemaFile = path.join(tmp, 'norma.xsd')
 fs.writeFileSync(schemaFile, `<?xml version="1.0"?>\n<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">\n${imports.join('\n')}\n</xs:schema>\n`)
 function validate(xmlFile) {
@@ -118,7 +135,8 @@ async function runInPage({ name, content, isOrm }) {
     const refProblems = checkRefs(doc)
     const r = { schema: sch.name, xml, report, refProblems }
     if (isOrm) r.comparison = compareOrm(new DOMParser().parseFromString(content.replace(/^﻿/, ''), 'application/xml'), doc)
-    else r.roundTrip = roundTrip(state, sch.id, importNorma(xml).data)
+    // export → import, also for an imported NORMA file (its FreeFBM model)
+    r.roundTrip = roundTrip(state, sch.id, importNorma(xml).data)
     results.push(r)
   }
   return results
@@ -243,6 +261,21 @@ async function runInPage({ name, content, isOrm }) {
       if (c.constraintType === 'valueComparison' && c.operator !== b.operator) diffs.push(`${what}: operator ${b.operator}`)
       if (c.constraintType === 'uniqueness' && !!c.isPreferredIdentifier !== !!b.isPreferredIdentifier) diffs.push(`${what}: preferred identifier ${!!b.isPreferredIdentifier}`)
     }
+    // derivation (as informal rules), definitions, custom properties
+    for (const x of [...st.objectTypes.filter(inS), ...st.facts.filter(inS)]) {
+      const b = otB.get(nid(x.id)) ?? fB.get(nid(x.id))
+      if (!b) continue
+      const isSub = st.subtypes.some(s => s.subId === x.id)
+      if ((x.roles || isSub) && !!x.derivation !== !!b.derivation) diffs.push(`${x.name ?? x.id}: derived ${!!b.derivation}`)
+      if ((x.definition ?? '') !== (b.definition ?? '')) diffs.push(`${x.name ?? x.id}: definition “${b.definition ?? ''}”`)
+      for (const [k, v] of Object.entries(x.properties ?? {})) if (v !== '' && v != null && String(b.properties?.[nid(k) ] ?? b.properties?.[normaId(k, 'property-definition')] ?? '') !== String(v)) diffs.push(`${x.name ?? x.id}: property ${k} is ${b.properties?.[normaId(k, 'property-definition')]}`)
+    }
+    // groups by name, with their number of members
+    for (const g of st.groups ?? []) {
+      const b = (back.groups ?? []).find(x => x.name === g.name)
+      if (!b) diffs.push(`group ${g.name} is missing`)
+      else if (Object.keys(g.colors ?? {}).sort().join() !== Object.keys(b.colors ?? {}).sort().join()) diffs.push(`group ${g.name}: colours ${Object.keys(b.colors ?? {})}`)
+    }
     const stB = new Set(back.subtypes.map(s => `${s.subId}<${s.superId}`))
     for (const s of st.subtypes.filter(inS)) if (!stB.has(`${nid(s.subId)}<${nid(s.superId)}`)) diffs.push(`subtype link ${s.id} is missing`)
     // occurrences: each one (but collapsed reference modes) at the same place
@@ -253,6 +286,9 @@ async function runInPage({ name, content, isOrm }) {
       if (!db) { diffs.push(`diagram ${d.name} is missing`); continue }
       db._used = true
       const expanded = new Set(d.expandedRefModeOccs ?? [])
+      // notes come back with their text; FreeFBM's own notes stay out
+      const texts = (ns) => (ns ?? []).filter(n => !n.importNote && !/^FreeFBM:/.test(n.text ?? '')).map(n => (n.text ?? '').trim()).sort().join(' | ')
+      if (texts(d.notes) !== texts(db.notes)) diffs.push(`diagram ${d.name}: notes “${texts(db.notes)}” instead of “${texts(d.notes)}”`)
       for (const o of d.occurrences) {
         if (o.refModeOwnerOccId && !expanded.has(o.refModeOwnerOccId)) continue
         const el = st.objectTypes.find(x => x.id === o.schemaElementId) ?? st.facts.find(x => x.id === o.schemaElementId)
