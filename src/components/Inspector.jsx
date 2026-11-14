@@ -1726,6 +1726,8 @@ function UniquenessBarInspector({ fact, uIndex }) {
   const sortedKey  = JSON.stringify([...u].sort())
 
   let isPreferred, canBePreferred, reading, identifiesVt = false
+  const identifiesObjectified = !fact._implicit && fact.objectified && Array.isArray(fact.objectifiedIdentifier)
+    && JSON.stringify([...fact.objectifiedIdentifier].sort((x, y) => x - y)) === JSON.stringify([...u].sort((x, y) => x - y))
   if (isImplicit) {
     const prefArr = implicitLink?.preferredUniqueness || []
     isPreferred = prefArr.some(pu => JSON.stringify([...pu].sort()) === sortedKey)
@@ -1810,12 +1812,19 @@ function UniquenessBarInspector({ fact, uIndex }) {
           title={identifiesVt ? 'A value type cannot have a preferred identifier' : undefined}
           onChange={() => togglePreferred()}
         />
+        {!isImplicit && fact.objectified && (
+          <Checkbox
+            label={`Identifies ${fact.objectifiedName || 'the objectified fact type'}`}
+            checked={identifiesObjectified}
+            onChange={() => store.setObjectifiedIdentifier(fact.id, u)}
+          />
+        )}
       </Row>
       {!isImplicit && (
         <Row>
           <Label>Modality</Label>
-          <DeonticCheckbox checked={!isPreferred && isDeonticUniqueness(fact, u)} disabled={isPreferred}
-            title={isPreferred ? 'A preferred identifier is always alethic' : undefined}
+          <DeonticCheckbox checked={!isPreferred && !identifiesObjectified && isDeonticUniqueness(fact, u)} disabled={isPreferred || identifiesObjectified}
+            title={isPreferred || identifiesObjectified ? 'A preferred identifier is always alethic' : undefined}
             onChange={v => store.setUniquenessDeontic(fact.id, u, v)}/>
         </Row>
       )}
@@ -2973,6 +2982,8 @@ function FactConstraintsSubsection({ fact, store }) {
         const isPreferred = (fact.preferredUniqueness || []).some(pu =>
           JSON.stringify([...pu].sort()) === uKey
         )
+        const identifies = fact.objectified && Array.isArray(fact.objectifiedIdentifier)
+          && JSON.stringify([...fact.objectifiedIdentifier].sort()) === uKey
         const canBePreferred = u.length === fact.arity - 1
         return (
           <div key={ui}
@@ -2984,6 +2995,8 @@ function FactConstraintsSubsection({ fact, store }) {
               borderRadius: 3 }}>
             <span style={{ flex: 1 }}>Roles: {[...u].sort((a, b) => a - b).map(i => i + 1).join(', ')}</span>
             {isPreferred && <span title="Preferred identifier"
+              style={{ color: 'var(--col-mandatory)', fontSize: 11, flexShrink: 0 }}>★</span>}
+            {identifies && <span title={`Identifies ${fact.objectifiedName || 'the objectified fact type'}`}
               style={{ color: 'var(--col-mandatory)', fontSize: 11, flexShrink: 0 }}>★</span>}
             <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent)', flexShrink: 0, lineHeight: 1 }}>→</span>
           </div>

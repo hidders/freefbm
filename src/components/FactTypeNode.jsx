@@ -72,7 +72,7 @@ export function displayRoleOrder(fact) {
 export function nestedFactBounds(fact, rakeMinPad = {}) {
   const { top: rT = 0, bottom: rB = 0, left: rL = 0, right: rR = 0,
     rakeZoneOnBarSide = 0, rakeZoneT = 0, rakeZoneB = 0 } = rakeMinPad
-  const PAD  = 10
+  const PAD_X = OBJ_MARGIN_X, PAD_Y = OBJ_MARGIN_Y   // NORMA's margins of an objectified fact type
   const n    = Math.max(fact.arity, 1)
   const isV  = fact.orientation === 'vertical'
   const barsBelow = !!fact.uniquenessBelow
@@ -85,9 +85,9 @@ export function nestedFactBounds(fact, rakeMinPad = {}) {
   const hasAnyBar  = (fact.uniqueness?.length ?? 0) > 0
   const effBarMargin = rakeZoneOnBarSide > 0 ? 0 : BAR_MARGIN
   const barSpace   = hasAnyBar
-    ? effBarMargin + rakeZoneOnBarSide + BAR_SPACING * (multiCount + 1) + BAR_H / 2 + 10
+    ? effBarMargin + rakeZoneOnBarSide + BAR_SPACING * (multiCount + 1) + BAR_BAND_END + PAD_Y
     : 0
-  const barPad = Math.max(PAD, Math.ceil(barSpace))
+  const barPad = Math.max(PAD_Y, Math.ceil(barSpace))
 
   // Compute reading text extent for nestedReading
   const readingText = fact.nestedReading ? getDisplayReading(fact) : ''
@@ -95,22 +95,22 @@ export function nestedFactBounds(fact, rakeMinPad = {}) {
 
   if (isV) {
     const totalH    = n * ROLE_W + (n - 1) * ROLE_GAP
-    const padLeft   = Math.max(barsBelow ? barPad : PAD, rL)
-    const padRight  = Math.max(barsBelow ? PAD    : barPad, rR)
+    const padLeft   = Math.max(barsBelow ? barPad : PAD_Y, rL)
+    const padRight  = Math.max(barsBelow ? PAD_Y    : barPad, rR)
     const outermostBottomV = fact.y + totalH / 2 + rakeZoneB
     const padBottom = fact.nestedReading
-      ? Math.max(PAD, Math.ceil(rakeZoneB + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW))
-      : PAD
+      ? Math.max(PAD_X, Math.ceil(rakeZoneB + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW))
+      : PAD_X
     return {
       left:   fact.x - ROLE_H / 2 - padLeft,
       right:  fact.x + ROLE_H / 2 + padRight,
-      top:    fact.y - totalH / 2 - PAD,
+      top:    fact.y - totalH / 2 - PAD_X,
       bottom: fact.y + totalH / 2 + padBottom,
       cx: fact.x, cy: fact.y,
     }
   }
   const totalW = n * ROLE_W + (n - 1) * ROLE_GAP
-  const ow     = Math.max(totalW + PAD * 2, readingTextW + PAD * 2)
+  const ow     = Math.max(totalW + PAD_X * 2, readingTextW + PAD_X * 2)
   const readingAboveActive = fact.nestedReading && !!fact.readingAbove
   const barsAbove = hasAnyBar && !barsBelow
   const rakeZoneBelowH = barsBelow ? rakeZoneOnBarSide : rakeZoneB
@@ -127,8 +127,8 @@ export function nestedFactBounds(fact, rakeMinPad = {}) {
   const readingPadBelow = (fact.nestedReading && !readingAboveActive)
     ? Math.ceil(outermostBelowH - fact.y - ROLE_H / 2 + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
     : 0
-  const padTop = Math.max(barsAbove ? barPad : PAD, readingPadAbove, rT)
-  const baseBottom = barsBelow ? barPad : PAD
+  const padTop = Math.max(barsAbove ? barPad : PAD_Y, readingPadAbove, rT)
+  const baseBottom = barsBelow ? barPad : PAD_Y
   const padBottom = Math.max(baseBottom, readingPadBelow, rB)
   return {
     left:   fact.x - ow / 2,
@@ -364,6 +364,13 @@ const BAR_SPACING      = px(NORMA.constraintBand)        // distance between suc
 // below use it (bar centre = margin + spacing × (level + 1) − BAR_H / 2)
 const BAR_MARGIN       = ROLE_STROKE / 2 + BAR_SPACING / 2 + BAR_H / 2 - BAR_SPACING
 const DEONTIC_R        = BAR_SPACING / 2 - BAR_H         // radius of the circle that starts a deontic uniqueness bar
+// From a bar's outer edge to the outer edge of its band (NORMA draws each bar
+// in the middle of a constraintBand-high row).
+const BAR_BAND_END     = BAR_SPACING / 2 - BAR_H / 2
+// NORMA's margins between an objectified fact type's role boxes and bands and
+// its outline: marginX along the roles, marginY across them.
+const OBJ_MARGIN_X     = px(NORMA.objectified.marginX)
+const OBJ_MARGIN_Y     = px(NORMA.objectified.marginY)
 const PREF_OFFSET      = 0.75 * BAR_H                    // shift for preferred uniqueness bar
 const BAR_SIDE_COMFORT = 2    // rake comfort used when bars sit beyond the rakes on the same side
 const UNARY_CAP_R = 8
@@ -1322,6 +1329,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   const effBarMargin_h = rakeZone_h > 0 ? 0 : BAR_MARGIN
   const effBarMargin_v = rakeZone_v > 0 ? 0 : BAR_MARGIN
   const preferredKeys = new Set((fact.preferredUniqueness || []).map(pu => JSON.stringify([...pu].sort((a, b) => a - b))))
+  // The uniqueness constraint that identifies the objectified fact type is
+  // drawn as a preferred identifier too, as in NORMA.
+  if (fact.objectified && Array.isArray(fact.objectifiedIdentifier)) preferredKeys.add(JSON.stringify([...fact.objectifiedIdentifier].sort((a, b) => a - b)))
   // Deontic uniqueness constraints are drawn in blue with a small circle at
   // the start of the bar, as in NORMA.
   const deonticKeys = new Set((fact.deonticUniqueness || []).map(du => JSON.stringify([...du].sort((a, b) => a - b))))
@@ -1978,13 +1988,13 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         const nestedRefText = (store.showReferenceMode
           && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
           ? `(${fact.objectifiedRefMode})` : null
-        const PAD = 10
+        const PAD_X = OBJ_MARGIN_X, PAD_Y = OBJ_MARGIN_Y   // NORMA's margins of an objectified fact type
         const hasAnyBar = fact.uniqueness.length > 0 || impliedRoles.length > 0
         const rakeZone  = isVertical ? rakeZone_v : rakeZone_h
         const barSpace  = hasAnyBar
-          ? BAR_MARGIN + rakeZone + BAR_SPACING * (multiCount + 1) + BAR_H / 2 + 5
+          ? BAR_MARGIN + rakeZone + BAR_SPACING * (multiCount + 1) + BAR_BAND_END + PAD_Y
           : 0
-        const barPad = Math.max(PAD, Math.ceil(barSpace))
+        const barPad = Math.max(PAD_Y, Math.ceil(barSpace))
 
         const readingText  = fact.nestedReading ? getDisplayReading(fact) : ''
         const readingTextW = readingText ? measureNestedReadingText(readingText) : 0
@@ -1993,18 +2003,18 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           : 0
 
         if (isVertical) {
-          const padLeft   = Math.max(barsBelow ? barPad : PAD, nestedRakePad.left)
-          const padRight  = Math.max(barsBelow ? PAD    : barPad, nestedRakePad.right)
+          const padLeft   = Math.max(barsBelow ? barPad : PAD_Y, nestedRakePad.left)
+          const padRight  = Math.max(barsBelow ? PAD_Y    : barPad, nestedRakePad.right)
           // Reading sits at a fixed gap below the outermost rake (or role box if none)
           const rakeExtentBottomV = rakeCounts.B > 0
             ? RAKE_TOOTH + (rakeCounts.B - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
           const outermostBottomV = fact.y + totalH_v / 2 + rakeExtentBottomV
           const padBottom = fact.nestedReading
-            ? Math.max(PAD, Math.ceil(rakeExtentBottomV + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW))
-            : PAD
+            ? Math.max(PAD_X, Math.ceil(rakeExtentBottomV + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW))
+            : PAD_X
           const ow = ROLE_H + padLeft + padRight
-          const oh = totalH_v + PAD + padBottom
-          const boxTop = fact.y - totalH_v / 2 - PAD
+          const oh = totalH_v + PAD_X + padBottom
+          const boxTop = fact.y - totalH_v / 2 - PAD_X
           const nameY  = boxTop - NAME_LINE * (nestedRefText ? 1.5 : 0.5)
           const readingY = outermostBottomV + NESTED_READING_GAP + NESTED_READING_LINE_H / 2
           const nameOff  = nameLive ?? (fact.nameOffset ?? { dx: 0, dy: 0 })
@@ -2216,16 +2226,16 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           : outermostBelowH + NESTED_READING_GAP + NESTED_READING_LINE_H / 2
 
         // Outer box must contain bars/rakes and reading on each side
-        const baseBottom = barsBelow ? barPad : PAD
+        const baseBottom = barsBelow ? barPad : PAD_Y
         const readingPadAbove = readingAboveActive
           ? Math.ceil(fact.y - ROLE_H / 2 - outermostAboveH + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
           : 0
         const readingPadBelow = (fact.nestedReading && !readingAboveActive)
           ? Math.ceil(outermostBelowH - fact.y - ROLE_H / 2 + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
           : 0
-        const padTop = Math.max(barsAbove ? barPad : PAD, readingPadAbove, nestedRakePad.top)
+        const padTop = Math.max(barsAbove ? barPad : PAD_Y, readingPadAbove, nestedRakePad.top)
         const padBottom = Math.max(baseBottom, readingPadBelow, nestedRakePad.bottom)
-        const ow = Math.max(totalW + PAD * 2, readingTextW + PAD * 2)
+        const ow = Math.max(totalW + PAD_X * 2, readingTextW + PAD_X * 2)
         const oh = ROLE_H + padTop + padBottom
         const nameY    = fact.y - ROLE_H / 2 - padTop - NAME_LINE * (nestedRefText ? 1.5 : 0.5)
         const nameOff  = nameLive ?? (fact.nameOffset ?? { dx: 0, dy: 0 })

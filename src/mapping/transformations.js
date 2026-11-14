@@ -1468,7 +1468,7 @@ function redirectOccurrences(api, S, from, to, subtypeId) {
 // F's roles at once become formula constraints.
 const ilOf = (fid) => { const m = /^(.*)_il_(\d+)$/.exec(fid ?? ''); return m ? { factId: m[1], i: +m[2] } : null }
 function keyUcOf(f) {
-  const pref = (f.preferredUniqueness ?? [])[0]
+  const pref = f.objectifiedIdentifier ?? (f.preferredUniqueness ?? [])[0]
   const same = (a, b) => a.length === b.length && a.every(x => b.includes(x))
   return (pref && f.uniqueness.find(u => same(u.roles, pref))) ?? f.uniqueness?.[0] ?? null
 }

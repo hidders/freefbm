@@ -106,7 +106,7 @@ export default function ValidationPanel() {
           </div>
         )}
         {/* Body — focusable so the messages can be selected and copied (see App.jsx) */}
-        <div data-text-panel tabIndex={0} className="copyable" style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div data-text-panel tabIndex={0} className="copyable" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
           {errorCount === 0 && importNotes.length === 0 ? (
             <div style={{ fontSize: 11, color: 'var(--ink-muted)', textAlign: 'center', marginTop: 12 }}>
               No problems
@@ -136,7 +136,7 @@ export default function ValidationPanel() {
                       <span style={{ color: SEV_COLOUR[e.severity], fontWeight: 700, fontSize: 9, marginTop: 2, flexShrink: 0 }}>
                         {SEV_ICON[e.severity]}
                       </span>
-                      <span style={{ fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.4 }}>{multiSchema && allSchemas && schemaNameOf(e) ? `${schemaNameOf(e)}: ` : ''}{rmOf(e) && <b style={{ fontWeight: 600 }}>{rmOf(e).label}: </b>}{e.message}</span>
+                      <span style={{ fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.4, minWidth: 0, overflowWrap: 'anywhere' }}>{multiSchema && allSchemas && schemaNameOf(e) ? `${schemaNameOf(e)}: ` : ''}{rmOf(e) && <b style={{ fontWeight: 600 }}>{rmOf(e).label}: </b>}{e.message}</span>
                     </div>
                   ))}
                 </div>
@@ -168,7 +168,7 @@ export default function ValidationPanel() {
                         onMouseLeave={ev => ev.currentTarget.style.background = 'var(--bg-raised)'}
                       >
                         <span style={{ color: sev.colour, fontWeight: 700, fontSize: 9, marginTop: 2, flexShrink: 0 }}>{sev.icon}</span>
-                        <span style={{ fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.4 }}>
+                        <span style={{ fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.4, minWidth: 0, overflowWrap: 'anywhere' }}>
                           <b style={{ fontWeight: 600 }}>{importNoteElementLabel(store, element, kind, f => factTypeLabel(f, store.objectTypes))}: </b>{note.text}
                         </span>
                       </div>
