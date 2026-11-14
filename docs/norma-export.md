@@ -327,8 +327,15 @@ informal, with a remark in the element's note saying why (SamplePopulation:
 11 of 15 formal; the ATOP model's 81 fact type rules all come back the
 same).
 
-Still open after milestone 3: derivation rules and join paths as NORMA
-role paths (formal), sample populations, and milestone 4 (faithful
+Join paths (v1.2.37): a sequence of an external constraint whose roles
+NORMA cannot join by itself gets FreeFBM's query as a NORMA join path
+(JoinRule/JoinPath with ConstraintRoleProjections), built as the derivation
+paths are, from the query's target (or its first position). The sample
+model, SamplePopulation and ATOP (195 external constraints) come back with
+the same constraint formulas.
+
+Still open after milestone 3: derivation rules with closures or value
+conditions as NORMA paths, sample populations, and milestone 4 (faithful
 re-export of imported files).
 
 Open points for the NORMA check: whether a value type without a data type should get NORMA's error or a

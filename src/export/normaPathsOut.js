@@ -190,6 +190,17 @@ export function conjunctivePath(rule, opts) {
       unifiers.length && el('orm:ObjectUnifiers', {}, unifiers),
     ]),
   ])
+  // a join path projects the constraint's roles (ConstraintRoleProjection)
+  if (opts.join) {
+    const projections = el('orm:JoinPathProjections', {}, [
+      el('orm:JoinPathProjection', { id: id('projection'), ref: leadId }, opts.projected.map((p, i) => {
+        const ns = nodes.get(find(p.varId))
+        const src = ns.find(n => n.kind === 'PathedRole') ?? ns[0]
+        return el('orm:ConstraintRoleProjection', { id: id(`proj${i}`), ref: p.roleId }, [el('orm:ProjectedFrom', {}, [el(`orm:${src.kind}`, { ref: src.id })])])
+      })),
+    ])
+    return { path, projections }
+  }
   const projections = opts.projected ? el('orm:DerivationProjections', {}, [
     el('orm:DerivationProjection', { id: id('projection'), ref: leadId }, opts.projected.map((p, i) => {
       const ns = nodes.get(find(p.varId))

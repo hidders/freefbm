@@ -26,6 +26,7 @@ import { findRefMode, refModeLabel } from '../utils/refMode.js'
 import { derivationMark } from '../logic/derivationRule.js'
 import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
 import { makeContext, constraintEntry } from '../logic/constraintFormulas.js'
+import { queryRule } from '../logic/query.js'
 import { factDerivationEntries } from '../logic/factDerivation.js'
 import { derivationEntry } from '../logic/derivationRule.js'
 import { renderFormula } from '../logic/renderFormula.js'
@@ -401,9 +402,33 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     const id = normaId(c.id)
     const name = c.name || autoName(conNames[c.constraintType] ?? 'Constraint')
     const modality = c.deontic ? 'Deontic' : null
-    const roleSeq = (key, refs) => el('orm:RoleSequence', {}, refs.map((r, i) => el('orm:Role', { id: normaId(c.id, `${key}${i}`), ref: r })))
-    const roleSeqs = () => el('orm:RoleSequences', {}, seqs.map((sq, k) => el('orm:RoleSequence', { id: normaId(c.id, `seq${k}`) },
-      sq.map((r, i) => el('orm:Role', { id: normaId(c.id, `seq${k}r${i}`), ref: r })))))
+    // A sequence whose roles NORMA cannot join by itself gets FreeFBM's query
+    // as a join path (src/export/normaPathsOut.js), its roles projected from it.
+    const joinsMissing = []
+    const joinRule = (k, roleIds) => {
+      const sq = c.sequences[k], q = c.queries?.[k]
+      if (!sq?.length || !q || autoJoinable(sq)) return null
+      const rule = safe(() => queryRule(q, sq, ctx))
+      const subject = rule?.target ?? rule?.free?.[0]
+      const formal = rule && !rule.error && subject && rule.free?.length === roleIds.length && safe(() => conjunctivePath(rule, {
+        el, id: (part) => normaId(c.id, `join${k}:${part}`), factById, join: true,
+        subject: subject.id, subjectType: subject.typeId,
+        projected: rule.free.map((v, i) => ({ roleId: roleIds[i], varId: v.id })),
+        roleRef: (fid, i) => normaId(factById.get(fid).roles[i].id), playerOf: (fid, i) => factById.get(fid).roles[i].objectTypeId,
+        linkRoleRef: (fid, j, i) => i === 0 ? normaId(fid, `link${j}-role`) : normaId(factById.get(fid).roles[j].id), isNested: (fid) => nests.has(fid),
+        subtypeLinkOf, typeRef: (tid) => playerRef(tid),
+      }))
+      if (!formal || formal.error) { joinsMissing.push(formal?.error ?? rule?.error ?? 'a query the export cannot read'); return null }
+      return el('orm:JoinRule', {}, [el('orm:JoinPath', { id: normaId(c.id, `join${k}`) }, [formal.path, formal.projections])])
+    }
+    const roleSeq = (key, refs) => {
+      const ids = refs.map((_, i) => normaId(c.id, `${key}${i}`))
+      return el('orm:RoleSequence', {}, [...refs.map((r, i) => el('orm:Role', { id: ids[i], ref: r })), joinRule(0, ids)])
+    }
+    const roleSeqs = () => el('orm:RoleSequences', {}, seqs.map((sq, k) => {
+      const ids = sq.map((_, i) => normaId(c.id, `seq${k}r${i}`))
+      return el('orm:RoleSequence', { id: normaId(c.id, `seq${k}`) }, [...sq.map((r, i) => el('orm:Role', { id: ids[i], ref: r })), joinRule(k, ids)])
+    }))
     const flat = seqs.flat()
     switch (c.constraintType) {
       case 'uniqueness': {
@@ -463,10 +488,10 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     }
     // NORMA builds a join path itself when the roles of a sequence lie in
     // binaries joined through one object type; other queries are not exported yet.
-    if ((c.sequences ?? []).some((sq, k) => sq.length && !autoJoinable(sq) && c.queries?.[k])) {
+    if (joinsMissing.length) {
       joinsLeft.push(label)
       const text = formulaText(safe(() => constraintEntry(c, ctx)))
-      ffNote([c.id], `the join path of this ${conNames[c.constraintType]?.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase() ?? 'constraint'} is a FreeFBM query that this export does not write as a NORMA join path yet, so NORMA asks for one.${text ? ` FreeFBM's formula: ${text}` : ''}`)
+      ffNote([c.id], `the join path of this ${conNames[c.constraintType]?.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase() ?? 'constraint'} is a FreeFBM query with ${joinsMissing[0]}, which this export cannot write as a NORMA join path yet, so NORMA asks for one.${text ? ` FreeFBM's formula: ${text}` : ''}`)
     }
   }
   function autoJoinable(sq) {
