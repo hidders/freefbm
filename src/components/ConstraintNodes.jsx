@@ -21,18 +21,12 @@ const CONN_W  = pt(NORMA.rolePlayerPenPt) // pen of constraint connectors
 const GLYPH_SIZE = pt(7)
 
 const FREQ_FONT_SIZE = pt(7)
-const FREQ_PAD_X     = 6   // horizontal padding inside a pill, each side
+const FREQ_PAD_X     = 6   // horizontal padding inside a formula pill, each side
 
 function measureFreqText(text) {
   return measureDiagramText(text, FREQ_FONT_SIZE)
 }
 
-// A frequency constraint is a circle at least D across, else as wide as its
-// text plus half the text's height (NORMA's FrequencyConstraintShape).
-function freqRadius(label) {
-  if (!label) return EXTERNAL_CONSTRAINT_R
-  return Math.max(EXTERNAL_CONSTRAINT_R, (measureFreqText(label) + px(NORMA.lineHeight) / 2) / 2)
-}
 
 function formatFrequencyRange(frequency) {
   if (!frequency || frequency.length === 0) return null
@@ -45,10 +39,13 @@ function formatFrequencyRange(frequency) {
   return full ? full.slice(1, -1) : null
 }
 
+// An external frequency constraint is a pill D high (FreeFBM's own shape,
+// Jan's choice; NORMA draws a growing circle) as wide as its text plus half
+// the text's height, as NORMA pads it, and never narrower than a circle.
 function freqStadiumW(label) {
   const minW = EXTERNAL_CONSTRAINT_R * 2   // never narrower than a circle
   if (!label) return minW
-  return Math.max(minW, measureFreqText(label) + FREQ_PAD_X * 2)
+  return Math.max(minW, measureFreqText(label) + px(NORMA.lineHeight) / 2)
 }
 
 // The symbol inside an external constraint's circle (diameter D = 0.16 in,
@@ -1270,15 +1267,13 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
               </g>
             )}
 
-            {/* Frequency — a circle wide enough for its range, as in NORMA
-                (FrequencyConstraintShape: at least D, else the text's width
-                plus half its height) */}
+            {/* Frequency — a pill as wide as its range needs, NORMA's pen and text */}
             {c.constraintType === 'frequency' && (() => {
               const lbl = formatFrequencyRange(c.frequency) ?? ''
-              const r  = freqRadius(lbl)
+              const w = freqStadiumW(lbl), r = EXTERNAL_CONSTRAINT_R
               return (
                 <g>
-                  <circle cx={c.x} cy={c.y} r={r}
+                  <rect x={c.x - w / 2} y={c.y - r} width={w} height={2 * r} rx={r}
                     fill='#ffffff'
                     stroke={color}
                     strokeWidth={isSelected ? SHAPE_W + 1 : SHAPE_W}
@@ -1371,7 +1366,8 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
             })()}
             {/* Hover ring — expanded 3–4px outward so it shows as a halo around the element */}
             {c.constraintType === 'frequency' ? (
-              <circle className="hover-ring" cx={c.x} cy={c.y} r={freqRadius(formatFrequencyRange(c.frequency) ?? '') + 4}/>
+              (() => { const w = freqStadiumW(formatFrequencyRange(c.frequency) ?? ''), r = EXTERNAL_CONSTRAINT_R
+                return <rect className="hover-ring" x={c.x - w / 2 - 4} y={c.y - r - 4} width={w + 8} height={2 * r + 8} rx={r + 4}/> })()
             ) : (
               <circle className="hover-ring" cx={c.x} cy={c.y}
                 r={(EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) && c.constraintType !== 'ring' ? EXTERNAL_CONSTRAINT_R : CONSTRAINT_R) + 4}/>
@@ -1380,11 +1376,11 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
             {/* Deontic mark — a small open circle on the top-left of the shape, as
                 in NORMA (not for ring and value comparison constraints). */}
             {c.deontic && c.constraintType !== 'ring' && c.constraintType !== 'valueComparison' && (() => {
-              const R = c.constraintType === 'frequency' ? freqRadius(formatFrequencyRange(c.frequency) ?? '')
-                : EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) ? EXTERNAL_CONSTRAINT_R : CONSTRAINT_R
+              const R = EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType) || c.constraintType === 'frequency' ? EXTERNAL_CONSTRAINT_R : CONSTRAINT_R
+              const left = c.constraintType === 'frequency' ? c.x - freqStadiumW(formatFrequencyRange(c.frequency) ?? '') / 2 : c.x - R
               const d = (1 - 0.7071) * 2 * R
               return (
-                <circle cx={c.x - R + d / 2} cy={c.y - R + d / 2} r={d / 2}
+                <circle cx={left + d / 2} cy={c.y - R + d / 2} r={d / 2}
                   fill="#ffffff" stroke={color} strokeWidth={SHAPE_W * 0.7} style={{ pointerEvents: 'none' }}/>
               )
             })()}
