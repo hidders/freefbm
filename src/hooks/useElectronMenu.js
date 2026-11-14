@@ -8,6 +8,7 @@ import { textPanelOf } from '../utils/textPanel'
 import { isErdDiagram } from '../components/ErdView'
 import { activeReadOnly } from '../relational/face'
 import { activeSchemaIdOf } from '../store/storeHelpers'
+import { exportNorma } from '../export/norma'
 import { runSchemaAction, schemaMenuState } from '../utils/schemaActions'
 import { runMappingAction, mappingMenuState } from '../utils/mappingActions'
 
@@ -94,6 +95,24 @@ export function useElectronMenu() {
       if (!result) return
       try { useOrmStore.getState().loadSampleRows(schema.id, result.content, result.path.split(/[\\/]/).pop()) }
       catch (err) { alert(`Failed to read the rows.${err?.message ? `\n${err.message}` : ''}`) }
+    })
+
+    // File › Export NORMA .orm…: the active ORM2 schema as a NORMA file
+    // (export/norma.js); what it left out is shown in the import log panel.
+    on('menu:exportNorma', async () => {
+      const s = useOrmStore.getState()
+      const schema = s.schemas.find(x => x.id === activeSchemaIdOf(s))
+      if (schema?.profile === 'relational') {
+        alert('Export NORMA .orm writes an ORM2 schema. Switch to an ORM2 schema first.')
+        return
+      }
+      const base = (s.filePath ?? s.importedFrom ?? '').split(/[\\/]/).pop().replace(/\.(ffbm|orm2|json|orm)$/i, '')
+      const name = (s.schemas.length > 1 ? schema?.name : base) || schema?.name || 'Model'
+      let result
+      try { result = exportNorma(s, { schemaId: schema?.id ?? null, name }) }
+      catch (err) { alert(`The export failed.${err?.message ? `\n${err.message}` : ''}`); return }
+      const path = await api.saveOrm({ defaultPath: `${name.replace(/[^\p{L}\p{N}_ -]+/gu, '_')}.orm`, content: result.xml })
+      if (path) s.setImportLog({ kind: 'export', source: path.split(/[\\/]/).pop(), entries: result.report })
     })
 
     on('menu:exportSql', async () => {
