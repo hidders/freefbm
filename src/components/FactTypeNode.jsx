@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { factDerivationMark } from '../logic/factDerivation.js'
 import { useOrmStore, useOrmStoreIgnoring, subtypeKindOf } from '../store/ormStore'
 import { isFallbackReading } from '../store/viewLanguage.js'
-import { formatValueRange, formatCardinalityRange, formatFrequencyRange } from './ObjectTypeNode'
+import { formatValueRange, formatCardinalityRange, formatFrequencyRange, OT_SIZE_NAME, OT_STROKE } from './ObjectTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { roleAnchor } from '../utils/geometry'
 import { RAKE_TOOTH, RAKE_STAGGER, RAKE_COMFORT, RAKE_BAR_ZONE } from '../constants.js'
@@ -11,11 +11,12 @@ import { queryElements } from '../logic/query.js'
 import { preferredReadings } from '../store/readings.js'
 import { groupStyle } from '../utils/groups.js'
 import { DIAGRAM_FONT, measureDiagramText } from '../diagram/diagramFont.js'
+import { NORMA, px, pt } from '../diagram/normaGeometry.js'
 
 const VR_DEFAULT_OFFSET = { dx: 0, dy: -50 }
 const VR_FONT      = DIAGRAM_FONT
-const VR_FONT_SIZE = 13
-const IF_FONT_SIZE = 13
+const VR_FONT_SIZE = pt(7)
+const IF_FONT_SIZE = pt(7)
 const VR_PAD_X     = 3   // horizontal margin inside text box
 const VR_PAD_Y     = 3   // vertical margin inside text box
 
@@ -23,8 +24,8 @@ function measureVrText(text) {
   return measureDiagramText(text, VR_FONT_SIZE)
 }
 
-const NESTED_READING_FONT_SIZE = 13
-const NESTED_READING_LINE_H    = 18   // font + line margin
+const NESTED_READING_FONT_SIZE = pt(7)
+const NESTED_READING_LINE_H    = px(NORMA.lineHeight)   // one line of text
 const NESTED_READING_GAP       = 4    // gap between role boxes (or bars) and reading
 const NESTED_READING_PAD_BELOW = 4    // gap between reading and bottom of outer box
 
@@ -42,9 +43,17 @@ function vrBoxEdge(textX, textY, halfW, halfH, fromX, fromY) {
   return { x: textX + dx * t, y: textY + dy * t }
 }
 
-export const ROLE_W = 30
-export const ROLE_H = 18
-export const ROLE_GAP = 1
+// NORMA's role boxes: 0.16 × 0.11 in, side by side with shared borders,
+// drawn with a 1 pt pen (diagram/normaGeometry.js).
+export const ROLE_W = px(NORMA.roleBox.width)
+export const ROLE_H = px(NORMA.roleBox.height)
+export const ROLE_GAP = 0
+export const ROLE_STROKE = pt(NORMA.roleBox.penPt)
+// Diagram text: Tahoma 7 pt (readings, ranges, frequencies, names)
+export const LABEL_SIZE = pt(NORMA.fontSizePt)
+// One line of text: an objectified fact type's name above its frame, and its
+// reference mode under the name
+export const NAME_LINE = px(NORMA.lineHeight)
 
 /**
  * Returns the effective display role order for a fact.
@@ -344,11 +353,18 @@ function stadiumEdge(cx, cy, hw, hh, tx, ty) {
 }
 
 
-const BAR_H            = 3    // stroke width of each uniqueness bar
-const DEONTIC_R        = 2.5  // radius of the circle that starts a deontic uniqueness bar
-const BAR_MARGIN       = 4    // gap between top of role box and lowest bar (no-rake case)
-const BAR_SPACING      = 5    // vertical distance between successive bar levels
-const PREF_OFFSET      = 2.5  // shift for preferred uniqueness bar (keeps inner line at original pos)
+// NORMA draws each level of uniqueness bars in the middle of a band 0.07 in
+// high, the first band against the role boxes' outline, with a 1 pt pen and
+// a gap of one pen width at each end; a preferred identifier is two lines
+// 0.75 pen widths either side of the middle; a deontic bar starts with a
+// circle that fills the band less a pen width.
+const BAR_H            = pt(1)                           // stroke width of each uniqueness bar
+const BAR_SPACING      = px(NORMA.constraintBand)        // distance between successive bar levels
+// gap between the role box and the first bar's outer edge, as the formulas
+// below use it (bar centre = margin + spacing × (level + 1) − BAR_H / 2)
+const BAR_MARGIN       = ROLE_STROKE / 2 + BAR_SPACING / 2 + BAR_H / 2 - BAR_SPACING
+const DEONTIC_R        = BAR_SPACING / 2 - BAR_H         // radius of the circle that starts a deontic uniqueness bar
+const PREF_OFFSET      = 0.75 * BAR_H                    // shift for preferred uniqueness bar
 const BAR_SIDE_COMFORT = 2    // rake comfort used when bars sit beyond the rakes on the same side
 const UNARY_CAP_R = 8
 
@@ -1194,7 +1210,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   const roleStroke    = isFactSelected               ? 'var(--accent)'
     : (isDraftFrom && fact.objectified)              ? 'var(--col-subtype)'
     : gs?.graphics ?? gs?.outline                    ?? 'var(--col-fact)'
-  const roleStrokeW   = isFactSelected ? 2 : (isDraftFrom && fact.objectified) ? 2 : 1.5
+  const roleStrokeW   = isFactSelected ? ROLE_STROKE + 1 : (isDraftFrom && fact.objectified) ? ROLE_STROKE + 1 : ROLE_STROKE
   const gc = store.sequenceConstruction
   const gcConstraint = gc ? store.constraints.find(c => c.id === gc.constraintId) : null
   const isVcConstruction = gcConstraint?.constraintType === 'valueComparison'
@@ -1290,7 +1306,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   const multiCount = multiLevel
   const ifItems = fact.internalFrequency || []
 
-  const INSET = 2
+  const INSET = BAR_H   // NORMA leaves a pen width between a bar's end and the role box's edge
   const FONT = DIAGRAM_FONT
   const barsBelow = !!fact.uniquenessBelow
   // Compute which sides have external-constraint rakes so bars can be shifted only when needed.
@@ -1537,7 +1553,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
     const AUTO_DX = (() => {
       if (!isVertical) return 0
-      const tw = measureDiagramText(text, 14)
+      const tw = measureDiagramText(text, LABEL_SIZE)
       if (fact.objectified) {
         const bounds = nestedFactBounds(fact, nestedRakePad)
         return fact.readingAbove
@@ -1617,7 +1633,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                   onMouseDown={e => e.stopPropagation()}
                   style={{ width: Math.max(12, seg.length * 7.5 + 4), minWidth: 0, border:'none',
                     outline:'1px dotted var(--border)', background:'#fef6ec', color:'var(--ink-2)',
-                    fontSize:13, fontFamily:FONT, textAlign:'center',
+                    fontSize:LABEL_SIZE, fontFamily:FONT, textAlign:'center',
                     padding:'0', boxSizing:'border-box' }}
                 />
                 {i < fact.arity && (() => {
@@ -1634,7 +1650,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                   }
                   return (
                     <span style={{ userSelect:'none', pointerEvents:'none', color:'var(--col-constraint)',
-                      fontWeight:700, fontSize:13, fontFamily:FONT, padding:'0 4px', flexShrink:0 }}>{displayName}</span>
+                      fontWeight:700, fontSize:LABEL_SIZE, fontFamily:FONT, padding:'0 4px', flexShrink:0 }}>{displayName}</span>
                   )
                 })()}
               </React.Fragment>
@@ -1646,7 +1662,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
     return (
       <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle"
-        fontSize={14} fill={readingFallback ? 'var(--ink-muted)' : gs?.floating ?? gs?.text ?? 'var(--ink-3)'} fontStyle={readingFallback ? 'italic' : undefined} fontFamily={FONT}
+        fontSize={LABEL_SIZE} fill={readingFallback ? 'var(--ink-muted)' : gs?.floating ?? gs?.text ?? 'var(--dg-text)'} fontStyle={readingFallback ? 'italic' : undefined} fontFamily={FONT}
         style={{ cursor: isDraggingReading ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: inQueryEdit ? 'none' : undefined }}
         onMouseDown={e => {
           e.stopPropagation()
@@ -1695,7 +1711,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         {text}
         {dmark && (text ? ' ' : '')}
         {/* + sits on the baseline, so raise it to match the * of a derived fact type. */}
-        {dmark === '+' ? <tspan baselineShift="super" fontSize={14 * 0.75}>+</tspan> : dmark}
+        {dmark === '+' ? <tspan baselineShift="super" fontSize={LABEL_SIZE * 0.75}>+</tspan> : dmark}
       </text>
     )
   }
@@ -1955,10 +1971,10 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         const nestedTextCol = isFactSelected ? 'var(--accent)'
           : isDraftFrom                       ? 'var(--col-subtype)'
           : gs?.text                          ? gs.text
-          :                                     'var(--col-entity)'
+          :                                     'var(--dg-text)'
         const nestedDash    = 'none'
         const nestedFill    = isConstraintTarget ? '#1a7fd4' : nestedInQueryHighlight ? 'var(--fill-query-in)' : gs?.fill ?? '#ffffff'
-        const nestedStrokeW = (isFactSelected || isDraftFrom || isConstraintTarget) ? 2 : 1.5
+        const nestedStrokeW = (isFactSelected || isDraftFrom || isConstraintTarget) ? OT_STROKE + 1 : OT_STROKE
         const nestedRefText = (store.showReferenceMode
           && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none')
           ? `(${fact.objectifiedRefMode})` : null
@@ -1989,7 +2005,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           const ow = ROLE_H + padLeft + padRight
           const oh = totalH_v + PAD + padBottom
           const boxTop = fact.y - totalH_v / 2 - PAD
-          const nameY  = nestedRefText ? boxTop - 22 : boxTop - 10
+          const nameY  = boxTop - NAME_LINE * (nestedRefText ? 1.5 : 0.5)
           const readingY = outermostBottomV + NESTED_READING_GAP + NESTED_READING_LINE_H / 2
           const nameOff  = nameLive ?? (fact.nameOffset ?? { dx: 0, dy: 0 })
           const nameTx   = fact.x + nameOff.dx
@@ -2022,14 +2038,14 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                         width: '100%', textAlign: 'center', border: 'none',
                         borderBottom: '1.5px solid var(--col-entity)',
                         background: 'transparent', outline: 'none',
-                        fontSize: 18, fontFamily: FONT, color: 'var(--col-entity)',
+                        fontSize: OT_SIZE_NAME, fontWeight: 700, fontFamily: FONT, color: 'var(--dg-text)',
                         cursor: 'text',
                       }}/>
                   </foreignObject>
                 ) : (
                   <text x={nameTx} y={nameTy}
                     textAnchor="middle" dominantBaseline="middle"
-                    fontSize={18} fontFamily={FONT}
+                    fontSize={OT_SIZE_NAME} fontWeight={700} fontFamily={FONT}
                     fill={nestedTextCol}
                     style={{ cursor: nameLive ? 'grabbing' : isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: inQueryEdit || isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'none' : 'auto' }}
                     onMouseDown={e => {
@@ -2057,7 +2073,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
               )}
               {nestedRefText && (
                 editingRefMode ? (
-                  <foreignObject x={nameTx - 60} y={nameTy + 14 - 9} width={120} height={18}>
+                  <foreignObject x={nameTx - 60} y={nameTy + NAME_LINE / 2} width={120} height={NAME_LINE}>
                     <input ref={refModeInputRef}
                       value={refModeDraft}
                       onChange={e => setRefModeDraft(e.target.value)}
@@ -2071,14 +2087,14 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                         width: '100%', height: '100%', textAlign: 'center',
                         border: 'none', borderBottom: `1px solid ${nestedCol}`,
                         background: 'transparent', outline: 'none',
-                        fontSize: 11, fontFamily: FONT, color: nestedCol,
+                        fontSize: OT_SIZE_NAME, fontWeight: 700, fontFamily: FONT, color: nestedCol,
                       }}/>
                   </foreignObject>
                 ) : (
                   <>
-                    <text x={nameTx} y={nameTy + 14}
+                    <text x={nameTx} y={nameTy + NAME_LINE}
                       textAnchor="middle" dominantBaseline="middle"
-                      fontSize={11} fontFamily={FONT}
+                      fontSize={OT_SIZE_NAME} fontWeight={700} fontFamily={FONT}
                       fill={nestedTextCol}
                       style={{ pointerEvents: 'none', userSelect: 'none' }}>
                       {nestedRefText}
@@ -2211,7 +2227,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         const padBottom = Math.max(baseBottom, readingPadBelow, nestedRakePad.bottom)
         const ow = Math.max(totalW + PAD * 2, readingTextW + PAD * 2)
         const oh = ROLE_H + padTop + padBottom
-        const nameY    = fact.y - ROLE_H / 2 - padTop - (nestedRefText ? 22 : 10)
+        const nameY    = fact.y - ROLE_H / 2 - padTop - NAME_LINE * (nestedRefText ? 1.5 : 0.5)
         const nameOff  = nameLive ?? (fact.nameOffset ?? { dx: 0, dy: 0 })
         const nameTx   = fact.x + nameOff.dx
         const nameTy   = nameY  + nameOff.dy
@@ -2243,14 +2259,14 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                       width: '100%', textAlign: 'center', border: 'none',
                       borderBottom: `1.5px solid ${nestedCol}`,
                       background: 'transparent', outline: 'none',
-                      fontSize: 18, fontFamily: FONT, color: nestedCol,
+                      fontSize: OT_SIZE_NAME, fontWeight: 700, fontFamily: FONT, color: nestedCol,
                       cursor: 'text',
                     }}/>
                 </foreignObject>
               ) : (
                 <text x={nameTx} y={nameTy}
                   textAnchor="middle" dominantBaseline="middle"
-                  fontSize={18} fontFamily={FONT}
+                  fontSize={OT_SIZE_NAME} fontWeight={700} fontFamily={FONT}
                   fill={nestedTextCol}
                   style={{ cursor: nameLive ? 'grabbing' : isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: inQueryEdit || isElementSelecting(useOrmStore.getState().tool, useOrmStore.getState().sequenceConstruction) ? 'none' : 'auto' }}
                   onMouseDown={e => {
@@ -2278,7 +2294,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             )}
             {nestedRefText && (
               editingRefMode ? (
-                <foreignObject x={nameTx - 60} y={nameTy + 14 - 9} width={120} height={18}>
+                <foreignObject x={nameTx - 60} y={nameTy + NAME_LINE / 2} width={120} height={NAME_LINE}>
                   <input ref={refModeInputRef}
                     value={refModeDraft}
                     onChange={e => setRefModeDraft(e.target.value)}
@@ -2292,13 +2308,13 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                       width: '100%', height: '100%', textAlign: 'center',
                       border: 'none', borderBottom: `1px solid ${nestedCol}`,
                       background: 'transparent', outline: 'none',
-                      fontSize: 11, fontFamily: FONT, color: nestedCol,
+                      fontSize: OT_SIZE_NAME, fontWeight: 700, fontFamily: FONT, color: nestedCol,
                     }}/>
                 </foreignObject>
               ) : (
-                <text x={nameTx} y={nameTy + 14}
+                <text x={nameTx} y={nameTy + NAME_LINE}
                   textAnchor="middle" dominantBaseline="middle"
-                  fontSize={11} fontFamily={FONT}
+                  fontSize={OT_SIZE_NAME} fontWeight={700} fontFamily={FONT}
                   fill={nestedTextCol}
                   style={{ cursor: 'text', userSelect: 'none' }}
                   onDoubleClick={e => {
@@ -2449,7 +2465,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                 {isAssignTool && !role.objectTypeId && (
                   <text x={fact.x} y={ry + ROLE_W / 2}
                     textAnchor="middle" dominantBaseline="middle"
-                    fontSize={9} fill="var(--col-fact)" fontFamily={FONT}
+                    fontSize={pt(NORMA.smallFontSizePt)} fill="var(--col-fact)" fontFamily={FONT}
                     fontWeight={700} opacity={0.5} style={{ pointerEvents: 'none' }}>
                     {ri + 1}
                   </text>
@@ -2526,7 +2542,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                       strokeOpacity={solid ? 1 : 0.6}/>
                   ))
                 )}
-                {dot && <circle cx={barX} cy={dot.cy} r={DEONTIC_R} fill="var(--bg-canvas)" stroke={barStroke} strokeWidth={1.3}/>}
+                {dot && <circle cx={barX} cy={dot.cy} r={DEONTIC_R} fill="var(--bg-diagram)" stroke={barStroke} strokeWidth={1.3}/>}
               </g>
             )
           })}
@@ -2643,7 +2659,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                 {isAssignTool && !role.objectTypeId && (
                   <text x={rx + ROLE_W/2} y={fact.y}
                     textAnchor="middle" dominantBaseline="middle"
-                    fontSize={9} fill="var(--col-fact)" fontFamily={FONT}
+                    fontSize={pt(NORMA.smallFontSizePt)} fill="var(--col-fact)" fontFamily={FONT}
                     fontWeight={700} opacity={0.5} style={{ pointerEvents: 'none' }}>
                     {ri + 1}
                   </text>
@@ -2720,7 +2736,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                       strokeOpacity={solid ? 1 : 0.6}/>
                   ))
                 )}
-                {dot && <circle cx={dot.cx} cy={barY} r={DEONTIC_R} fill="var(--bg-canvas)" stroke={barStroke} strokeWidth={1.3}/>}
+                {dot && <circle cx={dot.cx} cy={barY} r={DEONTIC_R} fill="var(--bg-diagram)" stroke={barStroke} strokeWidth={1.3}/>}
               </g>
             )
           })}

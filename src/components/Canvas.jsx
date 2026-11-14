@@ -498,14 +498,14 @@ function GridPatterns() {
         x={pan.x % (20 * zoom)} y={pan.y % (20 * zoom)}
         patternUnits="userSpaceOnUse">
         <path d={`M ${20 * zoom} 0 L 0 0 0 ${20 * zoom}`}
-          fill="none" stroke="#ddd4c8" strokeWidth="0.5"/>
+          fill="none" stroke="var(--dg-grid-sm)" strokeWidth="0.5"/>
       </pattern>
       <pattern id="gridLg" width={100 * zoom} height={100 * zoom}
         x={pan.x % (100 * zoom)} y={pan.y % (100 * zoom)}
         patternUnits="userSpaceOnUse">
         <rect width={100 * zoom} height={100 * zoom} fill="url(#gridSm)"/>
         <path d={`M ${100 * zoom} 0 L 0 0 0 ${100 * zoom}`}
-          fill="none" stroke="#ccc3b8" strokeWidth="1"/>
+          fill="none" stroke="var(--dg-grid-lg)" strokeWidth="1"/>
       </pattern>
     </>
   )
@@ -1359,7 +1359,7 @@ export default function Canvas() {
         className={qd ? 'query-edit' : store.tool === 'select' ? 'tool-select' : undefined}
         tabIndex={0}
         style={{ width: '100%', height: '100%', display: 'block',
-                 background: 'var(--bg-canvas)', cursor, outline: 'none' }}
+                 background: 'var(--bg-diagram)', cursor, outline: 'none' }}
         onMouseEnter={() => {
           const ae = document.activeElement
           if (!ae || ae === document.body || ae === svgRef.current)

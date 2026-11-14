@@ -23,20 +23,27 @@
   --ink-3:        #6b5f4e;
   --ink-muted:    #9a8e7e;
 
-  /* ORM2 element colours */
-  --col-entity:   #3d2b1f;   /* dark warm brown — entity types */
-  --col-value:    #3d2b1f;   /* dark warm brown — value types  */
-  --col-fact:     #3d2b1f;   /* dark warm brown — fact/role boxes */
-  --col-constraint: #7c4dbd;  /* violet — all constraints */
+  /* ORM2 element colours: NORMA's look by default (src/diagram/normaGeometry.js
+     NORMA_COLOURS); the parchment look below is the older FreeFBM one
+     (store.diagramLook, html[data-diagram-look]). */
+  --bg-diagram:   #ffffff;   /* the diagram canvas */
+  --dg-grid-sm:   #f0f0f0;
+  --dg-grid-lg:   #e4e4e4;
+  --dg-text:      #000000;   /* object type names, readings */
+  --dg-ref-text:  #000000;   /* reference modes */
+  --col-entity:   #00008b;   /* dark blue — entity type outlines */
+  --col-value:    #00008b;   /* dark blue — value type outlines (dashed) */
+  --col-fact:     #000000;   /* black — role boxes and role connectors */
+  --col-constraint: #800080;  /* purple — all constraints */
   --col-unique:   var(--col-constraint);
   --col-mandatory:var(--col-constraint);
   --col-excl:     var(--col-constraint);
   --col-ring:     var(--col-constraint);
   --col-freq:     var(--col-constraint);
   --col-subtype:  var(--col-constraint);
-  --col-deontic:  #1f4fd1;   /* blue — deontic constraints (obligations), as in NORMA */
+  --col-deontic:  #0000ff;   /* blue — deontic constraints (obligations), as in NORMA */
   --col-candidate: #3a9e6a;   /* mid green  — selectable candidate highlight */
-  --col-role-name: #1a7fd4;   /* blue — role name labels on connectors */
+  --col-role-name: #0000ff;   /* blue — role name labels on connectors */
   --fill-candidate: #e6f4eb;  /* light green fill for candidate elements */
   --col-query-in:   #0e7490;  /* teal — role/edge included in query pattern */
   --fill-query-in:  #cffafe;  /* light teal fill for included pattern elements */
@@ -78,6 +85,21 @@
   --shadow-sm:  0 1px 4px rgba(0,0,0,0.12);
   --shadow-md:  0 3px 12px rgba(0,0,0,0.14);
   --shadow-lg:  0 6px 24px rgba(0,0,0,0.16);
+}
+
+/* The parchment look (Settings › Diagram look): FreeFBM's older colours. */
+:root[data-diagram-look="parchment"] {
+  --bg-diagram:   var(--bg-canvas);
+  --dg-grid-sm:   #ddd4c8;
+  --dg-grid-lg:   #ccc3b8;
+  --dg-text:      #3d2b1f;
+  --dg-ref-text:  var(--ink-3);
+  --col-entity:   #3d2b1f;
+  --col-value:    #3d2b1f;
+  --col-fact:     #3d2b1f;
+  --col-constraint: #7c4dbd;
+  --col-deontic:  #1f4fd1;
+  --col-role-name: #1a7fd4;
 }
 
 html, body, #root {

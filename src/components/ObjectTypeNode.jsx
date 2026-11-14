@@ -6,6 +6,7 @@ import { derivationMark } from '../logic/derivationRule.js'
 import { queryElements } from '../logic/query.js'
 import { groupStyle } from '../utils/groups.js'
 import { DIAGRAM_FONT, measureDiagramText } from '../diagram/diagramFont.js'
+import { NORMA, px, pt } from '../diagram/normaGeometry.js'
 
 // Returns the ref-mode label (e.g. ".code") to display inside the entity rect,
 // or null when the entity has no ref mode or is expanded in the active diagram.
@@ -49,12 +50,21 @@ function valueRangeTarget(ot, refValueRole) {
 }
 
 const OT_FONT       = DIAGRAM_FONT
-const OT_SIZE_NAME  = 18
-const OT_SIZE_REF   = 12
-const OT_PAD_X      = 8    // horizontal padding each side
-const OT_MIN_W      = 60
-const OT_H_SINGLE   = 32   // box height with name only
-const OT_H_DOUBLE   = 48   // box height with name + reference mode
+// NORMA's object type shape (diagram/normaGeometry.js): the name and the
+// reference mode both in bold Tahoma 7 pt, one line under the other, inside
+// a rounded rectangle with margins of 0.06 in left and right, 0.05 in above
+// and below.
+export const OT_SIZE_NAME = pt(NORMA.fontSizePt)
+const OT_SIZE_REF   = OT_SIZE_NAME
+const OT_WEIGHT     = 700
+const OT_LINE_H     = px(NORMA.lineHeight)
+const OT_PAD_X      = px(NORMA.objectType.marginX)
+const OT_PAD_Y      = px(NORMA.objectType.marginY)
+const OT_MIN_W      = 0
+const OT_H_SINGLE   = OT_LINE_H + 2 * OT_PAD_Y       // box height with name only
+const OT_H_DOUBLE   = 2 * OT_LINE_H + 2 * OT_PAD_Y   // box height with name + reference mode
+export const OT_RADIUS = px(NORMA.objectType.radius)
+export const OT_STROKE = pt(NORMA.objectType.penPt)
 
 function fmtDate(v) {
   if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
@@ -106,19 +116,28 @@ export function formatFrequencyRange(range) {
   return full ? full.slice(1, -1) : null
 }
 
-function measureText(text, fontSize) {
-  return measureDiagramText(text, fontSize)
+function measureText(text, fontSize, weight = 400) {
+  return measureDiagramText(text, fontSize, weight)
 }
+
+// NORMA's value type outline: dashes of 3 and gaps of 1 times the pen width.
+export const VALUE_DASH = `${3 * pt(NORMA.objectType.penPt)} ${pt(NORMA.objectType.penPt)}`
 
 export function computeOtSize(ot, nameOverride) {
   const showRefMode = useOrmStore.getState().showReferenceMode
   const refLabel = showRefMode ? getEntityRefLabel(ot) : null
   const hasRef = !!refLabel
   const displayName = (ot.name ?? '') + derivationMark(ot) + (ot.isIndependent ? ' !' : '')
-  const nameW  = measureText(nameOverride ?? displayName, OT_SIZE_NAME)
-  const refW   = hasRef ? measureText(`(${refLabel})`, OT_SIZE_REF) : 0
+  return otBoxSize(nameOverride ?? displayName, refLabel)
+}
+
+// The size of an object type's box around a name and an optional reference
+// mode label (without parentheses), as NORMA sizes it.
+export function otBoxSize(name, refLabel) {
+  const nameW  = measureText(name, OT_SIZE_NAME, OT_WEIGHT)
+  const refW   = refLabel ? measureText(`(${refLabel})`, OT_SIZE_REF, OT_WEIGHT) : 0
   const w = Math.max(OT_MIN_W, Math.max(nameW, refW) + OT_PAD_X * 2)
-  const h = hasRef ? OT_H_DOUBLE : OT_H_SINGLE
+  const h = refLabel ? OT_H_DOUBLE : OT_H_SINGLE
   return { w, h }
 }
 
@@ -419,10 +438,10 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     : ot.kind === 'entity'           ? 'var(--col-entity)'
     :                                  'var(--col-value)'
 
-  const strokeW = (isSelected || isDraftFrom) ? 2.5 : isConstraintTarget ? 2 : (isReconnectTarget && !isSelected) ? 2 : 1.5
+  const strokeW = (isSelected || isDraftFrom) ? OT_STROKE + 1 : OT_STROKE
   const strokeDash = (isReconnectTarget && !isSelected)
-    ? '4 2'
-    : ot.kind === 'value' ? '6 3' : 'none'
+    ? '8 4'
+    : ot.kind === 'value' ? VALUE_DASH : 'none'
   const inRuleHighlight = !!store.ruleHighlight?.typeIds.includes(ot.id)
   const fill    = isConstraintTarget ? '#1a7fd4' : inQueryHighlight ? 'var(--fill-query-in)'
     : inRuleHighlight ? '#fde3c8' : gs?.fill ?? '#ffffff'
@@ -430,8 +449,8 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
   // Text vertical positions
   // Single line: name centred in box
   // Two lines: name and ref centred together as a block
-  const nameY = refModeText ? ot.y - 8 : ot.y
-  const refY  = ot.y + 11
+  const nameY = refModeText ? ot.y - OT_LINE_H / 2 : ot.y
+  const refY  = ot.y + OT_LINE_H / 2
 
   return (
   <>
@@ -477,7 +496,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
       })() }}
       filter={isSelected || isDraftFrom ? 'url(#selectGlow)' : isShared ? 'url(#sharedGlow)' : undefined}
     >
-      <rect x={ot.x - w/2} y={ot.y - h/2} width={w} height={h} rx={6}
+      <rect x={ot.x - w/2} y={ot.y - h/2} width={w} height={h} rx={OT_RADIUS}
         fill={fill} stroke={stroke} strokeWidth={strokeW}
         strokeDasharray={strokeDash}/>
 
@@ -504,7 +523,8 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
               textAlign: 'center',
               fontSize: OT_SIZE_NAME,
               fontFamily: OT_FONT,
-              color: ot.kind === 'entity' ? 'var(--col-entity)' : 'var(--col-value)',
+              fontWeight: OT_WEIGHT,
+              color: 'var(--dg-text)',
               padding: 0,
             }}
           />
@@ -512,8 +532,8 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
       ) : (
         <text x={ot.x} y={nameY}
           textAnchor="middle" dominantBaseline="middle"
-          fill={isConstraintTarget ? '#ffffff' : gs?.text ?? (ot.kind === 'entity' ? 'var(--col-entity)' : 'var(--col-value)')}
-          fontSize={OT_SIZE_NAME} fontFamily={OT_FONT}
+          fill={isConstraintTarget ? '#ffffff' : gs?.text ?? 'var(--dg-text)'}
+          fontSize={OT_SIZE_NAME} fontFamily={OT_FONT} fontWeight={OT_WEIGHT}
           style={{ pointerEvents: 'none' }}>
           {/* A name not yet in the view language: the base name, grey and italic. */}
           {ot._fb?.name != null
@@ -550,7 +570,8 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
                 textAlign: 'center',
                 fontSize: OT_SIZE_REF,
                 fontFamily: OT_FONT,
-                color: gs?.text ?? 'var(--ink-3)',
+                fontWeight: OT_WEIGHT,
+                color: gs?.text ?? 'var(--dg-ref-text)',
                 padding: 0,
               }}
             />
@@ -559,19 +580,19 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
           <>
             <text x={ot.x} y={refY}
               textAnchor="middle" dominantBaseline="middle"
-              fill={isConstraintTarget ? '#ffffff' : gs?.text ?? 'var(--ink-3)'} fontSize={OT_SIZE_REF} fontFamily={OT_FONT}
+              fill={isConstraintTarget ? '#ffffff' : gs?.text ?? 'var(--dg-ref-text)'} fontSize={OT_SIZE_REF} fontFamily={OT_FONT} fontWeight={OT_WEIGHT}
               style={{ pointerEvents: 'none' }}>
               {refModeText}
             </text>
             {/* Transparent hit area — data-refhit lets the g dblclick handler know origin */}
-            <rect x={ot.x - w/2} y={refY - 9} width={w} height={18}
+            <rect x={ot.x - w/2} y={refY - OT_LINE_H / 2} width={w} height={OT_LINE_H}
               fill="transparent" data-refhit="true"
               style={{ cursor: 'text', pointerEvents: 'all' }}/>
           </>
         )
       )}
 
-      <rect className="hover-ring" x={ot.x - w/2 - 3} y={ot.y - h/2 - 3} width={w + 6} height={h + 6} rx={8}/>
+      <rect className="hover-ring" x={ot.x - w/2 - 3} y={ot.y - h/2 - 3} width={w + 6} height={h + 6} rx={OT_RADIUS + 3}/>
     </g>
 
     {(() => {
@@ -598,7 +619,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
         const connY = ot.y + dyL * tBox
 
         // Border point on the label box toward the OT
-        const VR_PAD_X = 3, VR_PAD_Y = 3, VR_FONT_SIZE = 13
+        const VR_PAD_X = 3, VR_PAD_Y = 3, VR_FONT_SIZE = pt(7)
         const halfW = measureText(vr, VR_FONT_SIZE) / 2 + VR_PAD_X
         const halfH = VR_FONT_SIZE / 2 + VR_PAD_Y
         const dxB = connX - tx, dyB = connY - ty
@@ -672,7 +693,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
         const connX = ot.x + dxL * tBox
         const connY = ot.y + dyL * tBox
 
-        const VR_PAD_X = 3, VR_PAD_Y = 3, VR_FONT_SIZE = 13
+        const VR_PAD_X = 3, VR_PAD_Y = 3, VR_FONT_SIZE = pt(7)
         const halfW = measureText(cr, VR_FONT_SIZE) / 2 + VR_PAD_X
         const halfH = VR_FONT_SIZE / 2 + VR_PAD_Y
         const dxB = connX - tx, dyB = connY - ty

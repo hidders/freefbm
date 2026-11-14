@@ -288,7 +288,7 @@ export default function Minimap() {
         onClick={handleSVGClick}
         style={{ display: 'block', cursor: 'crosshair' }}
       >
-        <rect width={MM_W} height={MM_H} fill="var(--bg-canvas)"/>
+        <rect width={MM_W} height={MM_H} fill="var(--bg-diagram)"/>
 
         {/* Role connectors */}
         {(() => {
@@ -455,7 +455,7 @@ export default function Minimap() {
           const r = Math.max(1.5, (isSubtype ? 8 : 14) * scale)
           return (
             <circle key={c.occurrenceId ?? c.id} cx={wx(c.x)} cy={wy(c.y)} r={r}
-              fill="var(--bg-canvas)" stroke="var(--col-constraint)" strokeWidth={0.7}/>
+              fill="var(--bg-diagram)" stroke="var(--col-constraint)" strokeWidth={0.7}/>
           )
         })}
 

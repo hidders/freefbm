@@ -9,8 +9,10 @@ import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { findCompositePI } from '../utils/refMode'
 import { groupStyle } from '../utils/groups.js'
 import { DIAGRAM_FONT } from '../diagram/diagramFont.js'
+import { NORMA, px, pt } from '../diagram/normaGeometry.js'
 
-const DOT_R = 4  // mandatory dot radius
+const DOT_R = px(NORMA.mandatoryDot.diameter) / 2  // mandatory dot radius (NORMA 0.075 in)
+const LINK_W = pt(NORMA.rolePlayerPenPt)            // role connector pen (NORMA 1 pt)
 
 /**
  * Returns the nearest point on the border of a rect defined by {left,right,top,bottom,cx,cy}
@@ -250,7 +252,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
           <line key={key}
             x1={border.x} y1={border.y}
             x2={anchor.x} y2={anchor.y}
-            stroke={lineColor ?? 'var(--col-fact)'} strokeWidth={1.5} strokeOpacity={lineColor ? 1 : 0.75}
+            stroke={lineColor ?? 'var(--col-fact)'} strokeWidth={LINK_W}
             opacity={connOpacity}/>
         )
       })}
@@ -307,7 +309,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
                   width: '100%', height: '100%',
                   border: '1px solid #1a7fd4', borderRadius: 3, outline: 'none',
                   background: '#fff', color: '#1a7fd4',
-                  fontSize: 12, fontFamily: DIAGRAM_FONT,
+                  fontSize: pt(7), fontFamily: DIAGRAM_FONT,
                   textAlign: 'center', padding: '0 4px', boxSizing: 'border-box',
                 }}
               />
@@ -319,7 +321,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
           <text key={`lbl-${key}`}
             x={lx} y={ly}
             textAnchor="middle" dominantBaseline="middle"
-            fontSize={12} fontFamily={DIAGRAM_FONT}
+            fontSize={pt(7)} fontFamily={DIAGRAM_FONT}
             fill={nameColor ?? 'var(--col-role-name)'} opacity={labelOpacity}
             style={{ cursor: isDragging ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
             onMouseDown={e => {
@@ -367,7 +369,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
             <line key="draft"
               x1={border.x} y1={border.y}
               x2={mousePos.x} y2={mousePos.y}
-              stroke="var(--col-fact)" strokeWidth={1.5}
+              stroke="var(--col-fact)" strokeWidth={LINK_W}
               strokeDasharray="5 3" strokeOpacity={0.6}/>
           )
         }
@@ -381,7 +383,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
             <line key="draft"
               x1={anchor.x} y1={anchor.y}
               x2={mousePos.x} y2={mousePos.y}
-              stroke="var(--col-fact)" strokeWidth={1.5}
+              stroke="var(--col-fact)" strokeWidth={LINK_W}
               strokeDasharray="5 3" strokeOpacity={0.6}/>
           )
         }
@@ -428,7 +430,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
               {/* A deontic mandatory role has an open blue dot, as in NORMA. */}
               <circle
                 cx={pos.x} cy={pos.y} r={role.mandatoryDeontic ? DOT_R - 0.6 : DOT_R}
-                fill={role.mandatoryDeontic ? 'var(--bg-canvas)' : mgs?.constraint ?? 'var(--col-mandatory)'}
+                fill={role.mandatoryDeontic ? 'var(--bg-diagram)' : mgs?.constraint ?? 'var(--col-mandatory)'}
                 stroke={role.mandatoryDeontic ? mgs?.deontic ?? 'var(--col-deontic)' : 'none'}
                 strokeWidth={role.mandatoryDeontic ? 1.5 : 0}
                 onClick={e => {
