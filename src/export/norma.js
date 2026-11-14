@@ -128,10 +128,25 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   const skipped = {}   // what milestone 1 leaves out → count
   const skip = (what, n = 1) => { skipped[what] = (skipped[what] ?? 0) + n }
 
-  // Objectified fact types are milestone 2: their roles lose their player.
-  const objectified = facts.filter(f => f.objectified)
-  if (objectified.length) skip('objectifications', objectified.length)
-  const playerOf = (role) => otById.has(role.objectTypeId) ? role.objectTypeId : null
+  // Objectifications. FreeFBM's objectified fact types, and the ones NORMA
+  // objectifies implicitly: a fact type with more than two roles or an
+  // alethic internal uniqueness over more than one role, unless it is fully
+  // derived (NORMA's IsImpliedObjectificationRequired). NORMA adds an implied
+  // one it does not find while it loads, which its debug build reports as a
+  // failed assertion, so the export writes them as NORMA saves them.
+  const nests = new Map()            // fact id → { implied }
+  for (const f of facts) {
+    const deonticKeys = new Set((f.deonticUniqueness ?? []).map(r => [...r].sort((a, b) => a - b).join(',')))
+    if (f.objectified) nests.set(f.id, { implied: false })
+    else if (f.derivation !== 'derived' && (f.roles.length > 2
+      || (f.uniqueness ?? []).some(u => u.roles.length > 1 && !deonticKeys.has([...u.roles].sort((a, b) => a - b).join(',')))))
+      nests.set(f.id, { implied: true })
+  }
+  const nestId = (fid) => normaId(fid, 'nesting-type')
+  // a role's player: an object type, or an objectified fact type
+  const playerOf = (role) => otById.has(role.objectTypeId) || nests.get(role.objectTypeId)?.implied === false ? role.objectTypeId : null
+  const playerRef = (id) => otById.has(id) ? normaId(id) : nestId(id)
+  const pascal = (text) => text.split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join('')
 
   // ── names NORMA wants unique ─────────────────────────────────────────────
   const counters = {}
@@ -227,15 +242,18 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       const id = normaId(u.id)
       const rest = f.roles.map((r, ri) => ({ r, ri })).filter(x => !u.roles.includes(x.ri))
       let pif = null
-      if (preferred.has(key(u.roles)) && rest.length === 1 && otById.get(rest[0].r.objectTypeId)?.kind === 'entity') {
-        pif = rest[0].r.objectTypeId
-        if (!preferredFor.has(pif)) preferredFor.set(pif, id)
-        else pif = null
-      }
+      const restPlayer = rest.length === 1 ? rest[0].r.objectTypeId : null
+      if (preferred.has(key(u.roles)) && restPlayer && (otById.get(restPlayer)?.kind === 'entity' || nests.get(restPlayer)?.implied === false)) pif = restPlayer
+      // the uniqueness that identifies the objectified fact type itself: the
+      // one FreeFBM marks, else (as NORMA picks) the first alethic one over more than one role
+      else if (nests.has(f.id) && (Array.isArray(f.objectifiedIdentifier) ? key(f.objectifiedIdentifier) === key(u.roles)
+        : u.roles.length > 1 && !deontic.has(key(u.roles)))) pif = f.id
+      if (pif && !preferredFor.has(pif)) preferredFor.set(pif, id)
+      else pif = null
       conEls.push(el('orm:UniquenessConstraint', { id, Name: autoName('InternalUniquenessConstraint'), IsInternal: 'true',
         Modality: deontic.has(key(u.roles)) ? 'Deontic' : null }, [
         seqEl(u.id, u.roles.map(ri => roleIdOf(f, ri))),
-        pif && el('orm:PreferredIdentifierFor', { ref: normaId(pif) }),
+        pif && el('orm:PreferredIdentifierFor', { ref: playerRef(pif) }),
       ]))
       addInternal(f.id, 'UniquenessConstraint', id)
     }
@@ -327,10 +345,10 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     for (const ar of f.alternativeReadings ?? []) addReading(ar.roleOrder, ar.parts)
     if (!orders.size) readingless.push(factLabel(f))
     let k = 0
-    const name = factLabel(f).replace(/[^\p{L}\p{N}]+/gu, '')
+    const name = pascal(factLabel(f))
     return el('orm:Fact', { id: normaId(f.id), _Name: name || null }, [
       el('orm:FactRoles', {}, f.roles.map(r => el('orm:Role', { id: normaId(r.id), Name: r.roleName ?? '' },
-        playerOf(r) ? [el('orm:RolePlayer', { ref: normaId(playerOf(r)) })] : null))),
+        playerOf(r) ? [el('orm:RolePlayer', { ref: playerRef(playerOf(r)) })] : null))),
       orders.size && el('orm:ReadingOrders', {}, [...orders.values()].map(o => {
         const roId = normaId(f.id, `ro:${o.order.join(',')}`)
         return el('orm:ReadingOrder', { id: roId }, [
@@ -341,6 +359,53 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       internalRefs.get(f.id) && el('orm:InternalConstraints', {}, internalRefs.get(f.id)),
     ])
   })
+  // Each objectification: the objectifying type, and per role a link fact
+  // type (ImpliedFact) between it and the role's player, with a role proxy for
+  // the player's side and NORMA's uniqueness and mandatory on its own role.
+  const nestEls = [], linkEls = []
+  for (const [fid, { implied }] of nests) {
+    const f = factById.get(fid)
+    const typeId = nestId(fid), npId = normaId(fid, 'nesting')
+    const linkRoles = f.roles.map((_, ri) => normaId(fid, `link${ri}-role`))
+    const name = implied ? pascal(factLabel(f)) : (f.objectifiedName || pascal(factLabel(f)))
+    const pi = preferredFor.get(fid)
+    nestEls.push(el('orm:ObjectifiedType', { id: typeId, Name: name, IsIndependent: implied || f.isIndependent ? 'true' : null, _ReferenceMode: '' }, [
+      el('orm:PlayedRoles', {}, [...linkRoles.map(r => el('orm:Role', { ref: r })), ...(playedRoles.get(fid) ?? [])]),
+      pi && el('orm:PreferredIdentifier', { ref: pi }),
+      el('orm:NestedPredicate', { id: npId, ref: normaId(fid), IsImplied: implied ? 'true' : null }),
+    ]))
+    f.roles.forEach((r, ri) => {
+      const base = `${fid}#link${ri}`
+      const proxy = normaId(fid, `link${ri}-proxy`), own = linkRoles[ri]
+      const uc = normaId(base, 'uc'), m = normaId(base, 'mandatory')
+      conEls.push(
+        el('orm:UniquenessConstraint', { id: uc, Name: autoName('InternalUniquenessConstraint'), IsInternal: 'true' }, [seqEl(`${base}#uc`, [own])]),
+        el('orm:MandatoryConstraint', { id: m, Name: autoName('SimpleMandatoryConstraint'), IsSimple: 'true' }, [seqEl(`${base}#mandatory`, [own])]),
+      )
+      const il = f.implicitLinks?.find(x => x.roleIndex === ri)
+      const text = (parts, fallback) => parts ? `{0} ${(parts[1] ?? '').trim() || fallback} {1}` : `{0} ${fallback} {1}`
+      const playerName = otById.get(r.objectTypeId)?.name ?? factById.get(r.objectTypeId)?.objectifiedName ?? ''
+      linkEls.push(el('orm:ImpliedFact', { id: normaId(base), _Name: pascal(`${playerName} is involved in ${name}`) }, [
+        el('orm:FactRoles', {}, [
+          el('orm:RoleProxy', { id: proxy }, [el('orm:Role', { ref: normaId(r.id) })]),
+          el('orm:Role', { id: own, _IsMandatory: 'true', _Multiplicity: 'ZeroToMany', Name: '' }, [el('orm:RolePlayer', { ref: typeId })]),
+        ]),
+        el('orm:ReadingOrders', {}, [
+          el('orm:ReadingOrder', { id: normaId(base, 'ro-in') }, [
+            el('orm:Readings', {}, [el('orm:Reading', { id: normaId(base, 'reading-in') }, [el('orm:Data', {}, text(il?.alternativeReadings?.[0]?.parts, 'is involved in'))])]),
+            el('orm:RoleSequence', {}, [el('orm:Role', { ref: proxy }), el('orm:Role', { ref: own })]),
+          ]),
+          el('orm:ReadingOrder', { id: normaId(base, 'ro-out') }, [
+            el('orm:Readings', {}, [el('orm:Reading', { id: normaId(base, 'reading-out') }, [el('orm:Data', {}, text(il?.readingParts, 'involves'))])]),
+            el('orm:RoleSequence', {}, [el('orm:Role', { ref: own }), el('orm:Role', { ref: proxy })]),
+          ]),
+        ]),
+        el('orm:InternalConstraints', {}, [el('orm:UniquenessConstraint', { ref: uc }), el('orm:MandatoryConstraint', { ref: m })]),
+        el('orm:ImpliedByObjectification', { ref: npId }),
+      ]))
+    })
+  }
+
   function factLabel(f) {
     const parts = f.readingParts
     const names = f.roles.map(r => otById.get(r.objectTypeId)?.name ?? factById.get(r.objectTypeId)?.objectifiedName ?? '…')
@@ -397,9 +462,11 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     const vertical = (occ.orientation ?? f.orientation) === 'vertical'
     const below = !!(occ.uniquenessBelow ?? f.uniquenessBelow)
     const levels = barLevels(f)
-    const pen = 1 / 72, border = NORMA.factBorder
-    const along = n * NORMA.roleBox.width + 2 * border + pen
-    const across = NORMA.roleBox.height + levels * NORMA.constraintBand + 2 * border + pen
+    // an objectified fact type's shape holds NORMA's margins of the outline
+    const pen = 1 / 72
+    const [mAlong, mAcross] = f.objectified ? [NORMA.objectified.marginX, NORMA.objectified.marginY] : [NORMA.factBorder, NORMA.factBorder]
+    const along = n * NORMA.roleBox.width + 2 * mAlong + pen
+    const across = NORMA.roleBox.height + levels * NORMA.constraintBand + 2 * mAcross + pen
     const shift = levels * NORMA.constraintBand / 2
     let cx = inches(occ.x), cy = inches(occ.y)
     if (vertical) cx -= below ? shift : -shift
@@ -437,8 +504,8 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   // ── the file ─────────────────────────────────────────────────────────────
   const root = el('ormRoot:ORM2', { 'xmlns:orm': NS.orm, 'xmlns:ormDiagram': NS.ormDiagram, 'xmlns:ormRoot': NS.ormRoot }, [
     el('orm:ORMModel', { id: modelId, Name: modelName }, [
-      objectEls.length && el('orm:Objects', {}, objectEls),
-      (factEls.length || subtypeEls.length) && el('orm:Facts', {}, [...factEls, ...subtypeEls]),
+      (objectEls.length || nestEls.length) && el('orm:Objects', {}, [...objectEls, ...nestEls]),
+      (factEls.length || subtypeEls.length) && el('orm:Facts', {}, [...factEls, ...subtypeEls, ...linkEls]),
       conEls.length && el('orm:Constraints', {}, conEls),
       dataTypeEls.length && el('orm:DataTypes', {}, dataTypeEls),
       customModes.size && el('orm:CustomReferenceModes', {}, [...customModes].map(([mode, c]) =>
