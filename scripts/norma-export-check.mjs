@@ -155,6 +155,12 @@ async function runInPage({ name, content, isOrm }) {
       const ref = e.getAttribute('ref')
       if (ref != null && !ids.has(ref)) out.push(`${e.parentElement?.localName}/${e.localName} refers to missing ${ref}`)
     }
+    // a path walks roles (and supertype meta roles), never role proxies:
+    // NORMA refuses to load the file otherwise ("Role player must be of type Role")
+    for (const pr of doc.getElementsByTagNameNS('*', 'PathedRole')) {
+      const target = ids.get(pr.getAttribute('ref'))
+      if (pr.getAttribute('id') && target && !['Role', 'SupertypeMetaRole'].includes(target.localName)) out.push(`a pathed role walks a ${target.localName} (${pr.getAttribute('ref')})`)
+    }
     // every role is in its player's PlayedRoles
     for (const fr of doc.getElementsByTagNameNS('*', 'FactRoles')) for (const role of fr.children) {
       const player = [...role.children].find(c => c.localName === 'RolePlayer')?.getAttribute('ref')
