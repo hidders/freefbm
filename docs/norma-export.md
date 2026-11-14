@@ -270,5 +270,20 @@ milestone 2 adds (identification by external uniqueness: Room, Term,
 DataValue). Fact types whose derivation rule is not exported also get
 NORMA's implied objectification, since NORMA sees them as stored.
 
+Milestone 2 (v1.2.27): external constraints (uniqueness and preferred
+identifiers, inclusive-or, exclusive-or as NORMA's mandatory and exclusion
+pair, exclusion, equality, subset, frequency, value comparison, ring;
+subtype links are constrained through their supertype meta role), internal
+frequency, value ranges of value types and roles (an entity type's on its
+reference mode's role), cardinality ranges, their shapes, and the labels
+FreeFBM keeps at a set place (reading, role names, ranges, objectified
+name), placed by the importer's rule read backwards. An external preferred
+identifier writes the uniqueness and mandatory it implies on the
+identified type's roles. Join paths are left to NORMA where it builds them
+itself (roles in binaries joined through one object type); other queries
+are reported and wait for milestone 3. The checks pass on the sample model
+and all 104 current-format NORMA samples; labels come back within 6 px (the
+importer keeps a label reaching a little into its shape beside it).
+
 Open points for the NORMA check: whether a value type without a data type should get NORMA's error or a
 default type.
