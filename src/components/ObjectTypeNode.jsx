@@ -496,7 +496,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
       })() }}
       filter={isSelected || isDraftFrom ? 'url(#selectGlow)' : isShared ? 'url(#sharedGlow)' : undefined}
     >
-      <rect x={ot.x - w/2} y={ot.y - h/2} width={w} height={h} rx={OT_RADIUS}
+      <rect data-look="shape" data-occ={occurrenceId} x={ot.x - w/2} y={ot.y - h/2} width={w} height={h} rx={OT_RADIUS}
         fill={fill} stroke={stroke} strokeWidth={strokeW}
         strokeDasharray={strokeDash}/>
 
@@ -643,7 +643,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
                 : sel.factId === otVrDesc.factId && sel.roleIndex === otVrDesc.roleIndex)
               const vrFill = isVrSel ? 'var(--accent)' : vrCol
               return (
-                <text x={tx} y={ty}
+                <text data-look="value-range" data-occ={occurrenceId} x={tx} y={ty}
                   textAnchor="middle" dominantBaseline="middle"
                   fill={vrFill} fontSize={VR_FONT_SIZE} fontFamily={OT_FONT}
                   style={{ cursor: vrLive ? 'grabbing' : 'grab', userSelect: 'none',
@@ -713,7 +713,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
               const isCrSel = store.selectedCardinalityRange?.otId === ot.id
               const crFill = isCrSel ? 'var(--accent)' : crCol
               return (
-                <text x={tx} y={ty}
+                <text data-look="cardinality-range" data-occ={occurrenceId} x={tx} y={ty}
                   textAnchor="middle" dominantBaseline="middle"
                   fill={crFill} fontSize={VR_FONT_SIZE} fontFamily={OT_FONT}
                   style={{ cursor: crLive ? 'grabbing' : 'grab', userSelect: 'none',

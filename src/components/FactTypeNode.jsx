@@ -1671,7 +1671,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     }
 
     return (
-      <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle"
+      <text data-look="reading" data-occ={occurrenceId} x={tx} y={ty} textAnchor="middle" dominantBaseline="middle"
         fontSize={LABEL_SIZE} fill={readingFallback ? 'var(--ink-muted)' : gs?.floating ?? gs?.text ?? 'var(--dg-text)'} fontStyle={readingFallback ? 'italic' : undefined} fontFamily={FONT}
         style={{ cursor: isDraggingReading ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none', pointerEvents: inQueryEdit ? 'none' : undefined }}
         onMouseDown={e => {
@@ -2023,7 +2023,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           return (
             <g className="selectable-group">
               <g opacity={dimObjectification ? 0.35 : 1}>
-              <rect
+              <rect data-look="outline" data-occ={occurrenceId}
                 x={fact.x - ROLE_H / 2 - padLeft} y={boxTop}
                 width={ow} height={oh} rx={6}
                 fill={nestedFill} stroke={nestedCol} strokeWidth={nestedStrokeW}
@@ -2053,7 +2053,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                       }}/>
                   </foreignObject>
                 ) : (
-                  <text x={nameTx} y={nameTy}
+                  <text data-look="name" data-occ={occurrenceId} x={nameTx} y={nameTy}
                     textAnchor="middle" dominantBaseline="middle"
                     fontSize={OT_SIZE_NAME} fontWeight={700} fontFamily={FONT}
                     fill={nestedTextCol}
@@ -2244,7 +2244,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         return (
           <g className="selectable-group">
             <g opacity={dimObjectification ? 0.35 : 1}>
-            <rect
+            <rect data-look="outline" data-occ={occurrenceId}
               x={fact.x - ow / 2} y={fact.y - ROLE_H / 2 - padTop}
               width={ow} height={oh} rx={6}
               fill={nestedFill} stroke={nestedCol} strokeWidth={nestedStrokeW}
@@ -2274,7 +2274,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                     }}/>
                 </foreignObject>
               ) : (
-                <text x={nameTx} y={nameTy}
+                <text data-look="name" data-occ={occurrenceId} x={nameTx} y={nameTy}
                   textAnchor="middle" dominantBaseline="middle"
                   fontSize={OT_SIZE_NAME} fontWeight={700} fontFamily={FONT}
                   fill={nestedTextCol}
@@ -2430,7 +2430,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       {isVertical ? (
         <>
           {/* White background */}
-          <rect x={leftX_v} y={startY_v} width={ROLE_H} height={totalH_v}
+          <rect data-look="roles" data-occ={occurrenceId} x={leftX_v} y={startY_v} width={ROLE_H} height={totalH_v}
             fill="#ffffff" stroke="none" opacity={isAdjFact ? 0.35 : 1} style={{ pointerEvents: 'none' }}/>
 
           {/* Unary cap (north) */}
@@ -2533,20 +2533,20 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                     {/* Solid runs: two lines at ±PREF_OFFSET */}
                     {[-PREF_OFFSET, PREF_OFFSET].map(dx =>
                       runs.filter(r => r.solid).map(({ y1, y2, key }) => (
-                        <line key={`${key}-${dx}`} x1={barX + dx} y1={y1} x2={barX + dx} y2={y2}
+                        <line data-look="bar" data-occ={occurrenceId} key={`${key}-${dx}`} x1={barX + dx} y1={y1} x2={barX + dx} y2={y2}
                           stroke={barStroke} strokeWidth={sw} strokeLinecap="butt"/>
                       ))
                     )}
                     {/* Dashed runs: single line at midpoint between the two bars */}
                     {runs.filter(r => !r.solid).map(({ y1, y2, key }) => (
-                      <line key={`${key}-mid`} x1={barX} y1={y1} x2={barX} y2={y2}
+                      <line data-look="bar" data-occ={occurrenceId} key={`${key}-mid`} x1={barX} y1={y1} x2={barX} y2={y2}
                         stroke={barStroke} strokeWidth={sw} strokeLinecap="butt"
                         strokeDasharray="3 3" strokeOpacity={0.6}/>
                     ))}
                   </>
                 ) : (
                   runs.map(({ y1, y2, solid, key }) => (
-                    <line key={`${key}-0`} x1={barX} y1={y1} x2={barX} y2={y2}
+                    <line data-look="bar" data-occ={occurrenceId} key={`${key}-0`} x1={barX} y1={y1} x2={barX} y2={y2}
                       stroke={barStroke} strokeWidth={sw} strokeLinecap="butt"
                       strokeDasharray={solid ? 'none' : '3 3'}
                       strokeOpacity={solid ? 1 : 0.6}/>
@@ -2582,7 +2582,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                 <line x1={barX} y1={hitY1} x2={barX} y2={hitY2} stroke="transparent" strokeWidth={10}/>
                 <rect className="hover-ring" x={barX - 3} y={hitY1 - 3} width={6} height={hitY2 - hitY1 + 6}/>
                 {runs.map(({ y1, y2, key }) => (
-                  <line key={`${key}-impl`} x1={barX} y1={y1} x2={barX} y2={y2}
+                  <line data-look="bar" data-occ={occurrenceId} key={`${key}-impl`} x1={barX} y1={y1} x2={barX} y2={y2}
                     stroke={barStroke} strokeWidth={sw} strokeLinecap="butt"/>
                 ))}
               </g>
@@ -2622,7 +2622,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       ) : (
         <>
           {/* White background covering all role boxes and gaps */}
-          <rect x={startX} y={topY} width={totalW} height={ROLE_H} fill="#ffffff" stroke="none"
+          <rect data-look="roles" data-occ={occurrenceId} x={startX} y={topY} width={totalW} height={ROLE_H} fill="#ffffff" stroke="none"
             opacity={isAdjFact ? 0.35 : 1} style={{ pointerEvents: 'none' }}/>
 
           {/* Unary cap */}
@@ -2727,20 +2727,20 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                     {/* Solid runs: two lines at ±PREF_OFFSET */}
                     {[-PREF_OFFSET, PREF_OFFSET].map(dy =>
                       runs.filter(r => r.solid).map(({ x1, x2, key }) => (
-                        <line key={`${key}-${dy}`} x1={x1} y1={barY + dy} x2={x2} y2={barY + dy}
+                        <line data-look="bar" data-occ={occurrenceId} key={`${key}-${dy}`} x1={x1} y1={barY + dy} x2={x2} y2={barY + dy}
                           stroke={barStroke} strokeWidth={sw} strokeLinecap="butt"/>
                       ))
                     )}
                     {/* Dashed runs: single line at midpoint between the two bars */}
                     {runs.filter(r => !r.solid).map(({ x1, x2, key }) => (
-                      <line key={`${key}-mid`} x1={x1} y1={barY} x2={x2} y2={barY}
+                      <line data-look="bar" data-occ={occurrenceId} key={`${key}-mid`} x1={x1} y1={barY} x2={x2} y2={barY}
                         stroke={barStroke} strokeWidth={sw} strokeLinecap="butt"
                         strokeDasharray="3 3" strokeOpacity={0.6}/>
                     ))}
                   </>
                 ) : (
                   runs.map(({ x1, x2, solid, key }) => (
-                    <line key={`${key}-0`} x1={x1} y1={barY} x2={x2} y2={barY}
+                    <line data-look="bar" data-occ={occurrenceId} key={`${key}-0`} x1={x1} y1={barY} x2={x2} y2={barY}
                       stroke={barStroke} strokeWidth={sw} strokeLinecap="butt"
                       strokeDasharray={solid ? 'none' : '3 3'}
                       strokeOpacity={solid ? 1 : 0.6}/>
@@ -2776,7 +2776,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                 <line x1={hitX1} y1={barY} x2={hitX2} y2={barY} stroke="transparent" strokeWidth={10}/>
                 <rect className="hover-ring" x={hitX1 - 3} y={barY - 3} width={hitX2 - hitX1 + 6} height={6}/>
                 {runs.map(({ x1, x2, key }) => (
-                  <line key={`${key}-impl`} x1={x1} y1={barY} x2={x2} y2={barY}
+                  <line data-look="bar" data-occ={occurrenceId} key={`${key}-impl`} x1={x1} y1={barY} x2={x2} y2={barY}
                     stroke={barStroke} strokeWidth={sw} strokeLinecap="butt"/>
                 ))}
               </g>
@@ -2853,7 +2853,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
             stroke={vrFill} strokeWidth={1.5}
             strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
-          <text x={textX} y={textY}
+          <text data-look="role-value-range" data-occ={occurrenceId} data-role={ri} x={textX} y={textY}
             textAnchor="middle" dominantBaseline="middle"
             fill={vrFill} fontSize={VR_FONT_SIZE} fontFamily={VR_FONT}
             style={{ cursor: dragging ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
@@ -2912,7 +2912,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           <line x1={connX} y1={connY} x2={lineEnd.x} y2={lineEnd.y}
             stroke={crFill} strokeWidth={1.5}
             strokeDasharray="5 3" style={{ pointerEvents: 'none' }}/>
-          <text x={textX} y={textY}
+          <text data-look="role-cardinality-range" data-occ={occurrenceId} data-role={ri} x={textX} y={textY}
             textAnchor="middle" dominantBaseline="middle"
             fill={crFill} fontSize={VR_FONT_SIZE} fontFamily={VR_FONT}
             style={{ cursor: dragging ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
