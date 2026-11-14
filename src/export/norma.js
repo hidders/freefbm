@@ -138,7 +138,9 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   for (const f of facts) {
     const deonticKeys = new Set((f.deonticUniqueness ?? []).map(r => [...r].sort((a, b) => a - b).join(',')))
     if (f.objectified) nests.set(f.id, { implied: false })
-    else if (f.derivation !== 'derived' && (f.roles.length > 2
+    // (fully derived ones are exempt in NORMA, but derivation rules are not
+    // exported yet, so NORMA sees every fact type as stored)
+    else if ((f.roles.length > 2
       || (f.uniqueness ?? []).some(u => u.roles.length > 1 && !deonticKeys.has([...u.roles].sort((a, b) => a - b).join(',')))))
       nests.set(f.id, { implied: true })
   }
