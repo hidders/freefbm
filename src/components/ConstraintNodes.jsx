@@ -42,7 +42,7 @@ function formatFrequencyRange(frequency) {
 // An external frequency constraint is a pill D high (FreeFBM's own shape,
 // Jan's choice; NORMA draws a growing circle) as wide as its text plus half
 // the text's height, as NORMA pads it, and never narrower than a circle.
-function freqStadiumW(label) {
+export function freqStadiumW(label) {
   const minW = EXTERNAL_CONSTRAINT_R * 2   // never narrower than a circle
   if (!label) return minW
   return Math.max(minW, measureFreqText(label) + px(NORMA.lineHeight) / 2)

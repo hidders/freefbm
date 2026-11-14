@@ -329,7 +329,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
         }
 
         return (
-          <text key={`lbl-${key}`}
+          <text key={`lbl-${key}`} data-look="role-name" data-key={key}
             x={lx} y={ly}
             textAnchor="middle" dominantBaseline="middle"
             fontSize={NAME_SIZE} fontFamily={DIAGRAM_FONT}
