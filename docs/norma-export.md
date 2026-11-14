@@ -310,10 +310,14 @@ but for six labels that come back at their default place.
 
 Formal derivation paths (v1.2.32): conjunctive rules (∃, ∧, fact atoms,
 link fact types of objectifications, subtype tests, equalities) are written
-as NORMA role paths (`src/export/normaPathsOut.js`): one lead path from the
-subject, split (And) into one subpath per atom, each with its own root;
-object unifiers join the places that are one variable; a derived fact
-type's roles are projected from them. Re-importing gives the same rule up
+as NORMA role paths (`src/export/normaPathsOut.js`). Since v1.2.35 the
+path walks from the subject as NORMA's own paths do (NORMA refused
+projections from subpaths with roots of their own: "must project derived
+roles from at least one source path"): at each object, every part that
+mentions it is a subpath from there; a fact atom is entered through that
+object's role and walks its other roles, once per object the path goes on
+from; object unifiers join the places that are one variable; a derived
+fact type's roles are projected from them. Re-importing gives the same rule up
 to typing (a subtype test comes back as the variable's type). Since v1.2.33 negation
 and disjunction nest (a disjunction is a subpath split Or into one subpath
 per part, a negation a subpath whose split is negated), and a type test

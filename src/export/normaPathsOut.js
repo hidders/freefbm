@@ -97,47 +97,71 @@ export function conjunctivePath(rule, opts) {
   const leadId = id('lead'), leadRoot = id('lead-root')
   addNode(opts.subject, { kind: 'PathRoot', id: leadRoot })
 
-  // Subpaths: an atom or a type test is a subpath with a root of its own; a
-  // conjunction is its parts side by side (And), a disjunction a subpath
-  // that splits Or into one subpath per part, a negation a subpath whose
-  // And split is negated.
+  // The path walks from the subject, as NORMA's own paths do: at an object
+  // the path is at, each part that mentions it is a subpath from there. A
+  // fact atom is entered through that object's role (PostInnerJoin) and
+  // walks its other roles (SameFactType); to go on from another of its
+  // objects, the atom is walked once per such object, ending at it, and the
+  // copies' roles are unified. A type test steps into the type through the
+  // subtype link's supertype meta role. A disjunction splits Or, a negation
+  // negates its split; their parts are walked from the same object.
   let n = 0
-  const emit = (t) => {
-    if (!t) return []
-    if (t.k === 'and') return t.items.flatMap(emit)
+  const same = (a, b) => find(a) === find(b)
+  const mentions = (t, v) => t.k === 'atom' ? t.a.args.some(a => same(a, v))
+    : t.k === 'type' ? same(t.t.arg, v) : t.items.some(x => mentions(x, v))
+  const flatAnd = (t) => !t ? [] : t.k === 'and' ? t.items.flatMap(flatAnd) : [t]
+  let pending = []
+  const gather = (v) => {
+    const out = []
+    for (let i = 0; i < pending.length && !fail;) {
+      if (mentions(pending[i], v)) { const [t] = pending.splice(i, 1); out.push(...emitAt(t, v)); i = 0 }
+      else i++
+    }
+    return out
+  }
+  const block = (items, v) => {
+    const outer = pending
+    pending = items
+    const out = gather(v)
+    if (pending.length && !fail) fail = 'a part of a negation or disjunction that is not joined to the object it is about'
+    pending = outer
+    return out
+  }
+  function emitAt(t, v) {
+    const k = n++
     if (t.k === 'atom') {
-      const k = n++, a = t.a
-      a.args.forEach((v, i) => addNode(v, { kind: 'PathedRole', id: id(`a${k}r${i}`) }))
-      return [el('orm:SubPath', { id: id(`a${k}`) }, [
-        el('orm:RootObjectType', { id: id(`a${k}root`), ref: opts.typeRef(playerOf(a.factId, 0)) }),
-        el('orm:PathedRoles', {}, a.args.map((_, i) => el('orm:PathedRole', { id: id(`a${k}r${i}`), ref: roleRef(a.factId, i), Purpose: i === 0 ? 'PostInnerJoin' : 'SameFactType' }))),
-      ])]
+      const a = t.a, e = a.args.findIndex(x => same(x, v))
+      const others = a.args.map((_, i) => i).filter(i => i !== e)
+      const role = (c, i, purpose) => el('orm:PathedRole', { id: id(`a${k}c${c}r${i}`), ref: roleRef(a.factId, i), Purpose: purpose })
+      if (!others.length) return [el('orm:SubPath', { id: id(`a${k}`) }, [el('orm:PathedRoles', {}, [role(0, e, 'PostInnerJoin')])])]
+      // one walk per object the path goes on from (at least one walk)
+      const onward = others.filter(j => pending.some(x => mentions(x, a.args[j])))
+      return (onward.length ? onward : [others[others.length - 1]]).map(j => {
+        const order = [...others.filter(i => i !== j), j]
+        order.forEach(i => addNode(a.args[i], { kind: 'PathedRole', id: id(`a${k}c${j}r${i}`) }))
+        const next = gather(a.args[j])
+        return el('orm:SubPath', { id: id(`a${k}c${j}`) }, [
+          el('orm:PathedRoles', {}, [role(j, e, 'PostInnerJoin'), ...order.map(i => role(j, i, 'SameFactType'))]),
+          next.length && el('orm:SubPaths', {}, next),
+        ])
+      })
     }
     if (t.k === 'type') {
-      // A type test walks the subtype link into the type, from its supertype
-      // (the importer reads it as a type test in place); a type with no
-      // supertype is a root of its own (read as the variable's type).
-      const k = n++
       const link = opts.subtypeLinkOf?.(t.t.typeId)
-      if (link) {
-        addNode(t.t.arg, { kind: 'PathedRole', id: id(`t${k}r0`) })
-        return [el('orm:SubPath', { id: id(`t${k}`) }, [
-          el('orm:RootObjectType', { id: id(`t${k}root`), ref: opts.typeRef(link.superId) }),
-          // NORMA joins the supertype's meta role alone to step into the subtype
-          el('orm:PathedRoles', {}, [el('orm:PathedRole', { id: id(`t${k}r0`), ref: link.superRole, Purpose: 'PostInnerJoin' })]),
-        ])]
-      }
-      if (!t.top) { fail = 'a test for a type without a supertype inside a negation or disjunction'; return [] }
-      addNode(t.t.arg, { kind: 'PathRoot', id: id(`t${k}root`) })
-      return [el('orm:SubPath', { id: id(`t${k}`) }, [el('orm:RootObjectType', { id: id(`t${k}root`), ref: opts.typeRef(t.t.typeId) })])]
+      if (!link) { fail = 'a test for a type that is no subtype'; return [] }
+      // NORMA steps into a subtype by joining its supertype's meta role alone
+      return [el('orm:SubPath', { id: id(`t${k}`) }, [
+        el('orm:PathedRoles', {}, [el('orm:PathedRole', { id: id(`t${k}r0`), ref: link.superRole, Purpose: 'PostInnerJoin' })]),
+      ])]
     }
-    const k = n++
     if (t.k === 'or') return [el('orm:SubPath', { id: id(`s${k}`), SplitCombinationOperator: 'Or' }, [
-      el('orm:SubPaths', {}, t.items.map((x, j) => el('orm:SubPath', { id: id(`s${k}b${j}`) }, [el('orm:SubPaths', {}, emit(x))]))),
+      el('orm:SubPaths', {}, t.items.map((x, j) => el('orm:SubPath', { id: id(`s${k}b${j}`) }, [el('orm:SubPaths', {}, block(flatAnd(x), v))]))),
     ])]
-    return [el('orm:SubPath', { id: id(`s${k}`), SplitIsNegated: 'true' }, [el('orm:SubPaths', {}, t.items.flatMap(emit))])]
+    return [el('orm:SubPath', { id: id(`s${k}`), SplitIsNegated: 'true' }, [el('orm:SubPaths', {}, block(t.items.flatMap(flatAnd), v))])]
   }
-  const subPaths = emit(body)
+  pending = flatAnd(body)
+  const subPaths = gather(opts.subject)
+  if (!fail && pending.length) fail = 'a part that is not joined to the subject'
   if (fail) return refuse(fail)
 
   // every projected variable must be bound by the body
@@ -145,7 +169,7 @@ export function conjunctivePath(rule, opts) {
     const ns = nodes.get(find(p.varId)) ?? []
     if (!ns.length) return refuse('a role of the fact type is not bound by the rule')
   }
-  if ((nodes.get(find(opts.subject)) ?? []).length < 2) return refuse('the subject is not bound by the rule')
+  if (!subPaths.length) return refuse('the subject is not bound by the rule')
 
   const unifiers = [...nodes.values()].filter(ns => ns.length > 1).map((ns, k) =>
     el('orm:ObjectUnifier', { id: id(`u${k}`) }, ns.map(n => el(`orm:${n.kind}`, { ref: n.id }))))
