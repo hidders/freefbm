@@ -93,3 +93,5 @@ Without these secrets, macOS builds will be unsigned. Users will need to allow t
 ## License
 
 [MIT](LICENSE) © 2026 hidders
+
+The diagram fonts are third-party and keep their own licences: Wine Tahoma (`src/assets/fonts/wine-tahoma/`, GNU LGPL 2.1 or later) and DejaVu Sans (`src/assets/fonts/dejavu-sans/`, Bitstream Vera licence). Each folder has its licence and a README; removing the Wine Tahoma folder leaves FreeFBM under the MIT licence only, drawing diagrams in DejaVu Sans.

@@ -15,8 +15,9 @@ import { relationalModel } from './relationalModel.js'
 import { relationalView, rmObjectOf } from './relationalView.js'
 import { typeSql } from './ddlExport.js'
 import { layeredLayout } from './erdRouting.js'
+import { DIAGRAM_FONT, measureDiagramText } from '../diagram/diagramFont.js'
 
-export const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+export const FONT = DIAGRAM_FONT
 export const HEAD_H = 24, ROW_H = 19, PAD_X = 8, MARK_GAP = 6, GAP_TYPE = 18, MIN_W = 140
 const GAP_Y = 70
 
@@ -27,14 +28,8 @@ export function isErdDiagram(state, diagram) {
   return isRelationalFace(state, diagram.schemaId)
 }
 
-let _canvas = null
 function measure(text, size, weight = 400) {
-  // Outside a browser (scripts), an estimate.
-  if (typeof document === 'undefined') return String(text).length * size * 0.58
-  if (!_canvas) _canvas = document.createElement('canvas')
-  const ctx = _canvas.getContext('2d')
-  ctx.font = `${weight} ${size}px ${FONT}`
-  return ctx.measureText(text).width
+  return measureDiagramText(text, size, weight)
 }
 
 export function columnType(col) {

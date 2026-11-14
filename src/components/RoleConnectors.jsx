@@ -8,6 +8,7 @@ import { roleAnchor } from '../utils/geometry'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { findCompositePI } from '../utils/refMode'
 import { groupStyle } from '../utils/groups.js'
+import { DIAGRAM_FONT } from '../diagram/diagramFont.js'
 
 const DOT_R = 4  // mandatory dot radius
 
@@ -306,7 +307,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
                   width: '100%', height: '100%',
                   border: '1px solid #1a7fd4', borderRadius: 3, outline: 'none',
                   background: '#fff', color: '#1a7fd4',
-                  fontSize: 12, fontFamily: "'Segoe UI', Helvetica, Arial, sans-serif",
+                  fontSize: 12, fontFamily: DIAGRAM_FONT,
                   textAlign: 'center', padding: '0 4px', boxSizing: 'border-box',
                 }}
               />
@@ -318,7 +319,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
           <text key={`lbl-${key}`}
             x={lx} y={ly}
             textAnchor="middle" dominantBaseline="middle"
-            fontSize={12} fontFamily="'Segoe UI', Helvetica, Arial, sans-serif"
+            fontSize={12} fontFamily={DIAGRAM_FONT}
             fill={nameColor ?? 'var(--col-role-name)'} opacity={labelOpacity}
             style={{ cursor: isDragging ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
             onMouseDown={e => {

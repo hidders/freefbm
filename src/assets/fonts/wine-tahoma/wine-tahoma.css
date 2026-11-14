@@ -1,0 +1,15 @@
+/* Wine Tahoma (LGPL 2.1 or later, see README.md in this folder). */
+@font-face {
+  font-family: 'Wine Tahoma';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('./tahoma.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Wine Tahoma';
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url('./tahomabd.ttf') format('truetype');
+}

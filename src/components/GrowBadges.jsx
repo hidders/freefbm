@@ -4,6 +4,7 @@ import { useDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds } from './ObjectTypeNode'
 import { nestedFactBounds } from './FactTypeNode'
 import { hiddenNeighbourCounts } from '../utils/neighbourhood.js'
+import { DIAGRAM_FONT } from '../diagram/diagramFont.js'
 
 // Growing mode (the Grow switch right of the diagram tabs, or while the Add
 // neighbours… picker is open): a "+n" badge at the bottom right of each
@@ -32,7 +33,7 @@ export function GrowBadge({ x, y, n, onOpen }) {
       onClick={e => { e.stopPropagation(); onOpen() }}>
       <title>{`${n} neighbour${n > 1 ? 's' : ''} not on this diagram: click to add`}</title>
       <rect x={-w / 2} y={-8} width={w} height={16} rx={8} fill="var(--accent)" stroke="var(--bg-surface)" strokeWidth={1.5} />
-      <text textAnchor="middle" dy="0.35em" fontSize={10} fontWeight={700} fill="#fff" style={{ userSelect: 'none', fontFamily: "'Segoe UI', Helvetica, Arial, sans-serif" }}>{label}</text>
+      <text textAnchor="middle" dy="0.35em" fontSize={10} fontWeight={700} fill="#fff" style={{ userSelect: 'none', fontFamily: DIAGRAM_FONT }}>{label}</text>
     </g>
   )
 }

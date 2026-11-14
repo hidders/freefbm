@@ -5,6 +5,7 @@ import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { derivationMark } from '../logic/derivationRule.js'
 import { queryElements } from '../logic/query.js'
 import { groupStyle } from '../utils/groups.js'
+import { DIAGRAM_FONT, measureDiagramText } from '../diagram/diagramFont.js'
 
 // Returns the ref-mode label (e.g. ".code") to display inside the entity rect,
 // or null when the entity has no ref mode or is expanded in the active diagram.
@@ -47,7 +48,7 @@ function valueRangeTarget(ot, refValueRole) {
   return vt?.valueRange?.length ? { range: vt.valueRange, desc: { otId: vt.id }, deontic: !!vt.valueRangeDeontic } : null
 }
 
-const OT_FONT       = "'Segoe UI', Helvetica, Arial, sans-serif"
+const OT_FONT       = DIAGRAM_FONT
 const OT_SIZE_NAME  = 18
 const OT_SIZE_REF   = 12
 const OT_PAD_X      = 8    // horizontal padding each side
@@ -105,12 +106,8 @@ export function formatFrequencyRange(range) {
   return full ? full.slice(1, -1) : null
 }
 
-let _canvas = null
 function measureText(text, fontSize) {
-  if (!_canvas) _canvas = document.createElement('canvas')
-  const ctx = _canvas.getContext('2d')
-  ctx.font = `${fontSize}px ${OT_FONT}`
-  return ctx.measureText(text).width
+  return measureDiagramText(text, fontSize)
 }
 
 export function computeOtSize(ot, nameOverride) {

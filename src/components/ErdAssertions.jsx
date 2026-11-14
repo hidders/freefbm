@@ -12,14 +12,10 @@ import { useOrmStore } from '../store/ormStore'
 import { relationalView } from '../relational/relationalView'
 import { FONT } from '../relational/erdBoxes'
 import { assertionShapes, placeAssertions, boxBorder, nodeWidth, NODE_R, ASSERTION_KINDS } from '../relational/erdAssertions'
+import { measureDiagramText } from '../diagram/diagramFont.js'
 
-let _canvas = null
 function measure(text) {
-  if (typeof document === 'undefined') return String(text).length * 7
-  if (!_canvas) _canvas = document.createElement('canvas')
-  const ctx = _canvas.getContext('2d')
-  ctx.font = `400 12px ${FONT}`
-  return ctx.measureText(text).width
+  return measureDiagramText(text, 12)
 }
 const widthOf = (s) => nodeWidth(s, measure)
 

@@ -9,6 +9,7 @@ import { EXTERNAL_CONSTRAINT_TYPES, RAKE_TOOTH, RAKE_STAGGER, RAKE_TOOTH_GAP } f
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { groupStyle } from '../utils/groups.js'
 import { isFormulaConstraint, formulaElements } from '../logic/formulaConstraint.js'
+import { DIAGRAM_FONT } from '../diagram/diagramFont.js'
 
 const CONSTRAINT_R = 14        // radius of standard constraint circle
 const EXTERNAL_CONSTRAINT_R = 10 // radius of external constraint circle
@@ -1267,7 +1268,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                   <text x={c.x} y={c.y}
                     textAnchor="middle" dominantBaseline="central"
                     fontSize={FREQ_FONT_SIZE} fill={color}
-                    fontFamily="'Segoe UI', Helvetica, Arial, sans-serif"
+                    fontFamily={DIAGRAM_FONT}
                     style={{ pointerEvents: 'none' }}
                   >
                     {lbl || 'F'}
@@ -1424,7 +1425,7 @@ function FormulaBadge({ c, color, isSelected, factMap, otMap, store, onDragStart
       {links.map(l => <line key={l.key} x1={c.x} y1={c.y} x2={l.x} y2={l.y} stroke={color} strokeWidth={1.1} strokeDasharray="2 3" opacity={0.75} />)}
       <rect x={c.x - w / 2} y={c.y - h / 2} width={w} height={h} rx={h / 2} fill="#ffffff" stroke={color} strokeWidth={isSelected ? 2 : 1.5} />
       <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central" fontSize={FREQ_FONT_SIZE} fill={color}
-        fontFamily="'Segoe UI', Helvetica, Arial, sans-serif" style={{ pointerEvents: 'none' }}>{label}</text>
+        fontFamily={DIAGRAM_FONT} style={{ pointerEvents: 'none' }}>{label}</text>
     </g>
   )
 }

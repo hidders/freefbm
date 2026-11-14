@@ -24,6 +24,7 @@ import NoteNode from './NoteNode'
 import { ValueRangeEditor } from './Inspector'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { groupStyle } from '../utils/groups.js'
+import { DIAGRAM_FONT } from '../diagram/diagramFont.js'
 
 const SNAP = 10  // grid snap in world units
 
@@ -1741,7 +1742,7 @@ export default function Canvas() {
               left: Math.round(left), top: Math.round(top),
               width: Math.round(width), height: Math.round(height),
               fontSize: Math.round(11 * store.zoom),
-              fontFamily: "'Segoe UI', Helvetica, Arial, sans-serif",
+              fontFamily: DIAGRAM_FONT,
               lineHeight: 1.4,
               background: '#fffde7',
               border: 'none',

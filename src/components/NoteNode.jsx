@@ -1,7 +1,8 @@
 import React, { useRef, useState, useLayoutEffect } from 'react'
 import { IMPORT_NOTE_STYLE } from '../utils/importNotes.js'
+import { DIAGRAM_FONT } from '../diagram/diagramFont.js'
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+const FONT = DIAGRAM_FONT
 const FOLD = 16  // dog-ear size
 
 const textStyle = {

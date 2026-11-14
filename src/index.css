@@ -244,3 +244,10 @@ input.range-field[type=number] { -moz-appearance: textfield; }
   box-shadow: inset 0 1px 2px rgba(0,0,0,0.25);
 }
 .ui-btn .ui-caret { font-size: 8px; opacity: 0.7; margin-left: 1px; }
+
+/* Diagram text is drawn as NORMA (GDI+) draws it: no kerning, no ligatures
+   (src/diagram/diagramFont.js measures it the same way). */
+#orm2-canvas-svg, #orm2-canvas-svg text, #orm2-canvas-svg foreignObject * {
+  font-kerning: none;
+  font-variant-ligatures: none;
+}
