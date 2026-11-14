@@ -39,7 +39,7 @@ import { addImportNote } from '../utils/importNotes.js'
 import { findRefMode } from '../utils/refMode.js'
 import { VALUE_KINDS, valueKindName } from '../utils/datatypeValues.js'
 import { normaTemporal } from './normaTemporal.js'
-import { placeLabel, factLabelBox, readingLabelSize, rangeLabelSize, nameLabelSize, objectTypeLabelBox,
+import { placeLabel, factLabelBox, readingLabelSize, rangeLabelSize, nameLabelSize, roleNameLabelSize, objectTypeLabelBox,
   roleAnchor, nameAnchor } from './normaLabels.js'
 import { PX_PER_INCH } from '../diagram/normaGeometry.js'
 
@@ -1094,6 +1094,10 @@ export function importNorma(xmlText) {
         const ro = display.map(rid => f.roles.findIndex(r => r.id === rid))
         if (ro.length === f.arity && ro.every(i => i >= 0) && ro.some((r, i) => r !== i)) occ.roleOrder = ro
         placeFactLabels(s, f, occ)
+        // NORMA's DisplayRoleNames: per fact type shape, else the diagram's
+        // (Default follows the diagram, which by default shows them)
+        const shown = attr(s, 'DisplayRoleNames') ?? 'Default'
+        if (shown === 'Off' || (shown === 'Default' && attr(d, 'DisplayRoleNames') === 'Off')) occ.roleNamesShown = false
         diag.occurrences.push(occ)
         if (!firstPos.has(f.id)) firstPos.set(f.id, { x: b.cx, y: b.cy })
       } else if (s.localName === 'ModelNoteShape') {
@@ -1158,6 +1162,14 @@ export function importNorma(xmlText) {
       const p = placeLabel(rect(vs), S, box, rangeLabelSize(range))
       const a = roleAnchor(g, ri)
       occ.valueRangeOffsets = { ...(occ.valueRangeOffsets ?? {}), [ri]: rounded({ x: p.x - a.x, y: p.y - a.y }) }
+    }
+    for (const rn of relativeShapes(s, 'RoleNameShape')) {
+      const ri = f.roles.findIndex(r => r.id === attr(kid(rn, 'Subject'), 'ref'))
+      const name = f.roles[ri]?.roleName
+      if (!name) continue
+      const p = placeLabel(rect(rn), S, box, roleNameLabelSize(name))
+      const a = roleAnchor(g, ri)
+      occ.roleNameOffsets = { ...(occ.roleNameOffsets ?? {}), [ri]: rounded({ x: p.x - a.x, y: p.y - a.y }) }
     }
     const [ns] = relativeShapes(s, 'ObjectifiedFactTypeNameShape')
     if (ns && f.objectified && f.objectifiedName) {

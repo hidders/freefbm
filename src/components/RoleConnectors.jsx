@@ -2,17 +2,38 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds } from './ObjectTypeNode'
-import { ROLE_W, ROLE_H, ROLE_GAP, nestedFactBounds, displayRoleOrder } from './FactTypeNode'
+import { ROLE_W, ROLE_H, ROLE_GAP, nestedFactBounds, displayRoleOrder, roleCenter } from './FactTypeNode'
 export { roleAnchor } from '../utils/geometry'
 import { roleAnchor } from '../utils/geometry'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { findCompositePI } from '../utils/refMode'
 import { groupStyle } from '../utils/groups.js'
-import { DIAGRAM_FONT } from '../diagram/diagramFont.js'
+import { DIAGRAM_FONT, measureDiagramText } from '../diagram/diagramFont.js'
 import { NORMA, px, pt } from '../diagram/normaGeometry.js'
 
 const DOT_R = px(NORMA.mandatoryDot.diameter) / 2  // mandatory dot radius (NORMA 0.075 in)
 const LINK_W = pt(NORMA.rolePlayerPenPt)            // role connector pen (NORMA 1 pt)
+const NAME_SIZE = pt(NORMA.fontSizePt)              // role names: Tahoma 7 pt
+const NAME_H = px(NORMA.lineHeight)
+
+// Where a role name goes when it has not been moved: beside its connector,
+// near the role box, clear of the line. As in NORMA, a role name belongs to
+// its fact type: its place is kept as an offset from the role box's centre
+// (occurrence roleNameOffsets), so it stays with the fact type when the
+// player moves.
+function defaultRoleNamePos(anchor, border, roleName) {
+  const ex = border.x - anchor.x, ey = border.y - anchor.y
+  const len = Math.hypot(ex, ey) || 1
+  const ux = ex / len, uy = ey / len
+  // the side of the line above it (right of a vertical one): readings sit below
+  let nx = -uy, ny = ux
+  if (ny > 0.01 || (Math.abs(ny) <= 0.01 && nx < 0)) { nx = -nx; ny = -ny }
+  const w = measureDiagramText(`[${roleName}]`, NAME_SIZE)
+  // just past the role box, clear of it
+  const along = Math.min(len / 2, 6 + Math.abs(ux) * w / 2 + Math.abs(uy) * NAME_H / 2)
+  const clear = Math.abs(nx) * w / 2 + Math.abs(ny) * NAME_H / 2 + 2
+  return { x: anchor.x + ux * along + nx * clear, y: anchor.y + uy * along + ny * clear }
+}
 
 /**
  * Returns the nearest point on the border of a rect defined by {left,right,top,bottom,cx,cy}
@@ -157,13 +178,6 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
       const mx = (anchor.x + border.x) / 2
       const my = (anchor.y + border.y) / 2
 
-      // Auto perpendicular offset (used when no custom offset stored)
-      const edgeDx = border.x - anchor.x
-      const edgeDy = border.y - anchor.y
-      const len = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy) || 1
-      const autoOx = -edgeDy / len * 9
-      const autoOy =  edgeDx / len * 9
-
       // Group colours of the role, else of its fact type (utils/groups.js)
       const rgs = groupStyle(store.groups, role.id), fgs = groupStyle(store.groups, fact.id)
       return {
@@ -173,8 +187,9 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
         nameColor: rgs?.floating ?? fgs?.floating,
         anchor, border, dotPos,
         mx, my,
-        autoOffset: { dx: autoOx, dy: autoOy },
-        nameOffset: getRoleNameOffset(fact.id, ri) ?? role.nameOffset ?? null,
+        rc: roleCenter(fact, ri),
+        namesHidden: fact.roleNamesShown === false,
+        nameOffset: fact.roleNameOffsets?.[ri] ?? getRoleNameOffset(fact.id, ri),
         roleName: role.roleName,
       }
     }).filter(Boolean)
@@ -222,15 +237,12 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
         const dotPos = isMandatoryRole ? anchor : (dotAtObject ? border : anchor)
         const mx = (anchor.x + border.x) / 2
         const my = (anchor.y + border.y) / 2
-        const edgeDx = border.x - anchor.x
-        const edgeDy = border.y - anchor.y
-        const len = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy) || 1
         return {
           key: `${fact.occurrenceId ?? fact.id}_il_${il.roleIndex}-${ri}`,
           factId: synthFact.id, roleIndex: ri,
           anchor, border, dotPos,
           mx, my,
-          autoOffset: { dx: -edgeDy / len * 9, dy: edgeDx / len * 9 },
+          rc: roleCenter(synthFact, ri),
           nameOffset: getRoleNameOffset(synthFact.id, ri),
           roleName: roleNames[roleOrder[ri]] || '',
           isImplicit: true,
@@ -257,10 +269,10 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
         )
       })}
 
-      {/* Role name labels — draggable, offset stored relative to connector midpoint */}
+      {/* Role name labels — draggable, offset stored relative to the role box's centre */}
       {store.showRoleNames && allConnectors.map(({ key, factId, otId, roleIndex, roleName,
-                                                mx, my, autoOffset, nameOffset, nameColor }) => {
-        if (!roleName) return null
+                                                anchor, border, rc, nameOffset, nameColor, namesHidden }) => {
+        if (!roleName || namesHidden) return null
         const labelOpacity = queryReachable != null
           ? (queryReachable.has(factId) && queryReachable.has(otId) ? 1 : 0.2)
           : 1
@@ -270,15 +282,14 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
         const isDragging = liveDrag?.factId === factId && liveDrag?.roleIndex === roleIndex
         let lx, ly, origDx, origDy
         if (isDragging) {
-          lx = mx + liveDrag.dx;  ly = my + liveDrag.dy
           origDx = liveDrag.dx;   origDy = liveDrag.dy
         } else if (nameOffset) {
-          lx = mx + nameOffset.dx;  ly = my + nameOffset.dy
           origDx = nameOffset.dx;   origDy = nameOffset.dy
         } else {
-          lx = mx + (autoOffset?.dx ?? 0);  ly = my + (autoOffset?.dy ?? 0)
-          origDx = autoOffset?.dx ?? 0;   origDy = autoOffset?.dy ?? 0
+          const d = defaultRoleNamePos(anchor, border, roleName)
+          origDx = d.x - rc.x;   origDy = d.y - rc.y
         }
+        lx = rc.x + origDx;  ly = rc.y + origDy
 
         const isEditingThis = editing?.factId === factId && editing?.roleIndex === roleIndex
 
@@ -321,7 +332,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
           <text key={`lbl-${key}`}
             x={lx} y={ly}
             textAnchor="middle" dominantBaseline="middle"
-            fontSize={pt(7)} fontFamily={DIAGRAM_FONT}
+            fontSize={NAME_SIZE} fontFamily={DIAGRAM_FONT}
             fill={nameColor ?? 'var(--col-role-name)'} opacity={labelOpacity}
             style={{ cursor: isDragging ? 'grabbing' : isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab', userSelect: 'none' }}
             onMouseDown={e => {

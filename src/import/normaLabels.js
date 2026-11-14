@@ -67,6 +67,10 @@ export function rangeLabelSize(range, cardinality = false) {
   return { w: textWidth(text, LABEL_SIZE) + 6, h: NAME_LINE + 3 }
 }
 
+export function roleNameLabelSize(name) {
+  return { w: textWidth(`[${name}]`, LABEL_SIZE), h: NAME_LINE }
+}
+
 export function nameLabelSize(name) {
   return { w: textWidth(`“${name}”`, OT_SIZE_NAME, 700), h: NAME_LINE }
 }

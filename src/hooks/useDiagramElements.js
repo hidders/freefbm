@@ -107,6 +107,7 @@ export function getDiagramElements(store) {
       if (p?.uniquenessBelow     !== undefined) merged.uniquenessBelow     = p.uniquenessBelow
       if (p?.nestedReading       !== undefined) merged.nestedReading       = p.nestedReading
       if (p?.roleNameOffsets     !== undefined) merged.roleNameOffsets     = p.roleNameOffsets
+      if (p?.roleNamesShown      !== undefined) merged.roleNamesShown      = p.roleNamesShown
       if (p?.valueRangeOffsets   !== undefined) merged.valueRangeOffsets   = p.valueRangeOffsets
       if (p?.cardinalityRangeOffsets !== undefined) merged.cardinalityRangeOffsets = p.cardinalityRangeOffsets
       if (p?.nameOffset          !== undefined) merged.nameOffset          = p.nameOffset
@@ -164,6 +165,7 @@ export function getDiagramElements(store) {
         if (posData.uniquenessBelow     !== undefined) merged.uniquenessBelow     = posData.uniquenessBelow
         if (posData.nestedReading       !== undefined) merged.nestedReading       = posData.nestedReading
         if (posData.roleNameOffsets     !== undefined) merged.roleNameOffsets     = posData.roleNameOffsets
+        if (posData.roleNamesShown      !== undefined) merged.roleNamesShown      = posData.roleNamesShown
         if (posData.valueRangeOffsets   !== undefined) merged.valueRangeOffsets   = posData.valueRangeOffsets
         if (posData.cardinalityRangeOffsets !== undefined) merged.cardinalityRangeOffsets = posData.cardinalityRangeOffsets
         if (posData.nameOffset          !== undefined) merged.nameOffset          = posData.nameOffset

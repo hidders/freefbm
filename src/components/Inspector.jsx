@@ -2814,6 +2814,22 @@ function FactPresentationSubsection({ fact, store }) {
           </label>
         ))}
       </Row>
+      {fact.roles.some(r => r.roleName) && (
+        <Row>
+          <Label>Role names</Label>
+          <Checkbox
+            label="Show on this diagram"
+            checked={fact.roleNamesShown !== false}
+            onChange={v => store.updateFactLayout(fact.id, { roleNamesShown: v ? undefined : false })}
+          />
+          {fact.roleNameOffsets && Object.keys(fact.roleNameOffsets).length > 0 && (
+            <button className="ui-btn" style={{ marginTop: 4 }}
+              onClick={() => store.updateFactLayout(fact.id, { roleNameOffsets: undefined })}>
+              Default positions
+            </button>
+          )}
+        </Row>
+      )}
       <Row>
         <Label>Reading position</Label>
         {fact.objectified && (
