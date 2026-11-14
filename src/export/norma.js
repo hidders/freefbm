@@ -100,6 +100,16 @@ function write(node, depth, out) {
   out.push(`${pad}</${node.name}>`)
 }
 
+// An element with its place in the NORMA file it was imported from (if any).
+function ordered(order, ...args) { const e = el(...args); e.order = order; return e }
+// Elements in the order of the imported file; elements new in FreeFBM keep
+// their own order and follow the one they came after.
+function inNormaOrder(els) {
+  let last = -1
+  const keyed = els.map((e, i) => { if (Number.isFinite(e.order)) last = e.order; return { e, k: Number.isFinite(e.order) ? e.order : last + 0.5, i } })
+  return keyed.sort((a, b) => a.k - b.k || a.i - b.i).map(x => x.e)
+}
+
 // Numbers as NORMA writes them: plain decimals.
 const num = (x) => String(Math.round(x * 1e10) / 1e10)
 const boundsAttr = (l, t, w, h) => [l, t, w, h].map(num).join(', ')
@@ -222,7 +232,20 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       || (f.uniqueness ?? []).some(u => u.roles.length > 1 && !deonticKeys.has([...u.roles].sort((a, b) => a - b).join(',')))))
       nests.set(f.id, { implied: true })
   }
-  const nestId = (fid) => normaId(fid, 'nesting-type')
+  // NORMA's ids of an objectification, kept by the import (milestone 4), else new ones
+  const nestId = (fid) => factById.get(fid)?.normaNesting?.typeId ?? normaId(fid, 'nesting-type')
+  const linkIdsOf = (fid, k) => {
+    const kept = factById.get(fid)?.normaNesting?.links?.[k] ?? {}, base = `${fid}#link${k}`
+    return { fact: kept.factId ?? normaId(base), role: kept.role ?? normaId(fid, `link${k}-role`), proxy: kept.proxy ?? normaId(fid, `link${k}-proxy`),
+      uc: kept.uc?.id ?? normaId(base, 'uc'), ucName: kept.uc?.name, m: kept.m?.id ?? normaId(base, 'mandatory'), mName: kept.m?.name,
+      roIn: kept.roIn ?? normaId(base, 'ro-in'), roOut: kept.roOut ?? normaId(base, 'ro-out'),
+      rdIn: kept.rdIn ?? normaId(base, 'reading-in'), rdOut: kept.rdOut ?? normaId(base, 'reading-out'), order: kept.order }
+  }
+  // NORMA's ids of a subtype link's parts, kept by the import, else new ones
+  const subtypeIdsOf = (st) => ({ sub: st.normaIds?.sub ?? normaId(st.id, 'sub'), super: st.normaIds?.super ?? normaId(st.id, 'super'),
+    m: st.normaIds?.mandatory?.id ?? normaId(st.id, 'mandatory'), mName: st.normaIds?.mandatory?.name,
+    us: st.normaIds?.ucSub?.id ?? normaId(st.id, 'uc-sub'), usName: st.normaIds?.ucSub?.name,
+    up: st.normaIds?.ucSuper?.id ?? normaId(st.id, 'uc-super'), upName: st.normaIds?.ucSuper?.name })
   // a role's player: an object type, or an objectified fact type
   const playerOf = (role) => otById.has(role.objectTypeId) || nests.get(role.objectTypeId)?.implied === false ? role.objectTypeId : null
   const playerRef = (id) => otById.has(id) ? normaId(id) : nestId(id)
@@ -236,6 +259,8 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     ...facts.flatMap(f => [...(f.uniqueness ?? []).map(u => u.normaName), ...(f.internalFrequency ?? []).map(q => q.normaName),
       ...f.roles.flatMap(r => [r.mandatoryName, r.normaValueConstraint?.name])]),
     ...objectTypes.flatMap(o => [o.normaValueConstraint?.name, o.normaCardinality?.name]),
+    ...subtypes.flatMap(st => [st.normaIds?.mandatory?.name, st.normaIds?.ucSub?.name, st.normaIds?.ucSuper?.name]),
+    ...facts.flatMap(f => Object.values(f.normaNesting?.links ?? {}).flatMap(l => [l.uc?.name, l.m?.name])),
   ].filter(Boolean))
   const autoName = (base) => { let nm; do nm = `${base}${counters[base] = (counters[base] ?? 0) + 1}`; while (reserved.has(nm)); return nm }
   const keptName = (nm) => nm && !usedNames.has(nm) ? (usedNames.add(nm), nm) : null
@@ -386,12 +411,12 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   // type, factId F_il_i) or a subtype link, which NORMA constrains through
   // its supertype meta role.
   const memberRef = (m) => {
-    if (m?.kind === 'subtype') return normaId(m.subtypeId, 'super')
+    if (m?.kind === 'subtype') { const st = subtypes.find(x => x.id === m.subtypeId); return st ? subtypeIdsOf(st).super : normaId(m.subtypeId, 'super') }
     if (m?.kind !== 'role') return null
     const link = /^(.*)_il_(\d+)$/.exec(m.factId ?? '')
     if (link) {
       if (!nests.has(link[1])) return null
-      return m.roleIndex === 0 ? normaId(link[1], `link${link[2]}-role`) : normaId(link[1], `link${link[2]}-proxy`)
+      return m.roleIndex === 0 ? linkIdsOf(link[1], link[2]).role : linkIdsOf(link[1], link[2]).proxy
     }
     const f = factById.get(m.factId)
     return f?.roles[m.roleIndex] ? roleIdOf(f, m.roleIndex) : null
@@ -426,7 +451,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         subject: subject.id, subjectType: subject.typeId,
         projected: rule.free.map((v, i) => ({ roleId: roleIds[i], varId: v.id })),
         roleRef: (fid, i) => normaId(factById.get(fid).roles[i].id), playerOf: (fid, i) => factById.get(fid).roles[i].objectTypeId,
-        linkRoleRef: (fid, j, i) => i === 0 ? normaId(fid, `link${j}-role`) : normaId(factById.get(fid).roles[j].id), isNested: (fid) => nests.has(fid),
+        linkRoleRef: (fid, j, i) => i === 0 ? linkIdsOf(fid, j).role : normaId(factById.get(fid).roles[j].id), isNested: (fid) => nests.has(fid),
         subtypeLinkOf, typeRef: (tid) => playerRef(tid),
       }))
       if (!formal || formal.error) { joinsMissing.push(formal?.error ?? rule?.error ?? 'a query the export cannot read'); return null }
@@ -527,20 +552,21 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     // a subtype or supertype may be an objectified fact type
     const isType = (id) => otById.has(id) || nests.get(id)?.implied === false
     if (!isType(st.subId) || !isType(st.superId)) continue
-    const subRole = normaId(st.id, 'sub'), superRole = normaId(st.id, 'super')
+    const sids = subtypeIdsOf(st)
+    const subRole = sids.sub, superRole = sids.super
     plays(st.subId, 'SubtypeMetaRole', subRole); plays(st.superId, 'SupertypeMetaRole', superRole)
     const ownPI = preferredFor.has(st.subId) || refModes.has(st.subId)
     const path = st.inheritsPreferredIdentifier !== false && !ownPI && !pathTaken.has(st.subId)
     if (path) pathTaken.add(st.subId)
-    const ids = { m: normaId(st.id, 'mandatory'), us: normaId(st.id, 'uc-sub'), up: normaId(st.id, 'uc-super') }
+    const ids = { m: sids.m, us: sids.us, up: sids.up }
     conEls.push(
-      el('orm:MandatoryConstraint', { id: ids.m, Name: autoName('SimpleMandatoryConstraint'), IsSimple: 'true' }, [seqEl(`${st.id}#mandatory`, [subRole])]),
-      el('orm:UniquenessConstraint', { id: ids.us, Name: autoName('InternalUniquenessConstraint'), IsInternal: 'true' }, [seqEl(`${st.id}#uc-sub`, [subRole])]),
-      el('orm:UniquenessConstraint', { id: ids.up, Name: autoName('InternalUniquenessConstraint'), IsInternal: 'true' }, [seqEl(`${st.id}#uc-super`, [superRole])]),
+      el('orm:MandatoryConstraint', { id: ids.m, Name: keptName(sids.mName) ?? autoName('SimpleMandatoryConstraint'), IsSimple: 'true' }, [seqEl(`${st.id}#mandatory`, [subRole])]),
+      el('orm:UniquenessConstraint', { id: ids.us, Name: keptName(sids.usName) ?? autoName('InternalUniquenessConstraint'), IsInternal: 'true' }, [seqEl(`${st.id}#uc-sub`, [subRole])]),
+      el('orm:UniquenessConstraint', { id: ids.up, Name: keptName(sids.upName) ?? autoName('InternalUniquenessConstraint'), IsInternal: 'true' }, [seqEl(`${st.id}#uc-super`, [superRole])]),
     )
     const typeName = (id) => otById.get(id)?.name ?? factById.get(id)?.objectifiedName ?? ''
     const subName = typeName(st.subId), superName = typeName(st.superId)
-    subtypeEls.push(el('orm:SubtypeFact', { id: normaId(st.id), _Name: `${subName}IsASubtypeOf${superName}`, PreferredIdentificationPath: path ? 'true' : null }, [
+    subtypeEls.push(ordered(st.normaOrder, 'orm:SubtypeFact', { id: normaId(st.id), _Name: `${subName}IsASubtypeOf${superName}`, PreferredIdentificationPath: path ? 'true' : null }, [
       el('orm:FactRoles', {}, [
         el('orm:SubtypeMetaRole', { id: subRole, _IsMandatory: 'true', _Multiplicity: 'ZeroToOne', Name: '' }, [el('orm:RolePlayer', { ref: playerRef(st.subId) })]),
         el('orm:SupertypeMetaRole', { id: superRole, _IsMandatory: 'false', _Multiplicity: 'ExactlyOne', Name: '' }, [el('orm:RolePlayer', { ref: playerRef(st.superId) })]),
@@ -563,7 +589,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     if (ot.kind === 'entity') {
       const rm = refModes.get(ot.id)
       const pi = preferredFor.get(ot.id)
-      objectEls.push(el('orm:EntityType', { ...common, IsPersonal: ot.isPersonal ? 'true' : null, _ReferenceMode: rm?.mode ?? '' }, [
+      objectEls.push(ordered(ot.normaOrder, 'orm:EntityType', { ...common, IsPersonal: ot.isPersonal ? 'true' : null, _ReferenceMode: rm?.mode ?? '' }, [
         ...docEls(ot),
         cardinality,
         played && el('orm:PlayedRoles', {}, played),
@@ -572,7 +598,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         extensionsOf(ot),
       ]))
     } else {
-      objectEls.push(el('orm:ValueType', common, [
+      objectEls.push(ordered(ot.normaOrder, 'orm:ValueType', common, [
         ...docEls(ot),
         cardinality,
         played && el('orm:PlayedRoles', {}, played),
@@ -597,7 +623,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       roleRef: (fid, i) => normaId(factById.get(fid).roles[i].id), playerOf: (fid, i) => factById.get(fid).roles[i].objectTypeId,
       // a path walks a link fact type through its own role and, on the far
       // side, the role of F it stands for (NORMA refuses its role proxy there)
-      linkRoleRef: (fid, k, i) => i === 0 ? normaId(fid, `link${k}-role`) : normaId(factById.get(fid).roles[k].id), isNested: (fid) => nests.has(fid),
+      linkRoleRef: (fid, k, i) => i === 0 ? linkIdsOf(fid, k).role : normaId(factById.get(fid).roles[k].id), isNested: (fid) => nests.has(fid),
       subtypeLinkOf: subtypeLinkOf,
       typeRef: (tid) => playerRef(tid),
     }))
@@ -653,7 +679,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     if (!orders.size) readingless.push(factLabel(f))
     let k = 0
     const name = pascal(factLabel(f))
-    return el('orm:Fact', { id: normaId(f.id), _Name: name || null }, [
+    return ordered(f.normaOrder, 'orm:Fact', { id: normaId(f.id), _Name: name || null }, [
       ...docEls(f),
       el('orm:FactRoles', {}, f.roles.map(r => el('orm:Role', { id: normaId(r.id), Name: r.roleName ?? '' },
         [playerOf(r) && el('orm:RolePlayer', { ref: playerRef(playerOf(r)) }), roleValueEl(f, r), extensionsOf(r)]))),
@@ -675,7 +701,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   // the subtype link into a type, for type tests in derivation paths
   function subtypeLinkOf(typeId) {
     const st = subtypes.find(x => x.subId === typeId && (otById.has(x.superId) || nests.get(x.superId)?.implied === false))
-    return st ? { superId: st.superId, superRole: normaId(st.id, 'super'), subRole: normaId(st.id, 'sub') } : null
+    return st ? { superId: st.superId, superRole: subtypeIdsOf(st).super, subRole: subtypeIdsOf(st).sub } : null
   }
   function derivationEl(f) {
     if (!f.derivation) return null
@@ -688,7 +714,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       roleRef: (fid, i) => normaId(factById.get(fid).roles[i].id), playerOf: (fid, i) => factById.get(fid).roles[i].objectTypeId,
       // a path walks a link fact type through its own role and, on the far
       // side, the role of F it stands for (NORMA refuses its role proxy there)
-      linkRoleRef: (fid, k, i) => i === 0 ? normaId(fid, `link${k}-role`) : normaId(factById.get(fid).roles[k].id), isNested: (fid) => nests.has(fid),
+      linkRoleRef: (fid, k, i) => i === 0 ? linkIdsOf(fid, k).role : normaId(factById.get(fid).roles[k].id), isNested: (fid) => nests.has(fid),
       subtypeLinkOf: subtypeLinkOf,
       typeRef: (tid) => playerRef(tid),
     }))
@@ -714,38 +740,39 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   const nestEls = [], linkEls = []
   for (const [fid, { implied }] of nests) {
     const f = factById.get(fid)
-    const typeId = nestId(fid), npId = normaId(fid, 'nesting')
-    const linkRoles = f.roles.map((_, ri) => normaId(fid, `link${ri}-role`))
+    const typeId = nestId(fid), npId = f.normaNesting?.npId ?? normaId(fid, 'nesting')
+    const linkRoles = f.roles.map((_, ri) => linkIdsOf(fid, ri).role)
     const name = implied ? pascal(factLabel(f)) : (f.objectifiedName || pascal(factLabel(f)))
     const pi = preferredFor.get(fid)
-    nestEls.push(el('orm:ObjectifiedType', { id: typeId, Name: name, IsIndependent: implied || f.isIndependent ? 'true' : null, _ReferenceMode: '' }, [
+    nestEls.push(ordered(f.normaNesting?.order, 'orm:ObjectifiedType', { id: typeId, Name: name, IsIndependent: implied || f.isIndependent ? 'true' : null, _ReferenceMode: '' }, [
       el('orm:PlayedRoles', {}, [...linkRoles.map(r => el('orm:Role', { ref: r })), ...(playedRoles.get(fid) ?? [])]),
       pi && el('orm:PreferredIdentifier', { ref: pi }),
       el('orm:NestedPredicate', { id: npId, ref: normaId(fid), IsImplied: implied ? 'true' : null }),
     ]))
     f.roles.forEach((r, ri) => {
       const base = `${fid}#link${ri}`
-      const proxy = normaId(fid, `link${ri}-proxy`), own = linkRoles[ri]
-      const uc = normaId(base, 'uc'), m = normaId(base, 'mandatory')
+      const L = linkIdsOf(fid, ri)
+      const proxy = L.proxy, own = linkRoles[ri]
+      const uc = L.uc, m = L.m
       conEls.push(
-        el('orm:UniquenessConstraint', { id: uc, Name: autoName('InternalUniquenessConstraint'), IsInternal: 'true' }, [seqEl(`${base}#uc`, [own])]),
-        el('orm:MandatoryConstraint', { id: m, Name: autoName('SimpleMandatoryConstraint'), IsSimple: 'true' }, [seqEl(`${base}#mandatory`, [own])]),
+        el('orm:UniquenessConstraint', { id: uc, Name: keptName(L.ucName) ?? autoName('InternalUniquenessConstraint'), IsInternal: 'true' }, [seqEl(`${base}#uc`, [own])]),
+        el('orm:MandatoryConstraint', { id: m, Name: keptName(L.mName) ?? autoName('SimpleMandatoryConstraint'), IsSimple: 'true' }, [seqEl(`${base}#mandatory`, [own])]),
       )
       const il = f.implicitLinks?.find(x => x.roleIndex === ri)
       const text = (parts, fallback) => parts ? `{0} ${(parts[1] ?? '').trim() || fallback} {1}` : `{0} ${fallback} {1}`
       const playerName = otById.get(r.objectTypeId)?.name ?? factById.get(r.objectTypeId)?.objectifiedName ?? ''
-      linkEls.push(el('orm:ImpliedFact', { id: normaId(base), _Name: pascal(`${playerName} is involved in ${name}`) }, [
+      linkEls.push(ordered(L.order, 'orm:ImpliedFact', { id: L.fact, _Name: pascal(`${playerName} is involved in ${name}`) }, [
         el('orm:FactRoles', {}, [
           el('orm:RoleProxy', { id: proxy }, [el('orm:Role', { ref: normaId(r.id) })]),
           el('orm:Role', { id: own, _IsMandatory: 'true', _Multiplicity: 'ZeroToMany', Name: '' }, [el('orm:RolePlayer', { ref: typeId })]),
         ]),
         el('orm:ReadingOrders', {}, [
-          el('orm:ReadingOrder', { id: normaId(base, 'ro-in') }, [
-            el('orm:Readings', {}, [el('orm:Reading', { id: normaId(base, 'reading-in') }, [el('orm:Data', {}, text(il?.alternativeReadings?.[0]?.parts, 'is involved in'))])]),
+          el('orm:ReadingOrder', { id: L.roIn }, [
+            el('orm:Readings', {}, [el('orm:Reading', { id: L.rdIn }, [el('orm:Data', {}, text(il?.alternativeReadings?.[0]?.parts, 'is involved in'))])]),
             el('orm:RoleSequence', {}, [el('orm:Role', { ref: proxy }), el('orm:Role', { ref: own })]),
           ]),
-          el('orm:ReadingOrder', { id: normaId(base, 'ro-out') }, [
-            el('orm:Readings', {}, [el('orm:Reading', { id: normaId(base, 'reading-out') }, [el('orm:Data', {}, text(il?.readingParts, 'involves'))])]),
+          el('orm:ReadingOrder', { id: L.roOut }, [
+            el('orm:Readings', {}, [el('orm:Reading', { id: L.rdOut }, [el('orm:Data', {}, text(il?.readingParts, 'involves'))])]),
             el('orm:RoleSequence', {}, [el('orm:Role', { ref: own }), el('orm:Role', { ref: proxy })]),
           ]),
         ]),
@@ -1115,8 +1142,8 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   const root = el('ormRoot:ORM2', { 'xmlns:orm': NS.orm, 'xmlns:ormDiagram': NS.ormDiagram,
     'xmlns:cp': cpEls.length ? NS.cp : null, 'xmlns:shapeGroup': usesShapeGroups ? NS.shapeGroup : null, 'xmlns:ormRoot': NS.ormRoot }, [
     el('orm:ORMModel', { id: modelId, Name: modelName }, [
-      (objectEls.length || nestEls.length) && el('orm:Objects', {}, [...objectEls, ...nestEls]),
-      (factEls.length || subtypeEls.length) && el('orm:Facts', {}, [...factEls, ...subtypeEls, ...linkEls]),
+      (objectEls.length || nestEls.length) && el('orm:Objects', {}, inNormaOrder([...objectEls, ...nestEls])),
+      (factEls.length || subtypeEls.length) && el('orm:Facts', {}, inNormaOrder([...factEls, ...subtypeEls, ...linkEls])),
       conEls.length && el('orm:Constraints', {}, conEls),
       dataTypeEls.length && el('orm:DataTypes', {}, dataTypeEls),
       customModes.size && el('orm:CustomReferenceModes', {}, [...customModes].map(([mode, c]) =>

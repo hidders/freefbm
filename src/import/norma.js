@@ -251,6 +251,7 @@ export function importNorma(xmlText) {
   // ── object types ──────────────────────────────────────────────────────────
   const objects = kids(kid(model, 'Objects'))
   const objectifiedFacts = new Map()   // NORMA fact id → ObjectifiedType element (explicit only)
+  const nestingIds = new Map()         // NORMA fact id → NORMA's ids of its objectification
   for (const o of objects) {
     const id = attr(o, 'id'), name = attr(o, 'Name') ?? ''
     if (o.localName === 'ValueType' && attr(o, 'IsImplicitBooleanValue') === 'true') {
@@ -262,6 +263,8 @@ export function importNorma(xmlText) {
     }
     if (o.localName === 'ObjectifiedType') {
       const np = kid(o, 'NestedPredicate')
+      // NORMA's ids of the objectification, implied or not, for the export (milestone 4)
+      nestingIds.set(attr(np, 'ref'), { typeId: id, npId: attr(np, 'id'), order: objects.indexOf(o), links: {} })
       if (attr(np, 'IsImplied') === 'true') { count('impliedObjectification'); continue }
       objectifiedFacts.set(attr(np, 'ref'), o)
       playerId.set(id, attr(np, 'ref'))
@@ -316,6 +319,7 @@ export function importNorma(xmlText) {
       derivationPaths.push({ el: ot, path: sdr, name })
     }
     informalRule(ot, sdr, kid(sdRule, 'SubtypeDerivationExpression'), name, 'subtype')
+    ot.normaOrder = objects.indexOf(o)
     objectTypes.push(ot); otById.set(id, ot); playerId.set(id, id)
   }
 
@@ -461,6 +465,8 @@ export function importNorma(xmlText) {
         uniquenessBelow: false, preferredUniqueness: [], roleNames: [null, null],
       }))
     }
+    fact.normaOrder = factEls.indexOf(f)
+    if (nestingIds.has(id)) fact.normaNesting = nestingIds.get(id)
     facts.push(fact); factById.set(id, fact)
   }
   // Negatable unaries (current NORMA): a positive unary F paired with its
@@ -540,6 +546,8 @@ export function importNorma(xmlText) {
       superId: playerId.get(attr(kid(sup, 'RolePlayer'), 'ref')),
       inheritsPreferredIdentifier: attr(sf, 'PreferredIdentificationPath') === 'true' }
     if (!st.subId || !st.superId) { warn(`Subtype link ${id} joins a type FreeFBM does not have.`); continue }
+    st.normaIds = { sub: attr(sub, 'id'), super: attr(sup, 'id') }
+    st.normaOrder = factEls.indexOf(sf)
     subtypes.push(st); stById.set(id, st)
     roleRef.set(attr(sub, 'id'), { kind: 'subtype', subtypeId: id, side: 'sub' })
     roleRef.set(attr(sup, 'id'), { kind: 'subtype', subtypeId: id, side: 'super' })
@@ -553,6 +561,20 @@ export function importNorma(xmlText) {
     const proxy = kid(kid(lf, 'FactRoles'), 'RoleProxy') ?? kid(kid(lf, 'FactRoles'), 'ObjectifiedUnaryRole')
     const own = kid(kid(lf, 'FactRoles'), 'Role')
     const orig = roleRef.get(attr(kid(proxy, 'Role') ?? kid(proxy, 'UnaryRole'), 'ref'))
+    // NORMA's ids of the link fact type, its roles, readings and constraints
+    if (orig?.kind === 'role' && factById.get(orig.factId)?.normaNesting && own && proxy) {
+      const link = { factId: attr(lf, 'id'), role: attr(own, 'id'), proxy: attr(proxy, 'id'), order: factEls.indexOf(lf) }
+      for (const ro of kids(kid(lf, 'ReadingOrders'), 'ReadingOrder')) {
+        const side = refsOf(kid(ro, 'RoleSequence'))[0] === attr(proxy, 'id') ? 'In' : 'Out'
+        link[`ro${side}`] = attr(ro, 'id'); link[`rd${side}`] = attr(path(ro, 'Readings', 'Reading'), 'id')
+      }
+      for (const c of kids(kid(lf, 'InternalConstraints'))) {
+        const ce = byId.get(attr(c, 'ref'))
+        if (refsOf(kid(ce, 'RoleSequence')).join() !== attr(own, 'id')) continue
+        link[c.localName === 'UniquenessConstraint' ? 'uc' : 'm'] = { id: attr(c, 'ref'), name: attr(ce, 'Name') }
+      }
+      factById.get(orig.factId).normaNesting.links[orig.roleIndex] = link
+    }
     if (!orig || orig.kind !== 'role' || !factById.get(orig.factId)?.objectified) continue
     const ilId = `${orig.factId}_il_${orig.roleIndex}`
     roleRef.set(attr(proxy, 'id'), { kind: 'role', factId: ilId, roleIndex: 1, link: true })
@@ -895,6 +917,10 @@ export function importNorma(xmlText) {
           }
           continue
         }
+        if (ms.length === 1 && ms[0]?.kind === 'subtype') {
+          const st = stById.get(ms[0].subtypeId)
+          if (st) st.normaIds[ms[0].side === 'sub' ? 'ucSub' : 'ucSuper'] = { id, name: attr(c, 'Name') }
+        }
         if (ms.some(m => m?.kind === 'subtype' || m?.link)) continue   // implied by the subtype link or objectification
         const real = ms.filter(m => m?.kind === 'role')
         if (!real.length) {
@@ -942,6 +968,10 @@ export function importNorma(xmlText) {
           continue
         }
         if (m?.kind === 'booleanRole') { skippedOn(ms, c, 'it is on the hidden boolean role of the unary (some instance must have the fact), which FreeFBM does not have'); continue }
+        if (m?.kind === 'subtype' && m.side === 'sub') {
+          const st = stById.get(m.subtypeId)
+          if (st) st.normaIds.mandatory = { id, name: attr(c, 'Name') }
+        }
         if (!m || m.kind !== 'role' || m.link) continue   // subtype meta roles and link roles: implied
         const role = factById.get(m.factId).roles[m.roleIndex]
         role.mandatory = true
