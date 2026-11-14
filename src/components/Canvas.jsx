@@ -20,7 +20,7 @@ import { GrowBadges } from './GrowBadges'
 import ContextMenu from './ContextMenu'
 import ConstraintMemberLabels from './ConstraintMemberLabels'
 import QueryAtoms from './QueryAtoms'
-import NoteNode from './NoteNode'
+import NoteNode, { NOTE_FONT_SIZE, NOTE_LINE_HEIGHT } from './NoteNode'
 import { ValueRangeEditor } from './Inspector'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { groupStyle } from '../utils/groups.js'
@@ -1741,9 +1741,9 @@ export default function Canvas() {
               position: 'absolute',
               left: Math.round(left), top: Math.round(top),
               width: Math.round(width), height: Math.round(height),
-              fontSize: Math.round(11 * store.zoom),
+              fontSize: NOTE_FONT_SIZE * store.zoom,
               fontFamily: DIAGRAM_FONT,
-              lineHeight: 1.4,
+              lineHeight: `${NOTE_LINE_HEIGHT * store.zoom}px`,
               background: '#fffde7',
               border: 'none',
               outline: '2px solid var(--accent)',
