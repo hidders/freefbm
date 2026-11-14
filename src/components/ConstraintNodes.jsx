@@ -119,12 +119,18 @@ const CONSTRAINT_SYMBOL = {
   frequency:  'F',
 }
 
+// Ring symbols are drawn in units of RING_UNIT (their own size, as in the
+// Inspector's list); on the canvas they are scaled up to the ring
+// constraint's NORMA size (RING_SCALE) and drawn with NORMA's pen.
+const RING_UNIT = 10
+const RING_SCALE = 1.2 * CONSTRAINT_R / 14
+
 // ── ORM2 ring constraint mini-symbols ─────────────────────────────────────────
 // Each symbol is drawn centered at (cx, cy) within a ~19×19 bounding box.
 // Arch symbols: feet at cy+4, apex at cy-4 (radius 8).
 // Triangle symbols: same vertical span.
-export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
-  const sw  = SHAPE_W
+export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1.4 }) {
+  const sw  = strokeWidth
   const hw  = 8 * scale
   const bot = cy + 4 * scale
   const top = cy - 4 * scale
@@ -146,7 +152,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
   switch (type) {
     case 'irreflexive': {
-      const cr = EXTERNAL_CONSTRAINT_R * scale
+      const cr = RING_UNIT * scale
       const dashLen = 2.5
       return <g>
         <circle cx={cx} cy={cy} r={cr} fill="none" stroke={color} strokeWidth={sw}/>
@@ -157,7 +163,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
     }
 
     case 'reflexive': {
-      const cr = EXTERNAL_CONSTRAINT_R * scale
+      const cr = RING_UNIT * scale
       return <g>
         <circle cx={cx} cy={cy} r={cr} fill="none" stroke={color} strokeWidth={sw}/>
         <circle cx={cx - cr} cy={cy} r={2.5} fill={color}/>
@@ -165,7 +171,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
     }
 
     case 'purely-reflexive': {
-      const cr = EXTERNAL_CONSTRAINT_R * scale
+      const cr = RING_UNIT * scale
       const halfLen = cr / 3
       return <g>
         <circle cx={cx} cy={cy} r={cr} fill="none" stroke={color} strokeWidth={sw}/>
@@ -176,8 +182,8 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
     }
 
     case 'asymmetric': {
-      const ry = EXTERNAL_CONSTRAINT_R * scale
-      const rx = EXTERNAL_CONSTRAINT_R * scale * 1.2
+      const ry = RING_UNIT * scale
+      const rx = RING_UNIT * scale * 1.2
       const dashLen = 2.5
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
@@ -189,8 +195,8 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
     }
 
     case 'symmetric': {
-      const ry = EXTERNAL_CONSTRAINT_R * scale
-      const rx = EXTERNAL_CONSTRAINT_R * scale * 1.2
+      const ry = RING_UNIT * scale
+      const rx = RING_UNIT * scale * 1.2
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
         <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
@@ -199,8 +205,8 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
     }
 
     case 'antisymmetric': {
-      const ry = EXTERNAL_CONSTRAINT_R * scale
-      const rx = EXTERNAL_CONSTRAINT_R * scale * 1.2
+      const ry = RING_UNIT * scale
+      const rx = RING_UNIT * scale * 1.2
       const dashLen = 2.5
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
@@ -212,7 +218,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
     }
 
     case 'transitive': {
-      const cr = EXTERNAL_CONSTRAINT_R * scale
+      const cr = RING_UNIT * scale
       const tx = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
       return <g>
@@ -224,7 +230,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
     }
 
     case 'intransitive': {
-      const cr = EXTERNAL_CONSTRAINT_R * scale
+      const cr = RING_UNIT * scale
       const tx = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
       const midY = cy + cr * 0.5
@@ -240,7 +246,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
     }
 
     case 'strongly-intransitive': {
-      const cr = EXTERNAL_CONSTRAINT_R * scale
+      const cr = RING_UNIT * scale
       const tx = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
       const midY = cy + cr * 0.5
@@ -259,7 +265,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
     }
 
     case 'acyclic': {
-      const cr = EXTERNAL_CONSTRAINT_R * scale
+      const cr = RING_UNIT * scale
       const tx = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
       const dashLen = 2.5
@@ -273,7 +279,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'acyclic+intransitive': {
       // Acyclic circle + Intransitive triangle inscribed in the same circle, sharing the three dots
-      const cr = EXTERNAL_CONSTRAINT_R * scale
+      const cr = RING_UNIT * scale
       const dashLen = 2.5
       const tx = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
@@ -293,7 +299,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'acyclic+strongly-intransitive': {
       // Acyclic circle + Strongly Intransitive triangle inscribed in the same circle, sharing the three dots
-      const cr = EXTERNAL_CONSTRAINT_R * scale
+      const cr = RING_UNIT * scale
       const dashLen = 2.5
       const tx = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
@@ -316,7 +322,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'acyclic+transitive': {
       // Acyclic circle + Transitive triangle inscribed in the same circle, sharing the three dots
-      const cr = EXTERNAL_CONSTRAINT_R * scale
+      const cr = RING_UNIT * scale
       const dashLen = 2.5
       const tx = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
@@ -333,8 +339,8 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'transitive+strongly-intransitive': {
       // Strongly Intransitive triangle (outer, slightly enlarged) + smaller Transitive triangle centred inside
-      const cr = EXTERNAL_CONSTRAINT_R * scale * 1.5
-      const ri = EXTERNAL_CONSTRAINT_R * scale / 2
+      const cr = RING_UNIT * scale * 1.5
+      const ri = RING_UNIT * scale / 2
       const dashLen = 2.5
       const tx  = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty  = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
@@ -360,8 +366,8 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'transitive+intransitive': {
       // Intransitive triangle (outer, slightly enlarged) + smaller Transitive triangle centred inside
-      const cr = EXTERNAL_CONSTRAINT_R * scale * 1.35
-      const ri = EXTERNAL_CONSTRAINT_R * scale / 2
+      const cr = RING_UNIT * scale * 1.35
+      const ri = RING_UNIT * scale / 2
       const dashLen = 2.5
       const tx  = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty  = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
@@ -384,9 +390,9 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'antisymmetric+intransitive': {
       // Antisymmetric ellipse (outer) + smaller Intransitive triangle centred inside
-      const ry = EXTERNAL_CONSTRAINT_R * scale
-      const rx = EXTERNAL_CONSTRAINT_R * scale * 1.2
-      const ri = EXTERNAL_CONSTRAINT_R * scale / 2
+      const ry = RING_UNIT * scale
+      const rx = RING_UNIT * scale * 1.2
+      const ri = RING_UNIT * scale / 2
       const dashLen = 2.5
       const tx = [cx,              cx - ri * 0.866, cx + ri * 0.866]
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
@@ -408,9 +414,9 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'antisymmetric+transitive': {
       // Antisymmetric ellipse (outer) + smaller Transitive triangle centred inside
-      const ry = EXTERNAL_CONSTRAINT_R * scale
-      const rx = EXTERNAL_CONSTRAINT_R * scale * 1.2
-      const ri = EXTERNAL_CONSTRAINT_R * scale / 2
+      const ry = RING_UNIT * scale
+      const rx = RING_UNIT * scale * 1.2
+      const ri = RING_UNIT * scale / 2
       const dashLen = 2.5
       const tx = [cx,              cx - ri * 0.866, cx + ri * 0.866]
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
@@ -429,9 +435,9 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'symmetric+transitive': {
       // Symmetric ellipse (outer) + smaller Transitive triangle centred inside
-      const ry = EXTERNAL_CONSTRAINT_R * scale
-      const rx = EXTERNAL_CONSTRAINT_R * scale * 1.2
-      const ri = EXTERNAL_CONSTRAINT_R * scale / 2
+      const ry = RING_UNIT * scale
+      const rx = RING_UNIT * scale * 1.2
+      const ri = RING_UNIT * scale / 2
       const tx = [cx,              cx - ri * 0.866, cx + ri * 0.866]
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
       return <g>
@@ -447,9 +453,9 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'symmetric+intransitive': {
       // Symmetric ellipse (outer) + smaller Intransitive triangle centred inside
-      const ry = EXTERNAL_CONSTRAINT_R * scale
-      const rx = EXTERNAL_CONSTRAINT_R * scale * 1.2
-      const ri = EXTERNAL_CONSTRAINT_R * scale / 2
+      const ry = RING_UNIT * scale
+      const rx = RING_UNIT * scale * 1.2
+      const ri = RING_UNIT * scale / 2
       const dashLen = 2.5
       const tx = [cx,              cx - ri * 0.866, cx + ri * 0.866]
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
@@ -469,9 +475,9 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'symmetric+antisymmetric': {
       // Antisymmetric ellipse (outer) + smaller Symmetric ellipse centred inside
-      const ry = EXTERNAL_CONSTRAINT_R * scale
-      const rx = EXTERNAL_CONSTRAINT_R * scale * 1.2
-      const ry_i = EXTERNAL_CONSTRAINT_R * scale / 2
+      const ry = RING_UNIT * scale
+      const rx = RING_UNIT * scale * 1.2
+      const ry_i = RING_UNIT * scale / 2
       const rx_i = ry_i * 1.2
       const dashLen = 2.5
       return <g>
@@ -488,9 +494,9 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'asymmetric+intransitive': {
       // Asymmetric ellipse (outer) + smaller Intransitive triangle centred inside
-      const ry = EXTERNAL_CONSTRAINT_R * scale
-      const rx = EXTERNAL_CONSTRAINT_R * scale * 1.2
-      const ri = EXTERNAL_CONSTRAINT_R * scale / 2
+      const ry = RING_UNIT * scale
+      const rx = RING_UNIT * scale * 1.2
+      const ri = RING_UNIT * scale / 2
       const dashLen = 2.5
       const tx = [cx,              cx - ri * 0.866, cx + ri * 0.866]
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
@@ -512,9 +518,9 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'asymmetric+transitive': {
       // Asymmetric ellipse (outer) + smaller Transitive triangle centred inside
-      const ry = EXTERNAL_CONSTRAINT_R * scale
-      const rx = EXTERNAL_CONSTRAINT_R * scale * 1.2
-      const ri = EXTERNAL_CONSTRAINT_R * scale / 2
+      const ry = RING_UNIT * scale
+      const rx = RING_UNIT * scale * 1.2
+      const ri = RING_UNIT * scale / 2
       const dashLen = 2.5
       const tx = [cx,              cx - ri * 0.866, cx + ri * 0.866]
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
@@ -533,7 +539,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'reflexive+transitive': {
       // Reflexive circle (outer) + smaller Transitive triangle centred inside
-      const cr = EXTERNAL_CONSTRAINT_R * scale
+      const cr = RING_UNIT * scale
       const ri = cr / 2
       const tx = [cx,              cx - ri * 0.866, cx + ri * 0.866]
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
@@ -549,7 +555,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'irreflexive+transitive': {
       // Irreflexive circle (outer) + smaller Transitive triangle centred inside
-      const cr = EXTERNAL_CONSTRAINT_R * scale
+      const cr = RING_UNIT * scale
       const ri = cr / 2
       const dashLen = 2.5
       const tx = [cx,              cx - ri * 0.866, cx + ri * 0.866]
@@ -569,9 +575,9 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
     case 'antisymmetric+irreflexive': {
       // Antisymmetric ellipse (outer) + smaller Irreflexive circle nested inside,
       // sharing the left dot. Open right dot and bottom dash from Antisymmetric.
-      const ry = EXTERNAL_CONSTRAINT_R * scale
-      const rx = EXTERNAL_CONSTRAINT_R * scale * 1.2
-      const ri = EXTERNAL_CONSTRAINT_R * scale / 2
+      const ry = RING_UNIT * scale
+      const rx = RING_UNIT * scale * 1.2
+      const ri = RING_UNIT * scale / 2
       const icx = cx - rx + ri
       const dashLen = 2.5
       return <g>
@@ -588,12 +594,12 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
 
     case 'reflexive+antisymmetric+transitive': {
       // Larger Antisymmetric ellipse + inner Reflexive circle (left) + Transitive triangle (right)
-      const ry  = EXTERNAL_CONSTRAINT_R * scale * 1.2
-      const rx  = EXTERNAL_CONSTRAINT_R * scale * 1.44
-      const ri  = EXTERNAL_CONSTRAINT_R * scale / 2
+      const ry  = RING_UNIT * scale * 1.2
+      const rx  = RING_UNIT * scale * 1.44
+      const ri  = RING_UNIT * scale / 2
       const icx = cx - rx + ri
-      const r_tri = EXTERNAL_CONSTRAINT_R * scale * 0.5
-      const tcx   = cx + EXTERNAL_CONSTRAINT_R * scale * 0.35
+      const r_tri = RING_UNIT * scale * 0.5
+      const tcx   = cx + RING_UNIT * scale * 0.35
       const dashLen = 2.5
       const tx = [tcx,          tcx - r_tri * 0.866, tcx + r_tri * 0.866]
       const ty = [cy - r_tri,   cy + r_tri * 0.5,    cy + r_tri * 0.5   ]
@@ -614,9 +620,9 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
     case 'reflexive+antisymmetric': {
       // Antisymmetric ellipse (outer) + smaller Reflexive circle nested inside,
       // sharing the left dot. Open right dot and bottom dash from Antisymmetric.
-      const ry = EXTERNAL_CONSTRAINT_R * scale
-      const rx = EXTERNAL_CONSTRAINT_R * scale * 1.2
-      const ri = EXTERNAL_CONSTRAINT_R * scale / 2
+      const ry = RING_UNIT * scale
+      const rx = RING_UNIT * scale * 1.2
+      const ri = RING_UNIT * scale / 2
       const icx = cx - rx + ri
       const dashLen = 2.5
       return <g>
@@ -632,9 +638,9 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
     case 'reflexive+symmetric': {
       // Symmetric ellipse (outer) + smaller Reflexive circle nested inside,
       // sharing the left dot position. No dash (Reflexive has none).
-      const ry = EXTERNAL_CONSTRAINT_R * scale
-      const rx = EXTERNAL_CONSTRAINT_R * scale * 1.2
-      const ri = EXTERNAL_CONSTRAINT_R * scale / 2
+      const ry = RING_UNIT * scale
+      const rx = RING_UNIT * scale * 1.2
+      const ri = RING_UNIT * scale / 2
       const icx = cx - rx + ri
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
@@ -645,9 +651,9 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1 }) {
     }
 
     case 'symmetric+irreflexive': {
-      const ry = EXTERNAL_CONSTRAINT_R * scale
-      const rx = EXTERNAL_CONSTRAINT_R * scale * 1.2
-      const ri = EXTERNAL_CONSTRAINT_R * scale / 2
+      const ry = RING_UNIT * scale
+      const rx = RING_UNIT * scale * 1.2
+      const ri = RING_UNIT * scale / 2
       const icx = cx - rx + ri
       const dashLen = 2.5
       return <g>
@@ -1343,13 +1349,13 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                     <rect x={c.x - CONSTRAINT_R} y={c.y - CONSTRAINT_R}
                       width={CONSTRAINT_R * 2} height={CONSTRAINT_R * 2}
                       fill="transparent"/>
-                    <RingMiniSymbol type={symType} cx={c.x} cy={c.y} color={color} scale={1.2}/>
+                    <RingMiniSymbol type={symType} cx={c.x} cy={c.y} color={color} scale={RING_SCALE} strokeWidth={SHAPE_W}/>
                   </g>
                 )
               }
 
               // Multiple properties: layout below the dashed circle
-              const COLS = 5, CELL_W = 22, CELL_H = 20
+              const COLS = 5, CELL_W = 22 * RING_SCALE / 1.2, CELL_H = 20 * RING_SCALE / 1.2
               const baseY = c.y + CONSTRAINT_R + 5
               return (
                 <g style={{ pointerEvents: 'none' }}>
@@ -1359,7 +1365,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                     const countInRow = Math.min(types.length - row * COLS, COLS)
                     const sx = c.x - (countInRow * CELL_W) / 2 + col * CELL_W + CELL_W / 2
                     const sy = baseY + row * CELL_H + CELL_H / 2
-                    return <RingMiniSymbol key={type} type={type} cx={sx} cy={sy} color={color} scale={1.2}/>
+                    return <RingMiniSymbol key={type} type={type} cx={sx} cy={sy} color={color} scale={RING_SCALE} strokeWidth={SHAPE_W}/>
                   })}
                 </g>
               )
