@@ -334,6 +334,17 @@ paths are, from the query's target (or its first position). The sample
 model, SamplePopulation and ATOP (195 external constraints) come back with
 the same constraint formulas.
 
+Milestone 4a (v1.2.38): the import keeps each NORMA shape's id and bounds
+on the occurrence, note or constraint occurrence (`normaShape: { id,
+bounds, key }`) and on its labels (`normaLabels`), with the key of what the
+shape was drawn from (`src/diagram/normaShapeKeys.js`: position, and for a
+fact type its orientation, bar side, role order and role names). The
+export writes a shape whose key is unchanged, and a label at the same
+offset of an unchanged shape, exactly as NORMA had it; a copied occurrence
+gets an id of its own. Over NORMA's samples 3,479 of 3,522 shapes come back
+with the same id and bounds (the rest are shapes the import adds or
+merges).
+
 Check in NORMA (2026-11-14, SamplePopulationExtraction): the error list
 holds only the five rules that stay informal (closures, a value
 condition, rules without a complete FreeFBM formula); join paths and the

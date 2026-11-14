@@ -384,7 +384,12 @@ async function runInPage({ name, content, isOrm }) {
       dh: v.length ? v.reduce((s, x) => s + Math.abs(x.dh), 0) / v.length : 0,
       worst: v.sort((p, q) => q.centre - p.centre).slice(0, 10),
     }]))
-    return { rows, geometry: summary }
+    // shapes written back exactly: same id, same bounds
+    const allShapes = (doc) => new Map([...doc.getElementsByTagNameNS('*', '*')].filter(e => /Shape$/.test(e.localName) && e.getAttribute('id'))
+      .map(e => [e.getAttribute('id').toUpperCase(), e.getAttribute('AbsoluteBounds')]))
+    const sha = allShapes(a), shb = allShapes(b)
+    const exact = [...sha].filter(([k, v]) => shb.get(k) === v).length
+    return { rows, geometry: summary, exact: { same: exact, of: sha.size } }
   }
 }
 
@@ -420,6 +425,7 @@ for (const file of files) {
     if (r.comparison) {
       console.log('   import → export, compared with the original (definitions, kept ids):')
       for (const row of r.comparison.rows) console.log(`       ${row.kind.padEnd(22)} ${String(row.original).padStart(5)} → ${String(row.exported).padStart(5)}   same id ${row.sameId}`)
+      console.log(`       shapes written back exactly (same id and bounds): ${r.comparison.exact.same} of ${r.comparison.exact.of}`)
       for (const [k, g] of Object.entries(r.comparison.geometry)) {
         if (!g.n) continue
         console.log(`       ${k}: ${g.n} paired, mean centre offset ${g.centre.toFixed(1)} px, mean |Δw| ${g.dw.toFixed(1)} px, |Δh| ${g.dh.toFixed(1)} px`)

@@ -32,6 +32,7 @@ import { derivationEntry } from '../logic/derivationRule.js'
 import { renderFormula } from '../logic/renderFormula.js'
 import { SUBJECT } from '../logic/derivationRule.js'
 import { conjunctivePath } from './normaPathsOut.js'
+import { otShapeKey, factShapeKey, noteShapeKey } from '../diagram/normaShapeKeys.js'
 
 const NS = {
   cp: 'http://schemas.neumont.edu/ORM/2007-11/CustomProperties',
@@ -202,6 +203,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   }
   const propDefs = (state.propertyDefinitions ?? []).filter(d => d?.id)
   const propDefIds = new Set(propDefs.map(d => d.id))
+  const usedShapeIds = new Map()   // NORMA shape ids written → the occurrence or note
   const skipped = {}   // what milestone 1 leaves out → count
   const skip = (what, n = 1) => { skipped[what] = (skipped[what] ?? 0) + n }
 
@@ -779,7 +781,13 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   function diagramEl(d) {
     const shapes = []
     const expanded = new Set(d.expandedRefModeOccs ?? [])
-    const shapeId = (occ) => normaId(GUID_RE.test(occ.id) ? occ.id : `${d.id}:${occ.id}`, GUID_RE.test(occ.id) ? '' : 'shape')
+    // NORMA's own shape id when the import kept one (once per file: a copied
+    // occurrence gets an id of its own)
+    const shapeId = (occ) => {
+      const kept = occ.normaShape?.id
+      if (kept && (usedShapeIds.get(kept) ?? occ) === occ) { usedShapeIds.set(kept, occ); return kept }
+      return normaId(GUID_RE.test(occ.id) ? occ.id : `${d.id}:${occ.id}`, GUID_RE.test(occ.id) ? '' : 'shape')
+    }
     for (const occ of d.occurrences ?? []) {
       // a collapsed reference mode is drawn in its entity's shape
       if (occ.refModeOwnerOccId && !expanded.has(occ.refModeOwnerOccId)) continue
@@ -797,12 +805,12 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         const S = { l: -w / 2, r: w / 2, t: -h / 2, b: h / 2 }
         const vOff = occ.valueRangeOffset ?? ot.valueRangeOffset
         if (ot.kind === 'value' && ot.valueRange?.length && vOff)
-          rel.push(labelShape('ValueConstraintShape', `${shapeId(occ)}:vr`, occ, { x: vOff.dx, y: vOff.dy }, rangeLabelSize(ot.valueRange), otBox, S, normaId(ot.id, 'valueconstraint')))
+          rel.push(labelShape('ValueConstraintShape', `${shapeId(occ)}:vr`, occ, { x: vOff.dx, y: vOff.dy }, rangeLabelSize(ot.valueRange), otBox, S, normaId(ot.id, 'valueconstraint'), vOff, keptBounds(occ, otShapeKey)))
         const cOff = occ.cardinalityRangeOffset ?? ot.cardinalityRangeOffset
         if (ot.cardinalityRange?.length && cOff)
-          rel.push(labelShape('CardinalityConstraintShape', `${shapeId(occ)}:cr`, occ, { x: cOff.dx, y: cOff.dy }, rangeLabelSize(ot.cardinalityRange, true), otBox, S, normaId(ot.id, 'cardinality')))
+          rel.push(labelShape('CardinalityConstraintShape', `${shapeId(occ)}:cr`, occ, { x: cOff.dx, y: cOff.dy }, rangeLabelSize(ot.cardinalityRange, true), otBox, S, normaId(ot.id, 'cardinality'), cOff, keptBounds(occ, otShapeKey)))
         shapes.push(el('ormDiagram:ObjectTypeShape', { id: shapeId(occ), IsExpanded: 'true',
-          AbsoluteBounds: boundsAttr(inches(occ.x) - W / 2, inches(occ.y) - H / 2, W, H),
+          AbsoluteBounds: keptBounds(occ, otShapeKey) ?? boundsAttr(inches(occ.x) - W / 2, inches(occ.y) - H / 2, W, H),
           ExpandRefMode: rm && expanded.has(occ.id) ? 'true' : null }, [
           rel.length && el('ormDiagram:RelativeShapes', {}, rel),
           el('ormDiagram:Subject', { ref: normaId(ot.id) }),
@@ -817,8 +825,8 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       if (!sh) continue
       const size = { ExternalConstraintShape: NORMA.externalConstraint.diameter, RingConstraintShape: NORMA.ringConstraint.diameter,
         ValueComparisonConstraintShape: NORMA.externalConstraint.diameter, FrequencyConstraintShape: frequencyDiameter(sh.text) }[sh.shape]
-      shapes.push(el(`ormDiagram:${sh.shape}`, { id: normaId(`${d.id}:${co.id}`, 'shape'), IsExpanded: 'true',
-        AbsoluteBounds: boundsAttr(inches(co.x) - size / 2, inches(co.y) - size / 2, size, size) }, [el('ormDiagram:Subject', { ref: sh.id })]))
+      shapes.push(el(`ormDiagram:${sh.shape}`, { id: shapeId(co), IsExpanded: 'true',
+        AbsoluteBounds: keptBounds(co, otShapeKey) ?? boundsAttr(inches(co.x) - size / 2, inches(co.y) - size / 2, size, size) }, [el('ormDiagram:Subject', { ref: sh.id })]))
     }
     // internal frequency constraints of the fact types drawn here
     for (const occ of d.occurrences ?? []) {
@@ -843,7 +851,16 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   // backwards. The side of FreeFBM's box the label is on, its gap from that
   // side and the edge (or centre) it lines up with along the side are kept,
   // measured from NORMA's shape S; a label over the box keeps its centre.
-  function labelShape(kind, key, occ, c, size, box, S, subject) {
+  // NORMA's own bounds of a shape the import kept, when what it was drawn
+  // from has not changed since (src/diagram/normaShapeKeys.js)
+  function keptBounds(x, keyFn) {
+    return x.normaShape?.bounds && x.normaShape.key === keyFn(x) ? x.normaShape.bounds : null
+  }
+  function labelShape(kind, key, occ, c, size, box, S, subject, off = null, shapeUnchanged = null) {
+    // a label NORMA placed, at the same offset of an unchanged shape: as NORMA had it
+    const kept = occ.normaLabels?.[key.split(':').pop()]
+    if (kept?.bounds && shapeUnchanged && off && kept.off && kept.off.dx === off.dx && kept.off.dy === off.dy)
+      return el(`ormDiagram:${kind}`, { id: kept.id ?? normaId(key, 'label'), IsExpanded: 'true', AbsoluteBounds: kept.bounds }, [el('ormDiagram:Subject', { ref: subject })])
     const wn = size.w, hn = NORMA.lineHeight * PX
     const L = { l: c.x - size.w / 2, r: c.x + size.w / 2, t: c.y - size.h / 2, b: c.y + size.h / 2 }
     const gaps = { below: L.t - box.b, above: box.t - L.b, right: L.l - box.r, left: box.l - L.r }
@@ -905,19 +922,20 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     const box = factLabelBox(g, Sabs)
     const rOff = g.readingAbove ? g.readingOffsetAbove : g.readingOffsetBelow
     const firstOrder = f.readingParts ? f.roles.map((_, i) => i) : f.alternativeReadings?.[0]?.roleOrder
-    if (rOff && firstOrder) rel.push(labelShape('ReadingShape', `${id}:reading`, occ, { x: rOff.dx, y: rOff.dy }, readingLabelSize(g), box, S, normaId(f.id, `ro:${firstOrder.join(',')}`)))
+    const unchanged = keptBounds(occ, factShapeKey)
+    if (rOff && firstOrder) rel.push(labelShape('ReadingShape', `${id}:reading`, occ, { x: rOff.dx, y: rOff.dy }, readingLabelSize(g), box, S, normaId(f.id, `ro:${firstOrder.join(',')}`), rOff, unchanged))
     f.roles.forEach((r, ri) => {
       const a = roleAnchor(g, ri)
       const vo = occ.valueRangeOffsets?.[ri]
-      if (vo && r.valueRange?.length) rel.push(labelShape('ValueConstraintShape', `${id}:vr${ri}`, occ, { x: a.x + vo.dx, y: a.y + vo.dy }, rangeLabelSize(r.valueRange), box, S, normaId(r.id, 'valueconstraint')))
+      if (vo && r.valueRange?.length) rel.push(labelShape('ValueConstraintShape', `${id}:vr${ri}`, occ, { x: a.x + vo.dx, y: a.y + vo.dy }, rangeLabelSize(r.valueRange), box, S, normaId(r.id, 'valueconstraint'), vo, unchanged))
       const no = occ.roleNameOffsets?.[ri]
-      if (no && r.roleName) rel.push(labelShape('RoleNameShape', `${id}:rn${ri}`, occ, { x: a.x + no.dx, y: a.y + no.dy }, roleNameLabelSize(r.roleName), box, S, normaId(r.id)))
+      if (no && r.roleName) rel.push(labelShape('RoleNameShape', `${id}:rn${ri}`, occ, { x: a.x + no.dx, y: a.y + no.dy }, roleNameLabelSize(r.roleName), box, S, normaId(r.id), no, unchanged))
     })
     if (f.objectified && f.objectifiedName && occ.nameOffset && (occ.nameOffset.dx || occ.nameOffset.dy)) {
       const a = nameAnchor(g, false)
-      rel.push(labelShape('ObjectifiedFactTypeNameShape', `${id}:name`, occ, { x: a.x + occ.nameOffset.dx, y: a.y + occ.nameOffset.dy }, nameLabelSize(f.objectifiedName), box, S, nestId(f.id)))
+      rel.push(labelShape('ObjectifiedFactTypeNameShape', `${id}:name`, occ, { x: a.x + occ.nameOffset.dx, y: a.y + occ.nameOffset.dy }, nameLabelSize(f.objectifiedName), box, S, nestId(f.id), occ.nameOffset, unchanged))
     }
-    return el('ormDiagram:FactTypeShape', { id, IsExpanded: 'true', AbsoluteBounds: boundsAttr(cx - W / 2, cy - H / 2, W, H),
+    return el('ormDiagram:FactTypeShape', { id, IsExpanded: 'true', AbsoluteBounds: unchanged ?? boundsAttr(cx - W / 2, cy - H / 2, W, H),
       ConstraintDisplayPosition: below ? 'Bottom' : null, DisplayOrientation: vertical ? 'VerticalRotatedRight' : null,
       DisplayRoleNames: occ.roleNamesShown === false ? 'Off' : null }, [
       rel.length && el('ormDiagram:RelativeShapes', {}, rel),
@@ -958,9 +976,12 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   for (const c of constraints) if (shapeOf.has(c.id)) idOf.set(c.id, [['exclusion', 'equality', 'subset'].includes(c.constraintType) ? 'SetComparisonConstraint' : 'SetConstraint', shapeOf.get(c.id).id])
   const modelNotes = new Map()   // note key → { id, text, refs }
   const noteShapes = new Map()   // diagram id → [shape elements]
-  const addNoteShape = (diagramId, noteId, x, y, w, h) =>
-    noteShapes.set(diagramId, [...(noteShapes.get(diagramId) ?? []), el('ormDiagram:ModelNoteShape', { id: normaId(`${diagramId}:${noteId}`, 'note-shape'), IsExpanded: 'true',
-      AbsoluteBounds: boundsAttr(inches(x), inches(y), inches(w), inches(h)) }, [el('ormDiagram:Subject', { ref: noteId })])])
+  const addNoteShape = (diagramId, noteId, x, y, w, h, note = null) => {
+    const keptId = note?.normaShape?.id && !usedShapeIds.has(note.normaShape.id) ? note.normaShape.id : null
+    if (keptId) usedShapeIds.set(keptId, note)
+    noteShapes.set(diagramId, [...(noteShapes.get(diagramId) ?? []), el('ormDiagram:ModelNoteShape', { id: keptId ?? normaId(`${diagramId}:${noteId}`, 'note-shape'), IsExpanded: 'true',
+      AbsoluteBounds: (note && keptBounds(note, noteShapeKey)) ?? boundsAttr(inches(x), inches(y), inches(w), inches(h)) }, [el('ormDiagram:Subject', { ref: noteId })])])
+  }
   let importNotesLeft = 0
   for (const d of diagrams) for (const n of d.notes ?? []) {
     if (n.importNote) { importNotesLeft++; continue }
@@ -969,7 +990,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     if (!modelNotes.has(key)) modelNotes.set(key, { id: normaId(key, GUID_RE.test(key) ? '' : 'note'), text: n.text ?? '', refs: new Set() })
     const mn = modelNotes.get(key)
     for (const c of n.connectors ?? []) if (idOf.has(c.targetId)) mn.refs.add(c.targetId)
-    addNoteShape(d.id, mn.id, n.x - (n.w ?? 0) / 2, n.y - (n.h ?? 0) / 2, n.w ?? 120, n.h ?? 40)
+    addNoteShape(d.id, mn.id, n.x - (n.w ?? 0) / 2, n.y - (n.h ?? 0) / 2, n.w ?? 120, n.h ?? 40, n)
   }
   if (importNotesLeft) note(`${importNotesLeft} FreeFBM import note${importNotesLeft === 1 ? '' : 's'} shown on diagrams ${importNotesLeft === 1 ? 'was' : 'were'} left out; they describe the import from NORMA.`)
   // wrap long lines: NORMA does not wrap a note's text

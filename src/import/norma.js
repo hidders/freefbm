@@ -39,6 +39,7 @@ import { addImportNote } from '../utils/importNotes.js'
 import { findRefMode } from '../utils/refMode.js'
 import { VALUE_KINDS, valueKindName } from '../utils/datatypeValues.js'
 import { normaTemporal } from './normaTemporal.js'
+import { otShapeKey, factShapeKey, noteShapeKey } from '../diagram/normaShapeKeys.js'
 import { placeLabel, factLabelBox, readingLabelSize, rangeLabelSize, nameLabelSize, roleNameLabelSize, objectTypeLabelBox,
   roleAnchor, nameAnchor } from './normaLabels.js'
 import { PX_PER_INCH, NORMA } from '../diagram/normaGeometry.js'
@@ -1100,7 +1101,9 @@ export function importNorma(xmlText) {
           if (!range?.length) continue
           const p = placeLabel(rect(rs), rect(s), objectTypeLabelBox(ot, refShown), rangeLabelSize(range, own.cardinality))
           occ[own.cardinality ? 'cardinalityRangeOffset' : 'valueRangeOffset'] = rounded(p)
+          keepLabel(occ, own.cardinality ? 'cr' : 'vr', rs, occ[own.cardinality ? 'cardinalityRangeOffset' : 'valueRangeOffset'])
         }
+        keepShape(occ, s, otShapeKey(occ))
         if (!firstPos.has(ot.id)) firstPos.set(ot.id, { x: b.cx, y: b.cy })
       } else if (s.localName === 'FactTypeShape') {
         const f = factById.get(subj)
@@ -1129,6 +1132,7 @@ export function importNorma(xmlText) {
         // (Default follows the diagram, which by default shows them)
         const shown = attr(s, 'DisplayRoleNames') ?? 'Default'
         if (shown === 'Off' || (shown === 'Default' && attr(d, 'DisplayRoleNames') === 'Off')) occ.roleNamesShown = false
+        keepShape(occ, s, factShapeKey(occ))
         diag.occurrences.push(occ)
         if (!firstPos.has(f.id)) firstPos.set(f.id, { x: occ.x, y: occ.y })
       } else if (s.localName === 'ModelNoteShape') {
@@ -1148,16 +1152,20 @@ export function importNorma(xmlText) {
         const w = narrowestNoteWidth(mn.text, w0)
         const h = fittingNoteHeight(mn.text, w) ?? h0
         const left = b.cx - b.w / 2, top = b.cy - b.h / 2
-        diag.notes.push({ id: nid, x: left + w / 2, y: top + h / 2, w, h, text: mn.text,
-          connectors: mn.refs.map((targetId, i) => ({ id: `${nid}_c${i}`, targetId })) })
+        const note = { id: nid, x: left + w / 2, y: top + h / 2, w, h, text: mn.text,
+          connectors: mn.refs.map((targetId, i) => ({ id: `${nid}_c${i}`, targetId })) }
+        keepShape(note, s, noteShapeKey(note))
+        diag.notes.push(note)
       } else if (/ConstraintShape$/.test(s.localName)) {
         const cid = conAlias.get(subj)
         if (!cid) continue
         if (cid.startsWith('if:')) { if (!ifPos.has(subj)) ifPos.set(subj, { x: b.cx, y: b.cy }); continue }
         if (seenCon.has(cid)) continue
         seenCon.add(cid)
-        diag.constraintOccurrences.push({ id: `cocc_${s.getAttribute('id')}`, schemaConstraintId: cid,
-          x: b.cx, y: b.cy, roleOccurrenceRefs: {}, queryOccurrenceRefs: {} })
+        const co = { id: `cocc_${s.getAttribute('id')}`, schemaConstraintId: cid,
+          x: b.cx, y: b.cy, roleOccurrenceRefs: {}, queryOccurrenceRefs: {} }
+        keepShape(co, s, otShapeKey(co))
+        diag.constraintOccurrences.push(co)
         if (!firstPos.has(cid)) firstPos.set(cid, { x: b.cx, y: b.cy })
       }
     }
@@ -1186,6 +1194,7 @@ export function importNorma(xmlText) {
       const above = g.orientation === 'vertical' ? p.side === 'right' : p.side === 'above'
       if (above) occ.readingAbove = true
       occ[above ? 'readingOffsetAbove' : 'readingOffsetBelow'] = rounded(p)
+      keepLabel(occ, 'reading', rs, rounded(p))
     }
     for (const vs of relativeShapes(s, 'ValueConstraintShape')) {
       const own = rangeOwner.get(attr(kid(vs, 'Subject'), 'ref'))
@@ -1196,6 +1205,7 @@ export function importNorma(xmlText) {
       const p = placeLabel(rect(vs), S, box, rangeLabelSize(range))
       const a = roleAnchor(g, ri)
       occ.valueRangeOffsets = { ...(occ.valueRangeOffsets ?? {}), [ri]: rounded({ x: p.x - a.x, y: p.y - a.y }) }
+      keepLabel(occ, `vr${ri}`, vs, occ.valueRangeOffsets[ri])
     }
     for (const rn of relativeShapes(s, 'RoleNameShape')) {
       const ri = f.roles.findIndex(r => r.id === attr(kid(rn, 'Subject'), 'ref'))
@@ -1204,6 +1214,7 @@ export function importNorma(xmlText) {
       const p = placeLabel(rect(rn), S, box, roleNameLabelSize(name))
       const a = roleAnchor(g, ri)
       occ.roleNameOffsets = { ...(occ.roleNameOffsets ?? {}), [ri]: rounded({ x: p.x - a.x, y: p.y - a.y }) }
+      keepLabel(occ, `rn${ri}`, rn, occ.roleNameOffsets[ri])
     }
     const [ns] = relativeShapes(s, 'ObjectifiedFactTypeNameShape')
     if (ns && f.objectified && f.objectifiedName) {
@@ -1211,9 +1222,22 @@ export function importNorma(xmlText) {
       const a = nameAnchor(g, !!refModeOf(f.id))
       const off = rounded({ x: p.x - a.x, y: p.y - a.y })
       if (off.dx || off.dy) occ.nameOffset = off
+      keepLabel(occ, 'name', ns, off)
     }
   }
   function rounded(p) { return { dx: Math.round(p.x), dy: Math.round(p.y) } }
+
+  // NORMA's own shape ids and bounds, kept on the occurrence (normaShape) and
+  // its labels (normaLabels) so that the export writes a shape the user has
+  // not changed exactly as NORMA had it (docs/norma-export.md, milestone 4).
+  // The key is what the shape was drawn from; the export compares it with
+  // the occurrence as it is then.
+  function keepShape(x, shape, key) {
+    x.normaShape = { id: attr(shape, 'id'), bounds: attr(shape, 'AbsoluteBounds'), key }
+  }
+  function keepLabel(occ, which, shape, off) {
+    occ.normaLabels = { ...(occ.normaLabels ?? {}), [which]: { id: attr(shape, 'id'), bounds: attr(shape, 'AbsoluteBounds'), off: off ?? null } }
+  }
 
   // Occurrences FreeFBM needs that NORMA does not draw: the players of every
   // shown fact type, and the value type and fact type of a collapsed
