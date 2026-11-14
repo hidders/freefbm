@@ -139,17 +139,18 @@ export function nestedFactBounds(fact, rakeMinPad = {}) {
   }
 }
 
+// A unary's reading as drawn: "is violent" for "… is violent", as NORMA
+// shows it; the ellipsis stays only when text comes before the player.
+function unaryReading(before, after) {
+  if (!before) return after
+  return [before, '...', after].filter(Boolean).join(' ')
+}
+
 export function buildDisplayReading(parts, n) {
   if (!parts || parts.every(p => !p?.trim())) return ''
   const t = i => parts[i]?.trim() || ''
 
-  if (n === 1) {
-    const tokens = []
-    if (t(0)) tokens.push(t(0))
-    tokens.push('...')
-    if (t(1)) tokens.push(t(1))
-    return tokens.join(' ')
-  }
+  if (n === 1) return unaryReading(t(0), t(1))
 
   const tokens = []
   for (let i = 0; i <= n; i++) {
@@ -168,13 +169,7 @@ export function buildShownReading(parts, roleOrder, fact, otMap, nestedMap) {
   const t = i => parts[i]?.trim() || ''
   const n = fact.arity
 
-  if (n === 1) {
-    const tokens = []
-    if (t(0)) tokens.push(t(0))
-    tokens.push('...')
-    if (t(1)) tokens.push(t(1))
-    return tokens.join(' ')
-  }
+  if (n === 1) return unaryReading(t(0), t(1))
 
   // For names that appear multiple times, compute subscript disambiguation
   const subscriptNums = ['₀','₁','₂','₃','₄','₅','₆','₇','₈','₉']
