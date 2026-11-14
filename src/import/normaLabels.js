@@ -8,7 +8,7 @@
 // FreeFBM's own box and label size. A label that overlaps its shape keeps
 // its centre's offset.
 
-import { nestedFactBounds, factBounds, getDisplayReading, roleCenter, NAME_LINE, LABEL_SIZE } from '../components/FactTypeNode.jsx'
+import { nestedFactBounds, getDisplayReading, buildDisplayReading, roleCenter, NAME_LINE, LABEL_SIZE } from '../components/FactTypeNode.jsx'
 import { formatValueRange, formatCardinalityRange, otBoxSize, OT_SIZE_NAME } from '../components/ObjectTypeNode.jsx'
 import { measureDiagramText } from '../diagram/diagramFont.js'
 
@@ -19,16 +19,18 @@ function textWidth(text, size, weight = 400) {
 const TOUCH = 6   // px a label may reach into its shape and still count as beside it
 
 // L, S: NORMA label and shape rectangles { l, t, r, b } in px. box: FreeFBM's
-// drawn box { l, t, r, b } relative to the shape's centre point, which both
-// drawings share. size: FreeFBM's label { w, h }. Gives the label's centre
-// relative to that point, and the side it is on (null when it overlaps).
+// box { l, t, r, b } for the shape, relative to the occurrence's point (an
+// object type's centre, a fact type's role middle). size: FreeFBM's label
+// { w, h }. Gives the label's centre relative to that point, and the side it
+// is on (null when it overlaps).
 export function placeLabel(L, S, box, size) {
   const cx = (S.l + S.r) / 2, cy = (S.t + S.b) / 2
   const l = { l: L.l - cx, r: L.r - cx, t: L.t - cy, b: L.b - cy }
   const s = { l: S.l - cx, r: S.r - cx, t: S.t - cy, b: S.b - cy }
   const gaps = { below: l.t - s.b, above: s.t - l.b, right: l.l - s.r, left: s.l - l.r }
   const side = Object.keys(gaps).reduce((a, k) => gaps[k] > gaps[a] ? k : a, 'below')
-  if (gaps[side] < -TOUCH) return { x: (l.l + l.r) / 2, y: (l.t + l.b) / 2, side: null }
+  // overlapping: the same offset from the box's centre as from the shape's
+  if (gaps[side] < -TOUCH) return { x: (l.l + l.r) / 2 + (box.l + box.r) / 2, y: (l.t + l.b) / 2 + (box.t + box.b) / 2, side: null }
   const gap = Math.max(gaps[side], 0)
   // alignment along the side: the edge (or centre) the label is closest to lining up with
   const align = (lo, hi, slo, shi, blo, bhi, len) => {
@@ -47,19 +49,37 @@ export function placeLabel(L, S, box, size) {
 
 const relative = (b, x, y) => ({ l: b.left - x, r: b.right - x, t: b.top - y, b: b.bottom - y })
 
-// FreeFBM's box of a fact type occurrence (roles and uniqueness bars; for an
-// objectified one the box around it), relative to the occurrence's point.
-export function factLabelBox(fact) {
-  const f = { ...fact, x: 0, y: 0 }
-  if (f.objectified) return relative(nestedFactBounds(f), 0, 0)
-  const b = relative(factBounds(f), 0, 0)
-  // factBounds leaves room for a reading below a horizontal fact type
-  if (f.orientation !== 'vertical') b.b -= 18
-  return b
+// The box a fact type's labels are placed from, relative to the occurrence's
+// point (the middle of its role boxes). An objectified fact type's is FreeFBM's
+// outline. Otherwise it is NORMA's own shape S (px), roles plus a band per
+// level of bars, around the same role boxes: FreeFBM draws the roles where
+// NORMA does and its bars in those bands, so a label keeps NORMA's distance
+// from the role boxes.
+export function factLabelBox(fact, S) {
+  if (fact.objectified) return relative(nestedFactBounds({ ...fact, x: 0, y: 0 }), 0, 0)
+  return { l: S.l - fact.x, r: S.r - fact.x, t: S.t - fact.y, b: S.b - fact.y }
 }
 
 export function readingLabelSize(fact) {
-  return { w: textWidth(getDisplayReading(fact) || '', LABEL_SIZE), h: NAME_LINE }
+  return { w: textWidth(shownReading(fact), LABEL_SIZE), h: NAME_LINE }
+}
+
+// The reading text FactTypeNode draws (without the store: a binary's readings
+// whose outer parts are empty, as NORMA's mostly are, need no player names).
+function shownReading(fact) {
+  if (fact.arity !== 2) return getDisplayReading(fact) || ''
+  const order = fact.roleOrder?.length === 2 ? fact.roleOrder : [0, 1]
+  const all = [{ roleOrder: [0, 1], parts: fact.readingParts }, ...(fact.alternativeReadings ?? [])]
+    .filter(r => r.parts?.some(p => p?.trim()))
+  const text = o => {
+    const r = all.find(r => r.roleOrder[0] === o[0] && r.roleOrder[1] === o[1])
+    return r ? buildDisplayReading(r.parts, 2) : ''
+  }
+  const fwd = text(order), rev = text([order[1], order[0]])
+  if (all.length === 1) return (fwd ? '' : '◀ ') + (fwd || rev)
+  if (fact.readingDisplay === 'both') return [fwd, rev].filter(Boolean).join(' / ')
+  if (fact.readingDisplay === 'reverse') return rev ? '◀ ' + rev : ''
+  return fwd
 }
 
 export function rangeLabelSize(range, cardinality = false) {
