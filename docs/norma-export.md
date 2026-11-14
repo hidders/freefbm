@@ -28,9 +28,15 @@ not try to be lossless for FreeFBM's own features.
      type): NORMA is right to show them. FreeFBM's validation should report
      the same ones, the export says beforehand which errors NORMA will show,
      and each gets a "FreeFBM:" note beside the element (below).
-3. **Dropped content becomes notes.** Whatever NORMA cannot hold becomes a
-   NORMA model note, so that users notice what was left out and understand
-   why. Proposal for the notes:
+3. **Dropped content becomes notes.** Whatever NORMA cannot hold is said in
+   a note, so that users notice what was left out and understand why.
+   After the first check in NORMA (Jan, 2026-11-14: notes beside every
+   element were far too noisy), the remarks go into the note of the element
+   concerned (NORMA's Notes window shows it), as paragraphs starting with
+   "FreeFBM:" after the element's own note; derivation formulas go only into
+   the informal rule; the diagram keeps one summary note, above everything
+   else on the first diagram. The importer strips the "FreeFBM:" paragraphs
+   and the summary note. The first proposal, kept for the record:
    - a note beside the element it is about, joined to it by a note connector
      (NORMA's ModelNote ReferencedBy); content with no element of its own (a
      mapping, a query) goes on the diagram where its elements are drawn;

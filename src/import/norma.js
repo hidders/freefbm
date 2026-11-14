@@ -1010,7 +1010,8 @@ export function importNorma(xmlText) {
     const target = elementFor(id)
     if (!target) continue
     const def = textOf(path(el, 'Definitions', 'Definition', 'Text'))
-    const nt = textOf(path(el, 'Notes', 'Note', 'Text'))
+    // without the remarks FreeFBM's export added (paragraphs starting with "FreeFBM:")
+    const nt = textOf(path(el, 'Notes', 'Note', 'Text')).split(/\n\s*\n/).filter(p => !/^FreeFBM:/.test(p.trim())).join('\n\n').trim()
     if (def) target.definition = def
     if (nt) addNote(target, nt)
   }

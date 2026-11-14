@@ -83,6 +83,8 @@ function el(name, attrs = {}, children = null) {
   return { name, attrs, children }
 }
 function write(node, depth, out) {
+  // a lazy node is resolved when the file is written (notes collected while building)
+  if (node.lazy) { const n = node.lazy(); if (n) write(n, depth, out); return }
   const pad = '\t'.repeat(depth)
   const a = Object.entries(node.attrs).filter(([, v]) => v != null && v !== false)
     .map(([k, v]) => ` ${k}="${esc(v).replace(/\r/g, '&#xD;').replace(/\n/g, '&#xA;').replace(/\t/g, '&#x9;')}"`).join('')
@@ -184,9 +186,17 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     try { return renderFormula(entry.formula, ctx).map(t => t.text).join('') } catch { return null }
   }
   const safe = (fn) => { try { return fn() } catch { return null } }
-  // "FreeFBM:" notes: { targets: FreeFBM element ids, text }, shown beside the elements
+  // FreeFBM's remarks about what NORMA cannot take as it is: in the note of
+  // the element concerned (NORMA's Notes window shows it), starting with
+  // "FreeFBM:" so that the importer can leave them out again
   const ffNotes = []
-  const ffNote = (targets, text) => ffNotes.push({ targets: targets.filter(Boolean), text: `FreeFBM: ${text}` })
+  let derivedInformal = 0
+  const elementRemarks = new Map()   // FreeFBM element id → remarks
+  const ffNote = (targets, text) => {
+    const t = targets.filter(Boolean)
+    ffNotes.push({ targets: t, text: `FreeFBM: ${text}` })
+    if (t[0]) elementRemarks.set(t[0], [...(elementRemarks.get(t[0]) ?? []), `FreeFBM: ${text}`])
+  }
   const propDefs = (state.propertyDefinitions ?? []).filter(d => d?.id)
   const propDefIds = new Set(propDefs.map(d => d.id))
   const skipped = {}   // what milestone 1 leaves out → count
@@ -398,19 +408,19 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         const target = c.isPreferredIdentifier && c.targetObjectTypeId && (otById.has(c.targetObjectTypeId) || nests.get(c.targetObjectTypeId)?.implied === false) ? c.targetObjectTypeId : null
         const pif = target && !preferredFor.has(target) ? target : null
         if (pif) preferredFor.set(pif, id)
-        conEls.push(el('orm:UniquenessConstraint', { id, Name: name, Modality: modality }, [roleSeq('r', seqs[0]), pif && el('orm:PreferredIdentifierFor', { ref: playerRef(pif) })]))
+        conEls.push(el('orm:UniquenessConstraint', { id, Name: name, Modality: modality }, [...docEls(c), roleSeq('r', seqs[0]), pif && el('orm:PreferredIdentifierFor', { ref: playerRef(pif) })]))
         shapeOf.set(c.id, { id, shape: 'ExternalConstraintShape' })
         break
       }
       case 'inclusiveOr':
-        conEls.push(el('orm:MandatoryConstraint', { id, Name: name, Modality: modality }, [roleSeq('r', flat)]))
+        conEls.push(el('orm:MandatoryConstraint', { id, Name: name, Modality: modality }, [...docEls(c), roleSeq('r', flat)]))
         shapeOf.set(c.id, { id, shape: 'ExternalConstraintShape' })
         break
       case 'exclusiveOr': {
         // NORMA's exclusive-or: a disjunctive mandatory and an exclusion that refer to each other
         const ex = normaId(c.id, 'exclusion')
         conEls.push(
-          el('orm:MandatoryConstraint', { id, Name: name, Modality: modality }, [roleSeq('r', flat), el('orm:ExclusiveOrExclusionConstraint', { ref: ex })]),
+          el('orm:MandatoryConstraint', { id, Name: name, Modality: modality }, [...docEls(c), roleSeq('r', flat), el('orm:ExclusiveOrExclusionConstraint', { ref: ex })]),
           el('orm:ExclusionConstraint', { id: ex, Name: `${name}Exclusion`, Modality: modality }, [
             el('orm:RoleSequences', {}, flat.map((r, k) => el('orm:RoleSequence', { id: normaId(c.id, `xseq${k}`) }, [el('orm:Role', { id: normaId(c.id, `xseq${k}r`), ref: r })]))),
             el('orm:ExclusiveOrMandatoryConstraint', { ref: id }),
@@ -420,7 +430,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       }
       case 'exclusion': case 'equality': case 'subset': {
         const tag = { exclusion: 'ExclusionConstraint', equality: 'EqualityConstraint', subset: 'SubsetConstraint' }[c.constraintType]
-        conEls.push(el(`orm:${tag}`, { id, Name: name, Modality: modality }, [roleSeqs()]))
+        conEls.push(el(`orm:${tag}`, { id, Name: name, Modality: modality }, [...docEls(c), roleSeqs()]))
         shapeOf.set(c.id, { id, shape: 'ExternalConstraintShape' })
         break
       }
@@ -431,17 +441,17 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
           ffNote(c.sequences[0].map(m => m.factId), `the ring constraint ${label} combines ${c.ringTypes.join(', ')}, which is not one of NORMA's ring types, so it was left out.`)
           continue
         }
-        conEls.push(el('orm:RingConstraint', { id, Name: name, Type: type, Modality: modality }, [roleSeq('r', seqs[0])]))
+        conEls.push(el('orm:RingConstraint', { id, Name: name, Type: type, Modality: modality }, [...docEls(c), roleSeq('r', seqs[0])]))
         shapeOf.set(c.id, { id, shape: 'RingConstraintShape' })
         break
       }
       case 'frequency':
-        conEls.push(el('orm:FrequencyConstraint', { id, Name: name, ...frequencyAttrs(c.frequency), Modality: modality }, [roleSeq('r', seqs[0])]))
+        conEls.push(el('orm:FrequencyConstraint', { id, Name: name, ...frequencyAttrs(c.frequency), Modality: modality }, [...docEls(c), roleSeq('r', seqs[0])]))
         shapeOf.set(c.id, { id, shape: 'FrequencyConstraintShape', text: frequencyText(c.frequency) })
         break
       case 'valueComparison': {
         const op = Object.entries(VC_OPS).find(([, sym]) => sym === c.operator)?.[0] ?? 'Equal'
-        conEls.push(el('orm:ValueComparisonConstraint', { id, Name: name, Operator: op, Modality: modality }, [roleSeq('r', seqs[0])]))
+        conEls.push(el('orm:ValueComparisonConstraint', { id, Name: name, Operator: op, Modality: modality }, [...docEls(c), roleSeq('r', seqs[0])]))
         shapeOf.set(c.id, { id, shape: 'ValueComparisonConstraintShape' })
         break
       }
@@ -543,7 +553,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   function subtypeDerivationEl(ot) {
     if (!ot.derivation || !subtypes.some(st => st.subId === ot.id)) return null
     const text = formulaText(safe(() => derivationEntry(ot, state, ctx)))
-    ffNote([ot.id], `${ot.name} is a ${ot.derivation === 'semiDerived' ? 'semi-derived' : 'derived'} subtype in FreeFBM, by a formula that this export does not write as a NORMA derivation path yet; it is kept as the informal rule.${text ? ` FreeFBM's formula: ${text}` : ''}`)
+    derivedInformal++
     return el('orm:SubtypeDerivationRule', {}, [
       el('orm:SubtypeDerivationPath', { id: normaId(ot.id, 'derivation'), DerivationCompleteness: ot.derivation === 'semiDerived' ? 'PartiallyDerived' : null }, [
         el('orm:InformalRule', {}, [el('orm:DerivationNote', { id: normaId(ot.id, 'derivation-note') }, [el('orm:Body', {}, text ?? 'Derived in FreeFBM.')])]),
@@ -554,7 +564,11 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   function docEls(x) {
     return [
       x.definition && el('orm:Definitions', {}, [el('orm:Definition', { id: normaId(x.id, 'definition') }, [el('orm:Text', {}, x.definition)])]),
-      x.note && el('orm:Notes', {}, [el('orm:Note', { id: normaId(x.id, 'note') }, [el('orm:Text', {}, x.note)])]),
+      // the element's note, then FreeFBM's remarks about it (known once the file is built)
+      { lazy: () => {
+        const text = [x.note, ...(elementRemarks.get(x.id) ?? [])].filter(Boolean).join('\n\n')
+        return text ? el('orm:Notes', {}, [el('orm:Note', { id: normaId(x.id, 'note') }, [el('orm:Text', {}, text)])]) : null
+      } },
     ]
   }
   // custom property values (NORMA's CustomProperties extension)
@@ -606,7 +620,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     const entries = safe(() => factDerivationEntries(f, state, ctx)) ?? []
     const text = entries.map(formulaText).filter(Boolean).join('\n') || null
     const name = pascal(factLabel(f))
-    ffNote([f.id], `${name} is ${f.derivation === 'semiDerived' ? 'semi-derived' : 'derived'} in FreeFBM by a formula that this export does not write as a NORMA derivation path yet; it is kept as the informal rule.${text ? ` FreeFBM's formula: ${text}` : ' FreeFBM has no complete rule for it yet.'}`)
+    derivedInformal++
     return el('orm:DerivationRule', {}, [
       el('orm:FactTypeDerivationPath', { id: normaId(f.id, 'derivation'), DerivationCompleteness: f.derivation === 'semiDerived' ? 'PartiallyDerived' : null }, [
         el('orm:InformalRule', {}, [el('orm:DerivationNote', { id: normaId(f.id, 'derivation-note') }, [el('orm:Body', {}, text ?? 'Derived in FreeFBM (no complete rule yet).')])]),
@@ -920,28 +934,20 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   if (joinsLeft.length) leftOut.push(`the join paths of ${joinsLeft.length} constraint${joinsLeft.length === 1 ? '' : 's'}`)
   const nDerived = facts.filter(f => f.derivation).length + objectTypes.filter(o => o.derivation && subtypes.some(st => st.subId === o.id)).length
   if (nDerived) leftOut.push(`${nDerived} derivation rule${nDerived === 1 ? '' : 's'} as NORMA paths (kept as informal rules)`)
-  const summary = wrap(`FreeFBM: this model was exported from FreeFBM. ${leftOut.length ? `Not in NORMA's form: ${leftOut.join('; ')}. The notes starting with “FreeFBM:” say more where it concerns one element.` : 'Everything in it is in NORMA\'s form.'}`)
-  // the FreeFBM notes, beside their elements
-  let ffCount = 0
-  const placed = new Map()   // diagram id → count of notes placed beside elements, to stagger them
-  for (const fn of ffNotes) {
-    const id = normaId(`freefbm-note:${ffCount++}:${fn.text}`)
-    const text = wrap(fn.text)
-    modelNotes.set(id, { id, text, refs: new Set(fn.targets.filter(t => idOf.has(t))) })
-    const at = fn.targets.map(drawnAt).find(Boolean)
-    if (!at) continue
-    const k = placed.get(at.d.id) ?? 0; placed.set(at.d.id, k + 1)
-    const { w, h } = noteSize(text)
-    addNoteShape(at.d.id, id, at.x + 60, at.y + 40 + (k % 3) * 12, w, h)
-  }
+  const summary = wrap(`FreeFBM: this model was exported from FreeFBM. ${leftOut.length ? `Not in NORMA's form: ${leftOut.join('; ')}. Where it concerns one element, the element's note (NORMA's Notes window) says more, after “FreeFBM:”.` : 'Everything in it is in NORMA\'s form.'}`)
+  // remarks about no element in particular (custom property types) go to the summary
+  const general = ffNotes.filter(fn => !fn.targets.length).map(fn => fn.text.replace(/^FreeFBM: /, ''))
   {
     const id = normaId(`freefbm-summary:${modelName}`)
-    modelNotes.set(id, { id, text: summary, refs: new Set() })
+    const text = general.length ? wrap(`${summary.replace(/\n/g, ' ')} ${general.join(' ')}`) : summary
+    modelNotes.set(id, { id, text, refs: new Set() })
     const d = diagrams[0]
     if (d) {
-      const xs = (d.occurrences ?? []).map(o => o.x), ys = (d.occurrences ?? []).map(o => o.y)
-      const { w, h } = noteSize(summary)
-      addNoteShape(d.id, id, Math.max(10, (xs.length ? Math.min(...xs) : 100) - 60), Math.max(10, (ys.length ? Math.min(...ys) : 100) - 60 - h), w, h)
+      // above and left of everything on the diagram, notes included
+      const tops = [...(d.occurrences ?? []).map(o => o.y - 25), ...(d.notes ?? []).map(n => n.y - (n.h ?? 0) / 2), ...(d.constraintOccurrences ?? []).map(o => o.y - 20)]
+      const lefts = [...(d.occurrences ?? []).map(o => o.x - 60), ...(d.notes ?? []).map(n => n.x - (n.w ?? 0) / 2)]
+      const { w, h } = noteSize(text)
+      addNoteShape(d.id, id, lefts.length ? Math.min(...lefts) : 40, (tops.length ? Math.min(...tops) : 100) - h - 30, w, h)
     }
   }
   const modelNoteEls = [...modelNotes.values()].map(mn => el('orm:ModelNote', { id: mn.id }, [
@@ -956,7 +962,8 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     if (!shapesEl) { shapesEl = el('ormDiagram:Shapes', {}, []); de.children.unshift(shapesEl) }
     shapesEl.children.push(...extra)
   }
-  if (ffNotes.length) note(`${ffNotes.length} note${ffNotes.length === 1 ? '' : 's'} starting with “FreeFBM:” ${ffNotes.length === 1 ? 'says' : 'say'} what NORMA could not take as it is, beside the elements concerned; a summary note is on the first diagram.`)
+  const nRemarks = [...elementRemarks.values()].reduce((n, r) => n + r.length, 0)
+  note(`A summary note on the first diagram says what NORMA could not take as it is${nRemarks ? `; ${nRemarks} remark${nRemarks === 1 ? '' : 's'} starting with “FreeFBM:” in the notes of the elements concerned ${nRemarks === 1 ? 'says' : 'say'} more` : ''}.${derivedInformal ? ` ${derivedInformal} derivation rule${derivedInformal === 1 ? ' is' : 's are'} written as NORMA informal rules holding FreeFBM's formula.` : ''}`)
 
   // ── groups ───────────────────────────────────────────────────────────────
   // Element groups with their colours (NORMA's shape grouping extension)
