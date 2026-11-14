@@ -835,7 +835,8 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       rel.push(labelShape('ObjectifiedFactTypeNameShape', `${id}:name`, occ, { x: a.x + occ.nameOffset.dx, y: a.y + occ.nameOffset.dy }, nameLabelSize(f.objectifiedName), box, S, nestId(f.id)))
     }
     return el('ormDiagram:FactTypeShape', { id, IsExpanded: 'true', AbsoluteBounds: boundsAttr(cx - W / 2, cy - H / 2, W, H),
-      ConstraintDisplayPosition: below ? 'Bottom' : null, DisplayOrientation: vertical ? 'VerticalRotatedRight' : null }, [
+      ConstraintDisplayPosition: below ? 'Bottom' : null, DisplayOrientation: vertical ? 'VerticalRotatedRight' : null,
+      DisplayRoleNames: occ.roleNamesShown === false ? 'Off' : null }, [
       rel.length && el('ormDiagram:RelativeShapes', {}, rel),
       el('ormDiagram:Subject', { ref: normaId(f.id) }),
       reordered && el('ormDiagram:RoleDisplayOrder', {}, order.map(ri => el('ormDiagram:Role', { ref: roleIdOf(f, ri) }))),

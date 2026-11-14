@@ -1237,6 +1237,10 @@ export function importNorma(xmlText) {
           diag.expandedRefModeOccs.push(owner.id)
           continue
         }
+        // Expanded without its value type drawn: NORMA shows the entity type
+        // without its reference mode, and so does FreeFBM.
+        diag.expandedRefModeOccs.push(owner.id)
+        continue
       }
       const vt = { id: newOccId(), schemaElementId: rm.vtId, x: owner.x + 160, y: owner.y, refModeOwnerOccId: owner.id }
       const ft = { id: newOccId(), schemaElementId: rm.factId, x: owner.x + 80, y: owner.y, refModeOwnerOccId: owner.id,

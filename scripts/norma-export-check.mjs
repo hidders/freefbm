@@ -297,6 +297,7 @@ async function runInPage({ name, content, isOrm }) {
         const best = cands.map(x => ({ x, d: Math.hypot(x.x - o.x, x.y - o.y) })).sort((p, q) => p.d - q.d)[0]
         occs++
         if (!best) { diffs.push(`diagram ${d.name}: ${el.name ?? el.id} is not drawn`); continue }
+        if (expanded.has(o.id) !== (db.expandedRefModeOccs ?? []).includes(best.x.id)) diffs.push(`diagram ${d.name}: ${el.name ?? el.id} reference mode ${expanded.has(o.id) ? 'collapsed' : 'expanded'}`)
         if (best.d > 1.01) { moved++; worst.push({ what: `${d.name}: ${el.name ?? el.id}`, d: best.d }) }
         // moved labels come back within 6 px: the importer keeps a label that
         // reaches up to 6 px into its shape beside it, at no gap (normaLabels.js)
@@ -310,6 +311,7 @@ async function runInPage({ name, content, isOrm }) {
             if (r.valueRange?.length) lab(`value range ${ri + 1}`, o.valueRangeOffsets?.[ri], best.x.valueRangeOffsets?.[ri])
           })
           if (el.objectified) lab('name', o.nameOffset, best.x.nameOffset)
+          if ((o.roleNamesShown === false) !== (best.x.roleNamesShown === false)) diffs.push(`diagram ${d.name}: ${el.id} role names ${best.x.roleNamesShown === false ? 'hidden' : 'shown'}`)
         } else if (el.kind === 'value' && el.valueRange?.length) lab('value range', o.valueRangeOffset ?? el.valueRangeOffset, best.x.valueRangeOffset)
         if (el.roles) {
           const ro = (o.roleOrder ?? el.roleOrder ?? []).join(), rb = (best.x.roleOrder ?? []).join()
