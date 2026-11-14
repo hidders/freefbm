@@ -1446,6 +1446,23 @@ export function createElementSlice(set, get) {
       })
     },
 
+    // The uniqueness constraint that identifies an objectified fact type
+    // (fact.objectifiedIdentifier, its role indices), drawn as a preferred
+    // identifier; toggled off when it is already that one.
+    setObjectifiedIdentifier(factId, roleIndices) {
+      const key = JSON.stringify([...roleIndices].sort((a, b) => a - b))
+      set(s => ({
+        facts: s.facts.map(f => {
+          if (f.id !== factId) return f
+          const cur = f.objectifiedIdentifier
+          const on = Array.isArray(cur) && JSON.stringify([...cur].sort((a, b) => a - b)) === key
+          return { ...f, objectifiedIdentifier: on ? null : [...roleIndices],
+            deonticUniqueness: on ? f.deonticUniqueness : (f.deonticUniqueness || []).filter(du => JSON.stringify([...du].sort((a, b) => a - b)) !== key) }
+        }),
+        isDirty: true,
+      }))
+    },
+
     // Toggle preferred-identifier status by uniqueness array index.
     togglePreferredUniqueness(factId, uniquenessIndex) {
       const fact = get().facts.find(f => f.id === factId)

@@ -1322,6 +1322,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   const effBarMargin_h = rakeZone_h > 0 ? 0 : BAR_MARGIN
   const effBarMargin_v = rakeZone_v > 0 ? 0 : BAR_MARGIN
   const preferredKeys = new Set((fact.preferredUniqueness || []).map(pu => JSON.stringify([...pu].sort((a, b) => a - b))))
+  // The uniqueness constraint that identifies the objectified fact type is
+  // drawn as a preferred identifier too, as in NORMA.
+  if (fact.objectified && Array.isArray(fact.objectifiedIdentifier)) preferredKeys.add(JSON.stringify([...fact.objectifiedIdentifier].sort((a, b) => a - b)))
   // Deontic uniqueness constraints are drawn in blue with a small circle at
   // the start of the bar, as in NORMA.
   const deonticKeys = new Set((fact.deonticUniqueness || []).map(du => JSON.stringify([...du].sort((a, b) => a - b))))

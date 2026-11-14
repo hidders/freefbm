@@ -257,7 +257,7 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
         const ranges = []
         let from = 0
         for (const r of nf.roles) { const n = keyOf(r.objectTypeId).length; ranges.push([from, from + n]); from += n }
-        const uc = [...(nf.preferredUniqueness ?? []), ...(nf.uniqueness ?? []).map(u => u.roles ?? [])].filter(u => u.length).sort((a, b) => a.length - b.length)[0]
+        const uc = [...(nf.objectifiedIdentifier ? [nf.objectifiedIdentifier] : []), ...(nf.preferredUniqueness ?? []), ...(nf.uniqueness ?? []).map(u => u.roles ?? [])].filter(u => u.length).sort((a, b) => a.length - b.length)[0]
         if (uc && uc.length < nf.roles.length) {
           t.pk = uc.flatMap(i => nat.slice(...ranges[i]).map(c => c.name))
           t.uniques.push(nat.map(c => c.name))

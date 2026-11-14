@@ -410,6 +410,8 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     })
   }, [store, setContextMenu])
 
+  const identifiesObjectified = (fact, roles) => Array.isArray(fact.objectifiedIdentifier)
+    && JSON.stringify([...fact.objectifiedIdentifier].sort((a, b) => a - b)) === JSON.stringify([...roles].sort((a, b) => a - b))
   const handleUniquenessBarContextMenu = useCallback((fact, ui, e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -437,8 +439,11 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
       items: [
         { label: 'Is preferred', checked: isPreferred, disabled: piDisabled, title: piTitle,
           action: () => store.setPreferredUniqueness(fact.id, uRoles) },
+        ...(fact.objectified ? [{ label: `Identifies ${fact.objectifiedName || 'the objectified fact type'}`,
+          checked: identifiesObjectified(fact, uRoles),
+          action: () => store.setObjectifiedIdentifier(fact.id, uRoles) }] : []),
         deonticItem(isDeonticUniqueness(fact, uRoles), v => store.setUniquenessDeontic(fact.id, uRoles, v),
-          isPreferred ? 'A preferred identifier is always alethic' : null),
+          isPreferred || identifiesObjectified(fact, uRoles) ? 'A preferred identifier is always alethic' : null),
         '---',
         { label: 'Change into internal frequency constraint',
           action: () => store.convertUniquenessToFrequency(fact.id, uRoles),

@@ -889,12 +889,12 @@ export function importNorma(xmlText) {
         const same = f.uniqueness.find(u => u.roles.join() === roles.join())
         if (same) ucById.set(id, same)
         else { const uc = { id, roles }; f.uniqueness.push(uc); ucById.set(id, uc) }
-        // A preferred identifier for the player of the one role left over. NORMA
-        // also marks the uniqueness that identifies an objectified fact type
-        // itself; FreeFBM takes that from the fact type's uniqueness.
+        // A preferred identifier for the player of the one role left over, or
+        // the uniqueness that identifies the objectified fact type itself.
         const pif = playerId.get(attr(kid(c, 'PreferredIdentifierFor'), 'ref'))
         const rest = f.roles.filter((_, ri) => !roles.includes(ri))
-        if (pif && rest.length === 1 && rest[0].objectTypeId === pif) f.preferredUniqueness.push(roles)
+        if (pif && pif === f.id) f.objectifiedIdentifier = roles
+        else if (pif && rest.length === 1 && rest[0].objectTypeId === pif) f.preferredUniqueness.push(roles)
         if (attr(c, 'Modality') === 'Deontic') f.deonticUniqueness = [...(f.deonticUniqueness ?? []), roles]
         continue
       }
