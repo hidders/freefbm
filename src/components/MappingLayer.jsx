@@ -8,6 +8,7 @@ import { entityBounds } from './ObjectTypeNode'
 import { factBounds } from './FactTypeNode'
 import { mappingErdBoxes } from './ErdView'
 import { ruleElements, checkRule, sideContext, sideTokens, tokensText, SIDES, sideSchemaId } from '../mapping/mapping.js'
+import { DIAGRAM_FONT } from '../diagram/diagramFont.js'
 
 // ── Mapping diagrams ────────────────────────────────────────────────────────
 // A mapping diagram (diagram.mappingId, workbench step 7b) shows elements of
@@ -280,7 +281,7 @@ export function MappingRules({ onRuleContextMenu = null }) {
                 fill={sel ? '#fbeee0' : '#fffdf8'} stroke={open || sel ? 'var(--accent)' : border} strokeWidth={open || sel ? 2.2 : hot ? 1.8 : 1.3}
                 style={{ filter: hot ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.25))' : 'none' }} />
               <text x={-w / 2 + 10} y={0.5} dominantBaseline="middle" fontSize={12} fill="var(--map-rule)"
-                fontFamily="'Segoe UI', Helvetica, Arial, sans-serif" style={{ userSelect: 'none' }}>
+                fontFamily={DIAGRAM_FONT} style={{ userSelect: 'none' }}>
                 <tspan fill="var(--map-source)" fontWeight={700}>{isView ? '⇒' : '⟺'}</tspan>
                 <tspan dx={5}>{label}</tspan>
               </text>

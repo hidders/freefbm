@@ -41,8 +41,9 @@ import { VALUE_KINDS, valueKindName } from '../utils/datatypeValues.js'
 import { normaTemporal } from './normaTemporal.js'
 import { placeLabel, factLabelBox, readingLabelSize, rangeLabelSize, nameLabelSize, objectTypeLabelBox,
   roleAnchor, nameAnchor } from './normaLabels.js'
+import { PX_PER_INCH } from '../diagram/normaGeometry.js'
 
-const SCALE = 200   // pixels per inch
+const SCALE = PX_PER_INCH   // pixels per inch (src/diagram/normaGeometry.js)
 
 const ORM = 'http://schemas.neumont.edu/ORM/2006-04/ORMCore'
 

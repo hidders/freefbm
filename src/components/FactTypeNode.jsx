@@ -10,20 +10,17 @@ import { findCompositePI } from '../utils/refMode'
 import { queryElements } from '../logic/query.js'
 import { preferredReadings } from '../store/readings.js'
 import { groupStyle } from '../utils/groups.js'
+import { DIAGRAM_FONT, measureDiagramText } from '../diagram/diagramFont.js'
 
 const VR_DEFAULT_OFFSET = { dx: 0, dy: -50 }
-const VR_FONT      = "'Segoe UI', Helvetica, Arial, sans-serif"
+const VR_FONT      = DIAGRAM_FONT
 const VR_FONT_SIZE = 13
 const IF_FONT_SIZE = 13
 const VR_PAD_X     = 3   // horizontal margin inside text box
 const VR_PAD_Y     = 3   // vertical margin inside text box
 
-let _vrCanvas = null
 function measureVrText(text) {
-  if (!_vrCanvas) _vrCanvas = document.createElement('canvas')
-  const ctx = _vrCanvas.getContext('2d')
-  ctx.font = `${VR_FONT_SIZE}px ${VR_FONT}`
-  return ctx.measureText(text).width
+  return measureDiagramText(text, VR_FONT_SIZE)
 }
 
 const NESTED_READING_FONT_SIZE = 13
@@ -31,12 +28,8 @@ const NESTED_READING_LINE_H    = 18   // font + line margin
 const NESTED_READING_GAP       = 4    // gap between role boxes (or bars) and reading
 const NESTED_READING_PAD_BELOW = 4    // gap between reading and bottom of outer box
 
-let _readingCanvas = null
 function measureNestedReadingText(text) {
-  if (!_readingCanvas) _readingCanvas = document.createElement('canvas')
-  const ctx = _readingCanvas.getContext('2d')
-  ctx.font = `${NESTED_READING_FONT_SIZE}px ${VR_FONT}`
-  return ctx.measureText(text).width
+  return measureDiagramText(text, NESTED_READING_FONT_SIZE)
 }
 
 // Return the point on the text-box border closest to (fromX, fromY)
@@ -310,12 +303,8 @@ export function makeImplicitLinkFact(parentFact, implicitLink) {
 const IF_CIRCLE_R = 8    // radius of internal-frequency constraint circle (matches external constraint size)
 const IF_PAD_X    = 5    // horizontal padding inside IF stadium when range text is shown
 
-let _ifCanvas = null
 function measureIfText(text) {
-  if (!_ifCanvas) _ifCanvas = document.createElement('canvas')
-  const ctx = _ifCanvas.getContext('2d')
-  ctx.font = `${IF_FONT_SIZE}px ${VR_FONT}`
-  return ctx.measureText(text).width
+  return measureDiagramText(text, IF_FONT_SIZE)
 }
 
 /** Half-width of the IF shape: circle (IF_CIRCLE_R) when no label, stadium when label present. */
@@ -1302,7 +1291,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   const ifItems = fact.internalFrequency || []
 
   const INSET = 2
-  const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
+  const FONT = DIAGRAM_FONT
   const barsBelow = !!fact.uniquenessBelow
   // Compute which sides have external-constraint rakes so bars can be shifted only when needed.
   // The zone grows with rake count so the innermost bar always clears the outermost rake.
@@ -1548,10 +1537,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
     const AUTO_DX = (() => {
       if (!isVertical) return 0
-      if (!_vrCanvas) _vrCanvas = document.createElement('canvas')
-      const _ctx = _vrCanvas.getContext('2d')
-      _ctx.font = `14px ${VR_FONT}`
-      const tw = _ctx.measureText(text).width
+      const tw = measureDiagramText(text, 14)
       if (fact.objectified) {
         const bounds = nestedFactBounds(fact, nestedRakePad)
         return fact.readingAbove

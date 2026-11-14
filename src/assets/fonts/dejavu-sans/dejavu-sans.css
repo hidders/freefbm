@@ -1,0 +1,17 @@
+/* DejaVu Sans, scaled to about Tahoma's widths (see README.md). */
+@font-face {
+  font-family: 'FreeFBM DejaVu Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  size-adjust: 86.9%;
+  src: url('./dejavu-sans-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'FreeFBM DejaVu Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  size-adjust: 88.9%;
+  src: url('./dejavu-sans-latin-700-normal.woff2') format('woff2');
+}

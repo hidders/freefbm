@@ -1,0 +1,5 @@
+/* Fonts for diagram text (src/diagram/diagramFont.js). Wine Tahoma is under
+   the LGPL and can be left out by removing its import; DejaVu Sans then takes
+   its place. */
+@import './wine-tahoma/wine-tahoma.css';
+@import './dejavu-sans/dejavu-sans.css';

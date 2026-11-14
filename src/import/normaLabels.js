@@ -10,16 +10,10 @@
 
 import { nestedFactBounds, factBounds, getDisplayReading, roleCenter } from '../components/FactTypeNode.jsx'
 import { formatValueRange, formatCardinalityRange } from '../components/ObjectTypeNode.jsx'
+import { measureDiagramText } from '../diagram/diagramFont.js'
 
-const FONT = "'Segoe UI', Helvetica, Arial, sans-serif"
-let canvas = null
 function textWidth(text, size) {
-  try {
-    if (!canvas && typeof document !== 'undefined') canvas = document.createElement('canvas')
-    const ctx = canvas?.getContext('2d')
-    if (ctx) { ctx.font = `${size}px ${FONT}`; return ctx.measureText(text).width }
-  } catch { /* no canvas: estimate */ }
-  return text.length * size * 0.55
+  try { return measureDiagramText(text, size) } catch { return text.length * size * 0.55 }
 }
 
 const TOUCH = 6   // px a label may reach into its shape and still count as beside it
