@@ -36,6 +36,28 @@ function resolveCssVars(str, cssStyle) {
   })
 }
 
+// The page's stylesheet does not go into the PDF, so shapes styled only by
+// CSS rules (the invisible hover rings, CSS-coloured fills) would fall back
+// to SVG's default black fill. Copy each element's computed paint onto its
+// clone instead.
+const PAINT = ['fill', 'stroke', 'stroke-width', 'stroke-dasharray', 'stroke-linecap', 'stroke-linejoin',
+  'opacity', 'fill-opacity', 'stroke-opacity', 'display', 'visibility',
+  'font-family', 'font-size', 'font-weight', 'font-style']
+function inlineComputedPaint(orig, clone) {
+  const a = [orig, ...orig.querySelectorAll('*')]
+  const b = [clone, ...clone.querySelectorAll('*')]
+  if (a.length !== b.length) return
+  for (let i = 0; i < a.length; i++) {
+    if (!(a[i] instanceof SVGElement) || a[i] instanceof SVGForeignObjectElement) continue
+    const cs = getComputedStyle(a[i])
+    const style = PAINT.map(prop => {
+      const v = cs.getPropertyValue(prop)
+      return v ? `${prop}:${v}` : null
+    }).filter(Boolean).join(';')
+    b[i].setAttribute('style', [b[i].getAttribute('style'), style].filter(Boolean).join(';'))
+  }
+}
+
 export async function triggerPdfExport(store) {
   if (!window.electronAPI) return
 
@@ -81,6 +103,7 @@ export async function triggerPdfExport(store) {
   if (!diagramGroup) return
   const groupClone = diagramGroup.cloneNode(true)
   groupClone.removeAttribute('transform')
+  inlineComputedPaint(diagramGroup, groupClone)
   // Remove inline text-editing inputs (foreignObject)
   groupClone.querySelectorAll('foreignObject').forEach(el => el.remove())
   const groupStr = resolveCssVars(serializer.serializeToString(groupClone), cssStyle)
