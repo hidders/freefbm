@@ -7,6 +7,7 @@ import { queryElements } from '../logic/query.js'
 import { groupStyle } from '../utils/groups.js'
 import { DIAGRAM_FONT, measureDiagramText } from '../diagram/diagramFont.js'
 import { NORMA, px, pt } from '../diagram/normaGeometry.js'
+import { useLabelNudge, sameRangeDesc } from '../hooks/useLabelNudge.js'
 
 // Returns the ref-mode label (e.g. ".code") to display inside the entity rect,
 // or null when the entity has no ref mode or is expanded in the active diagram.
@@ -329,6 +330,23 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
   }, [editingRef, commitRefEdit])
 
   const { w, h } = computeOtSize(ot, editing ? draft : undefined)
+
+  // Arrow keys move this occurrence's selected value or cardinality range
+  // from where it is drawn.
+  const nudgeRef = useRef(null)
+  nudgeRef.current = (s, dx, dy) => {
+    const write = (key, off) => {
+      const next = { dx: off.dx + dx, dy: off.dy + dy }
+      if (occurrenceId) s.updateObjectTypeLayout(occurrenceId, { [key]: next })
+      else s.updateObjectType(ot.id, { [key]: next })
+    }
+    const vrTarget = s.selectedValueRange && valueRangeTarget(ot, refValueRole)
+    const vr = vrTarget && formatValueRange(vrTarget.range)
+    if (vr && sameRangeDesc(vrTarget.desc, s.selectedValueRange)) write('valueRangeOffset', ot.valueRangeOffset ?? defaultRangeOffset(w, h, vr))
+    const cr = s.selectedCardinalityRange?.otId === ot.id && formatCardinalityRange(ot.cardinalityRange)
+    if (cr) write('cardinalityRangeOffset', ot.cardinalityRangeOffset ?? defaultRangeOffset(w, h, cr, true))
+  }
+  useLabelNudge(nudgeRef)
   const refLabel = store.showReferenceMode ? getEntityRefLabel(ot) : null
   const hasRef = !!refLabel
   const refModeText = hasRef ? `(${refLabel})` : null

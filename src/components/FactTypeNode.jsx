@@ -12,6 +12,7 @@ import { preferredReadings } from '../store/readings.js'
 import { groupStyle } from '../utils/groups.js'
 import { DIAGRAM_FONT, measureDiagramText } from '../diagram/diagramFont.js'
 import { NORMA, px, pt } from '../diagram/normaGeometry.js'
+import { useLabelNudge } from '../hooks/useLabelNudge.js'
 
 const VR_DEFAULT_OFFSET = { dx: 0, dy: -50 }
 const VR_FONT      = DIAGRAM_FONT
@@ -1772,6 +1773,37 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   // Inside an objectified fact type's outline the old places stay.
   const VR_DEFAULT = isVertical ? { dx: -50, dy: 0 } : VR_DEFAULT_OFFSET
   const CR_DEFAULT = isVertical ? { dx: 50, dy: 0 } : { dx: 0, dy: 50 }
+
+  // Arrow keys move a selected range or frequency marker of this fact type
+  // from where it is drawn (useLabelNudge).
+  const nudgeRef = useRef(null)
+  nudgeRef.current = (s, dx, dy) => {
+    if (fact._implicit) return
+    const by = (off) => ({ dx: off.dx + dx, dy: off.dy + dy })
+    const si = s.selectedInternalFrequency
+    if (si?.factId === fact.id) {
+      const item = ifItems.find(i => i.id === si.ifId)
+      if (item && item.x != null && item.y != null) s.updateInternalFrequency(fact.id, item.id, { x: item.x + dx, y: item.y + dy })
+    }
+    const sv = s.selectedValueRange, sc = s.selectedCardinalityRange
+    if (sv?.factId === fact.id && sv.roleIndex != null) {
+      const ri = sv.roleIndex, role = fact.roles[ri], vr = formatValueRange(role?.valueRange)
+      if (vr) s.updateValueRangeOffset(fact.id, ri, by(fact.valueRangeOffsets?.[ri] ?? role.valueRangeOffset ?? (fact.objectified ? VR_DEFAULT : roleRangeOffset(vr, false))))
+    }
+    if (sc?.factId === fact.id && sc.roleIndex != null) {
+      const ri = sc.roleIndex, role = fact.roles[ri], cr = formatCardinalityRange(role?.cardinalityRange)
+      if (cr) s.updateCardinalityRangeOffset(fact.id, ri, by(fact.cardinalityRangeOffsets?.[ri] ?? role.cardinalityRangeOffset ?? (fact.objectified ? CR_DEFAULT : roleRangeOffset(cr, true))))
+    }
+    if (fact.objectified && (sv?.nestedFactId === fact.id || sc?.nestedFactId === fact.id)) {
+      const nb = nestedFactBounds(fact, nestedRakePad)
+      const W = nb.right - nb.left, H = nb.bottom - nb.top
+      const vr = sv?.nestedFactId === fact.id && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none' && formatValueRange(fact.valueRange)
+      if (vr) s.updateFact(fact.id, { valueRangeOffset: by(fact.valueRangeOffset ?? defaultRangeOffset(W, H, vr)) })
+      const cr = sc?.nestedFactId === fact.id && formatCardinalityRange(fact.cardinalityRange)
+      if (cr) s.updateFact(fact.id, { cardinalityRangeOffset: by(fact.cardinalityRangeOffset ?? defaultRangeOffset(W, H, cr, true)) })
+    }
+  }
+  useLabelNudge(nudgeRef)
 
   function vrConnPoint(ri, textX, textY) {
     const dro = displayRoleOrder(fact)
