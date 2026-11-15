@@ -1736,6 +1736,130 @@ function RoleInspector({ fact, roleIndex, mandatorySelected = false }) {
   )
 }
 
+// ── Construction box ─────────────────────────────────────────────────────────
+// The instructions shown at the top of a constraint's Inspector while its roles
+// are being chosen, the same for every kind of constraint: what is being picked,
+// what to click, a refused click, and Done / Cancel (Enter / Esc).
+export function ConstructionBox({ title, text, warning, onDone, onCancel, doneDisabled }) {
+  const btn = { padding: '2px 8px', fontSize: 10, background: 'rgba(255,255,255,0.2)',
+    border: '1px solid rgba(255,255,255,0.4)', borderRadius: 3, cursor: 'pointer', color: '#fff' }
+  return (
+    <div data-construction-box style={{ background: 'var(--accent)', color: '#fff', borderRadius: 4,
+      padding: '7px 10px', marginBottom: 10, fontSize: 11 }}>
+      <div style={{ fontWeight: 600, marginBottom: 3 }}>{title}</div>
+      {warning && (
+        <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 3,
+          padding: '3px 6px', marginBottom: 3, fontWeight: 600 }}>
+          ⚠ {warning}
+        </div>
+      )}
+      <div style={{ opacity: 0.85 }}>{text}</div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+        <button onClick={onDone} disabled={doneDisabled} title="Enter"
+          style={{ ...btn, opacity: doneDisabled ? 0.5 : 1, cursor: doneDisabled ? 'default' : 'pointer' }}>
+          Done
+        </button>
+        <button onClick={onCancel} title="Esc" style={btn}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+// The roles of a fact type as checkboxes, for a constraint being built.
+function ConstructionRoles({ fact, roles, onToggle }) {
+  const store = useScopedStore()
+  const otMap     = Object.fromEntries(store.objectTypes.map(o => [o.id, o]))
+  const nestedMap = Object.fromEntries(store.facts.filter(f => f.objectified).map(f => [f.id, f]))
+  return (
+    <Row>
+      <Label>Roles covered</Label>
+      {fact.roles.map((role, ri) => {
+        const ot     = otMap[role.objectTypeId]
+        const nf     = !ot ? nestedMap[role.objectTypeId] : null
+        const player = ot ? ot.name : nf ? (nf.objectifiedName || '(unnamed)') : null
+        return (
+          <Checkbox key={ri}
+            label={`Role ${ri + 1}${player ? ` · ${player}` : ''}`}
+            checked={roles.includes(ri)}
+            onChange={() => onToggle(ri)}/>
+        )
+      })}
+    </Row>
+  )
+}
+
+// ── Internal uniqueness constraint being built ───────────────────────────────
+// Shown from the first role picked; modality and preferred identifier can be
+// set at once and are applied on Done.
+function UniquenessConstructionInspector({ fact, uc }) {
+  const store = useScopedStore()
+  const roles = uc.roleIndices
+  const editing = uc.uIndex != null
+  const canBePreferred = roles.length === fact.arity - 1
+  const reading = getDisplayReading(fact) || null
+  const done = () => store.commitUniquenessConstruction()
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Internal uniqueness</InspectorTitle>
+      <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 10 }}>{reading ?? 'Fact type'}</div>
+      <ConstructionBox
+        title={editing ? 'Change the roles of the uniqueness constraint' : 'Choose the roles of the uniqueness constraint'}
+        text="Click role boxes to add or remove them · Click the bar or press Enter when done · Esc to cancel"
+        warning={editing && roles.length === 0 ? 'With no roles the constraint is deleted' : null}
+        onDone={done}
+        onCancel={() => { store.abandonUniquenessConstruction(); store.setTool('select') }}/>
+      <ConstructionRoles fact={fact} roles={roles} onToggle={ri => store.toggleUniquenessConstructionRole(ri)}/>
+      <Row>
+        <Label>Identification</Label>
+        <Checkbox label="Preferred identifier"
+          checked={!!uc.preferred && canBePreferred}
+          disabled={!canBePreferred}
+          title={canBePreferred ? undefined : `A preferred identifier covers ${fact.arity - 1} role${fact.arity === 2 ? '' : 's'}`}
+          onChange={v => store.setUniquenessConstruction({ preferred: v })}/>
+      </Row>
+      <Row>
+        <Label>Modality</Label>
+        <DeonticCheckbox checked={!!uc.deontic && !(uc.preferred && canBePreferred)}
+          disabled={!!uc.preferred && canBePreferred}
+          title={uc.preferred && canBePreferred ? 'A preferred identifier is always alethic' : undefined}
+          onChange={v => store.setUniquenessConstruction({ deontic: v })}/>
+      </Row>
+    </div>
+  )
+}
+
+// ── Internal frequency constraint being built ────────────────────────────────
+// The range is set here (no popup); Done commits it, possibly still empty.
+function FrequencyConstructionInspector({ fact, fc }) {
+  const store = useScopedStore()
+  const reading = getDisplayReading(fact) || null
+  const editing = fc.ifId != null
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <InspectorTitle>Frequency range</InspectorTitle>
+      <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 10 }}>{reading ?? 'Fact type'}</div>
+      <ConstructionBox
+        title={editing ? 'Change the roles of the frequency constraint' : 'Choose the roles of the frequency constraint'}
+        text="Click role boxes to add or remove them · Set the range below, now or later · Click the constraint or press Enter when done · Esc to cancel"
+        warning={fc.warning ?? (editing && fc.roleIndices.length === 0 ? 'With no roles the constraint is deleted' : null)}
+        onDone={() => store.finishFrequencyConstruction()}
+        onCancel={() => { store.abandonFrequencyConstruction(); store.setTool('select') }}/>
+      <ConstructionRoles fact={fact} roles={fc.roleIndices}
+        onToggle={ri => { store.toggleFrequencyConstructionRole(ri); store.setFrequencyConstruction({ warning: null }) }}/>
+      <Row>
+        <Label>Frequency range</Label>
+        <ValueRangeEditor positiveIntegers range={fc.range ?? []}
+          onChange={vr => store.setFrequencyConstruction({ range: vr })}/>
+      </Row>
+      <Row>
+        <Label>Modality</Label>
+        <DeonticCheckbox checked={!!fc.deontic}
+          onChange={v => store.setFrequencyConstruction({ deontic: v })}/>
+      </Row>
+    </div>
+  )
+}
+
 // ── Internal Uniqueness Bar inspector ────────────────────────────────────────
 function UniquenessBarInspector({ fact, uIndex }) {
   const store = useScopedStore()
@@ -4060,6 +4184,16 @@ function ExternalConstraintInspector({ c }) {
   return (
     <div style={{ marginBottom: 18 }}>
       <InspectorTitle>{EXTERNAL_CONSTRAINT_TITLES[c.constraintType] || 'Constraint'}</InspectorTitle>
+      {/* Construction box */}
+      {gc && (
+        <ConstructionBox
+          title={gc.openEnded ? `Select for ${currentSequenceLabel}, position ${stepNum}` : `Select for ${currentSequenceLabel} (${stepNum}/${stepTotal})`}
+          text={`Click a ${c.constraintType === 'valueComparison' ? 'value role' : 'role box or subtype link'} on the canvas · Click the constraint or press Enter when done · Esc to cancel`}
+          warning={gc.warning}
+          onDone={() => store.finishSequenceConstruction()}
+          onCancel={() => store.abandonSequenceConstruction()}/>
+      )}
+
       <ImportNotesSection kind="constraints" el={c}/>
       <ValidationErrorStrip elementId={c.id} store={store}/>
 
@@ -4240,28 +4374,6 @@ function ExternalConstraintInspector({ c }) {
           </Row>
         )
       })()}
-
-      {/* Construction banner */}
-      {gc && (
-        <div style={{ background: 'var(--accent)', color: '#fff', borderRadius: 4,
-          padding: '7px 10px', marginBottom: 10, fontSize: 11 }}>
-          <div style={{ fontWeight: 600, marginBottom: 3 }}>
-            Select for {currentSequenceLabel} ({stepNum}/{stepTotal})
-          </div>
-          {gc.warning
-            ? <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 3,
-                padding: '3px 6px', marginBottom: 3, fontWeight: 600 }}>
-                ⚠ {gc.warning}
-              </div>
-            : <div style={{ opacity: 0.85 }}>Click a role box or subtype link on the canvas · Enter or click constraint to commit.</div>
-          }
-          <button onClick={() => store.abandonSequenceConstruction()}
-            style={{ marginTop: 6, padding: '2px 8px', fontSize: 10, background: 'rgba(255,255,255,0.2)',
-              border: '1px solid rgba(255,255,255,0.4)', borderRadius: 3, cursor: 'pointer', color: '#fff' }}>
-            Cancel
-          </button>
-        </div>
-      )}
 
       <label style={{ fontSize: 10, color: 'var(--ink-muted)', letterSpacing: '0.08em',
         textTransform: 'uppercase', marginBottom: 3, display: 'block' }}>Sequences</label>
@@ -4775,7 +4887,16 @@ export default function Inspector() {
 
   // Resolve internal constraint selections to the appropriate inspector content
   let internalConstraintContent = null
-  if (!selectedId && !roleFact) {
+  // A constraint being built shows its own Inspector from the first role picked.
+  const ucBuild = store.uniquenessConstruction
+  const fcBuild = store.frequencyConstruction?.stage === 2 ? store.frequencyConstruction : null
+  const buildFact = (ucBuild || fcBuild) ? store.facts.find(f => f.id === (ucBuild ?? fcBuild).factId) : null
+  const constructionContent = buildFact
+    ? ucBuild ? <UniquenessConstructionInspector fact={buildFact} uc={ucBuild}/>
+              : <FrequencyConstructionInspector fact={buildFact} fc={fcBuild}/>
+    : null
+  if (constructionContent) internalConstraintContent = constructionContent
+  else if (!selectedId && !roleFact) {
     if (selectedUniqueness) {
       const f = store.facts.find(f => f.id === selectedUniqueness.factId)
       if (f) {
@@ -4850,7 +4971,7 @@ export default function Inspector() {
     <Splitter orientation="v" dragging={resizing} onMouseDown={onResizeMouseDown} />
     <div style={{ flex: 1, minWidth: 0, position: 'relative', overflowY: 'auto', padding: 14 }}>
 
-      {rmObj ? (
+      {constructionContent ? constructionContent : rmObj ? (
         <RelationalInspector schemaId={rmSchemaId} obj={rmObj}
           tableRules={(() => { const e = store.objectTypes.find(o => o.id === rmObj.entityId); return e ? <TableRulesSection ot={e} store={store}/> : null })()} />
       ) : <>

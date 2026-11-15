@@ -441,9 +441,9 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     }
 
     if (store.sequenceConstruction) {
-      if (refValueRole) { store.collectSequenceMember(refValueRole); return }
-      if (isVcConstruction) return
-      store.select(ot.id, ot.kind, occurrenceId ?? null)
+      // An entity type with a collapsed reference mode stands for its value
+      // role; nothing else is picked here.
+      if (refValueRole) store.collectSequenceMember(refValueRole)
       return
     }
     if (e.shiftKey) {
@@ -474,7 +474,9 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     : ot.kind === 'value' ? VALUE_DASH : 'none'
   const inRuleHighlight = !!store.ruleHighlight?.typeIds.includes(ot.id)
   const fill    = isConstraintTarget ? '#1a7fd4' : inQueryHighlight ? 'var(--fill-query-in)'
-    : inRuleHighlight ? '#fde3c8' : gs?.fill ?? '#ffffff'
+    : inRuleHighlight ? '#fde3c8'
+    : store.sequenceConstruction && refValueRole ? 'var(--pick-candidate)'
+    : gs?.fill ?? '#ffffff'
 
   // Text vertical positions
   // Single line: name centred in box
@@ -485,7 +487,8 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
   return (
   <>
     <g
-      className={store.queryEditDraft ? 'selectable-group qe-selectable' : 'selectable-group'}
+      className={store.queryEditDraft ? 'selectable-group qe-selectable'
+        : store.sequenceConstruction && refValueRole ? 'selectable-group pick-candidate' : 'selectable-group'}
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
       onContextMenu={e => onContextMenu(e, occurrenceId ?? null)}

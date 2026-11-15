@@ -26,6 +26,9 @@ import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { groupStyle } from '../utils/groups.js'
 import { DIAGRAM_FONT } from '../diagram/diagramFont.js'
 
+// Tools whose clicks pick roles (or a constraint) for a constraint.
+const PICKING_TOOLS = new Set(['addInternalUniqueness', 'addInternalFrequency', 'toggleMandatory', 'connectConstraint'])
+
 const SNAP = 10  // grid snap in world units
 
 function snap(v) { return Math.round(v / SNAP) * SNAP }
@@ -629,6 +632,12 @@ export default function Canvas() {
     }
     return null
   })()
+
+  // Choosing roles (or a constraint) for a constraint: candidates are tinted and
+  // only they get the dashed hover ring (index.css, .picking); the fact type
+  // itself is no click target, so it gets none.
+  const isPicking = !qd && !!(store.uniquenessConstruction || store.frequencyConstruction?.stage === 2
+    || store.sequenceConstruction || PICKING_TOOLS.has(store.tool))
 
   const isFactDimmed  = (f)  => dimMode?.factIds != null && !dimMode.factIds.has(f.id)
   const isOtDimmed    = (ot) => dimMode?.otIds   != null && !dimMode.otIds.has(ot.id)
@@ -1356,7 +1365,7 @@ export default function Canvas() {
       <svg
         ref={svgRef}
         id="orm2-canvas-svg"
-        className={qd ? 'query-edit' : store.tool === 'select' ? 'tool-select' : undefined}
+        className={qd ? 'query-edit' : isPicking ? 'picking' : store.tool === 'select' ? 'tool-select' : undefined}
         tabIndex={0}
         style={{ width: '100%', height: '100%', display: 'block',
                  background: 'var(--bg-diagram)', cursor, outline: 'none' }}
@@ -1558,7 +1567,10 @@ export default function Canvas() {
           <g opacity={(rsIds != null || !!store.noteConnectorDraft || isNotePickMode) ? 0.12 : dimMode?.connectorsDim ? 0.35 : 1} style={(dimMode?.connectorsDim || !!qd) ? { pointerEvents: 'none' } : undefined}>
             <MandatoryDots onContextMenu={handleMandatoryDotContextMenu} queryReachable={queryReachable} queryOriginals={queryOriginals}/>
           </g>
-          <g opacity={(qd || dimMode?.constraintsDim) ? 0.35 : 1} style={(dimMode?.constraintsDim || !!qd) ? { pointerEvents: 'none' } : undefined}>
+          {/* While a sequence is built ConstraintNodes dims the other constraints
+              itself: the one being built stays clickable (Done). */}
+          <g opacity={(qd || (dimMode?.constraintsDim && !store.sequenceConstruction)) ? 0.35 : 1}
+            style={((dimMode?.constraintsDim && !store.sequenceConstruction) || !!qd) ? { pointerEvents: 'none' } : undefined}>
             <ConstraintNodes onDragStart={handleDragStart} mousePos={mousePos}
               onContextMenu={(c, e, cOccId) => handleConstraintContextMenu(c, e, cOccId)}
               noteSubjectIds={isNotePickMode ? new Set() : rsIds}/>

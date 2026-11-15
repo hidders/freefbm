@@ -66,6 +66,8 @@ export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes,
                : store.multiSelectedIds.includes(st.id)))
           : (store.selectedId === st.id || store.multiSelectedIds.includes(st.id))
         const gc = store.sequenceConstruction
+        // Value comparisons take value roles only, not subtype links
+        const gcIsVc = !!gc && store.constraints.find(c => c.id === gc.constraintId)?.constraintType === 'valueComparison'
         const qd = store.queryEditDraft
         const qh = store.queryIndexHighlight
         const selectedConstraint = !qd && (qh || (store.showConstraintQueries && store.selectedKind === 'constraint'))
@@ -99,7 +101,7 @@ export default function SubtypeArrows({ mousePos, onContextMenu, dimAllSubtypes,
 
         return (
           <g key={st.occurrenceKey ?? st.id}
-            className={qd ? undefined : 'selectable-group'}
+            className={qd ? undefined : gc && !gcIsVc ? 'selectable-group pick-candidate' : 'selectable-group'}
             opacity={queryReachable != null
               ? (queryReachable.has(st.id) ? 1 : 0.2)
               : noteSubjectIds != null
