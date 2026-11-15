@@ -2,6 +2,31 @@ import React, { useEffect, useRef, useState } from 'react'
 
 const FONT = 'var(--font-ui)'
 
+// Every menu ends with its remove and delete items, set off by a double line
+// ('==='). An item counts as one when its label starts with Remove or Delete,
+// unless it says removal: false (Remove subject on a note removes a link, not
+// the element). Within that group single lines ('---') stay as given.
+const isRemoval = item => item && typeof item === 'object'
+  && (item.removal ?? /^(Remove|Delete)\b/.test(item.label ?? ''))
+const isSep = item => item === '---' || item === '==='
+export function arrangeMenu(items) {
+  const xs = items.filter(Boolean)
+  let start = xs.length
+  for (let i = xs.length - 1; i >= 0; i--) {
+    if (isRemoval(xs[i])) start = i
+    else if (!isSep(xs[i])) break
+  }
+  const head = xs.slice(0, start), tail = xs.slice(start)
+  while (head.length && isSep(head[head.length - 1])) head.pop()
+  const out = head.length && tail.length ? [...head, '===', ...tail] : [...head, ...tail]
+  // no leading, trailing or doubled separators
+  return out.filter((x, i) => !isSep(x) || (i > 0 && i < out.length - 1 && !isSep(out[i - 1])))
+}
+
+const Separator = ({ double }) => double
+  ? <div style={{ height: 4, borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', margin: '3px 0' }}/>
+  : <div style={{ height: 1, background: 'var(--border-soft)', margin: '3px 0' }}/>
+
 const ITEM_STYLE = {
   display: 'flex', alignItems: 'center', gap: 6,
   width: '100%', textAlign: 'left',
@@ -26,8 +51,8 @@ function MenuPanel({ left, top, items, zIndex, onClose, onSubmenuEnter, onSubmen
       }}
     >
       {items.map((item, i) =>
-        item === '---'
-          ? <div key={i} style={{ height: 1, background: 'var(--border-soft)', margin: '3px 0' }}/>
+        isSep(item)
+          ? <Separator key={i} double={item === '==='}/>
           : item.submenu
             ? (
               <button
@@ -77,7 +102,8 @@ function MenuPanel({ left, top, items, zIndex, onClose, onSubmenuEnter, onSubmen
   )
 }
 
-export default function ContextMenu({ x, y, items, onClose }) {
+export default function ContextMenu({ x, y, items: given, onClose }) {
+  const items = arrangeMenu(given)
   const wrapRef = useRef(null)
   const closeTimerRef = useRef(null)
   const [openSubmenuIdx, setOpenSubmenuIdx] = useState(null)
@@ -87,7 +113,7 @@ export default function ContextMenu({ x, y, items, onClose }) {
   const vh = window.innerHeight
   const estW = 180
   // Separators render at ~7px; regular items at ~26px; plus 8px panel padding
-  const estH = items.reduce((h, item) => h + (item === '---' ? 7 : 26), 8)
+  const estH = items.reduce((h, item) => h + (item === '---' ? 7 : item === '===' ? 10 : 26), 8)
   const left = x + estW > vw ? Math.max(0, vw - estW - 4) : x
   const top  = y + estH <= vh ? y
              : y - estH >= 0  ? y - estH
@@ -161,8 +187,8 @@ export default function ContextMenu({ x, y, items, onClose }) {
           onMouseLeave={scheduleClose}
         >
           {items[openSubmenuIdx].submenu.map((subItem, j) =>
-            subItem === '---'
-              ? <div key={j} style={{ height: 1, background: 'var(--border-soft)', margin: '3px 0' }}/>
+            isSep(subItem)
+              ? <Separator key={j} double={subItem === '==='}/>
               : (
                 <button key={j}
                   disabled={!!subItem.disabled}
