@@ -70,10 +70,23 @@ export function displayRoleOrder(fact) {
 /** Returns the bounding rect of the outer entity box drawn around an objectified fact.
  *  rakeMinPad: optional minimum padding on each side to contain rake heads. */
 // An objectified fact type drawn as an object type (NORMA's Display As
-// Object Type): a box around its name, as an object type's.
+// Object Type): a box around its name, as an object type's, with before the
+// name a small fact type glyph: one box per role, 0.05in by 0.035in each,
+// 0.03in from the left edge and from the name (FactTypeShape.cs,
+// CollapsedRoleBox*). The name is centred between the glyph's field and the
+// right margin.
+const GLYPH_BOX_W = px(0.05), GLYPH_H = px(0.035), GLYPH_GAP = px(0.03)
 export function collapsedObjectificationBox(fact) {
   const refText = fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none' ? fact.objectifiedRefMode : null
-  return otBoxSize(fact.objectifiedName || '', refText)
+  const { w, h } = otBoxSize(fact.objectifiedName || '', refText)
+  const n = Math.max(1, fact.arity ?? fact.roles?.length ?? 2)
+  return { w: w + n * GLYPH_BOX_W + ROLE_STROKE, h }
+}
+// The glyph's left edge and width, and the name's centre, from the box's left.
+export function collapsedGlyphLayout(fact, w) {
+  const n = Math.max(1, fact.arity ?? fact.roles?.length ?? 2)
+  const field = n * GLYPH_BOX_W + ROLE_STROKE + 2 * GLYPH_GAP
+  return { n, x: GLYPH_GAP + ROLE_STROKE / 2, w: n * GLYPH_BOX_W, h: GLYPH_H, textCx: (field + w - 2 * GLYPH_GAP) / 2 }
 }
 
 export function nestedFactBounds(fact, rakeMinPad = {}) {
@@ -1895,6 +1908,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     const { w, h } = collapsedObjectificationBox(fact)
     const col = isFactSelected ? 'var(--accent)' : isDraftFrom ? 'var(--col-subtype)' : gs?.outline ?? 'var(--col-entity)'
     const refText = store.showReferenceMode && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none' ? `(${fact.objectifiedRefMode})` : null
+    const left = fact.x - w / 2
+    const glyph = collapsedGlyphLayout(fact, w)
+    const textX = left + glyph.textCx
     return (
       <g className="selectable-group" onMouseDown={handleMouseDown} onContextMenu={e => onContextMenu(e, occurrenceId ?? null)}
         style={{ cursor: 'grab' }} filter={isFactSelected || isDraftFrom ? 'url(#selectGlow)' : undefined}>
@@ -1902,13 +1918,20 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         <rect data-look="outline" data-occ={occurrenceId} x={fact.x - w / 2} y={fact.y - h / 2} width={w} height={h} rx={OT_RADIUS}
           fill={gs?.fill ?? '#ffffff'} stroke={col} strokeWidth={isFactSelected ? OT_STROKE + 1 : OT_STROKE}
           filter={isShared ? 'url(#sharedGlow)' : undefined}/>
-        <text data-look="name" data-occ={occurrenceId} x={fact.x} y={refText ? fact.y - NAME_LINE / 2 : fact.y}
+        <g data-look="glyph" style={{ pointerEvents: 'none' }} stroke={gs?.text ?? 'var(--dg-text)'} strokeWidth={ROLE_STROKE} fill="none">
+          <rect x={left + glyph.x} y={fact.y - glyph.h / 2} width={glyph.w} height={glyph.h}/>
+          {Array.from({ length: glyph.n - 1 }, (_, i) => {
+            const gx = left + glyph.x + (i + 1) * glyph.w / glyph.n
+            return <line key={i} x1={gx} y1={fact.y - glyph.h / 2} x2={gx} y2={fact.y + glyph.h / 2}/>
+          })}
+        </g>
+        <text data-look="name" data-occ={occurrenceId} x={textX} y={refText ? fact.y - NAME_LINE / 2 : fact.y}
           textAnchor="middle" dominantBaseline="middle" fontSize={OT_SIZE_NAME} fontWeight={700} fontFamily={DIAGRAM_FONT}
           fill={isFactSelected ? 'var(--accent)' : gs?.text ?? 'var(--dg-text)'} style={{ userSelect: 'none' }}>
           {fact.objectifiedName}
         </text>
         {refText && (
-          <text x={fact.x} y={fact.y + NAME_LINE / 2} textAnchor="middle" dominantBaseline="middle" fontSize={OT_SIZE_NAME} fontWeight={700}
+          <text x={textX} y={fact.y + NAME_LINE / 2} textAnchor="middle" dominantBaseline="middle" fontSize={OT_SIZE_NAME} fontWeight={700}
             fontFamily={DIAGRAM_FONT} fill={gs?.text ?? 'var(--dg-text)'} style={{ userSelect: 'none' }}>{refText}</text>
         )}
       </g>

@@ -22,6 +22,7 @@
 import { NORMA, inches } from '../diagram/normaGeometry.js'
 import { readingLabelSize, rangeLabelSize, roleNameLabelSize, nameLabelSize, roleAnchor, nameAnchor, factLabelBox, objectTypeLabelBox } from '../import/normaLabels.js'
 import { otBoxSize } from '../components/ObjectTypeNode.jsx'
+import { collapsedObjectificationBox } from '../components/FactTypeNode.jsx'
 import { findRefMode, refModeLabel } from '../utils/refMode.js'
 import { derivationMark } from '../logic/derivationRule.js'
 import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
@@ -1013,8 +1014,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   function factShape(f, occ, id) {
     // an objectified fact type drawn as an object type: a box around its name
     if (f.objectified && occ.displayAsObjectType) {
-      const refText = f.objectifiedRefMode && f.objectifiedRefMode !== 'none' ? f.objectifiedRefMode : null
-      const { w, h } = otBoxSize(f.objectifiedName || '', refText)
+      const { w, h } = collapsedObjectificationBox({ ...f, arity: f.roles.length })
       return el('ormDiagram:FactTypeShape', { id, IsExpanded: 'true',
         AbsoluteBounds: keptBounds(occ, factShapeKey) ?? boundsAttr(inches(occ.x - w / 2), inches(occ.y - h / 2), inches(w), inches(h)),
         DisplayRoleNames: occ.roleNamesShown === false ? 'Off' : null, DisplayAsObjectType: 'true' }, [el('ormDiagram:Subject', { ref: normaId(f.id) })])
