@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { factDerivationMark } from '../logic/factDerivation.js'
 import { useOrmStore, useOrmStoreIgnoring, subtypeKindOf } from '../store/ormStore'
 import { isFallbackReading } from '../store/viewLanguage.js'
-import { formatValueRange, formatCardinalityRange, formatFrequencyRange, OT_SIZE_NAME, OT_STROKE } from './ObjectTypeNode'
+import { formatValueRange, formatCardinalityRange, formatFrequencyRange, OT_SIZE_NAME, OT_STROKE, OT_RADIUS, otBoxSize } from './ObjectTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { roleAnchor } from '../utils/geometry'
 import { RAKE_TOOTH, RAKE_STAGGER, RAKE_COMFORT, RAKE_BAR_ZONE } from '../constants.js'
@@ -69,7 +69,18 @@ export function displayRoleOrder(fact) {
 
 /** Returns the bounding rect of the outer entity box drawn around an objectified fact.
  *  rakeMinPad: optional minimum padding on each side to contain rake heads. */
+// An objectified fact type drawn as an object type (NORMA's Display As
+// Object Type): a box around its name, as an object type's.
+export function collapsedObjectificationBox(fact) {
+  const refText = fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none' ? fact.objectifiedRefMode : null
+  return otBoxSize(fact.objectifiedName || '', refText)
+}
+
 export function nestedFactBounds(fact, rakeMinPad = {}) {
+  if (fact.displayAsObjectType) {
+    const { w, h } = collapsedObjectificationBox(fact)
+    return { left: fact.x - w / 2, right: fact.x + w / 2, top: fact.y - h / 2, bottom: fact.y + h / 2, cx: fact.x, cy: fact.y }
+  }
   const { top: rT = 0, bottom: rB = 0, left: rL = 0, right: rR = 0,
     rakeZoneOnBarSide = 0, rakeZoneT = 0, rakeZoneB = 0 } = rakeMinPad
   const PAD_X = OBJ_MARGIN_X, PAD_Y = OBJ_MARGIN_Y   // NORMA's margins of an objectified fact type
@@ -256,7 +267,7 @@ export function makeImplicitLinkFact(parentFact, implicitLink) {
     orientation: ilPos?.orientation ?? implicitLink.orientation ?? 'horizontal',
     readingOffsetAbove: ilPos?.readingOffsetAbove ?? implicitLink.readingOffsetAbove ?? null,
     readingOffsetBelow: ilPos?.readingOffsetBelow ?? implicitLink.readingOffsetBelow ?? null,
-    readingAbove: implicitLink.readingAbove ?? false,
+    readingAbove: ilPos?.readingAbove ?? implicitLink.readingAbove ?? false,
     uniquenessBelow: implicitLink.uniquenessBelow ?? false,
     _implicit: true,
     _parentFactId: parentFact.id,
@@ -1877,6 +1888,32 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         )
       })()
   })()
+
+  // Drawn as an object type (NORMA's Display As Object Type): only the box
+  // with the objectified name; its roles are not shown on this diagram.
+  if (fact.objectified && fact.displayAsObjectType) {
+    const { w, h } = collapsedObjectificationBox(fact)
+    const col = isFactSelected ? 'var(--accent)' : isDraftFrom ? 'var(--col-subtype)' : gs?.outline ?? 'var(--col-entity)'
+    const refText = store.showReferenceMode && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none' ? `(${fact.objectifiedRefMode})` : null
+    return (
+      <g className="selectable-group" onMouseDown={handleMouseDown} onContextMenu={e => onContextMenu(e, occurrenceId ?? null)}
+        style={{ cursor: 'grab' }} filter={isFactSelected || isDraftFrom ? 'url(#selectGlow)' : undefined}>
+        <rect className="hover-ring" x={fact.x - w / 2 - 3} y={fact.y - h / 2 - 3} width={w + 6} height={h + 6}/>
+        <rect data-look="outline" data-occ={occurrenceId} x={fact.x - w / 2} y={fact.y - h / 2} width={w} height={h} rx={OT_RADIUS}
+          fill={gs?.fill ?? '#ffffff'} stroke={col} strokeWidth={isFactSelected ? OT_STROKE + 1 : OT_STROKE}
+          filter={isShared ? 'url(#sharedGlow)' : undefined}/>
+        <text data-look="name" data-occ={occurrenceId} x={fact.x} y={refText ? fact.y - NAME_LINE / 2 : fact.y}
+          textAnchor="middle" dominantBaseline="middle" fontSize={OT_SIZE_NAME} fontWeight={700} fontFamily={DIAGRAM_FONT}
+          fill={isFactSelected ? 'var(--accent)' : gs?.text ?? 'var(--dg-text)'} style={{ userSelect: 'none' }}>
+          {fact.objectifiedName}
+        </text>
+        {refText && (
+          <text x={fact.x} y={fact.y + NAME_LINE / 2} textAnchor="middle" dominantBaseline="middle" fontSize={OT_SIZE_NAME} fontWeight={700}
+            fontFamily={DIAGRAM_FONT} fill={gs?.text ?? 'var(--dg-text)'} style={{ userSelect: 'none' }}>{refText}</text>
+        )}
+      </g>
+    )
+  }
 
   return (
   <>

@@ -845,6 +845,12 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         const vOff = occ.valueRangeOffset ?? ot.valueRangeOffset
         if (ot.kind === 'value' && ot.valueRange?.length && vOff)
           rel.push(labelShape('ValueConstraintShape', `${shapeId(occ)}:vr`, occ, { x: vOff.dx, y: vOff.dy }, rangeLabelSize(ot.valueRange), otBox, S, ot.normaValueConstraint?.id ?? normaId(ot.id, 'valueconstraint'), vOff, keptBounds(occ, otShapeKey)))
+        // an entity type's value range is its reference mode role's; NORMA
+        // draws it at the entity type's shape while the mode is collapsed
+        const rmRole = collapsed && factById.get(rm.factId)?.roles[rm.vtRoleIndex]
+        const rmRange = rmRole?.valueRange?.length ? rmRole.valueRange : ot.valueRange
+        if (ot.kind === 'entity' && rmRole && rmRange?.length && vOff)
+          rel.push(labelShape('ValueConstraintShape', `${shapeId(occ)}:vr`, occ, { x: vOff.dx, y: vOff.dy }, rangeLabelSize(rmRange), otBox, S, rmRole.normaValueConstraint?.id ?? normaId(rmRole.id, 'valueconstraint'), vOff, keptBounds(occ, otShapeKey)))
         const cOff = occ.cardinalityRangeOffset ?? ot.cardinalityRangeOffset
         if (ot.cardinalityRange?.length && cOff)
           rel.push(labelShape('CardinalityConstraintShape', `${shapeId(occ)}:cr`, occ, { x: cOff.dx, y: cOff.dy }, rangeLabelSize(ot.cardinalityRange, true), otBox, S, ot.normaCardinality?.id ?? normaId(ot.id, 'cardinality'), cOff, keptBounds(occ, otShapeKey)))
@@ -976,9 +982,23 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     const order = pos?.roleOrder ?? [0, 1]
     const keptId = pos?.normaShape?.id && !usedShapeIds.has(pos.normaShape.id) ? pos.normaShape.id : null
     if (keptId) usedShapeIds.set(keptId, pos)
+    // its reading, where FreeFBM keeps it: the reading order shown and its place
+    const rel = []
+    const rOff = pos ? (pos.readingAbove ? pos.readingOffsetAbove : pos.readingOffsetBelow) : null
+    if (rOff) {
+      const il = F.implicitLinks?.find(x => x.roleIndex === k) ?? {}
+      const rOrder = pos.readingOrder ?? order
+      const g = { arity: 2, roles: [{}, {}], readingParts: il.readingParts ?? ['', 'involves', ''], alternativeReadings: il.alternativeReadings ?? [],
+        roleOrder: order, readingDisplay: 'forward' }
+      const Sabs = { l: (cx - W / 2) * PX, r: (cx + W / 2) * PX, t: (cy - H / 2) * PX, b: (cy + H / 2) * PX }
+      const S = { l: Sabs.l - at.x, r: Sabs.r - at.x, t: Sabs.t - at.y, b: Sabs.b - at.y }
+      rel.push(labelShape('ReadingShape', `${F.id}:il:${k}:reading`, { ...at, normaLabels: pos.normaLabels }, { x: rOff.dx, y: rOff.dy }, readingLabelSize(g), S, S,
+        rOrder[0] === 0 ? L.roOut : L.roIn, rOff, pos && keptBounds(pos, factShapeKey)))
+    }
     return el('ormDiagram:FactTypeShape', { id: keptId ?? normaId(`${d.id}:${F.id}:il:${k}`, 'shape'), IsExpanded: 'true',
       AbsoluteBounds: (pos && keptBounds(pos, factShapeKey)) ?? boundsAttr(cx - W / 2, cy - H / 2, W, H),
       ConstraintDisplayPosition: below ? 'Bottom' : null, DisplayOrientation: vertical ? 'VerticalRotatedRight' : null }, [
+      rel.length && el('ormDiagram:RelativeShapes', {}, rel),
       el('ormDiagram:Subject', { ref: L.fact }),
       order[0] === 0 && el('ormDiagram:RoleDisplayOrder', {}, [el('ormDiagram:Role', { ref: L.role }), el('ormDiagram:Role', { ref: L.proxy })]),
     ])
@@ -991,6 +1011,14 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
 
   // NORMA's fact type shape around role boxes whose middle is the occurrence.
   function factShape(f, occ, id) {
+    // an objectified fact type drawn as an object type: a box around its name
+    if (f.objectified && occ.displayAsObjectType) {
+      const refText = f.objectifiedRefMode && f.objectifiedRefMode !== 'none' ? f.objectifiedRefMode : null
+      const { w, h } = otBoxSize(f.objectifiedName || '', refText)
+      return el('ormDiagram:FactTypeShape', { id, IsExpanded: 'true',
+        AbsoluteBounds: keptBounds(occ, factShapeKey) ?? boundsAttr(inches(occ.x - w / 2), inches(occ.y - h / 2), inches(w), inches(h)),
+        DisplayRoleNames: occ.roleNamesShown === false ? 'Off' : null, DisplayAsObjectType: 'true' }, [el('ormDiagram:Subject', { ref: normaId(f.id) })])
+    }
     const n = Math.max(f.roles.length, 1)
     const vertical = (occ.orientation ?? f.orientation) === 'vertical'
     const below = !!(occ.uniquenessBelow ?? f.uniquenessBelow)
@@ -1120,6 +1148,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   if (joinsLeft.length) leftOut.push(`the join paths of ${joinsLeft.length} constraint${joinsLeft.length === 1 ? '' : 's'}`)
   if (derivedInformal) leftOut.push(`${derivedInformal} derivation rule${derivedInformal === 1 ? '' : 's'} as NORMA paths (kept as informal rules)`)
   const summary = wrap(`FreeFBM: this model was exported from FreeFBM. ${leftOut.length ? `Not in NORMA's form: ${leftOut.join('; ')}. Where it concerns one element, the element's note (NORMA's Notes window) says more, after “FreeFBM:”.` : 'Everything in it is in NORMA\'s form.'}`)
+  let summaryNoteId = null
   // remarks about no element in particular (custom property types) go to the summary
   const general = ffNotes.filter(fn => !fn.targets.length).map(fn => fn.text.replace(/^FreeFBM: /, ''))
   {
@@ -1128,16 +1157,27 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     modelNotes.set(id, { id, text, refs: new Set() })
     const d = diagrams[0]
     if (d) {
-      // above everything on the diagram (notes included) when there is room
-      // below NORMA's top edge, else to the right of it; never off the canvas
-      const tops = [...(d.occurrences ?? []).map(o => o.y - 25), ...(d.notes ?? []).map(n => n.y - (n.h ?? 0) / 2), ...(d.constraintOccurrences ?? []).map(o => o.y - 20)]
-      const lefts = [...(d.occurrences ?? []).map(o => o.x - 60), ...(d.notes ?? []).map(n => n.x - (n.w ?? 0) / 2)]
-      const rights = [...(d.occurrences ?? []).map(o => o.x + 60), ...(d.notes ?? []).map(n => n.x + (n.w ?? 0) / 2)]
+      // a free place where the note overlaps no
+      // shape of the diagram, with a margin; the shapes' bounds as written
       const { w, h } = noteSize(text)
-      const top = tops.length ? Math.min(...tops) : 100, left = lefts.length ? Math.min(...lefts) : 40
-      const MARGIN = 20
-      if (top - h - 30 >= MARGIN) addNoteShape(d.id, id, Math.max(MARGIN, left), top - h - 30, w, h)
-      else addNoteShape(d.id, id, (rights.length ? Math.max(...rights) : 400) + 60, Math.max(MARGIN, top), w, h)
+      const taken = []
+      const collect = (node) => {
+        if (!node || typeof node !== 'object') return
+        const b = node.attrs?.AbsoluteBounds
+        if (b) { const [x, y, bw, bh] = b.split(',').map(Number); taken.push({ l: x * PX, t: y * PX, r: (x + bw) * PX, b: (y + bh) * PX }) }
+        if (Array.isArray(node.children)) node.children.forEach(collect)
+      }
+      collect(diagramEls[0]); (noteShapes.get(d.id) ?? []).forEach(collect)
+      const GAP = 15, MARGIN = 20, STEP = 10
+      const free = (x, y) => taken.every(r => x + w + GAP <= r.l || x - GAP >= r.r || y + h + GAP <= r.t || y - GAP >= r.b)
+      const maxX = Math.max(400, ...taken.map(r => r.r)) + 40, maxY = Math.max(300, ...taken.map(r => r.b)) + 40
+      // nearest to the top left corner, where NORMA opens the diagram
+      let spot = null
+      for (let x = MARGIN; x <= maxX; x += STEP) for (let y = MARGIN; y <= maxY; y += STEP)
+        if ((!spot || x + y < spot.x + spot.y) && free(x, y)) spot = { x, y }
+      spot ??= { x: MARGIN, y: maxY }
+      addNoteShape(d.id, id, spot.x, spot.y, w, h)
+      summaryNoteId = id
     }
   }
   const modelNoteEls = [...modelNotes.values()].map(mn => el('orm:ModelNote', { id: mn.id }, [
@@ -1172,10 +1212,13 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   }
   const groups = (state.groups ?? []).filter(g => !sid || schemas.length <= 1 || (g.members ?? []).some(m => memberRefOf(m)))
   let usesShapeGroups = false
+  // FreeFBM's summary note in a group of its own, coloured soft yellow
+  if (summaryNoteId) groups.push({ id: 'freefbm-export-note-group', name: 'FreeFBM export note', definition: 'The note FreeFBM added when it exported this model.',
+    note: '', priority: 0, colors: { fill: '#fff6c8' }, members: [summaryNoteId], _normaMember: true })
   const groupEls = groups.map(g => {
     const colors = Object.entries(g.colors ?? {}).map(([ch, hex]) => [COLOR_ROLES[ch], rgb(hex)]).filter(([r, v]) => r && v)
     if (colors.length) usesShapeGroups = true
-    const refs = [...new Set((g.members ?? []).map(memberRefOf).filter(Boolean))]
+    const refs = g._normaMember ? g.members : [...new Set((g.members ?? []).map(memberRefOf).filter(Boolean))]
     return el('orm:Group', { id: normaId(g.id, GUID_RE.test(g.id) ? '' : 'group'), Name: g.name || 'Group', Priority: g.priority || null }, [
       ...docEls(g),
       colors.length && el('orm:GroupTypes', {}, [el('shapeGroup:ORMShapeColorGroupType', { id: normaId(g.id, 'colors') },

@@ -1181,7 +1181,10 @@ export function importNorma(xmlText) {
         // FreeFBM's point of a fact type is the middle of its role boxes;
         // NORMA's shape also holds its bars, a band per level on one side
         // (and, objectified, the margins around it).
-        const roleMiddle = factRoleMiddle(s, f, occ)
+        // drawn as an object type (NORMA's DisplayAsObjectType): the shape is a
+        // box around the name, centred on the occurrence
+        if (f.objectified && attr(s, 'DisplayAsObjectType') === 'true') occ.displayAsObjectType = true
+        const roleMiddle = occ.displayAsObjectType ? { x: b.cx, y: b.cy } : factRoleMiddle(s, f, occ)
         occ.x = roleMiddle.x; occ.y = roleMiddle.y
         placeFactLabels(s, f, occ)
         // NORMA's DisplayRoleNames: per fact type shape, else the diagram's
@@ -1249,6 +1252,21 @@ export function importNorma(xmlText) {
     const mid = factRoleMiddle(s, { roles: [{}, {}], objectified: false }, { orientation: pos.orientation, uniquenessBelow: pos.uniquenessBelow })
     pos.x = mid.x; pos.y = mid.y
     pos.normaShape = { id: attr(s, 'id'), bounds: attr(s, 'AbsoluteBounds'), key: factShapeKey(pos) }
+    // its reading: which reading order NORMA shows (FreeFBM marks the
+    // direction when it differs from the role order) and where
+    const [rs] = relativeShapes(s, 'ReadingShape')
+    if (rs) {
+      const ro = byId.get(attr(kid(rs, 'Subject'), 'ref'))
+      const first = refsOf(kid(ro, 'RoleSequence'))[0]
+      if (first) pos.readingOrder = first === link.own ? [0, 1] : [1, 0]
+      const L = rect(rs), S = rect(s)
+      const off = { dx: Math.round((L.l + L.r) / 2 - pos.x), dy: Math.round((L.t + L.b) / 2 - pos.y) }
+      // FreeFBM's other place for a reading: above a horizontal fact type, right of a vertical one
+      const above = pos.orientation === 'vertical' ? L.l >= S.r - 6 : L.b <= S.t + 6
+      if (above) pos.readingAbove = true
+      pos[above ? 'readingOffsetAbove' : 'readingOffsetBelow'] = off
+      pos.normaLabels = { reading: { id: attr(rs, 'id'), bounds: attr(rs, 'AbsoluteBounds'), off } }
+    }
     diag.shownImplicitLinks.push(key)
     diag.implicitLinkPositions[`${link.factId}:il:${link.roleIndex}`] = pos
   }
@@ -1412,6 +1430,7 @@ export function importNorma(xmlText) {
     if (g.namespaceURI !== ORM) continue
     const types = kids(kid(g, 'GroupTypes'))
     if (types.some(t => t.localName === 'ORMShapeMissingGroupType')) { note(`Group “${attr(g, 'Name')}” is maintained by NORMA (shapes missing) and was not imported.`); continue }
+    if (attr(g, 'Name') === 'FreeFBM export note') continue   // the group of FreeFBM's own summary note (src/export/norma.js)
     const colors = {}
     for (const t of types.filter(t => t.localName === 'ORMShapeColorGroupType'))
       for (const dc of kids(t, 'ORMDiagramDynamicColor')) {

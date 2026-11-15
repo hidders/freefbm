@@ -382,6 +382,20 @@ objectifications (such as "is typed as") are imported as FreeFBM's shown
 implied links (`shownImplicitLinks`, `implicitLinkPositions` with NORMA's
 shape kept) and exported as FactTypeShapes of the link fact types.
 
+Second round (v1.2.43, Jan's check on 2026-11-15): the summary note goes to
+the free place nearest the top left corner (no overlap, 15 px gap) and is
+in a group "FreeFBM export note" with a soft yellow background (the
+importer leaves that group out). An entity type's reference mode value
+range is drawn at its shape (ValueConstraintShape of the role value
+constraint). A drawn link fact type keeps its reading's place and which
+reading order is shown, so FreeFBM marks the reading direction as NORMA
+does (`implicitLinkPositions` readingOffset…, readingAbove, readingOrder).
+NORMA's DisplayAsObjectType is a FreeFBM option: Inspector › Display › As
+object type on this diagram (occurrence `displayAsObjectType`), drawn as
+an object type box with the objectified name; its own roles' connectors
+are not drawn. Over NORMA's samples 3,508 of 3,522 shapes come back with
+the same id and bounds.
+
 Check in NORMA (2026-11-14, SamplePopulationExtraction): the error list
 holds only the five rules that stay informal (closures, a value
 condition, rules without a complete FreeFBM formula); join paths and the
