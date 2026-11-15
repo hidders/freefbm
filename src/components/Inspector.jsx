@@ -2775,13 +2775,14 @@ function FactPresentationSubsection({ fact, store }) {
             { value: 'both',    label: 'Forward / reverse' },
             { value: 'reverse', label: '◂  Reverse only' },
           ].map(opt => {
-            const disabled =
+            const collapsedHere = !!(fact.objectified && fact.displayAsObjectType)
+            const disabled = collapsedHere ||
               (opt.value === 'forward' && !hasForwardReading) ||
               (opt.value === 'both' && (!hasForwardReading || !hasReverseReading)) ||
               (opt.value === 'reverse' && !hasReverseReading)
             const isCurrent = (fact.readingDisplay || 'forward') === opt.value
             return (
-              <label key={opt.value} style={{
+              <label key={opt.value} title={collapsedHere ? 'Not shown while this fact type is drawn as an object type' : undefined} style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 fontSize: 12, cursor: disabled ? 'not-allowed' : 'pointer', marginBottom: 3,
                 color: disabled ? 'var(--ink-muted)' : 'var(--ink-2)',
@@ -2822,7 +2823,8 @@ function FactPresentationSubsection({ fact, store }) {
         return (
           <Row>
             <Label>Shown reading</Label>
-            <select value={currentKey} style={{ width: '100%' }}
+            <select value={currentKey} style={{ width: '100%' }} disabled={!!(fact.objectified && fact.displayAsObjectType)}
+              title={!!(fact.objectified && fact.displayAsObjectType) ? 'Not shown while this fact type is drawn as an object type' : undefined}
               onChange={e => store.updateFactLayout(fact.id, { readingOrder: e.target.value ? JSON.parse(e.target.value) : undefined })}>
               {readings.map((r, i) => (
                 <option key={i} value={JSON.stringify(r.roleOrder)}>{r.label}</option>
