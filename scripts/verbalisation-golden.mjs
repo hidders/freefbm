@@ -40,10 +40,14 @@ const languages = {
 }
 
 const d = JSON.parse(fs.readFileSync(path.join(root, 'src/data/sample.ffbm'), 'utf8'))
+// Only the sample's ORM2 schema: the tables generated from it are another
+// schema of the same file.
+const orm2 = (d.schema.schemas ?? []).find(s => s.profile !== 'relational')?.id
+const inOrm2 = (el) => !orm2 || !el.schemaId || el.schemaId === orm2
 const sample = {
-  objectTypes: d.schema.objectTypes ?? [], facts: d.schema.factTypes ?? [],
-  subtypes: d.schema.subtypes ?? [], constraints: d.schema.externalConstraints ?? [],
-  diagrams: d.diagrams ?? [], activeDiagramId: d.activeDiagramId,
+  objectTypes: (d.schema.objectTypes ?? []).filter(inOrm2), facts: (d.schema.factTypes ?? []).filter(inOrm2),
+  subtypes: (d.schema.subtypes ?? []).filter(inOrm2), constraints: (d.schema.externalConstraints ?? []).filter(inOrm2),
+  diagrams: (d.diagrams ?? []).filter(dg => inOrm2(dg) && !dg.mappingId), activeDiagramId: d.activeDiagramId,
 }
 
 // The blocks for the entries whose key passes keep; notes (an entry without a
