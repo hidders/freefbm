@@ -130,6 +130,10 @@ Ogni Dipendente ha al massimo una Stanza come ufficio.
 ◇∃ StaffMember ¬(∃ Room (StaffMember has an office in Room))
 È possibile che un Dipendente non ha nessuna Stanza come ufficio.
 
+# Possible (role not mandatory) · StaffMember has an office in Room
+◇∃ Room ¬(∃ StaffMember (StaffMember has an office in Room))
+È possibile che c'è una Stanza tale che nessun Dipendente ha quella Stanza come ufficio.
+
 # Uniqueness · StaffMember has Extension
 ∀ StaffMember ∃^{≤1} Extension (StaffMember has Extension)
 Ogni Dipendente ha al massimo un Interno.
@@ -541,10 +545,6 @@ Ogni Codice edificio identifica un Edificio.
 # Participation (not independent) · RoomNr
 ∀ RoomNr ∃ Room (Room has RoomNr)
 Per ogni Numero di stanza, una Stanza ha quel Numero di stanza.
-
-# Participation (not independent) · Room
-∀ Room ∃ StaffMember (StaffMember has an office in Room)
-Per ogni Stanza, un Dipendente ha quella Stanza come ufficio.
 
 # Participation (not independent) · Extension
 ∀ Extension ∃ StaffMember (StaffMember has Extension)

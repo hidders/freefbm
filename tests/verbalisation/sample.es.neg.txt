@@ -130,6 +130,10 @@ Es posible que más de un Empleado tiene la misma Sala como despacho.
 ◇∃ StaffMember ¬(∃ Room (StaffMember has an office in Room))
 Es posible que un Empleado no tiene ninguna Sala como despacho.
 
+# Possible (role not mandatory) · StaffMember has an office in Room
+◇∃ Room ¬(∃ StaffMember (StaffMember has an office in Room))
+Es posible que hay una Sala tal que ningún Empleado tiene esa Sala como despacho.
+
 # Uniqueness · StaffMember has Extension
 ¬(∃ StaffMember ∃^{>1} Extension (StaffMember has Extension))
 Es imposible que un Empleado tiene más de una Extensión.
@@ -541,10 +545,6 @@ Es imposible que un Código de edificio no identifica ningún Edificio.
 # Participation (not independent) · RoomNr
 ¬(∃ RoomNr ¬(∃ Room (Room has RoomNr)))
 Es imposible que hay un Número de sala tal que ninguna Sala tiene ese Número de sala.
-
-# Participation (not independent) · Room
-¬(∃ Room ¬(∃ StaffMember (StaffMember has an office in Room)))
-Es imposible que hay una Sala tal que ningún Empleado tiene esa Sala como despacho.
 
 # Participation (not independent) · Extension
 ¬(∃ Extension ¬(∃ StaffMember (StaffMember has Extension)))
