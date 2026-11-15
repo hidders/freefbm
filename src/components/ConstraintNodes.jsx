@@ -4,6 +4,9 @@ import { nearestSubtypeEnds } from '../utils/subtypeEnds'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { roleCenter, nestedFactBounds, ROLE_H, displayRoleOrder, makeImplicitLinkFact } from './FactTypeNode'
 import { roleAnchor } from './RoleConnectors'
+
+// An objectified fact type drawn as an object type: lines end at its box.
+const isCollapsed = fact => !!(fact?.objectified && fact.displayAsObjectType)
 import { entityBounds, formatValueRange } from './ObjectTypeNode'
 import { EXTERNAL_CONSTRAINT_TYPES, RAKE_TOOTH, RAKE_STAGGER, RAKE_TOOTH_GAP } from '../constants.js'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
@@ -772,6 +775,8 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
     const dro = displayRoleOrder(fact)
     const pos0 = dro.indexOf(ri0)
     const pos1 = dro.indexOf(ri1)
+    // drawn as an object type: the box border, as for a single role
+    if (isCollapsed(fact)) return roleAnchor(fact, ri0, cx, cy)
     if (Math.abs(pos0 - pos1) !== 1) return null
     const rc0 = roleCenter(fact, ri0)
     const rc1 = roleCenter(fact, ri1)
@@ -801,6 +806,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
     if (!roleSeq.every(m => m.factId === factId)) return null
     const fact = fMap[factId]
     if (!fact) return null
+    if (isCollapsed(fact)) return null
     if (roleSeq.length === 2) {
       const dro = displayRoleOrder(fact)
       const p0 = dro.indexOf(roleSeq[0].roleIndex)
@@ -826,6 +832,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
     if (!roleSeq.every(m => m.factId === factId)) return null
     const fact = fMap[factId]
     if (!fact) return null
+    if (isCollapsed(fact)) return null
     // Skip the simple adjacent-pair case — consecutiveRoleMidpoint handles it
     if (roleSeq.length === 2) {
       const dro = displayRoleOrder(fact)
@@ -1123,7 +1130,7 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
                 const fact = localFactMap[ref.factId]
                 const owner = fact ? null : collapsedRefFacts[ref.factId]?.owner
                 if (!fact && !owner) return null
-                const rc = fact ? roleCenter(fact, ref.roleIndex) : borderPoint(owner, c.x, c.y)
+                const rc = fact ? (isCollapsed(fact) ? roleAnchor(fact, ref.roleIndex, c.x, c.y) : roleCenter(fact, ref.roleIndex)) : borderPoint(owner, c.x, c.y)
                 const dx = rc.x - c.x, dy = rc.y - c.y
                 const len = Math.sqrt(dx * dx + dy * dy) || 1
                 const key = `${c.id}-g${gi}-r${ri}`
