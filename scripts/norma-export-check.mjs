@@ -292,6 +292,11 @@ async function runInPage({ name, content, isOrm }) {
       if (!db) { diffs.push(`diagram ${d.name} is missing`); continue }
       db._used = true
       const expanded = new Set(d.expandedRefModeOccs ?? [])
+      // shown link fact types and drawn subtype links come back
+      const ils = (x) => [...(x.shownImplicitLinks ?? [])].map(k => k.replace(/^([^:]+)/, (m) => x === d ? nid(m) : m)).sort().join()
+      if (ils(d) !== ils(db)) diffs.push(`diagram ${d.name}: shown link fact types ${ils(db)} instead of ${ils(d)}`)
+      const pairCount = (x) => Object.values(x.subtypeEndpointOccs ?? {}).reduce((n, v) => n + (Array.isArray(v) ? v.length : 1), 0)
+      if (pairCount(d) !== pairCount(db)) diffs.push(`diagram ${d.name}: ${pairCount(db)} subtype links drawn instead of ${pairCount(d)}`)
       // notes come back with their text; FreeFBM's own notes stay out
       const texts = (ns) => (ns ?? []).filter(n => !n.importNote && !/^FreeFBM:/.test(n.text ?? '')).map(n => (n.text ?? '').trim()).sort().join(' | ')
       if (texts(d.notes) !== texts(db.notes)) diffs.push(`diagram ${d.name}: notes “${texts(db.notes)}” instead of “${texts(d.notes)}”`)
