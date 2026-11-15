@@ -2849,6 +2849,16 @@ function FactPresentationSubsection({ fact, store }) {
           </label>
         ))}
       </Row>
+      {fact.objectified && (
+        <Row>
+          <Label>Display</Label>
+          <Checkbox
+            label="As object type on this diagram"
+            checked={!!fact.displayAsObjectType}
+            onChange={v => store.updateFactLayout(fact.id, { displayAsObjectType: v ? true : undefined })}
+          />
+        </Row>
+      )}
       {fact.roles.some(r => r.roleName) && (
         <Row>
           <Label>Role names</Label>

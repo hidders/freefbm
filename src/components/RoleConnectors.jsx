@@ -158,7 +158,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
   }, [editing, store])
 
   // ── build connector descriptors ────────────────────────────────────────────
-  const connectors = visibleFacts.flatMap(fact =>
+  const connectors = visibleFacts.filter(f => !f.displayAsObjectType).flatMap(fact =>
     fact.roles.map((role, ri) => {
       if (!role.objectTypeId) return null
       // Look up specific occurrence first, fall back to schema-ID match
@@ -420,7 +420,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
 
   return (
     <g>
-      {visibleFacts.flatMap(fact =>
+      {visibleFacts.filter(f => !f.displayAsObjectType).flatMap(fact =>
         fact.roles.map((role, ri) => {
           if (!role.mandatory || !role.objectTypeId) return null
           const ot = otMap[role.objectTypeId]
@@ -467,7 +467,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
       {/* Implied mandatory dots — one per preferred uniqueness, on the "other role".
           Also one per cross-fact external uniqueness PI, on the entity role.
           Only rendered when the role isn't already explicitly mandatory. */}
-      {visibleFacts.flatMap(fact => {
+      {visibleFacts.filter(f => !f.displayAsObjectType).flatMap(fact => {
         const prefs = fact.preferredUniqueness || []
         const impliedRoleIndices = []
         prefs.forEach(pu => {

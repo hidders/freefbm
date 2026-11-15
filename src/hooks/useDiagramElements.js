@@ -111,6 +111,7 @@ export function getDiagramElements(store) {
       if (p?.valueRangeOffsets   !== undefined) merged.valueRangeOffsets   = p.valueRangeOffsets
       if (p?.cardinalityRangeOffsets !== undefined) merged.cardinalityRangeOffsets = p.cardinalityRangeOffsets
       if (p?.nameOffset          !== undefined) merged.nameOffset          = p.nameOffset
+      if (p?.displayAsObjectType !== undefined) merged.displayAsObjectType = p.displayAsObjectType
       // Per-diagram presentation overrides
       if (p?.roleOrder       !== undefined) merged.roleOrder       = p.roleOrder
       if (p?.readingOrder    !== undefined) merged.readingOrder    = p.readingOrder

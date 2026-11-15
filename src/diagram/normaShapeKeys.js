@@ -7,7 +7,8 @@ const keyOf = (o) => JSON.stringify(o)
 
 export const otShapeKey = (occ) => keyOf({ x: occ.x, y: occ.y })
 export const factShapeKey = (occ) => keyOf({ x: occ.x, y: occ.y, orientation: occ.orientation ?? null,
-  uniquenessBelow: !!occ.uniquenessBelow, roleOrder: occ.roleOrder ?? null, roleNamesShown: occ.roleNamesShown !== false })
+  uniquenessBelow: !!occ.uniquenessBelow, roleOrder: occ.roleOrder ?? null, roleNamesShown: occ.roleNamesShown !== false,
+  ...(occ.displayAsObjectType && { displayAsObjectType: true }) })
 export const noteShapeKey = (n) => keyOf({ x: n.x, y: n.y, w: n.w, h: n.h })
 
 // NORMA's subtype links on a diagram: each shape of the subtype that attaches
