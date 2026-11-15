@@ -141,13 +141,14 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
   // Semicircle arch: feet at (cx±hw, bot), apex at (cx, top)
   const archD = `M ${cx - hw},${bot} A ${hw},${hw} 0 0,1 ${cx + hw},${bot}`
 
+  const a = 5 * scale, b = 3 * scale   // arrowhead length and half width
   // Filled arrowhead at right arch foot, pointing →
   const ArrR = () => <polygon
-    points={`${cx+hw},${bot} ${cx+hw-5},${bot-3} ${cx+hw-5},${bot+3}`}
+    points={`${cx+hw},${bot} ${cx+hw-a},${bot-b} ${cx+hw-a},${bot+b}`}
     fill={color}/>
   // Filled arrowhead at left arch foot, pointing ←
   const ArrL = () => <polygon
-    points={`${cx-hw},${bot} ${cx-hw+5},${bot-3} ${cx-hw+5},${bot+3}`}
+    points={`${cx-hw},${bot} ${cx-hw+a},${bot-b} ${cx-hw+a},${bot+b}`}
     fill={color}/>
 
   const Arch = () =>
@@ -156,10 +157,10 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
   switch (type) {
     case 'irreflexive': {
       const cr = RING_UNIT * scale
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       return <g>
         <circle cx={cx} cy={cy} r={cr} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - cr} cy={cy} r={2.5} fill={color}/>
+        <circle cx={cx - cr} cy={cy} r={2.5 * scale} fill={color}/>
         <line x1={cx + cr - dashLen} y1={cy} x2={cx + cr + dashLen} y2={cy}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
       </g>
@@ -169,7 +170,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const cr = RING_UNIT * scale
       return <g>
         <circle cx={cx} cy={cy} r={cr} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - cr} cy={cy} r={2.5} fill={color}/>
+        <circle cx={cx - cr} cy={cy} r={2.5 * scale} fill={color}/>
       </g>
     }
 
@@ -178,7 +179,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const halfLen = cr / 3
       return <g>
         <circle cx={cx} cy={cy} r={cr} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - cr} cy={cy} r={2.5} fill={color}/>
+        <circle cx={cx - cr} cy={cy} r={2.5 * scale} fill={color}/>
         <line x1={cx} y1={cy - halfLen} x2={cx} y2={cy + halfLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
       </g>
@@ -187,11 +188,11 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
     case 'asymmetric': {
       const ry = RING_UNIT * scale
       const rx = RING_UNIT * scale * 1.2
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill={color}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill={color}/>
         <line x1={cx} y1={cy + ry - dashLen} x2={cx} y2={cy + ry + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
       </g>
@@ -202,19 +203,19 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const rx = RING_UNIT * scale * 1.2
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill={color}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill={color}/>
       </g>
     }
 
     case 'antisymmetric': {
       const ry = RING_UNIT * scale
       const rx = RING_UNIT * scale * 1.2
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill="white" stroke={color} strokeWidth={sw}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill="white" stroke={color} strokeWidth={sw}/>
         <line x1={cx} y1={cy + ry - dashLen} x2={cx} y2={cy + ry + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
       </g>
@@ -228,7 +229,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5 * scale} fill={color}/>)}
       </g>
     }
 
@@ -237,12 +238,12 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const tx = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
       const midY = cy + cr * 0.5
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       return <g>
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5 * scale} fill={color}/>)}
         <line x1={cx} y1={midY - dashLen} x2={cx} y2={midY + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
       </g>
@@ -253,17 +254,17 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const tx = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
       const midY = cy + cr * 0.5
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       const rmx = (tx[0] + tx[2]) / 2
       const rmy = (ty[0] + ty[2]) / 2
       return <g>
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5 * scale} fill={color}/>)}
         <line x1={cx} y1={midY - dashLen} x2={cx} y2={midY + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
-        <circle cx={rmx} cy={rmy} r={2.5} fill={color}/>
+        <circle cx={rmx} cy={rmy} r={2.5 * scale} fill={color}/>
       </g>
     }
 
@@ -271,10 +272,10 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const cr = RING_UNIT * scale
       const tx = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       return <g>
         <circle cx={cx} cy={cy} r={cr} fill="none" stroke={color} strokeWidth={sw}/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5 * scale} fill={color}/>)}
         <line x1={cx} y1={cy + cr - dashLen} x2={cx} y2={cy + cr + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
       </g>
@@ -283,7 +284,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
     case 'acyclic+intransitive': {
       // Acyclic circle + Intransitive triangle inscribed in the same circle, sharing the three dots
       const cr = RING_UNIT * scale
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       const tx = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
       const midY = cy + cr * 0.5
@@ -292,7 +293,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5 * scale} fill={color}/>)}
         <line x1={cx} y1={midY - dashLen} x2={cx} y2={midY + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
         <line x1={cx} y1={cy + cr - dashLen} x2={cx} y2={cy + cr + dashLen}
@@ -303,7 +304,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
     case 'acyclic+strongly-intransitive': {
       // Acyclic circle + Strongly Intransitive triangle inscribed in the same circle, sharing the three dots
       const cr = RING_UNIT * scale
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       const tx = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
       const midY = cy + cr * 0.5
@@ -314,10 +315,10 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5 * scale} fill={color}/>)}
         <line x1={cx} y1={midY - dashLen} x2={cx} y2={midY + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
-        <circle cx={rmx} cy={rmy} r={2.5} fill={color}/>
+        <circle cx={rmx} cy={rmy} r={2.5 * scale} fill={color}/>
         <line x1={cx} y1={cy + cr - dashLen} x2={cx} y2={cy + cr + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
       </g>
@@ -326,7 +327,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
     case 'acyclic+transitive': {
       // Acyclic circle + Transitive triangle inscribed in the same circle, sharing the three dots
       const cr = RING_UNIT * scale
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       const tx = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
       return <g>
@@ -334,7 +335,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5 * scale} fill={color}/>)}
         <line x1={cx} y1={cy + cr - dashLen} x2={cx} y2={cy + cr + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
       </g>
@@ -344,7 +345,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       // Strongly Intransitive triangle (outer, slightly enlarged) + smaller Transitive triangle centred inside
       const cr = RING_UNIT * scale * 1.5
       const ri = RING_UNIT * scale / 2
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       const tx  = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty  = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
       const tx2 = [cx,              cx - ri * 0.866, cx + ri * 0.866]
@@ -356,14 +357,14 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5 * scale} fill={color}/>)}
         <line x1={cx} y1={midY - dashLen} x2={cx} y2={midY + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
-        <circle cx={rmx} cy={rmy} r={2.5} fill={color}/>
+        <circle cx={rmx} cy={rmy} r={2.5 * scale} fill={color}/>
         <polygon points={tx2.map((x, i) => `${x},${ty2[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx2.map((x, i) => <circle key={`i${i}`} cx={x} cy={ty2[i]} r={1.7} fill={color}/>)}
+        {tx2.map((x, i) => <circle key={`i${i}`} cx={x} cy={ty2[i]} r={1.7 * scale} fill={color}/>)}
       </g>
     }
 
@@ -371,7 +372,7 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       // Intransitive triangle (outer, slightly enlarged) + smaller Transitive triangle centred inside
       const cr = RING_UNIT * scale * 1.35
       const ri = RING_UNIT * scale / 2
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       const tx  = [cx,              cx - cr * 0.866, cx + cr * 0.866]
       const ty  = [cy - cr,         cy + cr * 0.5,   cy + cr * 0.5  ]
       const tx2 = [cx,              cx - ri * 0.866, cx + ri * 0.866]
@@ -381,13 +382,13 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={2.5 * scale} fill={color}/>)}
         <line x1={cx} y1={midY - dashLen} x2={cx} y2={midY + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
         <polygon points={tx2.map((x, i) => `${x},${ty2[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx2.map((x, i) => <circle key={`i${i}`} cx={x} cy={ty2[i]} r={1.7} fill={color}/>)}
+        {tx2.map((x, i) => <circle key={`i${i}`} cx={x} cy={ty2[i]} r={1.7 * scale} fill={color}/>)}
       </g>
     }
 
@@ -396,20 +397,20 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const ry = RING_UNIT * scale
       const rx = RING_UNIT * scale * 1.2
       const ri = RING_UNIT * scale / 2
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       const tx = [cx,              cx - ri * 0.866, cx + ri * 0.866]
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
       const midY = cy + ri * 0.5
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill="white" stroke={color} strokeWidth={sw}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill="white" stroke={color} strokeWidth={sw}/>
         <line x1={cx} y1={cy + ry - dashLen} x2={cx} y2={cy + ry + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7 * scale} fill={color}/>)}
         <line x1={cx} y1={midY - dashLen} x2={cx} y2={midY + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
       </g>
@@ -420,19 +421,19 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const ry = RING_UNIT * scale
       const rx = RING_UNIT * scale * 1.2
       const ri = RING_UNIT * scale / 2
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       const tx = [cx,              cx - ri * 0.866, cx + ri * 0.866]
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill="white" stroke={color} strokeWidth={sw}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill="white" stroke={color} strokeWidth={sw}/>
         <line x1={cx} y1={cy + ry - dashLen} x2={cx} y2={cy + ry + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7 * scale} fill={color}/>)}
       </g>
     }
 
@@ -445,12 +446,12 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill={color}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill={color}/>
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7 * scale} fill={color}/>)}
       </g>
     }
 
@@ -459,18 +460,18 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const ry = RING_UNIT * scale
       const rx = RING_UNIT * scale * 1.2
       const ri = RING_UNIT * scale / 2
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       const tx = [cx,              cx - ri * 0.866, cx + ri * 0.866]
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
       const midY = cy + ri * 0.5
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill={color}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill={color}/>
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7 * scale} fill={color}/>)}
         <line x1={cx} y1={midY - dashLen} x2={cx} y2={midY + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
       </g>
@@ -482,16 +483,16 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const rx = RING_UNIT * scale * 1.2
       const ry_i = RING_UNIT * scale / 2
       const rx_i = ry_i * 1.2
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill="white" stroke={color} strokeWidth={sw}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill="white" stroke={color} strokeWidth={sw}/>
         <line x1={cx} y1={cy + ry - dashLen} x2={cx} y2={cy + ry + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
         <ellipse cx={cx} cy={cy} rx={rx_i} ry={ry_i} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx_i} cy={cy} r={1.7} fill={color}/>
-        <circle cx={cx + rx_i} cy={cy} r={1.7} fill={color}/>
+        <circle cx={cx - rx_i} cy={cy} r={1.7 * scale} fill={color}/>
+        <circle cx={cx + rx_i} cy={cy} r={1.7 * scale} fill={color}/>
       </g>
     }
 
@@ -500,20 +501,20 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const ry = RING_UNIT * scale
       const rx = RING_UNIT * scale * 1.2
       const ri = RING_UNIT * scale / 2
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       const tx = [cx,              cx - ri * 0.866, cx + ri * 0.866]
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
       const midY = cy + ri * 0.5
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill={color}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill={color}/>
         <line x1={cx} y1={cy + ry - dashLen} x2={cx} y2={cy + ry + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7 * scale} fill={color}/>)}
         <line x1={cx} y1={midY - dashLen} x2={cx} y2={midY + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
       </g>
@@ -524,19 +525,19 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const ry = RING_UNIT * scale
       const rx = RING_UNIT * scale * 1.2
       const ri = RING_UNIT * scale / 2
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       const tx = [cx,              cx - ri * 0.866, cx + ri * 0.866]
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill={color}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill={color}/>
         <line x1={cx} y1={cy + ry - dashLen} x2={cx} y2={cy + ry + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7 * scale} fill={color}/>)}
       </g>
     }
 
@@ -548,11 +549,11 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
       return <g>
         <circle cx={cx} cy={cy} r={cr} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - cr} cy={cy} r={2.5} fill={color}/>
+        <circle cx={cx - cr} cy={cy} r={2.5 * scale} fill={color}/>
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7 * scale} fill={color}/>)}
       </g>
     }
 
@@ -560,18 +561,18 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       // Irreflexive circle (outer) + smaller Transitive triangle centred inside
       const cr = RING_UNIT * scale
       const ri = cr / 2
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       const tx = [cx,              cx - ri * 0.866, cx + ri * 0.866]
       const ty = [cy - ri,         cy + ri * 0.5,   cy + ri * 0.5  ]
       return <g>
         <circle cx={cx} cy={cy} r={cr} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - cr} cy={cy} r={2.5} fill={color}/>
+        <circle cx={cx - cr} cy={cy} r={2.5 * scale} fill={color}/>
         <line x1={cx + cr - dashLen} y1={cy} x2={cx + cr + dashLen} y2={cy}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7 * scale} fill={color}/>)}
       </g>
     }
 
@@ -582,12 +583,12 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const rx = RING_UNIT * scale * 1.2
       const ri = RING_UNIT * scale / 2
       const icx = cx - rx + ri
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
         <circle cx={icx} cy={cy} r={ri} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill="white" stroke={color} strokeWidth={sw}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill="white" stroke={color} strokeWidth={sw}/>
         <line x1={cx} y1={cy + ry - dashLen} x2={cx} y2={cy + ry + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
         <line x1={icx + ri - dashLen} y1={cy} x2={icx + ri + dashLen} y2={cy}
@@ -603,20 +604,20 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const icx = cx - rx + ri
       const r_tri = RING_UNIT * scale * 0.5
       const tcx   = cx + RING_UNIT * scale * 0.35
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       const tx = [tcx,          tcx - r_tri * 0.866, tcx + r_tri * 0.866]
       const ty = [cy - r_tri,   cy + r_tri * 0.5,    cy + r_tri * 0.5   ]
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
         <circle cx={icx} cy={cy} r={ri} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill="white" stroke={color} strokeWidth={sw}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill="white" stroke={color} strokeWidth={sw}/>
         <line x1={cx} y1={cy + ry - dashLen} x2={cx} y2={cy + ry + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
         <polygon points={tx.map((x, i) => `${x},${ty[i]}`).join(' ')}
           fill="none" stroke={color} strokeWidth={sw}
           strokeLinejoin="round" strokeLinecap="round"/>
-        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7} fill={color}/>)}
+        {tx.map((x, i) => <circle key={i} cx={x} cy={ty[i]} r={1.7 * scale} fill={color}/>)}
       </g>
     }
 
@@ -627,12 +628,12 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const rx = RING_UNIT * scale * 1.2
       const ri = RING_UNIT * scale / 2
       const icx = cx - rx + ri
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
         <circle cx={icx} cy={cy} r={ri} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill="white" stroke={color} strokeWidth={sw}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill="white" stroke={color} strokeWidth={sw}/>
         <line x1={cx} y1={cy + ry - dashLen} x2={cx} y2={cy + ry + dashLen}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
       </g>
@@ -648,8 +649,8 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
         <circle cx={icx} cy={cy} r={ri} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill={color}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill={color}/>
       </g>
     }
 
@@ -658,12 +659,12 @@ export function RingMiniSymbol({ type, cx, cy, color, scale = 1, strokeWidth = 1
       const rx = RING_UNIT * scale * 1.2
       const ri = RING_UNIT * scale / 2
       const icx = cx - rx + ri
-      const dashLen = 2.5
+      const dashLen = 2.5 * scale
       return <g>
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke={color} strokeWidth={sw}/>
         <circle cx={icx} cy={cy} r={ri} fill="none" stroke={color} strokeWidth={sw}/>
-        <circle cx={cx - rx} cy={cy} r={2.5} fill={color}/>
-        <circle cx={cx + rx} cy={cy} r={2.5} fill={color}/>
+        <circle cx={cx - rx} cy={cy} r={2.5 * scale} fill={color}/>
+        <circle cx={cx + rx} cy={cy} r={2.5 * scale} fill={color}/>
         <line x1={icx + ri - dashLen} y1={cy} x2={icx + ri + dashLen} y2={cy}
           stroke={color} strokeWidth={sw} strokeLinecap="round"/>
       </g>
