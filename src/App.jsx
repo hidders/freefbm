@@ -111,14 +111,21 @@ function useKeyboardShortcuts() {
       if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); store.duplicateClipboard(); return }
 
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        const step = e.shiftKey ? 50 : 10
+        const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+        const dy = e.key === 'ArrowUp'   ? -step : e.key === 'ArrowDown'  ? step : 0
+        // A selected range or frequency marker: the node drawing it moves it
+        // (useLabelNudge), since only it knows where a label in its default place is.
+        if (store.selectedValueRange || store.selectedCardinalityRange || store.selectedInternalFrequency) {
+          e.preventDefault()
+          useOrmStore.setState(s => ({ labelNudge: { dx, dy, n: (s.labelNudge?.n ?? 0) + 1 } }))
+          return
+        }
         const ids = store.multiSelectedIds.length > 0
           ? store.multiSelectedIds
           : store.selectedId ? [store.selectedId] : []
         if (ids.length === 0) return
         e.preventDefault()
-        const step = e.shiftKey ? 50 : 10
-        const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
-        const dy = e.key === 'ArrowUp'   ? -step : e.key === 'ArrowDown'  ? step : 0
         const st = useOrmStore.getState()
         const activeDiag = st.diagrams?.find(d => d.id === st.activeDiagramId)
         const occurrences  = activeDiag?.occurrences ?? []
