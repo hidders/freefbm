@@ -68,9 +68,9 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
             '---',
           ]
         })() : [
-          ...(pair.length === 2 ? [connectItem(store, pair[0], pair[1])] : []),
-          { label: 'Copy selection to new diagram', action: () => store.selectionToNewDiagram(false) },
-          { label: 'Move selection to new diagram', title: 'Object types still linked to what stays here are kept on both diagrams',
+          ...(pair.length === 2 ? [{ ...connectItem(store, pair[0], pair[1]), group: 'diagram' }] : []),
+          { label: 'Copy selection to new diagram', group: 'diagram', action: () => store.selectionToNewDiagram(false) },
+          { label: 'Move selection to new diagram', group: 'diagram', title: 'Object types still linked to what stays here are kept on both diagrams',
             action: () => store.selectionToNewDiagram(true) },
           '---',
         ]),
@@ -700,10 +700,9 @@ export function growItems(store, elementId, occurrenceId = null) {
   const sel = now.selectedId === elementId ? [now.previousSelectedId] : [now.selectedId]
   const partners = [...new Set(sel.filter(id => id && id !== elementId && shown.has(id) && connectable(store, id)))]
   return [
-    { label: 'Add neighbours…', action: () => store.openNeighbourPicker(elementId, occurrenceId) },
-    { label: 'New diagram from here', action: () => store.newDiagramFrom(elementId) },
-    ...(partners.length === 1 ? [connectItem(store, partners[0], elementId, `Connect with ${elementName(store, partners[0])}`)] : []),
-    '---',
+    { label: 'Add neighbours…', group: 'diagram', action: () => store.openNeighbourPicker(elementId, occurrenceId) },
+    { label: 'New diagram from here', group: 'diagram', action: () => store.newDiagramFrom(elementId) },
+    ...(partners.length === 1 ? [{ ...connectItem(store, partners[0], elementId, `Connect with ${elementName(store, partners[0])}`), group: 'diagram' }] : []),
   ]
 }
 

@@ -320,9 +320,9 @@ export default function SchemaBrowser() {
     if (!d || d.mappingId) return
     const occ = (d.occurrences ?? []).find(o => o.schemaElementId === id && !o.refModeOwnerOccId)
     setRowMenu({ x: e.clientX, y: e.clientY, items: [
-      { label: 'Add neighbours…', disabled: !occ, title: occ ? undefined : 'Not on this diagram',
+      { label: 'Add neighbours…', group: 'diagram', disabled: !occ, title: occ ? undefined : 'Not on this diagram',
         action: () => { s.centerOnElement(id); s.openNeighbourPicker(id, occ?.id ?? null) } },
-      { label: 'New diagram from here', action: () => s.newDiagramFrom(id) },
+      { label: 'New diagram from here', group: 'diagram', action: () => s.newDiagramFrom(id) },
     ] })
   }
 
