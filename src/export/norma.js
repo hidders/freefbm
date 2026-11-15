@@ -289,7 +289,11 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       // the mode as the value type's name writes it, after the separator
       const rest = vt.name.slice(ot.name.length)
       const sep = /^[\s_-]*/.exec(rest)[0]
-      mode = ot.refModeName && rest.slice(sep.length).toLowerCase() === ot.refModeName.toLowerCase() ? ot.refModeName : rest.slice(sep.length)
+      // the mode as the value type's name spells it: NORMA compares names
+      // case-sensitively and has Code and code (Nr and nr, …) as modes of
+      // its own, so a mode that only differs in case would need a custom
+      // mode of the same name, which NORMA renames on load
+      mode = rest.slice(sep.length)
       kind = 'Popular'
       format = rest.slice(sep.length) === mode ? `{0}${sep}{1}` : `{0}${rest}`
     } else { mode = vt.name; kind = 'General'; format = '{1}' }
@@ -299,6 +303,19 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   for (const r of refModes.values()) if (r.kind === 'Popular' && r.format.includes('{1}')) formatCount.set(r.format, (formatCount.get(r.format) ?? 0) + 1)
   const popularFormat = [...formatCount].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '{0}_{1}'
   const kindFormat = { General: '{1}', Popular: popularFormat, UnitBased: '{1}Value' }
+  // NORMA's own reference modes (ReferenceMode.cs, intrinsic modes): a
+  // custom mode of the same name is renamed when NORMA loads the file, and
+  // every entity type whose value type its format matches loses its
+  // reference mode value type ("[Missing]"). Such a mode is written as a
+  // general one, named after the value type.
+  const INTRINSIC = new Set(['Id', 'id', 'ID', 'UUID', 'Uuid', 'Name', 'name', 'Code', 'code', 'Title', 'title', 'Nr', 'nr', '#',
+    'kg', 'mm', 'cm', 'km', 'mile', 'Celsius', 'Fahrenheit', 'USD', 'AUD', 'EUR', 'CE'])
+  for (const [otId, r] of refModes) {
+    if (r.format === kindFormat[r.kind] || !INTRINSIC.has(r.mode)) continue
+    const vt = otById.get(r.vtId)
+    Object.assign(r, { mode: vt.name, kind: 'General', format: '{1}' })
+    note(`The reference mode “${refModeLabel(otById.get(otId).name, vt.name, otById.get(otId))}” of ${otById.get(otId).name} is written as NORMA's general mode ${vt.name}: its value type is named differently from what NORMA's own mode of that name expects.`)
+  }
   for (const [otId, r] of refModes) {
     if (r.format === kindFormat[r.kind]) continue
     const known = customModes.get(r.mode)
