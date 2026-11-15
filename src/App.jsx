@@ -77,7 +77,7 @@ function useKeyboardShortcuts() {
       }
 
       if (e.key === 'Enter' && store.frequencyConstruction?.stage === 2) {
-        store.advanceFrequencyToRange()
+        store.finishFrequencyConstruction()
         return
       }
 

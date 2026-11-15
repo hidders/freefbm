@@ -677,16 +677,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
     if (isRoleValueTool) { store.setTool('select'); return }
     if (isCrTool) { store.setTool('select'); return }
-    if (isUniquenessTool) {
-      store.setTool('select')
-      store.startUniquenessConstruction(fact.id)
-      return
-    }
-    if (isFrequencyTool) {
-      store.setTool('select')
-      store.startFrequencyConstruction(fact.id)
-      return
-    }
+    // The Internal uniqueness and frequency tools start only from a role box
+    // (Jan, 2026-11-15): the fact type itself is no click target.
+    if (isUniquenessTool || isFrequencyTool) return
     if (isConnectorTool) {
       const wasConnect = store.tool === 'connectConstraint'
       if (store.sequenceConstruction) store.abandonSequenceConstruction()
@@ -697,10 +690,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     }
     if (inConstruction) return  // Enter key confirms; clicking fact body does nothing
     if (inFrequencyConstruction) return  // Enter key confirms
-    if (store.sequenceConstruction) {
-      store.select(fact.id, 'fact', occurrenceId ?? null)
-      return
-    }
+    if (store.sequenceConstruction) return  // only role boxes and subtype links are picked
     if (e.shiftKey) {
       store.shiftSelect(fact.id, fact._implicit ? null : (occurrenceId ?? null))
       onDragStart(fact.id, fact._implicit ? 'implicitLink' : 'fact', e, occurrenceId)
@@ -1244,6 +1234,16 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   const vcEligibleRoles = isVcConstruction ? new Set(
     fact.roles.flatMap((role, ri) => isVrEligibleRole(role) ? [ri] : [])
   ) : null
+
+  // A role box a click would pick for the constraint being built (or start one
+  // with): tinted, and the only thing that gets the dashed hover ring.
+  const pickCandidateRole = (ri) => {
+    if (fact._implicit || inQueryEdit) return false
+    if (inConstruction || inFrequencyConstruction) return true
+    if (store.uniquenessConstruction || store.frequencyConstruction) return false
+    if (gc) return isVcConstruction ? vcEligibleRoles.has(ri) : true
+    return isUniquenessTool || isFrequencyTool || store.tool === 'toggleMandatory'
+  }
 
    const isRoleCandidate = (isAssignTool && !isAssigning) || store.tool === 'toggleMandatory' || isUniquenessTool
     || isFrequencyCandidate  // stage 1: all facts' roles are candidate (drives cursor)
@@ -2052,14 +2052,15 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           if (fact._implicit) return isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab'
           if (inQueryEdit) return fact.objectified ? 'pointer' : 'default'
           if (store.pendingTargetPick) return fact.objectified ? 'pointer' : 'not-allowed'
+          if (inConstruction || inFrequencyConstruction) return 'default'
           if (store.linkDraft?.type === 'constraintEndpointPick') {
             const pick = store.linkDraft.pendingPicks?.[0]
             if (pick?.kind === 'fact') return fact.id === pick.schemaId ? 'pointer' : 'not-allowed'
             return 'not-allowed'
           }
           if (isElementSelecting(store.tool, store.sequenceConstruction)) {
-            if (store.sequenceConstruction) return fact.objectified ? 'pointer' : 'not-allowed'
-            if (isUniquenessTool || isFrequencyTool) return 'pointer'
+            if (store.sequenceConstruction) return 'not-allowed'
+            if (isUniquenessTool || isFrequencyTool) return 'not-allowed'
             if (isCrTool) return fact.objectified ? 'pointer' : 'not-allowed'
             if (isRoleValueTool) return fact.objectified ? 'pointer' : 'not-allowed'
             if (store.tool === 'toggleMandatory') return 'not-allowed'
@@ -2556,17 +2557,18 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
               const baseRoleOfIL = isBaseRoleOfSelectedImplicitLink(ri)
               const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
               return (
-                  <g key={role.id} className="role-box-group" filter={roleSelected ? 'url(#selectGlow)' : undefined}
+                  <g key={role.id} className={pickCandidateRole(ri) ? 'role-box-group pick-candidate' : 'role-box-group'} filter={roleSelected ? 'url(#selectGlow)' : undefined}
                      opacity={querySelectableRoles !== null && !querySelectableRoles.has(ri) ? 0.2 : isVcConstruction && !vcEligibleRoles.has(ri) ? 0.35 : 1}>
                    <rect x={leftX_v} y={ry} width={ROLE_H} height={ROLE_W}
                      fill={
                        roleInQueryPattern(ri) || nestedInQueryHighlight ? 'var(--fill-query-in)'
                        : roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
-                       : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
-                       : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
+                       : inConstruction && ucRoles.includes(ri) ? 'var(--pick-chosen)'
+                       : inFrequencyConstruction && fcRoles.includes(ri) ? 'var(--pick-chosen)'
                        : baseRoleOfIL ? '#dde8f5'
                        : roleSelected ? '#ffffff'
                        : highlightedRoles?.has(ri) ? '#fde3c8'
+                       : pickCandidateRole(ri) ? 'var(--pick-candidate)'
                        : roleGs(ri)?.fill ?? '#ffffff'
                      }
                      stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : isFactSelected || isDraftFrom ? roleStroke : roleGs(ri)?.graphics ?? roleGs(ri)?.outline ?? roleStroke}
@@ -2609,7 +2611,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             if (isEditing && displayRoles.length === 0) {
               const barX = barX_v(displayLevel)
               return (
-                <g key={ui} className="selectable-group" style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+                <g key={ui} className={isEditing ? 'selectable-group pick-target' : 'selectable-group'} style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
                   onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
                   onDoubleClick={barDoubleClickHandler(ui)}>
                   <line x1={barX} y1={startY_v + INSET} x2={barX} y2={startY_v + totalH_v - INSET}
@@ -2630,7 +2632,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             const barX = adjustedBarX(displayLevel, isPreferred)
             const sw = isUSelected ? BAR_H + 1 : BAR_H
             return (
-              <g key={ui} className="selectable-group" style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+              <g key={ui} className={isEditing ? 'selectable-group pick-target' : 'selectable-group'} style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
                 onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
                 onDoubleClick={barDoubleClickHandler(ui)}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onBarContextMenu?.(ui, e) }}>
@@ -2703,8 +2705,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             const barX = adjustedBarX(previewLevel, false)
             if (ucRoles.length === 0) {
               return (
-                <g style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer' }} onMouseDown={e => e.stopPropagation()}
+                <g className="selectable-group pick-target" style={{ cursor: 'pointer' }} onMouseDown={e => e.stopPropagation()}
                   onClick={() => store.commitUniquenessConstruction()}>
+                  <rect className="hover-ring" x={barX - 3} y={startY_v - 3} width={6} height={totalH_v + 6}/>
                   <line x1={barX} y1={startY_v + INSET} x2={barX} y2={startY_v + totalH_v - INSET}
                     stroke="var(--accent)" strokeWidth={BAR_H + 1} strokeLinecap="butt"
                     strokeDasharray="3 3" strokeOpacity={0.6}/>
@@ -2713,8 +2716,10 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             }
             const { runs } = buildRunsV(ucRoles, previewLevel, 'preview')
             return (
-              <g style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer' }} onMouseDown={e => e.stopPropagation()}
+              <g className="selectable-group pick-target" style={{ cursor: 'pointer' }} onMouseDown={e => e.stopPropagation()}
                 onClick={() => store.commitUniquenessConstruction()}>
+                <line x1={barX} y1={startY_v} x2={barX} y2={startY_v + totalH_v} stroke="transparent" strokeWidth={10}/>
+                <rect className="hover-ring" x={barX - 3} y={startY_v - 3} width={6} height={totalH_v + 6}/>
                 {runs.map(({ y1, y2, solid, key }) => (
                   <line key={key} x1={barX} y1={y1} x2={barX} y2={y2}
                     stroke="var(--accent)" strokeWidth={BAR_H + 1} strokeLinecap="butt"
@@ -2749,18 +2754,19 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
               const baseRoleOfIL = isBaseRoleOfSelectedImplicitLink(ri)
               const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
               return (
-                  <g key={role.id} className="role-box-group" filter={roleSelected ? 'url(#selectGlow)' : undefined}
+                  <g key={role.id} className={pickCandidateRole(ri) ? 'role-box-group pick-candidate' : 'role-box-group'} filter={roleSelected ? 'url(#selectGlow)' : undefined}
                      opacity={querySelectableRoles !== null && !querySelectableRoles.has(ri) ? 0.2 : isVcConstruction && !vcEligibleRoles.has(ri) ? 0.35 : 1}>
                    <rect
                      x={rx} y={topY} width={ROLE_W} height={ROLE_H}
                      fill={
                        roleInQueryPattern(ri) || nestedInQueryHighlight ? 'var(--fill-query-in)'
                        : roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
-                       : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
-                       : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
+                       : inConstruction && ucRoles.includes(ri) ? 'var(--pick-chosen)'
+                       : inFrequencyConstruction && fcRoles.includes(ri) ? 'var(--pick-chosen)'
                        : baseRoleOfIL ? '#dde8f5'
                        : roleSelected ? '#ffffff'
                        : highlightedRoles?.has(ri) ? '#fde3c8'
+                       : pickCandidateRole(ri) ? 'var(--pick-candidate)'
                        : roleGs(ri)?.fill ?? '#ffffff'
                      }
                      stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : isFactSelected || isDraftFrom ? roleStroke : roleGs(ri)?.graphics ?? roleGs(ri)?.outline ?? roleStroke}
@@ -2803,7 +2809,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             if (isEditing && displayRoles.length === 0) {
               const barY = barY_h(displayLevel)
               return (
-                <g key={ui} className="selectable-group" style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+                <g key={ui} className={isEditing ? 'selectable-group pick-target' : 'selectable-group'} style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
                   onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
                   onDoubleClick={barDoubleClickHandler(ui)}>
                   <line x1={startX + INSET} y1={barY} x2={startX + totalW - INSET} y2={barY}
@@ -2824,7 +2830,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             const barY = adjustedBarY(displayLevel, isPreferred)
             const sw = isUSelected ? BAR_H + 1 : BAR_H
             return (
-              <g key={ui} className="selectable-group" style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+              <g key={ui} className={isEditing ? 'selectable-group pick-target' : 'selectable-group'} style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
                 onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
                 onDoubleClick={barDoubleClickHandler(ui)}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onBarContextMenu?.(ui, e) }}>
@@ -2897,8 +2903,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             const barY = adjustedBarY(previewLevel, false)
             if (ucRoles.length === 0) {
               return (
-                <g style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer' }} onMouseDown={e => e.stopPropagation()}
+                <g className="selectable-group pick-target" style={{ cursor: 'pointer' }} onMouseDown={e => e.stopPropagation()}
                   onClick={() => store.commitUniquenessConstruction()}>
+                  <rect className="hover-ring" x={startX - 3} y={barY - 3} width={totalW + 6} height={6}/>
                   <line x1={startX + INSET} y1={barY} x2={startX + totalW - INSET} y2={barY}
                     stroke="var(--accent)" strokeWidth={BAR_H + 1} strokeLinecap="butt"
                     strokeDasharray="3 3" strokeOpacity={0.6}/>
@@ -2907,8 +2914,10 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             }
             const { runs } = buildRuns(ucRoles, previewLevel, 'preview')
             return (
-              <g style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer' }} onMouseDown={e => e.stopPropagation()}
+              <g className="selectable-group pick-target" style={{ cursor: 'pointer' }} onMouseDown={e => e.stopPropagation()}
                 onClick={() => store.commitUniquenessConstruction()}>
+                <line x1={startX} y1={barY} x2={startX + totalW} y2={barY} stroke="transparent" strokeWidth={10}/>
+                <rect className="hover-ring" x={startX - 3} y={barY - 3} width={totalW + 6} height={6}/>
                 {runs.map(({ x1, x2, solid, key }) => (
                   <line key={key} x1={x1} y1={barY} x2={x2} y2={barY}
                     stroke="var(--accent)" strokeWidth={BAR_H + 1} strokeLinecap="butt"
@@ -3062,7 +3071,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       const isIfSelected = !isEditing && store.selectedInternalFrequency?.ifId === ifItem.id
       const cx = (ifLive?.ifId === ifItem.id) ? ifLive.x : ifItem.x
       const cy = (ifLive?.ifId === ifItem.id) ? ifLive.y : ifItem.y
-      const fr = formatFrequencyRange(ifItem.range)
+      const fr = formatFrequencyRange(isEditing ? (store.frequencyConstruction.range ?? ifItem.range) : ifItem.range)
       const ifGs = groupStyle(store.groups, ifItem._origIfId ?? ifItem.id)
       const col = isEditing ? 'var(--accent)' : isIfSelected ? 'var(--accent)' : ifItem.deontic ? ifGs?.deontic ?? 'var(--col-deontic)' : ifGs?.constraint ?? 'var(--col-constraint)'
       const hw = ifShapeHalfW(fr)
@@ -3077,7 +3086,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         onClick: e => {
           e.stopPropagation()
           if (ifWasDragged.current) { ifWasDragged.current = false; return }
-          if (isEditing) { store.advanceFrequencyToRange(); return }
+          if (isEditing) { store.finishFrequencyConstruction(); return }
           if (isIfSelected) store.deselectInternalFrequency()
           else store.selectInternalFrequency(fact.id, ifItem.id)
         },
@@ -3085,7 +3094,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         onContextMenu: e => { e.preventDefault(); e.stopPropagation(); onIfContextMenu?.(ifItem.id, e) },
       }
       return (
-        <g key={`if-${ifItem.id}`} className="selectable-group" style={{ filter: isIfSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined, pointerEvents: inQueryEdit ? 'none' : undefined }}>
+        <g key={`if-${ifItem.id}`} className={isEditing ? 'selectable-group pick-target' : 'selectable-group'} style={{ filter: isIfSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined, pointerEvents: inQueryEdit ? 'none' : undefined }}>
           {(() => {
             const roles = isEditing ? fcRoles : ifItem.roles
             if (roles.length === 2) {
@@ -3138,7 +3147,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       const cx = ifConstrLive?.x ?? fc.x
       const cy = ifConstrLive?.y ?? fc.y
       return (
-        <g>
+        <g className="selectable-group pick-target">
           {(() => {
             const roles = fc.roleIndices
             if (roles.length === 2) {
@@ -3170,13 +3179,14 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             onClick={e => {
               e.stopPropagation()
               if (ifConstrWasDragged.current) { ifConstrWasDragged.current = false; return }
-              store.advanceFrequencyToRange()
+              store.finishFrequencyConstruction()
             }}
           />
+          <rect className="hover-ring" x={cx - IF_CIRCLE_R - 4} y={cy - IF_CIRCLE_R - 4} width={(IF_CIRCLE_R + 4) * 2} height={(IF_CIRCLE_R + 4) * 2} rx={IF_CIRCLE_R + 4}/>
           <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
             fontSize={9} fill="var(--accent)" fontFamily="var(--font-mono)" fontWeight={600}
             style={{ pointerEvents: 'none', userSelect: 'none' }}>
-            F
+            {formatFrequencyRange(fc.range) || 'F'}
           </text>
         </g>
       )
