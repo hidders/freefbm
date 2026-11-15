@@ -751,7 +751,8 @@
               "gen": "Raumes"
             }
           }
-        }
+        },
+        "isIndependent": true
       },
       {
         "id": "ot_Extension",
@@ -4337,8 +4338,8 @@
                 "upper": "6"
               }
             ],
-            "x": 915,
-            "y": 287
+            "x": 1325,
+            "y": 246
           }
         ],
         "orientation": "horizontal",
@@ -16567,7 +16568,13 @@
           "roleOccurrenceMap": {
             "0": "occ_n1792593665103_44",
             "1": "occ_n1792593665115_91"
-          }
+          },
+          "readingOffsetBelow": {
+            "dx": 0,
+            "dy": 24
+          },
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792593665122_114",
@@ -16664,7 +16671,7 @@
         "x": 0,
         "y": 0
       },
-      "zoom": 1,
+      "zoom": 0.8,
       "displaySettings": {
         "showMinimap": true,
         "minimapPos": {
@@ -16681,33 +16688,33 @@
         {
           "id": "occ_n1792593665127_120",
           "schemaElementId": "ot_Student",
-          "x": 80,
-          "y": 180
+          "x": 110,
+          "y": 160
         },
         {
           "id": "occ_n1792593665127_121",
           "schemaElementId": "ot_Staff",
-          "x": 70,
+          "x": 120,
           "y": 370
         },
         {
           "id": "occ_n1792593665130_123",
           "schemaElementId": "ot_Course",
-          "x": 510,
-          "y": 220
+          "x": 540,
+          "y": 200
         },
         {
           "id": "occ_n1792593665131_135",
           "schemaElementId": "ot_CourseCode",
-          "x": 780,
-          "y": 270,
+          "x": 810,
+          "y": 250,
           "refModeOwnerOccId": "occ_n1792593665130_123"
         },
         {
           "id": "occ_n1792593665131_136",
           "schemaElementId": "f_Course_CourseCode",
-          "x": 700,
-          "y": 270,
+          "x": 730,
+          "y": 250,
           "refModeOwnerOccId": "occ_n1792593665130_123",
           "roleOccurrenceMap": {
             "0": "occ_n1792593665130_123",
@@ -16717,26 +16724,28 @@
         {
           "id": "occ_n1792593665131_138",
           "schemaElementId": "ot_CourseTitle",
-          "x": 850,
-          "y": 120
+          "x": 880,
+          "y": 100
         },
         {
           "id": "occ_n1792593665131_140",
           "schemaElementId": "ot_Credits",
-          "x": 850,
-          "y": 220
+          "x": 880,
+          "y": 200,
+          "valueRangeOffset": null
         },
         {
           "id": "occ_n1792593665132_142",
           "schemaElementId": "ot_Grade",
-          "x": 550,
-          "y": 90
+          "x": 580,
+          "y": 70,
+          "valueRangeOffset": null
         },
         {
           "id": "occ_n1792593665135_148",
           "schemaElementId": "f_hasTitle",
-          "x": 680,
-          "y": 120,
+          "x": 710,
+          "y": 100,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665130_123",
             "1": "occ_n1792593665131_138"
@@ -16745,8 +16754,8 @@
         {
           "id": "occ_n1792593665137_152",
           "schemaElementId": "f_hasCredits",
-          "x": 690,
-          "y": 220,
+          "x": 720,
+          "y": 200,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665130_123",
             "1": "occ_n1792593665131_140"
@@ -16755,8 +16764,8 @@
         {
           "id": "occ_n1792593665139_156",
           "schemaElementId": "f_prereq",
-          "x": 580,
-          "y": 330,
+          "x": 610,
+          "y": 310,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665130_123",
             "1": "occ_n1792593665130_123"
@@ -16765,8 +16774,8 @@
         {
           "id": "occ_n1792593665142_163",
           "schemaElementId": "f_enrols",
-          "x": 286,
-          "y": 110,
+          "x": 317,
+          "y": 90,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_120",
             "1": "occ_n1792593665130_123"
@@ -16775,8 +16784,8 @@
         {
           "id": "occ_n1792593665144_167",
           "schemaElementId": "f_earned",
-          "x": 430,
-          "y": 90,
+          "x": 460,
+          "y": 70,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665142_163",
             "1": "occ_n1792593665132_142"
@@ -16785,8 +16794,8 @@
         {
           "id": "occ_n1792593665146_171",
           "schemaElementId": "f_assists",
-          "x": 286,
-          "y": 250,
+          "x": 317,
+          "y": 230,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_120",
             "1": "occ_n1792593665130_123"
@@ -16795,8 +16804,8 @@
         {
           "id": "occ_n1792593665151_179",
           "schemaElementId": "f_qualified",
-          "x": 286,
-          "y": 390,
+          "x": 317,
+          "y": 370,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_121",
             "1": "occ_n1792593665130_123"
@@ -16809,8 +16818,8 @@
         {
           "id": "occ_n1792593665152_184",
           "schemaElementId": "f_teaches",
-          "x": 286,
-          "y": 490,
+          "x": 317,
+          "y": 520,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_121",
             "1": "occ_n1792654764379_7",
@@ -16824,8 +16833,8 @@
         {
           "id": "occ_n1792593665160_192",
           "schemaElementId": "f_coordinates",
-          "x": 286,
-          "y": 320,
+          "x": 317,
+          "y": 300,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_121",
             "1": "occ_n1792593665130_123"
@@ -16834,26 +16843,26 @@
         {
           "id": "occ_n1792595515478_3",
           "schemaElementId": "n1792595515478_2",
-          "x": 680,
-          "y": 470
+          "x": 770,
+          "y": 460
         },
         {
           "id": "occ_n1792595521928_5",
           "schemaElementId": "n1792595521927_4",
-          "x": 690,
-          "y": 548
+          "x": 760,
+          "y": 588
         },
         {
           "id": "occ_n1792595733805_11",
           "schemaElementId": "n1792595733805_10",
-          "x": 450,
-          "y": 490
+          "x": 510,
+          "y": 510
         },
         {
           "id": "occ_n1792595806796_15",
           "schemaElementId": "n1792595806796_12",
-          "x": 550,
-          "y": 470,
+          "x": 610,
+          "y": 460,
           "roleOccurrenceMap": {
             "0": "occ_n1792595733805_11",
             "1": "occ_n1792595515478_3"
@@ -16866,8 +16875,8 @@
         {
           "id": "occ_n1792595809976_19",
           "schemaElementId": "n1792595809976_16",
-          "x": 540,
-          "y": 548,
+          "x": 610,
+          "y": 588,
           "roleOccurrenceMap": {
             "0": "occ_n1792595733805_11",
             "1": "occ_n1792595521928_5"
@@ -16880,15 +16889,15 @@
         {
           "id": "occ_n1792600091986_13",
           "schemaElementId": "n1792600091986_2",
-          "x": 950,
-          "y": 548,
+          "x": 1030,
+          "y": 588,
           "refModeOwnerOccId": "occ_n1792595521928_5"
         },
         {
           "id": "occ_n1792600091986_14",
           "schemaElementId": "n1792600091986_8",
-          "x": 820,
-          "y": 548,
+          "x": 920,
+          "y": 588,
           "refModeOwnerOccId": "occ_n1792595521928_5",
           "roleOccurrenceMap": {
             "0": "occ_n1792595521928_5",
@@ -16898,12 +16907,9 @@
         {
           "id": "occ_n1792654764379_7",
           "schemaElementId": "n1792654764379_4",
-          "x": 460,
-          "y": 390,
-          "readingOffsetBelow": {
-            "dx": 0,
-            "dy": 32
-          },
+          "x": 490,
+          "y": 370,
+          "readingOffsetBelow": null,
           "nameOffset": {
             "dx": 0,
             "dy": 0
@@ -16911,44 +16917,52 @@
           "roleOccurrenceMap": {
             "0": "occ_n1792593665130_123",
             "1": "occ_n1792595733805_11"
-          }
+          },
+          "nestedReading": false,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         }
       ],
       "constraintOccurrences": [
         {
           "id": "cocc_n1792593665140_158",
           "schemaConstraintId": "c_prereqRing",
-          "x": 590,
-          "y": 380,
+          "x": 640,
+          "y": 370,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
         },
         {
           "id": "cocc_n1792593665148_173",
           "schemaConstraintId": "c_notBoth",
-          "x": 286,
-          "y": 190,
+          "x": 317,
+          "y": 170,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
         },
         {
           "id": "cocc_n1792593665155_186",
           "schemaConstraintId": "c_teachQualified",
-          "x": 286,
-          "y": 440,
+          "x": 317,
+          "y": 450,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
         },
         {
           "id": "cocc_n1792595873307_21",
           "schemaConstraintId": "n1792595873306_20",
-          "x": 610,
-          "y": 510,
+          "x": 680,
+          "y": 520,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
         }
       ],
-      "implicitLinkPositions": {},
+      "implicitLinkPositions": {
+        "n1792654764379_4:il:1": {
+          "x": 515,
+          "y": 460
+        }
+      },
       "profileId": "abstract",
       "shownImplicitLinks": [],
       "notes": [],
@@ -16959,10 +16973,10 @@
       "subtypeOccurrences": [],
       "subtypeEndpointOccs": {},
       "pan": {
-        "x": -17,
-        "y": -54
+        "x": 0,
+        "y": 0
       },
-      "zoom": 1,
+      "zoom": 0.8,
       "displaySettings": {
         "showMinimap": true,
         "minimapPos": {
@@ -17848,10 +17862,10 @@
       "subtypeOccurrences": [],
       "subtypeEndpointOccs": {},
       "pan": {
-        "x": 40,
-        "y": 40
+        "x": 4,
+        "y": 34
       },
-      "zoom": 0.59734219269103,
+      "zoom": 0.8,
       "displaySettings": {
         "showMinimap": true,
         "minimapPos": {
@@ -18238,10 +18252,10 @@
       "subtypeOccurrences": [],
       "subtypeEndpointOccs": {},
       "pan": {
-        "x": 0,
-        "y": 0
+        "x": 40,
+        "y": 40
       },
-      "zoom": 1,
+      "zoom": 0.8,
       "displaySettings": {
         "showMinimap": true,
         "minimapPos": {
@@ -19089,17 +19103,20 @@
       "subtypeOccurrences": [],
       "subtypeEndpointOccs": {},
       "pan": {
-        "x": 0,
-        "y": 0
+        "x": -126.31176470588241,
+        "y": 82.16176470588232
       },
-      "zoom": 1,
+      "zoom": 0.8,
       "displaySettings": {
         "showMinimap": true,
         "minimapPos": {
           "x": null,
           "y": null
         }
-      }
+      },
+      "erdPositions": {},
+      "erdAssertionPositions": {},
+      "erdAssertions": false
     },
     {
       "id": "n1794245354790_603",
@@ -19109,20 +19126,20 @@
         {
           "id": "occ_n1794245354792_605",
           "schemaElementId": "ot_Person",
-          "x": 1454,
-          "y": 172
+          "x": 1920,
+          "y": 110
         },
         {
           "id": "occ_n1794245354792_608",
           "schemaElementId": "ot_PersonName",
-          "x": 1704,
-          "y": 124
+          "x": 2200,
+          "y": 60
         },
         {
           "id": "occ_n1794245354792_604",
           "schemaElementId": "f_hasName",
-          "x": 1567,
-          "y": 124,
+          "x": 2050,
+          "y": 60,
           "orientation": "horizontal",
           "roleOrder": [
             0,
@@ -19137,14 +19154,14 @@
         {
           "id": "occ_n1794245354792_610",
           "schemaElementId": "ot_Email",
-          "x": 1674,
-          "y": 172
+          "x": 2160,
+          "y": 110
         },
         {
           "id": "occ_n1794245354792_609",
           "schemaElementId": "f_hasEmail",
-          "x": 1567,
-          "y": 172,
+          "x": 2050,
+          "y": 110,
           "orientation": "horizontal",
           "roleOrder": [
             0,
@@ -19159,14 +19176,14 @@
         {
           "id": "occ_n1794245354793_612",
           "schemaElementId": "ot_Phone",
-          "x": 1678,
-          "y": 220
+          "x": 2170,
+          "y": 160
         },
         {
           "id": "occ_n1794245354793_611",
           "schemaElementId": "f_hasPhone",
-          "x": 1567,
-          "y": 220,
+          "x": 2050,
+          "y": 160,
           "orientation": "horizontal",
           "roleOrder": [
             0,
@@ -19181,32 +19198,32 @@
         {
           "id": "occ_n1794245354793_613",
           "schemaElementId": "ot_Student",
-          "x": 1040,
-          "y": 245
+          "x": 1470,
+          "y": 190
         },
         {
           "id": "occ_n1794245354793_615",
           "schemaElementId": "ot_Professor",
-          "x": 1287,
-          "y": 116
+          "x": 1740,
+          "y": 60
         },
         {
           "id": "occ_n1794245354794_616",
           "schemaElementId": "ot_Staff",
-          "x": 563,
-          "y": 539
+          "x": 950,
+          "y": 510
         },
         {
           "id": "occ_n1794245354795_626",
           "schemaElementId": "ot_Extension",
-          "x": 332,
-          "y": 539
+          "x": 650,
+          "y": 510
         },
         {
           "id": "occ_n1794245354795_625",
           "schemaElementId": "f_hasExtension",
-          "x": 457,
-          "y": 539,
+          "x": 790,
+          "y": 510,
           "orientation": "horizontal",
           "roleOrder": [
             1,
@@ -19221,20 +19238,20 @@
         {
           "id": "occ_n1794245354794_618",
           "schemaElementId": "ot_Room",
-          "x": 310,
-          "y": 338
+          "x": 610,
+          "y": 310
         },
         {
           "id": "occ_n1794245354795_624",
           "schemaElementId": "ot_RoomNr",
-          "x": 537,
-          "y": 338
+          "x": 870,
+          "y": 310
         },
         {
           "id": "occ_n1794245354795_623",
           "schemaElementId": "f_roomHasNr",
-          "x": 419,
-          "y": 338,
+          "x": 740,
+          "y": 310,
           "orientation": "horizontal",
           "roleOrder": [
             0,
@@ -19249,26 +19266,26 @@
         {
           "id": "occ_n1794245354795_620",
           "schemaElementId": "ot_Building",
-          "x": 40,
-          "y": 349
+          "x": 320,
+          "y": 310
         },
         {
           "id": "occ_n1794245354796_627",
           "schemaElementId": "ot_Lecturer",
-          "x": 41,
-          "y": 1124
+          "x": 320,
+          "y": 1170
         },
         {
           "id": "occ_n1794245354796_629",
           "schemaElementId": "ot_Course",
-          "x": 888,
-          "y": 542
+          "x": 1300,
+          "y": 510
         },
         {
           "id": "occ_n1794245354800_647",
           "schemaElementId": "f_prereq",
-          "x": 1018,
-          "y": 542,
+          "x": 1440,
+          "y": 510,
           "orientation": "horizontal",
           "roleOrder": [
             0,
@@ -19283,14 +19300,14 @@
         {
           "id": "occ_n1794245354796_632",
           "schemaElementId": "ot_CourseTitle",
-          "x": 1164,
-          "y": 604
+          "x": 1600,
+          "y": 580
         },
         {
           "id": "occ_n1794245354796_628",
           "schemaElementId": "f_hasTitle",
-          "x": 1018,
-          "y": 604,
+          "x": 1440,
+          "y": 580,
           "orientation": "horizontal",
           "roleOrder": [
             0,
@@ -19305,14 +19322,14 @@
         {
           "id": "occ_n1794245354797_634",
           "schemaElementId": "ot_Credits",
-          "x": 1147,
-          "y": 666
+          "x": 1580,
+          "y": 640
         },
         {
           "id": "occ_n1794245354797_633",
           "schemaElementId": "f_hasCredits",
-          "x": 1018,
-          "y": 666,
+          "x": 1440,
+          "y": 640,
           "orientation": "horizontal",
           "roleOrder": [
             0,
@@ -19327,8 +19344,8 @@
         {
           "id": "occ_n1794245354798_636",
           "schemaElementId": "f_enrols",
-          "x": 930,
-          "y": 321,
+          "x": 1340,
+          "y": 280,
           "orientation": "horizontal",
           "roleOccurrenceMap": {
             "0": "occ_n1794245354793_613",
@@ -19339,14 +19356,14 @@
         {
           "id": "occ_n1794245354798_638",
           "schemaElementId": "ot_Grade",
-          "x": 1157,
-          "y": 321
+          "x": 1590,
+          "y": 280
         },
         {
           "id": "occ_n1794245354798_637",
           "schemaElementId": "f_earned",
-          "x": 1047,
-          "y": 321,
+          "x": 1470,
+          "y": 280,
           "orientation": "horizontal",
           "roleOrder": [
             0,
@@ -19361,8 +19378,8 @@
         {
           "id": "occ_n1794245354799_639",
           "schemaElementId": "n1792654764379_4",
-          "x": 786,
-          "y": 596,
+          "x": 1180,
+          "y": 580,
           "orientation": "horizontal",
           "roleOccurrenceMap": {
             "0": "occ_n1794245354796_629",
@@ -19373,20 +19390,20 @@
         {
           "id": "occ_n1794245354799_640",
           "schemaElementId": "n1792595733805_10",
-          "x": 859,
-          "y": 752
+          "x": 1270,
+          "y": 720
         },
         {
           "id": "occ_n1794245354799_642",
           "schemaElementId": "n1792595515478_2",
-          "x": 1081,
-          "y": 752
+          "x": 1510,
+          "y": 720
         },
         {
           "id": "occ_n1794245354799_641",
           "schemaElementId": "n1792595806796_12",
-          "x": 966,
-          "y": 752,
+          "x": 1380,
+          "y": 720,
           "orientation": "horizontal",
           "roleOrder": [
             0,
@@ -19401,14 +19418,14 @@
         {
           "id": "occ_n1794245354799_644",
           "schemaElementId": "n1792595521927_4",
-          "x": 943,
-          "y": 1000
+          "x": 1360,
+          "y": 1020
         },
         {
           "id": "occ_n1794245354793_614",
           "schemaElementId": "f_supervises",
-          "x": 1174,
-          "y": 209,
+          "x": 1620,
+          "y": 160,
           "orientation": "horizontal",
           "uniquenessBelow": false,
           "roleOccurrenceMap": {
@@ -19423,9 +19440,9 @@
         {
           "id": "occ_n1794245354794_617",
           "schemaElementId": "f_hasOffice",
-          "x": 444,
-          "y": 438,
-          "orientation": "vertical",
+          "x": 770,
+          "y": 410,
+          "orientation": "horizontal",
           "uniquenessBelow": false,
           "roleOccurrenceMap": {
             "0": "occ_n1794245354794_616",
@@ -19439,8 +19456,8 @@
         {
           "id": "occ_n1794245354795_619",
           "schemaElementId": "f_roomInBuilding",
-          "x": 179,
-          "y": 378,
+          "x": 470,
+          "y": 340,
           "orientation": "horizontal",
           "uniquenessBelow": false,
           "roleOccurrenceMap": {
@@ -19455,8 +19472,8 @@
         {
           "id": "occ_n1794245354797_635",
           "schemaElementId": "f_coordinates",
-          "x": 705,
-          "y": 335,
+          "x": 1100,
+          "y": 280,
           "orientation": "horizontal",
           "uniquenessBelow": false,
           "roleOccurrenceMap": {
@@ -19471,8 +19488,8 @@
         {
           "id": "occ_n1794245354799_643",
           "schemaElementId": "n1792595809976_16",
-          "x": 899,
-          "y": 859,
+          "x": 1310,
+          "y": 860,
           "orientation": "vertical",
           "uniquenessBelow": false,
           "roleOccurrenceMap": {
@@ -19487,8 +19504,8 @@
         {
           "id": "occ_n1794245354800_648",
           "schemaElementId": "f_assists",
-          "x": 1005,
-          "y": 434,
+          "x": 1420,
+          "y": 400,
           "orientation": "vertical",
           "uniquenessBelow": false,
           "roleOccurrenceMap": {
@@ -19503,8 +19520,8 @@
         {
           "id": "occ_n1794245354800_649",
           "schemaElementId": "f_qualified",
-          "x": 706,
-          "y": 464,
+          "x": 1090,
+          "y": 410,
           "orientation": "horizontal",
           "uniquenessBelow": false,
           "roleOccurrenceMap": {
@@ -19519,8 +19536,8 @@
         {
           "id": "occ_n1794245354801_650",
           "schemaElementId": "f_teaches",
-          "x": 669,
-          "y": 597,
+          "x": 1040,
+          "y": 610,
           "orientation": "horizontal",
           "uniquenessBelow": false,
           "roleOccurrenceMap": {
@@ -19533,95 +19550,95 @@
           ]
         },
         {
-          "id": "occ_n1794245394080_713",
+          "id": "occ_n1794721453164_3",
           "schemaElementId": "ot_PersonNr",
-          "x": 1614,
-          "y": 172,
+          "x": 1817,
+          "y": 192,
           "refModeOwnerOccId": "occ_n1794245354792_605"
         },
         {
           "id": "occ_n1794245354792_607",
           "schemaElementId": "f_Person_PersonNr",
-          "x": 1534,
-          "y": 172,
+          "x": 1737,
+          "y": 192,
           "refModeOwnerOccId": "occ_n1794245354792_605",
           "roleOccurrenceMap": {
             "0": "occ_n1794245354792_605",
-            "1": "occ_n1794245394080_713"
+            "1": "occ_n1794721453164_3"
           }
         },
         {
-          "id": "occ_n1794245394080_715",
+          "id": "occ_n1794721453164_5",
           "schemaElementId": "ot_BuildingCode",
-          "x": 200,
-          "y": 349,
+          "x": 212,
+          "y": 397,
           "refModeOwnerOccId": "occ_n1794245354795_620"
         },
         {
           "id": "occ_n1794245354795_622",
           "schemaElementId": "f_Building_BuildingCode",
-          "x": 120,
-          "y": 349,
+          "x": 132,
+          "y": 397,
           "refModeOwnerOccId": "occ_n1794245354795_620",
           "roleOccurrenceMap": {
             "0": "occ_n1794245354795_620",
-            "1": "occ_n1794245394080_715"
+            "1": "occ_n1794721453164_5"
           }
         },
         {
-          "id": "occ_n1794245394080_717",
+          "id": "occ_n1794721453164_7",
           "schemaElementId": "ot_CourseCode",
-          "x": 1048,
-          "y": 542,
+          "x": 1192,
+          "y": 598,
           "refModeOwnerOccId": "occ_n1794245354796_629"
         },
         {
           "id": "occ_n1794245354796_631",
           "schemaElementId": "f_Course_CourseCode",
-          "x": 968,
-          "y": 542,
+          "x": 1112,
+          "y": 598,
           "refModeOwnerOccId": "occ_n1794245354796_629",
           "roleOccurrenceMap": {
             "0": "occ_n1794245354796_629",
-            "1": "occ_n1794245394080_717"
+            "1": "occ_n1794721453164_7"
           }
         },
         {
-          "id": "occ_n1794245394080_719",
+          "id": "occ_n1794721453164_9",
           "schemaElementId": "n1792600091986_2",
-          "x": 1103,
-          "y": 1000,
+          "x": 1256,
+          "y": 1108,
           "refModeOwnerOccId": "occ_n1794245354799_644"
         },
         {
           "id": "occ_n1794245354799_646",
           "schemaElementId": "n1792600091986_8",
-          "x": 1023,
-          "y": 1000,
+          "x": 1176,
+          "y": 1108,
           "refModeOwnerOccId": "occ_n1794245354799_644",
           "roleOccurrenceMap": {
             "0": "occ_n1794245354799_644",
-            "1": "occ_n1794245394080_719"
+            "1": "occ_n1794721453164_9"
           }
         },
         {
           "id": "occ_n1794245354802_651",
           "schemaElementId": "n1794245303657_52",
-          "x": 2318,
-          "y": -60
+          "x": 2563,
+          "y": -12
         },
         {
           "id": "occ_n1794245354802_652",
           "schemaElementId": "n1794245303657_39",
-          "x": 2385,
-          "y": 448,
+          "x": 2634,
+          "y": 496,
           "refModeOwnerOccId": "occ_n1794245354802_651"
         },
         {
           "id": "occ_n1794245354802_653",
           "schemaElementId": "n1794245303657_53",
-          "x": 2318,
-          "y": -60,
+          "x": 2563,
+          "y": -12,
           "refModeOwnerOccId": "occ_n1794245354802_651",
           "roleOccurrenceMap": {
             "0": "occ_n1794245354802_651",
@@ -19631,57 +19648,57 @@
         {
           "id": "occ_n1794245354803_654",
           "schemaElementId": "n1794245303657_59",
-          "x": 2318,
-          "y": -60
+          "x": 2563,
+          "y": -12
         },
         {
           "id": "occ_n1794245354803_655",
           "schemaElementId": "n1794245303657_40",
-          "x": 2385,
-          "y": 448
+          "x": 2634,
+          "y": 496
         },
         {
           "id": "occ_n1794245354803_656",
           "schemaElementId": "n1794245303657_64",
-          "x": 2318,
-          "y": -60
+          "x": 2563,
+          "y": -12
         },
         {
           "id": "occ_n1794245354804_657",
           "schemaElementId": "n1794245303657_41",
-          "x": 2385,
-          "y": 448
+          "x": 2634,
+          "y": 496
         },
         {
           "id": "occ_n1794245354806_658",
           "schemaElementId": "n1794245303657_69",
-          "x": 2318,
-          "y": -60
+          "x": 2563,
+          "y": -12
         },
         {
           "id": "occ_n1794245354806_659",
           "schemaElementId": "n1794245303657_42",
-          "x": 2385,
-          "y": 448
+          "x": 2634,
+          "y": 496
         },
         {
           "id": "occ_n1794245354806_660",
           "schemaElementId": "n1794245303657_73",
-          "x": 2353,
-          "y": 55
+          "x": 2595,
+          "y": 103
         },
         {
           "id": "occ_n1794245354806_661",
           "schemaElementId": "n1794245303657_39",
-          "x": 2385,
-          "y": 448,
+          "x": 2634,
+          "y": 496,
           "refModeOwnerOccId": "occ_n1794245354806_660"
         },
         {
           "id": "occ_n1794245354806_662",
           "schemaElementId": "n1794245303657_74",
-          "x": 2353,
-          "y": 55,
+          "x": 2595,
+          "y": 103,
           "refModeOwnerOccId": "occ_n1794245354806_660",
           "roleOccurrenceMap": {
             "0": "occ_n1794245354806_660",
@@ -19691,27 +19708,27 @@
         {
           "id": "occ_n1794245354806_663",
           "schemaElementId": "n1794245303657_80",
-          "x": 2353,
-          "y": 55
+          "x": 2595,
+          "y": 103
         },
         {
           "id": "occ_n1794245354807_664",
           "schemaElementId": "n1794245303657_84",
-          "x": 2339,
-          "y": 285
+          "x": 2581,
+          "y": 333
         },
         {
           "id": "occ_n1794245354807_665",
           "schemaElementId": "n1794245303657_39",
-          "x": 2385,
-          "y": 448,
+          "x": 2634,
+          "y": 496,
           "refModeOwnerOccId": "occ_n1794245354807_664"
         },
         {
           "id": "occ_n1794245354807_666",
           "schemaElementId": "n1794245303657_85",
-          "x": 2339,
-          "y": 285,
+          "x": 2581,
+          "y": 333,
           "refModeOwnerOccId": "occ_n1794245354807_664",
           "roleOccurrenceMap": {
             "0": "occ_n1794245354807_664",
@@ -19721,57 +19738,57 @@
         {
           "id": "occ_n1794245354807_667",
           "schemaElementId": "n1794245303657_91",
-          "x": 2339,
-          "y": 285
+          "x": 2581,
+          "y": 333
         },
         {
           "id": "occ_n1794245354807_668",
           "schemaElementId": "n1794245303657_43",
-          "x": 2385,
-          "y": 448
+          "x": 2634,
+          "y": 496
         },
         {
           "id": "occ_n1794245354808_669",
           "schemaElementId": "n1794245303657_95",
-          "x": 2339,
-          "y": 285
+          "x": 2581,
+          "y": 333
         },
         {
           "id": "occ_n1794245354808_670",
           "schemaElementId": "n1794245303657_44",
-          "x": 2385,
-          "y": 448
+          "x": 2634,
+          "y": 496
         },
         {
           "id": "occ_n1794245354808_671",
           "schemaElementId": "n1794245303657_99",
-          "x": 2339,
-          "y": 285
+          "x": 2581,
+          "y": 333
         },
         {
           "id": "occ_n1794245354808_672",
           "schemaElementId": "n1794245303657_45",
-          "x": 2385,
-          "y": 448
+          "x": 2634,
+          "y": 496
         },
         {
           "id": "occ_n1794245354808_673",
           "schemaElementId": "n1794245303657_103",
-          "x": 2314,
-          "y": -165
+          "x": 2558,
+          "y": -117
         },
         {
           "id": "occ_n1794245354808_674",
           "schemaElementId": "n1794245303657_39",
-          "x": 2385,
-          "y": 448,
+          "x": 2634,
+          "y": 496,
           "refModeOwnerOccId": "occ_n1794245354808_673"
         },
         {
           "id": "occ_n1794245354808_675",
           "schemaElementId": "n1794245303657_104",
-          "x": 2314,
-          "y": -165,
+          "x": 2558,
+          "y": -117,
           "refModeOwnerOccId": "occ_n1794245354808_673",
           "roleOccurrenceMap": {
             "0": "occ_n1794245354808_673",
@@ -19781,21 +19798,21 @@
         {
           "id": "occ_n1794245354809_676",
           "schemaElementId": "n1794245303658_110",
-          "x": 2314,
-          "y": 813
+          "x": 2558,
+          "y": 861
         },
         {
           "id": "occ_n1794245354809_677",
           "schemaElementId": "n1794245303657_39",
-          "x": 2385,
-          "y": 448,
+          "x": 2634,
+          "y": 496,
           "refModeOwnerOccId": "occ_n1794245354809_676"
         },
         {
           "id": "occ_n1794245354809_678",
           "schemaElementId": "n1794245303658_111",
-          "x": 2314,
-          "y": 813,
+          "x": 2558,
+          "y": 861,
           "refModeOwnerOccId": "occ_n1794245354809_676",
           "roleOccurrenceMap": {
             "0": "occ_n1794245354809_676",
@@ -19805,21 +19822,21 @@
         {
           "id": "occ_n1794245354809_679",
           "schemaElementId": "n1794245303658_117",
-          "x": 2346,
-          "y": 611
+          "x": 2592,
+          "y": 659
         },
         {
           "id": "occ_n1794245354809_680",
           "schemaElementId": "n1794245303657_46",
-          "x": 2385,
-          "y": 448,
+          "x": 2634,
+          "y": 496,
           "refModeOwnerOccId": "occ_n1794245354809_679"
         },
         {
           "id": "occ_n1794245354809_681",
           "schemaElementId": "n1794245303658_118",
-          "x": 2346,
-          "y": 611,
+          "x": 2592,
+          "y": 659,
           "refModeOwnerOccId": "occ_n1794245354809_679",
           "roleOccurrenceMap": {
             "0": "occ_n1794245354809_679",
@@ -19829,188 +19846,188 @@
         {
           "id": "occ_n1794245354809_682",
           "schemaElementId": "n1794245303658_124",
-          "x": 2346,
-          "y": 611
+          "x": 2592,
+          "y": 659
         },
         {
           "id": "occ_n1794245354809_683",
           "schemaElementId": "n1794245303657_47",
-          "x": 2385,
-          "y": 448
+          "x": 2634,
+          "y": 496
         },
         {
           "id": "occ_n1794245354810_684",
           "schemaElementId": "n1794245303658_130",
-          "x": 2346,
-          "y": 611
+          "x": 2592,
+          "y": 659
         },
         {
           "id": "occ_n1794245354810_685",
           "schemaElementId": "n1794245303657_48",
-          "x": 2385,
-          "y": 448
+          "x": 2634,
+          "y": 496
         },
         {
           "id": "occ_n1794245354810_686",
           "schemaElementId": "n1794245303658_135",
-          "x": 2346,
-          "y": 611
+          "x": 2592,
+          "y": 659
         },
         {
           "id": "occ_n1794245354810_687",
           "schemaElementId": "n1794245303658_140",
-          "x": 2330,
-          "y": 161
+          "x": 2571,
+          "y": 209
         },
         {
           "id": "occ_n1794245354810_688",
           "schemaElementId": "n1794245303658_141",
-          "x": 2330,
-          "y": 161
+          "x": 2571,
+          "y": 209
         },
         {
           "id": "occ_n1794245354811_689",
           "schemaElementId": "n1794245303658_146",
-          "x": 2330,
-          "y": 161
+          "x": 2571,
+          "y": 209
         },
         {
           "id": "occ_n1794245354811_690",
           "schemaElementId": "n1794245303657_46",
-          "x": 2385,
-          "y": 448
+          "x": 2634,
+          "y": 496
         },
         {
           "id": "occ_n1794245354811_691",
           "schemaElementId": "n1794245303658_151",
-          "x": 2330,
-          "y": 161
+          "x": 2571,
+          "y": 209
         },
         {
           "id": "occ_n1794245354811_692",
           "schemaElementId": "n1794245303657_49",
-          "x": 2385,
-          "y": 448
+          "x": 2634,
+          "y": 496
         },
         {
           "id": "occ_n1794245354811_693",
           "schemaElementId": "n1794245303658_156",
-          "x": 2321,
-          "y": 909
+          "x": 2565,
+          "y": 957
         },
         {
           "id": "occ_n1794245354812_694",
           "schemaElementId": "n1794245303658_157",
-          "x": 2321,
-          "y": 909
+          "x": 2565,
+          "y": 957
         },
         {
           "id": "occ_n1794245354812_695",
           "schemaElementId": "n1794245303658_162",
-          "x": 2321,
-          "y": 909
+          "x": 2565,
+          "y": 957
         },
         {
           "id": "occ_n1794245354812_696",
           "schemaElementId": "n1794245303657_50",
-          "x": 2385,
-          "y": 448
+          "x": 2634,
+          "y": 496
         },
         {
           "id": "occ_n1794245354812_697",
           "schemaElementId": "n1794245303658_167",
-          "x": 2321,
-          "y": 909
+          "x": 2565,
+          "y": 957
         },
         {
           "id": "occ_n1794245354812_698",
           "schemaElementId": "n1794245303657_51",
-          "x": 2385,
-          "y": 448
+          "x": 2634,
+          "y": 496
         },
         {
           "id": "occ_n1794245354812_699",
           "schemaElementId": "n1794245303658_173",
-          "x": 2385,
-          "y": 726
+          "x": 2634,
+          "y": 774
         },
         {
           "id": "occ_n1794245354813_700",
           "schemaElementId": "n1794245303658_174",
-          "x": 2385,
-          "y": 726
+          "x": 2634,
+          "y": 774
         },
         {
           "id": "occ_n1794245354813_701",
           "schemaElementId": "n1794245303658_179",
-          "x": 2385,
-          "y": 726
+          "x": 2634,
+          "y": 774
         },
         {
           "id": "occ_n1794245354814_702",
           "schemaElementId": "n1794245303658_185",
-          "x": 2333,
-          "y": 400
+          "x": 2580,
+          "y": 448
         },
         {
           "id": "occ_n1794245354815_703",
           "schemaElementId": "n1794245303658_186",
-          "x": 2333,
-          "y": 400
+          "x": 2580,
+          "y": 448
         },
         {
           "id": "occ_n1794245354815_704",
           "schemaElementId": "n1794245303658_191",
-          "x": 2333,
-          "y": 400
+          "x": 2580,
+          "y": 448
         },
         {
           "id": "occ_n1794245354816_705",
           "schemaElementId": "n1794245303658_197",
-          "x": 2358,
-          "y": 496
+          "x": 2608,
+          "y": 544
         },
         {
           "id": "occ_n1794245354816_706",
           "schemaElementId": "n1794245303658_198",
-          "x": 2358,
-          "y": 496
+          "x": 2608,
+          "y": 544
         },
         {
           "id": "occ_n1794245354817_707",
           "schemaElementId": "n1794245303658_203",
-          "x": 2358,
-          "y": 496
+          "x": 2608,
+          "y": 544
         },
         {
           "id": "occ_n1794245354818_708",
           "schemaElementId": "n1794245303658_209",
-          "x": 2321,
-          "y": 1033
+          "x": 2567,
+          "y": 1081
         },
         {
           "id": "occ_n1794245354818_709",
           "schemaElementId": "n1794245303658_210",
-          "x": 2321,
-          "y": 1033
+          "x": 2567,
+          "y": 1081
         },
         {
           "id": "occ_n1794245354819_710",
           "schemaElementId": "n1794245303658_215",
-          "x": 2321,
-          "y": 1033
+          "x": 2567,
+          "y": 1081
         },
         {
           "id": "occ_n1794245354820_711",
           "schemaElementId": "n1794245303658_220",
-          "x": 2321,
-          "y": 1033
+          "x": 2567,
+          "y": 1081
         },
         {
           "id": "occ_n1794245354820_712",
           "schemaElementId": "n1794245303658_225",
-          "x": 2321,
-          "y": 1033
+          "x": 2577,
+          "y": 1081
         }
       ],
       "constraintOccurrences": [],
@@ -20052,147 +20069,147 @@
       ],
       "mappingRulePositions": {
         "n1794245303661_353": {
-          "x": 2003,
-          "y": -16
+          "x": 2246,
+          "y": 2
         },
         "n1794245303661_361": {
-          "x": 2003,
-          "y": 16
+          "x": 2246,
+          "y": 34
         },
         "n1794245303661_352": {
-          "x": 2003,
-          "y": 48
+          "x": 2246,
+          "y": 66
         },
         "n1794245303661_354": {
-          "x": 2003,
-          "y": 80
+          "x": 2246,
+          "y": 98
         },
         "n1794245303661_355": {
-          "x": 2003,
-          "y": 112
+          "x": 2246,
+          "y": 130
         },
         "n1794245303661_357": {
-          "x": 2003,
-          "y": 144
+          "x": 2246,
+          "y": 162
         },
         "n1794245303661_356": {
-          "x": 2003,
-          "y": 176
+          "x": 2246,
+          "y": 194
         },
         "n1794245303661_368": {
-          "x": 2003,
-          "y": 208
+          "x": 2246,
+          "y": 226
         },
         "n1794245303661_367": {
-          "x": 2003,
-          "y": 240
+          "x": 2246,
+          "y": 258
         },
         "n1794245303661_358": {
-          "x": 2003,
-          "y": 324
+          "x": 2246,
+          "y": 350
         },
         "n1794245303661_359": {
-          "x": 2003,
-          "y": 356
+          "x": 2246,
+          "y": 382
         },
         "n1794245303661_371": {
-          "x": 2003,
-          "y": 408
+          "x": 2246,
+          "y": 435
         },
         "n1794245303661_360": {
-          "x": 2003,
-          "y": 440
-        },
-        "n1794245303662_372": {
-          "x": 2003,
-          "y": 476
+          "x": 2246,
+          "y": 467
         },
         "n1794245303661_366": {
-          "x": 2003,
-          "y": 508
+          "x": 2246,
+          "y": 499
+        },
+        "n1794245303662_372": {
+          "x": 2246,
+          "y": 531
         },
         "n1794245303661_363": {
-          "x": 2003,
-          "y": 576
-        },
-        "n1794245303661_364": {
-          "x": 2003,
+          "x": 2246,
           "y": 608
         },
+        "n1794245303661_364": {
+          "x": 2246,
+          "y": 640
+        },
         "n1794245303661_365": {
-          "x": 2003,
-          "y": 642
+          "x": 2246,
+          "y": 675
         },
         "n1794245303661_370": {
-          "x": 2003,
-          "y": 674
+          "x": 2246,
+          "y": 707
         },
         "n1794245303661_362": {
-          "x": 2003,
-          "y": 706
+          "x": 2246,
+          "y": 748
         },
         "n1794245303661_369": {
-          "x": 2003,
-          "y": 827
+          "x": 2246,
+          "y": 866
         },
         "n1794245303662_373": {
-          "x": 2003,
-          "y": 911
+          "x": 2246,
+          "y": 953
         }
       },
       "pan": {
-        "x": -613,
-        "y": 34
+        "x": 0,
+        "y": 0
       },
-      "zoom": 1,
+      "zoom": 0.8,
       "erdPositions": {
         "n1794245303657_52": {
-          "x": 2242,
-          "y": -113
+          "x": 2484,
+          "y": -85
         },
         "n1794245303657_73": {
-          "x": 2242,
-          "y": 21
+          "x": 2484,
+          "y": 49
         },
         "n1794245303657_84": {
-          "x": 2242,
-          "y": 232
+          "x": 2484,
+          "y": 260
         },
         "n1794245303657_103": {
-          "x": 2242,
-          "y": -190
+          "x": 2484,
+          "y": -162
         },
         "n1794245303658_110": {
-          "x": 2242,
-          "y": 788
+          "x": 2484,
+          "y": 816
         },
         "n1794245303658_117": {
-          "x": 2242,
-          "y": 558
+          "x": 2484,
+          "y": 586
         },
         "n1794245303658_140": {
-          "x": 2242,
-          "y": 117
+          "x": 2484,
+          "y": 145
         },
         "n1794245303658_156": {
-          "x": 2242,
-          "y": 865
+          "x": 2484,
+          "y": 893
         },
         "n1794245303658_173": {
-          "x": 2242,
-          "y": 692
+          "x": 2484,
+          "y": 720
         },
         "n1794245303658_185": {
-          "x": 2242,
-          "y": 366
+          "x": 2484,
+          "y": 394
         },
         "n1794245303658_197": {
-          "x": 2242,
-          "y": 462
+          "x": 2484,
+          "y": 490
         },
         "n1794245303658_209": {
-          "x": 2242,
-          "y": 980
+          "x": 2484,
+          "y": 1008
         }
       },
       "displaySettings": {
@@ -20204,7 +20221,7 @@
       }
     }
   ],
-  "activeDiagramId": "n1794245354790_603",
+  "activeDiagramId": "n1794245305000_510",
   "populations": {
     "ot_Person": [
       "P1",

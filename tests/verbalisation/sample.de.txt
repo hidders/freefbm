@@ -130,6 +130,10 @@ Es ist möglich, dass mehr als ein Mitarbeiter ein Büro in demselben Raum hat.
 ◇∃ StaffMember ¬(∃ Room (StaffMember has an office in Room))
 Es ist möglich, dass ein Mitarbeiter ein Büro in keinem Raum hat.
 
+# Possible (role not mandatory) · StaffMember has an office in Room
+◇∃ Room ¬(∃ StaffMember (StaffMember has an office in Room))
+Es ist möglich, dass es einen Raum gibt, für den gilt, dass kein Mitarbeiter ein Büro in diesem Raum hat.
+
 # Uniqueness · StaffMember has Extension
 ∀ StaffMember ∃^{≤1} Extension (StaffMember has Extension)
 Jeder Mitarbeiter hat höchstens eine Durchwahl.
@@ -541,10 +545,6 @@ Jeder Gebäudecode gehört zu einem Gebäude.
 # Participation (not independent) · RoomNr
 ∀ RoomNr ∃ Room (Room has RoomNr)
 Für jede Raumnummer gilt: ein Raum hat diese Raumnummer.
-
-# Participation (not independent) · Room
-∀ Room ∃ StaffMember (StaffMember has an office in Room)
-Für jeden Raum gilt: ein Mitarbeiter hat ein Büro in diesem Raum.
 
 # Participation (not independent) · Extension
 ∀ Extension ∃ StaffMember (StaffMember has Extension)
