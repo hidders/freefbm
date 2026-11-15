@@ -2855,7 +2855,14 @@ function FactPresentationSubsection({ fact, store }) {
           <Checkbox
             label="As object type on this diagram"
             checked={!!fact.displayAsObjectType}
-            onChange={v => store.updateFactLayout(fact.id, { displayAsObjectType: v ? true : undefined })}
+            onChange={v => {
+              // the selected shape only, when one is selected (a fact type may be drawn twice)
+              const d = store.diagrams?.find(x => x.id === store.activeDiagramId)
+              const occ = (d?.occurrences ?? []).find(o => o.id === store.selectedOccurrenceId && o.schemaElementId === fact.id)
+              const patch = { displayAsObjectType: v ? true : undefined }
+              if (occ) store.updateObjectTypeLayout(occ.id, patch)
+              else store.updateFactLayout(fact.id, patch)
+            }}
           />
         </Row>
       )}
@@ -4729,7 +4736,10 @@ export default function Inspector() {
   )
   const mergeDiagramPos = (f) => {
     if (!f) return f
-    const p = activeDiagOccMap[f.id]
+    // the selected occurrence of this element, else one on the active diagram
+    const selOcc = (store.diagrams?.find(d => d.id === store.activeDiagramId)?.occurrences ?? [])
+      .find(o => o.id === store.selectedOccurrenceId && o.schemaElementId === f.id)
+    const p = selOcc ?? activeDiagOccMap[f.id]
     if (!p) return f
     const merged = { ...f }
     if (p.readingAbove        !== undefined) merged.readingAbove        = p.readingAbove
@@ -4742,6 +4752,8 @@ export default function Inspector() {
     if (p.readingOrder    !== undefined) merged.readingOrder    = p.readingOrder
     if (p.orientation     !== undefined) merged.orientation     = p.orientation
     if (p.readingDisplay  !== undefined) merged.readingDisplay  = p.readingDisplay
+    if (p.roleNamesShown  !== undefined) merged.roleNamesShown  = p.roleNamesShown
+    if (p.displayAsObjectType !== undefined) merged.displayAsObjectType = p.displayAsObjectType
     return merged
   }
   const fact = mergeDiagramPos(rawFact)

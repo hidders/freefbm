@@ -1,4 +1,4 @@
-import { ROLE_W, ROLE_H, ROLE_GAP, displayRoleOrder } from '../components/FactTypeNode'
+import { ROLE_W, ROLE_H, ROLE_GAP, displayRoleOrder, collapsedObjectificationBox } from '../components/FactTypeNode'
 
 /**
  * Returns the outward-facing cardinal anchor point on a role box.
@@ -10,6 +10,16 @@ import { ROLE_W, ROLE_H, ROLE_GAP, displayRoleOrder } from '../components/FactTy
  * The closest remaining candidate to (tx, ty) is returned.
  */
 export function roleAnchor(fact, roleIndex, tx, ty) {
+  // An objectified fact type drawn as an object type: its roles' lines (role
+  // connectors, constraint connectors) start at the box's border, as in NORMA
+  if (fact.objectified && fact.displayAsObjectType) {
+    const { w, h } = collapsedObjectificationBox(fact)
+    const dx = tx - fact.x, dy = ty - fact.y
+    if (!dx && !dy) return { x: fact.x, y: fact.y - h / 2, side: 'N' }
+    const t = Math.min(dx ? (w / 2) / Math.abs(dx) : Infinity, dy ? (h / 2) / Math.abs(dy) : Infinity)
+    const side = Math.abs(dx) * h > Math.abs(dy) * w ? (dx > 0 ? 'E' : 'W') : (dy > 0 ? 'S' : 'N')
+    return { x: fact.x + dx * t, y: fact.y + dy * t, side }
+  }
   const n      = Math.max(fact.arity, 1)
   const dro    = displayRoleOrder(fact)
   const posIdx = dro.indexOf(roleIndex)
