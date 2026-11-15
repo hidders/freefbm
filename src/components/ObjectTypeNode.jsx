@@ -7,6 +7,7 @@ import { queryElements } from '../logic/query.js'
 import { groupStyle } from '../utils/groups.js'
 import { DIAGRAM_FONT, measureDiagramText } from '../diagram/diagramFont.js'
 import { NORMA, px, pt } from '../diagram/normaGeometry.js'
+import { useLabelNudge, sameRangeDesc } from '../hooks/useLabelNudge.js'
 
 // Returns the ref-mode label (e.g. ".code") to display inside the entity rect,
 // or null when the entity has no ref mode or is expanded in the active diagram.
@@ -65,6 +66,18 @@ const OT_H_SINGLE   = OT_LINE_H + 2 * OT_PAD_Y       // box height with name onl
 const OT_H_DOUBLE   = 2 * OT_LINE_H + 2 * OT_PAD_Y   // box height with name + reference mode
 export const OT_RADIUS = px(NORMA.objectType.radius)
 export const OT_STROKE = pt(NORMA.objectType.penPt)
+
+// NORMA's default places for the range labels of a shape w × h: right of it,
+// 0.06 in from its edge; a value range one line up (the bottom of its line
+// level with the shape's top), a cardinality range level with the top.
+const RANGE_LABEL_GAP = px(0.06)
+export function defaultRangeOffset(w, h, text, cardinality = false) {
+  const tw = measureText(text, pt(NORMA.fontSizePt))
+  return {
+    dx: w / 2 + RANGE_LABEL_GAP + tw / 2,
+    dy: cardinality ? -h / 2 + OT_LINE_H / 2 : -h / 2 - OT_LINE_H / 2,
+  }
+}
 
 function fmtDate(v) {
   if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
@@ -317,6 +330,23 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
   }, [editingRef, commitRefEdit])
 
   const { w, h } = computeOtSize(ot, editing ? draft : undefined)
+
+  // Arrow keys move this occurrence's selected value or cardinality range
+  // from where it is drawn.
+  const nudgeRef = useRef(null)
+  nudgeRef.current = (s, dx, dy) => {
+    const write = (key, off) => {
+      const next = { dx: off.dx + dx, dy: off.dy + dy }
+      if (occurrenceId) s.updateObjectTypeLayout(occurrenceId, { [key]: next })
+      else s.updateObjectType(ot.id, { [key]: next })
+    }
+    const vrTarget = s.selectedValueRange && valueRangeTarget(ot, refValueRole)
+    const vr = vrTarget && formatValueRange(vrTarget.range)
+    if (vr && sameRangeDesc(vrTarget.desc, s.selectedValueRange)) write('valueRangeOffset', ot.valueRangeOffset ?? defaultRangeOffset(w, h, vr))
+    const cr = s.selectedCardinalityRange?.otId === ot.id && formatCardinalityRange(ot.cardinalityRange)
+    if (cr) write('cardinalityRangeOffset', ot.cardinalityRangeOffset ?? defaultRangeOffset(w, h, cr, true))
+  }
+  useLabelNudge(nudgeRef)
   const refLabel = store.showReferenceMode ? getEntityRefLabel(ot) : null
   const hasRef = !!refLabel
   const refModeText = hasRef ? `(${refLabel})` : null
@@ -411,9 +441,9 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     }
 
     if (store.sequenceConstruction) {
-      if (refValueRole) { store.collectSequenceMember(refValueRole); return }
-      if (isVcConstruction) return
-      store.select(ot.id, ot.kind, occurrenceId ?? null)
+      // An entity type with a collapsed reference mode stands for its value
+      // role; nothing else is picked here.
+      if (refValueRole) store.collectSequenceMember(refValueRole)
       return
     }
     if (e.shiftKey) {
@@ -444,7 +474,9 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
     : ot.kind === 'value' ? VALUE_DASH : 'none'
   const inRuleHighlight = !!store.ruleHighlight?.typeIds.includes(ot.id)
   const fill    = isConstraintTarget ? '#1a7fd4' : inQueryHighlight ? 'var(--fill-query-in)'
-    : inRuleHighlight ? '#fde3c8' : gs?.fill ?? '#ffffff'
+    : inRuleHighlight ? '#fde3c8'
+    : store.sequenceConstruction && refValueRole ? 'var(--pick-candidate)'
+    : gs?.fill ?? '#ffffff'
 
   // Text vertical positions
   // Single line: name centred in box
@@ -455,7 +487,8 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
   return (
   <>
     <g
-      className={store.queryEditDraft ? 'selectable-group qe-selectable' : 'selectable-group'}
+      className={store.queryEditDraft ? 'selectable-group qe-selectable'
+        : store.sequenceConstruction && refValueRole ? 'selectable-group pick-candidate' : 'selectable-group'}
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
       onContextMenu={e => onContextMenu(e, occurrenceId ?? null)}
@@ -603,9 +636,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
         const vr = formatValueRange(vrTarget.range)
         if (!vr) return null
         const _dimOpacity = dimInternalConstraints ? 0.15 : 1
-        const AUTO_DX = 0
-        const AUTO_DY = h / 2 + 14
-        const off = vrLive ?? (ot.valueRangeOffset ?? { dx: AUTO_DX, dy: AUTO_DY })
+        const off = vrLive ?? (ot.valueRangeOffset ?? defaultRangeOffset(w, h, vr))
         const tx = ot.x + off.dx
         const ty = ot.y + off.dy
 
@@ -680,9 +711,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
         const cr = formatCardinalityRange(ot.cardinalityRange)
         if (!cr) return null
         const _dimOpacity = dimInternalConstraints ? 0.15 : 1
-        const AUTO_DX = 0
-        const AUTO_DY = -(h / 2 + 14)
-        const off = crLive ?? (ot.cardinalityRangeOffset ?? { dx: AUTO_DX, dy: AUTO_DY })
+        const off = crLive ?? (ot.cardinalityRangeOffset ?? defaultRangeOffset(w, h, cr, true))
         const tx = ot.x + off.dx
         const ty = ot.y + off.dy
 

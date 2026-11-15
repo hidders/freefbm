@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { factDerivationMark } from '../logic/factDerivation.js'
 import { useOrmStore, useOrmStoreIgnoring, subtypeKindOf } from '../store/ormStore'
 import { isFallbackReading } from '../store/viewLanguage.js'
-import { formatValueRange, formatCardinalityRange, formatFrequencyRange, OT_SIZE_NAME, OT_STROKE, OT_RADIUS, otBoxSize } from './ObjectTypeNode'
+import { formatValueRange, formatCardinalityRange, formatFrequencyRange, OT_SIZE_NAME, OT_STROKE, OT_RADIUS, otBoxSize, defaultRangeOffset } from './ObjectTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { roleAnchor } from '../utils/geometry'
 import { RAKE_TOOTH, RAKE_STAGGER, RAKE_COMFORT, RAKE_BAR_ZONE } from '../constants.js'
@@ -12,6 +12,7 @@ import { preferredReadings } from '../store/readings.js'
 import { groupStyle } from '../utils/groups.js'
 import { DIAGRAM_FONT, measureDiagramText } from '../diagram/diagramFont.js'
 import { NORMA, px, pt } from '../diagram/normaGeometry.js'
+import { useLabelNudge } from '../hooks/useLabelNudge.js'
 
 const VR_DEFAULT_OFFSET = { dx: 0, dy: -50 }
 const VR_FONT      = DIAGRAM_FONT
@@ -61,13 +62,16 @@ export const NAME_LINE = px(NORMA.lineHeight)
 // text's y and capitals reach 0.498 em above it.
 export const READING_GAP = 6
 const READING_BASE_BELOW = 0.273 * LABEL_SIZE
-const READING_CAP_ABOVE  = 0.498 * LABEL_SIZE
-const READING_DESC_BELOW = 0.525 * LABEL_SIZE   // descenders (g, p, y)
+export const READING_CAP_ABOVE  = 0.498 * LABEL_SIZE
+export const READING_DESC_BELOW = 0.525 * LABEL_SIZE   // descenders (g, p, y)
 // From the outermost ink to the reading's y
-const READING_Y_ABOVE = READING_GAP + READING_BASE_BELOW
-const READING_Y_BELOW = READING_GAP + READING_CAP_ABOVE
+export const READING_Y_ABOVE = READING_GAP + READING_BASE_BELOW
+export const READING_Y_BELOW = READING_GAP + READING_CAP_ABOVE
 // The pen of rake spines (constraint connectors)
 const RAKE_PEN = pt(NORMA.rolePlayerPenPt)
+// A range label's braces reach 0.498 em above its y and 0.479 em below it.
+const RANGE_ABOVE = 0.498 * LABEL_SIZE
+const RANGE_BELOW = 0.479 * LABEL_SIZE
 // A reading inside an objectified fact type's outline: from the outermost
 // ink to the outline, the gap, the text and NESTED_READING_PAD_BELOW.
 const NESTED_ABOVE_SPAN = READING_GAP + READING_BASE_BELOW + READING_CAP_ABOVE + NESTED_READING_PAD_BELOW
@@ -310,7 +314,7 @@ export function makeImplicitLinkFact(parentFact, implicitLink) {
   }
 }
 
-const IF_CIRCLE_R = 8    // radius of internal-frequency constraint circle (matches external constraint size)
+export const IF_CIRCLE_R = 8    // radius of internal-frequency constraint circle (matches external constraint size)
 const IF_PAD_X    = 5    // horizontal padding inside IF stadium when range text is shown
 
 function measureIfText(text) {
@@ -318,7 +322,7 @@ function measureIfText(text) {
 }
 
 /** Half-width of the IF shape: circle (IF_CIRCLE_R) when no label, stadium when label present. */
-function ifShapeHalfW(label) {
+export function ifShapeHalfW(label) {
   if (!label) return IF_CIRCLE_R
   return Math.max(IF_CIRCLE_R, (measureIfText(label) + IF_PAD_X * 2) / 2)
 }
@@ -373,6 +377,13 @@ const BAR_BAND_END     = BAR_SPACING / 2 - BAR_H / 2
 const OBJ_MARGIN_X     = px(NORMA.objectified.marginX)
 const OBJ_MARGIN_Y     = px(NORMA.objectified.marginY)
 const PREF_OFFSET      = 0.75 * BAR_H                    // shift for preferred uniqueness bar
+// How far the ink of `levels` levels of uniqueness bars reaches beyond the
+// role boxes' edge (a preferred identifier's outer line 2 × PREF_OFFSET
+// further), or the role boxes' own pen without bars; no rakes counted.
+export function barInkExtent(levels, preferred = false) {
+  if (levels <= 0) return ROLE_STROKE / 2
+  return BAR_MARGIN + BAR_SPACING * levels + (preferred ? 2 * PREF_OFFSET : 0)
+}
 const BAR_SIDE_COMFORT = 2    // rake comfort used when bars sit beyond the rakes on the same side
 const UNARY_CAP_R = 8
 
@@ -666,16 +677,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
     if (isRoleValueTool) { store.setTool('select'); return }
     if (isCrTool) { store.setTool('select'); return }
-    if (isUniquenessTool) {
-      store.setTool('select')
-      store.startUniquenessConstruction(fact.id)
-      return
-    }
-    if (isFrequencyTool) {
-      store.setTool('select')
-      store.startFrequencyConstruction(fact.id)
-      return
-    }
+    // The Internal uniqueness and frequency tools start only from a role box
+    // (Jan, 2026-11-15): the fact type itself is no click target.
+    if (isUniquenessTool || isFrequencyTool) return
     if (isConnectorTool) {
       const wasConnect = store.tool === 'connectConstraint'
       if (store.sequenceConstruction) store.abandonSequenceConstruction()
@@ -686,10 +690,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     }
     if (inConstruction) return  // Enter key confirms; clicking fact body does nothing
     if (inFrequencyConstruction) return  // Enter key confirms
-    if (store.sequenceConstruction) {
-      store.select(fact.id, 'fact', occurrenceId ?? null)
-      return
-    }
+    if (store.sequenceConstruction) return  // only role boxes and subtype links are picked
     if (e.shiftKey) {
       store.shiftSelect(fact.id, fact._implicit ? null : (occurrenceId ?? null))
       onDragStart(fact.id, fact._implicit ? 'implicitLink' : 'fact', e, occurrenceId)
@@ -1234,6 +1235,16 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     fact.roles.flatMap((role, ri) => isVrEligibleRole(role) ? [ri] : [])
   ) : null
 
+  // A role box a click would pick for the constraint being built (or start one
+  // with): tinted, and the only thing that gets the dashed hover ring.
+  const pickCandidateRole = (ri) => {
+    if (fact._implicit || inQueryEdit) return false
+    if (inConstruction || inFrequencyConstruction) return true
+    if (store.uniquenessConstruction || store.frequencyConstruction) return false
+    if (gc) return isVcConstruction ? vcEligibleRoles.has(ri) : true
+    return isUniquenessTool || isFrequencyTool || store.tool === 'toggleMandatory'
+  }
+
    const isRoleCandidate = (isAssignTool && !isAssigning) || store.tool === 'toggleMandatory' || isUniquenessTool
     || isFrequencyCandidate  // stage 1: all facts' roles are candidate (drives cursor)
     || (!!gc && !isVcConstruction)
@@ -1367,6 +1378,28 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     const shiftCount = (isAbove ? 2 : 0) + (isThisPreferred ? 1 : 0)
     const dir = barsBelow ? 1 : -1  // positive = away from role boxes
     return barY_h(level) + dir * PREF_OFFSET * shiftCount
+  }
+
+  // How far the drawing reaches beyond the role boxes on each side (T, B for
+  // a horizontal fact type, L, R for a vertical one). stackOn is the distance
+  // from the role boxes' edge to the outermost bar's outer edge or past the
+  // outermost rake (with BAR_SIDE_COMFORT), as nestedFactBounds counts it;
+  // inkOn is how far ink reaches: a preferred identifier's outer line lies
+  // 2 × PREF_OFFSET beyond its bar, a rake spine has a pen, and with nothing
+  // on a side the role boxes' own pen.
+  const hasAnyBar_rd = fact.uniqueness.length > 0 || impliedRoles.length > 0
+  const barSideOf = isVertical ? (barsBelow ? 'L' : 'R') : (barsBelow ? 'B' : 'T')
+  const stackOn = {}, inkOn = {}
+  for (const side of ['T', 'B', 'L', 'R']) {
+    const barSide = hasAnyBar_rd && side === barSideOf
+    const rakes = rakeCounts[side]
+    const sideV = side === 'L' || side === 'R'
+    stackOn[side] = barSide
+      ? (sideV ? effBarMargin_v + rakeZone_v : effBarMargin_h + rakeZone_h) + BAR_SPACING * (multiCount + 1)
+      : rakes > 0 ? RAKE_TOOTH + (rakes - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
+    inkOn[side] = barSide ? stackOn[side] + (minPLevel >= 0 ? 2 * PREF_OFFSET : 0)
+      : rakes > 0 ? stackOn[side] - BAR_SIDE_COMFORT + RAKE_PEN / 2
+      : ROLE_STROKE / 2
   }
 
   // ── Horizontal helpers ─────────────────────────────────────────────────────
@@ -1553,16 +1586,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     const dmark = fact._implicit ? '' : factDerivationMark(fact)
     if (!text && !dmark && !editingReading) return null
 
-    // Distance from role-box edge to outermost element (bar or rake) on each side.
-    // Uses effBarMargin (0 when rakes are present) and BAR_SIDE_COMFORT, matching
-    // the nested-reading formula so both systems produce the same gap.
-    const hasAnyBar_rd = fact.uniqueness.length > 0 || impliedRoles.length > 0
-    const topStackH_rd = (hasAnyBar_rd && !barsBelow)
-      ? effBarMargin_h + rakeZone_h + BAR_SPACING * (multiCount + 1)
-      : rakeCounts.T > 0 ? RAKE_TOOTH + (rakeCounts.T - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
-    const botStackH_rd = (hasAnyBar_rd && barsBelow)
-      ? effBarMargin_h + rakeZone_h + BAR_SPACING * (multiCount + 1)
-      : rakeCounts.B > 0 ? RAKE_TOOTH + (rakeCounts.B - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
+    const topStackH_rd = stackOn.T, botStackH_rd = stackOn.B
 
     const AUTO_DX = (() => {
       if (!isVertical) return 0
@@ -1575,34 +1599,22 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       }
       if (fact.readingAbove) {
         // Reading to the right — stack is on the right side
-        const rightStackW = (hasAnyBar_rd && !barsBelow)
-          ? effBarMargin_v + rakeZone_v + BAR_SPACING * (multiCount + 1)
-          : rakeCounts.R > 0 ? RAKE_TOOTH + (rakeCounts.R - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
+        const rightStackW = stackOn.R
         return ROLE_H / 2 + rightStackW + tw / 2 + 10
       } else {
         // Reading to the left — stack is on the left side
-        const leftStackW = (hasAnyBar_rd && barsBelow)
-          ? effBarMargin_v + rakeZone_v + BAR_SPACING * (multiCount + 1)
-          : rakeCounts.L > 0 ? RAKE_TOOTH + (rakeCounts.L - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
+        const leftStackW = stackOn.L
         return -(ROLE_H / 2 + leftStackW + tw / 2 + 10)
       }
     })()
-    // How far the ink reaches beyond the role boxes' edge on one side: the
-    // outer edge of the outermost bar (a preferred identifier's outer line
-    // lies 2 × PREF_OFFSET further), else the outermost rake spine's pen,
-    // else the role boxes' own pen.
-    const inkBeyond = (stackH, barSide, rakeCount) =>
-      hasAnyBar_rd && barSide ? stackH + (minPLevel >= 0 ? 2 * PREF_OFFSET : 0)
-        : rakeCount > 0 ? stackH - BAR_SIDE_COMFORT + RAKE_PEN / 2
-        : ROLE_STROKE / 2
     const AUTO_DY = isVertical ? 0
       : fact.readingAbove
         ? fact.objectified
           ? nestedFactBounds(fact, nestedRakePad).top    - fact.y - OT_STROKE / 2 - READING_Y_ABOVE
-          : -(ROLE_H / 2 + inkBeyond(topStackH_rd, !barsBelow, rakeCounts.T) + READING_Y_ABOVE)
+          : -(ROLE_H / 2 + inkOn.T + READING_Y_ABOVE)
         : fact.objectified
           ? nestedFactBounds(fact, nestedRakePad).bottom - fact.y + OT_STROKE / 2 + READING_Y_BELOW
-          : ROLE_H / 2 + inkBeyond(botStackH_rd, barsBelow, rakeCounts.B) + READING_Y_BELOW
+          : ROLE_H / 2 + inkOn.B + READING_Y_BELOW
     const defaultOff = { dx: AUTO_DX, dy: AUTO_DY }
     const storedOff = fact.readingAbove ? fact.readingOffsetAbove : fact.readingOffsetBelow
     const off = readingLive ?? (storedOff ?? defaultOff)
@@ -1737,8 +1749,61 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   }
 
   // ── VR annotation helpers ─────────────────────────────────────────────────
+  // A role's value range sits READING_GAP beyond what is drawn on the side
+  // above the roles (left of a vertical fact type), a cardinality range below
+  // (right): bars, rakes and a reading in its default place.
+  const readingDrawn = [fact.readingParts, ...(fact.alternativeReadings ?? []).map(r => r.parts)]
+    .some(parts => parts?.some(p => p?.trim()))
+  const roleRangeOffset = (text, cardinality) => {
+    if (isVertical) {
+      const tw = measureVrText(text)
+      return cardinality
+        ? { dx: ROLE_H / 2 + inkOn.R + READING_GAP + tw / 2, dy: 0 }
+        : { dx: -(ROLE_H / 2 + inkOn.L + READING_GAP + tw / 2), dy: 0 }
+    }
+    if (cardinality) {
+      const reading = readingDrawn && !fact.readingAbove && !fact.readingOffsetBelow
+      const ink = inkOn.B + (reading ? READING_Y_BELOW + READING_DESC_BELOW + READING_GAP : 0)
+      return { dx: 0, dy: ROLE_H / 2 + ink + READING_GAP + RANGE_ABOVE }
+    }
+    const reading = readingDrawn && fact.readingAbove && !fact.readingOffsetAbove
+    const ink = inkOn.T + (reading ? READING_Y_ABOVE + READING_CAP_ABOVE + READING_GAP : 0)
+    return { dx: 0, dy: -(ROLE_H / 2 + ink + READING_GAP + RANGE_BELOW) }
+  }
+  // Inside an objectified fact type's outline the old places stay.
   const VR_DEFAULT = isVertical ? { dx: -50, dy: 0 } : VR_DEFAULT_OFFSET
   const CR_DEFAULT = isVertical ? { dx: 50, dy: 0 } : { dx: 0, dy: 50 }
+
+  // Arrow keys move a selected range or frequency marker of this fact type
+  // from where it is drawn (useLabelNudge).
+  const nudgeRef = useRef(null)
+  nudgeRef.current = (s, dx, dy) => {
+    if (fact._implicit) return
+    const by = (off) => ({ dx: off.dx + dx, dy: off.dy + dy })
+    const si = s.selectedInternalFrequency
+    if (si?.factId === fact.id) {
+      const item = ifItems.find(i => i.id === si.ifId)
+      if (item && item.x != null && item.y != null) s.updateInternalFrequency(fact.id, item.id, { x: item.x + dx, y: item.y + dy })
+    }
+    const sv = s.selectedValueRange, sc = s.selectedCardinalityRange
+    if (sv?.factId === fact.id && sv.roleIndex != null) {
+      const ri = sv.roleIndex, role = fact.roles[ri], vr = formatValueRange(role?.valueRange)
+      if (vr) s.updateValueRangeOffset(fact.id, ri, by(fact.valueRangeOffsets?.[ri] ?? role.valueRangeOffset ?? (fact.objectified ? VR_DEFAULT : roleRangeOffset(vr, false))))
+    }
+    if (sc?.factId === fact.id && sc.roleIndex != null) {
+      const ri = sc.roleIndex, role = fact.roles[ri], cr = formatCardinalityRange(role?.cardinalityRange)
+      if (cr) s.updateCardinalityRangeOffset(fact.id, ri, by(fact.cardinalityRangeOffsets?.[ri] ?? role.cardinalityRangeOffset ?? (fact.objectified ? CR_DEFAULT : roleRangeOffset(cr, true))))
+    }
+    if (fact.objectified && (sv?.nestedFactId === fact.id || sc?.nestedFactId === fact.id)) {
+      const nb = nestedFactBounds(fact, nestedRakePad)
+      const W = nb.right - nb.left, H = nb.bottom - nb.top
+      const vr = sv?.nestedFactId === fact.id && fact.objectifiedRefMode && fact.objectifiedRefMode !== 'none' && formatValueRange(fact.valueRange)
+      if (vr) s.updateFact(fact.id, { valueRangeOffset: by(fact.valueRangeOffset ?? defaultRangeOffset(W, H, vr)) })
+      const cr = sc?.nestedFactId === fact.id && formatCardinalityRange(fact.cardinalityRange)
+      if (cr) s.updateFact(fact.id, { cardinalityRangeOffset: by(fact.cardinalityRangeOffset ?? defaultRangeOffset(W, H, cr, true)) })
+    }
+  }
+  useLabelNudge(nudgeRef)
 
   function vrConnPoint(ri, textX, textY) {
     const dro = displayRoleOrder(fact)
@@ -1817,7 +1882,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     const nbCy = (nb.top + nb.bottom) / 2
     const nbHW = (nb.right - nb.left) / 2
     const nbHH = (nb.bottom - nb.top) / 2
-    const defaultOff = { dx: 0, dy: nbHH + 14 }
+    const defaultOff = defaultRangeOffset(2 * nbHW, 2 * nbHH, vr)
     const off = nestedVrLive ?? (fact.valueRangeOffset ?? defaultOff)
     const tx = nbCx + off.dx
     const ty = nbCy + off.dy
@@ -1878,7 +1943,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     const nbCy = (nb.top + nb.bottom) / 2
     const nbHW = (nb.right - nb.left) / 2
     const nbHH = (nb.bottom - nb.top) / 2
-    const defaultOff = { dx: 0, dy: -(nbHH + 14) }
+    const defaultOff = defaultRangeOffset(2 * nbHW, 2 * nbHH, cr, true)
     const off = nestedCrLive ?? (fact.cardinalityRangeOffset ?? defaultOff)
     const tx = nbCx + off.dx
     const ty = nbCy + off.dy
@@ -1987,14 +2052,15 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           if (fact._implicit) return isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'grab'
           if (inQueryEdit) return fact.objectified ? 'pointer' : 'default'
           if (store.pendingTargetPick) return fact.objectified ? 'pointer' : 'not-allowed'
+          if (inConstruction || inFrequencyConstruction) return 'default'
           if (store.linkDraft?.type === 'constraintEndpointPick') {
             const pick = store.linkDraft.pendingPicks?.[0]
             if (pick?.kind === 'fact') return fact.id === pick.schemaId ? 'pointer' : 'not-allowed'
             return 'not-allowed'
           }
           if (isElementSelecting(store.tool, store.sequenceConstruction)) {
-            if (store.sequenceConstruction) return fact.objectified ? 'pointer' : 'not-allowed'
-            if (isUniquenessTool || isFrequencyTool) return 'pointer'
+            if (store.sequenceConstruction) return 'not-allowed'
+            if (isUniquenessTool || isFrequencyTool) return 'not-allowed'
             if (isCrTool) return fact.objectified ? 'pointer' : 'not-allowed'
             if (isRoleValueTool) return fact.objectified ? 'pointer' : 'not-allowed'
             if (store.tool === 'toggleMandatory') return 'not-allowed'
@@ -2491,17 +2557,18 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
               const baseRoleOfIL = isBaseRoleOfSelectedImplicitLink(ri)
               const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
               return (
-                  <g key={role.id} className="role-box-group" filter={roleSelected ? 'url(#selectGlow)' : undefined}
+                  <g key={role.id} className={pickCandidateRole(ri) ? 'role-box-group pick-candidate' : 'role-box-group'} filter={roleSelected ? 'url(#selectGlow)' : undefined}
                      opacity={querySelectableRoles !== null && !querySelectableRoles.has(ri) ? 0.2 : isVcConstruction && !vcEligibleRoles.has(ri) ? 0.35 : 1}>
                    <rect x={leftX_v} y={ry} width={ROLE_H} height={ROLE_W}
                      fill={
                        roleInQueryPattern(ri) || nestedInQueryHighlight ? 'var(--fill-query-in)'
                        : roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
-                       : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
-                       : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
+                       : inConstruction && ucRoles.includes(ri) ? 'var(--pick-chosen)'
+                       : inFrequencyConstruction && fcRoles.includes(ri) ? 'var(--pick-chosen)'
                        : baseRoleOfIL ? '#dde8f5'
                        : roleSelected ? '#ffffff'
                        : highlightedRoles?.has(ri) ? '#fde3c8'
+                       : pickCandidateRole(ri) ? 'var(--pick-candidate)'
                        : roleGs(ri)?.fill ?? '#ffffff'
                      }
                      stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : isFactSelected || isDraftFrom ? roleStroke : roleGs(ri)?.graphics ?? roleGs(ri)?.outline ?? roleStroke}
@@ -2544,7 +2611,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             if (isEditing && displayRoles.length === 0) {
               const barX = barX_v(displayLevel)
               return (
-                <g key={ui} className="selectable-group" style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+                <g key={ui} className={isEditing ? 'selectable-group pick-target' : 'selectable-group'} style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
                   onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
                   onDoubleClick={barDoubleClickHandler(ui)}>
                   <line x1={barX} y1={startY_v + INSET} x2={barX} y2={startY_v + totalH_v - INSET}
@@ -2565,7 +2632,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             const barX = adjustedBarX(displayLevel, isPreferred)
             const sw = isUSelected ? BAR_H + 1 : BAR_H
             return (
-              <g key={ui} className="selectable-group" style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+              <g key={ui} className={isEditing ? 'selectable-group pick-target' : 'selectable-group'} style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
                 onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
                 onDoubleClick={barDoubleClickHandler(ui)}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onBarContextMenu?.(ui, e) }}>
@@ -2638,8 +2705,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             const barX = adjustedBarX(previewLevel, false)
             if (ucRoles.length === 0) {
               return (
-                <g style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer' }} onMouseDown={e => e.stopPropagation()}
+                <g className="selectable-group pick-target" style={{ cursor: 'pointer' }} onMouseDown={e => e.stopPropagation()}
                   onClick={() => store.commitUniquenessConstruction()}>
+                  <rect className="hover-ring" x={barX - 3} y={startY_v - 3} width={6} height={totalH_v + 6}/>
                   <line x1={barX} y1={startY_v + INSET} x2={barX} y2={startY_v + totalH_v - INSET}
                     stroke="var(--accent)" strokeWidth={BAR_H + 1} strokeLinecap="butt"
                     strokeDasharray="3 3" strokeOpacity={0.6}/>
@@ -2648,8 +2716,10 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             }
             const { runs } = buildRunsV(ucRoles, previewLevel, 'preview')
             return (
-              <g style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer' }} onMouseDown={e => e.stopPropagation()}
+              <g className="selectable-group pick-target" style={{ cursor: 'pointer' }} onMouseDown={e => e.stopPropagation()}
                 onClick={() => store.commitUniquenessConstruction()}>
+                <line x1={barX} y1={startY_v} x2={barX} y2={startY_v + totalH_v} stroke="transparent" strokeWidth={10}/>
+                <rect className="hover-ring" x={barX - 3} y={startY_v - 3} width={6} height={totalH_v + 6}/>
                 {runs.map(({ y1, y2, solid, key }) => (
                   <line key={key} x1={barX} y1={y1} x2={barX} y2={y2}
                     stroke="var(--accent)" strokeWidth={BAR_H + 1} strokeLinecap="butt"
@@ -2684,18 +2754,19 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
               const baseRoleOfIL = isBaseRoleOfSelectedImplicitLink(ri)
               const isSimpleSelect = store.tool === 'select' && !store.sequenceConstruction && !inConstruction && !inFrequencyConstruction && !isAssignTool
               return (
-                  <g key={role.id} className="role-box-group" filter={roleSelected ? 'url(#selectGlow)' : undefined}
+                  <g key={role.id} className={pickCandidateRole(ri) ? 'role-box-group pick-candidate' : 'role-box-group'} filter={roleSelected ? 'url(#selectGlow)' : undefined}
                      opacity={querySelectableRoles !== null && !querySelectableRoles.has(ri) ? 0.2 : isVcConstruction && !vcEligibleRoles.has(ri) ? 0.35 : 1}>
                    <rect
                      x={rx} y={topY} width={ROLE_W} height={ROLE_H}
                      fill={
                        roleInQueryPattern(ri) || nestedInQueryHighlight ? 'var(--fill-query-in)'
                        : roleFirstDraft && store.linkDraft.roleIndex === ri ? '#e8e0f8'
-                       : inConstruction && ucRoles.includes(ri) ? '#dde8f5'
-                       : inFrequencyConstruction && fcRoles.includes(ri) ? '#dde8f5'
+                       : inConstruction && ucRoles.includes(ri) ? 'var(--pick-chosen)'
+                       : inFrequencyConstruction && fcRoles.includes(ri) ? 'var(--pick-chosen)'
                        : baseRoleOfIL ? '#dde8f5'
                        : roleSelected ? '#ffffff'
                        : highlightedRoles?.has(ri) ? '#fde3c8'
+                       : pickCandidateRole(ri) ? 'var(--pick-candidate)'
                        : roleGs(ri)?.fill ?? '#ffffff'
                      }
                      stroke={roleInQueryPattern(ri) ? 'var(--col-query-in)' : roleSelected ? 'var(--accent)' : baseRoleOfIL ? '#7a9bb5' : isFactSelected || isDraftFrom ? roleStroke : roleGs(ri)?.graphics ?? roleGs(ri)?.outline ?? roleStroke}
@@ -2738,7 +2809,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             if (isEditing && displayRoles.length === 0) {
               const barY = barY_h(displayLevel)
               return (
-                <g key={ui} className="selectable-group" style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+                <g key={ui} className={isEditing ? 'selectable-group pick-target' : 'selectable-group'} style={{ cursor: 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
                   onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
                   onDoubleClick={barDoubleClickHandler(ui)}>
                   <line x1={startX + INSET} y1={barY} x2={startX + totalW - INSET} y2={barY}
@@ -2759,7 +2830,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             const barY = adjustedBarY(displayLevel, isPreferred)
             const sw = isUSelected ? BAR_H + 1 : BAR_H
             return (
-              <g key={ui} className="selectable-group" style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
+              <g key={ui} className={isEditing ? 'selectable-group pick-target' : 'selectable-group'} style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer', filter: isUSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined }}
                 onMouseDown={e => e.stopPropagation()} onClick={barClickHandler(ui)}
                 onDoubleClick={barDoubleClickHandler(ui)}
                 onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onBarContextMenu?.(ui, e) }}>
@@ -2832,8 +2903,9 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             const barY = adjustedBarY(previewLevel, false)
             if (ucRoles.length === 0) {
               return (
-                <g style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer' }} onMouseDown={e => e.stopPropagation()}
+                <g className="selectable-group pick-target" style={{ cursor: 'pointer' }} onMouseDown={e => e.stopPropagation()}
                   onClick={() => store.commitUniquenessConstruction()}>
+                  <rect className="hover-ring" x={startX - 3} y={barY - 3} width={totalW + 6} height={6}/>
                   <line x1={startX + INSET} y1={barY} x2={startX + totalW - INSET} y2={barY}
                     stroke="var(--accent)" strokeWidth={BAR_H + 1} strokeLinecap="butt"
                     strokeDasharray="3 3" strokeOpacity={0.6}/>
@@ -2842,8 +2914,10 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             }
             const { runs } = buildRuns(ucRoles, previewLevel, 'preview')
             return (
-              <g style={{ cursor: isElementSelecting(store.tool, store.sequenceConstruction) ? 'not-allowed' : 'pointer' }} onMouseDown={e => e.stopPropagation()}
+              <g className="selectable-group pick-target" style={{ cursor: 'pointer' }} onMouseDown={e => e.stopPropagation()}
                 onClick={() => store.commitUniquenessConstruction()}>
+                <line x1={startX} y1={barY} x2={startX + totalW} y2={barY} stroke="transparent" strokeWidth={10}/>
+                <rect className="hover-ring" x={startX - 3} y={barY - 3} width={totalW + 6} height={6}/>
                 {runs.map(({ x1, x2, solid, key }) => (
                   <line key={key} x1={x1} y1={barY} x2={x2} y2={barY}
                     stroke="var(--accent)" strokeWidth={BAR_H + 1} strokeLinecap="butt"
@@ -2878,7 +2952,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       const rc = roleCenter(fact, ri)
       const off = vrLive?.roleIndex === ri
         ? { dx: vrLive.dx, dy: vrLive.dy }
-        : (fact.valueRangeOffsets?.[ri] ?? role.valueRangeOffset ?? VR_DEFAULT)
+        : (fact.valueRangeOffsets?.[ri] ?? role.valueRangeOffset ?? (fact.objectified ? VR_DEFAULT : roleRangeOffset(vr, false)))
       const textX = rc.x + off.dx
       const textY = rc.y + off.dy
 
@@ -2937,7 +3011,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       const rc = roleCenter(fact, ri)
       const off = crLive?.roleIndex === ri
         ? { dx: crLive.dx, dy: crLive.dy }
-        : (fact.cardinalityRangeOffsets?.[ri] ?? role.cardinalityRangeOffset ?? CR_DEFAULT)
+        : (fact.cardinalityRangeOffsets?.[ri] ?? role.cardinalityRangeOffset ?? (fact.objectified ? CR_DEFAULT : roleRangeOffset(cr, true)))
       const textX = rc.x + off.dx
       const textY = rc.y + off.dy
 
@@ -2997,7 +3071,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       const isIfSelected = !isEditing && store.selectedInternalFrequency?.ifId === ifItem.id
       const cx = (ifLive?.ifId === ifItem.id) ? ifLive.x : ifItem.x
       const cy = (ifLive?.ifId === ifItem.id) ? ifLive.y : ifItem.y
-      const fr = formatFrequencyRange(ifItem.range)
+      const fr = formatFrequencyRange(isEditing ? (store.frequencyConstruction.range ?? ifItem.range) : ifItem.range)
       const ifGs = groupStyle(store.groups, ifItem._origIfId ?? ifItem.id)
       const col = isEditing ? 'var(--accent)' : isIfSelected ? 'var(--accent)' : ifItem.deontic ? ifGs?.deontic ?? 'var(--col-deontic)' : ifGs?.constraint ?? 'var(--col-constraint)'
       const hw = ifShapeHalfW(fr)
@@ -3012,7 +3086,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         onClick: e => {
           e.stopPropagation()
           if (ifWasDragged.current) { ifWasDragged.current = false; return }
-          if (isEditing) { store.advanceFrequencyToRange(); return }
+          if (isEditing) { store.finishFrequencyConstruction(); return }
           if (isIfSelected) store.deselectInternalFrequency()
           else store.selectInternalFrequency(fact.id, ifItem.id)
         },
@@ -3020,7 +3094,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         onContextMenu: e => { e.preventDefault(); e.stopPropagation(); onIfContextMenu?.(ifItem.id, e) },
       }
       return (
-        <g key={`if-${ifItem.id}`} className="selectable-group" style={{ filter: isIfSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined, pointerEvents: inQueryEdit ? 'none' : undefined }}>
+        <g key={`if-${ifItem.id}`} className={isEditing ? 'selectable-group pick-target' : 'selectable-group'} style={{ filter: isIfSelected ? 'drop-shadow(0 0 3px var(--accent))' : undefined, pointerEvents: inQueryEdit ? 'none' : undefined }}>
           {(() => {
             const roles = isEditing ? fcRoles : ifItem.roles
             if (roles.length === 2) {
@@ -3073,7 +3147,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       const cx = ifConstrLive?.x ?? fc.x
       const cy = ifConstrLive?.y ?? fc.y
       return (
-        <g>
+        <g className="selectable-group pick-target">
           {(() => {
             const roles = fc.roleIndices
             if (roles.length === 2) {
@@ -3105,13 +3179,14 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             onClick={e => {
               e.stopPropagation()
               if (ifConstrWasDragged.current) { ifConstrWasDragged.current = false; return }
-              store.advanceFrequencyToRange()
+              store.finishFrequencyConstruction()
             }}
           />
+          <rect className="hover-ring" x={cx - IF_CIRCLE_R - 4} y={cy - IF_CIRCLE_R - 4} width={(IF_CIRCLE_R + 4) * 2} height={(IF_CIRCLE_R + 4) * 2} rx={IF_CIRCLE_R + 4}/>
           <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
             fontSize={9} fill="var(--accent)" fontFamily="var(--font-mono)" fontWeight={600}
             style={{ pointerEvents: 'none', userSelect: 'none' }}>
-            F
+            {formatFrequencyRange(fc.range) || 'F'}
           </text>
         </g>
       )

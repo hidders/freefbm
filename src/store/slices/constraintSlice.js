@@ -233,9 +233,8 @@ export function createConstraintSlice(set, get) {
     },
 
     _commitSequenceConstruction(constraintId, collected) {
-      const fromMenu = get().tool === 'connectConstraint'
-      set({ sequenceConstruction: null, tool: 'select',
-        ...(fromMenu ? { selectedId: null, selectedKind: null } : {}) })
+      // The constraint stays selected, so its Inspector shows the result.
+      set({ sequenceConstruction: null, tool: 'select' })
       set(s => {
         const newConstraints = s.constraints.map(c => {
           if (c.id !== constraintId) return c
@@ -572,14 +571,20 @@ export function createConstraintSlice(set, get) {
       }
     },
 
+    // Cancel (Esc, a click on the background, the Inspector's Cancel) always
+    // discards what was picked in this construction; only Done keeps it
+    // (Jan, 2026-11-15).
     abandonSequenceConstruction() {
+      if (get().sequenceConstruction) set({ sequenceConstruction: null })
+    },
+
+    // Done (Enter, a click on the constraint, the Inspector's Done): keep what
+    // was picked and leave the constraint selected.
+    finishSequenceConstruction() {
       const gc = get().sequenceConstruction
-      // Open-ended sequence: commit whatever was collected rather than discarding
-      if (gc?.openEnded && gc.collected.length > 0) {
-        get()._commitSequenceConstruction(gc.constraintId, gc.collected)
-      } else {
-        set({ sequenceConstruction: null })
-      }
+      if (!gc) return
+      get().commitSequenceConstruction()
+      get().select(gc.constraintId, 'constraint')
     },
 
     commitSequenceConstruction() {

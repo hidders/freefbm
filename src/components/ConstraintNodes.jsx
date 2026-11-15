@@ -1157,13 +1157,20 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
 
         return (
           <g key={c.constraintOccurrenceId ?? c.id}
-            className="selectable-group"
-            opacity={noteSubjectIds != null && !noteSubjectIds.has(c.id) ? 0.12 : 1}
+            className={gc ? 'selectable-group pick-target'
+              : isConnectTool && !store.sequenceConstruction ? 'selectable-group pick-candidate' : 'selectable-group'}
+            opacity={noteSubjectIds != null && !noteSubjectIds.has(c.id) ? 0.12
+              : store.sequenceConstruction && !gc ? 0.35 : 1}
             onMouseDown={(e) => {
               e.stopPropagation()
               if (e.button !== 0 || e.detail >= 2) return  // skip second click of double-click
               if (store.queryEditDraft) return
               if (store.tool === 'addConstraint:valueRange' || store.tool === 'addConstraint:cardinality') { store.setTool('select'); return }
+              // Done: a click on the constraint being built keeps what was picked
+              if (store.sequenceConstruction) {
+                if (gc) store.finishSequenceConstruction()
+                return
+              }
               if (isConnectTool) {
                 store.select(c.id, 'constraint')
                 store.startSequenceConstruction(c.id, 'newSequence')
@@ -1172,10 +1179,6 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
               if (store.tool === 'assignRole' || store.tool === 'addSubtype' || store.tool === 'toggleMandatory' || store.tool === 'addInternalUniqueness' || store.tool === 'addInternalFrequency') { store.clearLinkDraft(); store.setTool('select'); return }
               if (e.shiftKey) {
                 store.shiftSelect(c.id, c.constraintOccurrenceId ?? null)
-                return
-              }
-              if (store.sequenceConstruction) {
-                store.select(c.id, 'constraint')
                 return
               }
               store.select(c.id, 'constraint', c.constraintOccurrenceId ?? null)
@@ -1189,10 +1192,10 @@ export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, 
               store.startSequenceConstruction(c.id, 'newSequence')
             }}
             onContextMenu={(e) => onContextMenu(c, e, c.constraintOccurrenceId ?? null)}
-            style={{ cursor: (() => {
+            style={{ pointerEvents: store.sequenceConstruction && !gc ? 'none' : undefined, cursor: (() => {
               if (store.queryEditDraft) return 'not-allowed'
               if (isElementSelecting(store.tool, store.sequenceConstruction)) {
-                if (store.sequenceConstruction) return 'not-allowed'
+                if (store.sequenceConstruction) return gc ? 'pointer' : 'not-allowed'
                 if (isConnectTool) return 'pointer'
                 return 'not-allowed'
               }

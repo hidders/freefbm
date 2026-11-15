@@ -19,10 +19,10 @@ const TOOL_HINTS = {
   addNestedFact:      'Click canvas to place an objectified fact type',
   assignRole:         'Click a role box to set the source role · Then click an object type to complete the assignment',
   toggleMandatory:    'Click a role box to toggle its mandatory constraint on/off',
-  addInternalUniqueness: 'Click a fact type or role box to start · Click role boxes to build the uniqueness bar · Click the bar or press Enter to commit',
-  addInternalFrequency:  'Click a fact type to select it · Click role boxes to include them · Click the constraint or press Enter to set the frequency range',
+  addInternalUniqueness: 'Click a role box to start the uniqueness constraint with it',
+  addInternalFrequency:  'Click a role box to start the frequency constraint with it',
   addSubtype:         'Click the subtype object type, then the supertype object type to draw a subtype link',
-  connectConstraint:  'Click an external constraint · Click role boxes or subtype links to build sequences · Click the constraint or press Enter to commit',
+  connectConstraint:  'Click an external constraint to add a role sequence to it',
   'addConstraint:uniqueness':      'Click canvas to place an External Uniqueness constraint · Double-click the constraint to add a role sequence',
   'addConstraint:inclusiveOr':     'Click canvas to place an Inclusive Or constraint · Double-click the constraint to add a role sequence',
   'addConstraint:exclusion':       'Click canvas to place an Exclusion constraint · Double-click the constraint to add a role sequence',
@@ -115,13 +115,15 @@ export default function StatusBar() {
   }
 
   // ── Tier 3 (highest): construction-in-progress hints ─────────────────────
-  const constructionHint = store.frequencyConstruction
-    ? store.frequencyConstruction.stage === 2
-      ? 'Click role boxes to include them in the frequency constraint · Click the constraint or press Enter to advance · Esc to cancel'
-      : store.frequencyConstruction.stage === 3
+  const constructionHint = store.uniquenessConstruction
+    ? 'Click role boxes to add or remove them · Click the bar or press Enter when done · Esc to cancel'
+    : store.frequencyConstruction?.stage === 2
+      ? 'Click role boxes to add or remove them · Set the range in the Inspector · Click the constraint or press Enter when done · Esc to cancel'
+      : store.frequencyConstruction?.stage === 3
         ? 'Set the frequency range in the popup · Press Enter to commit · Esc to cancel'
-        : null
-    : null
+        : store.sequenceConstruction
+          ? 'Click role boxes or subtype links to add them · Click the constraint or press Enter when done · Esc to cancel'
+          : null
 
   // ── Tier 2: selection hints — affordances for the selected element ────────
   const factHint = isSel && store.selectedKind === 'fact'

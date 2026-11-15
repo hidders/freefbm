@@ -953,7 +953,7 @@ export function finishLayout(plan, placed) {
     if (!f.internalFrequency?.length) continue
     const d = drawnFact(f.id)
     if (!d) continue
-    internalFrequency[f.id] = f.internalFrequency.map(m => ({ ...m, ...defaultFrequencyPos(d, m.roles ?? []) }))
+    internalFrequency[f.id] = f.internalFrequency.map(m => ({ ...m, ...defaultFrequencyPos(d, m.roles ?? [], m.range) }))
   }
 
   // Notes keep their place relative to the first element they are linked to.

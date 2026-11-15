@@ -17,6 +17,15 @@ function rmPrimary(o) {
   return m ? [m, 'constraint'] : [null, null]
 }
 
+// Clears every selection field (without abandoning a construction, as
+// clearSelection does).
+const NO_SELECTION = {
+  selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitLink: null, selectedImplicitLinkRole: null,
+  selectedUniqueness: null, selectedMandatoryDot: null, selectedInternalFrequency: null,
+  selectedValueRange: null, selectedCardinalityRange: null, multiSelectedIds: [],
+  selectedOccurrenceId: null, multiSelectedOccurrenceIds: [],
+}
+
 export function createSelectionSlice(set, get) {
   return {
     // ── selection ────────────────────────────────────────────────────────────
@@ -429,9 +438,18 @@ export function createSelectionSlice(set, get) {
             selectedRole: null, selectedUniqueness: null })
     },
 
+    // A construction starts from a role box (the Internal uniqueness tool): that
+    // role is the first one. The Inspector shows the constraint being built
+    // (UniquenessConstructionInspector) with its modality and preferred
+    // identifier, applied on Done; Cancel discards everything.
     startUniquenessConstruction(factId, roleIndex = null) {
       if (get().frequencyConstruction) get().abandonFrequencyConstruction()
-      set({ uniquenessConstruction: { factId, roleIndices: roleIndex == null ? [] : [roleIndex] } })
+      if (get().sequenceConstruction) get().abandonSequenceConstruction()
+      set({ uniquenessConstruction: { factId, roleIndices: roleIndex == null ? [] : [roleIndex], deontic: false, preferred: false },
+            ...NO_SELECTION })
+    },
+    setUniquenessConstruction(patch) {
+      set(s => s.uniquenessConstruction ? { uniquenessConstruction: { ...s.uniquenessConstruction, ...patch } } : {})
     },
     toggleUniquenessConstructionRole(roleIndex) {
       set(s => {
@@ -466,7 +484,7 @@ export function createSelectionSlice(set, get) {
         }
         const newIdx = get().setUniquenessRoles(uc.factId, uc.uIndex, uc.roleIndices)
         // A role set another bar already has leaves everything intact
-        if (newIdx >= 0 && newIdx !== uc.uIndex) get().selectUniqueness(uc.factId, newIdx)
+        if (newIdx < 0) { get().selectUniqueness(uc.factId, uc.uIndex); return }
       } else {
         // New constraint
         if (uc.roleIndices.length === 0) return
@@ -474,6 +492,21 @@ export function createSelectionSlice(set, get) {
         const exists = fact.uniqueness.some(u => JSON.stringify([...u.roles].sort((a, b) => a - b)) === key)
         if (!exists) get().toggleUniqueness(uc.factId, uc.roleIndices)
       }
+      // The fields set in the Inspector while the roles were chosen
+      get()._applyUniquenessFields(uc.factId, uc.roleIndices, uc)
+      const after = get().facts.find(f => f.id === uc.factId)
+      const sk = rs => JSON.stringify([...rs].sort((a, b) => a - b))
+      const idx = after?.uniqueness.findIndex(u => sk(u.roles) === sk(uc.roleIndices)) ?? -1
+      if (idx >= 0) get().selectUniqueness(uc.factId, idx)
+    },
+    _applyUniquenessFields(factId, roles, { deontic, preferred }) {
+      const fact = get().facts.find(f => f.id === factId)
+      if (!fact || preferred == null) return
+      const sk = rs => JSON.stringify([...rs].sort())
+      const isOn = (fact.preferredUniqueness || []).some(pu => sk(pu) === sk(roles))
+      const want = !!preferred && roles.length === fact.arity - 1
+      if (want !== isOn) get().setPreferredUniqueness(factId, roles)
+      get().setUniquenessDeontic(factId, roles, !!deontic && !want)
     },
     updateUniquenessRoles(factId, uIndex, newRoles) {
       const newIdx = get().setUniquenessRoles(factId, uIndex, newRoles)
@@ -511,8 +544,13 @@ export function createSelectionSlice(set, get) {
       const fact = get().facts.find(f => f.id === factId)
       if (!fact) return
       const roleIndices = [...fact.uniqueness[uIndex].roles]
+      const sk = rs => JSON.stringify([...rs].sort())
+      const preferred = (fact.preferredUniqueness || []).some(pu => sk(pu) === sk(roleIndices))
+      const deontic = isDeonticUniqueness(fact, roleIndices)
+      if (get().frequencyConstruction) get().abandonFrequencyConstruction()
+      if (get().sequenceConstruction) get().abandonSequenceConstruction()
       set({
-        uniquenessConstruction: { factId, roleIndices, uIndex },
+        uniquenessConstruction: { factId, roleIndices, uIndex, deontic, preferred },
         selectedId: factId, selectedKind: 'fact',
         selectedUniqueness: { factId, uIndex },
         selectedRole: null, selectedMandatoryDot: null, selectedInternalFrequency: null,
@@ -522,14 +560,19 @@ export function createSelectionSlice(set, get) {
     },
 
     // ── Internal frequency construction ──────────────────────────────────────
-    // roleIndex: the role clicked to start the construction (if any) is included straight away
+    // Starts from a role box (the Internal frequency tool), which is the first
+    // role. The Inspector (FrequencyConstructionInspector) holds the range and
+    // modality, which may be set at any time; Done commits roles, range (which
+    // may stay empty) and modality, Cancel discards them.
     startFrequencyConstruction(factId, roleIndex = null) {
       if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
+      if (get().sequenceConstruction) get().abandonSequenceConstruction()
       const fact = get().facts.find(f => f.id === factId)
       if (!fact) return
       const roleIndices = roleIndex == null ? [] : [roleIndex]
       const pos = defaultFrequencyPos(factAsDrawn(get(), factId), roleIndices)
-      set({ frequencyConstruction: { stage: 2, factId, ...pos, roleIndices, ifId: null, moved: false } })
+      set({ frequencyConstruction: { stage: 2, factId, ...pos, roleIndices, ifId: null, moved: false, range: [], deontic: false },
+            ...NO_SELECTION })
     },
     moveFrequencyConstructionCircle(x, y) {
       set(s => s.frequencyConstruction
@@ -546,27 +589,43 @@ export function createSelectionSlice(set, get) {
         return { frequencyConstruction: { ...fc, roleIndices, ...pos } }
       })
     },
-    advanceFrequencyToRange() {
+    setFrequencyConstruction(patch) {
+      set(s => s.frequencyConstruction ? { frequencyConstruction: { ...s.frequencyConstruction, ...patch } } : {})
+    },
+    // Done: commit the roles with the range and modality set in the Inspector.
+    finishFrequencyConstruction() {
       const fc = get().frequencyConstruction
       if (!fc || fc.stage !== 2) return
+      if (fc.ifId == null && fc.roleIndices.length === 0) {
+        set({ frequencyConstruction: { ...fc, warning: 'Pick at least one role first' } })
+        return
+      }
+      set({ frequencyConstruction: null, tool: 'select' })
+      const range = fc.range ?? []
       if (fc.ifId != null) {
-        // Editing existing: commit role changes now, keep the existing range
-        set({ frequencyConstruction: null })
         if (fc.roleIndices.length === 0) {
           get().removeInternalFrequency(fc.factId, fc.ifId)
-        } else {
-          const fact = get().facts.find(f => f.id === fc.factId)
-          const existing = (fact?.internalFrequency || []).find(i => i.id === fc.ifId)
-          get().updateInternalFrequency(fc.factId, fc.ifId, {
-            roles: fc.roleIndices, x: fc.x, y: fc.y,
-            range: existing?.range ?? [],
-          })
+          get().select(fc.factId, 'fact')
+          return
         }
-      } else {
-        // New constraint: needs at least one role before a range makes sense
-        if (fc.roleIndices.length === 0) return
-        set({ frequencyConstruction: { ...fc, stage: 3, range: fc.range ?? [] } })
+        get().updateInternalFrequency(fc.factId, fc.ifId, {
+          roles: fc.roleIndices, x: fc.x, y: fc.y, range, deontic: !!fc.deontic,
+        })
+        get().selectInternalFrequency(fc.factId, fc.ifId)
+        return
       }
+      const ifId = uid()
+      set(s => ({
+        facts: s.facts.map(f => f.id !== fc.factId ? f : {
+          ...f,
+          internalFrequency: [...(f.internalFrequency || []), {
+            id: ifId, roles: [...fc.roleIndices], range, x: fc.x, y: fc.y,
+            ...(fc.deontic ? { deontic: true } : {}),
+          }],
+        }),
+        isDirty: true,
+      }))
+      get().selectInternalFrequency(fc.factId, ifId)
     },
     updateFrequencyConstructionRange(range) {
       set(s => s.frequencyConstruction
@@ -637,12 +696,14 @@ export function createSelectionSlice(set, get) {
       const ifItem = (fact.internalFrequency || []).find(i => i.id === ifId)
       if (!ifItem) return
       if (get().uniquenessConstruction) get().abandonUniquenessConstruction()
+      if (get().sequenceConstruction) get().abandonSequenceConstruction()
       set({ frequencyConstruction: {
         stage: 2, factId,
         x: ifItem.x ?? fact.x + 40,
         y: ifItem.y ?? fact.y - 30,
         roleIndices: [...ifItem.roles], ifId,
-      }, selectedInternalFrequency: null })
+        range: ifItem.range ?? [], deontic: !!ifItem.deontic,
+      }, ...NO_SELECTION })
     },
     updateInternalFrequency(factId, ifId, patch) {
       set(s => ({
@@ -659,14 +720,16 @@ export function createSelectionSlice(set, get) {
       const s = get()
       const ifItem = s.facts.find(f => f.id === factId)?.internalFrequency?.find(i => i.id === ifId)
       if (!ifItem || ifItem.x == null || ifItem.y == null) return false
-      const def = defaultFrequencyPos(factAsDrawn(s, factId), ifItem.roles ?? [])
-      return Math.abs(ifItem.x - def.x) > 0.5 || Math.abs(ifItem.y - def.y) > 0.5
+      // a marker placed before its range was given sits where the range's width was not known
+      const at = (def) => Math.abs(ifItem.x - def.x) <= 0.5 && Math.abs(ifItem.y - def.y) <= 0.5
+      const drawn = factAsDrawn(s, factId)
+      return !at(defaultFrequencyPos(drawn, ifItem.roles ?? [], ifItem.range)) && !at(defaultFrequencyPos(drawn, ifItem.roles ?? []))
     },
     resetFrequencyLabel(factId, ifId) {
       const s = get()
       const ifItem = s.facts.find(f => f.id === factId)?.internalFrequency?.find(i => i.id === ifId)
       if (!ifItem) return
-      get().updateInternalFrequency(factId, ifId, defaultFrequencyPos(factAsDrawn(s, factId), ifItem.roles ?? []))
+      get().updateInternalFrequency(factId, ifId, defaultFrequencyPos(factAsDrawn(s, factId), ifItem.roles ?? [], ifItem.range))
     },
     removeInternalFrequency(factId, ifId) {
       set(s => {

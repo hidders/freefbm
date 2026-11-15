@@ -74,6 +74,12 @@
   --selection:    rgba(180,83,9,0.15);
   --danger:       #c0392b;
 
+  /* Choosing roles for a constraint: candidates are tinted, picked roles a
+     shade darker; editing cues only, never saved or exported (Jan, 2026-11-15). */
+  --pick-candidate: #e3edf9;
+  --pick-chosen:    #c6d9f1;
+  --pick-ring:      rgba(64, 120, 200, 0.55);
+
   --radius-sm: 3px;
   --radius:    6px;
   --radius-lg: 10px;
@@ -171,6 +177,15 @@ input.cell-issue:-webkit-autofill:focus {
    selectable-group is hovered or a role is in interior mode */
 .tool-select .selectable-group:hover:not(:has(.role-box-group.role-interior:hover, .selectable-group:hover)) > .hover-ring {
   stroke: rgba(64, 120, 200, 0.55);
+}
+
+/* Choosing roles (or a constraint) for a constraint (Canvas .picking): the
+   dashed ring goes on what a click acts on, a candidate role box, subtype link
+   or constraint, or the constraint being built (.pick-target: Done). The fact
+   type is no click target there, so .tool-select's rings are off. */
+.picking .pick-candidate:hover > .hover-ring,
+.picking .pick-target:hover > .hover-ring {
+  stroke: var(--pick-ring);
 }
 
 /* During query construction: only role boxes and explicitly marked OT originals get hover rings */
