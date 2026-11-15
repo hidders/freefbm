@@ -1091,7 +1091,7 @@ function placeFrequencies(api, S, factId) {
   if (!g?.internalFrequency?.length) return
   const occ = st.diagrams.filter(d => d.schemaId === S).flatMap(d => d.occurrences ?? []).find(o => o.schemaElementId === factId)
   const at = { ...g, ...(occ ? { x: occ.x, y: occ.y } : {}) }
-  api.setState(s2 => ({ facts: s2.facts.map(x => (x.id !== factId ? x : { ...x, internalFrequency: x.internalFrequency.map(q => ({ ...q, ...defaultFrequencyPos(at, q.roles) })) })) }))
+  api.setState(s2 => ({ facts: s2.facts.map(x => (x.id !== factId ? x : { ...x, internalFrequency: x.internalFrequency.map(q => ({ ...q, ...defaultFrequencyPos(at, q.roles, q.range) })) })) }))
 }
 // A fact type's occurrences moved halfway between the given types' (on the
 // diagrams of schema S that show all three).

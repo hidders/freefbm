@@ -257,7 +257,7 @@ export function placeOrmUnits(state, diagramId, beforeOccIds, plans, beforeCoccI
     if (state.diagrams.some(d => d.id !== diagramId && (d.occurrences ?? []).some(x => x.schemaElementId === f.id))) continue
     const drawn = { ...f, arity: f.roles.length, x: o.x, y: o.y, orientation: o.orientation ?? f.orientation, roleOrder: o.roleOrder ?? f.roleOrder,
       uniquenessBelow: o.uniquenessBelow ?? f.uniquenessBelow }
-    freq[f.id] = f.internalFrequency.map(m => ({ ...m, ...defaultFrequencyPos(drawn, m.roles ?? []) }))
+    freq[f.id] = f.internalFrequency.map(m => ({ ...m, ...defaultFrequencyPos(drawn, m.roles ?? [], m.range) }))
   }
   return { occ: out, cocc, freq }
 
