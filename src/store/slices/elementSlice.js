@@ -756,6 +756,43 @@ export function createElementSlice(set, get) {
       }))
     },
 
+    // Which subtype links an object type occurrence takes part in on the
+    // active diagram, as NORMA's DisplayRelatedTypes: all (undefined), only
+    // from its subtypes ('AttachSubtypes'), only to its supertypes
+    // ('AttachSupertypes') or none ('AttachNoTypes'). The diagram's pairs
+    // (subtypeEndpointOccs) of the shown subtype links of its type are
+    // updated: pairs it may no longer take part in go, and it is paired with
+    // every occurrence at the other end that allows it, as NORMA draws them.
+    setSubtypeLinksShown(occId, value) {
+      set(s => ({
+        diagrams: s.diagrams.map(d => {
+          if (d.id !== s.activeDiagramId) return d
+          const occ = (d.occurrences ?? []).find(o => o.id === occId)
+          if (!occ) return d
+          const related = value && value !== 'AttachAllTypes' ? value : undefined
+          const occurrences = d.occurrences.map(o => o.id === occId ? { ...o, displayRelatedTypes: related } : o)
+          const setting = (o) => (o.id === occId ? related : o.displayRelatedTypes)
+          const toSupers = (o) => !['AttachNoTypes', 'AttachSubtypes'].includes(setting(o))
+          const fromSubs = (o) => !['AttachNoTypes', 'AttachSupertypes'].includes(setting(o))
+          const occsOf = (id) => occurrences.filter(o => o.schemaElementId === id && !o.refModeOwnerOccId)
+          const shown = new Set(d.subtypeOccurrences ?? [])
+          const endpoints = { ...(d.subtypeEndpointOccs ?? {}) }
+          for (const st of s.subtypes) {
+            if (!shown.has(st.id) || (st.subId !== occ.schemaElementId && st.superId !== occ.schemaElementId)) continue
+            const raw = endpoints[st.id]
+            let pairs = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter(p => p.subOccId !== occId && p.superOccId !== occId)
+            if (st.subId === occ.schemaElementId && toSupers({ id: occId }))
+              for (const sup of occsOf(st.superId)) if (fromSubs(sup)) pairs.push({ subOccId: occId, superOccId: sup.id })
+            if (st.superId === occ.schemaElementId && fromSubs({ id: occId }))
+              for (const sub of occsOf(st.subId)) if (toSupers(sub) && sub.id !== occId) pairs.push({ subOccId: sub.id, superOccId: occId })
+            endpoints[st.id] = pairs
+          }
+          return { ...d, occurrences, subtypeEndpointOccs: endpoints }
+        }),
+        isDirty: true,
+      }))
+    },
+
     // Whether a value or cardinality range label (sel as in selectedValueRange)
     // has been moved on the active diagram, and putting it back. An object
     // type's and a role's offsets are per occurrence (the type's or role's own

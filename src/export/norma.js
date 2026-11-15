@@ -939,6 +939,8 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   // A shape that FreeFBM links to none of its supertypes (subtypes) while
   // the diagram shows such links attaches no supertypes (subtypes) in NORMA.
   function relatedTypes(d, occ) {
+    // set on the occurrence (the Inspector's Subtype links, or NORMA's own)
+    if (occ.displayRelatedTypes) return occ.displayRelatedTypes
     const shown = new Set(d.subtypeOccurrences ?? [])
     const pairs = (st) => { const raw = d.subtypeEndpointOccs?.[st.id]; return Array.isArray(raw) ? raw : raw ? [raw] : [] }
     let asSub = null, asSuper = null   // null: no shown link concerns it; true/false: this shape takes part

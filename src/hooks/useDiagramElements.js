@@ -216,7 +216,11 @@ export function getDiagramElements(store) {
     )
     .flatMap(st => {
       const raw = subtypeEndpointOccs[st.id]
-      const eps = Array.isArray(raw) ? raw : (raw ? [raw] : [{ subOccId: null, superOccId: null }])
+      // an occurrence that takes part in no links to its supertypes (from its
+      // subtypes) on this diagram (displayRelatedTypes, as NORMA's) is no end
+      const setting = (occId) => occId ? (diagram?.occurrences ?? []).find(o => o.id === occId)?.displayRelatedTypes : undefined
+      const eps = (Array.isArray(raw) ? raw : (raw ? [raw] : [{ subOccId: null, superOccId: null }]))
+        .filter(ep => !['AttachNoTypes', 'AttachSubtypes'].includes(setting(ep.subOccId)) && !['AttachNoTypes', 'AttachSupertypes'].includes(setting(ep.superOccId)))
       return eps.map(ep => ({
         ...st,
         subOccId:      ep.subOccId   ?? null,

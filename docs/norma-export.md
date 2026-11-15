@@ -377,7 +377,7 @@ supertype, unless a shape's DisplayRelatedTypes says it attaches no
 supertypes or subtypes; the import keeps that per occurrence
 (`displayRelatedTypes`) and draws exactly the pairs NORMA draws
 (`subtypeEndpointOccs`), and the export derives the attribute from
-FreeFBM's pairs, so no new setting is needed. Drawn link fact types of
+FreeFBM's pairs. The Inspector shows the setting for an object type occurrence as "Subtype links: all / from subtypes / to supertypes / none" (Jan's wording; `store.setSubtypeLinksShown` updates the diagram's pairs as NORMA draws them, and the drawing leaves out pairs the setting excludes); an occurrence's own setting is exported as it is. Drawn link fact types of
 objectifications (such as "is typed as") are imported as FreeFBM's shown
 implied links (`shownImplicitLinks`, `implicitLinkPositions` with NORMA's
 shape kept) and exported as FactTypeShapes of the link fact types.
