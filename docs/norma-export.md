@@ -306,6 +306,20 @@ place (up and left of the shape, cascading per role). Model notes are as
 wide as their longest line measured in the note font (they were estimated
 at 4.4 px a character, so text ran past the note in the web viewer).
 
+Third check in NORMA (2026-11-15, Jan's test-tabs model on the VM): two
+export faults. A custom reference mode named like one of NORMA's own
+(intrinsic Code and code, Nr and nr, …; names compare case-sensitively) is
+renamed when NORMA loads the file, and every entity type whose value type
+its format matched lost its reference mode value type ("[Missing]" role
+players); the export now spells the mode as the value type does and writes
+a clashing custom mode as a general one. And NORMA folds a path with a
+single plain subpath into it on load but deletes that subpath's own
+subpaths (RemoveIntraFactTypeSplits moves the parent's subpath links, not
+the child's), dropping projections from their roles ("must project all
+constrained roles"); the export now writes paths folded as NORMA keeps
+them. NORMA without the shape grouping extension also asks to disable Save
+for a file with group colours; answering No keeps Save.
+
 Milestone 3 (v1.2.28): diagram notes as NORMA model notes with their
 shapes and references; definitions and notes of elements; groups with
 their members and colours (NORMA's shape grouping extension); custom

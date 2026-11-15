@@ -181,6 +181,34 @@ export function conjunctivePath(rule, opts) {
   }
   if (!subPaths.length) return refuse('the subject is not bound by the rule')
 
+  // NORMA folds a path with a single plain subpath into it when it loads
+  // the file, but leaves that subpath's own subpaths behind and deletes
+  // them (RemoveIntraFactTypeSplits moves the parent's subpath links, not
+  // the child's), and with them any projection from their roles. So the
+  // path is written as NORMA keeps it: a single subpath that is neither
+  // negated nor a disjunction becomes part of the path above it.
+  const kids = (node, name) => (node.children ?? []).filter(c => c && c.name === name)
+  const flatten = (node) => {
+    for (;;) {
+      const subs = kids(node, 'orm:SubPaths')[0]?.children?.filter(Boolean) ?? []
+      const only = subs.length === 1 ? subs[0] : null
+      if (!only || only.attrs.SplitIsNegated) break
+      const mine = kids(node, 'orm:PathedRoles')[0]?.children ?? []
+      const theirs = kids(only, 'orm:PathedRoles')[0]?.children ?? []
+      const rest = (node.children ?? []).filter(c => c && c.name !== 'orm:PathedRoles' && c.name !== 'orm:SubPaths')
+      const pathed = [...mine, ...theirs]
+      // its subpaths now combine as they did below it
+      node.attrs = { ...node.attrs, SplitCombinationOperator: only.attrs.SplitCombinationOperator ?? null }
+      node.children = [
+        ...rest.filter(c => c.name === 'orm:RootObjectType'),
+        pathed.length && el('orm:PathedRoles', {}, pathed),
+        ...kids(only, 'orm:SubPaths'),
+        ...rest.filter(c => c.name !== 'orm:RootObjectType'),
+      ].filter(Boolean)
+    }
+    for (const sp of kids(node, 'orm:SubPaths')) for (const c of sp.children ?? []) if (c) flatten(c)
+    return node
+  }
   const unifiers = [...nodes.values()].filter(ns => ns.length > 1).map((ns, k) =>
     el('orm:ObjectUnifier', { id: id(`u${k}`) }, ns.map(n => el(`orm:${n.kind}`, { ref: n.id }))))
   const path = el('orm:PathComponents', {}, [
@@ -190,6 +218,7 @@ export function conjunctivePath(rule, opts) {
       unifiers.length && el('orm:ObjectUnifiers', {}, unifiers),
     ]),
   ])
+  flatten(path.children[0])
   // a join path projects the constraint's roles (ConstraintRoleProjection)
   if (opts.join) {
     const projections = el('orm:JoinPathProjections', {}, [
