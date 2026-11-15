@@ -130,10 +130,6 @@ It is possible that more than one Staff member has an office in the same Room.
 ◇∃ StaffMember ¬(∃ Room (StaffMember has an office in Room))
 It is possible that some Staff member does not have an office in any Room.
 
-# Possible (role not mandatory) · StaffMember has an office in Room
-◇∃ Room ¬(∃ StaffMember (StaffMember has an office in Room))
-It is possible that some Room is not the office of any Staff member.
-
 # Uniqueness · StaffMember has Extension
 ¬(∃ StaffMember ∃^{>1} Extension (StaffMember has Extension))
 It is impossible that some Staff member has more than one Extension.
@@ -545,6 +541,10 @@ It is impossible that some BuildingCode does not refer to any Building.
 # Participation (not independent) · RoomNr
 ¬(∃ RoomNr ¬(∃ Room (Room has RoomNr)))
 It is impossible that there is some RoomNr such that no Room has that RoomNr.
+
+# Participation (not independent) · Room
+¬(∃ Room ¬(∃ StaffMember (StaffMember has an office in Room)))
+It is impossible that some Room is not the office of any Staff member.
 
 # Participation (not independent) · Extension
 ¬(∃ Extension ¬(∃ StaffMember (StaffMember has Extension)))
