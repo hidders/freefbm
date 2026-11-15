@@ -50,6 +50,13 @@ export const ROLE_GAP = 0
 export const ROLE_STROKE = pt(NORMA.roleBox.penPt)
 // Diagram text: Tahoma 7 pt (readings, ranges, frequencies, names)
 export const LABEL_SIZE = pt(NORMA.fontSizePt)
+
+// Width of an input for one fragment of a reading being edited in place: the
+// fragment's text in the diagram font, room for the caret, and at least two
+// characters' width so an empty fragment can still be clicked.
+function segmentInputWidth(seg, size) {
+  return Math.ceil(Math.max(measureDiagramText(seg, size), measureDiagramText('mm', size)) + size * 0.6)
+}
 // One line of text: an objectified fact type's name above its frame, and its
 // reference mode under the name
 export const NAME_LINE = px(NORMA.lineHeight)
@@ -1642,15 +1649,16 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
           const ot  = otMap?.[oid]
           const nf  = nestedMap?.[oid]
           const name = ot?.name ?? nf?.objectifiedName ?? '?'
-          total += Math.max(20, name.length * 7.5 + 8)
+          total += measureDiagramText(name + '₉', LABEL_SIZE, 700) + 8
         }
         return total
       })()
       const W = Math.max(120,
-        readingDraft.reduce((s, seg) => s + Math.max(12, seg.length * 7.5 + 4), 0)
-        + roleNamesW)
+        readingDraft.reduce((s, seg) => s + segmentInputWidth(seg, LABEL_SIZE), 0)
+        + roleNamesW + 10)
+      const H = Math.ceil(LABEL_SIZE * 1.5)
       return (
-        <foreignObject x={tx - W / 2} y={ty - 14} width={W} height={28}>
+        <foreignObject x={tx - W / 2} y={ty - H / 2} width={W} height={H}>
           <div style={{ display:'flex', alignItems:'center', height:'100%', background:'#fff',
             border:'1px solid var(--accent)', borderRadius:3, padding:'0 4px', boxSizing:'border-box' }}>
             {readingDraft.map((seg, i) => (
@@ -1663,7 +1671,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                   onBlur={() => { setTimeout(() => { if (!document.activeElement?.closest?.('foreignObject')) commitReadingEdit() }, 0) }}
                   onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); commitReadingEdit() } if (e.key === 'Escape') { e.stopPropagation(); setEditingReading(false) } }}
                   onMouseDown={e => e.stopPropagation()}
-                  style={{ width: Math.max(12, seg.length * 7.5 + 4), minWidth: 0, border:'none',
+                  style={{ width: segmentInputWidth(seg, LABEL_SIZE), minWidth: 0, flexShrink: 0, border:'none',
                     outline:'1px dotted var(--border)', background:'#fef6ec', color:'var(--ink-2)',
                     fontSize:LABEL_SIZE, fontFamily:FONT, textAlign:'center',
                     padding:'0', boxSizing:'border-box' }}
@@ -2249,11 +2257,17 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                         prev.push({ ri, idx: prev.length })
                         nameOccurrences.set(name, prev)
                       }
+                      const roleNamesW = Array.from({ length: fact.arity }, (_, i) => {
+                        const oid = fact.roles[i]?.objectTypeId
+                        const name = otMap?.[oid]?.name ?? nestedMap?.[oid]?.objectifiedName ?? '?'
+                        return measureDiagramText(name + '₉', NESTED_READING_FONT_SIZE, 700) + 4
+                      }).reduce((a, b) => a + b, 0)
                       const W = Math.max(120,
-                        readingDraft.reduce((s, seg) => s + Math.max(20, seg.length * 7 + 4), 0)
-                        + fact.arity * 24 + 12)
+                        readingDraft.reduce((s, seg) => s + segmentInputWidth(seg, NESTED_READING_FONT_SIZE), 0)
+                        + roleNamesW + 10)
+                      const H = Math.ceil(NESTED_READING_FONT_SIZE * 1.5)
                       return (
-                        <foreignObject x={fact.x - W / 2} y={readingY - 12} width={W} height={24}>
+                        <foreignObject x={fact.x - W / 2} y={readingY - H / 2} width={W} height={H}>
                           <div style={{ display:'flex', alignItems:'center', height:'100%', background:'#fff',
                             border:`1px solid ${nestedCol}`, borderRadius:3, padding:'0 4px', boxSizing:'border-box' }}>
                             {readingDraft.map((seg, i) => (
@@ -2265,7 +2279,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                                   onBlur={() => { setTimeout(() => { if (!document.activeElement?.closest?.('foreignObject')) commitReadingEdit() }, 0) }}
                                   onKeyDown={e => { e.stopPropagation(); if(e.key==='Enter'){e.preventDefault();commitReadingEdit()} if(e.key==='Escape'){e.stopPropagation();setEditingReading(false)} }}
                                   onMouseDown={e => e.stopPropagation()}
-                                  style={{ width:Math.max(12, seg.length*7), minWidth:0, border:'none', outline:'1px dotted var(--border)',
+                                  style={{ width:segmentInputWidth(seg, NESTED_READING_FONT_SIZE), minWidth:0, flexShrink:0, border:'none', outline:'1px dotted var(--border)',
                                     background:'#fef6ec', color:nestedCol, fontSize:NESTED_READING_FONT_SIZE,
                                     fontFamily:FONT, textAlign:'center', padding:'0', boxSizing:'border-box' }}
                                 />
