@@ -2,13 +2,22 @@ import React, { useEffect, useRef, useState } from 'react'
 
 const FONT = 'var(--font-ui)'
 
-// Every menu ends with its remove and delete items, set off by a double line
-// ('==='). An item counts as one when its label starts with Remove or Delete,
+// Every menu ends with two groups, each set off by a double line ('==='):
+// first the diagram items (Add neighbours…, New diagram from here, Connect
+// with …: they say group: 'diagram'), then the remove and delete items. An
+// item counts as a removal when its label starts with Remove or Delete,
 // unless it says removal: false (Remove subject on a note removes a link, not
-// the element). Within that group single lines ('---') stay as given.
+// the element). Within each group single lines ('---') stay as given.
 const isRemoval = item => item && typeof item === 'object'
   && (item.removal ?? /^(Remove|Delete)\b/.test(item.label ?? ''))
+const isDiagramItem = item => item && typeof item === 'object' && item.group === 'diagram'
 const isSep = item => item === '---' || item === '==='
+const trim = xs => {
+  const out = xs.filter((x, i) => !isSep(x) || (i > 0 && !isSep(xs[i - 1])))
+  while (out.length && isSep(out[0])) out.shift()
+  while (out.length && isSep(out[out.length - 1])) out.pop()
+  return out
+}
 export function arrangeMenu(items) {
   const xs = items.filter(Boolean)
   let start = xs.length
@@ -16,11 +25,12 @@ export function arrangeMenu(items) {
     if (isRemoval(xs[i])) start = i
     else if (!isSep(xs[i])) break
   }
-  const head = xs.slice(0, start), tail = xs.slice(start)
-  while (head.length && isSep(head[head.length - 1])) head.pop()
-  const out = head.length && tail.length ? [...head, '===', ...tail] : [...head, ...tail]
-  // no leading, trailing or doubled separators
-  return out.filter((x, i) => !isSep(x) || (i > 0 && i < out.length - 1 && !isSep(out[i - 1])))
+  const rest = xs.slice(0, start)
+  const head = trim(rest.filter(x => !isDiagramItem(x)))
+  const diagram = trim(rest.filter(isDiagramItem))
+  const removal = trim(xs.slice(start))
+  return [head, diagram, removal].filter(g => g.length)
+    .flatMap((g, i) => i === 0 ? g : ['===', ...g])
 }
 
 const Separator = ({ double }) => double
