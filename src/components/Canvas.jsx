@@ -545,6 +545,8 @@ export default function Canvas() {
 
   // ── Query edit state ─────────────────────────────────────────────────────
   const qd = store.queryEditDraft
+  // A query is shown (queryIndexHighlight) or edited: what is not in it is dimmed.
+  const queryDim = !!(qd || store.queryIndexHighlight)
 
   // ── Dim mode — non-interactive elements dimmed while a tool is active ─────
   const dimMode = (() => {
@@ -1428,6 +1430,9 @@ export default function Canvas() {
             const m = mappingOfDiagram(store, activeDiagram)
             return <ErdView key={sid} schemaId={sid} tint={m && m.sourceSchemaId !== m.targetSchemaId ? (sid === m.targetSchemaId ? 'target' : 'source') : null}/>
           })}
+          {/* Notes and their connectors are never part of a query: dimmed like
+              everything else outside it while a query is shown or edited. */}
+          <g opacity={queryDim ? 0.2 : 1} style={queryDim ? { pointerEvents: 'none' } : undefined}>
           {/* Note connectors — rendered below notes so notes sit on top */}
           {visibleNotes.flatMap(note => (note.connectors ?? []).map(conn => {
             let tx, ty
@@ -1490,6 +1495,7 @@ export default function Canvas() {
               />
             </g>
           ))}
+          </g>
           <g opacity={store.queryIndexHighlight && !qd ? 0.2 : 1} style={store.queryIndexHighlight && !qd ? { pointerEvents: 'none' } : undefined}>
           <g style={(dimMode?.subtypesDim) ? { pointerEvents: 'none' } : undefined}>
             <SubtypeArrows mousePos={mousePos} onContextMenu={handleSubtypeContextMenu} dimAllSubtypes={dimMode?.subtypesDim ?? false} queryReachable={queryReachable} queryOriginals={queryOriginals} noteSubjectIds={isNotePickMode ? new Set() : rsIds}/>
@@ -1576,13 +1582,19 @@ export default function Canvas() {
               noteSubjectIds={isNotePickMode ? new Set() : rsIds}/>
           </g>
           <ConstraintMemberLabels/>
+          {/* Badges are not part of a query either (the wrapper dims them only
+              while a query is shown, not while one is edited). */}
+          <g opacity={qd ? 0.2 : 1} style={qd ? { pointerEvents: 'none' } : undefined}>
           <ValidationBadges store={store} visibleOts={visibleOts} visibleFacts={visibleFacts} visibleConstraints={visibleConstraints} visibleSubtypes={visibleSubtypes}/>
           <ImportNoteBadges store={store} visibleOts={visibleOts} visibleFacts={visibleFacts} visibleConstraints={visibleConstraints} visibleSubtypes={visibleSubtypes}/>
+          </g>
           </g>{/* end previewDim wrapper */}
           {/* Mapping diagrams: rules as nodes linked to their elements */}
+          <g opacity={queryDim ? 0.2 : 1} style={queryDim ? { pointerEvents: 'none' } : undefined}>
           <MappingRules onRuleContextMenu={handleRuleContextMenu}/>
           <AccountingBadges/>
           <GrowBadges/>
+          </g>
           {(qd || store.queryIndexHighlight) && <QueryAtoms
             mousePos={mousePos}
             onAtomClick={target => store.queryEditClick(target)}
