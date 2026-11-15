@@ -1232,6 +1232,21 @@ export function importNorma(xmlText) {
     finishDiagram(diag, expandedOwners)
     diagrams.push(diag)
   }
+  // NORMA keeps the order of the diagram tabs apart from the document order,
+  // in the DiagramDisplay extension (one Diagram ref per tab, in tab order);
+  // NORMA and the ormsolutions.com viewer show the tabs in that order.
+  // Diagrams it doesn't list keep their document order after the listed ones.
+  const tabOrder = new Map()
+  for (const dd of doc.getElementsByTagNameNS('*', 'DiagramDisplay'))
+    for (const t of kids(dd, 'Diagram')) {
+      const ref = attr(t, 'ref')
+      if (ref && !tabOrder.has(ref)) tabOrder.set(ref, tabOrder.size)
+    }
+  if (tabOrder.size) {
+    const rank = d => tabOrder.get(d.id) ?? tabOrder.size + diagrams.indexOf(d)
+    const ranks = new Map(diagrams.map(d => [d, rank(d)]))
+    diagrams.sort((a, b) => ranks.get(a) - ranks.get(b))
+  }
 
   // A drawn link fact type (F_il_k: role 0 the objectifying type, role 1 F's
   // role k): shown on the diagram, at the middle of its role boxes, with
