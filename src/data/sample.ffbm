@@ -16457,10 +16457,9 @@
             "0": "occ_n1792593665075_4",
             "1": "occ_n1792593665084_21"
           },
-          "readingOffsetBelow": {
-            "dx": 0,
-            "dy": 24
-          }
+          "readingOffsetBelow": null,
+          "readingAbove": true,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792593665094_35",
@@ -16471,10 +16470,9 @@
             "0": "occ_n1792593665075_4",
             "1": "occ_n1792593665084_23"
           },
-          "readingOffsetBelow": {
-            "dx": 0,
-            "dy": 24
-          }
+          "readingOffsetBelow": null,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792593665103_42",
@@ -16508,7 +16506,10 @@
           "roleOccurrenceMap": {
             "0": "occ_n1792593665103_42",
             "1": "occ_n1792593665104_46"
-          }
+          },
+          "readingOffsetBelow": null,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792593665114_74",
@@ -16560,7 +16561,10 @@
           "roleOccurrenceMap": {
             "0": "occ_n1792593665115_91",
             "1": "occ_n1792593665114_74"
-          }
+          },
+          "readingOffsetBelow": null,
+          "readingAbove": true,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792593665117_101",
@@ -16570,7 +16574,10 @@
           "roleOccurrenceMap": {
             "0": "occ_n1792593665115_91",
             "1": "occ_n1792593665115_89"
-          }
+          },
+          "readingOffsetBelow": null,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792593665121_110",
@@ -16581,11 +16588,8 @@
             "0": "occ_n1792593665103_44",
             "1": "occ_n1792593665115_91"
           },
-          "readingOffsetBelow": {
-            "dx": 0,
-            "dy": 24
-          },
-          "readingAbove": false,
+          "readingOffsetBelow": null,
+          "readingAbove": true,
           "readingOffsetAbove": null
         },
         {
@@ -16597,10 +16601,10 @@
             "0": "occ_n1792593665103_44",
             "1": "occ_n1792593665116_93"
           },
-          "readingOffsetBelow": {
-            "dx": 0,
-            "dy": 24
-          }
+          "readingOffsetBelow": null,
+          "uniquenessBelow": false,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         }
       ],
       "constraintOccurrences": [
@@ -16765,7 +16769,10 @@
           "roleOccurrenceMap": {
             "0": "occ_n1792593665130_123",
             "1": "occ_n1792593665131_138"
-          }
+          },
+          "readingOffsetBelow": null,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792593665137_152",
@@ -16775,7 +16782,10 @@
           "roleOccurrenceMap": {
             "0": "occ_n1792593665130_123",
             "1": "occ_n1792593665131_140"
-          }
+          },
+          "readingOffsetBelow": null,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792593665139_156",
@@ -16798,7 +16808,10 @@
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_120",
             "1": "occ_n1792593665130_123"
-          }
+          },
+          "readingOffsetBelow": null,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792593665144_167",
@@ -16818,7 +16831,10 @@
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_120",
             "1": "occ_n1792593665130_123"
-          }
+          },
+          "readingOffsetBelow": null,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792593665151_179",
@@ -16829,10 +16845,9 @@
             "0": "occ_n1792593665127_121",
             "1": "occ_n1792593665130_123"
           },
-          "readingOffsetBelow": {
-            "dx": 0,
-            "dy": 22
-          }
+          "readingOffsetBelow": null,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792593665152_184",
@@ -16844,10 +16859,9 @@
             "1": "occ_n1792654764379_7",
             "2": "occ_n1792654764379_7"
           },
-          "readingOffsetBelow": {
-            "dx": 0,
-            "dy": 22
-          }
+          "readingOffsetBelow": null,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792593665160_192",
@@ -16857,13 +16871,17 @@
           "roleOccurrenceMap": {
             "0": "occ_n1792593665127_121",
             "1": "occ_n1792593665130_123"
-          }
+          },
+          "readingOffsetBelow": null,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792595515478_3",
           "schemaElementId": "n1792595515478_2",
           "x": 770,
-          "y": 460
+          "y": 460,
+          "valueRangeOffset": null
         },
         {
           "id": "occ_n1792595521928_5",
@@ -16886,10 +16904,9 @@
             "0": "occ_n1792595733805_11",
             "1": "occ_n1792595515478_3"
           },
-          "readingOffsetBelow": {
-            "dx": 0,
-            "dy": 22
-          }
+          "readingOffsetBelow": null,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792595809976_19",
@@ -16900,10 +16917,9 @@
             "0": "occ_n1792595733805_11",
             "1": "occ_n1792595521928_5"
           },
-          "readingOffsetBelow": {
-            "dx": 0,
-            "dy": 22
-          }
+          "readingOffsetBelow": null,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792600091986_13",
@@ -16921,7 +16937,10 @@
           "roleOccurrenceMap": {
             "0": "occ_n1792595521928_5",
             "1": "occ_n1792600091986_13"
-          }
+          },
+          "readingOffsetBelow": null,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792654764379_7",
