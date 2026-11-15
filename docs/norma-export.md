@@ -371,10 +371,10 @@ NORMA regenerates (relational and Barker views, generation settings).
 
 Round-trip diagram fixes (v1.2.41, after Jan's check in NORMA on
 2026-11-15): the summary note stays inside NORMA's canvas (beside the
-diagram when there is no room above it). Subtype links: NORMA saves none
-but draws one between every shape of the subtype and every shape of the
-supertype, unless a shape's DisplayRelatedTypes says it attaches no
-supertypes or subtypes; the import keeps that per occurrence
+diagram when there is no room above it). Subtype links: NORMA saves none;
+it links each shape of the subtype to the nearest shape of the supertype,
+as far as the shapes' DisplayRelatedTypes allow (v1.2.42; v1.2.41 wrongly
+linked every pair); the import keeps that per occurrence
 (`displayRelatedTypes`) and draws exactly the pairs NORMA draws
 (`subtypeEndpointOccs`), and the export derives the attribute from
 FreeFBM's pairs. The Inspector shows the setting for an object type occurrence as "Subtype links: all / from subtypes / to supertypes / none" (Jan's wording; `store.setSubtypeLinksShown` updates the diagram's pairs as NORMA draws them, and the drawing leaves out pairs the setting excludes); an occurrence's own setting is exported as it is. Drawn link fact types of

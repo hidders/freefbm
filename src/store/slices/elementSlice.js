@@ -1,3 +1,4 @@
+import { subtypeLinkPairs } from '../../diagram/normaShapeKeys.js'
 import { findRefMode, refModeLabel, vtNameFromLabel, refModeSeparator, refModeCollapseBlockers } from '../../utils/refMode.js'
 import { readingList, readingsPatch, editReadings } from '../readings.js'
 import {
@@ -771,21 +772,13 @@ export function createElementSlice(set, get) {
           if (!occ) return d
           const related = value && value !== 'AttachAllTypes' ? value : undefined
           const occurrences = d.occurrences.map(o => o.id === occId ? { ...o, displayRelatedTypes: related } : o)
-          const setting = (o) => (o.id === occId ? related : o.displayRelatedTypes)
-          const toSupers = (o) => !['AttachNoTypes', 'AttachSubtypes'].includes(setting(o))
-          const fromSubs = (o) => !['AttachNoTypes', 'AttachSupertypes'].includes(setting(o))
           const occsOf = (id) => occurrences.filter(o => o.schemaElementId === id && !o.refModeOwnerOccId)
           const shown = new Set(d.subtypeOccurrences ?? [])
           const endpoints = { ...(d.subtypeEndpointOccs ?? {}) }
+          // the shown links of this type, paired again as NORMA draws them
           for (const st of s.subtypes) {
             if (!shown.has(st.id) || (st.subId !== occ.schemaElementId && st.superId !== occ.schemaElementId)) continue
-            const raw = endpoints[st.id]
-            let pairs = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter(p => p.subOccId !== occId && p.superOccId !== occId)
-            if (st.subId === occ.schemaElementId && toSupers({ id: occId }))
-              for (const sup of occsOf(st.superId)) if (fromSubs(sup)) pairs.push({ subOccId: occId, superOccId: sup.id })
-            if (st.superId === occ.schemaElementId && fromSubs({ id: occId }))
-              for (const sub of occsOf(st.subId)) if (toSupers(sub) && sub.id !== occId) pairs.push({ subOccId: sub.id, superOccId: occId })
-            endpoints[st.id] = pairs
+            endpoints[st.id] = subtypeLinkPairs(occsOf(st.subId), occsOf(st.superId))
           }
           return { ...d, occurrences, subtypeEndpointOccs: endpoints }
         }),
