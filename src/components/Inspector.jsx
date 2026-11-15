@@ -2099,21 +2099,22 @@ function useRangeSelectionInfo(sel) {
 
 // A label's position on the active diagram, as the Reading Position row shows
 // it: Default puts a moved label back, Free only says it has been moved.
-function LabelPositionRow({ label, name, moved, onDefault }) {
+function LabelPositionRow({ label, name, moved, onDefault, disabledTitle = null }) {
+  const off = !!disabledTitle
   return (
     <>
       <Label>{label}</Label>
       <Row>
         {[{ value: 'default', text: 'Default' }, { value: 'free', text: 'Free' }].map(opt => (
-          <label key={opt.value} style={{
+          <label key={opt.value} title={disabledTitle ?? undefined} style={{
             display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 3,
-            cursor: opt.value === 'free' ? 'not-allowed' : 'pointer', color: 'var(--ink-2)',
+            cursor: opt.value === 'free' || off ? 'not-allowed' : 'pointer', color: off ? 'var(--ink-muted)' : 'var(--ink-2)',
           }}>
             <input type="radio" name={name} value={opt.value}
               checked={(moved ? 'free' : 'default') === opt.value}
-              disabled={opt.value === 'free'}
+              disabled={opt.value === 'free' || off}
               onChange={onDefault}
-              style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: opt.value === 'free' ? 'not-allowed' : 'pointer' }}/>
+              style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: opt.value === 'free' || off ? 'not-allowed' : 'pointer' }}/>
             {opt.text}
           </label>
         ))}
@@ -2833,10 +2834,11 @@ function FactPresentationSubsection({ fact, store }) {
       <Row>
         <Label>Orientation</Label>
         {['horizontal', 'vertical'].map(val => (
-          <label key={val} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
+          <label key={val} title={fact.objectified && fact.displayAsObjectType ? 'Not shown while this fact type is drawn as an object type' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 3, cursor: !!(fact.objectified && fact.displayAsObjectType) ? 'not-allowed' : 'pointer', color: !!(fact.objectified && fact.displayAsObjectType) ? 'var(--ink-muted)' : 'var(--ink-2)' }}>
             <input type="radio"
               name={`orient-${fact.id}`}
               value={val}
+              disabled={!!(fact.objectified && fact.displayAsObjectType)}
               checked={fact.orientation === val}
               onChange={() => {
                 const patch = { orientation: val }
@@ -2977,6 +2979,7 @@ function FactPresentationSubsection({ fact, store }) {
       })()}
       {fact.objectified && (
         <LabelPositionRow label="Name position" name={`npos-${fact.id}`}
+          disabledTitle={fact.displayAsObjectType ? 'Not shown while this fact type is drawn as an object type' : null}
           moved={!!fact.nameOffset && (fact.nameOffset.dx !== 0 || fact.nameOffset.dy !== 0)}
           onDefault={() => store.updateFactLayout(fact.id, { nameOffset: null })}/>
       )}
@@ -2988,10 +2991,11 @@ function FactPresentationSubsection({ fact, store }) {
            ? [{ label: 'Right', val: false }, { label: 'Left', val: true }]
            : [{ label: 'Above', val: false }, { label: 'Below', val: true }]
          ).map(opt => (
-           <label key={opt.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 3, cursor: 'pointer', color: 'var(--ink-2)' }}>
+           <label key={opt.label} title={fact.objectified && fact.displayAsObjectType ? 'Not shown while this fact type is drawn as an object type' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 3, cursor: !!(fact.objectified && fact.displayAsObjectType) ? 'not-allowed' : 'pointer', color: !!(fact.objectified && fact.displayAsObjectType) ? 'var(--ink-muted)' : 'var(--ink-2)' }}>
              <input type="radio"
                name={`upos-${fact.id}`}
                value={String(opt.val)}
+               disabled={!!(fact.objectified && fact.displayAsObjectType)}
                checked={!!fact.uniquenessBelow === opt.val}
                onChange={() => store.updateFactLayout(fact.id, { uniquenessBelow: opt.val })}
                style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: 'pointer' }}
