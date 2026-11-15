@@ -25,8 +25,6 @@ function measureVrText(text) {
 }
 
 const NESTED_READING_FONT_SIZE = pt(7)
-const NESTED_READING_LINE_H    = px(NORMA.lineHeight)   // one line of text
-const NESTED_READING_GAP       = 4    // gap between role boxes (or bars) and reading
 const NESTED_READING_PAD_BELOW = 4    // gap between reading and bottom of outer box
 
 function measureNestedReadingText(text) {
@@ -54,6 +52,30 @@ export const LABEL_SIZE = pt(NORMA.fontSizePt)
 // One line of text: an objectified fact type's name above its frame, and its
 // reference mode under the name
 export const NAME_LINE = px(NORMA.lineHeight)
+
+// A reading's default place above or below a fact type leaves the same white
+// space on both sides: READING_GAP from the outermost ink of the fact type
+// (role box pen, bars, rake spines) to the reading's baseline above it, or to
+// the tops of its capitals and ascenders below it. Readings are drawn with
+// dominant-baseline middle; in Tahoma the baseline is then 0.273 em below the
+// text's y and capitals reach 0.498 em above it.
+export const READING_GAP = 6
+const READING_BASE_BELOW = 0.273 * LABEL_SIZE
+const READING_CAP_ABOVE  = 0.498 * LABEL_SIZE
+const READING_DESC_BELOW = 0.525 * LABEL_SIZE   // descenders (g, p, y)
+// From the outermost ink to the reading's y
+const READING_Y_ABOVE = READING_GAP + READING_BASE_BELOW
+const READING_Y_BELOW = READING_GAP + READING_CAP_ABOVE
+// The pen of rake spines (constraint connectors)
+const RAKE_PEN = pt(NORMA.rolePlayerPenPt)
+// A reading inside an objectified fact type's outline: from the outermost
+// ink to the outline, the gap, the text and NESTED_READING_PAD_BELOW.
+const NESTED_ABOVE_SPAN = READING_GAP + READING_BASE_BELOW + READING_CAP_ABOVE + NESTED_READING_PAD_BELOW
+const NESTED_BELOW_SPAN = READING_GAP + READING_CAP_ABOVE + READING_DESC_BELOW + NESTED_READING_PAD_BELOW
+// The ink beyond a side's outermost bar edge, rake zone or role box edge.
+function nestedInk(barsHere, rakeZone) {
+  return barsHere ? 0 : rakeZone > 0 ? RAKE_PEN / 2 - BAR_SIDE_COMFORT : ROLE_STROKE / 2
+}
 
 /**
  * Returns the effective display role order for a fact.
@@ -123,7 +145,7 @@ export function nestedFactBounds(fact, rakeMinPad = {}) {
     const padRight  = Math.max(barsBelow ? PAD_Y    : barPad, rR)
     const outermostBottomV = fact.y + totalH / 2 + rakeZoneB
     const padBottom = fact.nestedReading
-      ? Math.max(PAD_X, Math.ceil(rakeZoneB + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW))
+      ? Math.max(PAD_X, Math.ceil(rakeZoneB + nestedInk(false, rakeZoneB) + NESTED_BELOW_SPAN))
       : PAD_X
     return {
       left:   fact.x - ROLE_H / 2 - padLeft,
@@ -146,10 +168,10 @@ export function nestedFactBounds(fact, rakeMinPad = {}) {
     ? fact.y - ROLE_H / 2 - effBarMargin - rakeZoneOnBarSide - BAR_SPACING * (multiCount + 1)
     : fact.y - ROLE_H / 2 - rakeZoneAboveH
   const readingPadAbove = readingAboveActive
-    ? Math.ceil(fact.y - ROLE_H / 2 - outermostAboveH + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
+    ? Math.ceil(fact.y - ROLE_H / 2 - outermostAboveH + nestedInk(hasAnyBar && !barsBelow, rakeZoneAboveH) + NESTED_ABOVE_SPAN)
     : 0
   const readingPadBelow = (fact.nestedReading && !readingAboveActive)
-    ? Math.ceil(outermostBelowH - fact.y - ROLE_H / 2 + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
+    ? Math.ceil(outermostBelowH - fact.y - ROLE_H / 2 + nestedInk(hasAnyBar && barsBelow, rakeZoneBelowH) + NESTED_BELOW_SPAN)
     : 0
   const padTop = Math.max(barsAbove ? barPad : PAD_Y, readingPadAbove, rT)
   const baseBottom = barsBelow ? barPad : PAD_Y
@@ -1534,7 +1556,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     // Distance from role-box edge to outermost element (bar or rake) on each side.
     // Uses effBarMargin (0 when rakes are present) and BAR_SIDE_COMFORT, matching
     // the nested-reading formula so both systems produce the same gap.
-    const hasAnyBar_rd = fact.uniqueness.length > 0
+    const hasAnyBar_rd = fact.uniqueness.length > 0 || impliedRoles.length > 0
     const topStackH_rd = (hasAnyBar_rd && !barsBelow)
       ? effBarMargin_h + rakeZone_h + BAR_SPACING * (multiCount + 1)
       : rakeCounts.T > 0 ? RAKE_TOOTH + (rakeCounts.T - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
@@ -1565,15 +1587,22 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         return -(ROLE_H / 2 + leftStackW + tw / 2 + 10)
       }
     })()
-    const READING_OFFSET = 13
+    // How far the ink reaches beyond the role boxes' edge on one side: the
+    // outer edge of the outermost bar (a preferred identifier's outer line
+    // lies 2 × PREF_OFFSET further), else the outermost rake spine's pen,
+    // else the role boxes' own pen.
+    const inkBeyond = (stackH, barSide, rakeCount) =>
+      hasAnyBar_rd && barSide ? stackH + (minPLevel >= 0 ? 2 * PREF_OFFSET : 0)
+        : rakeCount > 0 ? stackH - BAR_SIDE_COMFORT + RAKE_PEN / 2
+        : ROLE_STROKE / 2
     const AUTO_DY = isVertical ? 0
       : fact.readingAbove
         ? fact.objectified
-          ? nestedFactBounds(fact, nestedRakePad).top    - fact.y - READING_OFFSET
-          : -(ROLE_H / 2 + topStackH_rd + READING_OFFSET)
+          ? nestedFactBounds(fact, nestedRakePad).top    - fact.y - OT_STROKE / 2 - READING_Y_ABOVE
+          : -(ROLE_H / 2 + inkBeyond(topStackH_rd, !barsBelow, rakeCounts.T) + READING_Y_ABOVE)
         : fact.objectified
-          ? nestedFactBounds(fact, nestedRakePad).bottom - fact.y + READING_OFFSET
-          : ROLE_H / 2 + botStackH_rd + READING_OFFSET
+          ? nestedFactBounds(fact, nestedRakePad).bottom - fact.y + OT_STROKE / 2 + READING_Y_BELOW
+          : ROLE_H / 2 + inkBeyond(botStackH_rd, barsBelow, rakeCounts.B) + READING_Y_BELOW
     const defaultOff = { dx: AUTO_DX, dy: AUTO_DY }
     const storedOff = fact.readingAbove ? fact.readingOffsetAbove : fact.readingOffsetBelow
     const off = readingLive ?? (storedOff ?? defaultOff)
@@ -1754,7 +1783,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       if (n === 0) return 0
       const rakeExtent = RAKE_TOOTH + (n - 1) * RAKE_STAGGER
       if (hasReadingOnSide) {
-        return rakeExtent + NESTED_READING_LINE_H + 2 * NESTED_READING_PAD_BELOW
+        return rakeExtent + RAKE_PEN / 2 + NESTED_BELOW_SPAN
       }
       return rakeExtent + 10
     }
@@ -2015,9 +2044,6 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
         const readingText  = fact.nestedReading ? getDisplayReading(fact) : ''
         const readingTextW = readingText ? measureNestedReadingText(readingText) : 0
-        const readingExtra = fact.nestedReading
-          ? NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW
-          : 0
 
         if (isVertical) {
           const padLeft   = Math.max(barsBelow ? barPad : PAD_Y, nestedRakePad.left)
@@ -2027,13 +2053,13 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
             ? RAKE_TOOTH + (rakeCounts.B - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
           const outermostBottomV = fact.y + totalH_v / 2 + rakeExtentBottomV
           const padBottom = fact.nestedReading
-            ? Math.max(PAD_X, Math.ceil(rakeExtentBottomV + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW))
+            ? Math.max(PAD_X, Math.ceil(rakeExtentBottomV + nestedInk(false, rakeExtentBottomV) + NESTED_BELOW_SPAN))
             : PAD_X
           const ow = ROLE_H + padLeft + padRight
           const oh = totalH_v + PAD_X + padBottom
           const boxTop = fact.y - totalH_v / 2 - PAD_X
           const nameY  = boxTop - NAME_LINE * (nestedRefText ? 1.5 : 0.5)
-          const readingY = outermostBottomV + NESTED_READING_GAP + NESTED_READING_LINE_H / 2
+          const readingY = outermostBottomV + nestedInk(false, rakeExtentBottomV) + READING_Y_BELOW
           const nameOff  = nameLive ?? (fact.nameOffset ?? { dx: 0, dy: 0 })
           const nameTx   = fact.x + nameOff.dx
           const nameTy   = nameY  + nameOff.dy
@@ -2201,7 +2227,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                       )
                     })()
                   : (
-                    <text x={fact.x} y={readingY}
+                    <text data-look="nested-reading" data-occ={occurrenceId} x={fact.x} y={readingY}
                       textAnchor="middle" dominantBaseline="middle"
                       fontSize={NESTED_READING_FONT_SIZE} fontFamily={FONT}
                       fill={nestedTextCol}
@@ -2239,16 +2265,16 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
 
         // Reading sits at a fixed gap from the outermost bar/rake on its side
         const readingY = readingAboveActive
-          ? outermostAboveH - NESTED_READING_GAP - NESTED_READING_LINE_H / 2
-          : outermostBelowH + NESTED_READING_GAP + NESTED_READING_LINE_H / 2
+          ? outermostAboveH - nestedInk(hasAnyBar && !barsBelow, rakeZoneAboveH) - READING_Y_ABOVE
+          : outermostBelowH + nestedInk(hasAnyBar && barsBelow, rakeZoneBelowH) + READING_Y_BELOW
 
         // Outer box must contain bars/rakes and reading on each side
         const baseBottom = barsBelow ? barPad : PAD_Y
         const readingPadAbove = readingAboveActive
-          ? Math.ceil(fact.y - ROLE_H / 2 - outermostAboveH + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
+          ? Math.ceil(fact.y - ROLE_H / 2 - outermostAboveH + nestedInk(hasAnyBar && !barsBelow, rakeZoneAboveH) + NESTED_ABOVE_SPAN)
           : 0
         const readingPadBelow = (fact.nestedReading && !readingAboveActive)
-          ? Math.ceil(outermostBelowH - fact.y - ROLE_H / 2 + NESTED_READING_GAP + NESTED_READING_LINE_H + NESTED_READING_PAD_BELOW)
+          ? Math.ceil(outermostBelowH - fact.y - ROLE_H / 2 + nestedInk(hasAnyBar && barsBelow, rakeZoneBelowH) + NESTED_BELOW_SPAN)
           : 0
         const padTop = Math.max(barsAbove ? barPad : PAD_Y, readingPadAbove, nestedRakePad.top)
         const padBottom = Math.max(baseBottom, readingPadBelow, nestedRakePad.bottom)
@@ -2425,7 +2451,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                       )
                     })()
                   : (
-                    <text x={fact.x} y={readingY}
+                    <text data-look="nested-reading" data-occ={occurrenceId} x={fact.x} y={readingY}
                       textAnchor="middle" dominantBaseline="middle"
                       fontSize={NESTED_READING_FONT_SIZE} fontFamily={FONT}
                       fill={nestedTextCol}
