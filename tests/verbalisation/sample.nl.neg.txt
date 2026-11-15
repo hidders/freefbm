@@ -130,10 +130,6 @@ Het is mogelijk dat meer dan één Medewerker dezelfde Kamer als werkkamer heeft
 ◇∃ StaffMember ¬(∃ Room (StaffMember has an office in Room))
 Het is mogelijk dat een Medewerker geen Kamer als werkkamer heeft.
 
-# Possible (role not mandatory) · StaffMember has an office in Room
-◇∃ Room ¬(∃ StaffMember (StaffMember has an office in Room))
-Het is mogelijk dat er een Kamer is zodanig dat geen Medewerker die Kamer als werkkamer heeft.
-
 # Uniqueness · StaffMember has Extension
 ¬(∃ StaffMember ∃^{>1} Extension (StaffMember has Extension))
 Het is onmogelijk dat een Medewerker meer dan één Toestelnummer heeft.
@@ -545,6 +541,10 @@ Het is onmogelijk dat een Gebouwcode bij geen Gebouw hoort.
 # Participation (not independent) · RoomNr
 ¬(∃ RoomNr ¬(∃ Room (Room has RoomNr)))
 Het is onmogelijk dat er een Kamernummer is zodanig dat geen Kamer dat Kamernummer heeft.
+
+# Participation (not independent) · Room
+¬(∃ Room ¬(∃ StaffMember (StaffMember has an office in Room)))
+Het is onmogelijk dat er een Kamer is zodanig dat geen Medewerker die Kamer als werkkamer heeft.
 
 # Participation (not independent) · Extension
 ¬(∃ Extension ¬(∃ StaffMember (StaffMember has Extension)))

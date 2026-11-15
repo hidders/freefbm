@@ -130,10 +130,6 @@ Możliwe jest, że więcej niż jeden Pracownik ma tę samą Salę jako gabinet.
 ◇∃ StaffMember ¬(∃ Room (StaffMember has an office in Room))
 Możliwe jest, że jakiś Pracownik nie ma żadnej Sali jako gabinet.
 
-# Possible (role not mandatory) · StaffMember has an office in Room
-◇∃ Room ¬(∃ StaffMember (StaffMember has an office in Room))
-Możliwe jest, że istnieje jakaś Sala taka, że żaden Pracownik nie ma tej Sali jako gabinet.
-
 # Uniqueness · StaffMember has Extension
 ∀ StaffMember ∃^{≤1} Extension (StaffMember has Extension)
 Każdy Pracownik ma co najwyżej jeden Numer wewnętrzny.
@@ -545,6 +541,10 @@ Każdy Kod budynku identyfikuje jakiś Budynek.
 # Participation (not independent) · RoomNr
 ∀ RoomNr ∃ Room (Room has RoomNr)
 Dla każdego Numeru sali jakaś Sala ma ten Numer sali.
+
+# Participation (not independent) · Room
+∀ Room ∃ StaffMember (StaffMember has an office in Room)
+Dla każdej Sali jakiś Pracownik ma tę Salę jako gabinet.
 
 # Participation (not independent) · Extension
 ∀ Extension ∃ StaffMember (StaffMember has Extension)
