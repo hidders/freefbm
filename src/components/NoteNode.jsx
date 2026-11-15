@@ -167,7 +167,7 @@ export default function NoteNode({ note, selected, groupStyle, onDragStart, onRe
       <rect className="hover-ring" x={-3} y={-3} width={w + 6} height={h + 6} rx={4}/>
 
       {/* Text — foreignObject lets the browser handle word-wrapping as w/h change */}
-      <foreignObject x={textX} y={textY} width={textW} height={textH}
+      <foreignObject className="note-text" x={textX} y={textY} width={textW} height={textH}
         style={{ pointerEvents: 'none', overflow: 'hidden' }}>
         <div style={{ position: 'relative', width: '100%', height: '100%' }}>
           <div

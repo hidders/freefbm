@@ -16,6 +16,14 @@ import {
   mkUniqueness, withMandatoryId,
 } from '../storeHelpers'
 
+// A role NORMA drew without a link (occurrence unlinkedRoles, from the
+// import) gets one again once it is given a player occurrence.
+function relinked(occ, ri) {
+  if (!occ.unlinkedRoles) return {}
+  const rest = occ.unlinkedRoles.filter(i => String(i) !== String(ri))
+  return { unlinkedRoles: rest.length ? rest : undefined }
+}
+
 // A name typed in the view language is that language's own, even when it
 // equals the fallback it replaces (see viewLanguage.js).
 function ownName(el, renamed) {
@@ -360,7 +368,7 @@ export function createElementSlice(set, get) {
             ...d,
             occurrences: (d.occurrences ?? []).map(o =>
               o.id !== factOccId ? o
-              : { ...o, roleOccurrenceMap: { ...(o.roleOccurrenceMap ?? {}), [String(roleIndex)]: otOccurrenceId } }
+              : { ...o, roleOccurrenceMap: { ...(o.roleOccurrenceMap ?? {}), [String(roleIndex)]: otOccurrenceId }, ...relinked(o, roleIndex) }
             ),
           }
         ),
@@ -407,7 +415,7 @@ export function createElementSlice(set, get) {
           const updatedDiagrams = s.diagrams.map(d =>
             d.id !== diagramId ? d
             : patchOccById(d, factOccId, {
-                roleOccurrenceMap: { ...(factOcc.roleOccurrenceMap ?? {}), [riKey]: newOtOccId }
+                roleOccurrenceMap: { ...(factOcc.roleOccurrenceMap ?? {}), [riKey]: newOtOccId }, ...relinked(factOcc, riKey),
               })
           )
           return { diagrams: updatedDiagrams, roleReconnectDraft: null, isDirty: true }
@@ -435,7 +443,7 @@ export function createElementSlice(set, get) {
             ...d,
             occurrences: (d.occurrences ?? []).map(o =>
               o.schemaElementId !== fact.id ? o
-              : { ...o, roleOccurrenceMap: { ...(o.roleOccurrenceMap ?? {}), [riKey]: targetOtOccId } }
+              : { ...o, roleOccurrenceMap: { ...(o.roleOccurrenceMap ?? {}), [riKey]: targetOtOccId }, ...relinked(o, riKey) }
             )
           }
         })
@@ -1338,7 +1346,7 @@ export function createElementSlice(set, get) {
             ...d,
             occurrences: (d.occurrences ?? []).map(o =>
               o.schemaElementId !== factId ? o
-              : { ...o, roleOccurrenceMap: { ...(o.roleOccurrenceMap ?? {}), [riKey]: newOtOcc.id } }
+              : { ...o, roleOccurrenceMap: { ...(o.roleOccurrenceMap ?? {}), [riKey]: newOtOcc.id }, ...relinked(o, riKey) }
             ),
           }
         })

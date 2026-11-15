@@ -45,6 +45,10 @@ export const NORMA = {
   // Links
   rolePlayerPenPt: 1,
   subtypeLink: { penPt: 1.8, arrowPenPt: 1.4 },
+  // the arrow head of a subset constraint's connector (ExternalConstraintLink
+  // TargetArrowDecorator: filled, 0.09 in along the line, 0.07 in across,
+  // outlined with a 1 pt pen)
+  constraintArrow: { length: 0.09, width: 0.07, penPt: 1 },
   readingArrow: { width: 0.055, height: 0.05 },
 
   // Notes (ModelNoteShape)

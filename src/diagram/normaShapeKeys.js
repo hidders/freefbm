@@ -11,24 +11,41 @@ export const factShapeKey = (occ) => keyOf({ x: occ.x, y: occ.y, orientation: oc
   ...(occ.displayAsObjectType && { displayAsObjectType: true }) })
 export const noteShapeKey = (n) => keyOf({ x: n.x, y: n.y, w: n.w, h: n.h })
 
-// NORMA's subtype links on a diagram: each shape of the subtype that attaches
+// How NORMA links the shapes of two elements on a diagram (MultiShapeUtility
+// .FindNearestShapeForElement): each shape on the "from" side is linked to
+// the "to" shape nearest to it, centre to centre, unless another "from" shape
+// is nearer to that "to" shape: then that one takes the link and this shape
+// gets none. Shapes that don't attach the link are skipped on either side.
+// Returns the pairs [from, to].
+export function nearestShapePairs(froms, tos, { centre = (o) => o, fromOk = () => true, toOk = () => true } = {}) {
+  const d = (a, b) => { const p = centre(a), q = centre(b); return Math.hypot(p.x - q.x, p.y - q.y) }
+  const fs = froms.filter(fromOk), ts = tos.filter(toOk)
+  const pairs = []
+  for (const f of fs) {
+    let best = null, bestD = Infinity
+    for (const t of ts) {
+      if (t === f) continue
+      const dt = d(f, t)
+      if (dt < bestD) { bestD = dt; best = t }
+    }
+    if (!best) continue
+    if (fs.some(g => g !== f && g !== best && d(g, best) < bestD)) continue
+    pairs.push([f, best])
+  }
+  return pairs
+}
+
+// NORMA's subtype links on a diagram: a shape of the subtype that attaches
 // its supertypes is linked to the nearest shape of the supertype that
 // attaches its subtypes (DisplayRelatedTypes: AttachAllTypes by default,
-// AttachSubtypes, AttachSupertypes, AttachNoTypes). Returns the pairs
+// AttachSubtypes, AttachSupertypes, AttachNoTypes), unless another shape of
+// the subtype is nearer to that one (nearestShapePairs). Returns the pairs
 // { subOccId, superOccId } for subtypeEndpointOccs.
 export const attachesSupertypes = (setting) => !['AttachNoTypes', 'AttachSubtypes'].includes(setting)
 export const attachesSubtypes = (setting) => !['AttachNoTypes', 'AttachSupertypes'].includes(setting)
 export function subtypeLinkPairs(subOccs, superOccs, settingOf = (o) => o.displayRelatedTypes) {
-  const pairs = []
-  for (const sub of subOccs) {
-    if (!attachesSupertypes(settingOf(sub))) continue
-    let best = null, bestD = Infinity
-    for (const sup of superOccs) {
-      if (sup.id === sub.id || !attachesSubtypes(settingOf(sup))) continue
-      const d = Math.hypot(sup.x - sub.x, sup.y - sub.y)
-      if (d < bestD) { bestD = d; best = sup }
-    }
-    if (best) pairs.push({ subOccId: sub.id, superOccId: best.id })
-  }
-  return pairs
+  return nearestShapePairs(subOccs, superOccs, {
+    fromOk: (o) => attachesSupertypes(settingOf(o)),
+    toOk: (o) => attachesSubtypes(settingOf(o)),
+  }).map(([sub, sup]) => ({ subOccId: sub.id, superOccId: sup.id }))
 }

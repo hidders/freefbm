@@ -24,7 +24,15 @@ import NoteNode, { NOTE_FONT_SIZE, NOTE_LINE_HEIGHT } from './NoteNode'
 import { ValueRangeEditor } from './Inspector'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { groupStyle } from '../utils/groups.js'
+import { NORMA, px, pt } from '../diagram/normaGeometry.js'
 import { DIAGRAM_FONT } from '../diagram/diagramFont.js'
+
+// NORMA's subset arrow head: the outline of its pen inside the arrow's size
+const ARROW = (() => {
+  const l = px(NORMA.constraintArrow.length), w = px(NORMA.constraintArrow.width)
+  const pen = pt(NORMA.constraintArrow.penPt), p = pen / 2
+  return { l, w, pen, p, d: `M ${p} ${p} L ${l - p} ${w / 2} L ${p} ${w - p} Z` }
+})()
 
 // Tools whose clicks pick roles (or a constraint) for a constraint.
 const PICKING_TOOLS = new Set(['addInternalUniqueness', 'addInternalFrequency', 'toggleMandatory', 'connectConstraint'])
@@ -1395,14 +1403,15 @@ export default function Canvas() {
           <marker id="arrowSubtypeAtom" markerWidth="4.5" markerHeight="4.5" refX="0.25" refY="2" orient="auto">
             <path d="M 0.25 0.25 L 4.25 2 L 0.25 3.75 Z" fill="#15803d" stroke="none"/>
           </marker>
-          <marker id="arrowSubset" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto">
-            <path d="M 1 1 L 9 4 L 1 7" fill="none" stroke="var(--col-excl)" strokeWidth="1.5"/>
+          {/* subset arrow heads at NORMA's size, whatever the connector's pen */}
+          <marker id="arrowSubset" markerUnits="userSpaceOnUse" markerWidth={ARROW.l + 2} markerHeight={ARROW.w + 2} refX={ARROW.l} refY={ARROW.w / 2 + 1} orient="auto">
+            <path d={`M ${ARROW.p} 1 L ${ARROW.l - ARROW.p} ${ARROW.w / 2 + 1} L ${ARROW.p} ${ARROW.w + 1}`} fill="none" stroke="var(--col-excl)" strokeWidth={ARROW.pen}/>
           </marker>
-          <marker id="arrowSubsetSolid" markerWidth="13" markerHeight="13" refX="12" refY="5" orient="auto">
-            <path d="M 1 1 L 12 5 L 1 9 Z" fill="var(--col-excl)" stroke="none"/>
+          <marker id="arrowSubsetSolid" markerUnits="userSpaceOnUse" markerWidth={ARROW.l} markerHeight={ARROW.w} refX={ARROW.l} refY={ARROW.w / 2} orient="auto">
+            <path d={ARROW.d} fill="var(--col-excl)" stroke="var(--col-excl)" strokeWidth={ARROW.pen} strokeLinejoin="round"/>
           </marker>
-          <marker id="arrowSubsetSolidDeontic" markerWidth="13" markerHeight="13" refX="12" refY="5" orient="auto">
-            <path d="M 1 1 L 12 5 L 1 9 Z" fill="var(--col-deontic)" stroke="none"/>
+          <marker id="arrowSubsetSolidDeontic" markerUnits="userSpaceOnUse" markerWidth={ARROW.l} markerHeight={ARROW.w} refX={ARROW.l} refY={ARROW.w / 2} orient="auto">
+            <path d={ARROW.d} fill="var(--col-deontic)" stroke="var(--col-deontic)" strokeWidth={ARROW.pen} strokeLinejoin="round"/>
           </marker>
           <marker id="arrowConstraintTarget" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
             <path d="M 1 1 L 7 4 L 1 7" fill="none" stroke="var(--col-constraint)" strokeWidth="1.5"
@@ -1526,7 +1535,8 @@ export default function Canvas() {
             </g>
             )
           })}
-           {visibleFacts.filter(f => f.objectified).map(f =>
+           {/* link fact types once per diagram, however often their fact type is drawn */}
+           {visibleFacts.filter((f, i, all) => f.objectified && all.findIndex(g => g.id === f.id) === i).map(f =>
               (f.implicitLinks || []).filter(il => store.isImplicitLinkShown(f.id, il.roleIndex)).map(il => {
                  const synth = makeImplicitLinkFact(f, il)
                  const ilDimmed = (dimMode?.factIds != null && !dimMode.factIds.has(f.id)) || dimMode?.impliedLinksDim

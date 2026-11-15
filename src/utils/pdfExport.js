@@ -4,6 +4,8 @@ import { getDiagramElements } from '../hooks/useDiagramElements'
 
 const PAD = 30
 
+const escapeHtml = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+
 function computeBounds(store) {
   const { objectTypes, facts, constraints } = getDiagramElements(store)
   const all = [
@@ -17,6 +19,9 @@ function computeBounds(store) {
     }),
     ...constraints.map(c => ({
       minX: c.x - 20, minY: c.y - 20, maxX: c.x + 20, maxY: c.y + 20,
+    })),
+    ...(store.diagrams?.find(d => d.id === store.activeDiagramId)?.notes ?? []).map(n => ({
+      minX: n.x - n.w / 2, minY: n.y - n.h / 2, maxX: n.x + n.w / 2, maxY: n.y + n.h / 2,
     })),
   ]
   if (!all.length) return null
@@ -56,6 +61,51 @@ function inlineComputedPaint(orig, clone) {
     }).filter(Boolean).join(';')
     b[i].setAttribute('style', [b[i].getAttribute('style'), style].filter(Boolean).join(';'))
   }
+}
+
+// A note's text is HTML in a foreignObject, which the PDF does not draw:
+// write each line as the page laid it out as SVG text in its place.
+function noteTextAsSvg(fo) {
+  const shown = fo.firstElementChild?.firstElementChild
+  const ctm = fo.getScreenCTM()
+  if (!shown || !ctm) return null
+  const cs = getComputedStyle(shown)
+  if (cs.fontStyle === 'italic') return null   // the "Note…" placeholder of an empty note
+  const inv = ctm.inverse()
+  const local = (x, y) => new DOMPoint(x, y).matrixTransform(inv)
+  const ctx = document.createElement('canvas').getContext('2d')
+  ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`
+  const ascent = ctx.measureText('Hg').fontBoundingBoxAscent ?? parseFloat(cs.fontSize)
+  const lines = []
+  let cur = null
+  const range = document.createRange()
+  const walker = document.createTreeWalker(shown, NodeFilter.SHOW_TEXT)
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const t = node.textContent
+    for (let i = 0; i < t.length; i++) {
+      range.setStart(node, i); range.setEnd(node, i + 1)
+      const r = range.getClientRects()[0]
+      if (r && r.width >= 0 && !/\s/.test(t[i])) {
+        const p = local(r.left, r.top)
+        // zoomed, client pixels are larger than the diagram's: compare in its units
+        if (!cur || p.y > cur.top + 1) { cur = { top: p.y, x: p.x, text: '' }; lines.push(cur) }
+      }
+      if (cur && t[i] !== '\n') cur.text += t[i]
+    }
+  }
+  if (!lines.length) return null
+  const ns = 'http://www.w3.org/2000/svg'
+  const text = document.createElementNS(ns, 'text')
+  text.setAttribute('style', `fill:${cs.color};font-family:${cs.fontFamily};font-size:${cs.fontSize};font-weight:${cs.fontWeight}`)
+  text.setAttribute('xml:space', 'preserve')
+  for (const l of lines) {
+    const span = document.createElementNS(ns, 'tspan')
+    span.setAttribute('x', l.x)
+    span.setAttribute('y', l.top + ascent)
+    span.textContent = l.text.trim()
+    text.appendChild(span)
+  }
+  return text
 }
 
 export async function triggerPdfExport(store) {
@@ -104,6 +154,13 @@ export async function triggerPdfExport(store) {
   const groupClone = diagramGroup.cloneNode(true)
   groupClone.removeAttribute('transform')
   inlineComputedPaint(diagramGroup, groupClone)
+  // Notes: their text as SVG text in place of the HTML
+  const origNotes = [...diagramGroup.querySelectorAll('foreignObject.note-text')]
+  const cloneNotes = [...groupClone.querySelectorAll('foreignObject.note-text')]
+  origNotes.forEach((fo, i) => {
+    const text = noteTextAsSvg(fo)
+    if (text && cloneNotes[i]) cloneNotes[i].replaceWith(text)
+  })
   // Remove inline text-editing inputs (foreignObject)
   groupClone.querySelectorAll('foreignObject').forEach(el => el.remove())
   const groupStr = resolveCssVars(serializer.serializeToString(groupClone), cssStyle)
@@ -121,6 +178,7 @@ export async function triggerPdfExport(store) {
   const html = `<!DOCTYPE html>
 <html>
 <head>
+<title>${escapeHtml(store.diagrams?.find(d => d.id === store.activeDiagramId)?.name ?? 'Diagram')}</title>
 <style>
   @page { margin: 10mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
