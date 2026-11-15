@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { factDerivationMark } from '../logic/factDerivation.js'
 import { useOrmStore, useOrmStoreIgnoring, subtypeKindOf } from '../store/ormStore'
 import { isFallbackReading } from '../store/viewLanguage.js'
-import { formatValueRange, formatCardinalityRange, formatFrequencyRange, OT_SIZE_NAME, OT_STROKE, OT_RADIUS, otBoxSize } from './ObjectTypeNode'
+import { formatValueRange, formatCardinalityRange, formatFrequencyRange, OT_SIZE_NAME, OT_STROKE, OT_RADIUS, otBoxSize, defaultRangeOffset } from './ObjectTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { roleAnchor } from '../utils/geometry'
 import { RAKE_TOOTH, RAKE_STAGGER, RAKE_COMFORT, RAKE_BAR_ZONE } from '../constants.js'
@@ -68,6 +68,9 @@ const READING_Y_ABOVE = READING_GAP + READING_BASE_BELOW
 const READING_Y_BELOW = READING_GAP + READING_CAP_ABOVE
 // The pen of rake spines (constraint connectors)
 const RAKE_PEN = pt(NORMA.rolePlayerPenPt)
+// A range label's braces reach 0.498 em above its y and 0.479 em below it.
+const RANGE_ABOVE = 0.498 * LABEL_SIZE
+const RANGE_BELOW = 0.479 * LABEL_SIZE
 // A reading inside an objectified fact type's outline: from the outermost
 // ink to the outline, the gap, the text and NESTED_READING_PAD_BELOW.
 const NESTED_ABOVE_SPAN = READING_GAP + READING_BASE_BELOW + READING_CAP_ABOVE + NESTED_READING_PAD_BELOW
@@ -1369,6 +1372,28 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     return barY_h(level) + dir * PREF_OFFSET * shiftCount
   }
 
+  // How far the drawing reaches beyond the role boxes on each side (T, B for
+  // a horizontal fact type, L, R for a vertical one). stackOn is the distance
+  // from the role boxes' edge to the outermost bar's outer edge or past the
+  // outermost rake (with BAR_SIDE_COMFORT), as nestedFactBounds counts it;
+  // inkOn is how far ink reaches: a preferred identifier's outer line lies
+  // 2 × PREF_OFFSET beyond its bar, a rake spine has a pen, and with nothing
+  // on a side the role boxes' own pen.
+  const hasAnyBar_rd = fact.uniqueness.length > 0 || impliedRoles.length > 0
+  const barSideOf = isVertical ? (barsBelow ? 'L' : 'R') : (barsBelow ? 'B' : 'T')
+  const stackOn = {}, inkOn = {}
+  for (const side of ['T', 'B', 'L', 'R']) {
+    const barSide = hasAnyBar_rd && side === barSideOf
+    const rakes = rakeCounts[side]
+    const sideV = side === 'L' || side === 'R'
+    stackOn[side] = barSide
+      ? (sideV ? effBarMargin_v + rakeZone_v : effBarMargin_h + rakeZone_h) + BAR_SPACING * (multiCount + 1)
+      : rakes > 0 ? RAKE_TOOTH + (rakes - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
+    inkOn[side] = barSide ? stackOn[side] + (minPLevel >= 0 ? 2 * PREF_OFFSET : 0)
+      : rakes > 0 ? stackOn[side] - BAR_SIDE_COMFORT + RAKE_PEN / 2
+      : ROLE_STROKE / 2
+  }
+
   // ── Horizontal helpers ─────────────────────────────────────────────────────
   function buildRuns(uRoles, level, ui, deontic = false) {
     const dro = displayRoleOrder(fact)
@@ -1553,16 +1578,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     const dmark = fact._implicit ? '' : factDerivationMark(fact)
     if (!text && !dmark && !editingReading) return null
 
-    // Distance from role-box edge to outermost element (bar or rake) on each side.
-    // Uses effBarMargin (0 when rakes are present) and BAR_SIDE_COMFORT, matching
-    // the nested-reading formula so both systems produce the same gap.
-    const hasAnyBar_rd = fact.uniqueness.length > 0 || impliedRoles.length > 0
-    const topStackH_rd = (hasAnyBar_rd && !barsBelow)
-      ? effBarMargin_h + rakeZone_h + BAR_SPACING * (multiCount + 1)
-      : rakeCounts.T > 0 ? RAKE_TOOTH + (rakeCounts.T - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
-    const botStackH_rd = (hasAnyBar_rd && barsBelow)
-      ? effBarMargin_h + rakeZone_h + BAR_SPACING * (multiCount + 1)
-      : rakeCounts.B > 0 ? RAKE_TOOTH + (rakeCounts.B - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
+    const topStackH_rd = stackOn.T, botStackH_rd = stackOn.B
 
     const AUTO_DX = (() => {
       if (!isVertical) return 0
@@ -1575,34 +1591,22 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       }
       if (fact.readingAbove) {
         // Reading to the right — stack is on the right side
-        const rightStackW = (hasAnyBar_rd && !barsBelow)
-          ? effBarMargin_v + rakeZone_v + BAR_SPACING * (multiCount + 1)
-          : rakeCounts.R > 0 ? RAKE_TOOTH + (rakeCounts.R - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
+        const rightStackW = stackOn.R
         return ROLE_H / 2 + rightStackW + tw / 2 + 10
       } else {
         // Reading to the left — stack is on the left side
-        const leftStackW = (hasAnyBar_rd && barsBelow)
-          ? effBarMargin_v + rakeZone_v + BAR_SPACING * (multiCount + 1)
-          : rakeCounts.L > 0 ? RAKE_TOOTH + (rakeCounts.L - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
+        const leftStackW = stackOn.L
         return -(ROLE_H / 2 + leftStackW + tw / 2 + 10)
       }
     })()
-    // How far the ink reaches beyond the role boxes' edge on one side: the
-    // outer edge of the outermost bar (a preferred identifier's outer line
-    // lies 2 × PREF_OFFSET further), else the outermost rake spine's pen,
-    // else the role boxes' own pen.
-    const inkBeyond = (stackH, barSide, rakeCount) =>
-      hasAnyBar_rd && barSide ? stackH + (minPLevel >= 0 ? 2 * PREF_OFFSET : 0)
-        : rakeCount > 0 ? stackH - BAR_SIDE_COMFORT + RAKE_PEN / 2
-        : ROLE_STROKE / 2
     const AUTO_DY = isVertical ? 0
       : fact.readingAbove
         ? fact.objectified
           ? nestedFactBounds(fact, nestedRakePad).top    - fact.y - OT_STROKE / 2 - READING_Y_ABOVE
-          : -(ROLE_H / 2 + inkBeyond(topStackH_rd, !barsBelow, rakeCounts.T) + READING_Y_ABOVE)
+          : -(ROLE_H / 2 + inkOn.T + READING_Y_ABOVE)
         : fact.objectified
           ? nestedFactBounds(fact, nestedRakePad).bottom - fact.y + OT_STROKE / 2 + READING_Y_BELOW
-          : ROLE_H / 2 + inkBeyond(botStackH_rd, barsBelow, rakeCounts.B) + READING_Y_BELOW
+          : ROLE_H / 2 + inkOn.B + READING_Y_BELOW
     const defaultOff = { dx: AUTO_DX, dy: AUTO_DY }
     const storedOff = fact.readingAbove ? fact.readingOffsetAbove : fact.readingOffsetBelow
     const off = readingLive ?? (storedOff ?? defaultOff)
@@ -1737,6 +1741,28 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   }
 
   // ── VR annotation helpers ─────────────────────────────────────────────────
+  // A role's value range sits READING_GAP beyond what is drawn on the side
+  // above the roles (left of a vertical fact type), a cardinality range below
+  // (right): bars, rakes and a reading in its default place.
+  const readingDrawn = [fact.readingParts, ...(fact.alternativeReadings ?? []).map(r => r.parts)]
+    .some(parts => parts?.some(p => p?.trim()))
+  const roleRangeOffset = (text, cardinality) => {
+    if (isVertical) {
+      const tw = measureVrText(text)
+      return cardinality
+        ? { dx: ROLE_H / 2 + inkOn.R + READING_GAP + tw / 2, dy: 0 }
+        : { dx: -(ROLE_H / 2 + inkOn.L + READING_GAP + tw / 2), dy: 0 }
+    }
+    if (cardinality) {
+      const reading = readingDrawn && !fact.readingAbove && !fact.readingOffsetBelow
+      const ink = inkOn.B + (reading ? READING_Y_BELOW + READING_DESC_BELOW + READING_GAP : 0)
+      return { dx: 0, dy: ROLE_H / 2 + ink + READING_GAP + RANGE_ABOVE }
+    }
+    const reading = readingDrawn && fact.readingAbove && !fact.readingOffsetAbove
+    const ink = inkOn.T + (reading ? READING_Y_ABOVE + READING_CAP_ABOVE + READING_GAP : 0)
+    return { dx: 0, dy: -(ROLE_H / 2 + ink + READING_GAP + RANGE_BELOW) }
+  }
+  // Inside an objectified fact type's outline the old places stay.
   const VR_DEFAULT = isVertical ? { dx: -50, dy: 0 } : VR_DEFAULT_OFFSET
   const CR_DEFAULT = isVertical ? { dx: 50, dy: 0 } : { dx: 0, dy: 50 }
 
@@ -1817,7 +1843,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     const nbCy = (nb.top + nb.bottom) / 2
     const nbHW = (nb.right - nb.left) / 2
     const nbHH = (nb.bottom - nb.top) / 2
-    const defaultOff = { dx: 0, dy: nbHH + 14 }
+    const defaultOff = defaultRangeOffset(2 * nbHW, 2 * nbHH, vr)
     const off = nestedVrLive ?? (fact.valueRangeOffset ?? defaultOff)
     const tx = nbCx + off.dx
     const ty = nbCy + off.dy
@@ -1878,7 +1904,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     const nbCy = (nb.top + nb.bottom) / 2
     const nbHW = (nb.right - nb.left) / 2
     const nbHH = (nb.bottom - nb.top) / 2
-    const defaultOff = { dx: 0, dy: -(nbHH + 14) }
+    const defaultOff = defaultRangeOffset(2 * nbHW, 2 * nbHH, cr, true)
     const off = nestedCrLive ?? (fact.cardinalityRangeOffset ?? defaultOff)
     const tx = nbCx + off.dx
     const ty = nbCy + off.dy
@@ -2878,7 +2904,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       const rc = roleCenter(fact, ri)
       const off = vrLive?.roleIndex === ri
         ? { dx: vrLive.dx, dy: vrLive.dy }
-        : (fact.valueRangeOffsets?.[ri] ?? role.valueRangeOffset ?? VR_DEFAULT)
+        : (fact.valueRangeOffsets?.[ri] ?? role.valueRangeOffset ?? (fact.objectified ? VR_DEFAULT : roleRangeOffset(vr, false)))
       const textX = rc.x + off.dx
       const textY = rc.y + off.dy
 
@@ -2937,7 +2963,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
       const rc = roleCenter(fact, ri)
       const off = crLive?.roleIndex === ri
         ? { dx: crLive.dx, dy: crLive.dy }
-        : (fact.cardinalityRangeOffsets?.[ri] ?? role.cardinalityRangeOffset ?? CR_DEFAULT)
+        : (fact.cardinalityRangeOffsets?.[ri] ?? role.cardinalityRangeOffset ?? (fact.objectified ? CR_DEFAULT : roleRangeOffset(cr, true)))
       const textX = rc.x + off.dx
       const textY = rc.y + off.dy
 
