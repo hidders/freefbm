@@ -256,13 +256,27 @@ export function makeImplicitLinkFact(parentFact, implicitLink) {
     const p = occMap[f.id]
     return [f.id, p ? { ...f, x: p.x, y: p.y } : f]
   }))
-  const associatedOt = otMap[associatedOtid]
-  const associatedNf = !associatedOt ? nestedMap[associatedOtid] : null
+  // Until it is moved, a link fact type sits halfway between the first
+  // occurrence of its fact type and the occurrence of the role's player
+  // nearest to it, as RoleConnectors links it (playerLookup).
+  const occsOf = (id) => (diag?.occurrences ?? []).filter(o => o.schemaElementId === id && !o.refModeOwnerOccId)
+  const parentOcc = occsOf(parentFact.id)[0] ?? parentFact
+  const nearestOcc = (id) => {
+    let best = null, bestD = Infinity
+    for (const o of occsOf(id)) {
+      const d = Math.hypot(o.x - parentOcc.x, o.y - parentOcc.y)
+      if (d < bestD) { bestD = d; best = o }
+    }
+    return best
+  }
+  const near = nearestOcc(associatedOtid)
+  const associatedOt = otMap[associatedOtid] && (near ? { ...otMap[associatedOtid], x: near.x, y: near.y } : otMap[associatedOtid])
+  const associatedNf = !associatedOt ? (nestedMap[associatedOtid] && (near ? { ...nestedMap[associatedOtid], x: near.x, y: near.y } : nestedMap[associatedOtid])) : null
 
   const schemaX = implicitLink.x
   const schemaY = implicitLink.y
-  const defaultX = (associatedOt || associatedNf) ? Math.round((parentFact.x + (associatedOt || associatedNf).x) / 2) : parentFact.x
-  const defaultY = (associatedOt || associatedNf) ? Math.round((parentFact.y + (associatedOt || associatedNf).y) / 2) : parentFact.y
+  const defaultX = (associatedOt || associatedNf) ? Math.round((parentOcc.x + (associatedOt || associatedNf).x) / 2) : parentOcc.x
+  const defaultY = (associatedOt || associatedNf) ? Math.round((parentOcc.y + (associatedOt || associatedNf).y) / 2) : parentOcc.y
   const x = ilPos?.x ?? schemaX ?? defaultX
   const y = ilPos?.y ?? schemaY ?? defaultY
 

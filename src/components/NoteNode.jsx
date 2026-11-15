@@ -31,7 +31,9 @@ const TEXT_Y = 5
 // note's text area and passes it to measure; needs a document.
 function measureNoteText(text, w, measure) {
   const box = document.createElement('div')
-  Object.assign(box.style, textStyle, { fontSize: `${textStyle.fontSize}px`, position: 'absolute', left: '-10000px', top: '0',
+  // as the diagram draws it: no kerning, no ligatures (index.css)
+  Object.assign(box.style, textStyle, { fontSize: `${textStyle.fontSize}px`, fontKerning: 'none', fontVariantLigatures: 'none',
+    position: 'absolute', left: '-10000px', top: '0',
     width: `${Math.max(1, w - 2 * TEXT_X)}px`, height: 'auto', visibility: 'hidden' })
   const fold = document.createElement('div')
   Object.assign(fold.style, { float: 'right', width: `${FOLD}px`, height: `${Math.max(0, FOLD - TEXT_Y)}px` })
