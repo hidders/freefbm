@@ -214,14 +214,25 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
             } },
           '---',
         ] : []),
+        // Display properties of this shape, ticked when they hold.
         ...(fact.arity === 2 ? [
-          { label: 'Reverse roles',
+          { label: 'Roles reversed', checked: (fact.roleOrder ?? [0, 1])[0] === 1,
+            title: 'Draw the roles in the opposite of their default order',
             action: () => store.reverseRoles(fact.id) },
         ] : []),
-        { label: fact.orientation === 'vertical' ? 'Show horizontally' : 'Show vertically',
+        { label: 'Shown vertically', checked: fact.orientation === 'vertical',
           action: () => store.updateFactLayout(fact.id, {
             orientation: fact.orientation === 'vertical' ? 'horizontal' : 'vertical',
           }) },
+        ...(fact.objectified ? [
+          { label: 'Collapsed', checked: !!fact.displayAsObjectType,
+            title: 'Draw this objectified fact type as an object type on this diagram',
+            action: () => {
+              const patch = { displayAsObjectType: fact.displayAsObjectType ? undefined : true }
+              if (occurrenceId) store.updateObjectTypeLayout(occurrenceId, patch)
+              else store.updateFactLayout(fact.id, patch)
+            } },
+        ] : []),
         '---',
         { label: 'Change into', submenu: [
             ...(!fact.objectified ? [
@@ -641,12 +652,13 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: isVertical ? 'Show horizontally' : 'Show vertically',
+        { label: 'Roles reversed', checked: (il?.roleOrder ?? [0, 1])[0] === 1,
+          title: 'Draw the roles in the opposite of their default order',
+          action: () => store.reverseImplicitLinkRoles(factId, roleIndex) },
+        { label: 'Shown vertically', checked: isVertical,
           action: () => store.updateImplicitLink(factId, roleIndex, {
             orientation: isVertical ? 'horizontal' : 'vertical'
           }) },
-        { label: 'Reverse roles',
-          action: () => store.reverseImplicitLinkRoles(factId, roleIndex) },
         '---',
         { label: 'Remove from diagram',
           action: () => store.toggleImplicitLink(factId, roleIndex) },
