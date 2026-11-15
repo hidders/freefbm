@@ -39,7 +39,7 @@ import { addImportNote } from '../utils/importNotes.js'
 import { findRefMode } from '../utils/refMode.js'
 import { VALUE_KINDS, valueKindName } from '../utils/datatypeValues.js'
 import { normaTemporal } from './normaTemporal.js'
-import { otShapeKey, factShapeKey, noteShapeKey, subtypeLinkPairs } from '../diagram/normaShapeKeys.js'
+import { otShapeKey, factShapeKey, noteShapeKey, subtypeLinkPairs, nearestShapePairs } from '../diagram/normaShapeKeys.js'
 import { placeLabel, factLabelBox, readingLabelSize, rangeLabelSize, nameLabelSize, roleNameLabelSize, objectTypeLabelBox,
   roleAnchor, nameAnchor } from './normaLabels.js'
 import { PX_PER_INCH, NORMA } from '../diagram/normaGeometry.js'
@@ -592,8 +592,11 @@ export function importNorma(xmlText) {
       return { order, parts: rp.parts }
     }).filter(Boolean)
     const fwd = readings.find(r => r.order[0] === 0), rev = readings.find(r => r.order[0] === 1)
+    // NORMA's own readings replace the default ones: a link fact type with a
+    // reading in one direction only shows that one (with its arrow), as NORMA does
     if (fwd) il.readingParts = fwd.parts
-    if (rev) il.alternativeReadings = [{ roleOrder: [1, 0], parts: rev.parts }]
+    if (rev || fwd) il.alternativeReadings = rev ? [{ roleOrder: [1, 0], parts: rev.parts }] : []
+    if (fwd && rev) il.readingDisplay = 'both'
   }
 
   // ── constraints ───────────────────────────────────────────────────────────
@@ -1389,18 +1392,36 @@ export function importNorma(xmlText) {
         roleOccurrenceMap: { [String(1 - rm.vtRoleIndex)]: owner.id, [String(rm.vtRoleIndex)]: vt.id } }
       diag.occurrences.push(vt, ft)
     }
-    // players of shown facts
+    // players of shown facts: NORMA's nearest shape, unless another shape of
+    // the fact type is nearer to that one (nearestShapePairs)
+    const centreOf = (o) => shapeCentre.get(o.id) ?? o
+    const nearer = new Map()   // `${occId}:${roleIndex}` → the occurrence that shape links to
+    for (const f of facts) {
+      const fOccs = diag.occurrences.filter(o => o.schemaElementId === f.id && !o.roleOccurrenceMap)
+      if (!fOccs.length) continue
+      f.roles.forEach((r, i) => {
+        if (!r.objectTypeId) return
+        const free = o => !o.refModeOwnerOccId
+        const ownRefMode = refModeOf(r.objectTypeId)?.factId === f.id
+        const tos = occsOf(r.objectTypeId).filter(o => free(o) && (!ownRefMode || expandedOwners.includes(o)))
+        for (const [from, to] of nearestShapePairs(fOccs, tos, { centre: centreOf })) nearer.set(`${from.id}:${i}`, to)
+      })
+    }
     for (const occ of [...diag.occurrences]) {
       const f = factById.get(occ.schemaElementId)
       if (!f || occ.roleOccurrenceMap) continue
-      const c = shapeCentre.get(occ.id) ?? occ
+      const c = centreOf(occ)
       const map = {}
       f.roles.forEach((r, i) => {
         if (!r.objectTypeId) return
         const free = o => !o.refModeOwnerOccId
         // the reference mode fact type of its player links to expanded shapes only
         const ownRefMode = refModeOf(r.objectTypeId)?.factId === f.id
-        let p = (ownRefMode && nearest(r.objectTypeId, c.x, c.y, o => free(o) && expandedOwners.includes(o)))
+        // NORMA links this role from a nearer shape of the fact type only:
+        // drawn without a link here (it keeps its player for everything else)
+        let p = nearer.get(`${occ.id}:${i}`)
+        if (!p && occsOf(r.objectTypeId).some(free)) (occ.unlinkedRoles ??= []).push(i)
+        p = p || (ownRefMode && nearest(r.objectTypeId, c.x, c.y, o => free(o) && expandedOwners.includes(o)))
           || nearest(r.objectTypeId, c.x, c.y, free)
         if (!p) {
           p = { id: newOccId(), schemaElementId: r.objectTypeId, x: occ.x + (i - (f.arity - 1) / 2) * 140, y: occ.y + 90 }

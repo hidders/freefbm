@@ -68,19 +68,63 @@ function playerXY(ot, nestedFact) {
   return null
 }
 
+// Where each role's player is drawn. A fact type occurrence names the
+// occurrence its role links to (roleOccurrenceMap), or none (unlinkedRoles,
+// from a NORMA import: NORMA links that role from a nearer shape of the same
+// fact type only); otherwise, and for link
+// fact types, the role goes to the player's occurrence nearest to it, as in
+// NORMA. Objectified fact types are players through their own occurrences.
+export function playerLookup(objectTypes, visibleFacts) {
+  const otByOccId = {}, otsById = {}
+  for (const o of objectTypes) {
+    if (o.occurrenceId) otByOccId[o.occurrenceId] = o
+    ;(otsById[o.id] ??= []).push(o)
+  }
+  const nfByOccId = {}, nfsById = {}
+  for (const f of visibleFacts) {
+    if (!f.objectified || f._implicit) continue
+    if (f.occurrenceId) nfByOccId[f.occurrenceId] = f
+    ;(nfsById[f.id] ??= []).push(f)
+  }
+  const nearest = (id, x, y) => {
+    const pick = (list) => {
+      let best = null, bestD = Infinity
+      for (const c of list ?? []) {
+        const d = Math.hypot(c.x - x, c.y - y)
+        if (d < bestD) { bestD = d; best = c }
+      }
+      return best
+    }
+    const ot = pick(otsById[id])
+    return ot ? { ot, nf: null } : { ot: null, nf: pick(nfsById[id]) }
+  }
+  const forRole = (fact, ri) => {
+    const id = fact.roles[ri]?.objectTypeId
+    // a role NORMA links from a nearer shape of its fact type only
+    if (!id || fact.unlinkedRoles?.includes(ri)) return { ot: null, nf: null }
+    const occId = fact.roleOccurrenceMap?.[String(ri)]
+    const ot = occId && otByOccId[occId]
+    if (ot && ot.id === id) return { ot, nf: null }
+    const nf = occId && nfByOccId[occId]
+    if (nf && nf.id === id) return { ot: null, nf }
+    return nearest(id, fact.x, fact.y)
+  }
+  // each objectified fact type once: its link fact types are drawn once per diagram
+  const linkOwners = []
+  const seen = new Set()
+  for (const f of visibleFacts) {
+    if (!f.objectified || f._implicit || seen.has(f.id)) continue
+    seen.add(f.id); linkOwners.push(f)
+  }
+  return { forRole, nearest, linkOwners }
+}
+
 // ── component ─────────────────────────────────────────────────────────────────
 
 export default function RoleConnectors({ mousePos, queryReachable, queryOriginals }) {
   const store = useOrmStoreIgnoring('pan', 'zoom')
   const { objectTypes, facts: visibleFacts } = useDiagramElements()
-  // Map by occurrence ID (for roleOccurrenceMap lookups)
-  const otByOccId = Object.fromEntries(
-    objectTypes.filter(o => o.occurrenceId).map(o => [o.occurrenceId, o])
-  )
-  // Map by schema ID (fallback — first occurrence wins; do NOT use Object.fromEntries which keeps last)
-  const otMap = {}
-  for (const o of objectTypes) { if (!(o.id in otMap)) otMap[o.id] = o }
-  const nestedMap = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
+  const players = playerLookup(objectTypes, visibleFacts)
   const dotAtObject = store.mandatoryDotPosition === 'object'
 
   // Read diagram occurrence data for per-element overrides (e.g. roleNameOffsets)
@@ -161,10 +205,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
   const connectors = visibleFacts.flatMap(fact =>
     fact.roles.map((role, ri) => {
       if (!role.objectTypeId) return null
-      // Look up specific occurrence first, fall back to schema-ID match
-      const mappedOccId = fact.roleOccurrenceMap?.[String(ri)]
-      const ot       = (mappedOccId && otByOccId[mappedOccId]) || otMap[role.objectTypeId]
-      const nf       = !ot ? nestedMap[role.objectTypeId] : null
+      const { ot, nf } = players.forRole(fact, ri)
       if (!ot && !nf) return null
 
       const { x: px, y: py } = playerXY(ot, nf)
@@ -196,13 +237,11 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
   )
 
   // Implicit link connectors (dashed role boxes)
-  const implicitConnectors = visibleFacts.flatMap(fact => {
-    if (!fact.objectified) return []
+  const implicitConnectors = players.linkOwners.flatMap(fact => {
     return (fact.implicitLinks || []).filter(il => store.isImplicitLinkShown(fact.id, il.roleIndex)).flatMap(il => {
       const role = fact.roles[il.roleIndex]
       if (!role?.objectTypeId) return []
-      const ot = otMap[role.objectTypeId]
-      const nf = !ot ? nestedMap[role.objectTypeId] : null
+      const { ot, nf } = players.nearest(role.objectTypeId, fact.x, fact.y)
       if (!ot && !nf) return []
       const roleNames = il.roleNames || [null, null]
       const ilKey = `${fact.id}:il:${il.roleIndex}`
@@ -227,8 +266,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
       }
       return [0, 1].map(ri => {
         const sRole = synthFact.roles[ri]
-        const targetOt = otMap[sRole.objectTypeId]
-        const targetNf = !targetOt ? nestedMap[sRole.objectTypeId] : null
+        const { ot: targetOt, nf: targetNf } = players.nearest(sRole.objectTypeId, ilX, ilY)
         if (!targetOt && !targetNf) return null
         const { x: px, y: py } = playerXY(targetOt, targetNf)
         const anchor = roleAnchor(synthFact, ri, px, py)
@@ -372,8 +410,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
 
         if (draft.objectTypeId) {
           // Object-type-first: line from object-type (or objectified fact) border toward mouse
-          const ot = otMap[draft.objectTypeId]
-          const nf = !ot ? nestedMap[draft.objectTypeId] : null
+          const { ot, nf } = players.nearest(draft.objectTypeId, mousePos.x, mousePos.y)
           if (!ot && !nf) return null
           const border = playerBorderPoint(ot, nf, mousePos.x, mousePos.y)
           return (
@@ -412,8 +449,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
 export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals }) {
   const store      = useOrmStoreIgnoring('pan', 'zoom')
   const { objectTypes, facts: visibleFacts } = useDiagramElements()
-  const otMap      = Object.fromEntries(objectTypes.map(o => [o.id, o]))
-  const nestedMap  = Object.fromEntries(visibleFacts.filter(f => f.objectified).map(f => [f.id, f]))
+  const players    = playerLookup(objectTypes, visibleFacts)
   const dotAtObject = store.mandatoryDotPosition === 'object'
   const sel        = store.selectedMandatoryDot
   const diagIlPos  = store.diagrams?.find(d => d.id === store.activeDiagramId)?.implicitLinkPositions ?? {}
@@ -423,8 +459,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
       {visibleFacts.flatMap(fact =>
         fact.roles.map((role, ri) => {
           if (!role.mandatory || !role.objectTypeId) return null
-          const ot = otMap[role.objectTypeId]
-          const nf = !ot ? nestedMap[role.objectTypeId] : null
+          const { ot, nf } = players.forRole(fact, ri)
           if (!ot && !nf) return null
           const { x: px, y: py } = playerXY(ot, nf)
           const anchor = roleAnchor(fact, ri, px, py)
@@ -493,8 +528,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
           const role = fact.roles[ri]
           if (!role || !role.objectTypeId) return null
           if (role.mandatory) return null   // real dot already drawn
-          const ot = otMap[role.objectTypeId]
-          const nf = !ot ? nestedMap[role.objectTypeId] : null
+          const { ot, nf } = players.forRole(fact, ri)
           if (!ot && !nf) return null
           const { x: px, y: py } = playerXY(ot, nf)
           const anchor = roleAnchor(fact, ri, px, py)
@@ -525,8 +559,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
         }).filter(Boolean)
       })}
       {/* Mandatory dots for implicit links (role 0 is always mandatory; role 1 is mandatory if base role is mandatory) */}
-      {visibleFacts.flatMap(fact => {
-        if (!fact.objectified) return []
+      {players.linkOwners.flatMap(fact => {
         return (fact.implicitLinks || []).filter(il => store.isImplicitLinkShown(fact.id, il.roleIndex)).map(il => {
           const role = fact.roles[il.roleIndex]
           const ilKeyDot = `${fact.id}:il:${il.roleIndex}`
@@ -537,8 +570,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
 
           // Role 0 (nested fact) — always mandatory
           if (role?.objectTypeId) {
-            const ot = otMap[role.objectTypeId]
-            const nf = !ot ? nestedMap[role.objectTypeId] : null
+            const { ot, nf } = players.nearest(role.objectTypeId, fact.x, fact.y)
             if (ot || nf) {
               const ilPos = ilPosDot
               const schemaX = il.x
@@ -553,8 +585,7 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
                 x: ilX, y: ilY,
                 arity: 2, orientation: ilPos?.orientation ?? il.orientation ?? 'horizontal',
               }
-              const targetOt = otMap[fact.id]
-              const targetNf = !targetOt ? nestedMap[fact.id] : null
+              const { ot: targetOt, nf: targetNf } = players.nearest(fact.id, ilX, ilY)
               if (targetOt || targetNf) {
                 const { x: px, y: py } = playerXY(targetOt, targetNf)
                 const anchor = roleAnchor(synthFact, mandatoryDisplayRole, px, py)
@@ -590,16 +621,16 @@ export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals })
 
           // Role 1 (associated object type) — mandatory if base role is mandatory
           if (role?.mandatory) {
-            const associatedOt = otMap[role.objectTypeId]
-            const associatedNf = !associatedOt ? nestedMap[role.objectTypeId] : null
-            if (associatedOt || associatedNf) {
+            const near = players.nearest(role.objectTypeId, fact.x, fact.y)
+            if (near.ot || near.nf) {
               const ilPos = ilPosDot
               const schemaX = il.x
               const schemaY = il.y
-              const defaultX = (associatedOt || associatedNf) ? Math.round((fact.x + (associatedOt || associatedNf).x) / 2) : fact.x
-              const defaultY = (associatedOt || associatedNf) ? Math.round((fact.y + (associatedOt || associatedNf).y) / 2) : fact.y
+              const defaultX = Math.round((fact.x + (near.ot || near.nf).x) / 2)
+              const defaultY = Math.round((fact.y + (near.ot || near.nf).y) / 2)
               const ilX = ilPos?.x ?? schemaX ?? defaultX
               const ilY = ilPos?.y ?? schemaY ?? defaultY
+              const { ot: associatedOt, nf: associatedNf } = players.nearest(role.objectTypeId, ilX, ilY)
               const mandatoryDisplayRole = roleOrder.indexOf(1)
               const synthFact = {
                 id: `${fact.id}_il_${il.roleIndex}`,
