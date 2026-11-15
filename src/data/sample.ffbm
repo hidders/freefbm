@@ -4338,8 +4338,8 @@
                 "upper": "6"
               }
             ],
-            "x": 1325,
-            "y": 246
+            "x": 218.75,
+            "y": 63.5
           }
         ],
         "orientation": "horizontal",
@@ -16780,12 +16780,15 @@
         {
           "id": "occ_n1792593665139_156",
           "schemaElementId": "f_prereq",
-          "x": 610,
-          "y": 310,
+          "x": 660,
+          "y": 300,
           "roleOccurrenceMap": {
             "0": "occ_n1792593665130_123",
             "1": "occ_n1792593665130_123"
-          }
+          },
+          "readingOffsetBelow": null,
+          "readingAbove": false,
+          "readingOffsetAbove": null
         },
         {
           "id": "occ_n1792593665142_163",
@@ -16943,7 +16946,7 @@
         {
           "id": "cocc_n1792593665140_158",
           "schemaConstraintId": "c_prereqRing",
-          "x": 640,
+          "x": 660,
           "y": 370,
           "roleOccurrenceRefs": {},
           "queryOccurrenceRefs": {}
@@ -19132,7 +19135,7 @@
       }
     }
   ],
-  "activeDiagramId": "n1794722778855_1040",
+  "activeDiagramId": "d_teaching",
   "populations": {
     "ot_Person": [
       "P1",
