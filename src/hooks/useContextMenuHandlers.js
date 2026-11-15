@@ -84,6 +84,7 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
               store.removeMultiSelectionFromDiagram(store.activeDiagramId, idsToRemove)
             }
           } },
+        '---',
         deleteFromSchemaItem(store, store.multiSelectedIds, 'Delete selection from schema…'),
       ],
     })

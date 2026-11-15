@@ -752,10 +752,10 @@ export default function Canvas() {
       x: e.clientX, y: e.clientY,
       items: [
         { label: 'Add subject',    action: () => store.startNoteConnector(note.id) },
-        { label: 'Remove subject', disabled: !(note.connectors?.length),
+        { label: 'Remove subject', removal: false, disabled: !(note.connectors?.length),
           action: () => store.startNoteRemoveSubject(note.id) },
         '---',
-        { label: 'Delete', danger: true, action: () => store.deleteNote(note.id) },
+        { label: 'Delete note', danger: true, action: () => store.deleteNote(note.id) },
       ],
     })
   }, [store])

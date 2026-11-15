@@ -344,11 +344,12 @@ export default function SchemaBrowser() {
     const on = here.includes(info.r.id)
     const others = ruleInfos.map(i => i.r.id).filter(id => !here.includes(id))
     setRowMenu({ x: e.clientX, y: e.clientY, items: [
-      on ? { label: 'Remove from this diagram', action: () => s.hideMappingRules(d.id, [info.r.id]) }
-         : { label: 'Add to this diagram', action: () => s.showMappingRules(d.id, [info.r.id]) },
+      ...(on ? [] : [{ label: 'Add to this diagram', action: () => s.showMappingRules(d.id, [info.r.id]) }]),
       { label: 'New diagram with this rule', action: () => s.newMappingDiagram(mapping.id, [info.r.id]) },
       '---',
       { label: 'Add all rules to this diagram', disabled: !others.length, action: () => s.showMappingRules(d.id, others) },
+      '===',
+      ...(on ? [{ label: 'Remove from this diagram', action: () => s.hideMappingRules(d.id, [info.r.id]) }] : []),
       { label: 'Remove other rules from this diagram', disabled: !here.some(id => id !== info.r.id),
         action: () => s.hideMappingRules(d.id, here.filter(id => id !== info.r.id)) },
     ] })
