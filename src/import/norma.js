@@ -43,6 +43,7 @@ import { otShapeKey, factShapeKey, noteShapeKey, subtypeLinkPairs } from '../dia
 import { placeLabel, factLabelBox, readingLabelSize, rangeLabelSize, nameLabelSize, roleNameLabelSize, objectTypeLabelBox,
   roleAnchor, nameAnchor } from './normaLabels.js'
 import { PX_PER_INCH, NORMA } from '../diagram/normaGeometry.js'
+import { BASE_ZOOM } from '../utils/viewScale.js'
 
 const SCALE = PX_PER_INCH   // pixels per inch (src/diagram/normaGeometry.js)
 
@@ -1132,7 +1133,7 @@ export function importNorma(xmlText) {
   for (const d of doc.getElementsByTagNameNS('*', 'ORMDiagram')) {
     const diag = { id: attr(d, 'id'), name: attr(d, 'Name') || 'Diagram', occurrences: [], constraintOccurrences: [],
       implicitLinkPositions: {}, profileId: 'norma', shownImplicitLinks: [], notes: [], expandedRefModes: [],
-      expandedRefModeOccs: [], pan: { x: 0, y: 0 }, zoom: 1 }
+      expandedRefModeOccs: [], pan: { x: 0, y: 0 }, zoom: BASE_ZOOM }
     const expandedOwners = []
     const seenCon = new Set()
     for (const s of kids(kid(d, 'Shapes'))) {
@@ -1493,7 +1494,7 @@ export function importNorma(xmlText) {
   if (unplaced) {
     const diag = { id: 'imported-notes', name: 'Imported notes', occurrences: [], constraintOccurrences: [],
       implicitLinkPositions: {}, profileId: 'norma', shownImplicitLinks: [], expandedRefModes: [], expandedRefModeOccs: [],
-      pan: { x: 0, y: 0 }, zoom: 1,
+      pan: { x: 0, y: 0 }, zoom: BASE_ZOOM,
       notes: [...modelNotes].filter(([id, mn]) => !notesShown.has(id) && !mn.refs.length)
         .map(([id, mn], i) => ({ id, x: 140 + (i % 4) * 260, y: 100 + Math.floor(i / 4) * 140, w: 240, h: 120, text: mn.text, connectors: [] })) }
     diagrams.push(diag)

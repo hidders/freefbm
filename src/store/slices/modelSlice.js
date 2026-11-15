@@ -37,6 +37,7 @@ function readFlag(key) {
   try { return localStorage.getItem(key) === '1' } catch { return false }
 }
 import { completeTables } from '../../relational/tableUnits.js'
+import { BASE_ZOOM } from '../../utils/viewScale.js'
 
 // The clipboard holds elements of the schema it was copied in; they may only be
 // pasted or duplicated into a diagram of that same schema, because they refer
@@ -59,7 +60,7 @@ export function createModelSlice(set, get) {
     isDirty:  false,
 
     pan:  { x: 0, y: 0 },
-    zoom: 1,
+    zoom: BASE_ZOOM,
 
     selectedId:              null,
     selectedKind:            null,
@@ -544,7 +545,7 @@ export function createModelSlice(set, get) {
             selectedUniqueness: null, multiSelectedIds: [], selectedOccurrenceId: null, multiSelectedOccurrenceIds: [],
             uniquenessConstruction: null, frequencyConstruction: null,
             linkDraft: null, roleReconnectDraft: null, ruleEditor: null, ruleHighlight: null,
-            pan: { x: 0, y: 0 }, zoom: 1, objectTypeNameDisplay: 'asIs', removeNameCharacters: '.:_' })
+            pan: { x: 0, y: 0 }, zoom: BASE_ZOOM, objectTypeNameDisplay: 'asIs', removeNameCharacters: '.:_' })
     },
 
      loadModel(data, filePath = null) {
@@ -863,7 +864,7 @@ export function createModelSlice(set, get) {
         groups: pruneGroups(loadGroups(d.schema?.groups ?? d.groups), { objectTypes: parsedOts, facts, subtypes: parsedSts, constraints, diagrams }),
         activeDiagramId,
         pan:  activeDiag?.pan  ?? { x: 0, y: 0 },
-        zoom: activeDiag?.zoom ?? 1,
+        zoom: activeDiag?.zoom ?? BASE_ZOOM,
         populations,
         factPopulations,
         subtypeMappings,

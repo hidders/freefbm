@@ -8,6 +8,7 @@ const NOTICE_MS = 4000
 const ORPHAN_NOTICE_MS = 8000
 import { relationalCounts } from '../relational/relationalView'
 import { visibleIssues } from './ValidationPanel'
+import { zoomPercent } from '../utils/viewScale.js'
 
 // ── Tier 1: Tool hints — workflow guidance while a tool is active ─────────────
 const TOOL_HINTS = {
@@ -72,7 +73,7 @@ export default function StatusBar() {
         <span style={{ fontSize: 11, color: 'var(--accent)', flex: 1, fontWeight: 600 }}>
           Click the {role} occurrence of <em>{targetName}</em> to connect · Esc to cancel
         </span>
-        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{Math.round(store.zoom * 100)}%</span>
+        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{zoomPercent(store.zoom)}%</span>
       </div>
     )
   }
@@ -93,7 +94,7 @@ export default function StatusBar() {
         <span style={{ fontSize: 11, color: 'var(--accent)', flex: 1, fontWeight: 600 }}>
           Click an occurrence of <em>{targetName}</em> to {verb}{stepHint} · Esc to cancel
         </span>
-        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{Math.round(store.zoom * 100)}%</span>
+        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{zoomPercent(store.zoom)}%</span>
       </div>
     )
   }
@@ -108,7 +109,7 @@ export default function StatusBar() {
         <span style={{ fontSize: 11, color: 'var(--accent)', flex: 1, fontWeight: 600 }}>
           Click an object type or nested object type to set it as the target · Esc to cancel
         </span>
-        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{Math.round(store.zoom * 100)}%</span>
+        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{zoomPercent(store.zoom)}%</span>
       </div>
     )
   }
@@ -175,7 +176,7 @@ export default function StatusBar() {
             Delete from schema…
           </span>
         </span>
-        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{Math.round(store.zoom * 100)}%</span>
+        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{zoomPercent(store.zoom)}%</span>
       </div>
     )
   }
@@ -190,7 +191,7 @@ export default function StatusBar() {
             ? `The mapping ${notice.mapping} locks this schema to constraints only · add constraints, or unlock it in the Mappings tab`
             : 'A relational schema is read-only · Transform… changes it, as a new version with a mapping from this one'}
         </span>
-        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{Math.round(store.zoom * 100)}%</span>
+        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{zoomPercent(store.zoom)}%</span>
       </div>
     )
   }
@@ -208,7 +209,7 @@ export default function StatusBar() {
       <span style={{ fontSize: 11, color: 'var(--ink-muted)', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={hint}>{hint}</span>
       <ProblemsLink store={store} />
       <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
-        {Math.round(store.zoom * 100)}%
+        {zoomPercent(store.zoom)}%
       </span>
       {store.isDirty && (
         <span style={{ fontSize: 11, color: 'var(--danger)' }}>● unsaved</span>

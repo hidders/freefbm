@@ -5,6 +5,7 @@ import { triggerPdfExport } from '../utils/pdfExport'
 import { newModel, openModel, saveModel, fileLabel } from '../utils/fileActions'
 import { LANGUAGES } from '../verbalisation/languages/index.js'
 import { baseOf, modelLanguages } from '../store/viewLanguage.js'
+import { zoomPercent } from '../utils/viewScale.js'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)
@@ -140,7 +141,7 @@ export default function Toolbar() {
       <div style={{ display: 'flex', gap: 4, alignItems: 'center', WebkitAppRegion: 'no-drag' }}>
         <Btn label="−" title="Zoom out" onClick={() => store().zoomBy(-0.1)}/>
         <span style={{ fontSize: 11, color: 'var(--ink-muted)', minWidth: 38, textAlign: 'center' }}>
-          {Math.round(storeRef.current.zoom * 100)}%
+          {zoomPercent(storeRef.current.zoom)}%
         </span>
         <Btn label="+" title="Zoom in" onClick={() => store().zoomBy(0.1)}/>
         <Btn label="⊡" title="Reset view" onClick={() => store().resetView()}/>
