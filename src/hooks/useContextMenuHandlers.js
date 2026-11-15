@@ -20,6 +20,8 @@ function deleteFromSchemaItem(store, ids, label = 'Delete from schema…') {
 
 // The checkable "Deontic" item that switches a constraint between alethic and
 // deontic modality (modality.js).
+const NOT_SHOWN_COLLAPSED = 'Not shown while this fact type is drawn as an object type'
+
 const deonticItem = (checked, setDeontic, disabledTitle = null) => ({
   label: 'Deontic', checked: !!checked && !disabledTitle, disabled: !!disabledTitle,
   title: disabledTitle ?? 'An obligation: what ought to hold, which a population may break',
@@ -198,6 +200,8 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
           : { label: 'Expand reference mode',   action: () => store.expandRefMode(occurrenceId)   },
          '---']
       : []
+    // Collapsed (drawn as an object type): its role order and orientation are not shown.
+    const collapsedHere = !!(fact.objectified && fact.displayAsObjectType)
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
@@ -218,10 +222,13 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
         // Display properties of this shape, ticked when they hold.
         ...(fact.arity === 2 ? [
           { label: 'Roles reversed', checked: (fact.roleOrder ?? [0, 1])[0] === 1,
-            title: 'Draw the roles in the opposite of their default order',
+            disabled: collapsedHere,
+            title: collapsedHere ? NOT_SHOWN_COLLAPSED : 'Draw the roles in the opposite of their default order',
             action: () => store.reverseRoles(fact.id) },
         ] : []),
         { label: 'Shown vertically', checked: fact.orientation === 'vertical',
+          disabled: collapsedHere,
+          title: collapsedHere ? NOT_SHOWN_COLLAPSED : undefined,
           action: () => store.updateFactLayout(fact.id, {
             orientation: fact.orientation === 'vertical' ? 'horizontal' : 'vertical',
           }) },
