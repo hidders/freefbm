@@ -61,11 +61,11 @@ export const NAME_LINE = px(NORMA.lineHeight)
 // text's y and capitals reach 0.498 em above it.
 export const READING_GAP = 6
 const READING_BASE_BELOW = 0.273 * LABEL_SIZE
-const READING_CAP_ABOVE  = 0.498 * LABEL_SIZE
-const READING_DESC_BELOW = 0.525 * LABEL_SIZE   // descenders (g, p, y)
+export const READING_CAP_ABOVE  = 0.498 * LABEL_SIZE
+export const READING_DESC_BELOW = 0.525 * LABEL_SIZE   // descenders (g, p, y)
 // From the outermost ink to the reading's y
-const READING_Y_ABOVE = READING_GAP + READING_BASE_BELOW
-const READING_Y_BELOW = READING_GAP + READING_CAP_ABOVE
+export const READING_Y_ABOVE = READING_GAP + READING_BASE_BELOW
+export const READING_Y_BELOW = READING_GAP + READING_CAP_ABOVE
 // The pen of rake spines (constraint connectors)
 const RAKE_PEN = pt(NORMA.rolePlayerPenPt)
 // A range label's braces reach 0.498 em above its y and 0.479 em below it.
@@ -313,7 +313,7 @@ export function makeImplicitLinkFact(parentFact, implicitLink) {
   }
 }
 
-const IF_CIRCLE_R = 8    // radius of internal-frequency constraint circle (matches external constraint size)
+export const IF_CIRCLE_R = 8    // radius of internal-frequency constraint circle (matches external constraint size)
 const IF_PAD_X    = 5    // horizontal padding inside IF stadium when range text is shown
 
 function measureIfText(text) {
@@ -321,7 +321,7 @@ function measureIfText(text) {
 }
 
 /** Half-width of the IF shape: circle (IF_CIRCLE_R) when no label, stadium when label present. */
-function ifShapeHalfW(label) {
+export function ifShapeHalfW(label) {
   if (!label) return IF_CIRCLE_R
   return Math.max(IF_CIRCLE_R, (measureIfText(label) + IF_PAD_X * 2) / 2)
 }
@@ -376,6 +376,13 @@ const BAR_BAND_END     = BAR_SPACING / 2 - BAR_H / 2
 const OBJ_MARGIN_X     = px(NORMA.objectified.marginX)
 const OBJ_MARGIN_Y     = px(NORMA.objectified.marginY)
 const PREF_OFFSET      = 0.75 * BAR_H                    // shift for preferred uniqueness bar
+// How far the ink of `levels` levels of uniqueness bars reaches beyond the
+// role boxes' edge (a preferred identifier's outer line 2 × PREF_OFFSET
+// further), or the role boxes' own pen without bars; no rakes counted.
+export function barInkExtent(levels, preferred = false) {
+  if (levels <= 0) return ROLE_STROKE / 2
+  return BAR_MARGIN + BAR_SPACING * levels + (preferred ? 2 * PREF_OFFSET : 0)
+}
 const BAR_SIDE_COMFORT = 2    // rake comfort used when bars sit beyond the rakes on the same side
 const UNARY_CAP_R = 8
 

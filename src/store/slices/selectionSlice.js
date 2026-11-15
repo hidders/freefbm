@@ -659,14 +659,16 @@ export function createSelectionSlice(set, get) {
       const s = get()
       const ifItem = s.facts.find(f => f.id === factId)?.internalFrequency?.find(i => i.id === ifId)
       if (!ifItem || ifItem.x == null || ifItem.y == null) return false
-      const def = defaultFrequencyPos(factAsDrawn(s, factId), ifItem.roles ?? [])
-      return Math.abs(ifItem.x - def.x) > 0.5 || Math.abs(ifItem.y - def.y) > 0.5
+      // a marker placed before its range was given sits where the range's width was not known
+      const at = (def) => Math.abs(ifItem.x - def.x) <= 0.5 && Math.abs(ifItem.y - def.y) <= 0.5
+      const drawn = factAsDrawn(s, factId)
+      return !at(defaultFrequencyPos(drawn, ifItem.roles ?? [], ifItem.range)) && !at(defaultFrequencyPos(drawn, ifItem.roles ?? []))
     },
     resetFrequencyLabel(factId, ifId) {
       const s = get()
       const ifItem = s.facts.find(f => f.id === factId)?.internalFrequency?.find(i => i.id === ifId)
       if (!ifItem) return
-      get().updateInternalFrequency(factId, ifId, defaultFrequencyPos(factAsDrawn(s, factId), ifItem.roles ?? []))
+      get().updateInternalFrequency(factId, ifId, defaultFrequencyPos(factAsDrawn(s, factId), ifItem.roles ?? [], ifItem.range))
     },
     removeInternalFrequency(factId, ifId) {
       set(s => {
