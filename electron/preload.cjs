@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       'menu:zoomIn', 'menu:zoomOut', 'menu:zoomReset',
       'menu:sidebarBrowser', 'menu:sidebarProblems', 'menu:shortcuts', 'menu:schema', 'menu:mapping',
       'menu:exportPdf', 'menu:importSql', 'menu:exportSql', 'menu:loadSampleSql', 'menu:exportRowsSql',
+      'menu:exportNorma',
       'app:saveThenClose',
     ]
     if (!valid.includes(channel)) return
