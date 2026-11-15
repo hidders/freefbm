@@ -21,8 +21,10 @@
 
 import { NORMA, inches } from '../diagram/normaGeometry.js'
 import { readingLabelSize, rangeLabelSize, roleNameLabelSize, nameLabelSize, roleAnchor, nameAnchor, factLabelBox, objectTypeLabelBox } from '../import/normaLabels.js'
-import { otBoxSize } from '../components/ObjectTypeNode.jsx'
+import { otBoxSize, defaultRangeOffset, formatValueRange, formatCardinalityRange } from '../components/ObjectTypeNode.jsx'
 import { collapsedObjectificationBox } from '../components/FactTypeNode.jsx'
+import { NOTE_FONT_SIZE, NOTE_LINE_HEIGHT, TEXT_X, FOLD } from '../components/NoteNode.jsx'
+import { measureDiagramText } from '../diagram/diagramFont.js'
 import { findRefMode, refModeLabel } from '../utils/refMode.js'
 import { derivationMark } from '../logic/derivationRule.js'
 import { datatypeAssignmentToKind } from '../utils/datatypeMapping.js'
@@ -839,11 +841,15 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         const label = collapsed ? refModeLabel(ot.name, vt.name, ot) : null
         const { w, h } = otBoxSize((ot.name ?? '') + derivationMark(ot) + (ot.isIndependent ? ' !' : ''), label)
         const W = inches(w), H = inches(h)
-        // value and cardinality range labels that were moved
+        // value and cardinality range labels, where FreeFBM draws them
+        // (NORMA saves a label shape for each; a file without them shows none
+        // in viewers that do not add them as NORMA does when it loads)
         const rel = []
         const otBox = objectTypeLabelBox(ot, !!label)
         const S = { l: -w / 2, r: w / 2, t: -h / 2, b: h / 2 }
+        const vRange = ot.kind === 'value' ? ot.valueRange : null
         const vOff = occ.valueRangeOffset ?? ot.valueRangeOffset
+          ?? defaultRangeOffset(w, h, formatValueRange(vRange?.length ? vRange : (factById.get(rm?.factId)?.roles[rm?.vtRoleIndex]?.valueRange ?? ot.valueRange)) ?? '')
         if (ot.kind === 'value' && ot.valueRange?.length && vOff)
           rel.push(labelShape('ValueConstraintShape', `${shapeId(occ)}:vr`, occ, { x: vOff.dx, y: vOff.dy }, rangeLabelSize(ot.valueRange), otBox, S, ot.normaValueConstraint?.id ?? normaId(ot.id, 'valueconstraint'), vOff, keptBounds(occ, otShapeKey)))
         // an entity type's value range is its reference mode role's; NORMA
@@ -853,6 +859,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         if (ot.kind === 'entity' && rmRole && rmRange?.length && vOff)
           rel.push(labelShape('ValueConstraintShape', `${shapeId(occ)}:vr`, occ, { x: vOff.dx, y: vOff.dy }, rangeLabelSize(rmRange), otBox, S, rmRole.normaValueConstraint?.id ?? normaId(rmRole.id, 'valueconstraint'), vOff, keptBounds(occ, otShapeKey)))
         const cOff = occ.cardinalityRangeOffset ?? ot.cardinalityRangeOffset
+          ?? (ot.cardinalityRange?.length ? defaultRangeOffset(w, h, formatCardinalityRange(ot.cardinalityRange) ?? '', true) : null)
         if (ot.cardinalityRange?.length && cOff)
           rel.push(labelShape('CardinalityConstraintShape', `${shapeId(occ)}:cr`, occ, { x: cOff.dx, y: cOff.dy }, rangeLabelSize(ot.cardinalityRange, true), otBox, S, ot.normaCardinality?.id ?? normaId(ot.id, 'cardinality'), cOff, keptBounds(occ, otShapeKey)))
         shapes.push(el('ormDiagram:ObjectTypeShape', { id: shapeId(occ), IsExpanded: 'true',
@@ -986,14 +993,16 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     // its reading, where FreeFBM keeps it: the reading order shown and its place
     const rel = []
     const rOff = pos ? (pos.readingAbove ? pos.readingOffsetAbove : pos.readingOffsetBelow) : null
-    if (rOff) {
+    {
       const il = F.implicitLinks?.find(x => x.roleIndex === k) ?? {}
-      const rOrder = pos.readingOrder ?? order
+      const rOrder = pos?.readingOrder ?? order
       const g = { arity: 2, roles: [{}, {}], readingParts: il.readingParts ?? ['', 'involves', ''], alternativeReadings: il.alternativeReadings ?? [],
         roleOrder: order, readingDisplay: 'forward' }
       const Sabs = { l: (cx - W / 2) * PX, r: (cx + W / 2) * PX, t: (cy - H / 2) * PX, b: (cy + H / 2) * PX }
       const S = { l: Sabs.l - at.x, r: Sabs.r - at.x, t: Sabs.t - at.y, b: Sabs.b - at.y }
-      rel.push(labelShape('ReadingShape', `${F.id}:il:${k}:reading`, { ...at, normaLabels: pos.normaLabels }, { x: rOff.dx, y: rOff.dy }, readingLabelSize(g), S, S,
+      const size = readingLabelSize(g)
+      const c = rOff ? { x: rOff.dx, y: rOff.dy } : besideBox(S, size, vertical, !!pos?.readingAbove, { x: 0, y: 0 })
+      rel.push(labelShape('ReadingShape', `${F.id}:il:${k}:reading`, { ...at, normaLabels: pos?.normaLabels }, c, size, S, S,
         rOrder[0] === 0 ? L.roOut : L.roIn, rOff, pos && keptBounds(pos, factShapeKey)))
     }
     return el('ormDiagram:FactTypeShape', { id: keptId ?? normaId(`${d.id}:${F.id}:il:${k}`, 'shape'), IsExpanded: 'true',
@@ -1035,9 +1044,11 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     const [W, H] = vertical ? [across, along] : [along, across]
     const order = occ.roleOrder ?? f.roleOrder
     const reordered = Array.isArray(order) && order.length === f.roles.length && order.some((r, i) => r !== i)
-    // labels FreeFBM keeps at a set place: the reading, role value ranges,
-    // role names and the objectified fact type's name (the importer's
-    // placeLabel offsets, read back as centres; NORMA places the others)
+    // labels: the reading, role value ranges, role names and the objectified
+    // fact type's name, at the place FreeFBM keeps (the importer's placeLabel
+    // offsets, read back as centres) or else where FreeFBM draws them by
+    // default. NORMA saves a label shape for each, and viewers other than
+    // NORMA itself draw only the labels that have one.
     const g = { ...f, ...occ, x: occ.x, y: occ.y }
     const rel = []
     // NORMA's shape and FreeFBM's box, both relative to the occurrence's point
@@ -1045,19 +1056,40 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     const S = { l: Sabs.l - occ.x, r: Sabs.r - occ.x, t: Sabs.t - occ.y, b: Sabs.b - occ.y }
     const box = factLabelBox(g, Sabs)
     const rOff = g.readingAbove ? g.readingOffsetAbove : g.readingOffsetBelow
-    const firstOrder = f.readingParts ? f.roles.map((_, i) => i) : f.alternativeReadings?.[0]?.roleOrder
+    const firstOrder = f.readingParts?.some(p => p?.trim()) ? f.roles.map((_, i) => i) : f.alternativeReadings?.[0]?.roleOrder
     const unchanged = keptBounds(occ, factShapeKey)
-    if (rOff && firstOrder) rel.push(labelShape('ReadingShape', `${id}:reading`, occ, { x: rOff.dx, y: rOff.dy }, readingLabelSize(g), box, S, roIdOf(f, firstOrder.join(',')), rOff, unchanged))
+    const rSize = readingLabelSize(g)
+    if (firstOrder && rSize.w > 0) {
+      const c = rOff ? { x: rOff.dx, y: rOff.dy } : besideBox(box, rSize, vertical, !!g.readingAbove, { x: 0, y: 0 })
+      rel.push(labelShape('ReadingShape', `${id}:reading`, occ, c, rSize, box, S, roIdOf(f, firstOrder.join(',')), rOff, unchanged))
+    }
+    const shownOrder = reordered ? order : f.roles.map((_, i) => i)
     f.roles.forEach((r, ri) => {
       const a = roleAnchor(g, ri)
       const vo = occ.valueRangeOffsets?.[ri]
-      if (vo && r.valueRange?.length) rel.push(labelShape('ValueConstraintShape', `${id}:vr${ri}`, occ, { x: a.x + vo.dx, y: a.y + vo.dy }, rangeLabelSize(r.valueRange), box, S, r.normaValueConstraint?.id ?? normaId(r.id, 'valueconstraint'), vo, unchanged))
+      if (r.valueRange?.length) {
+        const size = rangeLabelSize(r.valueRange)
+        // FreeFBM's default: above the role box (left of it on a vertical fact
+        // type); inside an objectified fact type's outline its old place
+        const c = vo ? { x: a.x + vo.dx, y: a.y + vo.dy }
+          : f.objectified ? (vertical ? { x: a.x - 50, y: a.y } : { x: a.x, y: a.y - 50 })
+          : besideBox(box, size, vertical, true, a, true)
+        rel.push(labelShape('ValueConstraintShape', `${id}:vr${ri}`, occ, c, size, box, S, r.normaValueConstraint?.id ?? normaId(r.id, 'valueconstraint'), vo, unchanged))
+      }
       const no = occ.roleNameOffsets?.[ri]
       if (no && r.roleName) rel.push(labelShape('RoleNameShape', `${id}:rn${ri}`, occ, { x: a.x + no.dx, y: a.y + no.dy }, roleNameLabelSize(r.roleName), box, S, normaId(r.id), no, unchanged))
+      else if (r.roleName && occ.roleNamesShown !== false) {
+        // NORMA's own default place: up and to the left of the shape,
+        // cascading per role in the order shown
+        const k = Math.max(0, shownOrder.indexOf(ri))
+        rel.push(el('ormDiagram:RoleNameShape', { id: normaId(`${id}:rn${ri}`, 'label'), IsExpanded: 'true',
+          AbsoluteBounds: boundsAttr(cx - W / 2 - 0.2 + k * 0.15, cy - H / 2 - 0.2 - k * 0.15, inches(roleNameLabelSize(r.roleName).w), NORMA.lineHeight) },
+          [el('ormDiagram:Subject', { ref: normaId(r.id) })]))
+      }
     })
-    if (f.objectified && f.objectifiedName && occ.nameOffset && (occ.nameOffset.dx || occ.nameOffset.dy)) {
-      const a = nameAnchor(g, false)
-      rel.push(labelShape('ObjectifiedFactTypeNameShape', `${id}:name`, occ, { x: a.x + occ.nameOffset.dx, y: a.y + occ.nameOffset.dy }, nameLabelSize(f.objectifiedName), box, S, nestId(f.id), occ.nameOffset, unchanged))
+    if (f.objectified && f.objectifiedName) {
+      const a = nameAnchor(g, false), off = occ.nameOffset ?? { dx: 0, dy: 0 }
+      rel.push(labelShape('ObjectifiedFactTypeNameShape', `${id}:name`, occ, { x: a.x + off.dx, y: a.y + off.dy }, nameLabelSize(f.objectifiedName), box, S, nestId(f.id), occ.nameOffset ?? null, unchanged))
     }
     return el('ormDiagram:FactTypeShape', { id, IsExpanded: 'true', AbsoluteBounds: unchanged ?? boundsAttr(cx - W / 2, cy - H / 2, W, H),
       ConstraintDisplayPosition: below ? 'Bottom' : null, DisplayOrientation: vertical ? 'VerticalRotatedRight' : null,
@@ -1066,6 +1098,14 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       el('ormDiagram:Subject', { ref: normaId(f.id) }),
       reordered && el('ormDiagram:RoleDisplayOrder', {}, order.map(ri => el('ormDiagram:Role', { ref: roleIdOf(f, ri) }))),
     ])
+  }
+  // A label's centre just outside a fact type's box: below (above) it,
+  // centred on the point p along it, or on a vertical fact type left
+  // (right) of it, level with p; on the other side when the reading is there.
+  function besideBox(box, size, vertical, above, p, range = false) {
+    const GAP = 3
+    if (vertical) return (above !== range) ? { x: box.r + GAP + size.w / 2, y: p.y } : { x: box.l - GAP - size.w / 2, y: p.y }
+    return above ? { x: p.x, y: box.t - GAP - size.h / 2 } : { x: p.x, y: box.b + GAP + size.h / 2 }
   }
   // Levels of uniqueness bars as NORMA stacks them: single-role bars share
   // one level, each longer bar has its own (FactTypeNode's level assignment).
@@ -1123,9 +1163,12 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     for (const w of line.split(/\s+/)) { if (cur && (cur + ' ' + w).length > width) { out.push(cur); cur = w } else cur = cur ? `${cur} ${w}` : w }
     out.push(cur); return out.join('\n')
   }).join('\n')
+  // as wide as its longest line in NORMA's note font (NORMA neither wraps
+  // a note's text nor clips it to the shape), clear of the dog-ear
   const noteSize = (text) => {
     const lines = text.split('\n')
-    return { w: Math.max(...lines.map(l => l.length)) * 4.4 + 16, h: lines.length * NORMA.lineHeight * PX + 12 }
+    const width = (l) => { try { return measureDiagramText(l, NOTE_FONT_SIZE) } catch { return l.length * NOTE_FONT_SIZE * 0.5 } }
+    return { w: Math.ceil(Math.max(...lines.map(width)) + 2 * TEXT_X + FOLD), h: Math.ceil(lines.length * NOTE_LINE_HEIGHT + 12) }
   }
   // where an element is drawn: first diagram and occurrence
   const drawnAt = (elId) => {

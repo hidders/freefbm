@@ -292,6 +292,20 @@ are reported and wait for milestone 3. The checks pass on the sample model
 and all 104 current-format NORMA samples; labels come back within 6 px (the
 importer keeps a label reaching a little into its shape beside it).
 
+Labels (v1.2.59): NORMA saves a label shape for every reading, value and
+cardinality range, role name and objectified fact type name, and adds a
+missing one itself while it loads a file, but other viewers (the web viewer
+at ormsolutions.com) draw only the labels that have a shape. The export
+therefore writes one for each label: at the place FreeFBM keeps, or else
+where FreeFBM draws it by default (a reading centred below the fact type,
+above when its reading is above, left or right of a vertical one; a role
+value range above its role box; an object type's ranges at
+`defaultRangeOffset`, NORMA's own default; an objectified fact type's name
+centred above its outline), and role names not moved at NORMA's own default
+place (up and left of the shape, cascading per role). Model notes are as
+wide as their longest line measured in the note font (they were estimated
+at 4.4 px a character, so text ran past the note in the web viewer).
+
 Milestone 3 (v1.2.28): diagram notes as NORMA model notes with their
 shapes and references; definitions and notes of elements; groups with
 their members and colours (NORMA's shape grouping extension); custom
