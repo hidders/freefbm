@@ -39,7 +39,7 @@ import { addImportNote } from '../utils/importNotes.js'
 import { findRefMode } from '../utils/refMode.js'
 import { VALUE_KINDS, valueKindName } from '../utils/datatypeValues.js'
 import { normaTemporal } from './normaTemporal.js'
-import { otShapeKey, factShapeKey, noteShapeKey } from '../diagram/normaShapeKeys.js'
+import { otShapeKey, factShapeKey, noteShapeKey, subtypeLinkPairs } from '../diagram/normaShapeKeys.js'
 import { placeLabel, factLabelBox, readingLabelSize, rangeLabelSize, nameLabelSize, roleNameLabelSize, objectTypeLabelBox,
   roleAnchor, nameAnchor } from './normaLabels.js'
 import { PX_PER_INCH, NORMA } from '../diagram/normaGeometry.js'
@@ -1375,23 +1375,13 @@ export function importNorma(xmlText) {
       })
       occ.roleOccurrenceMap = map
     }
-    // subtype links: NORMA saves no shape for them but draws one between
-    // every shape of the subtype and every shape of the supertype, unless a
-    // shape's DisplayRelatedTypes says it attaches no supertypes (or no
-    // subtypes); FreeFBM keeps those pairs
+    // subtype links: NORMA saves no shape for them; it links each shape of
+    // the subtype to the nearest shape of the supertype, as far as their
+    // DisplayRelatedTypes allow (src/diagram/normaShapeKeys.js)
     diag.subtypeOccurrences = []
     diag.subtypeEndpointOccs = {}
-    const attachesSupertypes = (o) => !['AttachNoTypes', 'AttachSubtypes'].includes(o.displayRelatedTypes)
-    const attachesSubtypes = (o) => !['AttachNoTypes', 'AttachSupertypes'].includes(o.displayRelatedTypes)
     for (const st of subtypes) {
-      const pairs = []
-      for (const sub of occsOf(st.subId)) {
-        if (sub.refModeOwnerOccId || !attachesSupertypes(sub)) continue
-        for (const sup of occsOf(st.superId)) {
-          if (sup.refModeOwnerOccId || !attachesSubtypes(sup)) continue
-          pairs.push({ subOccId: sub.id, superOccId: sup.id })
-        }
-      }
+      const pairs = subtypeLinkPairs(occsOf(st.subId).filter(o => !o.refModeOwnerOccId), occsOf(st.superId).filter(o => !o.refModeOwnerOccId))
       if (!pairs.length) continue
       diag.subtypeOccurrences.push(st.id)
       diag.subtypeEndpointOccs[st.id] = pairs

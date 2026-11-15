@@ -284,9 +284,12 @@ function RefModeExpandCollapseButtons({ factId, occurrenceId, store }) {
 // Which subtype links this occurrence takes part in on the active diagram
 // (NORMA's DisplayRelatedTypes); only for a type that has subtype links.
 function SubtypeLinksShownField({ ot, store }) {
-  const occId = ot.occurrenceId
-  if (!occId || !(store.subtypes ?? []).some(st => st.subId === ot.id || st.superId === ot.id)) return null
+  if (!(store.subtypes ?? []).some(st => st.subId === ot.id || st.superId === ot.id)) return null
   const d = store.diagrams?.find(x => x.id === store.activeDiagramId)
+  // the selected shape of this type on the active diagram, else its only one
+  const occs = (d?.occurrences ?? []).filter(o => o.schemaElementId === ot.id && !o.refModeOwnerOccId)
+  const occId = occs.find(o => o.id === store.selectedOccurrenceId)?.id ?? (occs.length === 1 ? occs[0].id : null)
+  if (!occId) return null
   const value = (d?.occurrences ?? []).find(o => o.id === occId)?.displayRelatedTypes ?? 'AttachAllTypes'
   return (
     <Row>
