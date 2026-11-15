@@ -281,6 +281,28 @@ function RefModeExpandCollapseButtons({ factId, occurrenceId, store }) {
   )
 }
 
+// Which subtype links this occurrence takes part in on the active diagram
+// (NORMA's DisplayRelatedTypes); only for a type that has subtype links.
+function SubtypeLinksShownField({ ot, store }) {
+  const occId = ot.occurrenceId
+  if (!occId || !(store.subtypes ?? []).some(st => st.subId === ot.id || st.superId === ot.id)) return null
+  const d = store.diagrams?.find(x => x.id === store.activeDiagramId)
+  const value = (d?.occurrences ?? []).find(o => o.id === occId)?.displayRelatedTypes ?? 'AttachAllTypes'
+  return (
+    <Row>
+      <Label>Subtype links</Label>
+      <select value={value} onChange={e => store.setSubtypeLinksShown(occId, e.target.value)}
+        style={{ width: '100%', fontSize: 12 }}
+        title="Which subtype links this shape takes part in on this diagram (NORMA's Display Related Types)">
+        <option value="AttachAllTypes">all</option>
+        <option value="AttachSubtypes">from subtypes</option>
+        <option value="AttachSupertypes">to supertypes</option>
+        <option value="AttachNoTypes">none</option>
+      </select>
+    </Row>
+  )
+}
+
 // ── Diagrams-containing list ─────────────────────────────────────────────────
 // Shows which diagrams contain the given element, in tab order.
 // subtypeEndpointIds: [subId, superId] — for subtypes both endpoints must be in the diagram.
@@ -1269,6 +1291,7 @@ function ObjectTypeInspector({ ot }) {
         )
       )}
       <RefModeExpandCollapseButtons factId={ot.id} occurrenceId={ot.occurrenceId} store={store}/>
+      <SubtypeLinksShownField ot={ot} store={store}/>
       {ot.kind === 'entity' && refVt && (
         <Row>
           <Label>Datatype</Label>
