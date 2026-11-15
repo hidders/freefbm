@@ -251,6 +251,7 @@ export function importNorma(xmlText) {
   // ── object types ──────────────────────────────────────────────────────────
   const objects = kids(kid(model, 'Objects'))
   const objectifiedFacts = new Map()   // NORMA fact id → ObjectifiedType element (explicit only)
+  const implicitLinkOf = new Map()     // NORMA link fact type id → { factId, roleIndex, own, proxy }
   const nestingIds = new Map()         // NORMA fact id → NORMA's ids of its objectification
   for (const o of objects) {
     const id = attr(o, 'id'), name = attr(o, 'Name') ?? ''
@@ -577,6 +578,7 @@ export function importNorma(xmlText) {
     }
     if (!orig || orig.kind !== 'role' || !factById.get(orig.factId)?.objectified) continue
     const ilId = `${orig.factId}_il_${orig.roleIndex}`
+    implicitLinkOf.set(attr(lf, 'id'), { factId: orig.factId, roleIndex: orig.roleIndex, own: attr(own, 'id'), proxy: attr(proxy, 'id') })
     roleRef.set(attr(proxy, 'id'), { kind: 'role', factId: ilId, roleIndex: 1, link: true })
     roleRef.set(attr(own, 'id'), { kind: 'role', factId: ilId, roleIndex: 0, link: true })
     // readings, when they differ from the default
@@ -1143,6 +1145,9 @@ export function importNorma(xmlText) {
         const occ = { id: newOccId(), schemaElementId: ot.id, x: b.cx, y: b.cy }
         diag.occurrences.push(occ)
         if (attr(s, 'ExpandRefMode') === 'true') expandedOwners.push(occ)
+        // which subtype links NORMA attaches to this shape (default: all)
+        const related = attr(s, 'DisplayRelatedTypes')
+        if (related && related !== 'AttachAllTypes') occ.displayRelatedTypes = related
         const refShown = ot.kind === 'entity' && attr(s, 'ExpandRefMode') !== 'true' && !!refModeOf(ot.id)
         for (const rs of relativeShapes(s, 'ValueConstraintShape', 'CardinalityConstraintShape')) {
           const own = rangeOwner.get(attr(kid(rs, 'Subject'), 'ref'))
@@ -1156,6 +1161,8 @@ export function importNorma(xmlText) {
         if (!firstPos.has(ot.id)) firstPos.set(ot.id, { x: b.cx, y: b.cy })
       } else if (s.localName === 'FactTypeShape') {
         const f = factById.get(subj)
+        // a link fact type of an objectification, drawn: FreeFBM's shown implied link
+        if (!f && implicitLinkOf.has(subj)) { showImplicitLink(diag, s, implicitLinkOf.get(subj)); continue }
         if (!f) continue
         const occ = { id: newOccId(), schemaElementId: f.id, x: b.cx, y: b.cy }
         // FreeFBM's vertical fact type is NORMA's horizontal one turned a
@@ -1220,6 +1227,30 @@ export function importNorma(xmlText) {
     }
     finishDiagram(diag, expandedOwners)
     diagrams.push(diag)
+  }
+
+  // A drawn link fact type (F_il_k: role 0 the objectifying type, role 1 F's
+  // role k): shown on the diagram, at the middle of its role boxes, with
+  // NORMA's orientation and role order (its own role and the role proxy).
+  function showImplicitLink(diag, s, link) {
+    const key = `${link.factId}:${link.roleIndex}`
+    if (diag.shownImplicitLinks.includes(key)) return
+    const pos = {}
+    const orient = attr(s, 'DisplayOrientation')
+    const turnedLeft = orient === 'VerticalRotatedLeft'
+    if (orient && orient.startsWith('Vertical')) pos.orientation = 'vertical'
+    if ((attr(s, 'ConstraintDisplayPosition') === 'Bottom') !== turnedLeft) pos.uniquenessBelow = true
+    const rdo = refsOf(kid(s, 'RoleDisplayOrder'))
+    const display = rdo.length === 2 ? [...rdo] : [link.proxy, link.own]   // NORMA's FactRoles order
+    if (turnedLeft) display.reverse()
+    const ro = display.map(r => r === link.own ? 0 : 1)
+    if (ro[0] === 1) pos.roleOrder = [1, 0]
+    // one level of bars (the uniqueness on the objectifying type's role)
+    const mid = factRoleMiddle(s, { roles: [{}, {}], objectified: false }, { orientation: pos.orientation, uniquenessBelow: pos.uniquenessBelow })
+    pos.x = mid.x; pos.y = mid.y
+    pos.normaShape = { id: attr(s, 'id'), bounds: attr(s, 'AbsoluteBounds'), key: factShapeKey(pos) }
+    diag.shownImplicitLinks.push(key)
+    diag.implicitLinkPositions[`${link.factId}:il:${link.roleIndex}`] = pos
   }
 
   // The labels NORMA draws as shapes of their own (RelativeShapes) keep
@@ -1344,21 +1375,26 @@ export function importNorma(xmlText) {
       })
       occ.roleOccurrenceMap = map
     }
-    // subtype links: NORMA draws no shape for them, so link the closest pair
-    // of shapes (a type can be drawn more than once on a diagram)
+    // subtype links: NORMA saves no shape for them but draws one between
+    // every shape of the subtype and every shape of the supertype, unless a
+    // shape's DisplayRelatedTypes says it attaches no supertypes (or no
+    // subtypes); FreeFBM keeps those pairs
     diag.subtypeOccurrences = []
     diag.subtypeEndpointOccs = {}
+    const attachesSupertypes = (o) => !['AttachNoTypes', 'AttachSubtypes'].includes(o.displayRelatedTypes)
+    const attachesSubtypes = (o) => !['AttachNoTypes', 'AttachSupertypes'].includes(o.displayRelatedTypes)
     for (const st of subtypes) {
-      let best = null, bestD = Infinity
+      const pairs = []
       for (const sub of occsOf(st.subId)) {
-        if (sub.refModeOwnerOccId) continue
-        const sup = nearest(st.superId, sub.x, sub.y, o => !o.refModeOwnerOccId)
-        const d = sup ? Math.hypot(sup.x - sub.x, sup.y - sub.y) : Infinity
-        if (d < bestD) { bestD = d; best = { subOccId: sub.id, superOccId: sup.id } }
+        if (sub.refModeOwnerOccId || !attachesSupertypes(sub)) continue
+        for (const sup of occsOf(st.superId)) {
+          if (sup.refModeOwnerOccId || !attachesSubtypes(sup)) continue
+          pairs.push({ subOccId: sub.id, superOccId: sup.id })
+        }
       }
-      if (!best) continue
+      if (!pairs.length) continue
       diag.subtypeOccurrences.push(st.id)
-      diag.subtypeEndpointOccs[st.id] = [best]
+      diag.subtypeEndpointOccs[st.id] = pairs
     }
   }
 

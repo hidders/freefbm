@@ -369,6 +369,19 @@ constraints and 2,044 of 2,363 readings (the rest belong to old-style
 unaries, which FreeFBM reads as unaries). Not kept: NORMA-only parts that
 NORMA regenerates (relational and Barker views, generation settings).
 
+Round-trip diagram fixes (v1.2.41, after Jan's check in NORMA on
+2026-11-15): the summary note stays inside NORMA's canvas (beside the
+diagram when there is no room above it). Subtype links: NORMA saves none
+but draws one between every shape of the subtype and every shape of the
+supertype, unless a shape's DisplayRelatedTypes says it attaches no
+supertypes or subtypes; the import keeps that per occurrence
+(`displayRelatedTypes`) and draws exactly the pairs NORMA draws
+(`subtypeEndpointOccs`), and the export derives the attribute from
+FreeFBM's pairs, so no new setting is needed. Drawn link fact types of
+objectifications (such as "is typed as") are imported as FreeFBM's shown
+implied links (`shownImplicitLinks`, `implicitLinkPositions` with NORMA's
+shape kept) and exported as FactTypeShapes of the link fact types.
+
 Check in NORMA (2026-11-14, SamplePopulationExtraction): the error list
 holds only the five rules that stay informal (closures, a value
 condition, rules without a complete FreeFBM formula); join paths and the

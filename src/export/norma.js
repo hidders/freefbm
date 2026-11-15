@@ -850,7 +850,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
           rel.push(labelShape('CardinalityConstraintShape', `${shapeId(occ)}:cr`, occ, { x: cOff.dx, y: cOff.dy }, rangeLabelSize(ot.cardinalityRange, true), otBox, S, ot.normaCardinality?.id ?? normaId(ot.id, 'cardinality'), cOff, keptBounds(occ, otShapeKey)))
         shapes.push(el('ormDiagram:ObjectTypeShape', { id: shapeId(occ), IsExpanded: 'true',
           AbsoluteBounds: keptBounds(occ, otShapeKey) ?? boundsAttr(inches(occ.x) - W / 2, inches(occ.y) - H / 2, W, H),
-          ExpandRefMode: rm && expanded.has(occ.id) ? 'true' : null }, [
+          ExpandRefMode: rm && expanded.has(occ.id) ? 'true' : null, DisplayRelatedTypes: relatedTypes(d, occ) }, [
           rel.length && el('ormDiagram:RelativeShapes', {}, rel),
           el('ormDiagram:Subject', { ref: normaId(ot.id) }),
         ]))
@@ -858,6 +858,13 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       }
       const f = factById.get(occ.schemaElementId)
       if (f) { shapes.push(factShape(f, occ, shapeId(occ))); continue }
+    }
+    // shown link fact types of objectifications (FreeFBM's implied links)
+    for (const key of d.shownImplicitLinks ?? []) {
+      const [fid, kStr] = key.split(':'), k = Number(kStr)
+      const F = factById.get(fid)
+      if (!F || nests.get(fid)?.implied !== false || !F.roles[k]) continue
+      shapes.push(linkShape(d, F, k))
     }
     for (const co of d.constraintOccurrences ?? []) {
       const sh = shapeOf.get(co.schemaConstraintId)
@@ -925,6 +932,54 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     const W = inches(wn), H = NORMA.lineHeight
     return el(`ormDiagram:${kind}`, { id: normaId(key, 'label'), IsExpanded: 'true', AbsoluteBounds: boundsAttr(inches(occ.x + x) - W / 2, inches(occ.y + y) - H / 2, W, H) },
       [el('ormDiagram:Subject', { ref: subject })])
+  }
+
+  // NORMA draws a subtype link between every shape of the subtype and every
+  // shape of the supertype; FreeFBM draws the pairs in subtypeEndpointOccs.
+  // A shape that FreeFBM links to none of its supertypes (subtypes) while
+  // the diagram shows such links attaches no supertypes (subtypes) in NORMA.
+  function relatedTypes(d, occ) {
+    const shown = new Set(d.subtypeOccurrences ?? [])
+    const pairs = (st) => { const raw = d.subtypeEndpointOccs?.[st.id]; return Array.isArray(raw) ? raw : raw ? [raw] : [] }
+    let asSub = null, asSuper = null   // null: no shown link concerns it; true/false: this shape takes part
+    for (const st of subtypes) {
+      if (!shown.has(st.id)) continue
+      const ps = pairs(st)
+      if (st.subId === occ.schemaElementId) asSub = (asSub ?? false) || (ps.length ? ps.some(p => p.subOccId === occ.id) : true)
+      if (st.superId === occ.schemaElementId) asSuper = (asSuper ?? false) || (ps.length ? ps.some(p => p.superOccId === occ.id) : true)
+    }
+    const supers = asSub !== false, subs = asSuper !== false
+    return supers && subs ? null : supers ? 'AttachSupertypes' : subs ? 'AttachSubtypes' : 'AttachNoTypes'
+  }
+
+  // A link fact type's shape (role 0 the objectifying type, role 1 F's role
+  // k), at its place on the diagram or, as FreeFBM draws it by default,
+  // halfway between the objectified fact type and the role's player.
+  function linkShape(d, F, k) {
+    const L = linkIdsOf(F.id, k)
+    const occOf = (id) => (d.occurrences ?? []).find(o => o.schemaElementId === id && !o.refModeOwnerOccId)
+    const pos = d.implicitLinkPositions?.[`${F.id}:il:${k}`]
+    const fo = occOf(F.id), po = occOf(F.roles[k].objectTypeId)
+    const at = pos?.x != null ? { ...pos } : { x: fo && po ? Math.round((fo.x + po.x) / 2) : (fo?.x ?? 0), y: fo && po ? Math.round((fo.y + po.y) / 2) : (fo?.y ?? 0) }
+    const vertical = (pos?.orientation ?? F.implicitLinks?.find(x => x.roleIndex === k)?.orientation) === 'vertical'
+    const below = !!pos?.uniquenessBelow
+    const levels = 1, pen = 1 / 72, m = NORMA.factBorder
+    const along = 2 * NORMA.roleBox.width + 2 * m + pen, across = NORMA.roleBox.height + levels * NORMA.constraintBand + 2 * m + pen
+    const shift = levels * NORMA.constraintBand / 2
+    let cx = inches(at.x), cy = inches(at.y)
+    if (vertical) cx -= below ? shift : -shift
+    else cy -= below ? -shift : shift
+    const [W, H] = vertical ? [across, along] : [along, across]
+    // NORMA shows the role proxy (F's role) first unless told otherwise
+    const order = pos?.roleOrder ?? [0, 1]
+    const keptId = pos?.normaShape?.id && !usedShapeIds.has(pos.normaShape.id) ? pos.normaShape.id : null
+    if (keptId) usedShapeIds.set(keptId, pos)
+    return el('ormDiagram:FactTypeShape', { id: keptId ?? normaId(`${d.id}:${F.id}:il:${k}`, 'shape'), IsExpanded: 'true',
+      AbsoluteBounds: (pos && keptBounds(pos, factShapeKey)) ?? boundsAttr(cx - W / 2, cy - H / 2, W, H),
+      ConstraintDisplayPosition: below ? 'Bottom' : null, DisplayOrientation: vertical ? 'VerticalRotatedRight' : null }, [
+      el('ormDiagram:Subject', { ref: L.fact }),
+      order[0] === 0 && el('ormDiagram:RoleDisplayOrder', {}, [el('ormDiagram:Role', { ref: L.role }), el('ormDiagram:Role', { ref: L.proxy })]),
+    ])
   }
 
   // NORMA's frequency circle grows with its text (0.2247 in for "≥ 2")
@@ -1071,11 +1126,16 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     modelNotes.set(id, { id, text, refs: new Set() })
     const d = diagrams[0]
     if (d) {
-      // above and left of everything on the diagram, notes included
+      // above everything on the diagram (notes included) when there is room
+      // below NORMA's top edge, else to the right of it; never off the canvas
       const tops = [...(d.occurrences ?? []).map(o => o.y - 25), ...(d.notes ?? []).map(n => n.y - (n.h ?? 0) / 2), ...(d.constraintOccurrences ?? []).map(o => o.y - 20)]
       const lefts = [...(d.occurrences ?? []).map(o => o.x - 60), ...(d.notes ?? []).map(n => n.x - (n.w ?? 0) / 2)]
+      const rights = [...(d.occurrences ?? []).map(o => o.x + 60), ...(d.notes ?? []).map(n => n.x + (n.w ?? 0) / 2)]
       const { w, h } = noteSize(text)
-      addNoteShape(d.id, id, lefts.length ? Math.min(...lefts) : 40, (tops.length ? Math.min(...tops) : 100) - h - 30, w, h)
+      const top = tops.length ? Math.min(...tops) : 100, left = lefts.length ? Math.min(...lefts) : 40
+      const MARGIN = 20
+      if (top - h - 30 >= MARGIN) addNoteShape(d.id, id, Math.max(MARGIN, left), top - h - 30, w, h)
+      else addNoteShape(d.id, id, (rights.length ? Math.max(...rights) : 400) + 60, Math.max(MARGIN, top), w, h)
     }
   }
   const modelNoteEls = [...modelNotes.values()].map(mn => el('orm:ModelNote', { id: mn.id }, [
