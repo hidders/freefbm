@@ -6,6 +6,7 @@ import { entityBounds, computeOtSize } from './ObjectTypeNode'
 import { factBounds, nestedFactBounds, ROLE_W, ROLE_H, ROLE_GAP } from './FactTypeNode'
 import { mappingErdBoxes, erdLayout, isErdDiagram } from './ErdView'
 import { relationalModel } from '../relational/relationalModel'
+import { zoomPercent } from '../utils/viewScale.js'
 
 const MM_W  = 170
 const MM_H  = 110
@@ -243,7 +244,7 @@ export default function Minimap() {
         }}>
           <span style={{ fontSize: 11 }}>⊟</span>
           <span>minimap</span>
-          <span>{Math.round(store.zoom * 100)}%</span>
+          <span>{zoomPercent(store.zoom)}%</span>
         </div>
 
         {/* Panel content (fades out when collapsed) */}
@@ -271,7 +272,7 @@ export default function Minimap() {
           ⠿ minimap
         </span>
         <span style={{ fontSize: 9, color: 'var(--ink-muted)', pointerEvents: 'none' }}>
-          {Math.round(store.zoom * 100)}%
+          {zoomPercent(store.zoom)}%
         </span>
         <button
           onMouseDown={e => e.stopPropagation()}

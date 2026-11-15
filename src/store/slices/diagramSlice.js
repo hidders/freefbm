@@ -12,6 +12,7 @@ import { erdSchemasOfDiagram } from '../../relational/face.js'
 import { relationalModel } from '../../relational/relationalModel.js'
 import { neighbourUnits, connectPath } from '../../utils/neighbourhood.js'
 import { carriedDiagrams } from '../../mapping/carryDiagrams.js'
+import { BASE_ZOOM } from '../../utils/viewScale.js'
 
 // Module-level variable for pan animation — only used by centerOnElement/centerOnOccurrence
 let _panAnimId = null
@@ -199,14 +200,14 @@ export function createDiagramSlice(set, get) {
 
     setPan(x, y)  { set({ pan: { x, y } }) },
     setZoom(z)    { set({ zoom: Math.min(3, Math.max(0.15, z)) }) },
-    zoomBy(delta) { set(s => ({ zoom: Math.min(3, Math.max(0.15, s.zoom + delta)) })) },
+    zoomBy(delta) { set(s => ({ zoom: Math.min(3, Math.max(0.15, s.zoom + delta * BASE_ZOOM)) })) },
     // An ERD is shown at 100% with its top-left table a margin away from the
     // canvas corner; other diagrams at the origin.
     resetView() {
       const s = get()
       const diagram = s.diagrams?.find(d => d.id === s.activeDiagramId)
       const b = isErdDiagram(s, diagram) ? erdBounds(s, diagram) : null
-      set({ pan: b ? { x: ERD_MARGIN - b.minX, y: ERD_MARGIN - b.minY } : { x: 0, y: 0 }, zoom: 1 })
+      set({ pan: b ? { x: ERD_MARGIN - b.minX, y: ERD_MARGIN - b.minY } : { x: 0, y: 0 }, zoom: BASE_ZOOM })
     },
     fitToContent(vpW = 1200, vpH = 700) {
       const { objectTypes, facts, constraints, diagrams, activeDiagramId } = get()
@@ -216,7 +217,7 @@ export function createDiagramSlice(set, get) {
       if (isErdDiagram(get(), diagram)) {
         const b = erdBounds(get(), diagram)
         if (!b) return
-        const zoom = Math.max(0.15, Math.min(1, (vpW - 2 * ERD_MARGIN) / (b.maxX - b.minX), (vpH - 2 * ERD_MARGIN) / (b.maxY - b.minY)))
+        const zoom = Math.max(0.15, Math.min(BASE_ZOOM, (vpW - 2 * ERD_MARGIN) / (b.maxX - b.minX), (vpH - 2 * ERD_MARGIN) / (b.maxY - b.minY)))
         set({ zoom, pan: { x: ERD_MARGIN - b.minX * zoom, y: ERD_MARGIN - b.minY * zoom } })
         return
       }
@@ -251,11 +252,11 @@ export function createDiagramSlice(set, get) {
       // corner near the canvas corner, so a wide diagram doesn't shrink to a
       // strip in the middle.
       if (diagram?.mappingId) {
-        const z = Math.max(0.5, Math.min(1, vpW / worldW, vpH / worldH))
+        const z = Math.max(0.5 * BASE_ZOOM, Math.min(BASE_ZOOM, vpW / worldW, vpH / worldH))
         set({ zoom: z, pan: { x: -minX * z, y: -minY * z } })
         return
       }
-      const zoom = Math.min(vpW / worldW, vpH / worldH, 2)
+      const zoom = Math.min(vpW / worldW, vpH / worldH, 2 * BASE_ZOOM)
       set({
         zoom,
         pan: {
@@ -282,7 +283,7 @@ export function createDiagramSlice(set, get) {
       set(s => {
         // In v2 all diagrams already have explicit occurrences lists (no show-all concept).
         // No migration needed — just add the new empty diagram.
-        return { diagrams: [...s.diagrams, d], activeDiagramId: d.id, pan: { x: 0, y: 0 }, zoom: 1, isDirty: true }
+        return { diagrams: [...s.diagrams, d], activeDiagramId: d.id, pan: { x: 0, y: 0 }, zoom: BASE_ZOOM, isDirty: true }
       })
       return d.id
     },
@@ -408,7 +409,7 @@ export function createDiagramSlice(set, get) {
         diagrams:        savedDiagrams,
         activeDiagramId: id,
         pan:             incoming?.pan  ?? { x: 0, y: 0 },
-        zoom:            incoming?.zoom ?? 1,
+        zoom:            incoming?.zoom ?? BASE_ZOOM,
         multiSelectedIds: restoredSelection,
         multiSelectedOccurrenceIds: restoredOccIds,
         selectedRuleIds: [],
@@ -688,7 +689,7 @@ export function createDiagramSlice(set, get) {
       if (at) { wx = at.x + at.w / 2; wy = at.y + at.h / 2 }
       const svg = typeof document !== 'undefined' ? document.getElementById('orm2-canvas-svg') : null
       const rect = svg?.getBoundingClientRect()
-      if (rect) set({ zoom: 1, pan: { x: rect.width * 0.4 - wx, y: rect.height / 2 - wy } })
+      if (rect) set({ zoom: BASE_ZOOM, pan: { x: rect.width * 0.4 - BASE_ZOOM * wx, y: rect.height / 2 - BASE_ZOOM * wy } })
       set({ neighbourPicker: { diagramId: id, elementId, occurrenceId: occ?.id ?? null } })
       return id
     },
