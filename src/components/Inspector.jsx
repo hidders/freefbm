@@ -2886,9 +2886,10 @@ function FactPresentationSubsection({ fact, store }) {
         <Label>Reading position</Label>
         {fact.objectified && (
           <Checkbox
-            label="Fact type reading"
+            label="Inside entity type"
+            title={fact.displayAsObjectType ? 'The reading is not shown while this fact type is drawn as an object type' : undefined}
             checked={!!fact.nestedReading}
-            disabled={fact.orientation === 'vertical'}
+            disabled={fact.orientation === 'vertical' || !!fact.displayAsObjectType}
             onChange={v => {
               const patch = { nestedReading: v }
               if (!v && fact.readingAbove) { patch.readingAbove = false; patch.readingOffsetAbove = null; patch.readingOffsetBelow = null }
@@ -2899,6 +2900,9 @@ function FactPresentationSubsection({ fact, store }) {
       </Row>
       {(() => {
         const isVert = fact.orientation === 'vertical'
+        // collapsed (drawn as an object type): the reading is not shown
+        const collapsed = !!(fact.objectified && fact.displayAsObjectType)
+        const collapsedTitle = collapsed ? 'The reading is not shown while this fact type is drawn as an object type' : undefined
         const storedOff = fact.readingAbove ? fact.readingOffsetAbove : fact.readingOffsetBelow
         const posValue  = storedOff !== null ? 'free' : fact.readingAbove ? 'above' : 'below'
 
@@ -2908,13 +2912,13 @@ function FactPresentationSubsection({ fact, store }) {
           const horizValue = storedOff !== null ? 'free' : 'below'
           const horizOpts  = [
             { value: 'above', label: 'Above', disabled: true },
-            { value: 'below', label: 'Below', disabled: false },
+            { value: 'below', label: 'Below', disabled: collapsed },
             { value: 'free',  label: 'Free',  disabled: true },
           ]
           return (
             <Row>
               {horizOpts.map(opt => (
-                <label key={opt.value} style={{
+                <label key={opt.value} title={collapsedTitle} style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   fontSize: 12, marginBottom: 3,
                   cursor: opt.disabled ? 'not-allowed' : 'pointer',
@@ -2947,23 +2951,23 @@ function FactPresentationSubsection({ fact, store }) {
         return (
           <Row>
             {opts.map(opt => (
-              <label key={opt.value} style={{
+              <label key={opt.value} title={collapsedTitle} style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 fontSize: 12, marginBottom: 3,
-                cursor: opt.value === 'free' ? 'not-allowed' : 'pointer',
-                color: 'var(--ink-2)',
+                cursor: opt.value === 'free' || collapsed ? 'not-allowed' : 'pointer',
+                color: collapsed ? 'var(--ink-muted)' : 'var(--ink-2)',
               }}>
                 <input type="radio"
                   name={`rpos-${fact.id}`}
                   value={opt.value}
                   checked={posValue === opt.value}
-                  disabled={opt.value === 'free'}
+                  disabled={opt.value === 'free' || collapsed}
                   onChange={() => store.updateFactLayout(fact.id, {
                     readingAbove: opt.value === 'above',
                     readingOffsetAbove: null,
                     readingOffsetBelow: null,
                   })}
-                  style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: opt.value === 'free' ? 'not-allowed' : 'pointer' }}
+                  style={{ width: 'auto', padding: 0, border: 'none', accentColor: 'var(--accent)', cursor: opt.value === 'free' || collapsed ? 'not-allowed' : 'pointer' }}
                 />
                 {opt.label}
               </label>
