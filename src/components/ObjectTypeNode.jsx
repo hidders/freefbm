@@ -66,6 +66,18 @@ const OT_H_DOUBLE   = 2 * OT_LINE_H + 2 * OT_PAD_Y   // box height with name + r
 export const OT_RADIUS = px(NORMA.objectType.radius)
 export const OT_STROKE = pt(NORMA.objectType.penPt)
 
+// NORMA's default places for the range labels of a shape w × h: right of it,
+// 0.06 in from its edge; a value range one line up (the bottom of its line
+// level with the shape's top), a cardinality range level with the top.
+const RANGE_LABEL_GAP = px(0.06)
+export function defaultRangeOffset(w, h, text, cardinality = false) {
+  const tw = measureText(text, pt(NORMA.fontSizePt))
+  return {
+    dx: w / 2 + RANGE_LABEL_GAP + tw / 2,
+    dy: cardinality ? -h / 2 + OT_LINE_H / 2 : -h / 2 - OT_LINE_H / 2,
+  }
+}
+
 function fmtDate(v) {
   if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
     const [y, m, d] = v.split('-')
@@ -603,9 +615,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
         const vr = formatValueRange(vrTarget.range)
         if (!vr) return null
         const _dimOpacity = dimInternalConstraints ? 0.15 : 1
-        const AUTO_DX = 0
-        const AUTO_DY = h / 2 + 14
-        const off = vrLive ?? (ot.valueRangeOffset ?? { dx: AUTO_DX, dy: AUTO_DY })
+        const off = vrLive ?? (ot.valueRangeOffset ?? defaultRangeOffset(w, h, vr))
         const tx = ot.x + off.dx
         const ty = ot.y + off.dy
 
@@ -680,9 +690,7 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
         const cr = formatCardinalityRange(ot.cardinalityRange)
         if (!cr) return null
         const _dimOpacity = dimInternalConstraints ? 0.15 : 1
-        const AUTO_DX = 0
-        const AUTO_DY = -(h / 2 + 14)
-        const off = crLive ?? (ot.cardinalityRangeOffset ?? { dx: AUTO_DX, dy: AUTO_DY })
+        const off = crLive ?? (ot.cardinalityRangeOffset ?? defaultRangeOffset(w, h, cr, true))
         const tx = ot.x + off.dx
         const ty = ot.y + off.dy
 
