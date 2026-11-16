@@ -497,7 +497,7 @@ const BAR_MARGIN       = ROLE_STROKE / 2 + BAR_SPACING / 2 + BAR_H / 2 - BAR_SPA
 const DEONTIC_R        = px(NORMA.constraintBand) / 2 - BAR_H   // radius of the circle that starts a deontic uniqueness bar (NORMA's)
 // From the outermost rake spine's comfort zone to the first bar's inner edge
 // when rakes sit on the bars' side, and the margin that gives in the formulas.
-const RAKE_BAR_GAP     = 3
+const RAKE_BAR_GAP     = 8
 const RAKE_BAR_MARGIN  = RAKE_BAR_GAP + BAR_H - BAR_SPACING
 const barMarginWith    = (rakeZone) => rakeZone > 0 ? RAKE_BAR_MARGIN : BAR_MARGIN
 // From a bar's outer edge to the outer edge of its band (NORMA draws each bar
