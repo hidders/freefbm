@@ -3,6 +3,7 @@ import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds } from './ObjectTypeNode'
 import { ROLE_W, ROLE_H, ROLE_GAP, nestedFactBounds, displayRoleOrder, roleCenter } from './FactTypeNode'
+import { rectBorderPoint } from '../diagram/rectBorder.js'
 export { roleAnchor } from '../utils/geometry'
 import { roleAnchor } from '../utils/geometry'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
@@ -33,22 +34,6 @@ function defaultRoleNamePos(anchor, border, roleName) {
   const along = Math.min(len / 2, 6 + Math.abs(ux) * w / 2 + Math.abs(uy) * NAME_H / 2)
   const clear = Math.abs(nx) * w / 2 + Math.abs(ny) * NAME_H / 2 + 2
   return { x: anchor.x + ux * along + nx * clear, y: anchor.y + uy * along + ny * clear }
-}
-
-/**
- * Returns the nearest point on the border of a rect defined by {left,right,top,bottom,cx,cy}
- * facing toward (tx, ty).
- */
-function rectBorderPoint(b, tx, ty) {
-  const cx = b.cx, cy = b.cy
-  const dx = tx - cx, dy = ty - cy
-  if (dx === 0 && dy === 0) return { x: cx, y: cy }
-  const hw = (b.right - b.left) / 2
-  const hh = (b.bottom - b.top) / 2
-  const t  = Math.abs(dx) * hh > Math.abs(dy) * hw
-    ? hw / Math.abs(dx)
-    : hh / Math.abs(dy)
-  return { x: cx + dx * t, y: cy + dy * t }
 }
 
 function otBorderPoint(ot, tx, ty) {

@@ -1,5 +1,5 @@
 import { entityBounds } from '../components/ObjectTypeNode'
-import { factBounds }   from '../components/FactTypeNode'
+import { factBounds, makeImplicitLinkFact } from '../components/FactTypeNode'
 import { getDiagramElements } from '../hooks/useDiagramElements'
 
 const PAD = 30
@@ -8,12 +8,18 @@ const escapeHtml = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<'
 
 function computeBounds(store) {
   const { objectTypes, facts, constraints } = getDiagramElements(store)
+  // shown link fact types, drawn once per objectified fact type as on the canvas
+  const linkFacts = facts
+    .filter((f, i, list) => f.objectified && !f._implicit && list.findIndex(g => g.id === f.id) === i)
+    .flatMap(f => (f.implicitLinks || [])
+      .filter(il => store.isImplicitLinkShown(f.id, il.roleIndex))
+      .map(il => makeImplicitLinkFact(f, il)))
   const all = [
     ...objectTypes.map(ot => {
       const b = entityBounds(ot)
       return { minX: b.left, minY: b.top, maxX: b.right, maxY: b.bottom }
     }),
-    ...facts.map(f => {
+    ...[...facts, ...linkFacts].map(f => {
       const b = factBounds(f)
       return { minX: b.left, minY: b.top, maxX: b.right, maxY: b.bottom }
     }),
