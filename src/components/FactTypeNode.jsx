@@ -504,6 +504,7 @@ const BAR_BAND_END     = BAR_SPACING / 2 - BAR_H / 2
 const OBJ_MARGIN_X     = px(NORMA.objectified.marginX)
 const OBJ_MARGIN_Y     = px(NORMA.objectified.marginY)
 const PREF_OFFSET      = 0.75 * BAR_H                    // shift for preferred uniqueness bar
+const STUB_W           = pt(NORMA.rolePlayerPenPt)       // pen of the stub to an objectification's frame, as a constraint connector's
 // How far the ink of `levels` levels of uniqueness bars reaches beyond the
 // role boxes' edge (a preferred identifier's outer line 2 × PREF_OFFSET
 // further), or the role boxes' own pen without bars; no rakes counted.
@@ -1446,8 +1447,13 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   const effBarMargin_v = rakeZone_v > 0 ? 0 : BAR_MARGIN
   const preferredKeys = new Set((fact.preferredUniqueness || []).map(pu => JSON.stringify([...pu].sort((a, b) => a - b))))
   // The uniqueness constraint that identifies the objectified fact type is
-  // drawn as a preferred identifier too, as in NORMA.
-  if (fact.objectified && Array.isArray(fact.objectifiedIdentifier)) preferredKeys.add(JSON.stringify([...fact.objectifiedIdentifier].sort((a, b) => a - b)))
+  // not drawn double (that says it identifies the player of the role it
+  // leaves out, as without objectification) but gets a dashed stub, drawn as
+  // a constraint connector, from the middle of the bar to the frame (Jan,
+  // 2026-11-16; NORMA draws it double).
+  const objectifiedKey = fact.objectified && !fact._implicit && !fact.displayAsObjectType && Array.isArray(fact.objectifiedIdentifier)
+    ? JSON.stringify([...fact.objectifiedIdentifier].sort((a, b) => a - b)) : null
+  const identifiesObjectification = (uRoles) => objectifiedKey != null && objectifiedKey === JSON.stringify([...uRoles].sort((a, b) => a - b))
   // Deontic uniqueness constraints are drawn in blue with a small circle at
   // the start of the bar, as in NORMA.
   const deonticKeys = new Set((fact.deonticUniqueness || []).map(du => JSON.stringify([...du].sort((a, b) => a - b))))
@@ -1935,6 +1941,28 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   // When external-constraint connectors form rake heads next to the role boxes of an
   // objectified fact the outer entity box must be large enough to contain them.
   const nestedRakePad = nestedRakePadOf(fact, rakeCounts)
+
+  // The stub from a bar that identifies the objectified fact type to the
+  // frame on the bars' side: at the middle of the bar's solid runs, from the
+  // bar's outer edge (a double bar's outer line) to the frame's edge.
+  const identifierStub = (runs, at, isPreferred, sw, stroke) => {
+    if (objectifiedKey == null) return null
+    const solid = runs.filter(r => r.solid)
+    if (!solid.length) return null
+    const nb = nestedFactBounds(fact, nestedRakePad)
+    const reach = (isPreferred ? PREF_OFFSET : 0) + sw / 2
+    const common = { stroke, strokeWidth: STUB_W, strokeDasharray: '4 2', 'data-look': 'identifier-stub', 'data-occ': occurrenceId }
+    if (isVertical) {
+      const y = (Math.min(...solid.map(r => r.y1)) + Math.max(...solid.map(r => r.y2))) / 2
+      const x1 = barsBelow ? at - reach : at + reach
+      const x2 = barsBelow ? nb.left : nb.right
+      return <line {...common} x1={x1} y1={y} x2={x2} y2={y}/>
+    }
+    const x = (Math.min(...solid.map(r => r.x1)) + Math.max(...solid.map(r => r.x2))) / 2
+    const y1 = barsBelow ? at + reach : at - reach
+    const y2 = barsBelow ? nb.bottom : nb.top
+    return <line {...common} x1={x} y1={y1} x2={x} y2={y2}/>
+  }
 
   // ── Nested fact VR/CR annotations (computed here so they render outside the glow group) ──
   const nestedVrAnnotation = !fact.objectified ? null : (() => {
@@ -2734,6 +2762,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                   ))
                 )}
                 {dot && <circle cx={barX} cy={dot.cy} r={DEONTIC_R} fill="var(--bg-diagram)" stroke={barStroke} strokeWidth={1.3}/>}
+                {!isEditing && identifiesObjectification(uRoles) && identifierStub(runs, barX, isPreferred, sw, barStroke)}
               </g>
             )
           })}
@@ -2932,6 +2961,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
                   ))
                 )}
                 {dot && <circle cx={dot.cx} cy={barY} r={DEONTIC_R} fill="var(--bg-diagram)" stroke={barStroke} strokeWidth={1.3}/>}
+                {!isEditing && identifiesObjectification(uRoles) && identifierStub(runs, barY, isPreferred, sw, barStroke)}
               </g>
             )
           })}
