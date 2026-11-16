@@ -122,6 +122,54 @@ export function collapsedGlyphLayout(fact, w) {
   return { n, x: GLYPH_GAP + ROLE_STROKE / 2, w: n * GLYPH_BOX_W, h: GLYPH_H, textCx: (field + w - 2 * GLYPH_GAP) / 2 }
 }
 
+// fact type id → its entity roles in some entity type's external preferred
+// identifier; kept while the schema's arrays are the same.
+let compositeCache = null
+function compositeIdentifierRoles(state) {
+  const c = compositeCache
+  if (c && c.objectTypes === state.objectTypes && c.facts === state.facts && c.constraints === state.constraints) return c.byFact
+  const byFact = new Map()
+  for (const ot of state.objectTypes) {
+    if (ot.kind !== 'entity') continue
+    const cp = findCompositePI(ot, state.facts, state.objectTypes, state.constraints)
+    if (!cp?.factIds) continue
+    cp.factIds.forEach((fid, ci) => {
+      const ri = cp.entityRoleIndices?.[ci] ?? cp.entityRoleIndex
+      if (ri != null) { if (!byFact.has(fid)) byFact.set(fid, []); byFact.get(fid).push(ri) }
+    })
+  }
+  compositeCache = { objectTypes: state.objectTypes, facts: state.facts, constraints: state.constraints, byFact }
+  return byFact
+}
+
+// Roles that get an implied unary uniqueness bar (and mandatory dot): the
+// roles a preferred uniqueness constraint leaves out, and the entity role of
+// each binary in an entity type's external preferred identifier, unless a
+// real unary constraint already covers them. They count as bar levels, so the
+// frame of an objectified fact type is as tall as they make it.
+// Link fact types get none here (the Inspector looks them up by the parent).
+export function impliedUnaryRoles(fact, state = useOrmStore.getState()) {
+  const existingUnaryRoles = new Set(
+    (fact.uniqueness || []).filter(u => u.roles.length === 1).map(u => u.roles[0])
+  )
+  const impliedRoles = []
+  if (fact._implicit) return impliedRoles
+  ;(fact.preferredUniqueness || []).forEach(pu => {
+    const covered = new Set(pu)
+    for (let ri = 0; ri < fact.arity; ri++) {
+      if (!covered.has(ri) && !existingUnaryRoles.has(ri) && !impliedRoles.includes(ri)) {
+        impliedRoles.push(ri)
+      }
+    }
+  })
+  for (const entityRoleIdx of compositeIdentifierRoles(state).get(fact.id) ?? []) {
+    if (!existingUnaryRoles.has(entityRoleIdx) && !impliedRoles.includes(entityRoleIdx)) {
+      impliedRoles.push(entityRoleIdx)
+    }
+  }
+  return impliedRoles
+}
+
 export function nestedFactBounds(fact, rakeMinPad = {}) {
   if (fact.displayAsObjectType) {
     const { w, h } = collapsedObjectificationBox(fact)
@@ -135,11 +183,12 @@ export function nestedFactBounds(fact, rakeMinPad = {}) {
   const barsBelow = !!fact.uniquenessBelow
 
   // Compute how many uniqueness bar levels are used (mirrors render logic)
-  const hasUnary  = fact.uniqueness?.some(u => u.roles.length === 1) ?? false
+  const implied   = impliedUnaryRoles(fact)
+  const hasUnary  = (fact.uniqueness?.some(u => u.roles.length === 1) ?? false) || implied.length > 0
   let multiLevel  = hasUnary ? 0 : -1
   for (const u of (fact.uniqueness || [])) if (u.roles.length > 1) multiLevel++
   const multiCount = multiLevel
-  const hasAnyBar  = (fact.uniqueness?.length ?? 0) > 0
+  const hasAnyBar  = (fact.uniqueness?.length ?? 0) > 0 || implied.length > 0
   const effBarMargin = rakeZoneOnBarSide > 0 ? 0 : BAR_MARGIN
   const barSpace   = hasAnyBar
     ? effBarMargin + rakeZoneOnBarSide + BAR_SPACING * (multiCount + 1) + BAR_BAND_END + PAD_Y
@@ -1306,32 +1355,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   // Skipped for implicit-link synthetic facts — the inspector lookup uses the
   // parent fact id, so implied selection wouldn't resolve correctly here.
   // Computed before level assignment so that implied roles can influence hasUnary.
-  const existingUnaryRoles = new Set(
-    fact.uniqueness.filter(u => u.roles.length === 1).map(u => u.roles[0])
-  )
-  const impliedRoles = []
-  if (!fact._implicit) {
-    ;(fact.preferredUniqueness || []).forEach(pu => {
-      const covered = new Set(pu)
-      for (let ri = 0; ri < fact.arity; ri++) {
-        if (!covered.has(ri) && !existingUnaryRoles.has(ri) && !impliedRoles.includes(ri)) {
-          impliedRoles.push(ri)
-        }
-      }
-    })
-    // Cross-fact external uniqueness PI: the entity role in each involved binary
-    // fact also gets an implied unary UC + mandatory.
-    for (const ot of store.objectTypes) {
-      if (ot.kind !== 'entity') continue
-      const cp = findCompositePI(ot, store.facts, store.objectTypes, store.constraints)
-      if (!cp || !cp.factIds?.includes(fact.id)) continue
-      const ci = cp.factIds.indexOf(fact.id)
-      const entityRoleIdx = cp.entityRoleIndices?.[ci] ?? cp.entityRoleIndex
-      if (entityRoleIdx != null && !existingUnaryRoles.has(entityRoleIdx) && !impliedRoles.includes(entityRoleIdx)) {
-        impliedRoles.push(entityRoleIdx)
-      }
-    }
-  }
+  const impliedRoles = impliedUnaryRoles(fact, store)
 
   // ── Uniqueness bar level assignment ────────────────────────────────────────
   // The uniqueness array is kept sorted in the store (ascending role count),
