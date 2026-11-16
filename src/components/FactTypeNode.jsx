@@ -504,7 +504,7 @@ const BAR_BAND_END     = BAR_SPACING / 2 - BAR_H / 2
 const OBJ_MARGIN_X     = px(NORMA.objectified.marginX)
 const OBJ_MARGIN_Y     = px(NORMA.objectified.marginY)
 const PREF_OFFSET      = 0.75 * BAR_H                    // shift for preferred uniqueness bar
-const STUB_W           = pt(NORMA.rolePlayerPenPt)       // pen of the stub to an objectification's frame, as a constraint connector's
+const STUB_W           = pt(NORMA.rolePlayerPenPt)       // pen of the stub from a bar to an objectification's frame
 // How far the ink of `levels` levels of uniqueness bars reaches beyond the
 // role boxes' edge (a preferred identifier's outer line 2 × PREF_OFFSET
 // further), or the role boxes' own pen without bars; no rakes counted.
@@ -1448,9 +1448,8 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   const preferredKeys = new Set((fact.preferredUniqueness || []).map(pu => JSON.stringify([...pu].sort((a, b) => a - b))))
   // The uniqueness constraint that identifies the objectified fact type is
   // not drawn double (that says it identifies the player of the role it
-  // leaves out, as without objectification) but gets a dashed stub, drawn as
-  // a constraint connector, from the middle of the bar to the frame (Jan,
-  // 2026-11-16; NORMA draws it double).
+  // leaves out, as without objectification) but gets a solid stub from the
+  // middle of the bar to the frame (Jan, 2026-11-16; NORMA draws it double).
   const objectifiedKey = fact.objectified && !fact._implicit && !fact.displayAsObjectType && Array.isArray(fact.objectifiedIdentifier)
     ? JSON.stringify([...fact.objectifiedIdentifier].sort((a, b) => a - b)) : null
   const identifiesObjectification = (uRoles) => objectifiedKey != null && objectifiedKey === JSON.stringify([...uRoles].sort((a, b) => a - b))
@@ -1951,7 +1950,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     if (!solid.length) return null
     const nb = nestedFactBounds(fact, nestedRakePad)
     const reach = (isPreferred ? PREF_OFFSET : 0) + sw / 2
-    const common = { stroke, strokeWidth: STUB_W, strokeDasharray: '4 2', 'data-look': 'identifier-stub', 'data-occ': occurrenceId }
+    const common = { stroke, strokeWidth: STUB_W, 'data-look': 'identifier-stub', 'data-occ': occurrenceId }
     if (isVertical) {
       const y = (Math.min(...solid.map(r => r.y1)) + Math.max(...solid.map(r => r.y2))) / 2
       const x1 = barsBelow ? at - reach : at + reach
