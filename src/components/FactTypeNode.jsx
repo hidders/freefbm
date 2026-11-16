@@ -240,15 +240,11 @@ export function nestedFactBounds(fact, rakeMinPad) {
 
   // Compute how many uniqueness bar levels are used (mirrors render logic)
   const implied   = impliedUnaryRoles(fact)
-  const hasUnary  = (fact.uniqueness?.some(u => u.roles.length === 1) ?? false) || implied.length > 0
-  let multiLevel  = hasUnary ? 0 : -1
-  for (const u of (fact.uniqueness || [])) if (u.roles.length > 1) multiLevel++
-  const multiCount = multiLevel
+  const { multiCount } = uniquenessLevels(fact, implied.length > 0)
   const hasAnyBar  = (fact.uniqueness?.length ?? 0) > 0 || implied.length > 0
-  const effBarMargin = rakeZoneOnBarSide > 0 ? 0 : BAR_MARGIN
-  // as the frame is drawn: BAR_MARGIN even when rakes take the bars' margin
+  const effBarMargin = barMarginWith(rakeZoneOnBarSide)
   const barSpace   = hasAnyBar
-    ? BAR_MARGIN + rakeZoneOnBarSide + BAR_SPACING * (multiCount + 1) + BAR_BAND_END + PAD_Y
+    ? effBarMargin + rakeZoneOnBarSide + BAR_SPACING * (multiCount + 1) + BAR_BAND_END + PAD_Y
     : 0
   const barPad = Math.max(PAD_Y, Math.ceil(barSpace))
 
@@ -486,16 +482,24 @@ function stadiumEdge(cx, cy, hw, hh, tx, ty) {
 
 
 // NORMA draws each level of uniqueness bars in the middle of a band 0.07 in
-// high, the first band against the role boxes' outline, with a 1 pt pen and
+// high (FreeFBM's bands are tighter, BAR_SPACING), the first band against the role boxes' outline, with a 1 pt pen and
 // a gap of one pen width at each end; a preferred identifier is two lines
 // 0.75 pen widths either side of the middle; a deontic bar starts with a
 // circle that fills the band less a pen width.
 const BAR_H            = pt(1)                           // stroke width of each uniqueness bar
-const BAR_SPACING      = px(NORMA.constraintBand)        // distance between successive bar levels
+// distance between successive bar levels: FreeFBM's own, tighter than NORMA's
+// band of 0.07 in (14 px; Jan, 2026-11-16). The NORMA import and export keep
+// NORMA's band (normaGeometry.js).
+const BAR_SPACING      = 10
 // gap between the role box and the first bar's outer edge, as the formulas
 // below use it (bar centre = margin + spacing × (level + 1) − BAR_H / 2)
 const BAR_MARGIN       = ROLE_STROKE / 2 + BAR_SPACING / 2 + BAR_H / 2 - BAR_SPACING
-const DEONTIC_R        = BAR_SPACING / 2 - BAR_H         // radius of the circle that starts a deontic uniqueness bar
+const DEONTIC_R        = px(NORMA.constraintBand) / 2 - BAR_H   // radius of the circle that starts a deontic uniqueness bar (NORMA's)
+// From the outermost rake spine's comfort zone to the first bar's inner edge
+// when rakes sit on the bars' side, and the margin that gives in the formulas.
+const RAKE_BAR_GAP     = 3
+const RAKE_BAR_MARGIN  = RAKE_BAR_GAP + BAR_H - BAR_SPACING
+const barMarginWith    = (rakeZone) => rakeZone > 0 ? RAKE_BAR_MARGIN : BAR_MARGIN
 // From a bar's outer edge to the outer edge of its band (NORMA draws each bar
 // in the middle of a constraintBand-high row).
 const BAR_BAND_END     = BAR_SPACING / 2 - BAR_H / 2
@@ -512,6 +516,28 @@ export function barInkExtent(levels, preferred = false) {
   if (levels <= 0) return ROLE_STROKE / 2
   return BAR_MARGIN + BAR_SPACING * levels + (preferred ? 2 * PREF_OFFSET : 0)
 }
+// The level of each uniqueness bar (0 nearest the role boxes) and the
+// highest level of the bars over more than one role. Single-role bars share
+// level 0, those over more roles follow in their order in the store. The bar
+// that identifies the objectified fact type goes on the outermost level (Jan,
+// 2026-11-16), so the stub from it to the frame crosses no other bar; a
+// single-role one gets a level of its own when longer bars are there.
+export function uniquenessLevels(fact, implied) {
+  const ucs = fact.uniqueness || []
+  const objKey = fact.objectified && !fact._implicit && !fact.displayAsObjectType && Array.isArray(fact.objectifiedIdentifier)
+    ? JSON.stringify([...fact.objectifiedIdentifier].sort((a, b) => a - b)) : null
+  const keyOf = (roles) => JSON.stringify([...roles].sort((a, b) => a - b))
+  const top = objKey == null ? -1 : ucs.findIndex(u => keyOf(u.roles) === objKey)
+  const multi = ucs.filter((u, i) => i !== top && u.roles.length > 1).length
+  // the identifier stays at level 0 only when it is single-role and nothing is longer
+  const raise = top >= 0 && (ucs[top].roles.length > 1 || multi > 0)
+  const unaryLevel = implied || ucs.some((u, i) => u.roles.length === 1 && !(raise && i === top))
+  let multiLevel = unaryLevel ? 0 : -1
+  const levels = ucs.map(({ roles }, i) => i === top || roles.length === 1 ? 0 : ++multiLevel)
+  if (raise) levels[top] = ++multiLevel
+  return { levels, multiCount: multiLevel }
+}
+
 const BAR_SIDE_COMFORT = 2    // rake comfort used when bars sit beyond the rakes on the same side
 const UNARY_CAP_R = 8
 
@@ -1422,12 +1448,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   // NORMA's stacking).
   // Implied unary UCs are treated as if explicitly specified for level purposes,
   // so that explicit multi-role UCs are pushed to higher levels and don't overlap.
-  const hasUnary = fact.uniqueness.some(u => u.roles.length === 1) || impliedRoles.length > 0
-  let multiLevel = hasUnary ? 0 : -1
-  const levels = fact.uniqueness.map(({ roles: uRoles }) =>
-    uRoles.length === 1 ? 0 : ++multiLevel
-  )
-  const multiCount = multiLevel
+  const { levels, multiCount } = uniquenessLevels(fact, impliedRoles.length > 0)
   const ifItems = fact.internalFrequency || []
 
   const INSET = BAR_H   // NORMA leaves a pen width between a bar's end and the role box's edge
@@ -1443,8 +1464,8 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   const rakeZone_v  = rakeCount_v > 0 ? RAKE_TOOTH + (rakeCount_v - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
   // When rakes are on the bar side the rakeZone already ends close to the first bar;
   // no additional margin is needed.
-  const effBarMargin_h = rakeZone_h > 0 ? 0 : BAR_MARGIN
-  const effBarMargin_v = rakeZone_v > 0 ? 0 : BAR_MARGIN
+  const effBarMargin_h = barMarginWith(rakeZone_h)
+  const effBarMargin_v = barMarginWith(rakeZone_v)
   const preferredKeys = new Set((fact.preferredUniqueness || []).map(pu => JSON.stringify([...pu].sort((a, b) => a - b))))
   // The uniqueness constraint that identifies the objectified fact type is
   // not drawn double (that says it identifies the player of the role it
@@ -2196,7 +2217,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
         const hasAnyBar = fact.uniqueness.length > 0 || impliedRoles.length > 0
         const rakeZone  = isVertical ? rakeZone_v : rakeZone_h
         const barSpace  = hasAnyBar
-          ? BAR_MARGIN + rakeZone + BAR_SPACING * (multiCount + 1) + BAR_BAND_END + PAD_Y
+          ? barMarginWith(rakeZone) + rakeZone + BAR_SPACING * (multiCount + 1) + BAR_BAND_END + PAD_Y
           : 0
         const barPad = Math.max(PAD_Y, Math.ceil(barSpace))
 
