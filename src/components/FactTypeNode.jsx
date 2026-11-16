@@ -142,6 +142,59 @@ function compositeIdentifierRoles(state) {
   return byFact
 }
 
+// The room an objectified fact type's frame leaves for the rakes of external
+// constraints over its roles, from their counts per side (rakeCountsForFact).
+export function nestedRakePadOf(fact, counts) {
+  if (!fact.objectified) return { top: 0, bottom: 0, left: 0, right: 0, rakeZoneOnBarSide: 0 }
+  const hasAnyBar_r    = fact.uniqueness.length > 0
+  const barsBelow_r    = !!fact.uniquenessBelow
+  // For horizontal facts, track whether a nested reading occupies the top or bottom region
+  const readingAbove_r = fact.nestedReading && !!fact.readingAbove
+  const readingBelow_r = fact.nestedReading && !fact.readingAbove
+  // Minimum padding from role-box edge needed to contain n rakes on a given side.
+  // Rakes sit between the role boxes and any bars; barPad (which includes RAKE_BAR_ZONE
+  // when rakes are present) already ensures bars clear the rakes — this value covers
+  // only the rake zone itself.
+  const minPad = (n, sideHasBars, hasReadingOnSide = false) => {
+    if (n === 0) return 0
+    const rakeExtent = RAKE_TOOTH + (n - 1) * RAKE_STAGGER
+    if (hasReadingOnSide) {
+      return rakeExtent + RAKE_PEN / 2 + NESTED_BELOW_SPAN
+    }
+    return rakeExtent + 10
+  }
+  const rakeCountOnBarSide = fact.orientation === 'vertical'
+    ? (barsBelow_r ? counts.L : counts.R)
+    : (barsBelow_r ? counts.B : counts.T)
+  const rakeZoneOnBarSide = rakeCountOnBarSide > 0
+    ? RAKE_TOOTH + (rakeCountOnBarSide - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT
+    : 0
+  const rakeZoneT = counts.T > 0 ? RAKE_TOOTH + (counts.T - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
+  const rakeZoneB = counts.B > 0 ? RAKE_TOOTH + (counts.B - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
+  return {
+    top:    minPad(counts.T, !barsBelow_r && hasAnyBar_r, readingAbove_r),
+    bottom: minPad(counts.B,  barsBelow_r && hasAnyBar_r, readingBelow_r),
+    left:   minPad(counts.L,  barsBelow_r && hasAnyBar_r, false),
+    right:  minPad(counts.R, !barsBelow_r && hasAnyBar_r, false),
+    rakeZoneOnBarSide,
+    rakeZoneT,
+    rakeZoneB,
+  }
+}
+
+// The constraints drawn on the active diagram, at their places there (the
+// rakes of an objectified fact type depend on which side they are on).
+let diagramConstraintCache = null
+function activeDiagramConstraints(state) {
+  const diagram = state.diagrams?.find(d => d.id === state.activeDiagramId)
+  const c = diagramConstraintCache
+  if (c && c.constraints === state.constraints && c.diagram === diagram) return c.list
+  const at = new Map((diagram?.constraintOccurrences ?? []).map(o => [o.schemaConstraintId, o]))
+  const list = (state.constraints ?? []).filter(k => at.has(k.id)).map(k => ({ ...k, x: at.get(k.id).x, y: at.get(k.id).y }))
+  diagramConstraintCache = { constraints: state.constraints, diagram, list }
+  return list
+}
+
 // Roles that get an implied unary uniqueness bar (and mandatory dot): the
 // roles a preferred uniqueness constraint leaves out, and the entity role of
 // each binary in an entity type's external preferred identifier, unless a
@@ -170,7 +223,10 @@ export function impliedUnaryRoles(fact, state = useOrmStore.getState()) {
   return impliedRoles
 }
 
-export function nestedFactBounds(fact, rakeMinPad = {}) {
+export function nestedFactBounds(fact, rakeMinPad) {
+  rakeMinPad ??= fact.objectified && !fact._implicit
+    ? nestedRakePadOf(fact, rakeCountsForFact(fact, activeDiagramConstraints(useOrmStore.getState())))
+    : {}
   if (fact.displayAsObjectType) {
     const { w, h } = collapsedObjectificationBox(fact)
     return { left: fact.x - w / 2, right: fact.x + w / 2, top: fact.y - h / 2, bottom: fact.y + h / 2, cx: fact.x, cy: fact.y }
@@ -190,8 +246,9 @@ export function nestedFactBounds(fact, rakeMinPad = {}) {
   const multiCount = multiLevel
   const hasAnyBar  = (fact.uniqueness?.length ?? 0) > 0 || implied.length > 0
   const effBarMargin = rakeZoneOnBarSide > 0 ? 0 : BAR_MARGIN
+  // as the frame is drawn: BAR_MARGIN even when rakes take the bars' margin
   const barSpace   = hasAnyBar
-    ? effBarMargin + rakeZoneOnBarSide + BAR_SPACING * (multiCount + 1) + BAR_BAND_END + PAD_Y
+    ? BAR_MARGIN + rakeZoneOnBarSide + BAR_SPACING * (multiCount + 1) + BAR_BAND_END + PAD_Y
     : 0
   const barPad = Math.max(PAD_Y, Math.ceil(barSpace))
 
@@ -1877,45 +1934,7 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
   // ── Rake padding for objectified facts ────────────────────────────────────────
   // When external-constraint connectors form rake heads next to the role boxes of an
   // objectified fact the outer entity box must be large enough to contain them.
-  const nestedRakePad = (() => {
-    if (!fact.objectified) return { top: 0, bottom: 0, left: 0, right: 0, rakeZoneOnBarSide: 0 }
-    const hasAnyBar_r    = fact.uniqueness.length > 0
-    const barsBelow_r    = !!fact.uniquenessBelow
-    // For horizontal facts, track whether a nested reading occupies the top or bottom region
-    const readingAbove_r = fact.nestedReading && !!fact.readingAbove
-    const readingBelow_r = fact.nestedReading && !fact.readingAbove
-    // Reuse the already-computed rake counts (avoids iterating constraints twice)
-    const counts = rakeCounts
-    // Minimum padding from role-box edge needed to contain n rakes on a given side.
-    // Rakes sit between the role boxes and any bars; barPad (which includes RAKE_BAR_ZONE
-    // when rakes are present) already ensures bars clear the rakes — this value covers
-    // only the rake zone itself.
-    const minPad = (n, sideHasBars, hasReadingOnSide = false) => {
-      if (n === 0) return 0
-      const rakeExtent = RAKE_TOOTH + (n - 1) * RAKE_STAGGER
-      if (hasReadingOnSide) {
-        return rakeExtent + RAKE_PEN / 2 + NESTED_BELOW_SPAN
-      }
-      return rakeExtent + 10
-    }
-    const rakeCountOnBarSide = isVertical
-      ? (barsBelow_r ? counts.L : counts.R)
-      : (barsBelow_r ? counts.B : counts.T)
-    const rakeZoneOnBarSide = rakeCountOnBarSide > 0
-      ? RAKE_TOOTH + (rakeCountOnBarSide - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT
-      : 0
-    const rakeZoneT = counts.T > 0 ? RAKE_TOOTH + (counts.T - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
-    const rakeZoneB = counts.B > 0 ? RAKE_TOOTH + (counts.B - 1) * RAKE_STAGGER + BAR_SIDE_COMFORT : 0
-    return {
-      top:    minPad(counts.T, !barsBelow_r && hasAnyBar_r, readingAbove_r),
-      bottom: minPad(counts.B,  barsBelow_r && hasAnyBar_r, readingBelow_r),
-      left:   minPad(counts.L,  barsBelow_r && hasAnyBar_r, false),
-      right:  minPad(counts.R, !barsBelow_r && hasAnyBar_r, false),
-      rakeZoneOnBarSide,
-      rakeZoneT,
-      rakeZoneB,
-    }
-  })()
+  const nestedRakePad = nestedRakePadOf(fact, rakeCounts)
 
   // ── Nested fact VR/CR annotations (computed here so they render outside the glow group) ──
   const nestedVrAnnotation = !fact.objectified ? null : (() => {
