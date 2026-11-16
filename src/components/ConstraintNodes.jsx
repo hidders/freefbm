@@ -3,6 +3,7 @@ import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { nearestSubtypeEnds } from '../utils/subtypeEnds'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { roleCenter, nestedFactBounds, ROLE_H, displayRoleOrder, makeImplicitLinkFact } from './FactTypeNode'
+import { rectBorderPoint } from '../diagram/rectBorder.js'
 import { roleAnchor } from './RoleConnectors'
 
 // An objectified fact type drawn as an object type: lines end at its box.
@@ -692,15 +693,7 @@ const HIGHLIGHT_ARC_COLOR = '#e67e22'   // orange — used when table row/col/ce
 
 // `ot` may also be an objectified fact (nested entity), e.g. the owner of a collapsed ref mode.
 export function borderPoint(ot, tx, ty) {
-  const b = ot.kind === 'fact' ? nestedFactBounds(ot) : entityBounds(ot)
-  const cx = b.cx ?? (b.left + b.right) / 2, cy = b.cy ?? (b.top + b.bottom) / 2
-  const dx = tx - cx, dy = ty - cy
-  if (dx === 0 && dy === 0) return { x: cx, y: cy }
-  const hw = (b.right - b.left) / 2, hh = (b.bottom - b.top) / 2
-  const t = Math.abs(dx) * hh > Math.abs(dy) * hw
-    ? hw / Math.abs(dx)
-    : hh / Math.abs(dy)
-  return { x: cx + dx * t, y: cy + dy * t }
+  return rectBorderPoint(ot.kind === 'fact' ? nestedFactBounds(ot) : entityBounds(ot), tx, ty)
 }
 
 export default function ConstraintNodes({ onDragStart, mousePos, onContextMenu, noteSubjectIds }) {

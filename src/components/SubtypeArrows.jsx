@@ -6,17 +6,9 @@ import { nestedFactBounds } from './FactTypeNode'
 import { isSelectionMode, isElementSelecting } from '../utils/cursorUtils'
 import { queryElements } from '../logic/query.js'
 import { NORMA, pt } from '../diagram/normaGeometry.js'
+import { rectBorderPoint } from '../diagram/rectBorder.js'
 
-export function rectBorderPoint(b, tx, ty) {
-  const cx = b.cx, cy = b.cy
-  const dx = tx - cx, dy = ty - cy
-  if (dx === 0 && dy === 0) return { x: cx, y: cy }
-  const hw = (b.right - b.left) / 2, hh = (b.bottom - b.top) / 2
-  const t = Math.abs(dx) * hh > Math.abs(dy) * hw
-    ? hw / Math.abs(dx)
-    : hh / Math.abs(dy)
-  return { x: cx + dx * t, y: cy + dy * t }
-}
+export { rectBorderPoint }
 
 export function playerBounds(id, otMap, nestedMap) {
   const ot = otMap[id]
