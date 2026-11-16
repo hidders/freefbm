@@ -1485,8 +1485,8 @@ export function createElementSlice(set, get) {
     },
 
     // The uniqueness constraint that identifies an objectified fact type
-    // (fact.objectifiedIdentifier, its role indices), drawn as a preferred
-    // identifier; toggled off when it is already that one.
+    // (fact.objectifiedIdentifier, its role indices), drawn with a stub to the
+    // frame; toggled off when it is already that one.
     setObjectifiedIdentifier(factId, roleIndices) {
       const key = JSON.stringify([...roleIndices].sort((a, b) => a - b))
       set(s => ({
