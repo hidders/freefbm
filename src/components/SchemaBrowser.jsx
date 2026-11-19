@@ -19,7 +19,7 @@ import { makeNameFilter, Highlight } from '../utils/nameFilter.jsx'
 import { mappingOfDiagram } from '../store/storeHelpers'
 import { useMappingRuleInfos, mappingRuleSections, mappingRuleOrphanCount } from './MappingRuleBrowser.jsx'
 import { isErdDiagram } from '../relational/erdBoxes.js'
-import { placeRevealed } from '../layout/growPlacement.js'
+import { placeRevealed, placeOrmUnits } from '../layout/growPlacement.js'
 
 const FONT = 'var(--font-ui)'
 
@@ -327,9 +327,9 @@ export default function SchemaBrowser() {
     const missing = fact ? fact.roles.filter(r => r.objectTypeId && !(d.occurrences ?? []).some(o => o.schemaElementId === r.objectTypeId && !o.refModeOwnerOccId)).length : 0
     const factItems = fact && !isErdDiagram(s, d) ? [
       { label: 'Add to diagram', disabled: !!occ, title: occ ? 'Already on this diagram' : undefined,
-        action: () => s.addElementToDiagram(id, d.id, { withPlayers: false }) },
+        action: () => s.addFactAlone(id, d.id, { place: placeOrmUnits }) },
       { label: 'Add with players', disabled: !!occ && !missing, title: occ && !missing ? 'Its players are on this diagram' : undefined,
-        action: () => s.addWithPlayers(id, d.id, { place: placeRevealed }) },
+        action: () => s.addWithPlayers(id, d.id, { place: placeRevealed, placeFact: placeOrmUnits }) },
       '---',
     ] : []
     setRowMenu({ x: e.clientX, y: e.clientY, items: [
@@ -703,7 +703,7 @@ export default function SchemaBrowser() {
             isOrphaned={isOrphaned(el.id)}
             inCurrentDiagram={inDiag(el.id)}
             onSelect={(e) => selectEl(e, el.id, el.kind)}
-            onAdd={() => store.addElementToDiagram(el.id, diagram?.id, { withPlayers: false })}
+            onAdd={() => diagram && store.addFactAlone(el.id, diagram.id, { place: placeOrmUnits })}
             onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
             addButtonStyle={neAddStyle}
             addTitle="Add to this diagram, without its players (right-click for Add with players)"
@@ -774,7 +774,7 @@ export default function SchemaBrowser() {
             isOrphaned={isOrphaned(f.id)}
             inCurrentDiagram={inDiag(f.id)}
             onSelect={(e) => selectEl(e, f.id, 'fact')}
-            onAdd={() => store.addElementToDiagram(f.id, diagram?.id, { withPlayers: false })}
+            onAdd={() => diagram && store.addFactAlone(f.id, diagram.id, { place: placeOrmUnits })}
             onAddExtra={diagram ? () => store.addExtraOccurrence(f.id, diagram.id) : undefined}
             addButtonStyle={fAddStyle}
             addTitle="Add to this diagram, without its players (right-click for Add with players)"

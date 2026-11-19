@@ -602,13 +602,43 @@ export function createDiagramSlice(set, get) {
       return added.map(a => a.occId)
     },
 
+    // The Schema Browser's + on a fact type (or objectified fact type): it alone,
+    // placed by place (placeOrmUnits in layout/growPlacement.js, passed in)
+    // between the shown players it will connect to, or beside the one shown;
+    // at its schema position when none is shown. One undo step.
+    addFactAlone(factId, diagramId, { place = null } = {}) {
+      const s0 = get()
+      const d0 = s0.diagrams.find(d => d.id === diagramId)
+      const fact = s0.facts.find(f => f.id === factId)
+      if (!d0 || !fact) return
+      if (!place || diagramUnits(s0, d0)) { get().addElementToDiagram(factId, diagramId, { withPlayers: false }); return }
+      const beforeOccIds = new Set((d0.occurrences ?? []).map(o => o.id))
+      const beforeCoccIds = (d0.constraintOccurrences ?? []).map(o => o.id)
+      const occOfEl = (id) => (d0.occurrences ?? []).find(o => o.schemaElementId === id && !o.refModeOwnerOccId)
+      const shownPlayers = [...new Set(fact.roles.map(r => r.objectTypeId).filter(id => id && occOfEl(id)))]
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        get().addElementToDiagram(factId, diagramId, { withPlayers: false })
+        if (!shownPlayers.length) return
+        const plans = [{ unit: { ids: [factId], far: shownPlayers, group: 'relationships' }, anchorId: shownPlayers[0], anchorOccId: occOfEl(shownPlayers[0]).id, step: 0 }]
+        const { occ, freq } = place(get(), diagramId, beforeOccIds, plans, beforeCoccIds)
+        set(st => ({
+          diagrams: st.diagrams.map(d => d.id !== diagramId ? d : { ...d, occurrences: d.occurrences.map(o => occ[o.id] ? { ...o, ...occ[o.id] } : o) }),
+          facts: Object.keys(freq).length ? st.facts.map(f => freq[f.id] ? { ...f, internalFrequency: freq[f.id] } : f) : st.facts,
+        }))
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+    },
+
     // Add with players: the fact type (if not shown) and an occurrence of each
     // role player not shown on the diagram, next to it (revealPlayers).
-    addWithPlayers(factId, diagramId, { place = null } = {}) {
+    // placeFact: as addFactAlone's place.
+    addWithPlayers(factId, diagramId, { place = null, placeFact = null } = {}) {
       set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
       try {
         const shown = (get().diagrams.find(d => d.id === diagramId)?.occurrences ?? []).some(o => o.schemaElementId === factId)
-        if (!shown) get().addElementToDiagram(factId, diagramId, { withPlayers: false })
+        if (!shown) get().addFactAlone(factId, diagramId, { place: placeFact })
         const s1 = get()
         const d1 = s1.diagrams.find(d => d.id === diagramId)
         const fact = s1.facts.find(f => f.id === factId)
@@ -661,9 +691,11 @@ export function createDiagramSlice(set, get) {
     },
 
     // The selected elements in a new diagram of the same schema, where they
-    // are on this one (top-down splitting of a large diagram). With move, they
-    // leave this diagram, except object types that a fact type left here still
-    // needs (the boundary is shown on both). One undo step.
+    // are on this one (top-down splitting of a large diagram), and nothing
+    // else (a fact type whose players are not selected keeps its roles
+    // unconnected there). With move, they leave this diagram, except object
+    // types that a fact type left here still needs (the boundary is shown on
+    // both). One undo step.
     selectionToNewDiagram(move = false) {
       const s0 = get()
       const src = s0.diagrams.find(d => d.id === s0.activeDiagramId)
@@ -681,7 +713,8 @@ export function createDiagramSlice(set, get) {
       let id
       try {
         id = get().addDiagram(name)
-        for (const x of ids) if (!s0.constraints.some(c => c.id === x)) get().addElementToDiagram(x, id)
+        // Exactly the selection: a fact type's players come only when selected.
+        for (const x of ids) if (!s0.constraints.some(c => c.id === x)) get().addElementToDiagram(x, id, { withPlayers: false })
         if (move) {
           const s1 = get()
           const sel = new Set(ids)
@@ -692,12 +725,6 @@ export function createDiagramSlice(set, get) {
             && f.roles.some(r => r.objectTypeId === otId) && !f.roles.every(r => sel.has(r.objectTypeId)))
           const removable = ids.filter(x => !s1.objectTypes.some(o => o.id === x) || units || !staysFor(x))
           get().removeMultiSelectionFromDiagram(src.id, removable)
-          // What the removal took off with them (a fact type an objectified
-          // type plays, say) goes along, so nothing drops off both diagrams.
-          const s2 = get()
-          const left = new Set((s2.diagrams.find(d => d.id === src.id)?.occurrences ?? []).map(o => o.schemaElementId))
-          const there = new Set((s2.diagrams.find(d => d.id === id)?.occurrences ?? []).map(o => o.schemaElementId))
-          for (const x of shownHere) if (!left.has(x) && !there.has(x) && s2.facts.some(f => f.id === x)) get().addElementToDiagram(x, id)
         }
         // The external constraints among the elements, as on the source.
         if (!erd) set(st => ({ diagrams: st.diagrams.map(d => (d.id === id

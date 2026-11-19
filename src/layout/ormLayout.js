@@ -94,7 +94,10 @@ export function prepareLayout(state, diagramId, opts = {}) {
   }
   const players = (f) => f.roles.map(r => r.objectTypeId ?? null)
 
-  // Value types drawn: those shown with an occurrence of their own, and those a drawn fact uses.
+  // Value types drawn: those shown with an occurrence of their own, and those a drawn
+  // fact uses that are shown (a collapsed reference mode's) or belong to an expanded
+  // reference mode. A player not on the diagram is not added: its role is left
+  // unconnected (src/diagram/roleLinks.js).
   const usedVts = new Set()
   for (const f of facts) for (const p of players(f)) if (otById.get(p)?.kind === 'value') usedVts.add(p)
   const valueIds = new Set()
@@ -104,7 +107,7 @@ export function prepareLayout(state, diagramId, opts = {}) {
     const own = occs.some(o => o.schemaElementId === id && !o.refModeOwnerOccId)
     if (own || usedVts.has(id)) valueIds.add(id)
   }
-  for (const v of usedVts) valueIds.add(v)
+  for (const [, { rm, collapsed }] of refMode) if (!collapsed) valueIds.add(rm.vtId)
 
   // Shown subtype links between drawn types.
   const drawnType = (id) => isNode.has(id) || valueIds.has(id)

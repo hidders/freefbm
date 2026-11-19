@@ -365,6 +365,23 @@ types still go to their schema position.
 **Acceptance:** auto-layout never adds missing players; all specialised
 diagram forms render correctly using the same shared nearest-player helper.
 
+**Done (2026-11-20):** auto layout (`prepareLayout`) no longer adds value
+types that are not on the diagram (it used to draw every value type a shown
+fact type used; now only shown ones, and those of an expanded reference
+mode), so a role whose player is not shown stays unconnected; it already
+orients fact types and scores layouts by derived connectors (`orientFact`,
+`layoutScore` via `playerLookup`). Copy/Move selection to a new diagram takes
+exactly the selection. A fact type added with the Schema Browser's `+`
+(`store.addFactAlone`, also Add with players) is placed by `placeOrmUnits`
+between its shown players, or beside the one shown, instead of at its schema
+position. The minimap draws role connectors by the rule (it drew them to the
+first occurrence). Audited, no change needed: transformations, Generate
+tables, Guess ORM2 schema and carried diagrams add fact types with their
+players on purpose (complete generated diagrams) and store no maps; mapping
+diagrams remove rule elements fact types first and keep object types other
+fact types need; external constraints still bring their member fact types
+and keep their occurrence references; PDF export draws the canvas's SVG.
+
 ### Phase 5 — NORMA import/export and regression suite
 
 1. Simplify NORMA import to preserve only shapes that NORMA drew.
