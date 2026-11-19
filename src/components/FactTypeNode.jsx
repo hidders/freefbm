@@ -486,9 +486,13 @@ const BAR_H            = pt(1)                           // stroke width of each
 // band of 0.07 in (14 px; Jan, 2026-11-16). The NORMA import and export keep
 // NORMA's band (normaGeometry.js).
 const BAR_SPACING      = 10
+// White space between the role boxes' pen and the first bar's pen: a little
+// less than between two levels (BAR_SPACING − BAR_H), enough that a deontic
+// bar's circle clears the role boxes (Jan, 2026-11-19).
+const BAR_INNER_GAP    = 6
 // gap between the role box and the first bar's outer edge, as the formulas
 // below use it (bar centre = margin + spacing × (level + 1) − BAR_H / 2)
-const BAR_MARGIN       = ROLE_STROKE / 2 + BAR_SPACING / 2 + BAR_H / 2 - BAR_SPACING
+const BAR_MARGIN       = ROLE_STROKE / 2 + BAR_INNER_GAP + BAR_H - BAR_SPACING
 const DEONTIC_R        = px(NORMA.constraintBand) / 2 - BAR_H   // radius of the circle that starts a deontic uniqueness bar (NORMA's)
 // From the outermost rake spine's comfort zone to the first bar's inner edge
 // when rakes sit on the bars' side, and the margin that gives in the formulas.
