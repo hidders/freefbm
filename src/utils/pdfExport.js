@@ -114,6 +114,33 @@ function noteTextAsSvg(fo) {
   return text
 }
 
+// Labels (readings, ranges, role names, constraint text) can reach past the
+// shapes they belong to: widen the bounds to every drawn text, in the
+// diagram group's coordinates.
+function withTextBounds(bounds, group) {
+  const toGroup = group.getScreenCTM()?.inverse()
+  if (!toGroup) return bounds
+  let b = bounds
+  for (const t of group.querySelectorAll('text')) {
+    if (t.closest('foreignObject') || !t.textContent.trim()) continue
+    const cs = getComputedStyle(t)
+    if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') continue
+    const ctm = t.getScreenCTM()
+    if (!ctm) continue
+    const r = t.getBBox()
+    if (!r.width && !r.height) continue
+    const m = toGroup.multiply(ctm)
+    const pts = [[r.x, r.y], [r.x + r.width, r.y], [r.x, r.y + r.height], [r.x + r.width, r.y + r.height]]
+      .map(([x, y]) => new DOMPoint(x, y).matrixTransform(m))
+    const e = {
+      minX: Math.min(...pts.map(p => p.x)) - PAD, minY: Math.min(...pts.map(p => p.y)) - PAD,
+      maxX: Math.max(...pts.map(p => p.x)) + PAD, maxY: Math.max(...pts.map(p => p.y)) + PAD,
+    }
+    b = b ? { minX: Math.min(b.minX, e.minX), minY: Math.min(b.minY, e.minY), maxX: Math.max(b.maxX, e.maxX), maxY: Math.max(b.maxY, e.maxY) } : e
+  }
+  return b
+}
+
 export async function triggerPdfExport(store) {
   if (!window.electronAPI) return
 
@@ -136,6 +163,9 @@ export async function triggerPdfExport(store) {
     const e = { minX: b.x - PAD, minY: b.y - PAD, maxX: b.x + b.width + PAD, maxY: b.y + b.height + PAD }
     bounds = bounds ? { minX: Math.min(bounds.minX, e.minX), minY: Math.min(bounds.minY, e.minY), maxX: Math.max(bounds.maxX, e.maxX), maxY: Math.max(bounds.maxY, e.maxY) } : e
   }
+  const diagramGroup = svgEl.querySelector('g[transform]')
+  if (!diagramGroup) return
+  bounds = withTextBounds(bounds, diagramGroup)
   if (!bounds) return
 
   const { minX, minY, maxX, maxY } = bounds
@@ -155,8 +185,6 @@ export async function triggerPdfExport(store) {
   }
 
   // ── diagram group — remove pan/zoom transform ───────────────────────────────
-  const diagramGroup = svgEl.querySelector('g[transform]')
-  if (!diagramGroup) return
   const groupClone = diagramGroup.cloneNode(true)
   groupClone.removeAttribute('transform')
   inlineComputedPaint(diagramGroup, groupClone)
