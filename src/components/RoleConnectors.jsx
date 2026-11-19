@@ -11,6 +11,7 @@ import { findCompositePI } from '../utils/refMode'
 import { groupStyle } from '../utils/groups.js'
 import { DIAGRAM_FONT, measureDiagramText } from '../diagram/diagramFont.js'
 import { NORMA, px, pt } from '../diagram/normaGeometry.js'
+import { playerLookup } from '../diagram/roleLinks.js'
 
 const DOT_R = px(NORMA.mandatoryDot.diameter) / 2  // mandatory dot radius (NORMA 0.075 in)
 const LINK_W = pt(NORMA.rolePlayerPenPt)            // role connector pen (NORMA 1 pt)
@@ -53,67 +54,46 @@ function playerXY(ot, nestedFact) {
   return null
 }
 
-// Where each role's player is drawn. A fact type occurrence names the
-// occurrence its role links to (roleOccurrenceMap), or none (unlinkedRoles,
-// from a NORMA import: NORMA links that role from a nearer shape of the same
-// fact type only); otherwise, and for link
-// fact types, the role goes to the player's occurrence nearest to it, as in
-// NORMA. Objectified fact types are players through their own occurrences.
-export function playerLookup(objectTypes, visibleFacts) {
-  const otByOccId = {}, otsById = {}
-  for (const o of objectTypes) {
-    if (o.occurrenceId) otByOccId[o.occurrenceId] = o
-    ;(otsById[o.id] ??= []).push(o)
-  }
-  const nfByOccId = {}, nfsById = {}
-  for (const f of visibleFacts) {
-    if (!f.objectified || f._implicit) continue
-    if (f.occurrenceId) nfByOccId[f.occurrenceId] = f
-    ;(nfsById[f.id] ??= []).push(f)
-  }
-  const nearest = (id, x, y) => {
-    const pick = (list) => {
-      let best = null, bestD = Infinity
-      for (const c of list ?? []) {
-        const d = Math.hypot(c.x - x, c.y - y)
-        if (d < bestD) { bestD = d; best = c }
-      }
-      return best
-    }
-    const ot = pick(otsById[id])
-    return ot ? { ot, nf: null } : { ot: null, nf: pick(nfsById[id]) }
-  }
-  const forRole = (fact, ri) => {
-    const id = fact.roles[ri]?.objectTypeId
-    // a role NORMA links from a nearer shape of its fact type only
-    if (!id || fact.unlinkedRoles?.includes(ri)) return { ot: null, nf: null }
-    const occId = fact.roleOccurrenceMap?.[String(ri)]
-    const ot = occId && otByOccId[occId]
-    if (ot && ot.id === id) return { ot, nf: null }
-    const nf = occId && nfByOccId[occId]
-    if (nf && nf.id === id) return { ot: null, nf }
-    return nearest(id, fact.x, fact.y)
-  }
-  // each objectified fact type once: its link fact types are drawn once per diagram
-  const linkOwners = []
-  const seen = new Set()
-  for (const f of visibleFacts) {
-    if (!f.objectified || f._implicit || seen.has(f.id)) continue
-    seen.add(f.id); linkOwners.push(f)
-  }
-  return { forRole, nearest, linkOwners }
+// Where each role's player is drawn: src/diagram/roleLinks.js (playerLookup).
+export { playerLookup }
+
+// Keys of role connectors whose target occurrence changed in the last
+// RELINK_FLASH_MS on the same diagram (targets: key → occurrence id or null,
+// for every role of every drawn fact type occurrence). A role that gets a
+// connector counts; a fact type occurrence just added does not.
+const RELINK_FLASH_MS = 1500
+function useChangedLinks(diagramId, targets) {
+  const prev = useRef(null)
+  const [flash, setFlash] = useState(() => new Map())
+  useEffect(() => {
+    const p = prev.current
+    prev.current = { diagramId, targets }
+    if (!p || p.diagramId !== diagramId) return
+    const hit = []
+    for (const [k, t] of targets) if (t && p.targets.has(k) && p.targets.get(k) !== t) hit.push(k)
+    if (!hit.length) return
+    const until = Date.now() + RELINK_FLASH_MS
+    setFlash(f => { const n = new Map(f); for (const k of hit) n.set(k, until); return n })
+  })
+  useEffect(() => {
+    if (!flash.size) return
+    const wait = Math.max(0, Math.min(...flash.values()) - Date.now()) + 20
+    const id = setTimeout(() => setFlash(f => { const now = Date.now(); return new Map([...f].filter(([, u]) => u > now)) }), wait)
+    return () => clearTimeout(id)
+  }, [flash])
+  return flash
 }
 
 // ── component ─────────────────────────────────────────────────────────────────
 
 export default function RoleConnectors({ mousePos, queryReachable, queryOriginals }) {
   const store = useOrmStoreIgnoring('pan', 'zoom')
-  const { objectTypes, facts: visibleFacts } = useDiagramElements()
-  const players = playerLookup(objectTypes, visibleFacts)
+  const { objectTypes, facts: visibleFacts, collapsedRefFacts, refModeFacts } = useDiagramElements()
+  const activeDiag = store.diagrams?.find(d => d.id === store.activeDiagramId)
+  const players = playerLookup(objectTypes, visibleFacts, { collapsedRefFacts, refModeFacts, expandedOccs: new Set(activeDiag?.expandedRefModeOccs ?? []) })
   const dotAtObject = store.mandatoryDotPosition === 'object'
 
   // Read diagram occurrence data for per-element overrides (e.g. roleNameOffsets)
-  const activeDiag = store.diagrams?.find(d => d.id === store.activeDiagramId)
   const diagOccMap = Object.fromEntries(
     (activeDiag?.occurrences ?? []).map(o => [o.schemaElementId, o])
   )
@@ -209,6 +189,7 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
       return {
         key: `${fact.occurrenceId ?? fact.id}-${ri}`,
         factId: fact.id, otId: role.objectTypeId, roleIndex: ri,
+        target: (ot ?? nf)?.occurrenceId ?? null,
         lineColor: rgs?.connector ?? fgs?.connector,
         nameColor: rgs?.floating ?? fgs?.floating,
         anchor, border, dotPos,
@@ -276,6 +257,13 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
 
   const allConnectors = [...connectors, ...implicitConnectors]
 
+  // Connectors that went to another occurrence (a move, an occurrence added or
+  // removed) are highlighted for a moment: they follow from positions alone.
+  const linkTargets = new Map()
+  for (const fact of visibleFacts) if (!fact._implicit) fact.roles.forEach((_, ri) => linkTargets.set(`${fact.occurrenceId ?? fact.id}-${ri}`, null))
+  for (const c of connectors) linkTargets.set(c.key, c.target)
+  const changedLinks = useChangedLinks(store.activeDiagramId, linkTargets)
+
   return (
     <g>
       {/* Connector lines */}
@@ -284,11 +272,18 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
           ? (queryReachable.has(factId) && queryReachable.has(otId) ? 1 : 0.2)
           : 1
         return (
-          <line key={key}
-            x1={border.x} y1={border.y}
-            x2={anchor.x} y2={anchor.y}
-            stroke={lineColor ?? 'var(--col-fact)'} strokeWidth={LINK_W}
-            opacity={connOpacity}/>
+          <React.Fragment key={key}>
+            {changedLinks.has(key) && (
+              <line className="relinked-connector" pointerEvents="none"
+                x1={border.x} y1={border.y} x2={anchor.x} y2={anchor.y}
+                stroke="var(--accent)" strokeWidth={LINK_W * 5} strokeLinecap="round" opacity={0.45}/>
+            )}
+            <line
+              x1={border.x} y1={border.y}
+              x2={anchor.x} y2={anchor.y}
+              stroke={lineColor ?? 'var(--col-fact)'} strokeWidth={LINK_W}
+              opacity={connOpacity}/>
+          </React.Fragment>
         )
       })}
 
@@ -433,8 +428,9 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
 
 export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals }) {
   const store      = useOrmStoreIgnoring('pan', 'zoom')
-  const { objectTypes, facts: visibleFacts } = useDiagramElements()
-  const players    = playerLookup(objectTypes, visibleFacts)
+  const { objectTypes, facts: visibleFacts, collapsedRefFacts, refModeFacts } = useDiagramElements()
+  const expandedOccs = new Set(store.diagrams?.find(d => d.id === store.activeDiagramId)?.expandedRefModeOccs ?? [])
+  const players    = playerLookup(objectTypes, visibleFacts, { collapsedRefFacts, refModeFacts, expandedOccs })
   const dotAtObject = store.mandatoryDotPosition === 'object'
   const sel        = store.selectedMandatoryDot
   const diagIlPos  = store.diagrams?.find(d => d.id === store.activeDiagramId)?.implicitLinkPositions ?? {}

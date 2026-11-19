@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useOrmStore, useOrmStoreIgnoring, subtypeKindOf } from '../store/ormStore'
 import { mappingOfDiagram } from '../store/storeHelpers'
 import { useDiagramElements } from '../hooks/useDiagramElements'
-import { useContextMenuHandlers } from '../hooks/useContextMenuHandlers'
+import { useContextMenuHandlers, revealPlayer } from '../hooks/useContextMenuHandlers'
 import ObjectTypeNode, { computeOtSize, entityBounds, collapsedRefValueRole } from './ObjectTypeNode'
 import FactTypeNode, { factBounds, nestedFactBounds, makeImplicitLinkFact, ROLE_W, ROLE_H, ROLE_GAP } from './FactTypeNode'
 import SubtypeArrows, { rectBorderPoint, playerBounds } from './SubtypeArrows'
@@ -888,9 +888,6 @@ export default function Canvas() {
       }
     }
 
-    // Role reconnect mode: background click cancels it
-    if (store.roleReconnectDraft) { store.cancelRoleReconnect(); return }
-
     // Target pick mode: background click cancels it
     if (store.pendingTargetPick) { store.cancelTargetPick(); return }
 
@@ -978,12 +975,6 @@ export default function Canvas() {
 
   // ── element drag start (called by child nodes) ──────────────────────────
   const handleDragStart = useCallback((id, kind, e, occurrenceId) => {
-    // Role reconnect mode: clicking an OT occurrence completes the reconnect
-    if (store.roleReconnectDraft && kind === 'ot') {
-      store.reconnectRoleOccurrence(occurrenceId)
-      return
-    }
-
     // Query edit mode: no dragging allowed
     if (store.queryEditDraft) return
     // Selection-mode tools and sequence construction handle interactions in child components; prevent fallback dragging
@@ -1522,6 +1513,7 @@ export default function Canvas() {
               visibleConstraints={visibleConstraints}
               onContextMenu={(e, occId) => handleFactContextMenu(f, e, occId ?? f.occurrenceId ?? null)}
               onRoleContextMenu={(roleIndex, e) => handleRoleContextMenu(f, roleIndex, e)}
+              onRevealPlayer={(roleIndex) => revealPlayer(f, roleIndex)}
               onBarContextMenu={(ui, e) => handleUniquenessBarContextMenu(f, ui, e)}
               onRoleValueClick={(roleIndex, cx, cy) => handleRoleValueClick(f, roleIndex, cx, cy)}
               onNestedVrClick={(cx, cy) => handleNestedFactVrClick(f, cx, cy)}

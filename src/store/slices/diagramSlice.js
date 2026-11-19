@@ -2,7 +2,7 @@ import { findRefMode } from '../../utils/refMode.js'
 import {
   mkDiagram, occOf, inDiag, cInDiag, cOccOf,
   addOccIfAbsent, addOwnedRefModeOccsIfAbsent, mkOcc,
-  normalizeStEps, syncConstraints, computeCascadeRemove, rmCOcc,
+  normalizeStEps, syncConstraints, rmCOcc,
   mkUniqueness, withMandatoryId, mappingOfDiagram, makeUniqueName, eligibleConstraints, mkConstraintOcc,
 } from '../storeHelpers'
 import { erdPartsOfDiagram, erdTargetOf } from '../../relational/erdBoxes.js'
@@ -13,6 +13,7 @@ import { relationalModel } from '../../relational/relationalModel.js'
 import { neighbourUnits, connectPath } from '../../utils/neighbourhood.js'
 import { carriedDiagrams } from '../../mapping/carryDiagrams.js'
 import { BASE_ZOOM } from '../../utils/viewScale.js'
+import { occurrenceRoleLinks } from '../../diagram/roleLinks.js'
 
 // Module-level variable for pan animation — only used by centerOnElement/centerOnOccurrence
 let _panAnimId = null
@@ -536,6 +537,128 @@ export function createDiagramSlice(set, get) {
       }
     },
 
+    // Reveal player and Add with players: an occurrence of the player of each
+    // of the roles (indexes) of fact type occurrence factOccId, near its role
+    // box and outward from the fact type (place: placeRevealed in
+    // layout/growPlacement.js, passed in). A role whose connector is drawn
+    // already is skipped, and with onlyMissing also a role whose player is
+    // shown anywhere on the diagram; a player is added once (a ring fact type).
+    // Nothing about the link is stored: it follows from where the new
+    // occurrence is (src/diagram/roleLinks.js). One undo step; the new
+    // occurrence is selected. Returns the new occurrence ids.
+    revealPlayers(diagramId, factOccId, roleIndexes, { place = null, onlyMissing = false } = {}) {
+      const s0 = get()
+      const d0 = s0.diagrams.find(d => d.id === diagramId)
+      const factOcc = d0?.occurrences?.find(o => o.id === factOccId)
+      const fact = factOcc && s0.facts.find(f => f.id === factOcc.schemaElementId)
+      if (!fact || isErdDiagram(s0, d0)) return []
+      const links = occurrenceRoleLinks(d0, s0.facts, s0.objectTypes)
+      const expanded = new Set(d0.expandedRefModeOccs ?? [])
+      const shown = new Set((d0.occurrences ?? []).filter(o => o.refModeOwnerOccId == null || expanded.has(o.refModeOwnerOccId)).map(o => o.schemaElementId))
+      const todo = []
+      for (const ri of roleIndexes) {
+        const pid = fact.roles[ri]?.objectTypeId
+        if (!pid || links.linkOf(factOcc, ri) || (onlyMissing && shown.has(pid)) || todo.some(t => t.pid === pid)) continue
+        if (!s0.objectTypes.some(o => o.id === pid) && !s0.facts.some(f => f.id === pid && f.objectified)) continue
+        todo.push({ ri, pid })
+      }
+      if (!todo.length) return []
+      const added = []
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        for (const { ri, pid } of todo) {
+          const occ = mkOcc(pid, factOcc.x, factOcc.y)
+          set(st => {
+            const ot = st.objectTypes.find(o => o.id === pid && o.kind === 'entity')
+              ?? st.facts.find(f => f.id === pid && f.objectified && f.objectifiedKind !== 'value')
+            const rm = ot ? findRefMode(ot, st.facts, st.objectTypes) : null
+            return { diagrams: st.diagrams.map(d => {
+              if (d.id !== diagramId) return d
+              let nd = { ...d, occurrences: [...(d.occurrences ?? []), occ] }
+              // The player of a reference mode's own fact type is shown with
+              // the mode expanded, that fact type occurrence as its own (a
+              // collapsed one would take no link from it, roleLinks.js).
+              if (rm?.factId === fact.id) nd = {
+                ...nd,
+                occurrences: nd.occurrences.map(o => o.id === factOccId && !o.refModeOwnerOccId ? { ...o, refModeOwnerOccId: occ.id } : o),
+                expandedRefModeOccs: [...(nd.expandedRefModeOccs ?? []), occ.id],
+              }
+              // Else the mode's own (hidden) occurrences, as addElementToDiagram gives them.
+              else if (rm) nd = addOwnedRefModeOccsIfAbsent(nd, pid, rm.vtId, occ.x, occ.y, rm.factId, occ.x, occ.y, rm.vtRoleIndex)
+              return nd
+            }), isDirty: true }
+          })
+          const at = place?.(get(), diagramId, factOccId, ri, occ.id)
+          if (at) {
+            const dx = Math.round(at.x) - occ.x, dy = Math.round(at.y) - occ.y
+            set(st => ({ diagrams: st.diagrams.map(d => d.id !== diagramId ? d : {
+              ...d,
+              occurrences: d.occurrences.map(o => (o.id === occ.id || o.refModeOwnerOccId === occ.id) ? { ...o, x: o.x + dx, y: o.y + dy } : o),
+            }) }))
+          }
+          added.push({ occId: occ.id, pid })
+        }
+        get().expandBlockedRefModes()
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+      const last = added[added.length - 1]
+      const s1 = get()
+      const kind = s1.objectTypes.find(o => o.id === last.pid)?.kind ?? 'fact'
+      if (added.length === 1) get().select(last.pid, kind, last.occId)
+      else set({ multiSelectedIds: added.map(a => a.pid), multiSelectedOccurrenceIds: added.map(a => a.occId), selectedId: null, selectedKind: null, selectedRole: null, selectedUniqueness: null })
+      return added.map(a => a.occId)
+    },
+
+    // The Schema Browser's + on a fact type (or objectified fact type): it alone,
+    // placed by place (placeOrmUnits in layout/growPlacement.js, passed in)
+    // between the shown players it will connect to, or beside the one shown;
+    // at its schema position when none is shown. One undo step.
+    addFactAlone(factId, diagramId, { place = null } = {}) {
+      const s0 = get()
+      const d0 = s0.diagrams.find(d => d.id === diagramId)
+      const fact = s0.facts.find(f => f.id === factId)
+      if (!d0 || !fact) return
+      if (!place || diagramUnits(s0, d0)) { get().addElementToDiagram(factId, diagramId, { withPlayers: false }); return }
+      const beforeOccIds = new Set((d0.occurrences ?? []).map(o => o.id))
+      const beforeCoccIds = (d0.constraintOccurrences ?? []).map(o => o.id)
+      const occOfEl = (id) => (d0.occurrences ?? []).find(o => o.schemaElementId === id && !o.refModeOwnerOccId)
+      const shownPlayers = [...new Set(fact.roles.map(r => r.objectTypeId).filter(id => id && occOfEl(id)))]
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        get().addElementToDiagram(factId, diagramId, { withPlayers: false })
+        if (!shownPlayers.length) return
+        const plans = [{ unit: { ids: [factId], far: shownPlayers, group: 'relationships' }, anchorId: shownPlayers[0], anchorOccId: occOfEl(shownPlayers[0]).id, step: 0 }]
+        const { occ, freq } = place(get(), diagramId, beforeOccIds, plans, beforeCoccIds)
+        set(st => ({
+          diagrams: st.diagrams.map(d => d.id !== diagramId ? d : { ...d, occurrences: d.occurrences.map(o => occ[o.id] ? { ...o, ...occ[o.id] } : o) }),
+          facts: Object.keys(freq).length ? st.facts.map(f => freq[f.id] ? { ...f, internalFrequency: freq[f.id] } : f) : st.facts,
+        }))
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+    },
+
+    // Add with players: the fact type (if not shown) and an occurrence of each
+    // role player not shown on the diagram, next to it (revealPlayers).
+    // placeFact: as addFactAlone's place.
+    addWithPlayers(factId, diagramId, { place = null, placeFact = null } = {}) {
+      set(st => ({ historyBatch: (st.historyBatch ?? 0) + 1 }))
+      try {
+        const shown = (get().diagrams.find(d => d.id === diagramId)?.occurrences ?? []).some(o => o.schemaElementId === factId)
+        if (!shown) get().addFactAlone(factId, diagramId, { place: placeFact })
+        const s1 = get()
+        const d1 = s1.diagrams.find(d => d.id === diagramId)
+        const fact = s1.facts.find(f => f.id === factId)
+        const occ = (d1?.occurrences ?? []).find(o => o.schemaElementId === factId && !o.refModeOwnerOccId)
+        if (!fact || !occ) return
+        const added = get().revealPlayers(diagramId, occ.id, fact.roles.map((_, i) => i), { place, onlyMissing: true })
+        if (!added.length) get().select(factId, 'fact', occ.id)
+      } finally {
+        set(st => ({ historyBatch: Math.max(0, (st.historyBatch ?? 1) - 1) }))
+      }
+    },
+
     // After Generate tables or Guess ORM2 (inside their undo batch): a twin in
     // the new schema of each diagram of the schema the mapping was made from
     // (mapping/carryDiagrams.js), named alike, after mainDiagramId (the new
@@ -576,9 +699,11 @@ export function createDiagramSlice(set, get) {
     },
 
     // The selected elements in a new diagram of the same schema, where they
-    // are on this one (top-down splitting of a large diagram). With move, they
-    // leave this diagram, except object types that a fact type left here still
-    // needs (the boundary is shown on both). One undo step.
+    // are on this one (top-down splitting of a large diagram), and nothing
+    // else (a fact type whose players are not selected keeps its roles
+    // unconnected there). With move, they leave this diagram, except object
+    // types that a fact type left here still needs (the boundary is shown on
+    // both). One undo step.
     selectionToNewDiagram(move = false) {
       const s0 = get()
       const src = s0.diagrams.find(d => d.id === s0.activeDiagramId)
@@ -596,7 +721,8 @@ export function createDiagramSlice(set, get) {
       let id
       try {
         id = get().addDiagram(name)
-        for (const x of ids) if (!s0.constraints.some(c => c.id === x)) get().addElementToDiagram(x, id)
+        // Exactly the selection: a fact type's players come only when selected.
+        for (const x of ids) if (!s0.constraints.some(c => c.id === x)) get().addElementToDiagram(x, id, { withPlayers: false })
         if (move) {
           const s1 = get()
           const sel = new Set(ids)
@@ -607,12 +733,6 @@ export function createDiagramSlice(set, get) {
             && f.roles.some(r => r.objectTypeId === otId) && !f.roles.every(r => sel.has(r.objectTypeId)))
           const removable = ids.filter(x => !s1.objectTypes.some(o => o.id === x) || units || !staysFor(x))
           get().removeMultiSelectionFromDiagram(src.id, removable)
-          // What the removal took off with them (a fact type an objectified
-          // type plays, say) goes along, so nothing drops off both diagrams.
-          const s2 = get()
-          const left = new Set((s2.diagrams.find(d => d.id === src.id)?.occurrences ?? []).map(o => o.schemaElementId))
-          const there = new Set((s2.diagrams.find(d => d.id === id)?.occurrences ?? []).map(o => o.schemaElementId))
-          for (const x of shownHere) if (!left.has(x) && !there.has(x) && s2.facts.some(f => f.id === x)) get().addElementToDiagram(x, id)
         }
         // The external constraints among the elements, as on the source.
         if (!erd) set(st => ({ diagrams: st.diagrams.map(d => (d.id === id
@@ -630,7 +750,7 @@ export function createDiagramSlice(set, get) {
               if (!from) return o
               taken.add(from.id)
               map.set(from.id, o.id)
-              const { id: _i, schemaElementId: _s, refModeOwnerOccId: _r, roleOccurrenceMap: _m, ...rest } = from
+              const { id: _i, schemaElementId: _s, refModeOwnerOccId: _r, ...rest } = from
               return { ...o, ...rest }
             })
             const constraintOccurrences = (d.constraintOccurrences ?? []).map(co => {
@@ -694,7 +814,10 @@ export function createDiagramSlice(set, get) {
       return id
     },
 
-    addElementToDiagram(elementId, diagramId) {
+    // withPlayers: false adds a fact type without its role players (the
+    // Schema Browser's +); its roles connect to players shown already, by the
+    // nearest-occurrence rule (src/diagram/roleLinks.js).
+    addElementToDiagram(elementId, diagramId, { withPlayers = true } = {}) {
       // A diagram shows only elements of its own schema.
       {
         const s = get()
@@ -781,7 +904,7 @@ export function createDiagramSlice(set, get) {
           if (el) {
             idsToAdd.add(id)
             for (const p of tableCompanions(units, id)) if (!visited.has(p)) queue.push(p)
-            if (fact)
+            if (fact && (withPlayers || units))
               for (const r of fact.roles)
                 if (r.objectTypeId && !visited.has(r.objectTypeId)) queue.push(r.objectTypeId)
           }
@@ -910,12 +1033,12 @@ export function createDiagramSlice(set, get) {
           return { diagrams: updatedDiagrams, isDirty: true }
         }
 
-        // Cascade: removing an OT also removes every fact that has it as a role player,
-        // and recursively any further OTs/facts linked through objectified facts.
-        // In a relational schema's diagram a table goes whole (tableUnits.js).
+        // Only the element goes: the roles it played reconnect to another
+        // occurrence or are left unconnected (src/diagram/roleLinks.js). In a
+        // relational schema's diagram a table goes whole (tableUnits.js).
         const diag = s.diagrams.find(d => d.id === diagramId)
         const units = diagramUnits(s, diag)
-        const toRemove = units ? tableRemoval(s, diag, units, [elementId]) : computeCascadeRemove(elementId, s.facts)
+        const toRemove = units ? tableRemoval(s, diag, units, [elementId]) : new Set([elementId])
 
         const updatedDiagrams = s.diagrams.map(d => {
           if (d.id !== diagramId) return d
@@ -963,11 +1086,14 @@ export function createDiagramSlice(set, get) {
 
         let finalOccs = remainingOccs
         if (!stillPresent) {
-          // Last occurrence of this element — cascade-remove dependent facts/OTs
+          // Last occurrence of this element: in a relational schema's diagram
+          // the rest of its table goes too; in ORM2 nothing else does.
           const units = diagramUnits(s, diag)
-          const toRemove = units ? tableRemoval(s, diag, units, [schemaElementId]) : computeCascadeRemove(schemaElementId, s.facts)
-          toRemove.delete(schemaElementId)
-          finalOccs = remainingOccs.filter(o => !toRemove.has(o.schemaElementId))
+          if (units) {
+            const toRemove = tableRemoval(s, diag, units, [schemaElementId])
+            toRemove.delete(schemaElementId)
+            finalOccs = remainingOccs.filter(o => !toRemove.has(o.schemaElementId))
+          }
         }
 
         const finalOccIds  = new Set(finalOccs.map(o => o.id))
@@ -1049,7 +1175,7 @@ export function createDiagramSlice(set, get) {
         const units = diagramUnits(s, diag)
         const elementIds = multiSelectedIds.filter(id => !constraintIdSetLocal.has(id) && !subtypeIdSetLocal.has(id))
         if (units) tableRemoval(s, diag, units, elementIds).forEach(cid => cascaded.add(cid))
-        else for (const id of elementIds) computeCascadeRemove(id, s.facts).forEach(cid => cascaded.add(cid))
+        else for (const id of elementIds) cascaded.add(id)
 
         const updatedDiagrams = s.diagrams.map(d => {
           if (d.id !== diagramId) return d

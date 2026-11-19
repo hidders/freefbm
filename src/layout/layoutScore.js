@@ -7,6 +7,7 @@ import { getDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds } from '../components/ObjectTypeNode'
 import { nestedFactBounds, getDisplayReading, ROLE_W, ROLE_H, ROLE_GAP } from '../components/FactTypeNode'
 import { roleAnchor } from '../utils/geometry'
+import { playerLookup } from '../diagram/roleLinks.js'
 
 // A fact type's box as drawn: its roles, the uniqueness bars on their side and a line
 // of reading text (factBounds keeps room for more bars than are drawn). A reading
@@ -62,7 +63,7 @@ export function layoutScore(state, diagramId, { details = false } = {}) {
   const boxes = []     // { key, name, l, r, t, b }
   const why = details ? [] : null
   const boxName = (k) => boxes.find(b => b.key === k)?.name ?? k
-  const otByOcc = new Map(), otFirst = new Map(), nestFirst = new Map()
+  const otByOcc = new Map(), otFirst = new Map()
   for (const o of els.objectTypes) {
     const e = entityBounds(o)
     const b = { key: `o:${o.occurrenceId}`, name: o.name, l: e.left, r: e.right, t: e.top, b: e.bottom }
@@ -75,17 +76,19 @@ export function layoutScore(state, diagramId, { details = false } = {}) {
     const e = f.objectified ? nestedFactBounds(g) : null
     const b = { key: `f:${f.occurrenceId}`, name: `[${getDisplayReading({ ...f, arity: f.roles.length }) || f.roles.length + '-ary'}]`, ...(e ? { l: e.left, r: e.right, t: e.top, b: e.bottom } : factBox(g)) }
     boxes.push(b)
-    if (f.objectified) { otByOcc.set(f.occurrenceId, b); if (!nestFirst.has(f.id)) nestFirst.set(f.id, b) }
+    if (f.objectified) otByOcc.set(f.occurrenceId, b)
   }
-  // Role connectors.
+  // Role connectors, to where RoleConnectors draws them (playerLookup).
+  const diagram = state.diagrams?.find(d => d.id === diagramId)
+  const players = playerLookup(els.objectTypes, els.facts, { collapsedRefFacts: els.collapsedRefFacts, refModeFacts: els.refModeFacts, expandedOccs: new Set(diagram?.expandedRefModeOccs ?? []) })
   const segs = []
   let length = 0
   for (const f of els.facts) {
     const g = { ...f, arity: f.roles.length }
     f.roles.forEach((r, ri) => {
       if (!r.objectTypeId) return
-      const occId = f.roleOccurrenceMap?.[String(ri)]
-      const pb = (occId && otByOcc.get(occId)) || otFirst.get(r.objectTypeId) || nestFirst.get(r.objectTypeId)
+      const { ot, nf } = players.forRole(f, ri)
+      const pb = otByOcc.get((ot ?? nf)?.occurrenceId)
       if (!pb) return
       const pc = { x: (pb.l + pb.r) / 2, y: (pb.t + pb.b) / 2 }
       const a = roleAnchor(g, ri, pc.x, pc.y)

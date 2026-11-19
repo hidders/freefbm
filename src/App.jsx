@@ -46,7 +46,6 @@ function useKeyboardShortcuts() {
       if (handleTextPanelKey(e)) return
 
       if (e.key === 'Escape') {
-        if (store.roleReconnectDraft) { store.cancelRoleReconnect(); return }
         if (store.pendingTargetPick) { store.cancelTargetPick(); return }
         if (store.queryEditDraft) { store.cancelQueryEdit(); return }
         if (store.noteConnectorDraft)     { store.cancelNoteConnector(); return }

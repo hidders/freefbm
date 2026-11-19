@@ -172,7 +172,6 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
          ? store.multiSelectedOccurrenceIds.includes(occurrenceId)
          : store.multiSelectedIds.includes(ot.id)))
     : (store.selectedId === ot.id || store.multiSelectedIds.includes(ot.id))
-  const isReconnectTarget = !!store.roleReconnectDraft
   const isVcConstruction = !!store.sequenceConstruction &&
     store.constraints.find(c => c.id === store.sequenceConstruction.constraintId)?.constraintType === 'valueComparison'
   const refValueRole = collapsedRefValueRole(ot)
@@ -428,9 +427,6 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
       const draft = store.linkDraft
       if (draft?.factId != null && draft?.roleIndex != null) {
         store.assignObjectTypeToRole(draft.factId, draft.roleIndex, ot.id)
-        if (draft.factOccId && occurrenceId) {
-          store.updateRoleOccurrenceMap(draft.factOccId, draft.roleIndex, occurrenceId, store.activeDiagramId)
-        }
         const autoReturn = draft?.autoReturn
         store.clearLinkDraft()
         if (autoReturn) store.setTool('select')
@@ -462,16 +458,13 @@ export default function ObjectTypeNode({ objectType: ot, occurrenceId, onDragSta
   const gs = groupStyle(store.groups, ot.id)
   const stroke = isSelected          ? 'var(--accent)'
     : isDraftFrom                    ? 'var(--col-subtype)'
-    : isReconnectTarget && !isSelected ? 'var(--warning, #d97706)'
     : isConstraintTarget             ? '#1a7fd4'
     : gs?.outline                    ? gs.outline
     : ot.kind === 'entity'           ? 'var(--col-entity)'
     :                                  'var(--col-value)'
 
   const strokeW = (isSelected || isDraftFrom) ? OT_STROKE + 1 : OT_STROKE
-  const strokeDash = (isReconnectTarget && !isSelected)
-    ? '8 4'
-    : ot.kind === 'value' ? VALUE_DASH : 'none'
+  const strokeDash = ot.kind === 'value' ? VALUE_DASH : 'none'
   const inRuleHighlight = !!store.ruleHighlight?.typeIds.includes(ot.id)
   const fill    = isConstraintTarget ? '#1a7fd4' : inQueryHighlight ? 'var(--fill-query-in)'
     : inRuleHighlight ? '#fde3c8'

@@ -4,7 +4,8 @@ import { findRefMode, refModeCollapseBlockers } from '../utils/refMode'
 import { isDeonticUniqueness } from '../logic/modality'
 import { makeContext } from '../logic/constraintFormulas.js'
 import { whyNoOuterJoin } from '../logic/query.js'
-import { placeOrmUnits, placeErdUnits } from '../layout/growPlacement.js'
+import { placeOrmUnits, placeErdUnits, placeRevealed } from '../layout/growPlacement.js'
+import { occurrenceRoleLinks } from '../diagram/roleLinks.js'
 import { layoutMappingDiagram } from '../layout/mappingLayout.js'
 import { useOrmStore } from '../store/ormStore'
 import { openDeleteFromSchema, canDeleteFromSchema, schemaDeletionIds } from '../utils/deleteSelection'
@@ -27,6 +28,23 @@ const deonticItem = (checked, setDeontic, disabledTitle = null) => ({
   title: disabledTitle ?? 'An obligation: what ought to hold, which a population may break',
   action: () => setDeontic(!checked),
 })
+
+// Reveal player: a role of a drawn fact type occurrence whose player is not
+// connected to it gets an occurrence of the player next to it
+// (store.revealPlayers). fact: as drawn, with its occurrenceId.
+export function canRevealPlayer(fact, roleIndex) {
+  const store = useOrmStore.getState()
+  if (fact._implicit || !fact.occurrenceId || !fact.roles[roleIndex]?.objectTypeId) return false
+  const d = store.diagrams.find(x => x.id === store.activeDiagramId)
+  const occ = d?.occurrences?.find(o => o.id === fact.occurrenceId)
+  if (!occ || d.mappingId) return false
+  return !occurrenceRoleLinks(d, store.facts, store.objectTypes).linkOf(occ, roleIndex)
+}
+export function revealPlayer(fact, roleIndex) {
+  if (!canRevealPlayer(fact, roleIndex)) return false
+  const store = useOrmStore.getState()
+  return store.revealPlayers(store.activeDiagramId, fact.occurrenceId, [roleIndex], { place: placeRevealed }).length > 0
+}
 
 export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
 
@@ -146,7 +164,12 @@ export function useContextMenuHandlers(store, setContextMenu, setVrPopup) {
     e.stopPropagation()
     const role = fact.roles[roleIndex]
     const hasUnary = fact.uniqueness.some(u => u.roles.length === 1 && u.roles[0] === roleIndex)
+    const reveal = canRevealPlayer(fact, roleIndex)
     const items = [
+      { label: 'Reveal player', disabled: !reveal,
+        title: reveal ? undefined : !role.objectTypeId ? 'The role has no player' : 'The role is connected',
+        action: () => revealPlayer(fact, roleIndex) },
+      '---',
       { label: 'Is mandatory', checked: !!role.mandatory,
         action: () => store.updateRole(fact.id, roleIndex, { mandatory: !role.mandatory }) },
       { label: 'Has uniqueness constraint', checked: hasUnary,

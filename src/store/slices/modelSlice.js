@@ -8,10 +8,10 @@ import { withDerivedPopulations, semiDerivedPopulationIssues, derivedFactPopulat
 import { isIdentifyingFact } from '../../utils/refMode.js'
 import {
   uid, mkEntity, mkValue, mkFact, mkRole, mkSubtype, mkConstraint, mkDiagram, mkNote, mkImplicitLink,
-  mkOcc, occOf, inDiag, patchOcc, rmOcc, patchOccById, buildRoleOccurrenceMap,
+  mkOcc, occOf, inDiag, patchOcc, rmOcc, patchOccById,
   mkConstraintOcc, cOccOf, cInDiag, patchCOcc, patchCOccById, addCOccIfAbsent, rmCOcc,
   addOccIfAbsent, addOwnedRefModeOccsIfAbsent, normalizeStEps, roleOccRefsKey,
-  makeUniqueName, purgeOrphanedConstraints, closeUnderPrinciple3, computeCascadeRemove,
+  makeUniqueName, purgeOrphanedConstraints,
   identifiedIdForInternalPI, demoteOtherPIsFor, mkRefModePair, findMatchingRefModeFact,
   vtNameFromLabel, clearRefModePI, applyFreshRefMode,
   findUniqueLCA, findPathDown, migrateRefModeExpansion, migrateSubtypeOccurrences, repairDrawnRefModes,
@@ -52,6 +52,20 @@ function sameSchemaClipboard(state) {
 // A file's base language (schema.language), English when it has none.
 const fileLanguage = (lang) => typeof lang === 'string' && /^[a-z]{2,3}(-[A-Za-z0-9]+)?$/.test(lang) ? lang : BASE_LANGUAGE
 
+// File format 3 stores no role connectors: they follow from where the
+// occurrences are (src/diagram/roleLinks.js, docs/nearest-role-connectors.md).
+// Older files' roleOccurrenceMap and unlinkedRoles are dropped on load, after
+// the repairs that still read them (repairDrawnRefModes); this does not mark
+// the file changed.
+function withoutRoleMaps(diag) {
+  if (!(diag.occurrences ?? []).some(o => 'roleOccurrenceMap' in o || 'unlinkedRoles' in o)) return diag
+  return { ...diag, occurrences: diag.occurrences.map(o => {
+    if (!('roleOccurrenceMap' in o) && !('unlinkedRoles' in o)) return o
+    const { roleOccurrenceMap: _m, unlinkedRoles: _u, ...rest } = o
+    return rest
+  }) }
+}
+
 export function createModelSlice(set, get) {
   return {
     filePath: null,
@@ -86,7 +100,6 @@ export function createModelSlice(set, get) {
 
     tool:      'select',
     linkDraft: null,
-    roleReconnectDraft: null,  // { factOccId, roleIndex, factSchemaId, currentOtSchemaId, diagramId } | null
     noteConnectorDraft:      null,  // { noteId } | null
     noteRemoveSubjectDraft:  null,  // { noteId } | null
 
@@ -144,8 +157,9 @@ export function createModelSlice(set, get) {
       const diagramShownIL      = new Set(activeDiagram?.shownImplicitLinks ?? [])
       const diagramExpandedRefs = new Set(activeDiagram?.expandedRefModes    ?? [])
 
-      // Principle 3: expand to include role-player OTs for every fact in the selection
-      const expandedIds = closeUnderPrinciple3([...ids], { facts, objectTypes })
+      // Exactly the selection: a fact type's players come along only when
+      // selected (a pasted fact type connects to players shown already).
+      const expandedIds = ids
 
       const copiedOts   = objectTypes.filter(o => expandedIds.has(o.id))
       const copiedFacts = facts.filter(f => expandedIds.has(f.id))
@@ -230,13 +244,11 @@ export function createModelSlice(set, get) {
       const activeDiagram = diagrams.find(d => d.id === activeDiagramId)
       const existingIds = new Set((activeDiagram?.occurrences ?? []).map(o => o.schemaElementId))
 
-      // Principle 3: ensure role-player OTs of clipboard facts are also added (even if
-      // they are in the schema but not in the clipboard itself)
-      const clipBaseIds = [
+      // Exactly what was copied: role players not copied are not added.
+      const closedIds = new Set([
         ...clipboard.objectTypes.map(o => o.id),
         ...clipboard.facts.map(f => f.id),
-      ]
-      const closedIds = closeUnderPrinciple3(clipBaseIds, { facts, objectTypes })
+      ])
 
       // Collect implied links that need to be shown (from pasted constraints + clipboard's own shown ILs)
       const impliedLinksToShow = new Set(clipboard.shownImplicitLinks ?? [])
@@ -544,7 +556,7 @@ export function createModelSlice(set, get) {
             selectedId: null, selectedKind: null, selectedRole: null, selectedImplicitLink: null, selectedImplicitLinkRole: null,
             selectedUniqueness: null, multiSelectedIds: [], selectedOccurrenceId: null, multiSelectedOccurrenceIds: [],
             uniquenessConstruction: null, frequencyConstruction: null,
-            linkDraft: null, roleReconnectDraft: null, ruleEditor: null, ruleHighlight: null,
+            linkDraft: null, ruleEditor: null, ruleHighlight: null,
             pan: { x: 0, y: 0 }, zoom: BASE_ZOOM, objectTypeNameDisplay: 'asIs', removeNameCharacters: '.:_' })
     },
 
@@ -553,7 +565,7 @@ export function createModelSlice(set, get) {
 
       // v2 format: { version: 2, schema: { objectTypes, factTypes, subtypes, externalConstraints, displaySettings }, diagrams, ... }
       let schemaDisplaySettings = {}
-      if (d.version === 2 && d.schema) {
+      if (d.version >= 2 && d.schema) {
         schemaDisplaySettings = d.schema.displaySettings ?? {}
         d = {
           ...d,
@@ -694,7 +706,7 @@ export function createModelSlice(set, get) {
 
       let diagrams, activeDiagramId
       if (d.diagrams && d.diagrams.length > 0) {
-        diagrams = d.diagrams.map(diag => {
+        diagrams = d.diagrams.map(diag => withoutRoleMaps((() => {
           if (diag.constraintOccurrences) {
             // Phase 3 format: constraintOccurrences already split out
             const d3 = { ...diag, constraintOccurrences: diag.constraintOccurrences, implicitLinkPositions: diag.implicitLinkPositions ?? {}, multiSelectedIds: [], expandedRefModes: diag.expandedRefModes ?? [] }
@@ -718,7 +730,7 @@ export function createModelSlice(set, get) {
           }
           // old format (elementIds + positions)
           return migrateSubtypeOccurrences(migrateRefModeExpansion(migrateOldDiagram(diag, parsedOts, facts, constraints, constraintIdSet), parsedOts, facts), parsedSts)
-        })
+        })()))
         // A file always opens on its first diagram (Jan, 2026-11-11), not on
         // the one that was active when it was saved; see below for schemas.
         activeDiagramId = diagrams[0].id
@@ -870,7 +882,7 @@ export function createModelSlice(set, get) {
         subtypeMappings,
         nestedEntityMappings,
         filePath, isDirty: false, importLog: null, importedFrom: null, selectedId: null, selectedKind: null, selectedOccurrenceId: null, multiSelectedOccurrenceIds: [],
-        linkDraft: null, roleReconnectDraft: null,
+        linkDraft: null,
         // Restore schema-level display settings (v2 files only; defaults kept for older files)
         ...(schemaDisplaySettings.mandatoryDotPosition  != null && { mandatoryDotPosition:    schemaDisplaySettings.mandatoryDotPosition }),
         ...(schemaDisplaySettings.showReferenceMode     != null && { showReferenceMode:        schemaDisplaySettings.showReferenceMode }),
@@ -963,7 +975,7 @@ export function createModelSlice(set, get) {
         if (facts.find(f => f.id === fid && f.objectified)) cleanNem[fid] = rows
       }
       return JSON.stringify({
-        version: 2,
+        version: 3,
         schema: {
           schemas,
           objectTypes:          objectTypes.map(strip),

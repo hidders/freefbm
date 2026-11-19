@@ -829,9 +829,9 @@ export function createSelectionSlice(set, get) {
     setTool(tool) {
       const prev = get().tool
       const clearRoleSelection = (prev === 'assignRole' && tool !== 'assignRole')
-      set({ tool, linkDraft: null, roleReconnectDraft: null, ...(clearRoleSelection ? { selectedId: null, selectedKind: null, selectedRole: null, selectedUniqueness: null } : {}) })
+      set({ tool, linkDraft: null, ...(clearRoleSelection ? { selectedId: null, selectedKind: null, selectedRole: null, selectedUniqueness: null } : {}) })
     },
     setLinkDraft(d)  { set({ linkDraft: d }) },
-    clearLinkDraft() { set({ linkDraft: null, roleReconnectDraft: null }) },
+    clearLinkDraft() { set({ linkDraft: null }) },
   }
 }

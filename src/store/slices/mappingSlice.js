@@ -24,6 +24,7 @@ import { uid, mappingOfDiagram, isViewMapping, makeUniqueName, diagramRuleIds } 
 import { numberInvented } from '../../mapping/exchanges.js'
 import { ruleWantedElements, compactRulePlacement } from '../../mapping/diagramRules.js'
 import { erdPartsOfDiagram } from '../../relational/erdBoxes.js'
+import { occurrenceRoleLinks } from '../../diagram/roleLinks.js'
 
 // The constraints of the old version (schemaId) about the given elements
 // (all of them when elementIds is null) that the mapping m loses, each added
@@ -695,7 +696,8 @@ export const createMappingSlice = (set, get) => {
       const occs = best ? shown(best) : []
       if (occs.length) {
         // Right of the fact types and their players, level with the facts.
-        const players = new Set(occs.flatMap(o => Object.values(o.roleOccurrenceMap ?? {})))
+        const links = occurrenceRoleLinks(best, s.facts, s.objectTypes)
+        const players = new Set(occs.flatMap(o => (s.facts.find(f => f.id === o.schemaElementId)?.roles ?? []).map((_, ri) => links.linkOf(o, ri)?.id)))
         const near = [...occs, ...(best.occurrences ?? []).filter(o => players.has(o.id))]
         x = Math.max(...near.map(o => o.x)) + 120
         y = occs.reduce((a, o) => a + o.y, 0) / occs.length

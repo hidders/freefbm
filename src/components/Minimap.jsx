@@ -7,6 +7,7 @@ import { factBounds, nestedFactBounds, ROLE_W, ROLE_H, ROLE_GAP } from './FactTy
 import { mappingErdBoxes, erdLayout, isErdDiagram } from './ErdView'
 import { relationalModel } from '../relational/relationalModel'
 import { zoomPercent } from '../utils/viewScale.js'
+import { playerLookup } from '../diagram/roleLinks.js'
 
 const MM_W  = 170
 const MM_H  = 110
@@ -291,13 +292,13 @@ export default function Minimap() {
       >
         <rect width={MM_W} height={MM_H} fill="var(--bg-diagram)"/>
 
-        {/* Role connectors */}
+        {/* Role connectors, to the occurrences the diagram draws them to (roleLinks.js) */}
         {(() => {
-          const nestedMap = Object.fromEntries(visFacts.filter(f => f.objectified).map(f => [f.id, f]))
+          const players = playerLookup(visOts, visFacts, { collapsedRefFacts: elems.collapsedRefFacts, refModeFacts: elems.refModeFacts,
+            expandedOccs: new Set(elems.diagram?.expandedRefModeOccs ?? []) })
           return visFacts.flatMap(fact =>
             fact.roles.map((role, ri) => {
-              const ot = visOts.find(o => o.id === role.objectTypeId)
-              const nf = !ot ? nestedMap[role.objectTypeId] : null
+              const { ot, nf } = players.forRole(fact, ri)
               const player = ot ?? nf
               if (!player) return null
               return (

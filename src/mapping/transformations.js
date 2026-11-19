@@ -1444,7 +1444,7 @@ function okSubtype(ctx, sid) {
 }
 // On every diagram of schema S, occurrences of `from` are replaced by one of
 // `to` (the supertype end of the subtype link when drawn, else any, else a
-// new one), and the roles drawn to them follow.
+// new one): `to` is drawn, and the roles' connectors go to its nearest occurrence.
 function redirectOccurrences(api, S, from, to, subtypeId) {
   for (const d of api.getState().diagrams.filter(x => x.schemaId === S)) {
     const occs = (d.occurrences ?? []).filter(o => o.schemaElementId === from)
@@ -1454,9 +1454,6 @@ function redirectOccurrences(api, S, from, to, subtypeId) {
       try { api.getState().addElementToDiagram(to, d.id) } catch { continue }
       target = api.getState().diagrams.find(x => x.id === d.id).occurrences.find(o => o.schemaElementId === to)?.id
     }
-    const ids = new Set(occs.map(o => o.id))
-    api.setState(st => ({ diagrams: st.diagrams.map(x => (x.id !== d.id ? x : { ...x, occurrences: x.occurrences.map(o => (o.roleOccurrenceMap
-      ? { ...o, roleOccurrenceMap: Object.fromEntries(Object.entries(o.roleOccurrenceMap).map(([k, v]) => [k, ids.has(v) ? target : v])) } : o)) })) }))
   }
 }
 
@@ -1522,11 +1519,6 @@ const flatten = {
     api.setState(st => ({
       facts: st.facts.map(g => (g.schemaId !== S || !g.roles.some(r => r.objectTypeId === fN) ? g : { ...g, roles: g.roles.map(r => (r.objectTypeId === fN ? { ...r, objectTypeId: n.id } : r)) })),
       subtypes: st.subtypes.map(x => (x.schemaId !== S ? x : { ...x, ...(x.superId === fN ? { superId: n.id } : {}), ...(x.subId === fN ? { subId: n.id } : {}) })),
-      diagrams: st.diagrams.map(d => {
-        const oo = occOf.get(d.id)
-        return !oo ? d : { ...d, occurrences: d.occurrences.map(o => (o.roleOccurrenceMap && o.schemaElementId !== fN
-          ? { ...o, roleOccurrenceMap: Object.fromEntries(Object.entries(o.roleOccurrenceMap).map(([k, v]) => [k, v === oo[0] ? oo[1] : v])) } : o)) }
-      }),
     }))
     // The binaries.
     const key = keyUcOf(fNew)
@@ -1676,11 +1668,6 @@ const objectify = {
     api.setState(st => ({
       facts: st.facts.map(g => (g.schemaId !== S || Lids.has(g.id) || !g.roles.some(r => r.objectTypeId === nN) ? g : { ...g, roles: g.roles.map(r => (r.objectTypeId === nN ? { ...r, objectTypeId: f.id } : r)) })),
       subtypes: st.subtypes.map(x => (x.schemaId !== S || x.superId !== nN ? x : { ...x, superId: f.id })),
-      diagrams: st.diagrams.map(d => {
-        const oo = occOf.get(d.id)
-        return !oo ? d : { ...d, occurrences: d.occurrences.map(o => (o.roleOccurrenceMap && !Lids.has(o.schemaElementId)
-          ? { ...o, roleOccurrenceMap: Object.fromEntries(Object.entries(o.roleOccurrenceMap).map(([kk, v]) => [kk, v === oo[0] ? oo[1] : v])) } : o)) }
-      }),
     }))
     // Constraints on the binaries: on F's roles and implied links, one
     // role at a time; else carried as formulas.
@@ -1784,14 +1771,6 @@ const unaryToSubtype = {
       const mv = movedFacts.get(g.id)
       return mv ? { ...g, roles: g.roles.map((r, i) => (i === mv.i ? withMandatoryId({ ...r, objectTypeId: s.id, mandatory: r.mandatory || mv.c.constraintType === 'equality' }) : r)) } : g
     }) }))
-    for (const d of api.getState().diagrams.filter(x => x.schemaId === S)) {
-      const so = d.occurrences?.find(o => o.schemaElementId === s.id)
-      if (!so) continue
-      api.setState(x => ({ diagrams: x.diagrams.map(dd => (dd.id !== d.id ? dd : { ...dd, occurrences: dd.occurrences.map(o => {
-        const mv = movedFacts.get(o.schemaElementId)
-        return mv && o.roleOccurrenceMap ? { ...o, roleOccurrenceMap: { ...o.roleOccurrenceMap, [mv.i]: so.id } } : o
-      }) })) }))
-    }
     // The rules: the unary is the subtype's type atom; a variable at a moved
     // role is an S.
     const rw = (tree) => {
