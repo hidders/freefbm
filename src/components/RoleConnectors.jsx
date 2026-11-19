@@ -11,6 +11,7 @@ import { findCompositePI } from '../utils/refMode'
 import { groupStyle } from '../utils/groups.js'
 import { DIAGRAM_FONT, measureDiagramText } from '../diagram/diagramFont.js'
 import { NORMA, px, pt } from '../diagram/normaGeometry.js'
+import { playerLookup } from '../diagram/roleLinks.js'
 
 const DOT_R = px(NORMA.mandatoryDot.diameter) / 2  // mandatory dot radius (NORMA 0.075 in)
 const LINK_W = pt(NORMA.rolePlayerPenPt)            // role connector pen (NORMA 1 pt)
@@ -53,67 +54,19 @@ function playerXY(ot, nestedFact) {
   return null
 }
 
-// Where each role's player is drawn. A fact type occurrence names the
-// occurrence its role links to (roleOccurrenceMap), or none (unlinkedRoles,
-// from a NORMA import: NORMA links that role from a nearer shape of the same
-// fact type only); otherwise, and for link
-// fact types, the role goes to the player's occurrence nearest to it, as in
-// NORMA. Objectified fact types are players through their own occurrences.
-export function playerLookup(objectTypes, visibleFacts) {
-  const otByOccId = {}, otsById = {}
-  for (const o of objectTypes) {
-    if (o.occurrenceId) otByOccId[o.occurrenceId] = o
-    ;(otsById[o.id] ??= []).push(o)
-  }
-  const nfByOccId = {}, nfsById = {}
-  for (const f of visibleFacts) {
-    if (!f.objectified || f._implicit) continue
-    if (f.occurrenceId) nfByOccId[f.occurrenceId] = f
-    ;(nfsById[f.id] ??= []).push(f)
-  }
-  const nearest = (id, x, y) => {
-    const pick = (list) => {
-      let best = null, bestD = Infinity
-      for (const c of list ?? []) {
-        const d = Math.hypot(c.x - x, c.y - y)
-        if (d < bestD) { bestD = d; best = c }
-      }
-      return best
-    }
-    const ot = pick(otsById[id])
-    return ot ? { ot, nf: null } : { ot: null, nf: pick(nfsById[id]) }
-  }
-  const forRole = (fact, ri) => {
-    const id = fact.roles[ri]?.objectTypeId
-    // a role NORMA links from a nearer shape of its fact type only
-    if (!id || fact.unlinkedRoles?.includes(ri)) return { ot: null, nf: null }
-    const occId = fact.roleOccurrenceMap?.[String(ri)]
-    const ot = occId && otByOccId[occId]
-    if (ot && ot.id === id) return { ot, nf: null }
-    const nf = occId && nfByOccId[occId]
-    if (nf && nf.id === id) return { ot: null, nf }
-    return nearest(id, fact.x, fact.y)
-  }
-  // each objectified fact type once: its link fact types are drawn once per diagram
-  const linkOwners = []
-  const seen = new Set()
-  for (const f of visibleFacts) {
-    if (!f.objectified || f._implicit || seen.has(f.id)) continue
-    seen.add(f.id); linkOwners.push(f)
-  }
-  return { forRole, nearest, linkOwners }
-}
+// Where each role's player is drawn: src/diagram/roleLinks.js (playerLookup).
+export { playerLookup }
 
 // ── component ─────────────────────────────────────────────────────────────────
 
 export default function RoleConnectors({ mousePos, queryReachable, queryOriginals }) {
   const store = useOrmStoreIgnoring('pan', 'zoom')
-  const { objectTypes, facts: visibleFacts } = useDiagramElements()
-  const players = playerLookup(objectTypes, visibleFacts)
+  const { objectTypes, facts: visibleFacts, collapsedRefFacts } = useDiagramElements()
+  const activeDiag = store.diagrams?.find(d => d.id === store.activeDiagramId)
+  const players = playerLookup(objectTypes, visibleFacts, { collapsedRefFacts, expandedOccs: new Set(activeDiag?.expandedRefModeOccs ?? []) })
   const dotAtObject = store.mandatoryDotPosition === 'object'
 
   // Read diagram occurrence data for per-element overrides (e.g. roleNameOffsets)
-  const activeDiag = store.diagrams?.find(d => d.id === store.activeDiagramId)
   const diagOccMap = Object.fromEntries(
     (activeDiag?.occurrences ?? []).map(o => [o.schemaElementId, o])
   )
@@ -433,8 +386,9 @@ export default function RoleConnectors({ mousePos, queryReachable, queryOriginal
 
 export function MandatoryDots({ onContextMenu, queryReachable, queryOriginals }) {
   const store      = useOrmStoreIgnoring('pan', 'zoom')
-  const { objectTypes, facts: visibleFacts } = useDiagramElements()
-  const players    = playerLookup(objectTypes, visibleFacts)
+  const { objectTypes, facts: visibleFacts, collapsedRefFacts } = useDiagramElements()
+  const expandedOccs = new Set(store.diagrams?.find(d => d.id === store.activeDiagramId)?.expandedRefModeOccs ?? [])
+  const players    = playerLookup(objectTypes, visibleFacts, { collapsedRefFacts, expandedOccs })
   const dotAtObject = store.mandatoryDotPosition === 'object'
   const sel        = store.selectedMandatoryDot
   const diagIlPos  = store.diagrams?.find(d => d.id === store.activeDiagramId)?.implicitLinkPositions ?? {}

@@ -36,6 +36,7 @@ import { renderFormula } from '../logic/renderFormula.js'
 import { SUBJECT } from '../logic/derivationRule.js'
 import { conjunctivePath } from './normaPathsOut.js'
 import { otShapeKey, factShapeKey, noteShapeKey } from '../diagram/normaShapeKeys.js'
+import { normaBarLevels, nearestPairs } from '../diagram/roleLinks.js'
 
 const NS = {
   cp: 'http://schemas.neumont.edu/ORM/2007-11/CustomProperties',
@@ -943,23 +944,24 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     }
     const at = new Map(written.map(w => [w.occ.id, centre(w.shape)]))
     const shapesOf = (id) => written.filter(w => w.occ.schemaElementId === id && at.get(w.occ.id))
-    const dist = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2
+    const linked = new Map()   // `${factId}:${ri}` → Map(fact occurrence id → player occurrence id), NORMA's
+    const theirsFor = (f, ri, r) => {
+      const key = `${f.id}:${ri}`
+      if (!linked.has(key)) {
+        const froms = shapesOf(f.id).filter(w => !w.shape.attrs.DisplayAsObjectType)
+        const tos = shapesOf(r.objectTypeId).filter(w =>
+          !(refModes.get(r.objectTypeId)?.factId === f.id && !w.shape.attrs.ExpandRefMode))
+        linked.set(key, new Map(nearestPairs(froms, tos, { centre: w => at.get(w.occ.id) }).map(([a, b]) => [a.occ.id, b.occ.id])))
+      }
+      return linked.get(key)
+    }
     for (const { occ, shape } of written) {
       const f = factById.get(occ.schemaElementId)
       if (!f || shape.attrs.DisplayAsObjectType || !at.get(occ.id)) continue
-      const c = at.get(occ.id)
       f.roles.forEach((r, i) => {
         const mine = occ.roleOccurrenceMap?.[String(i)]
         if (!r.objectTypeId || !mine) return
-        const players = shapesOf(r.objectTypeId).filter(w =>
-          !(refModes.get(r.objectTypeId)?.factId === f.id && !w.shape.attrs.ExpandRefMode))
-        if (players.length < 2 && players.every(w => w.occ.id === mine)) return
-        let best = null
-        for (const w of players) if (!best || dist(c, at.get(w.occ.id)) < dist(c, at.get(best.occ.id))) best = w
-        const p = best && at.get(best.occ.id)
-        const nearer = p && shapesOf(f.id).some(w => w.occ !== occ && !w.shape.attrs.DisplayAsObjectType
-          && dist(at.get(w.occ.id), p) < dist(c, p))
-        const theirs = best && !nearer ? best.occ.id : null
+        const theirs = theirsFor(f, i, r).get(occ.id) ?? null
         if (theirs !== mine) relinked.push(`${d.name ?? 'Diagram'}: ${factLabel(f)} (${otById.get(r.objectTypeId)?.name ?? factById.get(r.objectTypeId)?.objectifiedName ?? 'player'})`)
       })
     }
@@ -1090,7 +1092,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     const n = Math.max(f.roles.length, 1)
     const vertical = (occ.orientation ?? f.orientation) === 'vertical'
     const below = !!(occ.uniquenessBelow ?? f.uniquenessBelow)
-    const levels = barLevels(f)
+    const levels = normaBarLevels(f)
     // an objectified fact type's shape holds NORMA's margins of the outline
     const pen = 1 / 72
     const [mAlong, mAcross] = f.objectified ? [NORMA.objectified.marginX, NORMA.objectified.marginY] : [NORMA.factBorder, NORMA.factBorder]
@@ -1166,16 +1168,6 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     if (vertical) return (above !== range) ? { x: box.r + GAP + size.w / 2, y: p.y } : { x: box.l - GAP - size.w / 2, y: p.y }
     return above ? { x: p.x, y: box.t - GAP - size.h / 2 } : { x: p.x, y: box.b + GAP + size.h / 2 }
   }
-  // Levels of uniqueness bars as NORMA stacks them: single-role bars share
-  // one level, each longer bar has its own (FactTypeNode's level assignment).
-  function barLevels(f) {
-    const ucs = (f.uniqueness ?? []).map(u => u.roles)
-    const implied = (f.preferredUniqueness ?? []).some(pu => f.roles.some((_, ri) => !pu.includes(ri)))
-    // a unary's uniqueness is not drawn
-    const single = f.roles.length > 1 && (ucs.some(r => r.length === 1) || implied)
-    return (single ? 1 : 0) + ucs.filter(r => r.length > 1).length
-  }
-
   // ── report ───────────────────────────────────────────────────────────────
   note(`Exported ${objectTypes.length} object types, ${facts.length} fact types, ${subtypes.length} subtype links and ${diagrams.length} diagram${diagrams.length === 1 ? '' : 's'} of schema “${modelName}”.`)
   if (impliedCount) note(`${impliedCount} uniqueness and mandatory constraints that preferred identifiers imply (FreeFBM draws them without storing them) were written as constraints, as NORMA keeps them.`)

@@ -12,6 +12,7 @@ import { preferredReadings } from '../store/readings.js'
 import { groupStyle } from '../utils/groups.js'
 import { DIAGRAM_FONT, measureDiagramText } from '../diagram/diagramFont.js'
 import { NORMA, px, pt } from '../diagram/normaGeometry.js'
+import { nearestTo, factShapeCentre } from '../diagram/roleLinks.js'
 import { useLabelNudge } from '../hooks/useLabelNudge.js'
 
 const VR_DEFAULT_OFFSET = { dx: 0, dy: -50 }
@@ -363,14 +364,8 @@ export function makeImplicitLinkFact(parentFact, implicitLink) {
   // nearest to it, as RoleConnectors links it (playerLookup).
   const occsOf = (id) => (diag?.occurrences ?? []).filter(o => o.schemaElementId === id && !o.refModeOwnerOccId)
   const parentOcc = occsOf(parentFact.id)[0] ?? parentFact
-  const nearestOcc = (id) => {
-    let best = null, bestD = Infinity
-    for (const o of occsOf(id)) {
-      const d = Math.hypot(o.x - parentOcc.x, o.y - parentOcc.y)
-      if (d < bestD) { bestD = d; best = o }
-    }
-    return best
-  }
+  const nearestOcc = (id) => nearestTo(parentOcc, occsOf(id),
+    (o) => nestedMap[o.schemaElementId] ? factShapeCentre(nestedMap[o.schemaElementId], o) : o)
   const near = nearestOcc(associatedOtid)
   const associatedOt = otMap[associatedOtid] && (near ? { ...otMap[associatedOtid], x: near.x, y: near.y } : otMap[associatedOtid])
   const associatedNf = !associatedOt ? (nestedMap[associatedOtid] && (near ? { ...nestedMap[associatedOtid], x: near.x, y: near.y } : nestedMap[associatedOtid])) : null

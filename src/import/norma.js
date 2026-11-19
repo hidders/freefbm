@@ -40,6 +40,7 @@ import { findRefMode } from '../utils/refMode.js'
 import { VALUE_KINDS, valueKindName } from '../utils/datatypeValues.js'
 import { normaTemporal } from './normaTemporal.js'
 import { otShapeKey, factShapeKey, noteShapeKey, subtypeLinkPairs, nearestShapePairs } from '../diagram/normaShapeKeys.js'
+import { nearestTo } from '../diagram/roleLinks.js'
 import { placeLabel, factLabelBox, readingLabelSize, rangeLabelSize, nameLabelSize, roleNameLabelSize, objectTypeLabelBox,
   roleAnchor, nameAnchor } from './normaLabels.js'
 import { PX_PER_INCH, NORMA } from '../diagram/normaGeometry.js'
@@ -1364,8 +1365,7 @@ export function importNorma(xmlText) {
   // nearest occurrence of their player.
   function finishDiagram(diag, expandedOwners) {
     const occsOf = (id) => diag.occurrences.filter(o => o.schemaElementId === id)
-    const nearest = (id, x, y, pred = () => true) => occsOf(id).filter(pred)
-      .sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0] ?? null
+    const nearest = (id, x, y, pred = () => true) => nearestTo({ x, y }, occsOf(id).filter(pred))
     // reference modes
     const owners = diag.occurrences.filter(o => otById.get(o.schemaElementId)?.kind === 'entity'
       || factById.get(o.schemaElementId)?.objectified)
