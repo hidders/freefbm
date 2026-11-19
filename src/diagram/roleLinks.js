@@ -146,8 +146,9 @@ export function roleLinkIndex({ facts, players, factId = (f) => f.id, playerId =
 // players through their own occurrences. collapsedRefFacts and expandedOccs
 // (useDiagramElements, the diagram's expandedRefModeOccs) keep a reference
 // mode's fact type off entity type occurrences that show the mode
-// collapsed, as NORMA does.
-export function playerLookup(objectTypes, visibleFacts, { collapsedRefFacts = {}, expandedOccs = null } = {}) {
+// collapsed, as NORMA does; refModeFacts (useDiagramElements) does the same
+// for one shown on its own.
+export function playerLookup(objectTypes, visibleFacts, { collapsedRefFacts = {}, refModeFacts = null, expandedOccs = null } = {}) {
   const nested = visibleFacts.filter(f => f.objectified && !f._implicit)
   const centres = new Map()
   const centre = (o) => {
@@ -156,7 +157,10 @@ export function playerLookup(objectTypes, visibleFacts, { collapsedRefFacts = {}
     if (!c) centres.set(o, c = factShapeCentre(o))
     return c
   }
-  const refEntity = new Map(Object.entries(collapsedRefFacts).map(([fid, e]) => [fid, e?.entityId]))
+  // refModeFacts (factId → entity id, useDiagramElements) also covers a
+  // reference mode fact type shown on its own; collapsedRefFacts only those hidden.
+  const refEntity = new Map(refModeFacts ? Object.entries(refModeFacts)
+    : Object.entries(collapsedRefFacts).map(([fid, e]) => [fid, e?.entityId]))
   const links = roleLinkIndex({
     facts: visibleFacts.filter(f => !f._implicit),
     players: [...objectTypes, ...nested],

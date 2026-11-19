@@ -620,7 +620,7 @@ export function factBounds(fact) {
   }
 }
 
-export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContextMenu, onRoleContextMenu, onBarContextMenu, onRoleValueClick, onNestedVrClick, onRoleCardinalityClick, onNestedCrClick, onIfContextMenu, onRoleValueContextMenu, onRoleCrContextMenu, onNestedVrContextMenu, onNestedCrContextMenu, isShared, dimObjectification, dimInnerFact, visibleConstraints, dimInternalConstraints }) {
+export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContextMenu, onRoleContextMenu, onRevealPlayer, onBarContextMenu, onRoleValueClick, onNestedVrClick, onRoleCardinalityClick, onNestedCrClick, onIfContextMenu, onRoleValueContextMenu, onRoleCrContextMenu, onNestedVrContextMenu, onNestedCrContextMenu, isShared, dimObjectification, dimInnerFact, visibleConstraints, dimInternalConstraints }) {
   const store = useOrmStoreIgnoring('pan', 'zoom')
   const isImplicitSelected = fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact._parentFactId && store.selectedImplicitLink === fact._implicitRoleIndex
   const hasSelectedImplicitLink = !fact._implicit && store.selectedKind === 'implicitLink' && store.selectedId === fact.id
@@ -875,10 +875,12 @@ export default function FactTypeNode({ fact, occurrenceId, onDragStart, onContex
     if (fact._implicit) return
     if (store.sequenceConstruction || inConstruction) return
     if (store.tool !== 'select') return
+    // A role with a player but no connector: show the player next to it.
+    if (onRevealPlayer?.(roleIndex)) return
 
     store.setTool('assignRole')
     store.setLinkDraft({ type: 'roleAssign', factId: fact.id, factOccId: fact.occurrenceId ?? null, roleIndex, autoReturn: true })
-  }, [store, fact.id, fact.occurrenceId, fact._implicit, inConstruction, inQueryEdit])
+  }, [store, fact.id, fact.occurrenceId, fact._implicit, inConstruction, inQueryEdit, onRevealPlayer])
 
   const handleRoleContextMenu = useCallback((roleIndex, e) => {
     e.preventDefault(); e.stopPropagation()

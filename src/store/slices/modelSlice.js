@@ -11,7 +11,7 @@ import {
   mkOcc, occOf, inDiag, patchOcc, rmOcc, patchOccById,
   mkConstraintOcc, cOccOf, cInDiag, patchCOcc, patchCOccById, addCOccIfAbsent, rmCOcc,
   addOccIfAbsent, addOwnedRefModeOccsIfAbsent, normalizeStEps, roleOccRefsKey,
-  makeUniqueName, purgeOrphanedConstraints, closeUnderPrinciple3, computeCascadeRemove,
+  makeUniqueName, purgeOrphanedConstraints,
   identifiedIdForInternalPI, demoteOtherPIsFor, mkRefModePair, findMatchingRefModeFact,
   vtNameFromLabel, clearRefModePI, applyFreshRefMode,
   findUniqueLCA, findPathDown, migrateRefModeExpansion, migrateSubtypeOccurrences, repairDrawnRefModes,
@@ -157,8 +157,9 @@ export function createModelSlice(set, get) {
       const diagramShownIL      = new Set(activeDiagram?.shownImplicitLinks ?? [])
       const diagramExpandedRefs = new Set(activeDiagram?.expandedRefModes    ?? [])
 
-      // Principle 3: expand to include role-player OTs for every fact in the selection
-      const expandedIds = closeUnderPrinciple3([...ids], { facts, objectTypes })
+      // Exactly the selection: a fact type's players come along only when
+      // selected (a pasted fact type connects to players shown already).
+      const expandedIds = ids
 
       const copiedOts   = objectTypes.filter(o => expandedIds.has(o.id))
       const copiedFacts = facts.filter(f => expandedIds.has(f.id))
@@ -243,13 +244,11 @@ export function createModelSlice(set, get) {
       const activeDiagram = diagrams.find(d => d.id === activeDiagramId)
       const existingIds = new Set((activeDiagram?.occurrences ?? []).map(o => o.schemaElementId))
 
-      // Principle 3: ensure role-player OTs of clipboard facts are also added (even if
-      // they are in the schema but not in the clipboard itself)
-      const clipBaseIds = [
+      // Exactly what was copied: role players not copied are not added.
+      const closedIds = new Set([
         ...clipboard.objectTypes.map(o => o.id),
         ...clipboard.facts.map(f => f.id),
-      ]
-      const closedIds = closeUnderPrinciple3(clipBaseIds, { facts, objectTypes })
+      ])
 
       // Collect implied links that need to be shown (from pasted constraints + clipboard's own shown ILs)
       const impliedLinksToShow = new Set(clipboard.shownImplicitLinks ?? [])

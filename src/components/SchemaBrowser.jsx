@@ -18,6 +18,8 @@ import { relationalSections, relationalOrphanCount } from './RelationalBrowser.j
 import { makeNameFilter, Highlight } from '../utils/nameFilter.jsx'
 import { mappingOfDiagram } from '../store/storeHelpers'
 import { useMappingRuleInfos, mappingRuleSections, mappingRuleOrphanCount } from './MappingRuleBrowser.jsx'
+import { isErdDiagram } from '../relational/erdBoxes.js'
+import { placeRevealed } from '../layout/growPlacement.js'
 
 const FONT = 'var(--font-ui)'
 
@@ -154,7 +156,7 @@ function ImpliedLinkIcon() {
   )
 }
 
-function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd, onAddExtra, addButtonStyle, addButtonDisabled, onDelete, deleteTitle = 'Delete from schema…', onMenu }) {
+function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd, onAddExtra, addButtonStyle, addButtonDisabled, addTitle = 'Add to this diagram', onDelete, deleteTitle = 'Delete from schema…', onMenu }) {
   return (
     <div
       onClick={onSelect}
@@ -175,7 +177,7 @@ function ElementRow({ icon, label, isOrphaned, inCurrentDiagram, onSelect, onAdd
           <button
             onMouseDown={e => e.stopPropagation()}
             onClick={e => { if (addButtonDisabled) return; e.stopPropagation(); onAdd() }}
-            title={addButtonDisabled ? 'Already in this diagram' : 'Add to this diagram'}
+            title={addButtonDisabled ? 'Already in this diagram' : addTitle}
             style={{
               background: addButtonDisabled ? 'none' : (addButtonStyle?.background ?? 'none'),
               border: `1px solid ${addButtonDisabled ? 'var(--border-soft)' : (addButtonStyle?.borderColor ?? 'var(--border)')}`,
@@ -319,7 +321,19 @@ export default function SchemaBrowser() {
     const d = s.diagrams.find(x => x.id === s.activeDiagramId)
     if (!d || d.mappingId) return
     const occ = (d.occurrences ?? []).find(o => o.schemaElementId === id && !o.refModeOwnerOccId)
+    // A fact type's + adds it alone; Add with players also shows the players
+    // not on the diagram, next to it.
+    const fact = s.facts.find(f => f.id === id)
+    const missing = fact ? fact.roles.filter(r => r.objectTypeId && !(d.occurrences ?? []).some(o => o.schemaElementId === r.objectTypeId && !o.refModeOwnerOccId)).length : 0
+    const factItems = fact && !isErdDiagram(s, d) ? [
+      { label: 'Add to diagram', disabled: !!occ, title: occ ? 'Already on this diagram' : undefined,
+        action: () => s.addElementToDiagram(id, d.id, { withPlayers: false }) },
+      { label: 'Add with players', disabled: !!occ && !missing, title: occ && !missing ? 'Its players are on this diagram' : undefined,
+        action: () => s.addWithPlayers(id, d.id, { place: placeRevealed }) },
+      '---',
+    ] : []
     setRowMenu({ x: e.clientX, y: e.clientY, items: [
+      ...factItems,
       { label: 'Add neighbours…', group: 'diagram', disabled: !occ, title: occ ? undefined : 'Not on this diagram',
         action: () => { s.centerOnElement(id); s.openNeighbourPicker(id, occ?.id ?? null) } },
       { label: 'New diagram from here', group: 'diagram', action: () => s.newDiagramFrom(id) },
@@ -689,9 +703,10 @@ export default function SchemaBrowser() {
             isOrphaned={isOrphaned(el.id)}
             inCurrentDiagram={inDiag(el.id)}
             onSelect={(e) => selectEl(e, el.id, el.kind)}
-            onAdd={() => store.addElementToDiagram(el.id, diagram?.id)}
+            onAdd={() => store.addElementToDiagram(el.id, diagram?.id, { withPlayers: false })}
             onAddExtra={diagram ? () => store.addExtraOccurrence(el.id, diagram.id) : undefined}
             addButtonStyle={neAddStyle}
+            addTitle="Add to this diagram, without its players (right-click for Add with players)"
             onMenu={e => openRowMenu(e, el.id)}
             onDelete={() => openDeleteFromSchema([el.id])}
           />
@@ -759,9 +774,11 @@ export default function SchemaBrowser() {
             isOrphaned={isOrphaned(f.id)}
             inCurrentDiagram={inDiag(f.id)}
             onSelect={(e) => selectEl(e, f.id, 'fact')}
-            onAdd={() => store.addElementToDiagram(f.id, diagram?.id)}
+            onAdd={() => store.addElementToDiagram(f.id, diagram?.id, { withPlayers: false })}
             onAddExtra={diagram ? () => store.addExtraOccurrence(f.id, diagram.id) : undefined}
             addButtonStyle={fAddStyle}
+            addTitle="Add to this diagram, without its players (right-click for Add with players)"
+            onMenu={e => openRowMenu(e, f.id)}
             onDelete={() => openDeleteFromSchema([f.id])}
           />
         )

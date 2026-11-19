@@ -238,6 +238,10 @@ export function getDiagramElements(store) {
   // `owner` is the visible entity occurrence (an OT, or an objectified fact for a nested entity).
   const collapsedRefFacts = {}
   const collapsedRefFactOccs = {}
+  // Every drawn entity type's reference mode fact type → the entity type, so
+  // that a shown occurrence of that fact type takes no link from an entity
+  // occurrence showing the mode collapsed (NORMA's Defer, roleLinks.js).
+  const refModeFacts = {}
   {
     const ownerByOccId = {}
     const firstOwnerById = {}
@@ -257,6 +261,7 @@ export function getDiagramElements(store) {
     for (const ent of candidates) {
       if (!(ent.id in firstOwnerById)) continue
       const rm = findRefMode(ent, facts, objectTypes)
+      if (rm) refModeFacts[rm.factId] = ent.id
       if (!rm || visibleFactIds.has(rm.factId)) continue
       const base = { entityId: ent.id, vtRoleIndex: rm.vtRoleIndex, entityRoleIndex: 1 - rm.vtRoleIndex }
       const hiddenOccs = occurrencesList.filter(o => o.schemaElementId === rm.factId)
@@ -281,6 +286,7 @@ export function getDiagramElements(store) {
     elementIds,
     occurrenceElementIds,
     collapsedRefFacts,
+    refModeFacts,
     collapsedRefFactOccs,
   }
 }

@@ -80,7 +80,7 @@ export function layoutScore(state, diagramId, { details = false } = {}) {
   }
   // Role connectors, to where RoleConnectors draws them (playerLookup).
   const diagram = state.diagrams?.find(d => d.id === diagramId)
-  const players = playerLookup(els.objectTypes, els.facts, { collapsedRefFacts: els.collapsedRefFacts, expandedOccs: new Set(diagram?.expandedRefModeOccs ?? []) })
+  const players = playerLookup(els.objectTypes, els.facts, { collapsedRefFacts: els.collapsedRefFacts, refModeFacts: els.refModeFacts, expandedOccs: new Set(diagram?.expandedRefModeOccs ?? []) })
   const segs = []
   let length = 0
   for (const f of els.facts) {

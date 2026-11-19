@@ -9,6 +9,7 @@ import { getDiagramElements } from '../hooks/useDiagramElements'
 import { entityBounds } from '../components/ObjectTypeNode'
 import { nestedFactBounds } from '../components/FactTypeNode'
 import { factBox } from './layoutScore.js'
+import { roleCenter } from '../components/FactTypeNode'
 import { defaultFrequencyPos } from '../utils/frequencyPlacement.js'
 
 const MARGIN = 16
@@ -58,7 +59,7 @@ const FINE = Array.from({ length: 24 }, (_, i) => (i * 15 > 180 ? i * 15 - 360 :
 // (`from`: its centre and box) to the first rect runs through none of them.
 // Directions used less often come first.
 function search(group, used, obstacles, shapes, from = null) {
-  const base = PREFS[group] ?? PREFS.relationships
+  const base = Array.isArray(group) ? group : PREFS[group] ?? PREFS.relationships
   const prefs = [...base, ...FINE.filter(a => !base.includes(a))]
   const order = prefs.map((a, i) => ({ a, i })).sort((x, y) => (used.get(x.a) ?? 0) - (used.get(y.a) ?? 0) || x.i - y.i)
   // Near spots with a clear line first, then any free spot further out.
@@ -278,6 +279,53 @@ export function placeOrmUnits(state, diagramId, beforeOccIds, plans, beforeCoccI
     const towards = vertical ? uy < 0 : ux < 0     // the fact type is above / left of the anchor
     return { ...extra, orientation: vertical ? 'vertical' : 'horizontal', roleOrder: towards ? [1 - ai, ai] : [ai, 1 - ai] }
   }
+}
+
+// Reveal player (store.revealPlayers): where the new occurrence newOccId of
+// role roleIndex's player goes, given fact type occurrence factOccId: outward
+// from that role box (an end role away from the others, a middle role on the
+// side without bars), in free space with a clear line to the role, the
+// directions nearest the outward one first. Returns { x, y } or null.
+export function placeRevealed(state, diagramId, factOccId, roleIndex, newOccId) {
+  const els = getDiagramElements({ ...state, activeDiagramId: diagramId })
+  const f = els.facts.find(x => x.occurrenceId === factOccId)
+  if (!f) return null
+  const shapes = new Map()
+  for (const o of els.objectTypes) shapes.set(o.occurrenceId, boxOfOt(o))
+  for (const x of els.facts) shapes.set(x.occurrenceId, boxOfFact(x))
+  const nb = shapes.get(newOccId)
+  if (!nb) return null
+  const obstacles = [...shapes.entries()].filter(([id]) => id !== newOccId).map(([, b]) => b)
+  const fb = shapes.get(factOccId)
+  const n = f.roles.length
+  let rc, outward
+  if (f.objectified && f.displayAsObjectType) {
+    rc = { x: (fb.l + fb.r) / 2, y: (fb.t + fb.b) / 2 }
+    outward = 90
+  } else {
+    rc = roleCenter({ ...f, arity: n }, roleIndex)
+    const order = f.roleOrder?.length === n ? f.roleOrder : f.roles.map((_, i) => i)
+    const pos = order.indexOf(roleIndex)
+    const below = !!f.uniquenessBelow
+    if (f.orientation === 'vertical') outward = n > 1 && pos === 0 ? -90 : n > 1 && pos === n - 1 ? 90 : below ? 0 : 180
+    else outward = n > 1 && pos === 0 ? 180 : n > 1 && pos === n - 1 ? 0 : below ? -90 : 90
+  }
+  const angles = [0, 30, -30, 60, -60, 90, -90, 120, -120, 150, -150, 180]
+    .map(a => { const v = outward + a; return v > 180 ? v - 360 : v <= -180 ? v + 360 : v })
+  const w = nb.r - nb.l, h = nb.b - nb.t
+  // From the role box's centre to the fact type's border in direction (ux, uy).
+  const edge = (ux, uy) => Math.min(
+    ux > 0 ? (fb.r - rc.x) / ux : ux < 0 ? (rc.x - fb.l) / -ux : Infinity,
+    uy > 0 ? (fb.b - rc.y) / uy : uy < 0 ? (rc.y - fb.t) / -uy : Infinity)
+  const r = search(angles, new Map(), obstacles, (ux, uy, extra) => {
+    const d = Math.max(0, edge(ux, uy)) + GAP + extra + reach(w, h, ux, uy)
+    return [rectAt(rc.x + ux * d, rc.y + uy * d, w, h)]
+  }, { x: rc.x, y: rc.y, box: fb })
+  const c = r.rects[0]
+  // The new occurrence's own point is where its box is centred.
+  const cur = els.objectTypes.find(o => o.occurrenceId === newOccId) ?? els.facts.find(o => o.occurrenceId === newOccId)
+  const cx = (nb.l + nb.r) / 2, cy = (nb.t + nb.b) / 2
+  return { x: (c.l + c.r) / 2 + ((cur?.x ?? cx) - cx), y: (c.t + c.b) / 2 + ((cur?.y ?? cy) - cy) }
 }
 
 // ── ERD diagrams ─────────────────────────────────────────────────────────────

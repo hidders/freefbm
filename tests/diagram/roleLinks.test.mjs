@@ -152,3 +152,14 @@ test('cost per role: only that fact type\'s and player\'s occurrences are compar
   for (const f of facts) { ix.linkOf(f, 0); ix.linkOf(f, 1) }
   assert.ok(performance.now() - t < 200, 'took too long')
 })
+
+test('playerLookup: a reference mode fact type shown on its own takes no link from a collapsed entity', () => {
+  const ref = { id: 'RM', occurrenceId: 'rm1', x: 0, y: 0, roles: [{ objectTypeId: 'A' }, { objectTypeId: 'V' }] }
+  const ots = [ot('A', 'a1', -50, 0), ot('V', 'v1', 100, 0)]
+  // not among the hidden ones (collapsedRefFacts), but known as A's reference mode
+  let p = playerLookup(ots, [ref], { collapsedRefFacts: {}, refModeFacts: { RM: 'A' }, expandedOccs: new Set() })
+  assert.equal(p.forRole(ref, 0).ot, null)
+  assert.equal(p.forRole(ref, 1).ot.occurrenceId, 'v1')
+  p = playerLookup(ots, [ref], { collapsedRefFacts: {}, refModeFacts: { RM: 'A' }, expandedOccs: new Set(['a1']) })
+  assert.equal(p.forRole(ref, 0).ot.occurrenceId, 'a1')
+})

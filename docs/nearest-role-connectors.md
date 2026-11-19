@@ -332,6 +332,26 @@ missing after reassignment: that is Phase 3.
 on a diagram with no player occurrences; revealing a player produces a
 derived connector without persisted connector state.
 
+**Done (2026-11-19):** `addElementToDiagram` takes `{ withPlayers }` (the
+Schema Browser's `+` on a fact type or objectified fact type passes false;
+its row menu has **Add to diagram** and **Add with players**,
+`store.addWithPlayers`); `store.revealPlayers` adds an occurrence of a role's
+player next to the role (double-click a role with a player and no
+connector, or **Reveal player** in the role menu), placed by `placeRevealed`
+in `src/layout/growPlacement.js`, as one undo step; removal from a diagram
+(one element, one occurrence, a multi-selection, cut) no longer cascades in
+ORM2 diagrams, and `assignObjectTypeToRole` keeps the fact type's
+occurrences; copy and paste no longer close the selection under role
+players (`closeUnderPrinciple3` is unused there); duplication keeps players
+not duplicated. RoleConnectors highlights connectors whose target changed
+for 1.5 s (during a drag too, since connectors follow each move). Found on
+the way: a reference mode fact type shown on its own was linked to an
+entity occurrence showing the mode collapsed; `playerLookup` now takes
+`refModeFacts` (every drawn entity type's reference mode fact type) so
+NORMA's Defer applies to it too. Left for Phase 4: Copy/Move selection to a
+new diagram still brings the selection's players, and newly added fact
+types still go to their schema position.
+
 ### Phase 4 — Layout and specialised workflows
 
 1. Update auto-layout and `layoutScore` to score derived connectors.

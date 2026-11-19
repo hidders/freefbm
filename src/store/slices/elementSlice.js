@@ -7,7 +7,7 @@ import {
   mkOcc, occOf, inDiag, patchOcc, rmOcc, patchOccById,
   mkConstraintOcc, cOccOf, cInDiag, patchCOcc, patchCOccById, addCOccIfAbsent, rmCOcc,
   addOccIfAbsent, addOwnedRefModeOccsIfAbsent, normalizeStEps, roleOccRefsKey,
-  makeUniqueName, purgeOrphanedConstraints, closeUnderPrinciple3, computeCascadeRemove,
+  makeUniqueName, purgeOrphanedConstraints, closeUnderPrinciple3,
   identifiedIdForInternalPI, demoteOtherPIsFor, mkRefModePair, findMatchingRefModeFact,
   clearRefModePI, applyFreshRefMode,
   findUniqueLCA, findPathDown, migrateRefModeExpansion, migrateSubtypeOccurrences,
@@ -1202,15 +1202,10 @@ export function createElementSlice(set, get) {
           return { ...f, roles: f.roles.map((r, i) => i === roleIndex ? { ...r, objectTypeId } : r) }
         })
 
-        // For every diagram containing the fact: if the new OT is present keep the fact
-        // (its connector goes to the nearest occurrence, src/diagram/roleLinks.js);
-        // if absent, remove the fact.
-        const updatedDiagrams = s.diagrams.map(d => {
-          if (!inDiag(d, factId)) return d
-          if (inDiag(d, objectTypeId)) return d
-          return { ...d, occurrences: (d.occurrences ?? []).filter(o => o.schemaElementId !== factId) }
-        })
-
+        // Every occurrence of the fact type stays: the role's connector goes to
+        // the nearest occurrence of its new player, or the role is left
+        // unconnected where none is shown (src/diagram/roleLinks.js).
+        const updatedDiagrams = s.diagrams
         return {
           facts:   newFacts,
           diagrams: syncConstraints(updatedDiagrams, s.constraints, s.subtypes, newFacts),
