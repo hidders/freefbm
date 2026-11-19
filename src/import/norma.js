@@ -1390,27 +1390,11 @@ export function importNorma(xmlText) {
       const ft = { id: newOccId(), schemaElementId: rm.factId, x: owner.x + 80, y: owner.y, refModeOwnerOccId: owner.id }
       diag.occurrences.push(vt, ft)
     }
-    // Players of shown facts: a role whose player has no shape on the
-    // diagram gets an occurrence of it below the fact type (Phase 5 of
-    // docs/nearest-role-connectors.md stops adding them). Role connectors are
-    // not stored: they follow NORMA's rule (src/diagram/roleLinks.js).
+    // Only the shapes NORMA drew: a role whose player has no shape on the
+    // diagram is left unconnected, as in NORMA. Role connectors are not
+    // stored: they follow NORMA's rule (src/diagram/roleLinks.js).
     const centreOf = (o) => shapeCentre.get(o.id) ?? o
     const free = o => !o.refModeOwnerOccId
-    for (const occ of [...diag.occurrences]) {
-      const f = factById.get(occ.schemaElementId)
-      if (!f || occ.refModeOwnerOccId) continue
-      f.roles.forEach((r, i) => {
-        if (!r.objectTypeId || occsOf(r.objectTypeId).some(free)) return
-        const p = { id: newOccId(), schemaElementId: r.objectTypeId, x: occ.x + (i - (f.arity - 1) / 2) * 140, y: occ.y + 90 }
-        diag.occurrences.push(p)
-        count('addedPlayers')
-        const rm = refModeOf(r.objectTypeId)
-        if (rm) {
-          const vt = { id: newOccId(), schemaElementId: rm.vtId, x: p.x + 160, y: p.y, refModeOwnerOccId: p.id }
-          diag.occurrences.push(vt, { id: newOccId(), schemaElementId: rm.factId, x: p.x + 80, y: p.y, refModeOwnerOccId: p.id })
-        }
-      })
-    }
     // The links NORMA draws between the shown shapes.
     const links = roleLinkIndex({
       facts: diag.occurrences.filter(o => free(o) && factById.has(o.schemaElementId)),
@@ -1603,7 +1587,6 @@ export function importNorma(xmlText) {
   for (const f of failedRules) warn(`The derivation rule of ${f}; it is marked derived but has no rule, so validation lists it as incomplete.`)
   for (const f of failedJoins) warn(`The join path of ${f}; the sequence is imported without it.`)
   if (counts.pendingJoins) warn(`${counts.pendingJoins} constraints have a join path that could not be translated; their sequences are imported without it.`)
-  if (counts.addedPlayers) note(`${counts.addedPlayers} object type shapes were added next to fact types whose players NORMA did not draw on that diagram.`)
   if (unplaced) note(`${unplaced} model notes had no shape and no element; they are on the “Imported notes” diagram.`)
   if (counts.freefbmNotes) note(`${counts.freefbmNotes} note${counts.freefbmNotes === 1 ? '' : 's'} starting with “FreeFBM:”, which FreeFBM's export added about what NORMA could not take, ${counts.freefbmNotes === 1 ? 'was' : 'were'} left out.`)
   if (counts.groupMembersDropped) note(`${counts.groupMembersDropped} group members (internal constraints and similar) have no FreeFBM counterpart and were left out of their groups.`)

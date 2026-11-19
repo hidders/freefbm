@@ -575,8 +575,16 @@ export function createDiagramSlice(set, get) {
             return { diagrams: st.diagrams.map(d => {
               if (d.id !== diagramId) return d
               let nd = { ...d, occurrences: [...(d.occurrences ?? []), occ] }
-              // A reference mode's own (hidden) occurrences, as addElementToDiagram gives them.
-              if (rm) nd = addOwnedRefModeOccsIfAbsent(nd, pid, rm.vtId, occ.x, occ.y, rm.factId, occ.x, occ.y, rm.vtRoleIndex)
+              // The player of a reference mode's own fact type is shown with
+              // the mode expanded, that fact type occurrence as its own (a
+              // collapsed one would take no link from it, roleLinks.js).
+              if (rm?.factId === fact.id) nd = {
+                ...nd,
+                occurrences: nd.occurrences.map(o => o.id === factOccId && !o.refModeOwnerOccId ? { ...o, refModeOwnerOccId: occ.id } : o),
+                expandedRefModeOccs: [...(nd.expandedRefModeOccs ?? []), occ.id],
+              }
+              // Else the mode's own (hidden) occurrences, as addElementToDiagram gives them.
+              else if (rm) nd = addOwnedRefModeOccsIfAbsent(nd, pid, rm.vtId, occ.x, occ.y, rm.factId, occ.x, occ.y, rm.vtRoleIndex)
               return nd
             }), isDirty: true }
           })

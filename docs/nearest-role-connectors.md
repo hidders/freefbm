@@ -394,6 +394,25 @@ and keep their occurrence references; PDF export draws the canvas's SVG.
 missing player occurrences, and FreeFBM/NORMA agree on derived links where
 the same shapes are present.
 
+**Done (2026-11-20):** the NORMA import keeps exactly the shapes NORMA drew
+(`finishDiagram` no longer adds an occurrence for a player without a shape;
+the role is left unconnected, as in NORMA). The export had no relinking
+warnings left after Phase 2. `scripts/role-links-check.mjs [file …]` runs
+scenarios 6–14 below in a browser page against the store, auto layout and
+the NORMA import and export (scenarios 1–5 are the rule's unit tests in
+`tests/diagram/roleLinks.test.mjs`): on the sample it copies, cuts, pastes,
+reassigns, reveals, adds with players, uses an objectified player and
+reference modes, adds a second constrained fact occurrence and lays out a
+partial diagram; for each file it exports to NORMA and imports back
+(a FreeFBM model first gets a diagram with duplicate fact and player
+occurrences and an absent player) and checks that every fact type
+occurrence and role connector comes back, and for a NORMA file that the
+import keeps every object type and fact type shape and adds none. Found on
+the way: Add with players on a reference mode's own fact type left it
+unconnected, since the new entity occurrence showed the mode collapsed;
+`revealPlayers` now shows that occurrence's reference mode expanded, owning
+the fact type occurrence.
+
 ## Required regression scenarios
 
 1. One fact occurrence, one shown compatible player occurrence.
