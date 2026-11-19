@@ -156,8 +156,9 @@ export const addOccIfAbsent = (diag, elementId, x, y, extra = {}) =>
 
 // For each occurrence of `ownerId`, add owned VT/FT occurrences that are hidden until the
 // owner is expanded. Each owner occurrence gets its own fresh VT occurrence (no sharing
-// between ref modes by default). vtRoleIndex is used to wire roleOccurrenceMap on the FT
-// occurrence so role connectors find the right VT occurrence when multiple VT occs exist.
+// between ref modes by default). Role connectors are not stored: a hidden FT occurrence
+// links to its owner and the VT occurrence it owns (occurrenceRoleLinks in
+// src/diagram/roleLinks.js). vtRoleIndex is no longer used.
 export const addOwnedRefModeOccsIfAbsent = (diag, ownerId, vtId, vtX, vtY, ftId, ftX, ftY, vtRoleIndex = null) => {
   const allOccs = diag.occurrences ?? []
   const ownerOccs = allOccs.filter(o => o.schemaElementId === ownerId)
@@ -179,16 +180,7 @@ export const addOwnedRefModeOccsIfAbsent = (diag, ownerId, vtId, vtX, vtY, ftId,
       vtOccId = vtOcc.id
       newOccs.push(vtOcc)
     }
-    if (!hasOwnedFt) {
-      const ftExtra = { refModeOwnerOccId: ownerOcc.id }
-      if (vtRoleIndex !== null && vtOccId) {
-        ftExtra.roleOccurrenceMap = {
-          [String(1 - vtRoleIndex)]: ownerOcc.id,
-          [String(vtRoleIndex)]: vtOccId,
-        }
-      }
-      newOccs.push(mkOcc(ftId, ownerOcc.x + 80, ownerOcc.y, ftExtra))
-    }
+    if (!hasOwnedFt) newOccs.push(mkOcc(ftId, ownerOcc.x + 80, ownerOcc.y, { refModeOwnerOccId: ownerOcc.id }))
     return newOccs
   })
   if (extraOccs.length === 0) return diag
@@ -204,19 +196,6 @@ export const patchOccById = (diag, occId, patch) => ({
   ...diag,
   occurrences: (diag.occurrences ?? []).map(o => o.id === occId ? { ...o, ...patch } : o),
 })
-
-// Build an initial roleOccurrenceMap for a fact given the occurrences in a diagram.
-// Maps role index (string) → occurrence ID of the first matching OT occurrence.
-export const buildRoleOccurrenceMap = (fact, occurrences) => {
-  const map = {}
-  for (let i = 0; i < (fact.roles ?? []).length; i++) {
-    const r = fact.roles[i]
-    if (!r.objectTypeId) continue
-    const occ = occurrences.find(o => o.schemaElementId === r.objectTypeId)
-    if (occ) map[String(i)] = occ.id
-  }
-  return map
-}
 
 // Constraint-occurrence helpers (constraintOccurrences is separate from occurrences)
 export const mkConstraintOcc = (schemaConstraintId, x, y) =>

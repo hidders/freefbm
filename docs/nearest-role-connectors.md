@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted design — Phase 1 done.** Phase 1 checked NORMA's rule in its source and corrected the rule below (two-sided, shape centres, ties).
+**Accepted design — Phases 1 and 2 done.** Phase 1 checked NORMA's rule in its source and corrected the rule below (two-sided, shape centres, ties).
 
 This document replaces the current per-occurrence `roleOccurrenceMap` model
 for ordinary role-player connectors. It records decisions made on 2026-11-18.
@@ -303,6 +303,20 @@ the two-sided rule, and none are ties.
 **Acceptance:** opening a legacy `.ffbm` file immediately follows the new
 rule; saving and reopening it leaves no ordinary role map in the file and
 does not change its derived connector behaviour.
+
+**Done (2026-11-20):** nothing writes `roleOccurrenceMap` or `unlinkedRoles`
+any more (adding an occurrence, reference modes, auto layout, Add
+neighbours, the DDL import, Guess ORM2 schema, transformations, the NORMA
+import). Store code that needs a link asks `occurrenceRoleLinks`
+(`src/diagram/roleLinks.js`), which follows the rule for shown occurrences
+and ownership for a collapsed reference mode's hidden ones. Loading drops
+the old fields (after `repairDrawnRefModes`, which still reads them in old
+DDL imports) without marking the file changed; files are saved as format 3
+(`version: 3`). The role reconnect mode, which nothing started any more, is
+gone, as is the export's "NORMA would relink" warning. In the sample, 1 of
+172 stored links differed from the rule, on an ERD diagram, so nothing
+visible changed. Fact type occurrences are still removed when a player is
+missing after reassignment: that is Phase 3.
 
 ### Phase 3 — Diagram operations and UI
 

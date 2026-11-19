@@ -94,7 +94,7 @@ const boxOfFact = (f) => {
 
 // state: after the units were added; beforeOccIds, beforeCoccIds: the
 // occurrences and constraint occurrences that were there before; plans: [{ unit, anchorOccId }]. Returns the patches
-// { [occId]: { x, y, orientation?, roleOrder?, roleOccurrenceMap? } } for
+// { [occId]: { x, y, orientation?, roleOrder? } } for
 // the new occurrences, under `occ`; new constraint occurrences under `cocc`
 // ({ [constraintOccId]: { x, y } }), and internal frequency markers of new fact
 // types shown on no other diagram under `freq` ({ [factId]: markers }).
@@ -268,14 +268,9 @@ export function placeOrmUnits(state, diagramId, beforeOccIds, plans, beforeCoccI
   }
 
   // A binary's orientation and role order, so its anchor role faces the anchor;
-  // its roles connect to the anchor occurrence and the unit's players.
-  function orient(f, anchorId, ux, uy, anchorOccId, farOccs) {
-    const map = {}
-    f.roles.forEach((r, i) => {
-      if (r.objectTypeId === anchorId) map[String(i)] = anchorOccId
-      else { const o = farOccs.find(x => x.schemaElementId === r.objectTypeId); if (o) map[String(i)] = o.id }
-    })
-    const extra = { roleOccurrenceMap: { ...(occs.find(o => o.schemaElementId === f.id && isNew(o))?.roleOccurrenceMap ?? {}), ...map } }
+  // its role connectors follow from where it is put (src/diagram/roleLinks.js).
+  function orient(f, anchorId, ux, uy) {
+    const extra = {}
     if (f.objectified || f.roles.length !== 2) return extra
     const ai = f.roles.findIndex(r => r.objectTypeId === anchorId)
     if (ai < 0) return extra

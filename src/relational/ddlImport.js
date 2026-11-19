@@ -847,7 +847,7 @@ export function buildRelationalSchema(parsed, { schemaId = null, diagramName = '
         factY.set(f.id, fy)
         const owned = rm?.factId === f.id ? { refModeOwnerOccId: eOcc.id } : {}
         const vtOcc = mkOcc(vt.id, x + 330, fy, owned)
-        const fOcc = mkOcc(f.id, x + 165, fy, { roleOccurrenceMap: { 0: eOcc.id, 1: vtOcc.id }, ...owned })
+        const fOcc = mkOcc(f.id, x + 165, fy, owned)
         occs.push(fOcc, vtOcc)
         if (primary) {
           f.x = x + 165; f.y = fy

@@ -630,7 +630,7 @@ export function createDiagramSlice(set, get) {
               if (!from) return o
               taken.add(from.id)
               map.set(from.id, o.id)
-              const { id: _i, schemaElementId: _s, refModeOwnerOccId: _r, roleOccurrenceMap: _m, ...rest } = from
+              const { id: _i, schemaElementId: _s, refModeOwnerOccId: _r, ...rest } = from
               return { ...o, ...rest }
             })
             const constraintOccurrences = (d.constraintOccurrences ?? []).map(co => {

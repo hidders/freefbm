@@ -25,6 +25,7 @@
 // per level of uniqueness bars on the bars' side (factShapeCentre).
 
 import { NORMA, PX_PER_INCH } from './normaGeometry.js'
+import { findRefMode } from '../utils/refMode.js'
 
 const d2 = (p, q) => (p.x - q.x) ** 2 + (p.y - q.y) ** 2
 const self = (o) => o
@@ -137,26 +138,17 @@ export function roleLinkIndex({ facts, players, factId = (f) => f.id, playerId =
   }
 }
 
-// Where each role's player is drawn. A fact type occurrence names the
-// occurrence its role links to (roleOccurrenceMap), or none (unlinkedRoles,
-// from a NORMA import: NORMA links that role from a nearer shape of the same
-// fact type only); otherwise the role goes where NORMA would link it
-// (src/diagram/roleLinks.js: the player's occurrence nearest to it, unless
-// another occurrence of the fact type is nearer to that one). Link fact
-// types, drawn once per diagram, go to the nearest occurrence (nearest).
-// Objectified fact types are players through their own occurrences.
-// collapsedRefFacts and expandedOccs (useDiagramElements, the diagram's
-// expandedRefModeOccs) keep a reference mode's fact type off entity type
-// occurrences that show the mode collapsed, as NORMA does.
+// Where each role's player is drawn, by the rule above: the player's
+// occurrence nearest to it, unless another occurrence of the fact type is
+// nearer to that one. Nothing is stored (file format 3 drops the older
+// roleOccurrenceMap and unlinkedRoles). Link fact types, drawn once per
+// diagram, go to the nearest occurrence (nearest). Objectified fact types are
+// players through their own occurrences. collapsedRefFacts and expandedOccs
+// (useDiagramElements, the diagram's expandedRefModeOccs) keep a reference
+// mode's fact type off entity type occurrences that show the mode
+// collapsed, as NORMA does.
 export function playerLookup(objectTypes, visibleFacts, { collapsedRefFacts = {}, expandedOccs = null } = {}) {
-  const otByOccId = {}
-  for (const o of objectTypes) if (o.occurrenceId) otByOccId[o.occurrenceId] = o
-  const nfByOccId = {}, nested = []
-  for (const f of visibleFacts) {
-    if (!f.objectified || f._implicit) continue
-    if (f.occurrenceId) nfByOccId[f.occurrenceId] = f
-    nested.push(f)
-  }
+  const nested = visibleFacts.filter(f => f.objectified && !f._implicit)
   const centres = new Map()
   const centre = (o) => {
     if (!o.roles) return o
@@ -173,17 +165,7 @@ export function playerLookup(objectTypes, visibleFacts, { collapsedRefFacts = {}
   })
   const asPlayer = (p) => !p ? { ot: null, nf: null } : p.roles ? { ot: null, nf: p } : { ot: p, nf: null }
   const nearest = (id, x, y) => asPlayer(links.nearest(id, { x, y }))
-  const forRole = (fact, ri) => {
-    const id = fact.roles[ri]?.objectTypeId
-    // a role NORMA links from a nearer shape of its fact type only
-    if (!id || fact.unlinkedRoles?.includes(ri)) return { ot: null, nf: null }
-    const occId = fact.roleOccurrenceMap?.[String(ri)]
-    const ot = occId && otByOccId[occId]
-    if (ot && ot.id === id) return { ot, nf: null }
-    const nf = occId && nfByOccId[occId]
-    if (nf && nf.id === id) return { ot: null, nf }
-    return asPlayer(links.linkOf(fact, ri))
-  }
+  const forRole = (fact, ri) => fact.roles[ri]?.objectTypeId ? asPlayer(links.linkOf(fact, ri)) : { ot: null, nf: null }
   // each objectified fact type once: its link fact types are drawn once per diagram
   const linkOwners = []
   const seen = new Set()
@@ -192,4 +174,66 @@ export function playerLookup(objectTypes, visibleFacts, { collapsedRefFacts = {}
     seen.add(f.id); linkOwners.push(f)
   }
   return { forRole, nearest, linkOwners }
+}
+
+// Role links of a diagram's stored occurrences, for the store's own
+// decisions (which value type occurrence a reference mode uses, which
+// occurrences a mapping diagram needs, …), as they are drawn: visible fact
+// type occurrences link by the rule above to visible occurrences. A hidden
+// occurrence of a collapsed reference mode's fact type links to its owner
+// and to the occurrence of its other player that the same owner owns, else
+// to that player's occurrence nearest to the owner.
+//   diag: { occurrences, expandedRefModeOccs }; facts, objectTypes: the schema's
+// linkOf(occ, ri) gives the occurrence, or null.
+export function occurrenceRoleLinks(diag, facts, objectTypes) {
+  const occs = diag?.occurrences ?? []
+  const expanded = new Set(diag?.expandedRefModeOccs ?? [])
+  const byId = new Map(occs.map(o => [o.id, o]))
+  const factById = new Map(facts.map(f => [f.id, f]))
+  const hidden = (o) => o.refModeOwnerOccId != null && !expanded.has(o.refModeOwnerOccId)
+  const visible = occs.filter(o => !hidden(o))
+  const isFact = (o) => factById.has(o.schemaElementId)
+  const centres = new Map()
+  const centre = (o) => {
+    let c = centres.get(o)
+    if (!c) {
+      const f = factById.get(o.schemaElementId)
+      centres.set(o, c = f ? factShapeCentre(f, o) : o)
+    }
+    return c
+  }
+  // a reference mode's fact type takes no link from an entity occurrence showing it collapsed
+  const refFactOf = new Map()
+  const refFact = (id) => {
+    if (!refFactOf.has(id)) {
+      const el = objectTypes.find(o => o.id === id) ?? factById.get(id)
+      refFactOf.set(id, el && (el.kind === 'entity' || el.objectified) ? findRefMode(el, facts, objectTypes)?.factId ?? null : null)
+    }
+    return refFactOf.get(id)
+  }
+  const index = roleLinkIndex({
+    facts: visible.filter(isFact),
+    players: visible,
+    factId: (o) => o.schemaElementId,
+    playerId: (o) => o.schemaElementId,
+    roleIds: (o) => factById.get(o.schemaElementId).roles.map(r => r?.objectTypeId ?? null),
+    centre,
+    accepts: (p, f) => expanded.has(p.id) || refFact(p.schemaElementId) !== f.schemaElementId,
+  })
+  return {
+    linkOf(occ, ri) {
+      const f = factById.get(occ.schemaElementId)
+      const pid = f?.roles[ri]?.objectTypeId
+      if (!pid) return null
+      if (!hidden(occ)) return index.linkOf(occ, ri)
+      const owner = byId.get(occ.refModeOwnerOccId)
+      if (owner?.schemaElementId === pid) return owner
+      return occs.find(o => o.schemaElementId === pid && o.refModeOwnerOccId === occ.refModeOwnerOccId)
+        ?? nearestTo(owner ?? occ, occs.filter(o => o.schemaElementId === pid))
+    },
+    // the visible fact type occurrences with a role linked to occurrence occId
+    linkedFrom(occId) {
+      return visible.filter(o => isFact(o) && factById.get(o.schemaElementId).roles.some((_, ri) => index.linkOf(o, ri)?.id === occId))
+    },
+  }
 }

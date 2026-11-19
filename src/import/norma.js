@@ -39,8 +39,8 @@ import { addImportNote } from '../utils/importNotes.js'
 import { findRefMode } from '../utils/refMode.js'
 import { VALUE_KINDS, valueKindName } from '../utils/datatypeValues.js'
 import { normaTemporal } from './normaTemporal.js'
-import { otShapeKey, factShapeKey, noteShapeKey, subtypeLinkPairs, nearestShapePairs } from '../diagram/normaShapeKeys.js'
-import { nearestTo } from '../diagram/roleLinks.js'
+import { otShapeKey, factShapeKey, noteShapeKey, subtypeLinkPairs } from '../diagram/normaShapeKeys.js'
+import { nearestTo, roleLinkIndex } from '../diagram/roleLinks.js'
 import { placeLabel, factLabelBox, readingLabelSize, rangeLabelSize, nameLabelSize, roleNameLabelSize, objectTypeLabelBox,
   roleAnchor, nameAnchor } from './normaLabels.js'
 import { PX_PER_INCH, NORMA } from '../diagram/normaGeometry.js'
@@ -1361,8 +1361,7 @@ export function importNorma(xmlText) {
 
   // Occurrences FreeFBM needs that NORMA does not draw: the players of every
   // shown fact type, and the value type and fact type of a collapsed
-  // reference mode. Then each fact occurrence's roles are tied to the
-  // nearest occurrence of their player.
+  // reference mode. Role connectors follow from where the shapes are.
   function finishDiagram(diag, expandedOwners) {
     const occsOf = (id) => diag.occurrences.filter(o => o.schemaElementId === id)
     const nearest = (id, x, y, pred = () => true) => nearestTo({ x, y }, occsOf(id).filter(pred))
@@ -1388,56 +1387,41 @@ export function importNorma(xmlText) {
         continue
       }
       const vt = { id: newOccId(), schemaElementId: rm.vtId, x: owner.x + 160, y: owner.y, refModeOwnerOccId: owner.id }
-      const ft = { id: newOccId(), schemaElementId: rm.factId, x: owner.x + 80, y: owner.y, refModeOwnerOccId: owner.id,
-        roleOccurrenceMap: { [String(1 - rm.vtRoleIndex)]: owner.id, [String(rm.vtRoleIndex)]: vt.id } }
+      const ft = { id: newOccId(), schemaElementId: rm.factId, x: owner.x + 80, y: owner.y, refModeOwnerOccId: owner.id }
       diag.occurrences.push(vt, ft)
     }
-    // players of shown facts: NORMA's nearest shape, unless another shape of
-    // the fact type is nearer to that one (nearestShapePairs)
+    // Players of shown facts: a role whose player has no shape on the
+    // diagram gets an occurrence of it below the fact type (Phase 5 of
+    // docs/nearest-role-connectors.md stops adding them). Role connectors are
+    // not stored: they follow NORMA's rule (src/diagram/roleLinks.js).
     const centreOf = (o) => shapeCentre.get(o.id) ?? o
-    const nearer = new Map()   // `${occId}:${roleIndex}` → the occurrence that shape links to
-    for (const f of facts) {
-      const fOccs = diag.occurrences.filter(o => o.schemaElementId === f.id && !o.roleOccurrenceMap)
-      if (!fOccs.length) continue
-      f.roles.forEach((r, i) => {
-        if (!r.objectTypeId) return
-        const free = o => !o.refModeOwnerOccId
-        const ownRefMode = refModeOf(r.objectTypeId)?.factId === f.id
-        const tos = occsOf(r.objectTypeId).filter(o => free(o) && (!ownRefMode || expandedOwners.includes(o)))
-        for (const [from, to] of nearestShapePairs(fOccs, tos, { centre: centreOf })) nearer.set(`${from.id}:${i}`, to)
-      })
-    }
+    const free = o => !o.refModeOwnerOccId
     for (const occ of [...diag.occurrences]) {
       const f = factById.get(occ.schemaElementId)
-      if (!f || occ.roleOccurrenceMap) continue
-      const c = centreOf(occ)
-      const map = {}
+      if (!f || occ.refModeOwnerOccId) continue
       f.roles.forEach((r, i) => {
-        if (!r.objectTypeId) return
-        const free = o => !o.refModeOwnerOccId
-        // the reference mode fact type of its player links to expanded shapes only
-        const ownRefMode = refModeOf(r.objectTypeId)?.factId === f.id
-        // NORMA links this role from a nearer shape of the fact type only:
-        // drawn without a link here (it keeps its player for everything else)
-        let p = nearer.get(`${occ.id}:${i}`)
-        if (!p && occsOf(r.objectTypeId).some(free)) (occ.unlinkedRoles ??= []).push(i)
-        p = p || (ownRefMode && nearest(r.objectTypeId, c.x, c.y, o => free(o) && expandedOwners.includes(o)))
-          || nearest(r.objectTypeId, c.x, c.y, free)
-        if (!p) {
-          p = { id: newOccId(), schemaElementId: r.objectTypeId, x: occ.x + (i - (f.arity - 1) / 2) * 140, y: occ.y + 90 }
-          diag.occurrences.push(p)
-          count('addedPlayers')
-          const rm = refModeOf(r.objectTypeId)
-          if (rm) {
-            const vt = { id: newOccId(), schemaElementId: rm.vtId, x: p.x + 160, y: p.y, refModeOwnerOccId: p.id }
-            diag.occurrences.push(vt, { id: newOccId(), schemaElementId: rm.factId, x: p.x + 80, y: p.y, refModeOwnerOccId: p.id,
-              roleOccurrenceMap: { [String(1 - rm.vtRoleIndex)]: p.id, [String(rm.vtRoleIndex)]: vt.id } })
-          }
+        if (!r.objectTypeId || occsOf(r.objectTypeId).some(free)) return
+        const p = { id: newOccId(), schemaElementId: r.objectTypeId, x: occ.x + (i - (f.arity - 1) / 2) * 140, y: occ.y + 90 }
+        diag.occurrences.push(p)
+        count('addedPlayers')
+        const rm = refModeOf(r.objectTypeId)
+        if (rm) {
+          const vt = { id: newOccId(), schemaElementId: rm.vtId, x: p.x + 160, y: p.y, refModeOwnerOccId: p.id }
+          diag.occurrences.push(vt, { id: newOccId(), schemaElementId: rm.factId, x: p.x + 80, y: p.y, refModeOwnerOccId: p.id })
         }
-        map[String(i)] = p.id
       })
-      occ.roleOccurrenceMap = map
     }
+    // The links NORMA draws between the shown shapes.
+    const links = roleLinkIndex({
+      facts: diag.occurrences.filter(o => free(o) && factById.has(o.schemaElementId)),
+      players: diag.occurrences.filter(free),
+      factId: (o) => o.schemaElementId,
+      playerId: (o) => o.schemaElementId,
+      roleIds: (o) => factById.get(o.schemaElementId).roles.map(r => r.objectTypeId ?? null),
+      centre: centreOf,
+      // the reference mode fact type of its player links to expanded shapes only
+      accepts: (p, f) => refModeOf(p.schemaElementId)?.factId !== f.schemaElementId || expandedOwners.includes(p),
+    })
     // An expanded reference mode owns the fact type shape linked to it (the
     // nearest, if several are), and its value type shape when no other fact
     // type links to that (as repairDrawnRefModes decides).
@@ -1445,12 +1429,12 @@ export function importNorma(xmlText) {
       const rm = refModeOf(owner.schemaElementId)
       if (!rm) continue
       const ft = nearest(rm.factId, owner.x, owner.y, o => !o.refModeOwnerOccId
-        && o.roleOccurrenceMap?.[String(1 - rm.vtRoleIndex)] === owner.id)
+        && links.linkOf(o, 1 - rm.vtRoleIndex) === owner)
       if (!ft) continue
+      const vt = links.linkOf(ft, rm.vtRoleIndex)
       ft.refModeOwnerOccId = owner.id
-      const vtId = ft.roleOccurrenceMap[String(rm.vtRoleIndex)]
-      const vt = diag.occurrences.find(o => o.id === vtId)
-      const shared = diag.occurrences.some(o => o !== ft && Object.values(o.roleOccurrenceMap ?? {}).includes(vtId))
+      const shared = vt && diag.occurrences.some(o => o !== ft && factById.has(o.schemaElementId)
+        && factById.get(o.schemaElementId).roles.some((_, i) => links.linkOf(o, i) === vt))
       if (vt && !vt.refModeOwnerOccId && !shared) vt.refModeOwnerOccId = owner.id
     }
     // subtype links: NORMA saves no shape for them; it links each shape of

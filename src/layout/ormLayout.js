@@ -28,6 +28,7 @@ import { mkOcc } from '../store/storeHelpers'
 import { defaultFrequencyPos } from '../utils/frequencyPlacement'
 import { formulaElements } from '../logic/formulaConstraint'
 import { factBox } from './layoutScore'
+import { nearestTo, occurrenceRoleLinks } from '../diagram/roleLinks.js'
 
 const GAP = 56            // between core nodes
 const SAT_GAP = 46        // entity box → satellite fact → its value type
@@ -640,7 +641,6 @@ export function finishLayout(plan, placed) {
 
   // Entity types and objectified fact types with their satellites.
   const nodeOccId = new Map()
-  const satFacts = []            // [{ occ, fact }] to set roleOccurrenceMap after
   for (const [id, blk] of blocks) {
     const c = centres.get(id)
     const ex = c.x, ey = c.y, flip = c.side ?? 1, drop = (c.hang ?? 0) * blk.hang
@@ -650,18 +650,13 @@ export function finishLayout(plan, placed) {
     nodeOccId.set(id, occ.id)
     for (const row of blk.rows) {
       const n = row.fact.roles.length
-      const map = { [row.ownerRole]: occ.id }
       const side = row.side * flip
-      if (row.vt) {
-        const vo = emit(row.vt, ex + flip * row.vx, ey + drop + row.vy, {}, sizeOf(row.vt))
-        map[1 - row.ownerRole] = vo.id
-      } else if (row.ring) map[1] = occ.id
+      if (row.vt) emit(row.vt, ex + flip * row.vx, ey + drop + row.vy, {}, sizeOf(row.vt))
       // The entity's role faces the entity.
       const roleOrder = n === 2 ? (side > 0 ? [row.ownerRole, 1 - row.ownerRole] : [1 - row.ownerRole, row.ownerRole]) : undefined
       // A unary's reading beside it, away from the entity.
       const beside = n === 1 ? { readingAbove: false, readingOffsetBelow: { dx: side * (factLen(1) / 2 + UNARY_READ + readingW(row.fact) / 2), dy: 0 } } : {}
-      const fo = emit(row.fact.id, ex + flip * row.fx, ey + drop + row.fy, { ...keepFrom(row.fact.id), orientation: 'horizontal', ...(roleOrder ? { roleOrder } : {}), uniquenessBelow: false, ...beside, roleOccurrenceMap: map })
-      satFacts.push({ occ: fo, fact: row.fact })
+      emit(row.fact.id, ex + flip * row.fx, ey + drop + row.fy, { ...keepFrom(row.fact.id), orientation: 'horizontal', ...(roleOrder ? { roleOrder } : {}), uniquenessBelow: false, ...beside })
     }
   }
   // Other value types.
@@ -678,9 +673,7 @@ export function finishLayout(plan, placed) {
   for (const f of coreFacts) {
     const c = centres.get(`f:${f.id}`)
     const o = orientFact(f, c, (ri) => typeAt(f.roles[ri].objectTypeId))
-    const map = {}
-    f.roles.forEach((r, ri) => { const id = newId.get(r.objectTypeId); if (id) map[ri] = id })
-    const extra = { ...keepFrom(f.id), orientation: o.orientation, uniquenessBelow: o.uniquenessBelow, roleOccurrenceMap: map }
+    const extra = { ...keepFrom(f.id), orientation: o.orientation, uniquenessBelow: o.uniquenessBelow }
     if (o.roleOrder) extra.roleOrder = o.roleOrder
     emit(f.id, c.x, c.y, extra)
   }
@@ -689,9 +682,6 @@ export function finishLayout(plan, placed) {
     const f = factById.get(id)
     if (!f?.objectified) continue
     const occ = out.find(o => o.id === nodeOccId.get(id))
-    const map = {}
-    f.roles.forEach((r, ri) => { const pid = newId.get(r.objectTypeId); if (pid) map[ri] = pid })
-    occ.roleOccurrenceMap = map
     // Bars away from the players' side.
     const above = f.roles.filter(r => { const p = typeAt(r.objectTypeId); return p && p.y < occ.y }).length
     occ.uniquenessBelow = above > f.roles.length / 2
@@ -710,7 +700,6 @@ export function finishLayout(plan, placed) {
       const ft = {
         ...mkOcc(rm.factId, ownerAt.x + 80, ownerAt.y, { refModeOwnerOccId: ownerOcc }),
         ...(old && !out.some(p => p.id === old.id) ? { id: old.id } : {}),
-        roleOccurrenceMap: { [String(1 - rm.vtRoleIndex)]: ownerOcc, [String(rm.vtRoleIndex)]: vt.id },
       }
       out.push(vt, ft)
       if (!newId.has(rm.factId)) newId.set(rm.factId, ft.id)
@@ -719,7 +708,7 @@ export function finishLayout(plan, placed) {
       const ft = out.find(o => o.schemaElementId === rm.factId)
       if (ft) {
         ft.refModeOwnerOccId = ownerOcc
-        const vtOcc = out.find(o => o.id === ft.roleOccurrenceMap?.[String(rm.vtRoleIndex)])
+        const vtOcc = nearestTo(ft, out.filter(o => o.schemaElementId === rm.vtId))
         if (vtOcc && satVts.has(rm.vtId)) vtOcc.refModeOwnerOccId = ownerOcc
       }
     }
@@ -811,13 +800,15 @@ export function finishLayout(plan, placed) {
   }
   // Lines already drawn: role connectors and subtype links.
   const lines = []
+  const links = occurrenceRoleLinks({ occurrences: out, expandedRefModeOccs }, state.facts, state.objectTypes)
   for (const o of out) {
     const f = factById.get(o.schemaElementId)
-    if (!f || !o.roleOccurrenceMap) continue
+    if (!f) continue
     if (o.refModeOwnerOccId && !expandedRefModeOccs.includes(o.refModeOwnerOccId)) continue
     const g = { ...f, arity: f.roles.length, x: o.x, y: o.y, orientation: o.orientation, roleOrder: o.roleOrder }
-    for (const [ri, pid] of Object.entries(o.roleOccurrenceMap)) {
-      const p = at.get(pid)
+    for (let ri = 0; ri < f.roles.length; ri++) {
+      const pid = links.linkOf(o, ri)?.id
+      const p = pid && at.get(pid)
       if (!p || pid === o.id) continue
       const a = roleAnchor(g, Number(ri), p.x, p.y)
       lines.push({ p: a, q: rectBorder(p, p.w, p.h, a.x, a.y), own: [o.id, pid] })

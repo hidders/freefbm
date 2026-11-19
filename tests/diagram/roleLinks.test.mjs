@@ -2,7 +2,7 @@
 // MultiShapeUtility.FindNearestShapeForElement. Run: npm run test:role-links
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { nearestTo, nearestPairs, roleLinkIndex, factShapeCentre, normaBarLevels, playerLookup } from '../../src/diagram/roleLinks.js'
+import { nearestTo, nearestPairs, roleLinkIndex, factShapeCentre, normaBarLevels, playerLookup, occurrenceRoleLinks } from '../../src/diagram/roleLinks.js'
 import { nearestShapePairs } from '../../src/diagram/normaShapeKeys.js'
 
 // fact type F (role 0 played by A, role 1 by B) and its occurrences
@@ -85,17 +85,47 @@ test('the shape centre can decide between two players', () => {
   assert.equal(linkIds([f], players, { centre: (o) => o.roles ? factShapeCentre(o) : o })[0][0], 'up')
 })
 
-test('playerLookup: a stored link and an unlinked role win; otherwise the rule; objectified players', () => {
+test('playerLookup: the rule decides, stored links are ignored; objectified players', () => {
   const nested = { id: 'N', occurrenceId: 'n1', x: 400, y: 0, objectified: true, roles: [{ objectTypeId: 'A' }, { objectTypeId: 'A' }] }
   const f1 = { ...fact('f1', 0, 0), roles: [{ objectTypeId: 'A' }, { objectTypeId: 'N' }] }
   const ots = [ot('A', 'a1', -100, 0), ot('A', 'a2', 1000, 0)]
   let p = playerLookup(ots, [f1, nested])
   assert.equal(p.forRole(f1, 0).ot.occurrenceId, 'a1')
   assert.equal(p.forRole(f1, 1).nf.occurrenceId, 'n1')
-  p = playerLookup(ots, [{ ...f1, roleOccurrenceMap: { 0: 'a2' } }, nested])
-  assert.equal(p.forRole({ ...f1, roleOccurrenceMap: { 0: 'a2' } }, 0).ot.occurrenceId, 'a2')
-  assert.deepEqual(p.forRole({ ...f1, unlinkedRoles: [0] }, 0), { ot: null, nf: null })
+  const old = { ...f1, roleOccurrenceMap: { 0: 'a2' }, unlinkedRoles: [1] }
+  p = playerLookup(ots, [old, nested])
+  assert.equal(p.forRole(old, 0).ot.occurrenceId, 'a1')
+  assert.equal(p.forRole(old, 1).nf.occurrenceId, 'n1')
   assert.equal(p.nearest('A', 900, 0).ot.occurrenceId, 'a2')
+})
+
+test('occurrenceRoleLinks: stored occurrences, and a collapsed reference mode by ownership', () => {
+  const objectTypes = [{ id: 'A', kind: 'entity', name: 'A' }, { id: 'V', kind: 'value', name: 'A_id' }, { id: 'B', kind: 'entity', name: 'B' }]
+  const facts = [
+    { id: 'RM', roles: [{ objectTypeId: 'A' }, { objectTypeId: 'V' }], uniqueness: [{ roles: [0] }, { roles: [1] }], preferredUniqueness: [[1]] },
+    { id: 'F', roles: [{ objectTypeId: 'A' }, { objectTypeId: 'B' }], uniqueness: [{ roles: [0, 1] }] },
+  ]
+  const diag = { expandedRefModeOccs: ['a2'], occurrences: [
+    { id: 'a1', schemaElementId: 'A', x: 0, y: 0 },
+    { id: 'v1', schemaElementId: 'V', x: 160, y: 0, refModeOwnerOccId: 'a1' },
+    { id: 'rm1', schemaElementId: 'RM', x: 80, y: 0, refModeOwnerOccId: 'a1' },
+    { id: 'a2', schemaElementId: 'A', x: 0, y: 500 },
+    { id: 'v2', schemaElementId: 'V', x: 160, y: 500, refModeOwnerOccId: 'a2' },
+    { id: 'rm2', schemaElementId: 'RM', x: 80, y: 500, refModeOwnerOccId: 'a2' },
+    { id: 'b1', schemaElementId: 'B', x: 300, y: 100 },
+    { id: 'f1', schemaElementId: 'F', x: 150, y: 100 },
+  ] }
+  const links = occurrenceRoleLinks(diag, facts, objectTypes)
+  const occ = (id) => diag.occurrences.find(o => o.id === id)
+  // hidden (a1 collapsed): by ownership
+  assert.equal(links.linkOf(occ('rm1'), 0).id, 'a1')
+  assert.equal(links.linkOf(occ('rm1'), 1).id, 'v1')
+  // shown (a2 expanded): by the rule
+  assert.equal(links.linkOf(occ('rm2'), 0).id, 'a2')
+  assert.equal(links.linkOf(occ('rm2'), 1).id, 'v2')
+  assert.equal(links.linkOf(occ('f1'), 0).id, 'a1')
+  assert.equal(links.linkOf(occ('f1'), 1).id, 'b1')
+  assert.deepEqual(links.linkedFrom('v2').map(o => o.id), ['rm2'])
 })
 
 test('playerLookup: a collapsed reference mode takes no link from its fact type', () => {

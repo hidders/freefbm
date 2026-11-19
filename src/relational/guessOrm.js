@@ -755,13 +755,13 @@ function layoutDiagram(plan, rm, { objectTypes, facts, subtypes, constraints, sc
     attrs.forEach((f, i) => {
       const fy = Math.round(b.y + ROW_H / 2 + i * ROW_H)
       if (f.roles.length === 1) {
-        occs.push(mkOcc(f.id, ex + 150, fy, { roleOccurrenceMap: { 0: o.id } }))
+        occs.push(mkOcc(f.id, ex + 150, fy))
         f.x = ex + 150; f.y = fy
         return
       }
       const vt = otById.get(f.roles[1].objectTypeId)
       const vo = mkOcc(vt.id, ex + 300, fy)
-      occs.push(vo, mkOcc(f.id, ex + 150, fy, { roleOccurrenceMap: { 0: o.id, 1: vo.id } }))
+      occs.push(vo, mkOcc(f.id, ex + 150, fy))
       f.x = ex + 150; f.y = fy
       if (vt.x === 0 && vt.y === 0) { vt.x = ex + 300; vt.y = fy }
     })
@@ -778,7 +778,7 @@ function layoutDiagram(plan, rm, { objectTypes, facts, subtypes, constraints, sc
     used.set(k, n + 1)
     y += n * 34
     f.x = Math.round(x); f.y = Math.round(y)
-    occs.push(mkOcc(f.id, f.x, f.y, { roleOccurrenceMap: Object.fromEntries(os.map((o, i) => [i, o.id])) }))
+    occs.push(mkOcc(f.id, f.x, f.y))
   }
   diagram.occurrences = occs
   // Reference modes are drawn as the "(.ref)" shorthand: their value type and

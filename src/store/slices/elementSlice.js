@@ -1,9 +1,10 @@
 import { subtypeLinkPairs } from '../../diagram/normaShapeKeys.js'
+import { occurrenceRoleLinks } from '../../diagram/roleLinks.js'
 import { findRefMode, refModeLabel, vtNameFromLabel, refModeSeparator, refModeCollapseBlockers } from '../../utils/refMode.js'
 import { readingList, readingsPatch, editReadings } from '../readings.js'
 import {
   uid, mkEntity, mkValue, mkFact, mkRole, mkSubtype, mkConstraint, mkDiagram, mkNote, mkImplicitLink,
-  mkOcc, occOf, inDiag, patchOcc, rmOcc, patchOccById, buildRoleOccurrenceMap,
+  mkOcc, occOf, inDiag, patchOcc, rmOcc, patchOccById,
   mkConstraintOcc, cOccOf, cInDiag, patchCOcc, patchCOccById, addCOccIfAbsent, rmCOcc,
   addOccIfAbsent, addOwnedRefModeOccsIfAbsent, normalizeStEps, roleOccRefsKey,
   makeUniqueName, purgeOrphanedConstraints, closeUnderPrinciple3, computeCascadeRemove,
@@ -15,14 +16,6 @@ import {
   syncConstraints, computeConnectedIds, hasNoConnectors, runFactMergePass,
   mkUniqueness, withMandatoryId,
 } from '../storeHelpers'
-
-// A role NORMA drew without a link (occurrence unlinkedRoles, from the
-// import) gets one again once it is given a player occurrence.
-function relinked(occ, ri) {
-  if (!occ.unlinkedRoles) return {}
-  const rest = occ.unlinkedRoles.filter(i => String(i) !== String(ri))
-  return { unlinkedRoles: rest.length ? rest : undefined }
-}
 
 // A name typed in the view language is that language's own, even when it
 // equals the fallback it replaces (see viewLanguage.js).
@@ -261,7 +254,7 @@ export function createElementSlice(set, get) {
             const nextDiagrams = state.diagrams.map(d => {
               const entityOccIds = new Set((d.occurrences ?? []).filter(o => o.schemaElementId === entityId).map(o => o.id))
               let nd = oldVtUsedElsewhere ? d : rmOcc(d, current.vtId)
-              // Remove stale owned FT occs — their roleOccurrenceMap points to the now-deleted vtOcc
+              // Remove stale owned FT occs: they were drawn with the now-deleted vtOcc
               nd = { ...nd, occurrences: (nd.occurrences ?? []).filter(o =>
                 !(o.schemaElementId === current.factId && entityOccIds.has(o.refModeOwnerOccId))
               )}
@@ -359,100 +352,6 @@ export function createElementSlice(set, get) {
       })
     },
 
-    // ── occurrence-level role reconnect ──────────────────────────────────────
-
-    updateRoleOccurrenceMap(factOccId, roleIndex, otOccurrenceId, diagramId) {
-      set(s => ({
-        diagrams: s.diagrams.map(d =>
-          d.id !== diagramId ? d : {
-            ...d,
-            occurrences: (d.occurrences ?? []).map(o =>
-              o.id !== factOccId ? o
-              : { ...o, roleOccurrenceMap: { ...(o.roleOccurrenceMap ?? {}), [String(roleIndex)]: otOccurrenceId }, ...relinked(o, roleIndex) }
-            ),
-          }
-        ),
-        isDirty: true,
-      }))
-    },
-
-    startRoleReconnect(factOccId, roleIndex, factSchemaId, currentOtSchemaId, diagramId) {
-      set({ roleReconnectDraft: { factOccId, roleIndex, factSchemaId, currentOtSchemaId, diagramId } })
-    },
-
-    cancelRoleReconnect() {
-      set({ roleReconnectDraft: null })
-    },
-
-    reconnectRoleOccurrence(newOtOccId) {
-      set(s => {
-        const draft = s.roleReconnectDraft
-        if (!draft) return {}
-        const { factOccId, roleIndex, factSchemaId, diagramId } = draft
-
-        const diag = s.diagrams.find(d => d.id === diagramId)
-        if (!diag) return { roleReconnectDraft: null }
-
-        const factOcc = (diag.occurrences ?? []).find(o => o.id === factOccId)
-        if (!factOcc) return { roleReconnectDraft: null }
-
-        const fact = s.facts.find(f => f.id === factSchemaId)
-        if (!fact) return { roleReconnectDraft: null }
-
-        const role = fact.roles[roleIndex]
-        if (!role) return { roleReconnectDraft: null }
-
-        const newOtOcc = (diag.occurrences ?? []).find(o => o.id === newOtOccId)
-        if (!newOtOcc) return { roleReconnectDraft: null }
-
-        const oldSchemaOtId = role.objectTypeId
-        const newSchemaOtId = newOtOcc.schemaElementId
-
-        const riKey = String(roleIndex)
-
-        if (oldSchemaOtId === newSchemaOtId) {
-          // Case 1: same schema type — only update FTO1's map
-          const updatedDiagrams = s.diagrams.map(d =>
-            d.id !== diagramId ? d
-            : patchOccById(d, factOccId, {
-                roleOccurrenceMap: { ...(factOcc.roleOccurrenceMap ?? {}), [riKey]: newOtOccId }, ...relinked(factOcc, riKey),
-              })
-          )
-          return { diagrams: updatedDiagrams, roleReconnectDraft: null, isDirty: true }
-        }
-
-        // Case 2: different schema type → schema change
-        const updatedFacts = s.facts.map(f =>
-          f.id !== fact.id ? f
-          : { ...f, roles: f.roles.map((r, i) => i !== roleIndex ? r : { ...r, objectTypeId: newSchemaOtId }) }
-        )
-
-        const updatedDiagrams = s.diagrams.map(d => {
-          const factOccsInDiag = (d.occurrences ?? []).filter(o => o.schemaElementId === fact.id)
-          if (factOccsInDiag.length === 0) return d
-
-          const newOtOccInDiag = (d.occurrences ?? []).find(o => o.schemaElementId === newSchemaOtId)
-          if (!newOtOccInDiag) {
-            // Case 2b-b2: remove all occurrences of this fact from the diagram
-            return { ...d, occurrences: (d.occurrences ?? []).filter(o => o.schemaElementId !== fact.id) }
-          }
-
-          // Case 2a or 2b-b1
-          const targetOtOccId = d.id === diagramId ? newOtOccId : newOtOccInDiag.id
-          return {
-            ...d,
-            occurrences: (d.occurrences ?? []).map(o =>
-              o.schemaElementId !== fact.id ? o
-              : { ...o, roleOccurrenceMap: { ...(o.roleOccurrenceMap ?? {}), [riKey]: targetOtOccId }, ...relinked(o, riKey) }
-            )
-          }
-        })
-
-        const syncedDiagrams = syncConstraints(updatedDiagrams, s.constraints, s.subtypes, updatedFacts)
-        return { facts: updatedFacts, diagrams: syncedDiagrams, roleReconnectDraft: null, isDirty: true }
-      })
-    },
-
     // Add an extra occurrence of an element already in the diagram
     addExtraOccurrence(elementId, diagramId) {
       set(s => {
@@ -464,12 +363,6 @@ export function createElementSlice(set, get) {
         const x = (el.x ?? 100) + offset
         const y = (el.y ?? 100) + offset
         const newOcc = mkOcc(elementId, x, y)
-        // If it's a fact, populate roleOccurrenceMap
-        const isFact = s.facts.some(f => f.id === elementId)
-        if (isFact && diag) {
-          const fact = s.facts.find(f => f.id === elementId)
-          newOcc.roleOccurrenceMap = buildRoleOccurrenceMap(fact, diag.occurrences)
-        }
         return {
           diagrams: s.diagrams.map(d =>
             d.id !== diagramId ? d : { ...d, occurrences: [...(d.occurrences ?? []), newOcc] }
@@ -563,14 +456,9 @@ export function createElementSlice(set, get) {
             // expansion. Take ownership of it, or recreate it if it is gone.
             const expanded = new Set(d.expandedRefModeOccs ?? [])
             const ftOcc = occsOut.find(o => o.schemaElementId === rm.factId && o.refModeOwnerOccId === otOccurrenceId)
-            const vtOccId = ftOcc?.roleOccurrenceMap?.[String(rm.vtRoleIndex)]
-            const vtOcc = vtOccId ? occsOut.find(o => o.id === vtOccId) : null
+            const vtOcc = ftOcc ? occurrenceRoleLinks(d, s.facts, s.objectTypes).linkOf(ftOcc, rm.vtRoleIndex) : null
             if (ftOcc && !vtOcc && ownerOcc2) {
-              const fresh = mkOcc(rm.vtId, ownerOcc2.x + 160, ownerOcc2.y, { refModeOwnerOccId: otOccurrenceId })
-              newOccs = [fresh]
-              occsOut = occsOut.map(o => o.id === ftOcc.id
-                ? { ...o, roleOccurrenceMap: { ...(o.roleOccurrenceMap ?? {}), [String(rm.vtRoleIndex)]: fresh.id } }
-                : o)
+              newOccs = [mkOcc(rm.vtId, ownerOcc2.x + 160, ownerOcc2.y, { refModeOwnerOccId: otOccurrenceId })]
             } else if (vtOcc?.refModeOwnerOccId && vtOcc.refModeOwnerOccId !== otOccurrenceId &&
                        !expanded.has(vtOcc.refModeOwnerOccId)) {
               occsOut = occsOut.map(o => o.id === vtOcc.id ? { ...o, refModeOwnerOccId: otOccurrenceId } : o)
@@ -578,13 +466,7 @@ export function createElementSlice(set, get) {
           }
           if (!alreadyOwned && ownerOcc2) {
             const vtOcc = mkOcc(rm.vtId, ownerOcc2.x + 160, ownerOcc2.y, { refModeOwnerOccId: otOccurrenceId })
-            const ftOcc = mkOcc(rm.factId, ownerOcc2.x + 80, ownerOcc2.y, {
-              refModeOwnerOccId: otOccurrenceId,
-              roleOccurrenceMap: {
-                [String(1 - rm.vtRoleIndex)]: otOccurrenceId,
-                [String(rm.vtRoleIndex)]: vtOcc.id,
-              },
-            })
+            const ftOcc = mkOcc(rm.factId, ownerOcc2.x + 80, ownerOcc2.y, { refModeOwnerOccId: otOccurrenceId })
             newOccs = [vtOcc, ftOcc]
           }
           return {
@@ -631,23 +513,10 @@ export function createElementSlice(set, get) {
           ) : null
 
           // VT is needed by another visible fact if any non-owned fact occurrence (excluding
-          // the FT being collapsed) SPECIFICALLY references vtOcc via its roleOccurrenceMap.
-          // Fall back to schema-level role check for facts without a roleOccurrenceMap.
-          const expandedSet = new Set(d.expandedRefModeOccs ?? [])
+          // the FT being collapsed) has a role connector to vtOcc (src/diagram/roleLinks.js).
           const vtNeededByOtherFact = vtOcc && rm
-            ? occs.some(o => {
-                if (ftOcc && o.id === ftOcc.id) return false
-                if (o.refModeOwnerOccId === otOccurrenceId) return false
-                // Only count currently visible fact occurrences.
-                if (o.refModeOwnerOccId && !expandedSet.has(o.refModeOwnerOccId)) return false
-                // Check if this fact occ specifically uses vtOcc via roleOccurrenceMap.
-                if (o.roleOccurrenceMap) {
-                  return Object.values(o.roleOccurrenceMap).includes(vtOcc.id)
-                }
-                // v1 fallback: schema-level role check.
-                const f = facts.find(x => x.id === o.schemaElementId)
-                return f?.roles?.some(r => r.objectTypeId === rm.vtId)
-              })
+            ? occurrenceRoleLinks(d, facts, objectTypes).linkedFrom(vtOcc.id)
+                .some(o => o.id !== ftOcc?.id && o.refModeOwnerOccId !== otOccurrenceId)
             : false
 
           let newOccs = occs
@@ -1334,21 +1203,12 @@ export function createElementSlice(set, get) {
         })
 
         // For every diagram containing the fact: if the new OT is present keep the fact
-        // (and update roleOccurrenceMap to its first occurrence); if absent, remove the fact.
-        const riKey = String(roleIndex)
+        // (its connector goes to the nearest occurrence, src/diagram/roleLinks.js);
+        // if absent, remove the fact.
         const updatedDiagrams = s.diagrams.map(d => {
           if (!inDiag(d, factId)) return d
-          const newOtOcc = (d.occurrences ?? []).find(o => o.schemaElementId === objectTypeId)
-          if (!newOtOcc) {
-            return { ...d, occurrences: (d.occurrences ?? []).filter(o => o.schemaElementId !== factId) }
-          }
-          return {
-            ...d,
-            occurrences: (d.occurrences ?? []).map(o =>
-              o.schemaElementId !== factId ? o
-              : { ...o, roleOccurrenceMap: { ...(o.roleOccurrenceMap ?? {}), [riKey]: newOtOcc.id }, ...relinked(o, riKey) }
-            ),
-          }
+          if (inDiag(d, objectTypeId)) return d
+          return { ...d, occurrences: (d.occurrences ?? []).filter(o => o.schemaElementId !== factId) }
         })
 
         return {
