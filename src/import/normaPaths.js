@@ -44,8 +44,22 @@
 // path: joining it to another role, unifying or projecting it is refused,
 // and a calculated value reading it reads the constant true.
 //
+// Aggregates: a calculated value whose function takes a bag (BagInput) is
+// an aggregate over the path. Its AggregationContext names the objects it
+// is grouped by; every other object of the path is a variable of the
+// aggregate, so count is Count{v̄ : φ} and the others F{t | v̄ : φ} with φ
+// the path (and its conditions) and t the bag input. A function is read as
+// an aggregate by its name (count, sum, avg/average, min/minimum,
+// max/maximum).
+//
+// Subqueries: a rule's Subqueries define query fact types (QueryRoles) by
+// derivation paths of their own, and its paths may enter a query through
+// its roles as through any fact type. The query is inlined: its rule (read
+// as a fact type's, each lead path a case) with its roles renamed to the
+// objects the path gives them.
+//
 // Not translated (reported as the reason): outer joins, negated roots,
-// functions FreeFBM cannot read, aggregates, subqueries and shared paths.
+// functions FreeFBM cannot read, recursive subqueries and shared paths.
 
 import { SUBJECT } from '../logic/derivationRule.js'
 import { OPS, PREDS } from '../logic/dataOperators.js'
@@ -87,6 +101,18 @@ const FUNCTIONS = (() => {
   for (const op of Object.keys(PREDS)) if (!m.has(op.toLowerCase())) put('pred', op, op.toLowerCase())
   return m
 })()
+// Aggregate functions (a parameter with BagInput) by name.
+const AGGREGATES = new Map([['count', 'count'], ['sum', 'sum'], ['avg', 'avg'], ['average', 'avg'], ['mean', 'avg'],
+  ['min', 'min'], ['minimum', 'min'], ['max', 'max'], ['maximum', 'max']])
+// A copy of a rule tree with every variable id in `map` renamed: variable
+// references and binders, never fact, type or role ids, operators or text.
+const KEEP = new Set(['t', 'factId', 'typeId', 'op', 'text', 'fn'])
+const renameAll = (n, map) => {
+  if (typeof n === 'string') return map.get(n) ?? n
+  if (Array.isArray(n)) return n.map(x => renameAll(x, map))
+  if (!n || typeof n !== 'object') return n
+  return Object.fromEntries(Object.entries(n).map(([k, x]) => [k, KEEP.has(k) ? x : renameAll(x, map)]))
+}
 const fnKey = (s) => String(s ?? '').trim().toLowerCase().replace(/[\s_-]+/g, '')
 // A boolean value as NORMA may write it, or undefined.
 const boolOf = (text) => {
@@ -118,7 +144,7 @@ export function makePathTranslator(ctx) {
   // One path: nodes are NORMA ids of path roots and pathed roles, and fresh
   // ids for roles a path does not visit. The paths of one rule share
   // `counter`, so their variables get distinct ids.
-  function session(counter = { n: 0 }, calcs = new Map()) {
+  function session(counter = { n: 0 }, calcs = new Map(), queries = new Map()) {
     const parent = new Map()
     const nodeTypes = new Map()   // node → [typeId]
     let fresh = 0
@@ -200,6 +226,8 @@ export function makePathTranslator(ctx) {
       while (j < roles.length && attr(roles[j], 'Purpose') === 'SameFactType') j++
       const group = roles.slice(i, j)
       const items = []
+      const q = queries.get(attr(entry, 'ref'))
+      if (q) return walkQuery(roles, i, j, at, tail, q)
       const members = group.map(r => {
         const m = ctx.roleRef(attr(r, 'ref'))
         if (!m) fail('it uses a role FreeFBM does not have')
@@ -299,6 +327,33 @@ export function makePathTranslator(ctx) {
       return [...items, ...rest]
     }
 
+    // A step into a subquery: its roles are objects as a fact type's are,
+    // and the query is inlined where the rule is emitted.
+    function walkQuery(roles, i, j, at, tail, q) {
+      const group = roles.slice(i, j)
+      const entry = roles[i]
+      if (at != null && isBool(at)) fail('it joins the boolean value of an old-style unary to a subquery')
+      const args = new Array(q.query.roles.length).fill(null)
+      let end = null
+      for (const r of group) {
+        const m = queries.get(attr(r, 'ref'))
+        if (!m || m.query !== q.query) fail('a step leaves the subquery it is in')
+        if (args[m.index] != null) fail('it visits a role twice in one step')
+        args[m.index] = add(attr(r, 'id'), m.typeId)
+        end = attr(r, 'id')
+      }
+      union(at, attr(entry, 'id'))
+      q.query.roles.forEach((role, k) => { if (args[k] == null) args[k] = freshNode(role.typeId) })
+      const items = [{ k: 'query', query: q.query, args }]
+      for (const r of group) {
+        const ranges = valueCondition(r)
+        if (ranges) items.push({ k: 'value', node: attr(r, 'id'), ranges })
+      }
+      const rest = walkRoles(roles, j, end, tail)
+      if (attr(entry, 'IsNegated') === 'true') return [{ k: 'not', item: { k: 'scope', items: [...items, ...rest] } }]
+      return [...items, ...rest]
+    }
+
     function split(pathEl, at) {
       const subs = kids(kid(pathEl, 'SubPaths'), 'SubPath')
       if (!subs.length) return []
@@ -312,13 +367,16 @@ export function makePathTranslator(ctx) {
     }
 
     // The IR of one role path, rooted at its root node.
-    function rolePath(pathEl) {
+    // With projected, a path of its root alone (each instance of its type,
+    // as a subquery's identity case has it) is a type atom.
+    function rolePath(pathEl, { projected = false } = {}) {
       const root = kid(pathEl, 'RootObjectType')
       if (!root) fail('a path has no root object type')
       if (attr(root, 'IsNegated') === 'true') fail('its root object type is negated')
       const rootId = attr(root, 'id')
       const items = rootItems(root)
       items.push(...walkPath(pathEl, rootId))
+      if (!items.length && projected && ctx.typeOf(attr(root, 'ref'))) items.push({ k: 'type', typeId: ctx.typeOf(attr(root, 'ref')), node: rootId })
       if (!items.length) fail('a path is empty')
       for (const u of kids(kid(pathEl, 'ObjectUnifiers'), 'ObjectUnifier')) {
         const refs = kids(u).map(e => attr(e, 'ref')).filter(r => parent.has(r))
@@ -355,8 +413,19 @@ export function makePathTranslator(ctx) {
       const fn = ctx.functionOf?.(attr(kid(el, 'Function'), 'ref'))
       if (!fn) fail('a calculated value has no function')
       const label = fn.symbol || fn.name
-      if (fn.params.some(p => p.bag)) fail(`it uses the aggregate function ${label}`)
       const inputs = kids(kid(el, 'Inputs'), 'Input')
+      if (fn.params.some(p => p.bag)) {
+        const agg = AGGREGATES.get(fnKey(fn.name)) ?? AGGREGATES.get(fnKey(fn.symbol))
+        if (!agg) fail(`it uses the aggregate function ${label}, which FreeFBM cannot read`)
+        if (inputs.length !== 1 || fn.params.length !== 1) fail(`the aggregate ${label} does not have one input`)
+        const src = kids(kid(inputs[0], 'Source'))[0]
+        if (!src || (src.localName !== 'PathRoot' && src.localName !== 'PathedRole')) fail(`the input of the aggregate ${label} is not an object of its path`)
+        const n = attr(src, 'ref')
+        if (!parent.has(n) || isBool(n)) fail(`the input of the aggregate ${label} is outside its path`)
+        const by = kids(kid(el, 'AggregationContext')).map(c => attr(c, 'ref'))
+        if (by.some(b => !parent.has(b))) fail(`the aggregate ${label} is grouped by an object outside its path`)
+        return { f: 'agg', fn: agg, input: n, by }
+      }
       const pos = (inp, i) => { const k = fn.params.findIndex(p => p.id === attr(kid(inp, 'Parameter'), 'ref')); return k < 0 ? i : k }
       const args = inputs.map((inp, i) => [pos(inp, i), inp]).sort((a, b) => a[0] - b[0]).map(([, inp]) => {
         const src = kids(kid(inp, 'Source'))[0]
@@ -436,7 +505,7 @@ export function makePathTranslator(ctx) {
       const itemScope = new Map()
       const collect = (list, s) => {
         for (const it of list) {
-          if (it.k === 'fact') it.args.forEach(a => use(a, s))
+          if (it.k === 'fact' || it.k === 'query') it.args.forEach(a => use(a, s))
           else if (it.k === 'type' || it.k === 'value') use(it.node, s)
           else if (it.k === 'not') collect([it.item], s)
           else if (it.k === 'or' || it.k === 'xor') collect(it.items, s)
@@ -446,6 +515,7 @@ export function makePathTranslator(ctx) {
       collect(items, top)
       const exprNodes = (e, out = []) => {
         if (e.f === 'node') out.push(e.n)
+        if (e.f === 'agg') { out.push(...e.by); return out }
         for (const a of [...(e.args ?? []), e.left, e.right, e.arg].filter(Boolean)) exprNodes(a, out)
         return out
       }
@@ -489,6 +559,17 @@ export function makePathTranslator(ctx) {
           case 'node': return { t: 'var', id: vid(e.n) }
           case 'const': return { t: 'const', text: e.text }
           case 'op': return { t: 'op', op: e.op, args: e.args.map(term) }
+          case 'agg': {
+            // the path again, its grouping objects those of this rule and
+            // every other object a variable of the aggregate
+            const grouped = e.by.map(n => [n, varOf.get(find(n))])
+            const inner = emit(items, grouped, { conds })
+            if (inner.top.some(v => !v.typeId)) fail('an object the aggregate ranges over has no type')
+            const t = inner.term({ f: 'node', n: e.input })
+            const outTerm = e.fn === 'count' ? null : t
+            if (e.fn === 'count' && !inner.top.length) fail('the aggregate counts nothing')
+            return { t: 'agg', fn: e.fn, distinct: false, vars: inner.top, cond: inner.body, term: outTerm }
+          }
           default: fail('a condition is used as a value')
         }
       }
@@ -505,6 +586,7 @@ export function makePathTranslator(ctx) {
       const out = (it) => {
         switch (it.k) {
           case 'fact': return { t: 'fact', factId: it.factId, args: it.args.map(vid) }
+          case 'query': return it.query.inline(it.args.map(vid), counter)
           case 'type': {
             const v = varOf.get(find(it.node))
             return v.typeId && ctx.up(v.typeId).has(it.typeId) ? null : { t: 'type', typeId: it.typeId, arg: v.id }
@@ -541,8 +623,32 @@ export function makePathTranslator(ctx) {
   // after the checks for what the translation does not read.
   const pathsOf = (ownerEl) => {
     if (kids(kid(ownerEl, 'PathComponents')).some(e => e.localName === 'SharedRolePath')) fail('it shares a role path with another rule')
-    if (kids(kid(ownerEl, 'Subqueries')).length) fail('it uses a subquery')
     return [...kids(kid(ownerEl, 'PathComponents'), 'RolePath'), ...kids(kid(ownerEl, 'PathComponent'), 'RolePath')]
+  }
+  // The subqueries of an owner: query role id → { query, index, typeId },
+  // each query { roles, inline(argVarIds, counter) → rule tree }.
+  const queriesOf = (ownerEl, depth = 0) => {
+    const out = new Map()
+    for (const sq of kids(kid(ownerEl, 'Subqueries'), 'Subquery')) {
+      const roles = kids(kid(sq, 'QueryRoles'), 'Role').map(r => ({ id: attr(r, 'id'), typeId: ctx.typeOf(attr(kid(r, 'RolePlayer'), 'ref')) }))
+      const qdp = kid(kid(sq, 'DerivationRule'), 'QueryDerivationPath')
+      if (!qdp) fail('a subquery has no derivation path')
+      if (depth > 4) fail('its subqueries are nested too deeply')
+      let rule = null
+      const query = {
+        roles,
+        inline(args, counter) {
+          rule ??= projectedRule({ id: attr(sq, 'id'), roles: roles.map(r => ({ id: r.id, objectTypeId: r.typeId })) }, qdp, depth + 1)
+          if (Object.keys(rule.terms ?? {}).length) fail('a subquery computes a role')
+          // its own variables renamed apart, its roles to the given objects
+          const map = new Map(roles.map((r, k) => [`role:${r.id}`, args[k]]))
+          for (const n of varNumbers(rule)) map.set(`v${n}`, `v${++counter.n}`)
+          return renameAll(bindAll(rule.extraVars ?? [], rule.body), map)
+        },
+      }
+      roles.forEach((r, index) => out.set(r.id, { query, index, typeId: r.typeId }))
+    }
+    return out
   }
   // The calculated values of an owner by id: those of its lead paths and the
   // older ones kept on the owner itself.
@@ -572,17 +678,21 @@ export function makePathTranslator(ctx) {
   // A role projected from a calculated value or a constant is a computed
   // role whose term is that value (one path only: terms are not per case).
   function factRule(fact, dpEl) {
-    return attempt(() => {
+    return attempt(() => projectedRule(fact, dpEl))
+  }
+  function projectedRule(fact, dpEl, depth = 0) {
+    {
       const projections = kids(kid(dpEl, 'DerivationProjections'), 'DerivationProjection')
       const paths = pathsOf(dpEl)
       if (!paths.length) fail('it has no path')
       const calcs = calcsOf(dpEl, paths)
+      const queries = queriesOf(dpEl, depth)
       const roleById = new Map(fact.roles.map(r => [r.id, r]))
       const counter = { n: 0 }
       let computed = {}
       const cases = paths.map(p => {
-        const s = session(counter, calcs)
-        const { items, conds } = s.rolePath(p)
+        const s = session(counter, calcs, queries)
+        const { items, conds } = s.rolePath(p, { projected: true })
         const proj = projections.find(d => attr(d, 'ref') === attr(p, 'id')) ?? (paths.length === 1 ? projections[0] : null)
         const fixed = [], terms = []
         for (const rp of kids(proj, 'RoleProjection')) {
@@ -608,7 +718,7 @@ export function makePathTranslator(ctx) {
       })
       if (cases.length === 1) return { body: cases[0].body, extraVars: cases[0].top, terms: computed }
       return { body: { t: 'or', args: cases.map(c => bindAll(c.top, c.body)) }, extraVars: [], terms: {} }
-    })
+    }
   }
 
   // A subtype's derivation path → rule tree (the subject is each path's root)
@@ -618,13 +728,14 @@ export function makePathTranslator(ctx) {
     return attempt(() => {
       const paths = pathsOf(sdpEl)
       const calcs = calcsOf(sdpEl, paths)
+      const queries = queriesOf(sdpEl)
       const subject = { id: SUBJECT, typeId: supertypeIds[0] ?? null }
       let skipped = 0
       const cases = []
       const counter = { n: 0 }
       for (const p of paths) {
         const r = attempt(() => {
-          const s = session(counter, calcs)
+          const s = session(counter, calcs, queries)
           const { rootId, items, conds } = s.rolePath(p)
           const c = s.emit(items, [[rootId, subject]], { conds })
           return bindAll(c.top, c.body)
@@ -646,7 +757,7 @@ export function makePathTranslator(ctx) {
     return attempt(() => {
       const paths = pathsOf(jpEl)
       if (paths.length !== 1) fail(paths.length ? 'it has several paths' : 'it has no path')
-      const s = session({ n: 0 }, calcsOf(jpEl, paths))
+      const s = session({ n: 0 }, calcsOf(jpEl, paths), queriesOf(jpEl))
       const { rootId, items, conds } = s.rolePath(paths[0])
       const proj = kid(kid(jpEl, 'JoinPathProjections'), 'JoinPathProjection')
       const free = freeTypes.map((typeId, i) => ({ id: `q${i}`, typeId }))

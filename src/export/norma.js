@@ -34,7 +34,7 @@ import { factDerivationEntries } from '../logic/factDerivation.js'
 import { derivationEntry } from '../logic/derivationRule.js'
 import { renderFormula } from '../logic/renderFormula.js'
 import { SUBJECT } from '../logic/derivationRule.js'
-import { conjunctivePath } from './normaPathsOut.js'
+import { conjunctivePath, openRecursion } from './normaPathsOut.js'
 import { otShapeKey, factShapeKey, noteShapeKey } from '../diagram/normaShapeKeys.js'
 import { normaBarLevels } from '../diagram/roleLinks.js'
 
@@ -227,6 +227,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   // derived (NORMA's IsImpliedObjectificationRequired). NORMA adds an implied
   // one it does not find while it loads, which its debug build reports as a
   // failed assertion, so the export writes them as NORMA saves them.
+  const usedFunctions = new Set()   // aggregate functions the paths use (derivationEl)
   const nests = new Map()            // fact id → { implied }
   for (const f of facts) {
     const deonticKeys = new Set((f.deonticUniqueness ?? []).map(r => [...r].sort((a, b) => a - b).join(',')))
@@ -473,7 +474,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         projected: rule.free.map((v, i) => ({ roleId: roleIds[i], varId: v.id })),
         roleRef: (fid, i) => normaId(factById.get(fid).roles[i].id), playerOf: (fid, i) => factById.get(fid).roles[i].objectTypeId,
         linkRoleRef: (fid, j, i) => i === 0 ? linkIdsOf(fid, j).role : normaId(factById.get(fid).roles[j].id), isNested: (fid) => nests.has(fid),
-        subtypeLinkOf, typeRef: (tid) => playerRef(tid),
+        subtypeLinkOf, typeRef: (tid) => playerRef(tid), valueConstraint: pathValueConstraint, functionRef, functionParamRef,
       }))
       if (!formal || formal.error) { joinsMissing.push(formal?.error ?? rule?.error ?? 'a query the export cannot read'); return null }
       return el('orm:JoinRule', {}, [el('orm:JoinPath', { id: normaId(c.id, `join${k}`) }, [formal.path, formal.projections])])
@@ -646,7 +647,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       // side, the role of F it stands for (NORMA refuses its role proxy there)
       linkRoleRef: (fid, k, i) => i === 0 ? linkIdsOf(fid, k).role : normaId(factById.get(fid).roles[k].id), isNested: (fid) => nests.has(fid),
       subtypeLinkOf: subtypeLinkOf,
-      typeRef: (tid) => playerRef(tid),
+      typeRef: (tid) => playerRef(tid), valueConstraint: pathValueConstraint, functionRef, functionParamRef,
     }))
     if (formal && !formal.error) {
       derivedFormal++
@@ -657,8 +658,10 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     const text = formulaText(safe(() => derivationEntry(ot, state, ctx)))
     if (formal?.error) ffNote([ot.id], `the derivation rule is NORMA's informal rule only: FreeFBM's rule has ${formal.error}, which this export cannot write as a NORMA derivation path yet.`)
     derivedInformal++
+    // a rule without a path is "externally defined" for NORMA (as NORMA
+    // writes informal rules), which otherwise asks for a projection from a path
     return el('orm:SubtypeDerivationRule', {}, [
-      el('orm:SubtypeDerivationPath', { id: normaId(ot.id, 'derivation'), DerivationCompleteness: ot.derivation === 'semiDerived' ? 'PartiallyDerived' : null }, [
+      el('orm:SubtypeDerivationPath', { id: normaId(ot.id, 'derivation'), DerivationCompleteness: ot.derivation === 'semiDerived' ? 'PartiallyDerived' : null, ExternalDerivation: 'true' }, [
         el('orm:InformalRule', {}, [el('orm:DerivationNote', { id: normaId(ot.id, 'derivation-note') }, [el('orm:Body', {}, text ?? 'Derived in FreeFBM.')])]),
       ]),
     ])
@@ -724,20 +727,26 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     const st = subtypes.find(x => x.subId === typeId && (otById.has(x.superId) || nests.get(x.superId)?.implied === false))
     return st ? { superId: st.superId, superRole: subtypeIdsOf(st).super, subRole: subtypeIdsOf(st).sub } : null
   }
+  // aggregate functions the derivation paths use (NORMA has no library:
+  // a model defines its functions, each aggregate with one bag parameter)
+  function functionRef(fn) { usedFunctions.add(fn); return normaId(`function:${fn}`) }
+  function functionParamRef(fn) { usedFunctions.add(fn); return normaId(`function:${fn}`, 'values') }
   function derivationEl(f) {
     if (!f.derivation) return null
     const completeness = f.derivation === 'semiDerived' ? 'PartiallyDerived' : null
     // a conjunctive rule as NORMA's role path (src/export/normaPathsOut.js)
-    const formal = f.derivationRule && f.roles.length && safe(() => conjunctivePath(f.derivationRule, {
+    // a closure of a fully derived fact type's rule is written as recursion
+    const opened = f.derivation === 'derived' && JSON.stringify(f.derivationRule ?? null).includes('"tc"') && safe(() => openRecursion(f, f.derivationRule))
+    const formal = f.derivationRule && f.roles.length && safe(() => conjunctivePath(opened || f.derivationRule, {
       el, id: (part) => normaId(f.id, `path:${part}`), factById,
       subject: `role:${f.roles[0].id}`, subjectType: f.roles[0].objectTypeId,
-      projected: f.roles.map(r => ({ roleId: normaId(r.id), varId: `role:${r.id}` })),
+      projected: f.roles.map(r => ({ roleId: normaId(r.id), varId: `role:${r.id}`, typeId: r.objectTypeId })),
       roleRef: (fid, i) => normaId(factById.get(fid).roles[i].id), playerOf: (fid, i) => factById.get(fid).roles[i].objectTypeId,
       // a path walks a link fact type through its own role and, on the far
       // side, the role of F it stands for (NORMA refuses its role proxy there)
       linkRoleRef: (fid, k, i) => i === 0 ? linkIdsOf(fid, k).role : normaId(factById.get(fid).roles[k].id), isNested: (fid) => nests.has(fid),
       subtypeLinkOf: subtypeLinkOf,
-      typeRef: (tid) => playerRef(tid),
+      typeRef: (tid) => playerRef(tid), valueConstraint: pathValueConstraint, functionRef, functionParamRef,
     }))
     if (formal && !formal.error) {
       derivedFormal++
@@ -750,7 +759,14 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     derivedInformal++
     if (formal?.error) ffNote([f.id], `the derivation rule is NORMA's informal rule only: FreeFBM's rule has ${formal.error}, which this export cannot write as a NORMA derivation path yet.`)
     return el('orm:DerivationRule', {}, [
-      el('orm:FactTypeDerivationPath', { id: normaId(f.id, 'derivation'), DerivationCompleteness: completeness }, [
+      // ExternalDerivation keeps NORMA from asking for a path, but NORMA then
+      // treats the fact type as stored: it needs an internal uniqueness
+      // constraint, and a fact type with more than two roles or a uniqueness
+      // over several roles is then objectified while loading (an assertion
+      // in NORMA's debug build), so those are written without it
+      el('orm:FactTypeDerivationPath', { id: normaId(f.id, 'derivation'), DerivationCompleteness: completeness,
+        ExternalDerivation: (f.uniqueness ?? []).length && !nests.has(f.id) && f.roles.length <= 2
+          && !(f.uniqueness ?? []).some(u => u.roles.length > 1) ? 'true' : null }, [
         el('orm:InformalRule', {}, [el('orm:DerivationNote', { id: normaId(f.id, 'derivation-note') }, [el('orm:Body', {}, text ?? 'Derived in FreeFBM (no complete rule yet).')])]),
       ]),
     ])
@@ -803,6 +819,10 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     })
   }
 
+  // a value condition of a role path (normaPathsOut.js)
+  function pathValueConstraint(tag, id, ranges) {
+    return el(tag, { id }, [el('orm:ValueRanges', {}, ranges.map(valueRangeAttrs).filter(Boolean).map((a, i) => el('orm:ValueRange', { id: normaId(id, `range${i}`), ...a })))])
+  }
   function valueConstraintEl(tag, ownerId, ranges, deontic, base, kept = null) {
     return el(tag, { id: kept?.id ?? normaId(ownerId, 'valueconstraint'), Name: keptName(kept?.name) ?? autoName(base), Modality: deontic ? 'Deontic' : null }, [
       el('orm:ValueRanges', {}, ranges.map(valueRangeAttrs).filter(Boolean).map((a, i) => el('orm:ValueRange', { id: normaId(ownerId, `valuerange${i}`), ...a }))),
@@ -1265,17 +1285,56 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   }
   const groups = (state.groups ?? []).filter(g => !sid || schemas.length <= 1 || (g.members ?? []).some(m => memberRefOf(m)))
   let usesShapeGroups = false
-  // FreeFBM's summary note in a group of its own, coloured soft yellow
+  // FreeFBM's summary note in a group of its own, without a colour: a
+  // colour needs NORMA's shape grouping extension, and a NORMA without it
+  // offers to disable Save (Jan, 2026-11-20)
   if (summaryNoteId) groups.push({ id: 'freefbm-export-note-group', name: 'FreeFBM export note', definition: 'The note FreeFBM added when it exported this model.',
-    note: '', priority: 0, colors: { fill: '#fff6c8' }, members: [summaryNoteId], _normaMember: true })
+    note: '', priority: 0, colors: {}, members: [summaryNoteId], _normaMember: true })
+  const CHANNEL_OF = Object.fromEntries(Object.entries(COLOR_ROLES).map(([ch, role]) => [role, ch]))
+  const NS_OF_COLOR = { ORMDiagramDynamicColor: 'ormDiagram', ORMModelBrowserDynamicColor: 'orm' }
+  // a group's shape colours: the imported ones as NORMA wrote them while
+  // FreeFBM's colour is the same, a changed or new one as R, G, B
+  const shapeColors = (g, kept) => {
+    const out = []
+    const done = new Set()
+    for (const c of kept ?? []) {
+      const ch = CHANNEL_OF[c.role]
+      if (!ch || !c.hex) { out.push(c); continue }   // a role or value FreeFBM does not draw
+      done.add(ch)
+      const now = g.colors?.[ch]
+      if (!now) continue
+      out.push(now.toLowerCase() === c.hex.toLowerCase() ? c : { ...c, value: rgb(now) })
+    }
+    for (const [ch, hex] of Object.entries(g.colors ?? {}))
+      if (!done.has(ch) && COLOR_ROLES[ch] && rgb(hex)) out.push({ tag: 'ORMDiagramDynamicColor', role: COLOR_ROLES[ch], value: rgb(hex) })
+    return out
+  }
+  const colorEls = (list) => list.map(c => el(`${NS_OF_COLOR[c.tag] ?? 'ormDiagram'}:${c.tag ?? 'ORMDiagramDynamicColor'}`, { ColorRole: c.role, ColorValue: c.value }))
   const groupEls = groups.map(g => {
-    const colors = Object.entries(g.colors ?? {}).map(([ch, hex]) => [COLOR_ROLES[ch], rgb(hex)]).filter(([r, v]) => r && v)
-    if (colors.length) usesShapeGroups = true
-    const refs = g._normaMember ? g.members : [...new Set((g.members ?? []).map(memberRefOf).filter(Boolean))]
+    // the group types NORMA wrote (imported), in their order and with their ids
+    const kept = (g.normaTypes ?? []).filter(t => t?.type && t.id)
+    const typeEls = []
+    let shapeDone = false
+    for (const t of kept) {
+      if (t.type === 'ORMShapeColorGroupType') {
+        if (shapeDone) continue
+        shapeDone = true
+        typeEls.push(el('shapeGroup:ORMShapeColorGroupType', { id: t.id }, colorEls(shapeColors(g, t.colors))))
+      } else typeEls.push(el(`shapeGroup:${t.type}`, { id: t.id }, colorEls(t.colors ?? [])))
+    }
+    if (!shapeDone) {
+      const list = shapeColors(g, [])
+      if (list.length) typeEls.unshift(el('shapeGroup:ORMShapeColorGroupType', { id: normaId(g.id, 'colors') }, colorEls(list)))
+    }
+    if (typeEls.length) usesShapeGroups = true
+    // reading orders NORMA had in the group, while their fact type still is
+    const ros = (g.normaReadingOrders ?? []).filter(r => (g.members ?? []).includes(r.factId) && factById.has(r.factId)).map(r => r.ref)
+    const at = new Map((g.normaOrder ?? []).map((r, i) => [r, i]))
+    const refs = g._normaMember ? g.members : [...new Set([...(g.members ?? []).map(memberRefOf).filter(Boolean), ...ros])]
+      .map((r, i) => [r, at.get(r) ?? Infinity, i]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(([r]) => r)
     return el('orm:Group', { id: normaId(g.id, GUID_RE.test(g.id) ? '' : 'group'), Name: g.name || 'Group', Priority: g.priority || null }, [
       ...docEls(g),
-      colors.length && el('orm:GroupTypes', {}, [el('shapeGroup:ORMShapeColorGroupType', { id: normaId(g.id, 'colors') },
-        colors.map(([role, value]) => el('ormDiagram:ORMDiagramDynamicColor', { ColorRole: role, ColorValue: value })))]),
+      typeEls.length && el('orm:GroupTypes', {}, typeEls),
       refs.length && el('orm:Elements', {}, refs.map(r => el('orm:IncludedElement', { ref: r }))),
     ])
   })
@@ -1304,6 +1363,9 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       (factEls.length || subtypeEls.length) && el('orm:Facts', {}, inNormaOrder([...factEls, ...subtypeEls, ...linkEls])),
       conEls.length && el('orm:Constraints', {}, conEls),
       dataTypeEls.length && el('orm:DataTypes', {}, dataTypeEls),
+      { lazy: () => usedFunctions.size ? el('orm:Functions', {}, [...usedFunctions].map(fn => el('orm:Function', { id: normaId(`function:${fn}`), Name: fn }, [
+        el('orm:Parameters', {}, [el('orm:Parameter', { id: normaId(`function:${fn}`, 'values'), Name: 'values', BagInput: 'true' })]),
+      ]))) : null },
       customModes.size && el('orm:CustomReferenceModes', {}, [...customModes].map(([mode, c]) =>
         el('orm:CustomReferenceMode', { id: normaId(`refmode:${mode}`), Name: mode }, [
           el('orm:CustomFormatString', {}, c.format),

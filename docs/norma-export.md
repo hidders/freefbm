@@ -175,6 +175,21 @@ Groups with their colours (`ORMShapeColorGroupType`, the importer's
 `COLOR_ROLES` backwards), custom property definitions and values (`cp:`),
 model notes with their connectors, definitions and notes of elements.
 
+Groups come back from NORMA unchanged (Jan, 2026-11-20): the importer keeps
+each group's types as NORMA wrote them (`group.normaTypes`: type, id, and
+colour roles with their values as written, so .NET colour names stay names),
+including the Model Browser colours (`ORMModelBrowserColorGroupType`) and
+NORMA's own "shapes missing" groups (`ORMShapeMissingGroupType`, imported
+since then), the reading orders a group holds (`normaReadingOrders`; FreeFBM
+puts the fact type in the group) and the order of the members (`normaOrder`).
+The export writes the types back in their order with their ids; a shape
+colour changed in FreeFBM is written as R, G, B, one still the same as
+written. Not kept: a group's membership of model notes NORMA shows on no
+diagram but attaches to elements (the importer folds those into the
+elements' notes), and the stored ORMElementsNotOnDiagramError, which NORMA
+works out again. On ATOP every group comes back with the same types, ids,
+colours and members in the same order, except 3 such notes.
+
 ### Not exported, as notes
 
 Relational schemas, mappings, views and exchanges; join paths and
@@ -355,6 +370,51 @@ informal, with a remark in the element's note saying why (SamplePopulation:
 11 of 15 formal; the ATOP model's 81 fact type rules all come back the
 same).
 
+Value conditions, recursion and Xor (v1.2.76): a value condition on a
+variable (x ≈ 'c', x < 'c', …; a lower and an upper bound in one
+conjunction are one range, a disjunction of conditions on one variable
+one restriction with several ranges, x ≉ 'c' a negated one) is a value
+restriction on a pathed role of the variable in the same part of the path,
+as NORMA writes them, or, when that part walks no role of the variable, on
+the root of a subpath of its own unified with it (not yet tried in NORMA).
+¬(φ ↔ ψ) is a split Xor. A fact type's rule that is a disjunction as a
+whole is one lead path per case, each with its own projection, as NORMA
+writes it, so a case may project one object to two roles. NORMA has no
+closure, but a fully derived fact type may use itself (the least
+fixpoint): a rule ∃y ([TC*_{u,w} φ](x, y) ∧ ψ(y, n)) in which x occurs
+nowhere else is written as ψ(x, n) ∨ ∃w (φ(x, w) ∧ F(w, n)), one recursive
+case per case of φ (`openRecursion`, the inverse of the importer's
+`closeLinearRecursion`); other closures stay informal. A negation of a
+single part is written as NORMA does, its first pathed role negated
+(IsNegated): until then the exported negated split was folded into its
+part and the negation lost on import (8 rules of ATOP, 1 of
+SamplePopulationExtraction). The check now compares each re-imported
+rule's atoms and conditions with the original's: ATOP 149 of 153 rules
+formal and all the same (was 98), SamplePopulationExtraction 15 of 15
+(was 11); `test-schemas/norma/path-export.ffbm` (project files) has
+FreeFBM rules of these shapes.
+
+A type test walks into the subtype through both roles of its subtype link
+(supertype role, then subtype role), climbing first through the object's
+own subtype links when the object is of another subtype of that supertype,
+and the rest of what is said about the object goes on from the subtype
+(NORMA reported "joins to a path role with an incompatible role player"
+for ATOP's VariableArrayPacketFieldUsesPacketFieldTypeCode, whose rule
+tests a sibling subtype). The importer reads such a walk as a variable of
+the subtype, so a type test may come back as its variable's type.
+
+An informal rule (a rule FreeFBM cannot write as a path) is written with
+ExternalDerivation="true", as NORMA writes its own informal rules; without
+it NORMA reports that the rule "must project derived roles from at least
+one source path" (found on the VM, 2026-11-20). NORMA then treats the fact
+type as stored, so it gets the flag only when it has an internal uniqueness
+constraint over one role and at most two roles and is not objectified: a
+stored fact type with more roles or a longer uniqueness is objectified by
+NORMA while loading, which its debug build reports as an assertion
+("A fixup phase after phase 200 added elements to …
+UnaryDebinarizationFixupListener"). Those keep the "must project" error
+until FreeFBM can write their rule as a path.
+
 Join paths (v1.2.37): a sequence of an external constraint whose roles
 NORMA cannot join by itself gets FreeFBM's query as a NORMA join path
 (JoinRule/JoinPath with ConstraintRoleProjections), built as the derivation
@@ -412,8 +472,10 @@ shape kept) and exported as FactTypeShapes of the link fact types.
 
 Second round (v1.2.43, Jan's check on 2026-11-15): the summary note goes to
 the free place nearest the top left corner (no overlap, 15 px gap) and is
-in a group "FreeFBM export note" with a soft yellow background (the
-importer leaves that group out). An entity type's reference mode value
+in a group "FreeFBM export note" (the importer leaves that group out;
+its soft yellow background was dropped on 2026-11-20, as a colour needs
+NORMA's shape grouping extension and a NORMA without it offers to disable
+Save). An entity type's reference mode value
 range is drawn at its shape (ValueConstraintShape of the role value
 constraint). A drawn link fact type keeps its reading's place and which
 reading order is shown, so FreeFBM marks the reading direction as NORMA
@@ -443,6 +505,37 @@ a NORMA export → import round trip per file and checks that every fact type
 occurrence and role connector comes back (design and tests in
 docs/nearest-role-connectors.md).
 
+## Aggregates and subqueries (v1.2.76)
+
+Import: a calculated value whose function has a bag parameter (BagInput)
+is an aggregate over its lead path, grouped by the path roots and pathed
+roles of its AggregationContext (all of them with
+UniversalAggregationContext): the aggregate's variables are the path's
+other objects and its condition the path again (with its conditions), so
+SamplePopulationExtraction's UniquenessConstraintHasArity is
+`Arity ≈ Count{Role, Position : UniquenessConstraint restricts Role at
+Position}`. A rule's Subqueries (QueryRoles with a QueryDerivationPath of
+their own) are inlined where a path enters a query role, as the query's
+rule (each lead path a case, a path of its root alone an instance of the
+root's type) with its roles renamed to the path's objects;
+ObjectTypeAllowsValuesFromDataType's identity-or-supertype query becomes
+`x = y ∨ R(x, y)`.
+
+Export: a computed role whose term is an aggregate over the rule's own
+body (its condition the body with its variables for the rule's ∃
+variables, in order) is a CalculatedValue of the lead path, grouped by
+the rule's variables the condition reads, its input the term's variable
+(count: the first variable), projected to the role; the functions used
+are written as the model's Functions (count, sum, avg, min, max, one bag
+parameter each). A disjunction inside a case that has an equality between
+variables among its parts is split into cases (at most 16), so each
+equality is a unification of its case, and a case without fact types that
+projects every role from one object is a path of its root alone (typed by
+the most specific of the roles' players). So the inlined subquery comes
+back as four lead paths rather than a subquery: the same rule, with other
+atoms per case. SamplePopulationExtraction: 17 of 17 rules are NORMA
+paths, and its last NORMA error ("must project derived roles") is gone.
+
 ## What is left out
 
 All four milestones are in. What remains is listed here; the export
@@ -453,17 +546,22 @@ remark, the import in the import log and the element's import notes.
 (`src/export/normaPathsOut.js`) writes a rule or query built from ∃, ∧,
 fact atoms (link fact types of objectifications included), type tests of
 variables (a walk through the subtype link), equalities between variables
-outside negations and disjunctions, and nested ¬ and ∨ (a lead path split
-Or for a rule that is a disjunction as a whole). It refuses, and the
+outside negations and disjunctions, value conditions of a variable against
+constants (value restrictions), nested ¬, ∨ and Xor (¬(φ ↔ ψ)), and for a
+fact type a rule that is a disjunction as a whole (one lead path per case)
+or a closure NORMA can write as recursion. It refuses, and the
 export keeps the rule as an informal rule holding FreeFBM's formula:
 
-- transitive closures (TC, TC*);
-- value conditions and data predicates (`vcmp`, `pred`: x ≈ 'c', x < y,
-  LIKE, …) and comparisons other than an equality between two variables,
-  including an equality inside a negation or disjunction;
-- computed roles (a derived fact type's role given by a term) and fact
-  atoms or type tests with terms as arguments, so data operators and
-  aggregates;
+- transitive closures (TC, TC*) other than one of a fully derived fact
+  type's rule in the form NORMA's recursion gives (see v1.2.76 above);
+- comparisons of two values (x < y, x ≈ y) and data predicates (`dpred`:
+  LIKE, …), and comparisons other than an equality between two variables,
+  including an equality inside a negation or disjunction (but in a case
+  of a rule that is a disjunction as a whole);
+- computed roles (a derived fact type's role given by a term), except an
+  aggregate over the rule's own body (see aggregates and subqueries
+  below), and fact atoms or type tests with terms as arguments, so data
+  operators;
 - parts of a negation or disjunction, or of the rule, that are not joined
   to the object they are about (the subject for the rule, the object the
   path is at for a negation or disjunction);
@@ -479,8 +577,10 @@ formula, and NORMA asks for a join path.
 refuses (the reason goes to the import log and a "changed" import note
 on the element: a derived element without a rule, or a constraint
 sequence without its join path): outer joins; negated roots; functions FreeFBM cannot read
-(functions are read by operator symbol or name); aggregates; subqueries;
-shared role paths; projections of calculated values or constants; several
+(functions are read by operator symbol or name); aggregate functions
+other than count, sum, avg, min and max (read by name) and aggregates with
+more than one input or an input that is not an object of the path;
+subqueries nested more than four deep; shared role paths; several
 paths computing one role; a condition that reads objects of separate
 branches of its path; and paths through an old-style unary's boolean value
 that join, unify or project it, or test it for both true and false.

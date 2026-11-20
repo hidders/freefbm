@@ -1457,7 +1457,6 @@ export function importNorma(xmlText) {
   for (const g of doc.getElementsByTagNameNS('*', 'Group')) {
     if (g.namespaceURI !== ORM) continue
     const types = kids(kid(g, 'GroupTypes'))
-    if (types.some(t => t.localName === 'ORMShapeMissingGroupType')) { note(`Group “${attr(g, 'Name')}” is maintained by NORMA (shapes missing) and was not imported.`); continue }
     if (attr(g, 'Name') === 'FreeFBM export note') continue   // the group of FreeFBM's own summary note (src/export/norma.js)
     const colors = {}
     for (const t of types.filter(t => t.localName === 'ORMShapeColorGroupType'))
@@ -1466,19 +1465,43 @@ export function importNorma(xmlText) {
         const hex = toHex(attr(dc, 'ColorValue'))
         if (ch && hex) colors[ch] = hex
       }
+    // every group type as NORMA wrote it (ids, order, colour values as
+    // written, Model Browser colours, shapes missing), so the export gives
+    // the group back unchanged (Jan, 2026-11-20); the shape colours FreeFBM
+    // draws are in colors, and the export writes a changed one anew
+    const normaTypes = types.map(t => ({
+      type: t.localName, id: attr(t, 'id'),
+      ...(kids(t).length ? { colors: kids(t).map(dc => ({ tag: dc.localName, role: attr(dc, 'ColorRole'), value: attr(dc, 'ColorValue'),
+        ...(t.localName === 'ORMShapeColorGroupType' ? { hex: toHex(attr(dc, 'ColorValue')) } : {}) })) } : {}),
+    }))
     const memberIds = []
+    const readingOrders = []
     let skipped = 0
     for (const ref of refsOf(kid(g, 'Elements'))) {
       const k = kindOf(ref)
-      if (k === 'ModelNote') { memberIds.push(...(noteCopies.get(ref) ?? [])); continue }
+      if (k === 'ModelNote') {
+        // a note on no diagram and about nothing goes on the Imported notes diagram under its own id
+        const copies = noteCopies.get(ref) ?? (modelNotes.has(ref) && !modelNotes.get(ref).refs.length ? [ref] : [])
+        memberIds.push(...copies)
+        if (!copies.length) skipped++
+        continue
+      }
       if (mandatoryIds.has(ref)) { memberIds.push(ref); continue }
-      if (k === 'ReadingOrder') { let f = byId.get(ref); while (f && f.localName !== 'Fact') f = f.parentElement; if (f) memberIds.push(attr(f, 'id')); else skipped++; continue }
+      if (k === 'ReadingOrder') {
+        let f = byId.get(ref); while (f && f.localName !== 'Fact') f = f.parentElement
+        // the group holds the fact type; the reading order is kept for the export
+        if (f) { memberIds.push(attr(f, 'id')); readingOrders.push({ ref, factId: attr(f, 'id') }) } else skipped++
+        continue
+      }
       const el = elementFor(ref)
       if (el?.id) memberIds.push(el.id); else skipped++
     }
     if (skipped) count('groupMembersDropped', skipped)
     groups.push({ id: attr(g, 'id'), name: attr(g, 'Name') ?? '', definition: '', note: '',
-      priority: Number(attr(g, 'Priority') ?? 0) || 0, colors, members: [...new Set(memberIds)] })
+      priority: Number(attr(g, 'Priority') ?? 0) || 0, colors, members: [...new Set(memberIds)], ...(normaTypes.length ? { normaTypes } : {}),
+      ...(readingOrders.length ? { normaReadingOrders: readingOrders } : {}),
+      // NORMA's order of the members, which the export follows
+      normaOrder: refsOf(kid(g, 'Elements')) })
     applyProperties(g, groups[groups.length - 1])
     const def = textOf(path(g, 'Definitions', 'Definition', 'Text'))
     if (def) groups[groups.length - 1].definition = def

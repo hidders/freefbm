@@ -144,5 +144,10 @@ export function loadGroups(raw) {
       .filter(ch => typeof g.colors?.[ch] === 'string' && g.colors[ch])
       .map(ch => [ch, g.colors[ch]])),
     members: Array.isArray(g.members) ? [...new Set(g.members.filter(m => typeof m === 'string'))] : [],
+    ...(g.properties && typeof g.properties === 'object' ? { properties: g.properties } : {}),
+    // NORMA's group types as imported (src/import/norma.js), written back by the export
+    ...(Array.isArray(g.normaTypes) ? { normaTypes: g.normaTypes } : {}),
+    ...(Array.isArray(g.normaReadingOrders) ? { normaReadingOrders: g.normaReadingOrders } : {}),
+    ...(Array.isArray(g.normaOrder) ? { normaOrder: g.normaOrder } : {}),
   }))
 }
