@@ -227,7 +227,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   // derived (NORMA's IsImpliedObjectificationRequired). NORMA adds an implied
   // one it does not find while it loads, which its debug build reports as a
   // failed assertion, so the export writes them as NORMA saves them.
-  const usedFunctions = new Set()   // aggregate functions the paths use (derivationEl)
+  const usedFunctions = new Map()   // key → function the paths use (functionOf)
   const nests = new Map()            // fact id → { implied }
   for (const f of facts) {
     const deonticKeys = new Set((f.deonticUniqueness ?? []).map(r => [...r].sort((a, b) => a - b).join(',')))
@@ -474,7 +474,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         projected: rule.free.map((v, i) => ({ roleId: roleIds[i], varId: v.id })),
         roleRef: (fid, i) => normaId(factById.get(fid).roles[i].id), playerOf: (fid, i) => factById.get(fid).roles[i].objectTypeId,
         linkRoleRef: (fid, j, i) => i === 0 ? linkIdsOf(fid, j).role : normaId(factById.get(fid).roles[j].id), isNested: (fid) => nests.has(fid),
-        subtypeLinkOf, typeRef: (tid) => playerRef(tid), valueConstraint: pathValueConstraint, functionRef, functionParamRef,
+        subtypeLinkOf, typeRef: (tid) => playerRef(tid), valueConstraint: pathValueConstraint, functionOf,
       }))
       if (!formal || formal.error) { joinsMissing.push(formal?.error ?? rule?.error ?? 'a query the export cannot read'); return null }
       return el('orm:JoinRule', {}, [el('orm:JoinPath', { id: normaId(c.id, `join${k}`) }, [formal.path, formal.projections])])
@@ -647,7 +647,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       // side, the role of F it stands for (NORMA refuses its role proxy there)
       linkRoleRef: (fid, k, i) => i === 0 ? linkIdsOf(fid, k).role : normaId(factById.get(fid).roles[k].id), isNested: (fid) => nests.has(fid),
       subtypeLinkOf: subtypeLinkOf,
-      typeRef: (tid) => playerRef(tid), valueConstraint: pathValueConstraint, functionRef, functionParamRef,
+      typeRef: (tid) => playerRef(tid), valueConstraint: pathValueConstraint, functionOf,
     }))
     if (formal && !formal.error) {
       derivedFormal++
@@ -729,8 +729,16 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   }
   // aggregate functions the derivation paths use (NORMA has no library:
   // a model defines its functions, each aggregate with one bag parameter)
-  function functionRef(fn) { usedFunctions.add(fn); return normaId(`function:${fn}`) }
-  function functionParamRef(fn) { usedFunctions.add(fn); return normaId(`function:${fn}`, 'values') }
+  // A function of the model for a path's calculated value: { name, symbol,
+  // isBoolean, arity, bag } → { ref, params: [parameter ids] }. NORMA has
+  // no library, so the model defines each function it uses (an aggregate
+  // with one bag parameter); the importer reads them by symbol or name.
+  function functionOf(spec) {
+    const key = spec.bag ? `function:${spec.name}` : `function:${spec.name}/${spec.arity}`
+    const params = spec.bag ? [normaId(key, 'values')] : Array.from({ length: spec.arity }, (_, i) => normaId(key, `p${i}`))
+    if (!usedFunctions.has(key)) usedFunctions.set(key, { ...spec, id: normaId(key), params })
+    return { ref: normaId(key), params }
+  }
   function derivationEl(f) {
     if (!f.derivation) return null
     const completeness = f.derivation === 'semiDerived' ? 'PartiallyDerived' : null
@@ -746,7 +754,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       // side, the role of F it stands for (NORMA refuses its role proxy there)
       linkRoleRef: (fid, k, i) => i === 0 ? linkIdsOf(fid, k).role : normaId(factById.get(fid).roles[k].id), isNested: (fid) => nests.has(fid),
       subtypeLinkOf: subtypeLinkOf,
-      typeRef: (tid) => playerRef(tid), valueConstraint: pathValueConstraint, functionRef, functionParamRef,
+      typeRef: (tid) => playerRef(tid), valueConstraint: pathValueConstraint, functionOf,
     }))
     if (formal && !formal.error) {
       derivedFormal++
@@ -1363,8 +1371,9 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       (factEls.length || subtypeEls.length) && el('orm:Facts', {}, inNormaOrder([...factEls, ...subtypeEls, ...linkEls])),
       conEls.length && el('orm:Constraints', {}, conEls),
       dataTypeEls.length && el('orm:DataTypes', {}, dataTypeEls),
-      { lazy: () => usedFunctions.size ? el('orm:Functions', {}, [...usedFunctions].map(fn => el('orm:Function', { id: normaId(`function:${fn}`), Name: fn }, [
-        el('orm:Parameters', {}, [el('orm:Parameter', { id: normaId(`function:${fn}`, 'values'), Name: 'values', BagInput: 'true' })]),
+      { lazy: () => usedFunctions.size ? el('orm:Functions', {}, [...usedFunctions.values()].map(f => el('orm:Function', {
+        id: f.id, Name: f.name, IsBoolean: f.isBoolean ? 'true' : null, OperatorSymbol: f.symbol || null }, [
+        el('orm:Parameters', {}, f.params.map((pid, i) => el('orm:Parameter', f.bag ? { id: pid, Name: 'values', BagInput: 'true' } : { id: pid, Name: f.params.length === 1 ? 'value' : `value${i + 1}` }))),
       ]))) : null },
       customModes.size && el('orm:CustomReferenceModes', {}, [...customModes].map(([mode, c]) =>
         el('orm:CustomReferenceMode', { id: normaId(`refmode:${mode}`), Name: mode }, [

@@ -536,6 +536,31 @@ back as four lead paths rather than a subquery: the same rule, with other
 atoms per case. SamplePopulationExtraction: 17 of 17 rules are NORMA
 paths, and its last NORMA error ("must project derived roles") is gone.
 
+## Comparisons, data conditions and computed roles (step 3)
+
+A comparison of values (x < y, x + 5 ≥ 30, x ≈ y between data values) and
+a data predicate (startsWith, …) that holds for the whole rule (not inside
+a negation or disjunction) is a calculated condition of the lead path
+(Conditions/CalculatedCondition of a boolean CalculatedValue), and a
+computed role given by variables, constants and data operators is
+projected from a CalculatedValue (or a Constant). Inputs are the path's
+objects (pathed roles, else roots), constants and other calculated values
+(written before the ones that use them). Each function used is defined in
+the model's Functions, as NORMA has no library: comparisons as equals
+(=), notEquals (<>), lessThan (<), lessThanOrEqual (<=), greaterThan
+(>), greaterThanOrEqual (>=), IsBoolean; add (+), subtract (-, also for
+negation with one parameter), multiply (*), divide (/), mod (%), concat,
+and the other data operators and predicates by their own names; the
+importer reads them by symbol or name (FUNCTIONS in normaPaths.js). An
+aggregate keeps its distinct flag as the input's DistinctValues (the
+importer reads it), and its variables may be the rule's own in any order.
+Parts of a rule that only a condition joins to the subject (x > y between
+the credits of two courses) start from an object of their own: a subpath
+with a RootObjectType, from a projected role where there is one. The
+fixture /mnt/project-files/test-schemas/norma/path-calc.ffbm (path-export
+plus six such rules) comes back with every rule, terms included, as it
+was; the round trip now compares terms and data conditions too.
+
 ## What is left out
 
 All four milestones are in. What remains is listed here; the export
@@ -554,14 +579,15 @@ export keeps the rule as an informal rule holding FreeFBM's formula:
 
 - transitive closures (TC, TC*) other than one of a fully derived fact
   type's rule in the form NORMA's recursion gives (see v1.2.76 above);
-- comparisons of two values (x < y, x ≈ y) and data predicates (`dpred`:
-  LIKE, …), and comparisons other than an equality between two variables,
-  including an equality inside a negation or disjunction (but in a case
-  of a rule that is a disjunction as a whole);
-- computed roles (a derived fact type's role given by a term), except an
-  aggregate over the rule's own body (see aggregates and subqueries
-  below), and fact atoms or type tests with terms as arguments, so data
-  operators;
+- comparisons of values and data predicates inside a negation or
+  disjunction (NORMA's conditions belong to the lead path), and ones over
+  aggregates or conditional terms; an equality between two variables
+  inside a negation or disjunction (but in a case of a rule that is a
+  disjunction as a whole, or a disjunction split into cases);
+- computed roles in a rule of several cases (the importer reads a computed
+  role from one path only), computed roles given by an aggregate that is
+  not over the rule's own body or by a conditional term, and fact atoms or
+  type tests with terms as arguments;
 - parts of a negation or disjunction, or of the rule, that are not joined
   to the object they are about (the subject for the rule, the object the
   path is at for a negation or disjunction);

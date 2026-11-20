@@ -77,24 +77,32 @@ function disjuncts(rule) {
 export function conjunctivePath(rule, opts) {
   const { el, id } = opts
   if (!rule?.body) return refuse('no rule')
-  // Computed roles: an aggregate over the rule's own body (NORMA's
-  // aggregate over the path, grouped by the objects it shares with the
-  // rule) is a calculated value of the path; other terms are refused.
-  const aggs = []   // { roleVar, fn, by: [var], input: var }
+  // Computed roles: a term is a calculated value of the path projected to
+  // its role: an aggregate over the rule's own body (NORMA's aggregate over
+  // the path, grouped by the objects it shares with the rule), or variables
+  // and constants under data operators (functions of the model).
+  const computed = []   // { roleVar, agg?: { fn, distinct, by, input }, term? }
   for (const [roleId, t] of Object.entries(rule.terms ?? {})) {
-    const a = aggregateOver(rule, t)
-    if (!a) return refuse('computed roles')
-    aggs.push({ roleVar: `role:${roleId}`, ...a })
+    if (!opts.functionOf || opts.join) return refuse('computed roles')
+    if (t?.t === 'agg') {
+      const a = aggregateOver(rule, t)
+      if (!a) return refuse('an aggregate that is not over the rule\'s own body')
+      computed.push({ roleVar: `role:${roleId}`, agg: a })
+    } else if (calculable(t)) computed.push({ roleVar: `role:${roleId}`, term: t })
+    else return refuse('computed roles')
   }
-  if (aggs.length && !opts.functionRef) return refuse('computed roles')
-  const computedVar = new Set(aggs.map(a => a.roleVar))
+  const computedVar = new Set(computed.map(a => a.roleVar))
   const plain = (opts.projected ?? []).filter(p => !computedVar.has(p.varId))
+  // comparisons of values and data conditions of the whole rule: calculated
+  // conditions of the lead path
+  const calcConds = []
   // A fact type's rule that is a disjunction as a whole is written as NORMA
   // writes it: one lead path per case, each with its own projection, so
   // that each case unifies its own objects (a case may give two roles the
   // same object).
   if (opts.projected && !opts.join && !opts.oneCase) {
     const cases = disjuncts(rule)
+    if (cases && computed.length) return refuse('computed roles in a rule of several cases')
     if (cases) {
       const parts = []
       for (const [j, body] of cases.entries()) {
@@ -148,9 +156,14 @@ export function conjunctivePath(rule, opts) {
       case 'vcmp': {
         const r = valueRange(n)
         if (r) return r.negated ? { k: 'not', items: [{ k: 'value', v: r.v, ranges: [r.range] }] } : { k: 'value', v: r.v, ranges: [r.range] }
-        fail = 'a comparison of values'; return null
+        // NORMA's conditions belong to the lead path, so only one that
+        // holds for the whole rule
+        if (positive && opts.functionOf && !opts.join && calculable(n.left) && calculable(n.right)) { calcConds.push(n); return null }
+        fail = positive ? 'a comparison of values' : 'a comparison of values inside a negation or disjunction'; return null
       }
-      case 'dpred': case 'pred': fail = 'a data condition'; return null
+      case 'dpred': case 'pred':
+        if (n.t === 'dpred' && positive && opts.functionOf && !opts.join && (n.args ?? []).every(calculable)) { calcConds.push(n); return null }
+        fail = positive ? 'a data condition' : 'a data condition inside a negation or disjunction'; return null
       default: fail = `a ${n.t ?? 'part'} FreeFBM cannot write as a role path yet`; return null
     }
   }
@@ -223,7 +236,7 @@ export function conjunctivePath(rule, opts) {
   if (rootType !== opts.subjectType) varType.set(opts.subject, rootType)
   // A case without fact types is the root alone, when it projects every
   // role from it (an instance of the root's type, x = y).
-  const rootOnly = !leaves(body) && !opts.join && plain.length && !aggs.length
+  const rootOnly = !leaves(body) && !opts.join && plain.length && !computed.length
     && plain.every(p => find(p.varId) === find(opts.subject)) && !(body?.items ?? []).some(x => x.k === 'value')
   if (!leaves(body) && !rootOnly) return refuse('no fact types')
 
@@ -358,6 +371,22 @@ export function conjunctivePath(rule, opts) {
   } else {
     ;[pending, vals] = splitVals(top)
     subPaths = gather(opts.subject)
+    // Parts not joined to the subject start from an object of their own: a
+    // subpath with a root object type (NORMA's new object, joined to the
+    // rest through unifiers and the path's conditions), from a role the
+    // rule projects where there is one.
+    const candidates = [...(opts.projected ?? []).map(p => p.varId), ...varType.keys()]
+    while (!fail && pending.length && calcConds.length) {
+      const v = candidates.find(y => pending.some(x => mentions(x, y)) && varType.get(y))
+      if (!v) break
+      const k = n++
+      addNode(v, { kind: 'PathRoot', id: id(`r${k}root`) })
+      const inner = gather(v)
+      subPaths.push(el('orm:SubPath', { id: id(`r${k}`) }, [
+        el('orm:RootObjectType', { id: id(`r${k}root`), ref: opts.typeRef(varType.get(v)) }),
+        inner.length && el('orm:SubPaths', {}, inner),
+      ]))
+    }
     if (!fail && pending.length) fail = 'a part that is not joined to the subject'
     subPaths.push(...valueRoots())
   }
@@ -409,21 +438,68 @@ export function conjunctivePath(rule, opts) {
   const unifiers = [...nodes.values()].filter(ns => ns.length > 1).map((ns, k) =>
     el('orm:ObjectUnifier', { id: id(`u${k}`) }, ns.map(n => el(`orm:${n.kind}`, { ref: n.id }))))
   const nodeOf = (v) => { const ns = nodes.get(find(v)) ?? []; return ns.find(n => n.kind === 'PathedRole') ?? ns[0] }
-  for (const a of aggs) if ([...a.by, a.input].some(v => !nodeOf(v))) return refuse('an aggregate over an object the path does not reach')
-  const calcEls = aggs.map((a, i) => el('orm:CalculatedValue', { id: id(`calc${i}`), UniversalAggregationContext: a.by.length ? null : 'true' }, [
-    el('orm:Function', { ref: opts.functionRef(a.fn) }),
-    a.by.length && el('orm:AggregationContext', {}, a.by.map(v => { const n = nodeOf(v); return el(`orm:${n.kind}`, { ref: n.id }) })),
-    el('orm:Inputs', {}, [el('orm:Input', { id: id(`calc${i}in`) }, [
-      el('orm:Parameter', { ref: opts.functionParamRef(a.fn) }),
-      el('orm:Source', {}, [(n => el(`orm:${n.kind}`, { ref: n.id }))(nodeOf(a.input))]),
-    ])]),
-  ]))
+  // calculated values: each gets an id, inputs are path nodes, constants or
+  // other calculated values (written before the ones that use them)
+  const calcEls = []
+  const nodeRef = (n) => el(`orm:${n.kind}`, { ref: n.id })
+  const calc = (spec, sources, extra = {}) => {
+    const k = calcEls.length
+    const fn = opts.functionOf({ ...spec, arity: sources.length })
+    const cid = id(`calc${k}`)
+    calcEls.push(null)   // keeps the number while the inputs are written
+    calcEls[k] = el('orm:CalculatedValue', { id: cid, UniversalAggregationContext: extra.universal ? 'true' : null }, [
+      el('orm:Function', { ref: fn.ref }),
+      extra.context && extra.context.length && el('orm:AggregationContext', {}, extra.context.map(nodeRef)),
+      el('orm:Inputs', {}, sources.map((src, i) => el('orm:Input', { id: id(`calc${k}in${i}`), DistinctValues: extra.distinct ? 'true' : null }, [
+        el('orm:Parameter', { ref: fn.params[i] }),
+        el('orm:Source', {}, [src]),
+      ]))),
+    ])
+    return cid
+  }
+  let calcFail = null
+  const source = (t) => {
+    if (t?.t === 'var') {
+      const n = nodeOf(t.id)
+      if (!n) { calcFail = 'a calculation reading an object the path does not reach'; return null }
+      return nodeRef(n)
+    }
+    if (t?.t === 'const') return el('orm:Constant', { id: id(`const${calcEls.length}_${constCount++}`) }, [el('orm:Value', {}, String(t.text ?? ''))])
+    if (t?.t === 'op') {
+      const args = t.args.map(source)
+      if (calcFail) return null
+      return el('orm:CalculatedValue', { ref: calc(OP_FUNCTIONS[t.op] ?? { name: t.op }, args) })
+    }
+    calcFail = 'a term the export cannot write as a calculation'; return null
+  }
+  let constCount = 0
+  const condIds = []
+  for (const c of calcConds) {
+    const args = c.t === 'vcmp' ? [source(c.left), source(c.right)] : c.args.map(source)
+    if (calcFail) return refuse(calcFail)
+    condIds.push(calc(c.t === 'vcmp' ? CMP_FUNCTIONS[c.op] : { name: c.op, isBoolean: true }, args))
+  }
+  const projectedCalc = new Map()   // role var → calculated value id or constant element
+  for (const c of computed) {
+    if (c.agg) {
+      const a = c.agg
+      if ([...a.by, a.input].some(v => !nodeOf(v))) return refuse('an aggregate over an object the path does not reach')
+      projectedCalc.set(c.roleVar, el('orm:CalculatedValue', { ref: calc({ name: a.fn, bag: true }, [nodeRef(nodeOf(a.input))],
+        { context: a.by.map(nodeOf), universal: !a.by.length, distinct: a.distinct }) }))
+    } else {
+      const src = source(c.term)
+      if (calcFail) return refuse(calcFail)
+      if (src.name === 'orm:PathedRole' || src.name === 'orm:PathRoot') return refuse('a computed role that is another object of the path')
+      projectedCalc.set(c.roleVar, src)
+    }
+  }
   const path = el('orm:PathComponents', {}, [
     el('orm:RolePath', { id: leadId, SplitCombinationOperator: leadOr ? 'Or' : null }, [
       el('orm:RootObjectType', { id: leadRoot, ref: opts.typeRef(rootType) }),
       subPaths.length && el('orm:SubPaths', {}, subPaths),
       unifiers.length && el('orm:ObjectUnifiers', {}, unifiers),
       calcEls.length && el('orm:CalculatedValues', {}, calcEls),
+      condIds.length && el('orm:Conditions', {}, condIds.map(ref => el('orm:CalculatedCondition', { ref }))),
     ]),
   ])
   flatten(path.children[0])
@@ -440,9 +516,8 @@ export function conjunctivePath(rule, opts) {
   }
   const projections = opts.projected ? el('orm:DerivationProjections', {}, [
     el('orm:DerivationProjection', { id: id('projection'), ref: leadId }, opts.projected.map((p, i) => {
-      const k = aggs.findIndex(a => a.roleVar === p.varId)
-      if (k >= 0) return el('orm:RoleProjection', { id: id(`proj${i}`), ref: p.roleId }, [
-        el('orm:DerivationSource', {}, [el('orm:CalculatedValue', { ref: id(`calc${k}`) })]),
+      if (projectedCalc.has(p.varId)) return el('orm:RoleProjection', { id: id(`proj${i}`), ref: p.roleId }, [
+        el('orm:DerivationSource', {}, [projectedCalc.get(p.varId)]),
       ])
       const ns = nodes.get(find(p.varId))
       const src = ns.find(n => n.kind === 'PathedRole') ?? ns[0]
@@ -461,18 +536,44 @@ export function conjunctivePath(rule, opts) {
 // input: the rule's variable for t, or for count its first one), or null.
 const AGG_FNS = new Set(['count', 'sum', 'avg', 'min', 'max'])
 function aggregateOver(rule, t) {
-  if (t?.t !== 'agg' || !AGG_FNS.has(t.fn) || t.distinct) return null
+  if (t?.t !== 'agg' || !AGG_FNS.has(t.fn)) return null
   let body = rule.body
   const own = [...(rule.extraVars ?? [])]
   while (body?.t === 'exists') { own.push(body.v); body = body.body }
-  if (own.length !== (t.vars ?? []).length || !own.length) return null
-  const map = new Map(t.vars.map((v, i) => [v.id, own[i].id]))
-  if (JSON.stringify(renameVars(t.cond, map)) !== JSON.stringify(body)) return null
+  if (own.length !== (t.vars ?? []).length || !own.length || own.length > 5) return null
+  // the aggregate's variables in some order are the rule's own (∃ inside
+  // its condition left out on both sides)
+  const strip = (n) => { while (n?.t === 'exists') n = n.body; return n }
+  const want = JSON.stringify(strip(body))
+  const perms = (xs) => xs.length <= 1 ? [xs] : xs.flatMap((x, i) => perms([...xs.slice(0, i), ...xs.slice(i + 1)]).map(r => [x, ...r]))
+  const map = perms(own).map(o => new Map(t.vars.map((v, i) => [v.id, o[i].id])))
+    .find(m => t.vars.every((v, i) => v.typeId === own.find(o => o.id === m.get(v.id)).typeId) && JSON.stringify(renameVars(strip(t.cond), m)) === want)
+  if (!map) return null
   let input
   if (t.fn === 'count') { if (t.term) return null; input = own[0].id }
   else { if (t.term?.t !== 'var' || !map.has(t.term.id)) return null; input = map.get(t.term.id) }
   const by = [...new Set(freeVarsOf(t.cond))].filter(v => !map.has(v))
-  return { fn: t.fn, by, input }
+  return { fn: t.fn, distinct: !!t.distinct, by, input }
+}
+// A data term the export can write as calculated values: variables,
+// constants and data operators over them.
+function calculable(t) {
+  if (t?.t === 'var' || t?.t === 'const') return true
+  if (t?.t === 'op') return (t.args ?? []).every(calculable)
+  return false
+}
+// The model's functions for comparisons and operators, named and with
+// the symbols the importer reads (src/import/normaPaths.js FUNCTIONS);
+// other data operators and predicates go by their own names.
+const CMP_FUNCTIONS = {
+  '≈': { name: 'equals', symbol: '=', isBoolean: true }, '≉': { name: 'notEquals', symbol: '<>', isBoolean: true },
+  '<': { name: 'lessThan', symbol: '<', isBoolean: true }, '≤': { name: 'lessThanOrEqual', symbol: '<=', isBoolean: true },
+  '>': { name: 'greaterThan', symbol: '>', isBoolean: true }, '≥': { name: 'greaterThanOrEqual', symbol: '>=', isBoolean: true },
+}
+const OP_FUNCTIONS = {
+  add: { name: 'add', symbol: '+' }, sub: { name: 'subtract', symbol: '-' }, neg: { name: 'subtract', symbol: '-' },
+  mul: { name: 'multiply', symbol: '*' }, div: { name: 'divide', symbol: '/' }, mod: { name: 'mod', symbol: '%' },
+  concat: { name: 'concat' },
 }
 // The variable ids a rule tree reads (fact arguments, type tests, var terms,
 // cmp sides), bound or not.
