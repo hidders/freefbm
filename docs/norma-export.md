@@ -175,6 +175,21 @@ Groups with their colours (`ORMShapeColorGroupType`, the importer's
 `COLOR_ROLES` backwards), custom property definitions and values (`cp:`),
 model notes with their connectors, definitions and notes of elements.
 
+Groups come back from NORMA unchanged (Jan, 2026-11-20): the importer keeps
+each group's types as NORMA wrote them (`group.normaTypes`: type, id, and
+colour roles with their values as written, so .NET colour names stay names),
+including the Model Browser colours (`ORMModelBrowserColorGroupType`) and
+NORMA's own "shapes missing" groups (`ORMShapeMissingGroupType`, imported
+since then), the reading orders a group holds (`normaReadingOrders`; FreeFBM
+puts the fact type in the group) and the order of the members (`normaOrder`).
+The export writes the types back in their order with their ids; a shape
+colour changed in FreeFBM is written as R, G, B, one still the same as
+written. Not kept: a group's membership of model notes NORMA shows on no
+diagram but attaches to elements (the importer folds those into the
+elements' notes), and the stored ORMElementsNotOnDiagramError, which NORMA
+works out again. On ATOP every group comes back with the same types, ids,
+colours and members in the same order, except 3 such notes.
+
 ### Not exported, as notes
 
 Relational schemas, mappings, views and exchanges; join paths and

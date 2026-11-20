@@ -1285,14 +1285,51 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   // offers to disable Save (Jan, 2026-11-20)
   if (summaryNoteId) groups.push({ id: 'freefbm-export-note-group', name: 'FreeFBM export note', definition: 'The note FreeFBM added when it exported this model.',
     note: '', priority: 0, colors: {}, members: [summaryNoteId], _normaMember: true })
+  const CHANNEL_OF = Object.fromEntries(Object.entries(COLOR_ROLES).map(([ch, role]) => [role, ch]))
+  const NS_OF_COLOR = { ORMDiagramDynamicColor: 'ormDiagram', ORMModelBrowserDynamicColor: 'orm' }
+  // a group's shape colours: the imported ones as NORMA wrote them while
+  // FreeFBM's colour is the same, a changed or new one as R, G, B
+  const shapeColors = (g, kept) => {
+    const out = []
+    const done = new Set()
+    for (const c of kept ?? []) {
+      const ch = CHANNEL_OF[c.role]
+      if (!ch || !c.hex) { out.push(c); continue }   // a role or value FreeFBM does not draw
+      done.add(ch)
+      const now = g.colors?.[ch]
+      if (!now) continue
+      out.push(now.toLowerCase() === c.hex.toLowerCase() ? c : { ...c, value: rgb(now) })
+    }
+    for (const [ch, hex] of Object.entries(g.colors ?? {}))
+      if (!done.has(ch) && COLOR_ROLES[ch] && rgb(hex)) out.push({ tag: 'ORMDiagramDynamicColor', role: COLOR_ROLES[ch], value: rgb(hex) })
+    return out
+  }
+  const colorEls = (list) => list.map(c => el(`${NS_OF_COLOR[c.tag] ?? 'ormDiagram'}:${c.tag ?? 'ORMDiagramDynamicColor'}`, { ColorRole: c.role, ColorValue: c.value }))
   const groupEls = groups.map(g => {
-    const colors = Object.entries(g.colors ?? {}).map(([ch, hex]) => [COLOR_ROLES[ch], rgb(hex)]).filter(([r, v]) => r && v)
-    if (colors.length) usesShapeGroups = true
-    const refs = g._normaMember ? g.members : [...new Set((g.members ?? []).map(memberRefOf).filter(Boolean))]
+    // the group types NORMA wrote (imported), in their order and with their ids
+    const kept = (g.normaTypes ?? []).filter(t => t?.type && t.id)
+    const typeEls = []
+    let shapeDone = false
+    for (const t of kept) {
+      if (t.type === 'ORMShapeColorGroupType') {
+        if (shapeDone) continue
+        shapeDone = true
+        typeEls.push(el('shapeGroup:ORMShapeColorGroupType', { id: t.id }, colorEls(shapeColors(g, t.colors))))
+      } else typeEls.push(el(`shapeGroup:${t.type}`, { id: t.id }, colorEls(t.colors ?? [])))
+    }
+    if (!shapeDone) {
+      const list = shapeColors(g, [])
+      if (list.length) typeEls.unshift(el('shapeGroup:ORMShapeColorGroupType', { id: normaId(g.id, 'colors') }, colorEls(list)))
+    }
+    if (typeEls.length) usesShapeGroups = true
+    // reading orders NORMA had in the group, while their fact type still is
+    const ros = (g.normaReadingOrders ?? []).filter(r => (g.members ?? []).includes(r.factId) && factById.has(r.factId)).map(r => r.ref)
+    const at = new Map((g.normaOrder ?? []).map((r, i) => [r, i]))
+    const refs = g._normaMember ? g.members : [...new Set([...(g.members ?? []).map(memberRefOf).filter(Boolean), ...ros])]
+      .map((r, i) => [r, at.get(r) ?? Infinity, i]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map(([r]) => r)
     return el('orm:Group', { id: normaId(g.id, GUID_RE.test(g.id) ? '' : 'group'), Name: g.name || 'Group', Priority: g.priority || null }, [
       ...docEls(g),
-      colors.length && el('orm:GroupTypes', {}, [el('shapeGroup:ORMShapeColorGroupType', { id: normaId(g.id, 'colors') },
-        colors.map(([role, value]) => el('ormDiagram:ORMDiagramDynamicColor', { ColorRole: role, ColorValue: value })))]),
+      typeEls.length && el('orm:GroupTypes', {}, typeEls),
       refs.length && el('orm:Elements', {}, refs.map(r => el('orm:IncludedElement', { ref: r }))),
     ])
   })

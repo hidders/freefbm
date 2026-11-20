@@ -87,6 +87,16 @@ fs.writeFileSync(path.join(tmp, 'shapeGroup.xsd'), `<?xml version="1.0"?>
       <xs:sequence><xs:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded"/></xs:sequence>
     </xs:extension></xs:complexContent></xs:complexType>
   </xs:element>
+  <xs:element name="ORMModelBrowserColorGroupType" substitutionGroup="orm:GroupType">
+    <xs:complexType><xs:complexContent><xs:extension base="orm:GroupTypeType">
+      <xs:sequence><xs:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded"/></xs:sequence>
+    </xs:extension></xs:complexContent></xs:complexType>
+  </xs:element>
+  <xs:element name="ORMShapeMissingGroupType" substitutionGroup="orm:GroupType">
+    <xs:complexType><xs:complexContent><xs:extension base="orm:GroupTypeType">
+      <xs:sequence><xs:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded"/></xs:sequence>
+    </xs:extension></xs:complexContent></xs:complexType>
+  </xs:element>
 </xs:schema>
 `)
 imports.push(`<xs:import namespace="http://www.ormsolutions.com/NORMA/2009-01/ShapeGrouping" schemaLocation="${path.join(tmp, 'shapeGroup.xsd')}"/>`)
