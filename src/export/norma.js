@@ -754,7 +754,14 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     derivedInformal++
     if (formal?.error) ffNote([f.id], `the derivation rule is NORMA's informal rule only: FreeFBM's rule has ${formal.error}, which this export cannot write as a NORMA derivation path yet.`)
     return el('orm:DerivationRule', {}, [
-      el('orm:FactTypeDerivationPath', { id: normaId(f.id, 'derivation'), DerivationCompleteness: completeness, ExternalDerivation: 'true' }, [
+      // ExternalDerivation keeps NORMA from asking for a path, but NORMA then
+      // treats the fact type as stored: it needs an internal uniqueness
+      // constraint, and a fact type with more than two roles or a uniqueness
+      // over several roles is then objectified while loading (an assertion
+      // in NORMA's debug build), so those are written without it
+      el('orm:FactTypeDerivationPath', { id: normaId(f.id, 'derivation'), DerivationCompleteness: completeness,
+        ExternalDerivation: (f.uniqueness ?? []).length && !nests.has(f.id) && f.roles.length <= 2
+          && !(f.uniqueness ?? []).some(u => u.roles.length > 1) ? 'true' : null }, [
         el('orm:InformalRule', {}, [el('orm:DerivationNote', { id: normaId(f.id, 'derivation-note') }, [el('orm:Body', {}, text ?? 'Derived in FreeFBM (no complete rule yet).')])]),
       ]),
     ])

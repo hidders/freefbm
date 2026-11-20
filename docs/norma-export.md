@@ -391,7 +391,14 @@ the subtype, so a type test may come back as its variable's type.
 An informal rule (a rule FreeFBM cannot write as a path) is written with
 ExternalDerivation="true", as NORMA writes its own informal rules; without
 it NORMA reports that the rule "must project derived roles from at least
-one source path" (found on the VM, 2026-11-20).
+one source path" (found on the VM, 2026-11-20). NORMA then treats the fact
+type as stored, so it gets the flag only when it has an internal uniqueness
+constraint over one role and at most two roles and is not objectified: a
+stored fact type with more roles or a longer uniqueness is objectified by
+NORMA while loading, which its debug build reports as an assertion
+("A fixup phase after phase 200 added elements to …
+UnaryDebinarizationFixupListener"). Those keep the "must project" error
+until FreeFBM can write their rule as a path.
 
 Join paths (v1.2.37): a sequence of an external constraint whose roles
 NORMA cannot join by itself gets FreeFBM's query as a NORMA join path
