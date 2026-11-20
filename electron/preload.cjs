@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveRules: (opts) => ipcRenderer.invoke('dialog:saveRules', opts),
   openSql:   ()     => ipcRenderer.invoke('dialog:openSql'),
   saveSql:   (opts) => ipcRenderer.invoke('dialog:saveSql', opts),
+  openOrm:   ()     => ipcRenderer.invoke('dialog:openOrm'),
   saveOrm:   (opts) => ipcRenderer.invoke('dialog:saveOrm', opts),
 
   // The open file and whether it has unsaved changes (title bar, close guard).
@@ -40,7 +41,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       'menu:zoomIn', 'menu:zoomOut', 'menu:zoomReset',
       'menu:sidebarBrowser', 'menu:sidebarProblems', 'menu:shortcuts', 'menu:schema', 'menu:mapping',
       'menu:exportPdf', 'menu:importSql', 'menu:exportSql', 'menu:loadSampleSql', 'menu:exportRowsSql',
-      'menu:exportNorma',
+      'menu:importNorma', 'menu:exportNorma',
       'app:saveThenClose',
     ]
     if (!valid.includes(channel)) return

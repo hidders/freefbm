@@ -1,4 +1,4 @@
-// Opens a file picked in File › Open. A NORMA .orm file is imported as a new,
+// Opens a file picked in File › Open or File › Import NORMA .orm…. A NORMA .orm file is imported as a new,
 // unsaved model (Save asks for a .ffbm path); its import log is kept in the
 // store for the import log panel. Anything else is a FreeFBM model.
 
