@@ -62,7 +62,7 @@ not try to be lossless for FreeFBM's own features.
 
 ## The FreeFBM side: what the export reads
 
-The export reads the file FreeFBM saves (`store.serialize()`, version 2) and
+The export reads the file FreeFBM saves (`store.serialize()`, format 3) and
 exports one ORM2 schema (`schema.schemas[]` with profile `orm2`; files without
 `schemas` have one implicit schema). Relational schemas, mappings, views and
 exchanges are not exported; a note says so.
@@ -123,7 +123,7 @@ the same file, and diffs between exports are readable.
 | data type of another profile | the nearest NORMA type by kind (text, integer, decimal, boolean, date, time, date and time) and a "FreeFBM:" note naming the original |
 | no data type | `orm:UnspecifiedDataType`; NORMA reports it, a model error (point 2) |
 | value range, cardinality range | `ValueRestriction`/`CardinalityRestriction` (milestone 2) |
-| derivation rule of a subtype | milestone 3 (paths), else a note with the formula |
+| derivation rule of a subtype | `orm:SubtypeDerivationPath` (`PartiallyDerived` when semi-derived): a NORMA role path when the rule is conjunctive (`src/export/normaPathsOut.js`, see Status), else an informal rule holding FreeFBM's formula and a "FreeFBM:" remark saying why |
 
 ### Fact types
 
@@ -139,7 +139,7 @@ the same file, and diffs between exports are readable.
 | `objectifiedIdentifier` | `PreferredIdentifierFor` the objectifying type (milestone 2, with objectification) |
 | implied uniqueness and mandatory of a preferred identifier | written as real constraints (see above) |
 | mandatory role | `orm:MandatoryConstraint IsSimple="true"` on that role; `Modality="Deontic"` for `mandatoryDeontic` |
-| derived fact type | milestone 3 (derivation paths), else a note with the rule |
+| derived fact type | `orm:FactTypeDerivationPath` (`PartiallyDerived` when semi-derived) with role projections: a NORMA role path when the rule is conjunctive, else an informal rule holding FreeFBM's formula and a "FreeFBM:" remark saying why |
 
 ### Subtypes
 
@@ -153,7 +153,7 @@ the same file, and diffs between exports are readable.
 Exclusion, equality, subset, inclusive-or and exclusive-or (NORMA's exclusion
 plus mandatory pair), external uniqueness and preferred identifiers,
 frequency, ring, value comparison: the importer's mapping read backwards,
-with join paths from query graphs where NORMA can express them, else a note.
+with join paths: left to NORMA where it builds them itself (roles in binaries joined through one object type), else FreeFBM's query written as a NORMA join path (`JoinRule`/`JoinPath` with `ConstraintRoleProjections`, the same builder as derivation paths), else a "FreeFBM:" remark with the formula, and NORMA asks for a join path.
 
 ### Diagrams
 
@@ -165,7 +165,7 @@ with join paths from query graphs where NORMA can express them, else a note.
 | fact type at (x, y), the middle of its role boxes | `FactTypeShape` whose role boxes have that middle: the role boxes, a band of 0.07 in per level of bars on the bars' side, 0.025 in all round and one pen width (1/72 in); `DisplayOrientation` (`VerticalRotatedRight` for vertical), `ConstraintDisplayPosition="Bottom"` for `uniquenessBelow`, `RoleDisplayOrder` when `roleOrder` differs from the roles' order |
 | reading position (`readingOffsetAbove/Below`) | `ReadingShape` in `RelativeShapes` (proposal: the importer's `placeLabel` in reverse) |
 | role names, ranges, objectified name | `RoleNameShape`, `ValueConstraintShape`, `ObjectifiedFactTypeNameShape` (milestone 2) |
-| role connectors, subtype links | none: NORMA draws them from the shapes |
+| role connectors, subtype links | none: NORMA draws them from the shapes. Since v1.2.71 FreeFBM derives them by NORMA's own rule too (`src/diagram/roleLinks.js`; docs/nearest-role-connectors.md) and stores none, so the export writes the shapes and NORMA draws the same connectors; there is no relinking warning any more |
 | external constraint | `ExternalConstraintShape` (milestone 2) |
 | note | `ModelNote` + `ModelNoteShape` (milestone 3) |
 
@@ -177,8 +177,8 @@ model notes with their connectors, definitions and notes of elements.
 
 ### Not exported, as notes
 
-Relational schemas, mappings, views and exchanges; query graphs and formulas
-NORMA cannot hold; derivation rules NORMA cannot express as paths; FreeFBM's
+Relational schemas, mappings, views and exchanges; join paths and
+derivation rules that are not conjunctive (see Status, What is left out); FreeFBM's
 temporal and modality extras; populations (proposal: NORMA's sample
 populations in a later milestone); translations of names and readings into
 other languages (NORMA has one language).
@@ -197,8 +197,8 @@ other languages (NORMA has one language).
    constraints on subtype links, unaries as current NORMA
    writes them, reading and label positions.
 3. **The rest NORMA has.** Groups and colours, custom properties, model notes
-   and element notes, derivation rules (informal now; as paths where
-   possible later), and the "FreeFBM:" notes for everything left out (with
+   and element notes, derivation rules (as NORMA role paths when
+   conjunctive, else informal rules), join paths of external constraints, and the "FreeFBM:" notes for everything left out (with
    the summary note).
 4. **Faithful re-export.** The import keeps, hidden in the .ffbm file, what
    it needs from the original: shape ids, element order, exact geometry in
@@ -429,9 +429,66 @@ holds only the five rules that stay informal (closures, a value
 condition, rules without a complete FreeFBM formula); join paths and the
 other eleven derivation rules are accepted.
 
-Still open after milestone 3: derivation rules with closures or value
-conditions as NORMA paths, sample populations, and milestone 4 (faithful
-re-export of imported files).
+Role connectors (v1.2.71): FreeFBM no longer stores role connectors. It
+links each role of a fact type shape to the nearest shape of its player,
+centre to centre, unless another shape of the same fact type is nearer to
+that shape, with ties to the later shape, as NORMA's MultiShapeUtility does
+(`nearestPairs` in `src/diagram/roleLinks.js`, the one place FreeFBM decides
+this, also for subtype links). So an exported diagram shows in NORMA
+exactly the connectors it shows in FreeFBM, and the export's "NORMA would
+relink this role" warning is gone. The import keeps exactly the shapes
+NORMA drew: a role whose player has no shape on the diagram stays
+unconnected, as in NORMA. `node scripts/role-links-check.mjs [file …]` runs
+a NORMA export → import round trip per file and checks that every fact type
+occurrence and role connector comes back (design and tests in
+docs/nearest-role-connectors.md).
+
+## What is left out
+
+All four milestones are in. What remains is listed here; the export
+reports each case in the summary note and the element's "FreeFBM:"
+remark, the import in the import log and the element's import notes.
+
+**Export: rules and join paths that stay informal.** `conjunctivePath`
+(`src/export/normaPathsOut.js`) writes a rule or query built from ∃, ∧,
+fact atoms (link fact types of objectifications included), type tests of
+variables (a walk through the subtype link), equalities between variables
+outside negations and disjunctions, and nested ¬ and ∨ (a lead path split
+Or for a rule that is a disjunction as a whole). It refuses, and the
+export keeps the rule as an informal rule holding FreeFBM's formula:
+
+- transitive closures (TC, TC*);
+- value conditions and data predicates (`vcmp`, `pred`: x ≈ 'c', x < y,
+  LIKE, …) and comparisons other than an equality between two variables,
+  including an equality inside a negation or disjunction;
+- computed roles (a derived fact type's role given by a term) and fact
+  atoms or type tests with terms as arguments, so data operators and
+  aggregates;
+- parts of a negation or disjunction, or of the rule, that are not joined
+  to the object they are about (the subject for the rule, the object the
+  path is at for a negation or disjunction);
+- rules that do not bind the subject or every role of the fact type, or
+  that name a fact type the export leaves out;
+- a type test of a type that is not a subtype.
+
+The same goes for a join path of an external constraint: a query with one
+of these parts is not written, the constraint gets a remark with its
+formula, and NORMA asks for a join path.
+
+**Import: role paths that are not translated.** `src/import/normaPaths.js`
+refuses (the reason goes to the import log and a "changed" import note
+on the element: a derived element without a rule, or a constraint
+sequence without its join path): outer joins; negated roots; functions FreeFBM cannot read
+(functions are read by operator symbol or name); aggregates; subqueries;
+shared role paths; projections of calculated values or constants; several
+paths computing one role; a condition that reads objects of separate
+branches of its path; and paths through an old-style unary's boolean value
+that join, unify or project it, or test it for both true and false.
+Informal rules are kept in the element's note.
+
+**Other.** Sample populations are not exported (NORMA's sample
+populations, a later step). NORMA-only parts that NORMA regenerates
+(relational and Barker views, generation settings) are not kept.
 
 Open points for the NORMA check: whether a value type without a data type should get NORMA's error or a
 default type.

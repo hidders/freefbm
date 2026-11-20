@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted design — Phases 1 and 2 done.** Phase 1 checked NORMA's rule in its source and corrected the rule below (two-sided, shape centres, ties).
+**Accepted design — all five phases done (v1.2.71).** Phase 1 checked NORMA's rule in its source and corrected the rule below (two-sided, shape centres, ties).
 
 This document replaces the current per-occurrence `roleOccurrenceMap` model
 for ordinary role-player connectors. It records decisions made on 2026-11-18.
