@@ -450,8 +450,10 @@ shape kept) and exported as FactTypeShapes of the link fact types.
 
 Second round (v1.2.43, Jan's check on 2026-11-15): the summary note goes to
 the free place nearest the top left corner (no overlap, 15 px gap) and is
-in a group "FreeFBM export note" with a soft yellow background (the
-importer leaves that group out). An entity type's reference mode value
+in a group "FreeFBM export note" (the importer leaves that group out;
+its soft yellow background was dropped on 2026-11-20, as a colour needs
+NORMA's shape grouping extension and a NORMA without it offers to disable
+Save). An entity type's reference mode value
 range is drawn at its shape (ValueConstraintShape of the role value
 constraint). A drawn link fact type keeps its reading's place and which
 reading order is shown, so FreeFBM marks the reading direction as NORMA

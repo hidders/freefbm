@@ -1273,9 +1273,11 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
   }
   const groups = (state.groups ?? []).filter(g => !sid || schemas.length <= 1 || (g.members ?? []).some(m => memberRefOf(m)))
   let usesShapeGroups = false
-  // FreeFBM's summary note in a group of its own, coloured soft yellow
+  // FreeFBM's summary note in a group of its own, without a colour: a
+  // colour needs NORMA's shape grouping extension, and a NORMA without it
+  // offers to disable Save (Jan, 2026-11-20)
   if (summaryNoteId) groups.push({ id: 'freefbm-export-note-group', name: 'FreeFBM export note', definition: 'The note FreeFBM added when it exported this model.',
-    note: '', priority: 0, colors: { fill: '#fff6c8' }, members: [summaryNoteId], _normaMember: true })
+    note: '', priority: 0, colors: {}, members: [summaryNoteId], _normaMember: true })
   const groupEls = groups.map(g => {
     const colors = Object.entries(g.colors ?? {}).map(([ch, hex]) => [COLOR_ROLES[ch], rgb(hex)]).filter(([r, v]) => r && v)
     if (colors.length) usesShapeGroups = true
