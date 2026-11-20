@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { triggerPdfExport } from '../utils/pdfExport'
-import { newModel, openModel, saveModel } from '../utils/fileActions'
+import { newModel, openModel, saveModel, importNormaModel } from '../utils/fileActions'
 import { removeSelectionFromDiagram, openDeleteFromSchema, canDeleteFromSchema } from '../utils/deleteSelection'
 import { undoRedo } from './useUndoRedo'
 import { textPanelOf } from '../utils/textPanel'
@@ -31,6 +31,7 @@ export function useElectronMenu() {
 
     on('menu:new', () => newModel())
     on('menu:open', () => openModel())
+    on('menu:importNorma', () => importNormaModel())
     on('menu:save', () => saveModel())
     on('menu:saveAs', () => saveModel({ saveAs: true }))
 

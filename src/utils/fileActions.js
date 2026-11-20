@@ -29,6 +29,17 @@ export async function openModel() {
   catch (err) { alert(`Failed to open model file.${err?.message ? `\n${err.message}` : ''}`) }
 }
 
+// File › Import NORMA .orm…: a NORMA model becomes a new, unsaved model with
+// an import log (openModelFile); Open still imports a .orm file picked there.
+export async function importNormaModel() {
+  if (!api()?.openOrm) return
+  if (!confirmDiscard('import a NORMA model')) return
+  const result = await api().openOrm()
+  if (!result) return
+  try { openModelFile(result) }
+  catch (err) { alert(`Failed to import the NORMA model.${err?.message ? `\n${err.message}` : ''}`) }
+}
+
 // Resolves to true when the model was written.
 export async function saveModel({ saveAs = false } = {}) {
   if (!api()) return false

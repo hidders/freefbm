@@ -158,6 +158,8 @@ function buildMenu(win) {
         { label: 'Save as…',  accelerator: 'CmdOrCtrl+Shift+S', click: send('menu:saveAs') },
         { type: 'separator' },
         { label: 'Export to PDF…', accelerator: 'CmdOrCtrl+Shift+E', click: send('menu:exportPdf') },
+        { type: 'separator' },
+        { label: 'Import NORMA .orm…', click: send('menu:importNorma') },
         { label: 'Export NORMA .orm…', click: send('menu:exportNorma') },
         { type: 'separator' },
         { label: 'Import SQL DDL (PostgreSQL, Oracle or SQL Server)…', click: send('menu:importSql') },
@@ -292,11 +294,11 @@ ipcMain.handle('dialog:exportPdf', async (event, htmlContent) => {
 ipcMain.handle('dialog:openFile', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     // .orm2 and .json are the legacy extensions; they still open.
-    // .orm is a NORMA model, imported as a new unsaved model.
+    // .orm is a NORMA model: File › Import NORMA .orm… is its own entry, but
+    // Open still imports one (as a new unsaved model) when it is picked.
     filters: [
-      { name: 'FreeFBM or NORMA Model', extensions: ['ffbm', 'orm2', 'json', 'orm'] },
       { name: 'FreeFBM Model', extensions: ['ffbm', 'orm2', 'json'] },
-      { name: 'NORMA Model', extensions: ['orm'] },
+      { name: 'FreeFBM or NORMA Model', extensions: ['ffbm', 'orm2', 'json', 'orm'] },
     ],
     properties: ['openFile'],
   })
@@ -318,6 +320,16 @@ ipcMain.handle('dialog:saveFile', async (event, { path: knownPath, defaultPath, 
   if (canceled || !filePath) return null
   fs.writeFileSync(filePath, content, 'utf-8')
   return filePath
+})
+
+// File › Import NORMA .orm…: a NORMA model, imported as a new unsaved model.
+ipcMain.handle('dialog:openOrm', async (event) => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
+    filters: [{ name: 'NORMA Model', extensions: ['orm'] }],
+    properties: ['openFile'],
+  })
+  if (canceled || !filePaths.length) return null
+  return { path: filePaths[0], content: fs.readFileSync(filePaths[0], 'utf-8') }
 })
 
 // NORMA .orm files written from an ORM2 schema (src/export/norma.js).
