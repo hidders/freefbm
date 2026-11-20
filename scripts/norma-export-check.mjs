@@ -355,7 +355,8 @@ async function runInPage({ name, content, isOrm }) {
         switch (n.t) {
           case 'fact': out.push(`${at}F:${ids(n.factId.replace(/_il_\d+$/, ''))}${/_il_\d+$/.exec(n.factId)?.[0] ?? ''}`); return
           case 'type': out.push(`${at}T:${ids(n.typeId)}`); return
-          case 'vcmp': out.push(`${at}V:${n.op}:${[n.left, n.right].map(x => x?.t === 'const' ? x.text : x?.t ?? '').join(',')}`); return
+          case 'vcmp': out.push(`${at}V:${n.op}:${[n.left, n.right].map(term).join(',')}`); return
+          case 'dpred': out.push(`${at}P:${n.op}:${(n.args ?? []).map(term).join(',')}`); return
           case 'not': walk(n.arg ?? n.body, at + '¬'); return
           case 'or': n.args.forEach(a => walk(a, at + '∨')); return
           case 'iff': case 'implies': walk(n.left, at + n.t[0]); walk(n.right, at + n.t[0]); return
@@ -365,7 +366,12 @@ async function runInPage({ name, content, isOrm }) {
             for (const a of n.args ?? []) walk(a, at)
         }
       }
+      // a data term: operators, constants and aggregates, variables as var
+      const term = (x) => !x ? '' : x.t === 'const' ? x.text : x.t === 'var' ? 'var'
+        : x.t === 'op' ? `${x.op}(${(x.args ?? []).map(term).join(',')})`
+        : x.t === 'agg' ? `${x.fn}${x.distinct ? '!' : ''}{${(x.vars ?? []).length}|${term(x.term)}}` : x.t
       walk(rule?.body, '')
+      for (const [rid, t] of Object.entries(rule?.terms ?? {})) out.push(`=${ids(rid)}:${term(t)}`)
       return out.sort().join(' ')
     }
     for (const x of [...st.facts.filter(inS), ...st.objectTypes.filter(inS)]) {

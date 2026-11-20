@@ -424,7 +424,7 @@ export function makePathTranslator(ctx) {
         if (!parent.has(n) || isBool(n)) fail(`the input of the aggregate ${label} is outside its path`)
         const by = kids(kid(el, 'AggregationContext')).map(c => attr(c, 'ref'))
         if (by.some(b => !parent.has(b))) fail(`the aggregate ${label} is grouped by an object outside its path`)
-        return { f: 'agg', fn: agg, input: n, by }
+        return { f: 'agg', fn: agg, input: n, by, distinct: attr(inputs[0], 'DistinctValues') === 'true' }
       }
       const pos = (inp, i) => { const k = fn.params.findIndex(p => p.id === attr(kid(inp, 'Parameter'), 'ref')); return k < 0 ? i : k }
       const args = inputs.map((inp, i) => [pos(inp, i), inp]).sort((a, b) => a[0] - b[0]).map(([, inp]) => {
@@ -568,7 +568,7 @@ export function makePathTranslator(ctx) {
             const t = inner.term({ f: 'node', n: e.input })
             const outTerm = e.fn === 'count' ? null : t
             if (e.fn === 'count' && !inner.top.length) fail('the aggregate counts nothing')
-            return { t: 'agg', fn: e.fn, distinct: false, vars: inner.top, cond: inner.body, term: outTerm }
+            return { t: 'agg', fn: e.fn, distinct: !!e.distinct, vars: inner.top, cond: inner.body, term: outTerm }
           }
           default: fail('a condition is used as a value')
         }
