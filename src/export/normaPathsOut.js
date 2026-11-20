@@ -228,6 +228,9 @@ export function conjunctivePath(rule, opts) {
   const splitVals = (items) => { const v = items.filter(x => x.k === 'value'); return [items.filter(x => x.k !== 'value'), v] }
   const gather = (v) => {
     const out = []
+    // a type test of v first: the parts after it are walked from the subtype
+    const ti = pending.findIndex(x => x.k === 'type' && same(x.t.arg, v))
+    if (ti > 0) pending.unshift(...pending.splice(ti, 1))
     for (let i = 0; i < pending.length && !fail;) {
       if (mentions(pending[i], v)) { const [t] = pending.splice(i, 1); out.push(...emitAt(t, v)); i = 0 }
       else i++
@@ -268,9 +271,32 @@ export function conjunctivePath(rule, opts) {
     if (t.k === 'type') {
       const link = opts.subtypeLinkOf?.(t.t.typeId)
       if (!link) { fail = 'a test for a type that is no subtype'; return [] }
-      // NORMA steps into a subtype by joining its supertype's meta role alone
+      // NORMA steps into a subtype through its supertype's meta role, then
+      // its subtype's. An object of another subtype of that supertype first climbs
+      // to it through its own subtype links (NORMA refuses to join an object
+      // to a role its type does not play: "incompatible role player").
+      const climb = []
+      let at = varType.get(v) ?? varType.get([...varType.keys()].find(y => same(y, v)))
+      for (let guard = 0; at && at !== link.superId && guard < 20; guard++) {
+        const up = opts.subtypeLinkOf?.(at)
+        if (!up) { climb.length = 0; break }
+        climb.push(up)
+        at = up.superId
+      }
+      if (at !== link.superId) climb.length = 0
+      const next = gather(v)
       return [el('orm:SubPath', { id: id(`t${k}`) }, [
-        el('orm:PathedRoles', {}, [el('orm:PathedRole', { id: id(`t${k}r0`), ref: link.superRole, Purpose: 'PostInnerJoin' })]),
+        el('orm:PathedRoles', {}, [
+          ...climb.flatMap((up, j) => [
+            el('orm:PathedRole', { id: id(`t${k}u${j}a`), ref: up.subRole, Purpose: 'PostInnerJoin' }),
+            el('orm:PathedRole', { id: id(`t${k}u${j}b`), ref: up.superRole, Purpose: 'SameFactType' }),
+          ]),
+          el('orm:PathedRole', { id: id(`t${k}r0`), ref: link.superRole, Purpose: 'PostInnerJoin' }),
+          el('orm:PathedRole', { id: id(`t${k}r1`), ref: link.subRole, Purpose: 'SameFactType' }),
+        ]),
+        // the rest of what is said about the object goes on from the
+        // subtype, so that roles only the subtype plays are joined from it
+        next.length && el('orm:SubPaths', {}, next),
       ])]
     }
     if (t.k === 'or' || t.k === 'xor') return [el('orm:SubPath', { id: id(`s${k}`), SplitCombinationOperator: t.k === 'or' ? 'Or' : 'Xor' }, [

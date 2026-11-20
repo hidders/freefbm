@@ -657,8 +657,10 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     const text = formulaText(safe(() => derivationEntry(ot, state, ctx)))
     if (formal?.error) ffNote([ot.id], `the derivation rule is NORMA's informal rule only: FreeFBM's rule has ${formal.error}, which this export cannot write as a NORMA derivation path yet.`)
     derivedInformal++
+    // a rule without a path is "externally defined" for NORMA (as NORMA
+    // writes informal rules), which otherwise asks for a projection from a path
     return el('orm:SubtypeDerivationRule', {}, [
-      el('orm:SubtypeDerivationPath', { id: normaId(ot.id, 'derivation'), DerivationCompleteness: ot.derivation === 'semiDerived' ? 'PartiallyDerived' : null }, [
+      el('orm:SubtypeDerivationPath', { id: normaId(ot.id, 'derivation'), DerivationCompleteness: ot.derivation === 'semiDerived' ? 'PartiallyDerived' : null, ExternalDerivation: 'true' }, [
         el('orm:InformalRule', {}, [el('orm:DerivationNote', { id: normaId(ot.id, 'derivation-note') }, [el('orm:Body', {}, text ?? 'Derived in FreeFBM.')])]),
       ]),
     ])
@@ -752,7 +754,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     derivedInformal++
     if (formal?.error) ffNote([f.id], `the derivation rule is NORMA's informal rule only: FreeFBM's rule has ${formal.error}, which this export cannot write as a NORMA derivation path yet.`)
     return el('orm:DerivationRule', {}, [
-      el('orm:FactTypeDerivationPath', { id: normaId(f.id, 'derivation'), DerivationCompleteness: completeness }, [
+      el('orm:FactTypeDerivationPath', { id: normaId(f.id, 'derivation'), DerivationCompleteness: completeness, ExternalDerivation: 'true' }, [
         el('orm:InformalRule', {}, [el('orm:DerivationNote', { id: normaId(f.id, 'derivation-note') }, [el('orm:Body', {}, text ?? 'Derived in FreeFBM (no complete rule yet).')])]),
       ]),
     ])

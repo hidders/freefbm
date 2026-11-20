@@ -379,6 +379,20 @@ formal and all the same (was 98), SamplePopulationExtraction 15 of 15
 (was 11); `test-schemas/norma/path-export.ffbm` (project files) has
 FreeFBM rules of these shapes.
 
+A type test walks into the subtype through both roles of its subtype link
+(supertype role, then subtype role), climbing first through the object's
+own subtype links when the object is of another subtype of that supertype,
+and the rest of what is said about the object goes on from the subtype
+(NORMA reported "joins to a path role with an incompatible role player"
+for ATOP's VariableArrayPacketFieldUsesPacketFieldTypeCode, whose rule
+tests a sibling subtype). The importer reads such a walk as a variable of
+the subtype, so a type test may come back as its variable's type.
+
+An informal rule (a rule FreeFBM cannot write as a path) is written with
+ExternalDerivation="true", as NORMA writes its own informal rules; without
+it NORMA reports that the rule "must project derived roles from at least
+one source path" (found on the VM, 2026-11-20).
+
 Join paths (v1.2.37): a sequence of an external constraint whose roles
 NORMA cannot join by itself gets FreeFBM's query as a NORMA join path
 (JoinRule/JoinPath with ConstraintRoleProjections), built as the derivation
