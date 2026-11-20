@@ -138,3 +138,12 @@ jobs:
           files: artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # electron-builder creates the release before this job runs, and
+      # action-gh-release then keeps that release's empty text, so set the
+      # text from the notes file explicitly.
+      - name: Set release text from the notes file
+        if: steps.notes.outputs.path != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file "${{ steps.notes.outputs.path }}"
