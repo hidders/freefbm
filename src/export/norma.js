@@ -34,7 +34,7 @@ import { factDerivationEntries } from '../logic/factDerivation.js'
 import { derivationEntry } from '../logic/derivationRule.js'
 import { renderFormula } from '../logic/renderFormula.js'
 import { SUBJECT } from '../logic/derivationRule.js'
-import { conjunctivePath } from './normaPathsOut.js'
+import { conjunctivePath, openRecursion } from './normaPathsOut.js'
 import { otShapeKey, factShapeKey, noteShapeKey } from '../diagram/normaShapeKeys.js'
 import { normaBarLevels } from '../diagram/roleLinks.js'
 
@@ -473,7 +473,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
         projected: rule.free.map((v, i) => ({ roleId: roleIds[i], varId: v.id })),
         roleRef: (fid, i) => normaId(factById.get(fid).roles[i].id), playerOf: (fid, i) => factById.get(fid).roles[i].objectTypeId,
         linkRoleRef: (fid, j, i) => i === 0 ? linkIdsOf(fid, j).role : normaId(factById.get(fid).roles[j].id), isNested: (fid) => nests.has(fid),
-        subtypeLinkOf, typeRef: (tid) => playerRef(tid),
+        subtypeLinkOf, typeRef: (tid) => playerRef(tid), valueConstraint: pathValueConstraint,
       }))
       if (!formal || formal.error) { joinsMissing.push(formal?.error ?? rule?.error ?? 'a query the export cannot read'); return null }
       return el('orm:JoinRule', {}, [el('orm:JoinPath', { id: normaId(c.id, `join${k}`) }, [formal.path, formal.projections])])
@@ -646,7 +646,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       // side, the role of F it stands for (NORMA refuses its role proxy there)
       linkRoleRef: (fid, k, i) => i === 0 ? linkIdsOf(fid, k).role : normaId(factById.get(fid).roles[k].id), isNested: (fid) => nests.has(fid),
       subtypeLinkOf: subtypeLinkOf,
-      typeRef: (tid) => playerRef(tid),
+      typeRef: (tid) => playerRef(tid), valueConstraint: pathValueConstraint,
     }))
     if (formal && !formal.error) {
       derivedFormal++
@@ -728,7 +728,9 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     if (!f.derivation) return null
     const completeness = f.derivation === 'semiDerived' ? 'PartiallyDerived' : null
     // a conjunctive rule as NORMA's role path (src/export/normaPathsOut.js)
-    const formal = f.derivationRule && f.roles.length && safe(() => conjunctivePath(f.derivationRule, {
+    // a closure of a fully derived fact type's rule is written as recursion
+    const opened = f.derivation === 'derived' && JSON.stringify(f.derivationRule ?? null).includes('"tc"') && safe(() => openRecursion(f, f.derivationRule))
+    const formal = f.derivationRule && f.roles.length && safe(() => conjunctivePath(opened || f.derivationRule, {
       el, id: (part) => normaId(f.id, `path:${part}`), factById,
       subject: `role:${f.roles[0].id}`, subjectType: f.roles[0].objectTypeId,
       projected: f.roles.map(r => ({ roleId: normaId(r.id), varId: `role:${r.id}` })),
@@ -737,7 +739,7 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
       // side, the role of F it stands for (NORMA refuses its role proxy there)
       linkRoleRef: (fid, k, i) => i === 0 ? linkIdsOf(fid, k).role : normaId(factById.get(fid).roles[k].id), isNested: (fid) => nests.has(fid),
       subtypeLinkOf: subtypeLinkOf,
-      typeRef: (tid) => playerRef(tid),
+      typeRef: (tid) => playerRef(tid), valueConstraint: pathValueConstraint,
     }))
     if (formal && !formal.error) {
       derivedFormal++
@@ -803,6 +805,10 @@ export function exportNorma(state, { schemaId = null, name = null } = {}) {
     })
   }
 
+  // a value condition of a role path (normaPathsOut.js)
+  function pathValueConstraint(tag, id, ranges) {
+    return el(tag, { id }, [el('orm:ValueRanges', {}, ranges.map(valueRangeAttrs).filter(Boolean).map((a, i) => el('orm:ValueRange', { id: normaId(id, `range${i}`), ...a })))])
+  }
   function valueConstraintEl(tag, ownerId, ranges, deontic, base, kept = null) {
     return el(tag, { id: kept?.id ?? normaId(ownerId, 'valueconstraint'), Name: keptName(kept?.name) ?? autoName(base), Modality: deontic ? 'Deontic' : null }, [
       el('orm:ValueRanges', {}, ranges.map(valueRangeAttrs).filter(Boolean).map((a, i) => el('orm:ValueRange', { id: normaId(ownerId, `valuerange${i}`), ...a }))),

@@ -355,6 +355,30 @@ informal, with a remark in the element's note saying why (SamplePopulation:
 11 of 15 formal; the ATOP model's 81 fact type rules all come back the
 same).
 
+Value conditions, recursion and Xor (v1.2.76): a value condition on a
+variable (x ≈ 'c', x < 'c', …; a lower and an upper bound in one
+conjunction are one range, a disjunction of conditions on one variable
+one restriction with several ranges, x ≉ 'c' a negated one) is a value
+restriction on a pathed role of the variable in the same part of the path,
+as NORMA writes them, or, when that part walks no role of the variable, on
+the root of a subpath of its own unified with it (not yet tried in NORMA).
+¬(φ ↔ ψ) is a split Xor. A fact type's rule that is a disjunction as a
+whole is one lead path per case, each with its own projection, as NORMA
+writes it, so a case may project one object to two roles. NORMA has no
+closure, but a fully derived fact type may use itself (the least
+fixpoint): a rule ∃y ([TC*_{u,w} φ](x, y) ∧ ψ(y, n)) in which x occurs
+nowhere else is written as ψ(x, n) ∨ ∃w (φ(x, w) ∧ F(w, n)), one recursive
+case per case of φ (`openRecursion`, the inverse of the importer's
+`closeLinearRecursion`); other closures stay informal. A negation of a
+single part is written as NORMA does, its first pathed role negated
+(IsNegated): until then the exported negated split was folded into its
+part and the negation lost on import (8 rules of ATOP, 1 of
+SamplePopulationExtraction). The check now compares each re-imported
+rule's atoms and conditions with the original's: ATOP 149 of 153 rules
+formal and all the same (was 98), SamplePopulationExtraction 15 of 15
+(was 11); `test-schemas/norma/path-export.ffbm` (project files) has
+FreeFBM rules of these shapes.
+
 Join paths (v1.2.37): a sequence of an external constraint whose roles
 NORMA cannot join by itself gets FreeFBM's query as a NORMA join path
 (JoinRule/JoinPath with ConstraintRoleProjections), built as the derivation
@@ -453,14 +477,18 @@ remark, the import in the import log and the element's import notes.
 (`src/export/normaPathsOut.js`) writes a rule or query built from ∃, ∧,
 fact atoms (link fact types of objectifications included), type tests of
 variables (a walk through the subtype link), equalities between variables
-outside negations and disjunctions, and nested ¬ and ∨ (a lead path split
-Or for a rule that is a disjunction as a whole). It refuses, and the
+outside negations and disjunctions, value conditions of a variable against
+constants (value restrictions), nested ¬, ∨ and Xor (¬(φ ↔ ψ)), and for a
+fact type a rule that is a disjunction as a whole (one lead path per case)
+or a closure NORMA can write as recursion. It refuses, and the
 export keeps the rule as an informal rule holding FreeFBM's formula:
 
-- transitive closures (TC, TC*);
-- value conditions and data predicates (`vcmp`, `pred`: x ≈ 'c', x < y,
-  LIKE, …) and comparisons other than an equality between two variables,
-  including an equality inside a negation or disjunction;
+- transitive closures (TC, TC*) other than one of a fully derived fact
+  type's rule in the form NORMA's recursion gives (see v1.2.76 above);
+- comparisons of two values (x < y, x ≈ y) and data predicates (`dpred`:
+  LIKE, …), and comparisons other than an equality between two variables,
+  including an equality inside a negation or disjunction (but in a case
+  of a rule that is a disjunction as a whole);
 - computed roles (a derived fact type's role given by a term) and fact
   atoms or type tests with terms as arguments, so data operators and
   aggregates;

@@ -335,11 +335,37 @@ async function runInPage({ name, content, isOrm }) {
     worst.sort((p, q) => q.d - p.d)
     if (moved) diffs.push(`${moved} of ${occs} occurrences moved by more than a pixel, most ${worst.slice(0, 3).map(w => `${w.what} ${w.d.toFixed(1)} px`).join(', ')}`)
     // derivation rules that come back as formal rules (not only informal ones)
-    const rules = { orig: 0, back: 0 }
+    const rules = { orig: 0, back: 0, same: 0, differ: [] }
+    // a rule's shape: its atoms and value conditions with the connectives
+    // above them, variables left out (the same rule up to renaming and order)
+    const shape = (rule, ids = nid) => {
+      const out = []
+      const walk = (n, at) => {
+        if (!n || typeof n !== 'object') return
+        switch (n.t) {
+          case 'fact': out.push(`${at}F:${ids(n.factId.replace(/_il_\d+$/, ''))}${/_il_\d+$/.exec(n.factId)?.[0] ?? ''}`); return
+          case 'type': out.push(`${at}T:${ids(n.typeId)}`); return
+          case 'vcmp': out.push(`${at}V:${n.op}:${[n.left, n.right].map(x => x?.t === 'const' ? x.text : x?.t ?? '').join(',')}`); return
+          case 'not': walk(n.arg ?? n.body, at + '¬'); return
+          case 'or': n.args.forEach(a => walk(a, at + '∨')); return
+          case 'iff': case 'implies': walk(n.left, at + n.t[0]); walk(n.right, at + n.t[0]); return
+          case 'tc': walk(n.body, at + 'TC'); return
+          default:
+            for (const k of ['body', 'arg', 'left', 'right']) if (n[k]) walk(n[k], at)
+            for (const a of n.args ?? []) walk(a, at)
+        }
+      }
+      walk(rule?.body, '')
+      return out.sort().join(' ')
+    }
     for (const x of [...st.facts.filter(inS), ...st.objectTypes.filter(inS)]) {
       if (!x.derivation || !x.derivationRule) continue
       rules.orig++
-      if ((fB.get(nid(x.id)) ?? otB.get(nid(x.id)))?.derivationRule) rules.back++
+      const b = (fB.get(nid(x.id)) ?? otB.get(nid(x.id)))?.derivationRule
+      if (!b) continue
+      rules.back++
+      if (shape(x.derivationRule) === shape(b, (i) => i)) rules.same++
+      else rules.differ.push(`${x.name ?? x.objectifiedName ?? x.id}: ${shape(b, (i) => i)} instead of ${shape(x.derivationRule)}`)
     }
     return { diffs, occs, rules }
   }
@@ -427,6 +453,7 @@ for (const file of files) {
     fail('references', r.refProblems)
     if (r.roundTrip) fail(`export → import (${r.roundTrip.occs} occurrences)`, r.roundTrip.diffs)
     if (r.roundTrip?.rules?.orig) console.log(`   · derivation rules: ${r.roundTrip.rules.back} of ${r.roundTrip.rules.orig} come back as formal rules (the others as informal ones)`)
+    if (r.roundTrip?.rules?.back) console.log(`   · of those, ${r.roundTrip.rules.same} have the same atoms and conditions${r.roundTrip.rules.differ.length ? `; differ: ${r.roundTrip.rules.differ.slice(0, list).join('; ')}` : ''}`)
     if (r.comparison) {
       console.log('   import → export, compared with the original (definitions, kept ids):')
       for (const row of r.comparison.rows) console.log(`       ${row.kind.padEnd(22)} ${String(row.original).padStart(5)} → ${String(row.exported).padStart(5)}   same id ${row.sameId}`)
