@@ -34,14 +34,34 @@
 const refuse = (why) => ({ error: why })
 
 // The cases of a rule that is a disjunction (under ∃, which goes into each
-// case that uses its variable), or null.
+// case that uses its variable), or null. A disjunction inside a case with
+// an equality between variables among its parts (an inlined subquery's
+// identity case, x = y ∨ R(x, y)) is split into cases too, so that each
+// equality holds for its whole case and becomes a unification.
+const MAX_CASES = 16
 function disjuncts(rule) {
-  let m = (rule.extraVars ?? []).reduceRight((b, v) => ({ t: 'exists', v, body: b }), rule.body)
-  const vs = []
-  while (m?.t === 'exists') { vs.push(m.v); m = m.body }
-  if (m?.t !== 'or' || (m.args ?? []).length < 2) return null
+  const whole = (rule.extraVars ?? []).reduceRight((b, v) => ({ t: 'exists', v, body: b }), rule.body)
   const flat = (n) => (n.t === 'or' ? n.args.flatMap(flat) : [n])
-  return flat(m).map(c => vs.filter(v => usesVar(c, v.id)).reduceRight((b, v) => ({ t: 'exists', v, body: b }), c))
+  const isEq = (n) => n?.t === 'cmp' && n.op === '=' && typeof n.left === 'string' && typeof n.right === 'string'
+  const hasEq = (n) => n?.t === 'or' && flat(n).some(c => { let m = c; while (m?.t === 'exists') m = m.body; return isEq(m) || (m?.t === 'and' && m.args.some(isEq)) })
+  // the alternatives of n: ∃ passes through, ∨ splits (at the top, or when
+  // it has an equality), ∧ takes the product of its parts' alternatives
+  const alts = (n, top) => {
+    if (n?.t === 'exists') return alts(n.body, top).map(b => usesVar(b, n.v.id) ? { t: 'exists', v: n.v, body: b } : b)
+    if (n?.t === 'or' && (top || hasEq(n))) return flat(n).flatMap(c => alts(c, true))
+    if (n?.t === 'and') {
+      let out = [[]]
+      for (const a of n.args ?? []) {
+        const as = alts(a, false)
+        out = out.flatMap(xs => as.map(x => [...xs, x]))
+        if (out.length > MAX_CASES) return [n]
+      }
+      return out.map(xs => (xs.length === 1 ? xs[0] : { t: 'and', args: xs.flatMap(x => (x.t === 'and' ? x.args : [x])) }))
+    }
+    return [n]
+  }
+  const cases = alts(whole, true)
+  return cases.length >= 2 && cases.length <= MAX_CASES ? cases : null
 }
 
 // conjunctivePath(rule, opts) → { path, projections } (element trees) or { error }
@@ -57,7 +77,18 @@ function disjuncts(rule) {
 export function conjunctivePath(rule, opts) {
   const { el, id } = opts
   if (!rule?.body) return refuse('no rule')
-  if (rule.terms && Object.keys(rule.terms).length) return refuse('computed roles')
+  // Computed roles: an aggregate over the rule's own body (NORMA's
+  // aggregate over the path, grouped by the objects it shares with the
+  // rule) is a calculated value of the path; other terms are refused.
+  const aggs = []   // { roleVar, fn, by: [var], input: var }
+  for (const [roleId, t] of Object.entries(rule.terms ?? {})) {
+    const a = aggregateOver(rule, t)
+    if (!a) return refuse('computed roles')
+    aggs.push({ roleVar: `role:${roleId}`, ...a })
+  }
+  if (aggs.length && !opts.functionRef) return refuse('computed roles')
+  const computedVar = new Set(aggs.map(a => a.roleVar))
+  const plain = (opts.projected ?? []).filter(p => !computedVar.has(p.varId))
   // A fact type's rule that is a disjunction as a whole is written as NORMA
   // writes it: one lead path per case, each with its own projection, so
   // that each case unifies its own objects (a case may give two roles the
@@ -176,13 +207,25 @@ export function conjunctivePath(rule, opts) {
     for (const a of n.args ?? []) if (a && typeof a === 'object') types(a)
   })(rule.body)
   const leaves = (t) => !t ? 0 : t.k === 'atom' || t.k === 'type' ? 1 : t.k === 'value' ? 0 : t.items.reduce((n, x) => n + leaves(x), 0)
-  if (!leaves(body)) return refuse('no fact types')
 
   // one class per object: variables made equal are one
   const parent = new Map()
   const find = (x) => { while (parent.has(x) && parent.get(x) !== x) x = parent.get(x); return x }
   const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb) }
   for (const [a, b] of eqs) union(a, b)
+  // The root is of the most specific type of the subject's variables (a
+  // case x = y projects both roles from it, as NORMA's own paths do).
+  let rootType = opts.subjectType
+  const below = (t, sup) => { for (let k = 0, x = t; x && k < 32; k++) { if (x === sup) return true; x = opts.subtypeLinkOf?.(x)?.superId } return false }
+  for (const p of plain) {
+    if (p.typeId && find(p.varId) === find(opts.subject) && p.typeId !== rootType && below(p.typeId, rootType)) rootType = p.typeId
+  }
+  if (rootType !== opts.subjectType) varType.set(opts.subject, rootType)
+  // A case without fact types is the root alone, when it projects every
+  // role from it (an instance of the root's type, x = y).
+  const rootOnly = !leaves(body) && !opts.join && plain.length && !aggs.length
+    && plain.every(p => find(p.varId) === find(opts.subject)) && !(body?.items ?? []).some(x => x.k === 'value')
+  if (!leaves(body) && !rootOnly) return refuse('no fact types')
 
   const nodes = new Map()      // class → [{ kind: 'PathedRole' | 'PathRoot', id }]
   const addNode = (v, node) => { const c = find(v); nodes.set(c, [...(nodes.get(c) ?? []), node]) }
@@ -321,11 +364,11 @@ export function conjunctivePath(rule, opts) {
   if (fail) return refuse(fail)
 
   // every projected variable must be bound by the body
-  for (const p of opts.projected ?? []) {
+  for (const p of plain) {
     const ns = nodes.get(find(p.varId)) ?? []
     if (!ns.length) return refuse('a role of the fact type is not bound by the rule')
   }
-  if (!subPaths.length) return refuse('the subject is not bound by the rule')
+  if (!subPaths.length && !rootOnly) return refuse('the subject is not bound by the rule')
 
   // NORMA folds a path with a single plain subpath into it when it loads
   // the file, but leaves that subpath's own subpaths behind and deletes
@@ -365,11 +408,22 @@ export function conjunctivePath(rule, opts) {
   }
   const unifiers = [...nodes.values()].filter(ns => ns.length > 1).map((ns, k) =>
     el('orm:ObjectUnifier', { id: id(`u${k}`) }, ns.map(n => el(`orm:${n.kind}`, { ref: n.id }))))
+  const nodeOf = (v) => { const ns = nodes.get(find(v)) ?? []; return ns.find(n => n.kind === 'PathedRole') ?? ns[0] }
+  for (const a of aggs) if ([...a.by, a.input].some(v => !nodeOf(v))) return refuse('an aggregate over an object the path does not reach')
+  const calcEls = aggs.map((a, i) => el('orm:CalculatedValue', { id: id(`calc${i}`), UniversalAggregationContext: a.by.length ? null : 'true' }, [
+    el('orm:Function', { ref: opts.functionRef(a.fn) }),
+    a.by.length && el('orm:AggregationContext', {}, a.by.map(v => { const n = nodeOf(v); return el(`orm:${n.kind}`, { ref: n.id }) })),
+    el('orm:Inputs', {}, [el('orm:Input', { id: id(`calc${i}in`) }, [
+      el('orm:Parameter', { ref: opts.functionParamRef(a.fn) }),
+      el('orm:Source', {}, [(n => el(`orm:${n.kind}`, { ref: n.id }))(nodeOf(a.input))]),
+    ])]),
+  ]))
   const path = el('orm:PathComponents', {}, [
     el('orm:RolePath', { id: leadId, SplitCombinationOperator: leadOr ? 'Or' : null }, [
-      el('orm:RootObjectType', { id: leadRoot, ref: opts.typeRef(opts.subjectType) }),
-      el('orm:SubPaths', {}, subPaths),
+      el('orm:RootObjectType', { id: leadRoot, ref: opts.typeRef(rootType) }),
+      subPaths.length && el('orm:SubPaths', {}, subPaths),
       unifiers.length && el('orm:ObjectUnifiers', {}, unifiers),
+      calcEls.length && el('orm:CalculatedValues', {}, calcEls),
     ]),
   ])
   flatten(path.children[0])
@@ -386,6 +440,10 @@ export function conjunctivePath(rule, opts) {
   }
   const projections = opts.projected ? el('orm:DerivationProjections', {}, [
     el('orm:DerivationProjection', { id: id('projection'), ref: leadId }, opts.projected.map((p, i) => {
+      const k = aggs.findIndex(a => a.roleVar === p.varId)
+      if (k >= 0) return el('orm:RoleProjection', { id: id(`proj${i}`), ref: p.roleId }, [
+        el('orm:DerivationSource', {}, [el('orm:CalculatedValue', { ref: id(`calc${k}`) })]),
+      ])
       const ns = nodes.get(find(p.varId))
       const src = ns.find(n => n.kind === 'PathedRole') ?? ns[0]
       return el('orm:RoleProjection', { id: id(`proj${i}`), ref: p.roleId }, [
@@ -394,6 +452,39 @@ export function conjunctivePath(rule, opts) {
     })),
   ]) : null
   return { path, projections }
+}
+
+// A computed role's term that NORMA can write: an aggregate F{t | v̄ : φ}
+// (count without t) whose φ is the rule's body with v̄ for the rule's own
+// variables (∃, in order), so that it aggregates over the path. Gives
+// { fn, by, input } (by: the rule's variables φ also reads, the grouping;
+// input: the rule's variable for t, or for count its first one), or null.
+const AGG_FNS = new Set(['count', 'sum', 'avg', 'min', 'max'])
+function aggregateOver(rule, t) {
+  if (t?.t !== 'agg' || !AGG_FNS.has(t.fn) || t.distinct) return null
+  let body = rule.body
+  const own = [...(rule.extraVars ?? [])]
+  while (body?.t === 'exists') { own.push(body.v); body = body.body }
+  if (own.length !== (t.vars ?? []).length || !own.length) return null
+  const map = new Map(t.vars.map((v, i) => [v.id, own[i].id]))
+  if (JSON.stringify(renameVars(t.cond, map)) !== JSON.stringify(body)) return null
+  let input
+  if (t.fn === 'count') { if (t.term) return null; input = own[0].id }
+  else { if (t.term?.t !== 'var' || !map.has(t.term.id)) return null; input = map.get(t.term.id) }
+  const by = [...new Set(freeVarsOf(t.cond))].filter(v => !map.has(v))
+  return { fn: t.fn, by, input }
+}
+// The variable ids a rule tree reads (fact arguments, type tests, var terms,
+// cmp sides), bound or not.
+function freeVarsOf(n, out = []) {
+  if (!n || typeof n !== 'object') return out
+  if (Array.isArray(n)) { n.forEach(x => freeVarsOf(x, out)); return out }
+  if (n.t === 'fact') out.push(...(n.args ?? []).filter(a => typeof a === 'string'))
+  if (n.t === 'type' && typeof n.arg === 'string') out.push(n.arg)
+  if (n.t === 'var') out.push(n.id)
+  if (n.t === 'cmp') out.push(...[n.left, n.right].filter(a => typeof a === 'string'))
+  for (const [k, x] of Object.entries(n)) if (k !== 'v' && k !== 'vars' && x && typeof x === 'object') freeVarsOf(x, out)
+  return out
 }
 
 // ── Transitive closure → linear recursion ────────────────────────────────────

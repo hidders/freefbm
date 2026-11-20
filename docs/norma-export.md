@@ -505,6 +505,37 @@ a NORMA export → import round trip per file and checks that every fact type
 occurrence and role connector comes back (design and tests in
 docs/nearest-role-connectors.md).
 
+## Aggregates and subqueries (v1.2.76)
+
+Import: a calculated value whose function has a bag parameter (BagInput)
+is an aggregate over its lead path, grouped by the path roots and pathed
+roles of its AggregationContext (all of them with
+UniversalAggregationContext): the aggregate's variables are the path's
+other objects and its condition the path again (with its conditions), so
+SamplePopulationExtraction's UniquenessConstraintHasArity is
+`Arity ≈ Count{Role, Position : UniquenessConstraint restricts Role at
+Position}`. A rule's Subqueries (QueryRoles with a QueryDerivationPath of
+their own) are inlined where a path enters a query role, as the query's
+rule (each lead path a case, a path of its root alone an instance of the
+root's type) with its roles renamed to the path's objects;
+ObjectTypeAllowsValuesFromDataType's identity-or-supertype query becomes
+`x = y ∨ R(x, y)`.
+
+Export: a computed role whose term is an aggregate over the rule's own
+body (its condition the body with its variables for the rule's ∃
+variables, in order) is a CalculatedValue of the lead path, grouped by
+the rule's variables the condition reads, its input the term's variable
+(count: the first variable), projected to the role; the functions used
+are written as the model's Functions (count, sum, avg, min, max, one bag
+parameter each). A disjunction inside a case that has an equality between
+variables among its parts is split into cases (at most 16), so each
+equality is a unification of its case, and a case without fact types that
+projects every role from one object is a path of its root alone (typed by
+the most specific of the roles' players). So the inlined subquery comes
+back as four lead paths rather than a subquery: the same rule, with other
+atoms per case. SamplePopulationExtraction: 17 of 17 rules are NORMA
+paths, and its last NORMA error ("must project derived roles") is gone.
+
 ## What is left out
 
 All four milestones are in. What remains is listed here; the export
@@ -527,9 +558,10 @@ export keeps the rule as an informal rule holding FreeFBM's formula:
   LIKE, …), and comparisons other than an equality between two variables,
   including an equality inside a negation or disjunction (but in a case
   of a rule that is a disjunction as a whole);
-- computed roles (a derived fact type's role given by a term) and fact
-  atoms or type tests with terms as arguments, so data operators and
-  aggregates;
+- computed roles (a derived fact type's role given by a term), except an
+  aggregate over the rule's own body (see aggregates and subqueries
+  below), and fact atoms or type tests with terms as arguments, so data
+  operators;
 - parts of a negation or disjunction, or of the rule, that are not joined
   to the object they are about (the subject for the rule, the object the
   path is at for a negation or disjunction);
@@ -545,8 +577,10 @@ formula, and NORMA asks for a join path.
 refuses (the reason goes to the import log and a "changed" import note
 on the element: a derived element without a rule, or a constraint
 sequence without its join path): outer joins; negated roots; functions FreeFBM cannot read
-(functions are read by operator symbol or name); aggregates; subqueries;
-shared role paths; projections of calculated values or constants; several
+(functions are read by operator symbol or name); aggregate functions
+other than count, sum, avg, min and max (read by name) and aggregates with
+more than one input or an input that is not an object of the path;
+subqueries nested more than four deep; shared role paths; several
 paths computing one role; a condition that reads objects of separate
 branches of its path; and paths through an old-style unary's boolean value
 that join, unify or project it, or test it for both true and false.
