@@ -56,7 +56,7 @@ Chaque Étudiant has un TotalCredits.
 
 # Derivation rule, only derived facts hold · Student has TotalCredits
 ∀ Student ∀ TotalCredits ((Student has TotalCredits) → TotalCredits ≈ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)})
-Si Étudiant has TotalCredits, alors TotalCredits est la somme des Nombres de crédits que chaque Cours qu'Étudiant suit a.
+Si un Étudiant has un TotalCredits, alors ce TotalCredits est la somme des Nombres de crédits que chaque Cours que cet Étudiant suit a.
 
 # Derivation rule, every derived fact holds · Course has EnrolmentCount
 ∀ Course ∃ EnrolmentCount (Course has EnrolmentCount)
@@ -64,11 +64,11 @@ Chaque Cours has un EnrolmentCount.
 
 # Derivation rule, only derived facts hold · Course has EnrolmentCount
 ∀ Course ∀ EnrolmentCount ((Course has EnrolmentCount) → EnrolmentCount ≈ Count{Student : (Student enrols in Course)})
-Si Cours has EnrolmentCount, alors EnrolmentCount est le nombre d'Étudiants qui suivent Cours.
+Si un Cours has un EnrolmentCount, alors cet EnrolmentCount est le nombre d'Étudiants qui suivent ce Cours.
 
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
-Si Étudiant assiste à Cours et Cours a Nombre de crédits, alors Étudiant has credit load un TotalCredits qui est (Nombre de crédits plus 5) fois 2.
+Si un Étudiant assiste à un Cours et ce Cours a un Nombre de crédits, alors cet Étudiant has credit load un TotalCredits qui est (ce Nombre de crédits plus 5) fois 2.
 
 # Uniqueness (deontic) · StaffMember mentors Student
 O(∀ Student ∃^{≤1} StaffMember (StaffMember mentors Student))

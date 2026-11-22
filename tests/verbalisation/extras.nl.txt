@@ -56,7 +56,7 @@ Elke Student has een TotalCredits.
 
 # Derivation rule, only derived facts hold · Student has TotalCredits
 ∀ Student ∀ TotalCredits ((Student has TotalCredits) → TotalCredits ≈ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)})
-Als Student TotalCredits has, dan is TotalCredits de som van de Studielast die elk Vak dat Student volgt heeft.
+Als een Student een TotalCredits has, dan is die TotalCredits de som van de Studielast die elk Vak dat die Student volgt heeft.
 
 # Derivation rule, every derived fact holds · Course has EnrolmentCount
 ∀ Course ∃ EnrolmentCount (Course has EnrolmentCount)
@@ -64,11 +64,11 @@ Elk Vak has een EnrolmentCount.
 
 # Derivation rule, only derived facts hold · Course has EnrolmentCount
 ∀ Course ∀ EnrolmentCount ((Course has EnrolmentCount) → EnrolmentCount ≈ Count{Student : (Student enrols in Course)})
-Als Vak EnrolmentCount has, dan is EnrolmentCount het aantal Studenten die Vak volgen.
+Als een Vak een EnrolmentCount has, dan is die EnrolmentCount het aantal Studenten die dat Vak volgen.
 
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
-Als Student bij Vak assisteert en Vak Studielast heeft, dan has Student credit load een TotalCredits die (Studielast plus 5) maal 2 is.
+Als een Student bij een Vak assisteert en dat Vak een Studielast heeft, dan has die Student credit load een TotalCredits die (die Studielast plus 5) maal 2 is.
 
 # Uniqueness (deontic) · StaffMember mentors Student
 O(∀ Student ∃^{≤1} StaffMember (StaffMember mentors Student))

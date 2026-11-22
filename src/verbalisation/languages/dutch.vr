@@ -99,14 +99,14 @@ sentence rule if-then {
   # "Als Student Course volgt, dan volgt Student …"
   match:    ForAll(?vs, Implies(?a, ?c))
   guard:    len(?vs) > 1 and occursAll(?a, ?vs)
-  template: with(refStyle: "bare") { "als" clause(?a, form: "sub") comma "dan" clause(?c, form: "inv") }
+  template: with(intro: ?vs) { "als" clause(?a, form: "sub") comma "dan" clause(?c, form: "inv") }
 }
 
 sentence rule if-then-holds {
   # The consequent has no inverted form: "…, dan geldt dat …"
   match:    ForAll(?vs, Implies(?a, ?c))
   guard:    len(?vs) > 1 and occursAll(?a, ?vs)
-  template: with(refStyle: "bare") { "als" clause(?a, form: "sub") comma "dan geldt dat" clause(?c, form: "sub") }
+  template: with(intro: ?vs) { "als" clause(?a, form: "sub") comma "dan geldt dat" clause(?c, form: "sub") }
 }
 
 sentence rule for-each {

@@ -364,7 +364,7 @@ No Course₁ is a prerequisite for itself, directly or indirectly.
 
 # Ring (intransitive)
 ∀ Course₁ ∀ Course₂ ∀ Course₃ (((Course₁ is a prerequisite for Course₂) ∧ (Course₂ is a prerequisite for Course₃)) → ¬(Course₁ is a prerequisite for Course₃))
-If Course₁ is a prerequisite for Course₂ and Course₂ is a prerequisite for Course₃ then Course₁ is not a prerequisite for Course₃.
+If some Course₁ is a prerequisite for some Course₂ and that Course₂ is a prerequisite for some Course₃ then that Course₁ is not a prerequisite for that Course₃.
 
 # Exclusion
 ∀ Student ∀ Course ¬((Student enrols in Course) ∧ (Student assists in Course))
@@ -372,7 +372,7 @@ For each Student and Course, at most one of the following holds: that Student en
 
 # Subset
 ∀ StaffMember ∀ Course ((∃ Offering ((StaffMember teaches Offering) ∧ (Offering involves Course))) → (StaffMember is qualified to teach Course))
-If Staff member teaches some Offering that involves Course then Staff member is qualified to teach Course.
+If some Staff member teaches some Offering that involves some Course then that Staff member is qualified to teach that Course.
 
 # External uniqueness (preferred identifier)
 ∀ Season ∀ AcademicYear ∃^{≤1} Term ((Term is in Season) ∧ (Term is in AcademicYear))
@@ -588,11 +588,11 @@ For each Year, some AcademicYear starts in that Year.
 
 # Implied links (each fact has exactly one nesting instance) · Enrolment nests Student enrols in Course
 ∀ Student ∀ Course ((Student enrols in Course) → ∃^{=1} Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course)))
-If Student enrols in Course then exactly one Enrolment involves Student and involves Course.
+If some Student enrols in some Course then exactly one Enrolment involves that Student and involves that Course.
 
 # Implied links (linked values form a fact) · Enrolment nests Student enrols in Course
 ∀ Student ∀ Course ((∃ Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course))) → (Student enrols in Course))
-If some Enrolment involves Student and involves Course then Student enrols in Course.
+If some Enrolment involves some Student and involves some Course then that Student enrols in that Course.
 
 # Implied links (each nesting instance links exactly one combination) · Enrolment nests Student enrols in Course
 ∀ Enrolment ∃^{=1} Student, Course ((Enrolment involves Student) ∧ (Enrolment involves Course))
@@ -600,11 +600,11 @@ Each Enrolment involves exactly one Student and involves exactly one Course.
 
 # Implied links (each fact has exactly one nesting instance) · Offering nests Course is offered in Term
 ∀ Course ∀ Term ((Course is offered in Term) → ∃^{=1} Offering ((Offering involves Course) ∧ (Offering involves Term)))
-If Course is offered in Term then exactly one Offering involves Course and involves Term.
+If some Course is offered in some Term then exactly one Offering involves that Course and involves that Term.
 
 # Implied links (linked values form a fact) · Offering nests Course is offered in Term
 ∀ Course ∀ Term ((∃ Offering ((Offering involves Course) ∧ (Offering involves Term))) → (Course is offered in Term))
-If some Offering involves Course and involves Term then Course is offered in Term.
+If some Offering involves some Course and involves some Term then that Course is offered in that Term.
 
 # Implied links (each nesting instance links exactly one combination) · Offering nests Course is offered in Term
 ∀ Offering ∃^{=1} Course, Term ((Offering involves Course) ∧ (Offering involves Term))

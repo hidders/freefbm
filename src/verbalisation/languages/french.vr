@@ -92,7 +92,7 @@ sentence rule definition {
 sentence rule if-then {
   match:    ForAll(?vs, Implies(?a, ?c))
   guard:    len(?vs) > 1 and occursAll(?a, ?vs)
-  template: with(refStyle: "bare") { "si" clause(?a) comma "alors" clause(?c) }
+  template: with(intro: ?vs) { "si" clause(?a) comma "alors" clause(?c) }
 }
 
 sentence rule for-each {

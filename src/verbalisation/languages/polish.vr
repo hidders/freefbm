@@ -95,7 +95,7 @@ sentence rule definition {
 sentence rule if-then {
   match:    ForAll(?vs, Implies(?a, ?c))
   guard:    len(?vs) > 1 and occursAll(?a, ?vs)
-  template: with(refStyle: "bare") { "jeśli" clause(?a) comma "to" clause(?c) }
+  template: with(intro: ?vs) { "jeśli" clause(?a) comma "to" clause(?c) }
 }
 
 sentence rule for-each {

@@ -4,7 +4,8 @@
 # whose pattern matches, whose guard holds and whose template succeeds wins.
 #   sentence  a whole formula; the engine adds the capital and full stop
 #   clause    a formula inside a sentence; introduced variables are referred
-#             to as "that X" (or by bare name in an "If … then …" sentence)
+#             to as "that X" (in an "If … then …" sentence after a first
+#             mention as "some X")
 #   vp        a verb phrase about the subject ?subj, e.g. "has some Email";
 #             it fails when the formula cannot be said that way, so the
 #             caller falls back to a clause
@@ -92,11 +93,11 @@ sentence rule definition {
 }
 
 sentence rule if-then {
-  # NORMA's style for rules over several variables, which are then
-  # referred to by their (subscripted) names.
+  # NORMA's style for rules over several variables: each is introduced
+  # with "some" at its first mention and referred back to with "that".
   match:    ForAll(?vs, Implies(?a, ?c))
   guard:    len(?vs) > 1 and occursAll(?a, ?vs)
-  template: with(refStyle: "bare") { "if" clause(?a) "then" clause(?c) }
+  template: with(intro: ?vs) { "if" clause(?a) "then" clause(?c) }
 }
 
 sentence rule for-each {

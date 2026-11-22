@@ -106,14 +106,14 @@ sentence rule if-then {
   # "Wenn Student Kurs belegt, dann belegt Student …"
   match:    ForAll(?vs, Implies(?a, ?c))
   guard:    len(?vs) > 1 and occursAll(?a, ?vs)
-  template: with(refStyle: "bare") { "wenn" clause(?a, form: "sub") comma "dann" clause(?c, form: "inv") }
+  template: with(intro: ?vs) { "wenn" clause(?a, form: "sub") comma "dann" clause(?c, form: "inv") }
 }
 
 sentence rule if-then-holds {
   # The consequent has no inverted form: "…, dann gilt, dass …"
   match:    ForAll(?vs, Implies(?a, ?c))
   guard:    len(?vs) > 1 and occursAll(?a, ?vs)
-  template: with(refStyle: "bare") { "wenn" clause(?a, form: "sub") comma "dann gilt" comma "dass" clause(?c, form: "sub") }
+  template: with(intro: ?vs) { "wenn" clause(?a, form: "sub") comma "dann gilt" comma "dass" clause(?c, form: "sub") }
 }
 
 sentence rule for-each {

@@ -124,7 +124,22 @@ function makePhraser(ctx, lang, names, trace, stats) {
       objectType: (v) => ctx.otById.get(v.typeId),
       // A reference to a variable already introduced, or a wildcard; c is
       // the grammatical case of its slot, for languages with cases.
-      ref: (v, c) => (v?.t === 'wild' ? lang.wildNP(h, v, c) : lang.refNP(h, v, c)),
+      // A variable of env.intro (the variables an "If … then …" sentence
+      // is about) is introduced at its first mention as a wildcard is
+      // ("some Staff member") and referred back to after it ("that Staff
+      // member"), as NORMA does; which mention comes first is only known
+      // once the sentence is put together, so both go in a choice that
+      // linearise resolves.
+      ref: (v, c) => {
+        if (v?.t === 'wild') return lang.wildNP(h, v, c)
+        if (env.intro?.includes(v) && !env.same?.includes(v)) {
+          const base = { ...env, intro: undefined, refStyle: undefined }
+          const first = lang.wildNP(helpers({ ...base, none: false, negative: false, verb: undefined }), v, c)
+          const later = lang.refNP(helpers(base), v, c)
+          return { choice: v, first, later }
+        }
+        return lang.refNP(h, v, c)
+      },
       reading: (atom, subject, overrides) => reading(h, atom, subject, overrides),
       term: (t) => lang.term(h, t),
     }
@@ -207,6 +222,7 @@ function makePhraser(ctx, lang, names, trace, stats) {
 // Puts the words a reading binds to a slot (b, from hyphenBind) around the
 // head of the phrase filling it: its first type token, else the whole phrase.
 function bindInto(phrase, b) {
+  if (phrase?.choice) return { ...phrase, first: bindInto(phrase.first, b), later: bindInto(phrase.later, b) }
   let done = false
   const around = (t) => [
     ...(b.pre ? [tok(b.pre, 'reading')] : []),
@@ -230,13 +246,19 @@ const NO_SPACE_BEFORE = new Set([',', ';', ':', '.', ')'])
 // Flattens a phrase into tokens, lets the language contract neighbouring
 // words (lang.contract: French "que il" → "qu'il"; a token with glue gets no
 // space before it), sets the spacing, capitalises the first word and adds the
-// full stop.
+// full stop. A choice ({ choice: v, first, later }, see h.ref) becomes its
+// first phrase at the first choice for v and its later phrase after it.
 export function linearise(phrase, lang) {
   const flat = []
+  const seen = new Set()
   const walk = (p) => {
     if (!p) return
     if (Array.isArray(p)) p.forEach(walk)
-    else if (p.text) flat.push({ ...p })
+    else if (p.choice) {
+      const later = seen.has(p.choice)
+      seen.add(p.choice)
+      walk(later ? p.later : p.first)
+    } else if (p.text) flat.push({ ...p })
   }
   walk(phrase)
   if (lang?.contract) {

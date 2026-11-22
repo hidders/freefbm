@@ -56,7 +56,7 @@ Ogni Studente has un TotalCredits.
 
 # Derivation rule, only derived facts hold · Student has TotalCredits
 ∀ Student ∀ TotalCredits ((Student has TotalCredits) → TotalCredits ≈ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)})
-Se Studente has TotalCredits, allora TotalCredits è la somma dei Numeri di crediti che ogni Corso che Studente frequenta ha.
+Se uno Studente has un TotalCredits, allora quel TotalCredits è la somma dei Numeri di crediti che ogni Corso che quello Studente frequenta ha.
 
 # Derivation rule, every derived fact holds · Course has EnrolmentCount
 ∀ Course ∃ EnrolmentCount (Course has EnrolmentCount)
@@ -64,11 +64,11 @@ Ogni Corso has un EnrolmentCount.
 
 # Derivation rule, only derived facts hold · Course has EnrolmentCount
 ∀ Course ∀ EnrolmentCount ((Course has EnrolmentCount) → EnrolmentCount ≈ Count{Student : (Student enrols in Course)})
-Se Corso has EnrolmentCount, allora EnrolmentCount è il numero di Studenti che frequentano Corso.
+Se un Corso has un EnrolmentCount, allora quell'EnrolmentCount è il numero di Studenti che frequentano quel Corso.
 
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
-Se Studente è assistente in Corso e Corso ha Numero di crediti, allora Studente has credit load un TotalCredits che è (Numero di crediti più 5) per 2.
+Se uno Studente è assistente in un Corso e quel Corso ha un Numero di crediti, allora quello Studente has credit load un TotalCredits che è (quel Numero di crediti più 5) per 2.
 
 # Uniqueness (deontic) · StaffMember mentors Student
 O(∀ Student ∃^{≤1} StaffMember (StaffMember mentors Student))
