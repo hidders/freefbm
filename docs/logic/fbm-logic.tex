@@ -1,0 +1,1196 @@
+\documentclass[11pt, a4paper]{article}
+
+% ── Encoding & language ───────────────────────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[british]{babel}
+
+% ── Page geometry ─────────────────────────────────────────────────────────────
+\usepackage[a4paper, top=25mm, bottom=25mm, left=25mm, right=25mm, headheight=22pt]{geometry}
+
+% ── Fonts ─────────────────────────────────────────────────────────────────────
+\usepackage{mathptmx}
+\usepackage{microtype}
+
+% ── Colour ────────────────────────────────────────────────────────────────────
+\usepackage[dvipsnames, table]{xcolor}
+\definecolor{headblue}{HTML}{1F4E79}
+\definecolor{ruleblue}{HTML}{2E75B6}
+\definecolor{accentbg}{HTML}{D6E4F0}
+\definecolor{codebg}{HTML}{F5F8FC}
+\definecolor{codefg}{HTML}{1F497D}
+\definecolor{gray1}{HTML}{595959}
+\definecolor{lightgray}{HTML}{CCCCCC}
+\definecolor{varcol}{HTML}{6B3FA0}
+\definecolor{datacol}{HTML}{2E7D32}
+
+% ── Section headings ──────────────────────────────────────────────────────────
+\usepackage{titlesec}
+\titleformat{\section}{\color{headblue}\large\bfseries}{\color{headblue}\thesection}{1em}{}[{\color{ruleblue}\titlerule[1pt]}]
+\titleformat{\subsection}{\color{ruleblue}\normalsize\bfseries}{\color{ruleblue}\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\color{gray1}\normalsize\bfseries}{\color{gray1}\thesubsubsection}{1em}{}
+\titlespacing*{\section}{0pt}{18pt}{8pt}
+\titlespacing*{\subsection}{0pt}{12pt}{4pt}
+\titlespacing*{\subsubsection}{0pt}{8pt}{2pt}
+
+% ── Header & footer ───────────────────────────────────────────────────────────
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{ruleblue}\leaders\hrule height \headrulewidth\hfill}}
+\fancyhead[L]{\small\color{gray1}FBM logic}
+\fancyhead[R]{\small\color{gray1}The logic underlying FreeFBM}
+\fancyfoot[C]{\small\color{gray1}\thepage}
+
+% ── Hyperlinks ────────────────────────────────────────────────────────────────
+\usepackage[colorlinks=true, linkcolor=ruleblue, urlcolor=ruleblue,
+  pdftitle={FBM logic --- The logic underlying FreeFBM}, bookmarks=true, bookmarksnumbered=true]{hyperref}
+
+% ── Tables, lists, boxes ──────────────────────────────────────────────────────
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage[framemethod=default]{mdframed}
+\newmdenv[backgroundcolor=accentbg, linecolor=ruleblue, linewidth=1pt,
+  innerleftmargin=10pt, innerrightmargin=10pt, innertopmargin=6pt, innerbottommargin=6pt,
+  skipabove=8pt, skipbelow=8pt]{notebox}
+\newmdenv[backgroundcolor=codebg, linecolor=lightgray, linewidth=0.6pt,
+  innerleftmargin=10pt, innerrightmargin=10pt, innertopmargin=6pt, innerbottommargin=6pt,
+  skipabove=8pt, skipbelow=8pt]{rationale}
+\usepackage{parskip}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+\setlength{\emergencystretch}{3em}
+\AtBeginDocument{\sloppy}
+\usepackage{enumitem}
+\setlist[itemize]{noitemsep, topsep=4pt, leftmargin=1.5em}
+\setlist[enumerate]{noitemsep, topsep=4pt, leftmargin=1.8em}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{stmaryrd}
+\usepackage{needspace}
+
+% ── Macros ────────────────────────────────────────────────────────────────────
+% The name of the logic, in one place.
+\newcommand{\FBM}{FBM logic}
+\ExplSyntaxOn
+\NewDocumentCommand{\code}{m}{
+  \tl_set:Nn \l_tmpa_tl {#1}
+  \tl_replace_all:Nnn \l_tmpa_tl {/} {/\allowbreak}
+  \tl_replace_all:Nnn \l_tmpa_tl {\_} {\_\allowbreak}
+  \texttt{\color{codefg}\l_tmpa_tl}
+}
+\ExplSyntaxOff
+% A variable, named after its type as the app names it.
+\newcommand{\vr}[1]{\mathsf{\color{varcol}#1}}
+% Reading words of a fact atom.
+\newcommand{\rd}[1]{\text{\itshape #1}}
+% A fact atom in reading form: \fa{\vr{Person} \rd{lives in} \vr{City}}
+\newcommand{\fa}[1]{(#1)}
+% A type atom: \ta{Student}{\vr{Person}}
+\newcommand{\ta}[2]{\mathsf{#1}(#2)}
+% Data operators, constants, aggregates.
+\newcommand{\dop}[1]{\mathbin{\color{datacol}#1}}
+\newcommand{\dfn}[1]{\mathsf{\color{datacol}#1}}
+\newcommand{\dc}[1]{\text{\color{datacol}\ttfamily #1}}
+\newcommand{\TC}{\mathsf{TC}}
+\newcommand{\tcl}[4]{[\TC_{#1,#2}\,#3](#4)}
+\newcommand{\tcs}[4]{[\TC^{*}_{#1,#2}\,#3](#4)}
+\newcommand{\Ob}{\mathsf{O}}
+\newcommand{\Fb}{\mathsf{F}}
+\newcommand{\pop}{\mathcal{P}}
+\newcommand{\sem}[1]{\llbracket #1 \rrbracket}
+\newcommand{\val}{\mathit{val}}
+\newcommand{\udf}{\bot}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+\begin{titlepage}
+  \vspace*{4cm}
+  \begin{center}
+    {\color{headblue}\fontsize{32}{38}\selectfont\bfseries FBM logic}\\[0.6em]
+    {\color{gray1}\Large The Logic Underlying FreeFBM}\\[2.5em]
+    \textcolor{ruleblue}{\rule{0.6\textwidth}{1.5pt}}\\[0.6em]
+    {\color{ruleblue}\large\itshape Design Document\quad\textperiodcentered\quad Version~1}\\[0.6em]
+    \textcolor{ruleblue}{\rule{0.6\textwidth}{1.5pt}}\\[3cm]
+    {\color{gray1}November 2026\\[0.3em] Describes FreeFBM v1.3.4}
+  \end{center}
+\end{titlepage}
+
+\tableofcontents
+\clearpage
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Introduction}
+\label{sec:intro}
+
+FreeFBM is built on one design principle: every constraint and every
+derivation rule of a schema is a statement in a single sorted logic. The
+graphical notation of ORM2 (bars, dots, circled symbols, ranges) and the
+textual notations (formula constraints, derivation rules, join paths) are
+shorthands for statements in that logic. Verbalisation translates the
+statements into structured natural language, population checks evaluate
+them, and the SQL, NORMA and mapping tools translate them further. This
+document calls the logic \emph{\FBM}, after fact-based modelling and the
+app.
+
+\FBM\ is a first-order logic over the populations of a schema, with
+\begin{itemize}
+  \item variables sorted by object type (entity type, value type or
+        objectified fact type), including intersections of types;
+  \item atoms for fact types (in role order), type membership, object
+        equality, and comparisons and predicates on \emph{data values};
+  \item counting quantifiers $\exists^{\le n}$, $\exists^{\ge n}$,
+        $\exists^{=n}$ and $\exists^{n..m}$, so that uniqueness and frequency
+        constraints stay first-order;
+  \item transitive closure $\tcl{v}{w}{\varphi}{s,t}$ and its
+        reflexive variant $\TC^{*}$, for acyclic and strongly intransitive
+        rings and for recursive rules;
+  \item data terms: data values of variables, constants, a library of data
+        operators, conditional terms and aggregates
+        ($\dfn{Count}$, $\dfn{Sum}$, $\dfn{Avg}$, $\dfn{Min}$, $\dfn{Max}$);
+  \item a deontic marker $\Ob(\varphi)$ for constraints that ought to hold.
+\end{itemize}
+
+\subsection{Who this document is for}
+
+The reader wants to know what the logic underneath FreeFBM \emph{is}: its
+syntax, its typing, its meaning over a population, how each ORM2 constraint
+and rule becomes a formula, and why it was designed this way. Every rule in
+this document was checked against the code of FreeFBM v1.3.4; where the code
+is the reference, the module is named (Appendix~\ref{app:code}). Design
+alternatives appear only as rationale, in shaded boxes like this one:
+
+\begin{rationale}
+\textbf{Rationale.} Boxes like this explain a choice and the alternatives
+that were considered. They can be skipped without losing the definition.
+\end{rationale}
+
+\subsection{Related documents}
+
+\begin{itemize}
+  \item \code{docs/logic/agg-logic.tex}, \emph{An intermediate sorted logic
+        for ORM2} (June 2026): the exploratory draft from which \FBM\ grew. It
+        weighs options that have since been decided, and some of its notation
+        differs (it writes data equality as $\doteq$ where \FBM\ writes
+        $\approx$). It is kept as history; this document supersedes it.
+  \item \code{docs/verbalisation/verbalisation.tex}, \emph{FreeFBM
+        Verbalisation: The Pipeline from Formulas to Sentences and the Rule
+        Language that Drives It}, version~10: how formulas of \FBM\ become
+        sentences in seven languages. Its Section ``Input: Formulas and
+        Entries'' starts where Section~\ref{sec:constraints} of this document
+        ends.
+  \item \code{docs/logic/schema-mappings.tex}: mappings between schemas as
+        rules whose two sides are patterns, a fragment of \FBM\
+        (Section~\ref{sec:mappings}).
+\end{itemize}
+
+\subsection{Where the logic sits}
+
+\begin{center}
+\begin{tabular}{l@{\quad$\longrightarrow$\quad}l}
+\toprule
+\textbf{Source} & \textbf{What uses the formula} \\
+\midrule
+graphical constraints, ranges, subtypes & Constraints tab (formulas, sentences) \\
+derivation rules (types, fact types)    & population validation, derived populations \\
+formula constraints, join paths         & constraint accounting, equivalence, Fold \\
+mapping rules (a fragment)              & SQL (CHECKs, assertions), NORMA role paths \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+All formulas of a schema are produced by one function, \code{formalise}
+in \code{src/logic/constraintFormulas.js}, as a list of
+\emph{entries}, each with a key, the element it belongs to, a kind
+(``Mandatory role'', ``Ring (acyclic)'', \dots), and either a formula or a
+note saying why there is none yet. Everything downstream reads these
+entries; nothing downstream reads constraint types. A hand-written formula
+constraint and a graphical constraint with the same content are therefore
+the same statement, with the same sentence and the same check.
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Vocabulary: what a schema provides}
+\label{sec:vocab}
+
+A schema supplies the non-logical symbols of \FBM.
+
+\paragraph{Types.} The \emph{types} are the object types and the
+objectified fact types:
+\begin{itemize}
+  \item an \emph{entity type} $E$, whose instances are entities;
+  \item a \emph{value type} $V$, whose instances are data values; it has a
+        datatype, and through it a \emph{sort} (below), or no datatype at all;
+  \item an \emph{objectified fact type} $f$, which is also a type: its
+        instances are the nesting instances of $f$'s facts.
+\end{itemize}
+
+\paragraph{Fact types.} A fact type $f$ has roles $1,\dots,n$, each played
+by a type $\pi_f(i)$. A fact atom always lists its arguments in this role
+order (\code{roles[]} in the model). The primary reading of $f$ has its
+slots in the same order, which is why atoms can be written in reading form
+(Section~\ref{sec:notation}). An objectified fact type $f$ also has one
+\emph{link fact type} $f_i$ per role, binary, with roles ($f$, $\pi_f(i)$),
+read ``$f$ involves $\pi_f(i)$'' unless it has a reading of its own. In the
+model its id is \code{<factId>\_il\_<i>}; atoms may use it like any fact
+type.
+
+\paragraph{Subtype links.} A subtype link $S \sqsubseteq T$ between entity
+types (or objectified fact types). The \emph{type hierarchy} of a type is
+its connected component in the graph of subtype links; its \emph{roots} are
+the types in it without a supertype.
+
+\paragraph{Reference schemes.} An entity type is identified by its
+preferred identifier: a \emph{reference mode} (a binary fact type
+$E\ \rd{has}\ V$ with a value type $V$ and a preferred internal uniqueness
+constraint on $V$'s role), a \emph{composite identifier} (an internal or
+external preferred uniqueness constraint over several roles), or one
+inherited from a supertype. The reference mode matters to the logic in one
+way: it gives the entity a \emph{data value} (Section~\ref{sec:values}).
+
+\paragraph{Sorts.} The sorts of data values are FreeFBM's \emph{value
+kinds} (\code{VALUE\_KINDS} in \code{src/utils/datatypeValues.js}), shared
+by all datatype profiles (Abstract, SQL:2016, XML Schema, JSON, TypeScript,
+NORMA, PostgreSQL/SQL types):
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{l l X}
+\toprule
+\textbf{Sort} & \textbf{Order} & \textbf{Values} \\
+\midrule
+\code{integer}, \code{decimal} & total & numbers; decimals rounded to 15 significant digits \\
+\code{float} & partial & IEEE doubles with INF, $-$INF and NaN (NaN is comparable to nothing) \\
+\code{string} & total & text, compared character by character (UTF-16 code units) \\
+\code{boolean} & total & true/false; NORMA's Yes/No (\code{yesNo}) is the same sort \\
+\code{date}, \code{datetime}, \code{time} & partial & instants with or without a timezone \\
+\code{gYear}, \code{gYearMonth}, \code{gMonth}, \code{gMonthDay}, \code{gDay} & partial & XML Schema's partial dates \\
+\code{duration} & partial & months and seconds \\
+\code{yearMonthDuration}, \code{dayTimeDuration} & total & the two halves of a duration \\
+\code{binary} & total & bytes (byte order) \\
+\code{language}, \code{hexBinary}, \code{base64Binary}, \code{unordered} & none & equality only (URIs, names, \dots) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Each sort has a parser from text to value, a value equality and, where it
+has an order, a comparison that may answer ``incomparable''. A date with a
+timezone and one without are comparable only when they are more than 14
+hours apart, as in XML Schema. Numbers \emph{widen} implicitly:
+$\code{integer} \sqsubseteq \code{decimal} \sqsubseteq \code{float}$.
+
+\begin{rationale}
+\textbf{Values, not strings.} Equality and order in \FBM\ are over data
+values, never over the strings that write them: \code{en-GB} equals
+\code{en-gb} as a language tag, and \code{P2D} is less than \code{P10D} as a
+duration. Sorts are defined once, below the datatype profiles, so every
+profile gets the same operators and the same value semantics. A datatype
+that maps to no sort leaves its values without a sort; they can be compared
+with each other only (as numbers when both read as numbers, else as text),
+and cannot be used in calculations.
+\end{rationale}
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Populations: what formulas are about}
+\label{sec:populations}
+
+A formula of \FBM\ is true or false of a \emph{population} of the schema,
+the sample data of the Population tab or a population that a tool builds.
+
+\begin{notebox}
+A \textbf{population} $\pop$ gives
+\begin{itemize}
+  \item for every type $T$ a finite set $\pop(T)$ of instances, and
+  \item for every fact type $f$ of arity $n$ a finite set $\pop(f)$ of
+        $n$-tuples, the facts of $f$.
+\end{itemize}
+\end{notebox}
+
+\paragraph{Instances.} An instance of a value type is a data value of its
+sort, canonicalised so that value-equal spellings are one instance. An
+instance of an entity type is identified by its reference values: the value
+of its reference mode, or the list of the values (or instances) of its
+composite identifier. An instance of an objectified fact type is identified
+by the fact it nests. Two variables denote the same object only if they
+lie in the same type hierarchy and have the same identifier: a
+\code{Person} identified by 7 and a \code{Room} identified by 7 are
+different objects.
+
+\paragraph{Facts.} A fact of $f$ is a tuple of instances, one per role, each
+an instance of the role's player. A population is a set: the same tuple
+cannot occur twice.
+
+\paragraph{Subtypes.} $\pop(S)$ and $\pop(T)$ are separate sets; that each
+instance of a subtype is an instance of its supertype is the formula of the
+subtype link (Section~\ref{sec:constraints}), not a property of populations.
+The populations of derived types and fact types are not stored but computed
+from their rules (Section~\ref{sec:derivation}).
+
+\paragraph{Closed world.} Formulas are evaluated over the population as
+given. A quantified variable of type $T$ ranges over $\pop(T)$, so every
+formula has a finite, and in the absence of aggregates and closures
+polynomial, evaluation. Nothing outside the population exists for a
+formula: there is no domain of ``all possible persons''.
+
+\begin{rationale}
+\textbf{Why populations and not arbitrary structures.} The draft
+(\code{agg-logic.tex}) started from an infinite domain of objects with
+interpretations into it. For what FreeFBM does with formulas (check sample
+data, compute derived populations, build counterexamples in accounting,
+write SQL) the population \emph{is} the structure, and range restriction to
+the population is what makes every formula decidable by evaluation. The
+price is the one the draft found for computed values: a formula cannot
+mention a value that is not in the population. Derivation rules with
+computed roles solve that explicitly (Section~\ref{sec:factrules}).
+\end{rationale}
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Syntax}
+\label{sec:syntax}
+
+\subsection{Variables}
+
+Every variable has a \emph{type}: an object type or an objectified fact
+type. A variable may also range over the \emph{intersection} of several
+types; this is how the subject of a derived subtype with several direct
+supertypes is typed (written $\vr{Student\&Employee}$). Variables are
+objects without names; names are given only when a formula is shown
+(Section~\ref{sec:notation}).
+
+\subsection{Formulas}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{l l X}
+\toprule
+\textbf{Form} & \textbf{Written} & \textbf{Meaning} \\
+\midrule
+truth & $\top$ & always true \\
+fact atom & $f(x_1,\dots,x_n)$ & the tuple is a fact of $f$ (arguments in role order; $f$ may be a link fact type) \\
+type atom & $T(x)$ & $x$ is an instance of $T$ \\
+object equality & $x = y$, $x \ne y$ & the same object, or not \\
+value comparison & $s \approx t$, $s \not\approx t$, $s < t$, $s \le t$, $s > t$, $s \ge t$ & on the data values of terms $s$, $t$ \\
+data predicate & $\dfn{p}(t_1,\dots,t_k)$ & e.g.\ $\dfn{startsWith}$, $\dfn{matches}$ \\
+connectives & $\neg\varphi$, $\varphi\wedge\psi$, $\varphi\vee\psi$, $\varphi\to\psi$, $\varphi\leftrightarrow\psi$ & classical, two-valued \\
+quantifiers & $\forall x\,\varphi$, $\exists x\,\varphi$ & over the population of $x$'s type \\
+counting & $\exists^{\le n}\bar x\,\varphi$, $\exists^{\ge n}\bar x\,\varphi$, $\exists^{=n}\bar x\,\varphi$, $\exists^{n..m}\bar x\,\varphi$ & the number of tuples $\bar x$ with $\varphi$ is $\le n$, $\ge n$, $=n$, in $[n,m]$ \\
+closure & $\tcl{v}{w}{\varphi}{s,t}$, $\tcs{v}{w}{\varphi}{s,t}$ & a chain of one or more (zero or more) $\varphi$-steps from $s$ to $t$ \\
+deontic & $\Ob(\varphi)$ & $\varphi$ ought to hold \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The arguments of fact, type and equality atoms and of closures are
+variables, never terms; data terms occur only in value comparisons and data
+predicates. The left side of a value comparison is never a constant: a
+comparison is written $x \approx \dc{'c'}$ or $x < y$, never
+$\dc{'c'} < x$, because the datatype of the other side decides how the
+constant is read.
+
+Two further modal forms exist only inside verbalisation and are never
+stored or evaluated: $\Diamond\varphi$ (``it is possible that'', for the
+default verbalisation of a missing mandatory or uniqueness constraint) and
+$\Fb(\varphi)$ (``it is forbidden that'', the negative form of a deontic
+constraint). The negative verbalisation also uses $\exists^{>n}$ (``more than
+$n$''); see the verbalisation specification.
+
+\subsection{Data terms}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{l l X}
+\toprule
+\textbf{Term} & \textbf{Written} & \textbf{Meaning} \\
+\midrule
+variable & $x$ & the data value of $x$ (Section~\ref{sec:values}) \\
+constant & $\dc{'Smith'}$, $\dc{12}$ & a value written as text, read under the sort its place needs \\
+operator & $s \dop{+} t$, $\dfn{year}(t)$, \dots & a data operator (Section~\ref{sec:operators}) \\
+conditional & $(\mathbf{if}\ \varphi\ \mathbf{then}\ s\ \mathbf{else}\ t)$ & $s$ when $\varphi$ holds, else $t$ \\
+aggregate & $\dfn{Sum}\{t \mid v_1,\dots,v_k : \varphi\}$ & the sum of the bag of values of $t$, one per binding of $\bar v$ with $\varphi$ \\
+count & $\dfn{Count}\{v_1,\dots,v_k : \varphi\}$ & the number of bindings of $\bar v$ with $\varphi$ \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+An aggregate may be marked \emph{distinct}
+($\dfn{Sum}_{\mathit{distinct}}\{\dots\}$): its bag is then a set of values.
+Aggregates and conditional terms contain formulas, so terms and formulas
+nest in each other.
+
+\subsection{Binding}
+
+$\forall$, $\exists$ and the counting quantifiers bind their variables in
+their body. An aggregate binds its variables in its condition and its term.
+$\tcl{v}{w}{\varphi}{s,t}$ binds $v$ and $w$ in $\varphi$ only; $s$ and $t$
+are outside the brackets, and every other free variable of $\varphi$ is a
+\emph{parameter} of the closure. The square brackets delimit the scope of
+$v$ and $w$, so they may reuse names from outside.
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Data values of variables}
+\label{sec:values}
+
+Value comparisons, data predicates and data operators work on data values,
+not on objects. A variable $x$ of type $T$ has a data value when
+\begin{itemize}
+  \item $T$ is a value type: $\val(x) = x$, of $T$'s sort; or
+  \item $T$ is an entity type with a reference mode, its own or inherited
+        from a supertype: $\val(x)$ is the value $x$ is identified by, of the
+        reference value type's sort.
+\end{itemize}
+Any other variable (an entity type without a reference mode, one with a
+composite identifier, an objectified fact type) has no data value, and
+using it in a data term is a type error. A variable over an intersection
+has the data value of the first of its types that has one.
+
+In a rule the user writes the entity variable directly in the comparison;
+the formula that the Constraints tab shows makes the reference mode
+explicit:
+\[
+  \vr{Course} \approx \dc{'DB1'}
+  \quad\text{is formalised as}\quad
+  \exists \vr{CourseCode}\, \bigl(\fa{\vr{Course}\ \rd{has}\ \vr{CourseCode}} \wedge \vr{CourseCode} \approx \dc{'DB1'}\bigr).
+\]
+Inside an aggregate whose term reads the value of one of the aggregate's
+own entity variables, the value variable is added to the aggregate's
+variables; since a reference mode is one-to-one, the bag is the same:
+$\dfn{Sum}\{\vr{CourseCode} \mid \vr{Course}, \vr{CourseCode} : \dots \wedge
+\fa{\vr{Course}\ \rd{has}\ \vr{CourseCode}}\}$.
+
+\begin{rationale}
+\textbf{Two equalities.} $x = y$ compares objects; $x \approx y$ compares
+data values. For two variables of one value type they coincide, since a
+value type's instances are its values. They differ for entity types
+(two \code{Course} objects with value-equal codes are the same object only
+because the reference mode is unique) and across value types
+($\vr{ShoeSize} \approx \vr{Age}$ may hold, $\vr{ShoeSize} = \vr{Age}$
+never does). The draft wrote $\doteq$ for data equality; \FBM\ uses
+$\approx$, $\not\approx$ and the four order symbols, all primitive, since
+with partial orders $\neg(x < c)$ does not give $x \ge c$. The draft's
+implicit coercion of an entity variable to its reference value is kept for
+writing rules, but every displayed and evaluated formula spells it out.
+\end{rationale}
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Typing}
+\label{sec:typing}
+
+A formula that is stored in the model (a derivation rule, a formula
+constraint, a join path written as a formula) is checked before it is
+formalised or evaluated (\code{checkFormula} in
+\code{src/logic/derivationRule.js}, \code{typeComparison} and
+\code{typePredicate} in \code{src/logic/dataOperators.js}). The check gives
+\emph{errors}, which keep the formula from being used, and
+\emph{warnings}, which leave a well-defined formula that is probably not
+what was meant.
+
+\subsection{Objects in places}
+
+A \emph{place} is a role of a fact atom, the argument of a type atom, a side
+of an object equality, or an end of a closure. A variable of types $\bar T$
+fits a place for instances of $P$ in one of four ways (\code{typeGraph}):
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{l X X}
+\toprule
+\textbf{Fit} & \textbf{When} & \textbf{Result} \\
+\midrule
+ok & some $T_i$ is $P$ or a subtype of $P$ & fine \\
+overlap & $\bar T$ and $P$ share a supertype & fine: whether $x$ is there depends on the population \\
+disjoint & they share one, but lie below mutually exclusive subtypes & warning: always false \\
+none & they lie in different type hierarchies & warning: always false \\
+\bottomrule
+\end{tabularx}
+\end{center}
+Mutually exclusive subtypes are those of an exclusion or exclusive-or
+constraint over subtype links. An atom that can never hold is allowed: it
+is false, and the warning says that the formula can be simplified. Only the
+ends of a closure are strict: an end from another hierarchy is an error.
+
+\begin{rationale}
+\textbf{Soft typing.} Variables are sorted, but a placement that cannot
+hold is not a syntax error. A strict regime (a \code{Person} variable only
+in \code{Person} roles) would reject the common case of a supertype variable
+in a subtype's role, which simply restricts it; rejecting only the
+hopeless cases (no common supertype, exclusive subtypes) and still giving
+them a meaning (false) keeps imported NORMA rules and half-edited rules
+usable.
+\end{rationale}
+
+\subsection{Data terms}
+
+Every data term gets a sort.
+\begin{itemize}
+  \item A variable has the sort of its data value; a variable without one is
+        an error.
+  \item A constant has no sort of its own: it is read under the sort its
+        place needs and must parse there (\dc{'P1X'} is not a duration).
+        A constant that nothing around it types is guessed (integer,
+        decimal, boolean, else string).
+  \item An operator chooses the first of its signatures that its arguments
+        fit, with numeric widening; a constant fits a parameter it parses
+        under.
+  \item A conditional term has the join of its branches' sorts.
+  \item $\dfn{Count}$ gives \code{integer}; $\dfn{Sum}$ keeps the numeric sort
+        of its term; $\dfn{Avg}$ gives \code{decimal} (\code{float} for
+        floats); $\dfn{Min}$ and $\dfn{Max}$ keep any ordered sort. An
+        aggregate needs at least one variable.
+\end{itemize}
+A value comparison needs the two sides to have a common sort (their join
+under widening), and the order symbols need a sort with an order: values of
+an unordered sort can only be compared with $\approx$ and $\not\approx$.
+Values without a datatype may be compared with each other, variable with
+variable, but not used in calculations.
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Semantics}
+\label{sec:semantics}
+
+Let $\pop$ be a population and $\beta$ a binding of the free variables to
+objects. $\pop,\beta \models \varphi$ is defined as usual for first-order
+logic, with these cases:
+
+\begin{itemize}
+  \item $\pop,\beta\models f(x_1,\dots,x_n)$ iff
+        $(\beta(x_1),\dots,\beta(x_n)) \in \pop(f)$, where $\pop(f)$ is the
+        stored or derived population of $f$.
+  \item $\pop,\beta\models T(x)$ iff $\beta(x) \in \pop(T)$.
+  \item $\pop,\beta\models x = y$ iff $\beta(x)$ and $\beta(y)$ are the same
+        object (same hierarchy, same identifier).
+  \item $\pop,\beta\models \forall x\,\varphi$ iff
+        $\pop,\beta[x\mapsto o]\models\varphi$ for every $o\in\pop(T)$, $T$
+        the type of $x$ (for an intersection, the objects all its types
+        share); $\exists$ likewise.
+  \item $\pop,\beta\models \exists^{\le n}\bar x\,\varphi$ iff the number of
+        tuples $\bar o$ over the populations of $\bar x$'s types with
+        $\pop,\beta[\bar x\mapsto\bar o]\models\varphi$ is at most $n$; and so
+        on for $\ge n$, $=n$ and $n..m$ (at least $n$ and at most $m$).
+  \item $\pop,\beta\models \tcl{v}{w}{\varphi}{s,t}$ iff there are
+        $o_0=\beta(s), o_1, \dots, o_k=\beta(t)$ with $k\ge 1$ and
+        $\pop,\beta[v\mapsto o_{i-1}, w\mapsto o_i]\models\varphi$ for each
+        $i$; for $\TC^{*}$ also when $\beta(s)=\beta(t)$ ($k=0$).
+  \item $\Ob(\varphi)$ is evaluated as $\varphi$. The marker changes what a
+        false value means, not the value: a population that breaks an
+        alethic constraint is inconsistent, one that breaks a deontic
+        constraint is reported as breaking an obligation.
+\end{itemize}
+
+\subsection{Data terms and undefinedness}
+
+A data term denotes a value of its sort, or nothing ($\udf$): data
+operators are partial: division by zero, an integer overflow, a text that
+does not read as a date, or a day that does not exist in
+$\dfn{makeDate}$ give no value. The rules are:
+\begin{enumerate}
+  \item A term with an undefined argument is undefined.
+  \item A value comparison or data predicate with an undefined term is
+        \emph{false}.
+  \item $s < t$ (and $\le$, $>$, $\ge$) is false when $s$ and $t$ are
+        incomparable under a partial order (NaN, a date with and one without
+        a timezone close together).
+  \item $(\mathbf{if}\ \varphi\ \mathbf{then}\ s\ \mathbf{else}\ t)$ is $s$
+        or $t$ as $\varphi$ is true or false.
+\end{enumerate}
+Formulas stay two-valued: undefinedness stops at the atom. One consequence
+is that $\neg(x \approx t)$ and $x \not\approx t$ differ when $t$ is
+undefined: the first is true, the second false.
+
+\subsection{Aggregates}
+
+For $\mathcal{F}\{t \mid \bar v : \varphi\}$ under $\beta$, let $B$ be the
+bag holding $\sem{t}$ for every binding $\bar o$ of $\bar v$ over their
+types' populations with $\pop,\beta[\bar v\mapsto\bar o]\models\varphi$;
+with \emph{distinct}, value-equal elements are kept once.
+\begin{itemize}
+  \item $\dfn{Count}\{\bar v:\varphi\}$ is the number of such bindings (0 when
+        there are none).
+  \item \emph{Strict}: if $t$ is undefined for any binding, the aggregate is
+        undefined, with distinct too.
+  \item $\dfn{Sum}$ of an empty bag is 0; $\dfn{Avg}$, $\dfn{Min}$ and
+        $\dfn{Max}$ of an empty bag are undefined.
+  \item $\dfn{Min}$ and $\dfn{Max}$ are undefined when two elements are
+        incomparable.
+\end{itemize}
+
+\begin{rationale}
+\textbf{Partial operators, strict aggregates, false atoms.} The
+alternatives were a three-valued logic (as SQL's) or total operators with
+error values. A two-valued logic in which only atoms can fail keeps every
+connective classical, which the verbalisation, the negative (counterexample)
+rewrite and the chase in constraint accounting rely on. Strictness makes an
+aggregate over partly undefined values undefined rather than silently
+leaving them out. There is no $\dfn{today}$ or $\dfn{now}$: a formula's truth
+depends on the population only.
+\end{rationale}
+
+\begin{rationale}
+\textbf{Labelled nulls.} Constraint accounting and the contract check build
+populations with \emph{labelled nulls} $\bot_1, \bot_2,\dots$ (unknown
+values that the chase may later identify). The evaluator treats a labelled
+null as a value equal only to itself: $\approx$ and $\not\approx$ compare
+labels, and order comparisons with a labelled null are false. These are
+values of the evaluator, not of the logic; no formula can write one.
+\end{rationale}
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Data operators}
+\label{sec:operators}
+
+The data operators are a fixed library (\code{OPS} and \code{PREDS} in
+\code{src/logic/dataOperators.js}), the same for every datatype profile.
+Each has one or more signatures; the first that fits is used.
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+\textbf{Group} & \textbf{Operators} \\
+\midrule
+Numbers & $\dop{+}$, $\dop{-}$, $\dop{\times}$ (same numeric sort); $\dop{\div}$ (decimal or float); $\mathbin{\mathrm{div}}$, $\mathbin{\mathrm{mod}}$ (integers); unary $-$; $\dfn{abs}$; $\dfn{least}$, $\dfn{greatest}$ (any ordered sort); $\dfn{round}(x,n)$ (keeps $x$'s sort, half away from zero); $\dfn{roundInt}$, $\dfn{floor}$, $\dfn{ceiling}$, $\dfn{truncate}$; $\dfn{power}$, $\dfn{sqrt}$ (floats) \\
+Text & $\dop{\Vert}$ (concatenation), $\dfn{length}$, $\dfn{substring}(s, \mathit{start}, \mathit{length})$, $\dfn{upper}$, $\dfn{lower}$, $\dfn{trim}$, $\dfn{toText}$ \\
+Conversions & $\dfn{asInteger}$, $\dfn{asDecimal}$, $\dfn{asFloat}$, $\dfn{asBoolean}$, $\dfn{asDate}$, $\dfn{asDatetime}$, $\dfn{asTime}$: a text (or a narrower value) read as another sort, partial \\
+Dates and times & $\dfn{year}$, $\dfn{month}$, $\dfn{day}$, $\dfn{hour}$, $\dfn{minute}$, $\dfn{second}$, $\dfn{dayOfWeek}$ (1 = Monday), $\dfn{yearsBetween}$, $\dfn{makeDate}$, $\dfn{dateOf}$, $\dfn{timeOf}$; $+$ and $-$ of a duration; the difference of two instants as a day-time duration \\
+Durations & $+$, $-$ and scaling of durations; $\dfn{totalMonths}$, $\dfn{totalDays}$, $\dfn{totalSeconds}$ \\
+Predicates & $\dfn{startsWith}$, $\dfn{endsWith}$, $\dfn{contains}$, $\dfn{matches}$ (a regular expression) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Adding months keeps the day of the month where it exists and takes the last
+day of the month otherwise ($31$~January $+$ \code{P1M} is the last day of
+February). Timezoned dates and times are computed in UTC; the difference of
+an instant with a timezone and one without is undefined.
+
+\begin{rationale}
+\textbf{A fixed library, not model-defined functions.} NORMA has no built-in
+functions: a model defines its own, untyped. \FBM\ instead fixes one typed
+library over the sorts, so a rule can be type-checked, evaluated and written
+as SQL. The NORMA importer reads a model's functions by symbol or name into
+this library and refuses the ones it does not know, with a reason in the
+import log; the exporter defines the ones a rule uses in the exported model.
+\end{rationale}
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Constraints as formulas}
+\label{sec:constraints}
+
+This section lists the formula of every kind of constraint, as
+\code{formalise} builds it. $R$ is a fact type with roles $1..n$; for a set
+$U$ of roles, $\bar x_U$ are the variables of those roles and $\bar y$ the
+others. $Q_i$ is the query of the $i$-th role sequence of an external
+constraint (Section~\ref{sec:queries}); $Q_i(\bar x)$ says that $\bar x$ is
+an answer of it, and $Q_i(\bar x, t)$ that it is an answer for target $t$.
+Readings are omitted here; Section~\ref{sec:notation} shows how the app
+writes the same formulas.
+
+\subsection{Internal constraints of a fact type}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+\textbf{Constraint} & \textbf{Formula} \\
+\midrule
+uniqueness over $U \subsetneq$ roles & $\forall \bar x_U\, \exists^{\le 1} \bar y\, R(\bar x)$ \\
+uniqueness over all roles & no formula: it holds for any set of facts \\
+mandatory role $i$ & $\forall x_i\, \exists \bar y\, R(\bar x)$ \\
+frequency over $U$, ranges $[\mathit{lo}_j,\mathit{hi}_j]$ & $\forall \bar x_U\, \bigl(\exists\bar y\, R(\bar x) \to \bigvee_j \exists^{\mathit{lo}_j..\mathit{hi}_j}\bar y\, R(\bar x)\bigr)$ \\
+value range on role $i$ & $\forall x_i\,\bigl(\exists\bar y\, R(\bar x) \to \mathit{in}(\val(x_i))\bigr)$ \\
+cardinality range on role $i$ & $\bigvee_j \exists^{\mathit{lo}_j..\mathit{hi}_j} x_i\, \exists \bar y\, R(\bar x)$ \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+In a frequency range a lower bound of 1 or less is implied by
+$\exists\bar y\,R$, so it leaves $\exists^{\le \mathit{hi}}$; an open upper bound gives
+$\exists^{\ge\mathit{lo}}$, and a single number $\exists^{=n}$. The same
+simplifications apply to cardinality ranges, with 0 as the implied lower
+bound; a range that every population meets has no formula. A value range is
+a disjunction of conditions, one per part: $v \approx c$, $v \ge
+\mathit{lo}$ ($>$ for an open bound), $v \le \mathit{hi}$ ($<$), or both;
+for an entity type it is about the reference value, as $\val$ says, and a
+type without a data value gets no formula. Order conditions are not allowed
+on unordered sorts.
+
+\paragraph{Preferred identifiers.} A preferred internal uniqueness
+constraint over all roles but the entity's role $e$ also says that each
+entity has exactly one identifying combination:
+$\forall x_e\,\exists^{=1}\bar y\,R(\bar x)$. When an explicit uniqueness
+constraint on $e$ or a mandatory role on $e$ gives one half, only the other
+half is added (``at most one'' or ``at least one'').
+
+\subsection{Object types}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+\textbf{Constraint} & \textbf{Formula} \\
+\midrule
+subtype link $S\sqsubseteq T$ & $\forall x{:}S\; T(x)$ \\
+value range of a value type $V$ (or entity type) & $\forall x{:}V\; \mathit{in}(\val(x))$ \\
+cardinality range of a type $T$ & $\bigvee_j \exists^{\mathit{lo}_j..\mathit{hi}_j} x{:}T\; \top$ \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{External constraints}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+\textbf{Constraint} & \textbf{Formula} \\
+\midrule
+inclusive-or & $\forall t\, \bigvee_i Q_i(t)$ \\
+exclusive-or & $\forall t\, \bigl(\bigvee_i Q_i(t) \wedge \bigwedge_{i<j}\neg(Q_i(t)\wedge Q_j(t))\bigr)$ \\
+subset & $\forall \bar x\,\bigl(Q_1(\bar x) \to Q_2(\bar x)\bigr)$ \\
+equality & $\forall \bar x\,\bigwedge_{j>1}\bigl(Q_1(\bar x) \leftrightarrow Q_j(\bar x)\bigr)$ \\
+exclusion & $\forall \bar x\,\bigwedge_{i<j}\neg\bigl(Q_i(\bar x) \wedge Q_j(\bar x)\bigr)$ \\
+external uniqueness & $\forall \bar x\,\exists^{\le 1} t\, Q(\bar x, t)$ \\
+\quad preferred identifier & also $\forall t\,\exists^{=1}\bar x\, Q(\bar x, t)$ \\
+external frequency & $\forall \bar x\,\bigl(\exists t\,Q(\bar x,t) \to \bigvee_j \exists^{\mathit{lo}_j..\mathit{hi}_j} t\, Q(\bar x, t)\bigr)$ \\
+value comparison $\mathit{op}$ & $\forall t, x_1, x_2\,\bigl(Q(x_1,x_2,t) \to \val(x_1)\ \mathit{op}\ \val(x_2)\bigr)$ \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+All sequences of a set-comparison constraint must have the same length. A
+value comparison's stored $=$ and $\ne$ become $\approx$ and $\not\approx$;
+both sides need data values of the same sort, and an order operator needs an
+ordered sort.
+
+\paragraph{Outer joins.} An external uniqueness constraint may be read with
+outer joins (Halpin's ``o'' through the bar): an object that lacks an
+optional part of the combination counts as having ``no value'' there, and
+two such objects must differ elsewhere. The positions fall into groups that
+share only the target; for every set $A$ of optional groups there is one
+formula, $\forall \bar x\,\exists^{\le 1} t\,\bigl(\bigwedge_{G\notin
+A}P_G(\bar x,t) \wedge \bigwedge_{G\in A}\neg\exists\bar y\,P_G(\bar
+y,t)\bigr)$, where $P_G$ is the group's part of the query and $A=\emptyset$ is
+the ordinary formula. At least one group must be mandatory.
+
+\subsection{Ring constraints}
+
+For a ring constraint over $R(x,y)$ (a query of arity 2 over one type):
+
+\begin{center}
+\small
+\begin{tabular}{l l}
+\toprule
+\textbf{Ring property} & \textbf{Formula} \\
+\midrule
+irreflexive & $\forall x\,\neg R(x,x)$ \\
+locally reflexive & $\forall x,y\,(R(x,y)\to R(x,x))$ \\
+purely reflexive & $\forall x,y\,(R(x,y)\to x=y)$ \\
+asymmetric & $\forall x,y\,(R(x,y)\to\neg R(y,x))$ \\
+symmetric & $\forall x,y\,(R(x,y)\to R(y,x))$ \\
+antisymmetric & $\forall x,y\,(R(x,y)\wedge x\ne y\to\neg R(y,x))$ \\
+transitive & $\forall x,y,z\,(R(x,y)\wedge R(y,z)\to R(x,z))$ \\
+intransitive & $\forall x,y,z\,(R(x,y)\wedge R(y,z)\to \neg R(x,z))$ \\
+acyclic & $\forall x\,\neg\tcl{v}{w}{R(v,w)}{x,x}$ \\
+strongly intransitive & $\forall x,y,z\,\bigl(R(x,y)\wedge\tcl{v}{w}{R(v,w)}{y,z}\to\neg R(x,z)\bigr)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Deontic constraints}
+
+Every alethic formula $\varphi$ above has a deontic counterpart
+$\Ob(\varphi)$, for an external or formula constraint, an internal frequency, a
+mandatory role, a (non-preferred) internal uniqueness constraint, a value
+range and a cardinality range. A preferred identifier is always alethic.
+
+\subsection{Objectification}
+
+An objectified fact type $f(A_1,\dots,A_n)$ with link fact types $f_i(D,
+A_i)$, $D$ the objectified type, has three formulas:
+\begin{align*}
+&\forall \bar a\,\bigl(f(\bar a) \to \exists^{=1}d\,\textstyle\bigwedge_i f_i(d,a_i)\bigr) && \text{each fact has exactly one nesting instance,}\\
+&\forall \bar a\,\bigl(\exists d\,\textstyle\bigwedge_i f_i(d,a_i) \to f(\bar a)\bigr) && \text{linked values form a fact,}\\
+&\forall d\,\exists^{=1}\bar a\,\textstyle\bigwedge_i f_i(d,a_i) && \text{each nesting instance links exactly one combination.}
+\end{align*}
+
+\subsection{Implicit constraints}
+
+Two kinds of constraint have no shape on the diagram; the Constraints tab
+lists them on request, and validation, accounting and the equivalence check
+use them.
+\begin{itemize}
+  \item \textbf{Disjoint roots.} The roots of two different entity-type
+        hierarchies have no instance in common: $\forall x{:}A\;\neg B(x)$.
+        Value types are left out: their disjointness does not depend on the
+        schema.
+  \item \textbf{Implicit participation} (Halpin). An instance of an entity
+        type $T$ that is not independent plays some role other than those of
+        its preferred identifier: $\forall x{:}T\,\bigvee_k
+        \exists\bar y\,R_k(\dots x\dots)$, over every role played by a type of
+        $T$'s hierarchy; when the role's player $P$ is neither $T$ nor one of
+        its supertypes, the disjunct is $\exists\bar y\,(P(x)\wedge R_k(\dots
+        x\dots))$. The entity types of a relational schema count as
+        independent, since a row may have only its key. A fully derived type
+        whose rule has its subject play such a role needs no entry.
+\end{itemize}
+
+\subsection{Formula constraints}
+
+A constraint of kind \emph{formula} is a closed formula of \FBM\ written by
+the user in the rule editor, with an optional name and modality; its
+formula is exactly what was written. It is the general form of which the
+graphical constraints are shorthands, and FreeFBM recognises when a formula
+constraint has the shape of a graphical one (a subset, equality, exclusion,
+frequency or uniqueness, inclusive- or exclusive-or, or value comparison,
+with join paths) and offers to turn it into that constraint.
+
+\begin{rationale}
+\textbf{Counting quantifiers before aggregation.} Uniqueness and frequency
+could be written with $\dfn{Count}$: $\forall x\,(\dfn{Count}\{y:R(x,y)\}\le
+1)$. \FBM\ uses $\exists^{\le n}$ instead, so every graphical constraint is a
+first-order formula with counting quantifiers, which the verbalisation reads
+as ``at most one'', the negative rewrite turns into ``more than one'', and
+the chase and the SQL writer handle without aggregates. Aggregation is
+reserved for rules that compute values.
+\end{rationale}
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Queries: join paths of external constraints}
+\label{sec:queries}
+
+Each role sequence of an external constraint denotes a \emph{query}, a
+formula whose free variables are the sequence positions and, for
+uniqueness, frequency, inclusive-or and exclusive-or, the target:
+\[
+  \{\ \mathit{free}: [q_1,\dots,q_k],\ \mathit{target}: t,\ \mathit{body}: \varphi\ \}.
+\]
+A sequence of roles of one fact type has the implicit query $R(\dots)$; a
+single subtype link has the query $S(t)$. Any other sequence needs a join
+path, which is a query like any other (\code{src/logic/query.js}). Queries
+have the same format as derivation rules (Section~\ref{sec:derivation}),
+and the same evaluator answers both.
+
+\paragraph{Anchoring.} Every position $q_i$ must play the role of its
+sequence member in an atom of the query's \emph{positive conjunctive core},
+the atoms reached from the top through $\exists$ and $\wedge$ only (not under
+$\neg$, $\vee$, $\to$, $\leftrightarrow$, $\forall$ or a counting quantifier);
+a role of an objectified fact type may be played through its link fact
+type. The target must occur in the query.
+
+\paragraph{The graphical fragment.} A query whose body is $\exists$ and
+$\wedge$ over fact atoms, type atoms of subtypes and object equalities, with
+every position anchored, can be drawn and edited as a graph of atoms and
+links; the formula is derived from the graph. Any other query is edited as a
+formula. Both are stored with their formula, so a file always carries it.
+
+\begin{rationale}
+\textbf{One format for queries and rules.} Join paths used to be a separate
+graph language. They are now formulas in the rule format, with the graph as
+an editor for the part that is intuitively graphical. Anchoring is stricter
+than NORMA, which allows constant and calculated projections: in \FBM\ such
+a projection is a derived fact type, explicit and visible on the diagram.
+\end{rationale}
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Derivation rules}
+\label{sec:derivation}
+
+A derivation rule defines the population of a type or fact type by a
+formula. A \emph{derived} element's population is exactly what its rule
+gives (marked $*$); a \emph{semi-derived} element's population is its stored
+population plus what its rule gives (marked $+$).
+
+\subsection{Subtypes}
+
+A rule for subtype $S$ is a formula $\varphi(x)$ with one free variable,
+the \emph{subject}, over the intersection of $S$'s direct supertypes:
+\[
+  \text{derived: } \forall x\,\bigl(S(x) \leftrightarrow \varphi(x)\bigr)
+  \qquad
+  \text{semi-derived: } \forall x\,\bigl(\varphi(x) \to S(x)\bigr)
+\]
+The candidates are the instances all direct supertypes share, so a derived
+subtype keeps its supertypes' identifiers. A rule that does not mention the
+subject gets a warning: it holds for all candidates or for none.
+
+\subsection{Entity types through their reference scheme}
+
+An entity type $E$ without supertypes but with a reference mode or a
+composite identifier can be derived too. Its rule's free variables are its
+reference values $a_1,\dots,a_k$, one per part of the scheme, and each answer
+is an instance, the one those values identify:
+\[
+  \text{derived: } \forall \bar a\,\bigl(\exists e\,\mathit{ident}(e,\bar a) \leftrightarrow \varphi(\bar a)\bigr)
+  \qquad
+  \text{semi-derived: } \forall \bar a\,\bigl(\varphi(\bar a) \to \exists e\,\mathit{ident}(e,\bar a)\bigr)
+\]
+where $\mathit{ident}$ is the conjunction of the identifying fact atoms. The
+rule must mention every reference value, and the reference scheme may not
+use a derived fact type.
+
+\subsection{Fact types}
+\label{sec:factrules}
+
+A fact type $p$ has one variable per role. A role is either
+\emph{selected}, its variable bound to an object of the population, or
+\emph{computed}, its object being the one whose data value a term gives.
+With $\bar x$ the selected variables, $\bar y$ the computed ones and $\bar z$
+the rule's extra variables, a rule is
+\[
+  p(\bar x, \bar y^{*}) \;\Leftarrow\; \varphi(\bar x, \bar z) \;\wedge\; \textstyle\bigwedge_i y_i \approx t_i(\bar x, \bar z)
+\]
+and is formalised as
+\begin{align*}
+  \mathrm{F1}\quad & \forall \bar x, \bar z\,\bigl(\varphi \to \exists \bar y\,(p(\bar x,\bar y) \wedge \textstyle\bigwedge_i y_i\approx t_i)\bigr) && \text{every derived fact holds,}\\
+  \mathrm{F2}\quad & \forall \bar x, \bar y\,\bigl(p(\bar x,\bar y) \to \exists \bar z\,(\varphi \wedge \textstyle\bigwedge_i y_i\approx t_i)\bigr) && \text{only derived facts hold.}
+\end{align*}
+A derived fact type has both, a semi-derived one only F1. Without computed
+roles the two are shown together as
+$\forall\bar x\,(p(\bar x)\leftrightarrow\exists\bar z\,\varphi)$ (semi-derived:
+$\forall\bar x,\bar z\,(\varphi\to p(\bar x))$). A condition $\top$ is left
+out, and a derived fact type without extra variables shows F1 as
+$\forall\bar x\,(\varphi\to\exists\bar y\,p(\bar x,\bar y))$, since F2 then
+fixes $y_i\approx t_i(\bar x)$ for every fact.
+
+The conditions on such a rule:
+\begin{itemize}
+  \item $\varphi$ may not use the computed variables, and a term may not use
+        a computed variable;
+  \item a computed role's player is a value type or an entity type with a
+        (possibly inherited) reference mode, neither derived nor
+        objectified; the term's sort must fit its data value;
+  \item a selected or extra variable used neither in $\varphi$ nor in a term
+        gets a warning, since it then ranges over its whole type;
+  \item objectified fact types and fact types that identify an entity type
+        cannot be derived.
+\end{itemize}
+Evaluating the rule adds the objects it computes to the populations of their
+types (and their supertypes, and the value type of their reference mode).
+
+\begin{rationale}
+\textbf{Why F1 and not the biconditional.} The natural translation of
+``markup = retail price $-$ wholesale price'' is
+$\forall\vr{Article},\vr{Money}\,(\mathit{hasMarkup}(\vr{Article},\vr{Money})
+\leftrightarrow \dots \wedge \vr{Money}\approx m_1 \dop{-} m_2)$. But
+$\forall\vr{Money}$ ranges over the \code{Money} objects that already exist,
+so if no object has the value $4$, the formula says nothing about a markup
+of 4. Computed roles make the creation of the object explicit, and F1 puts
+the extra variables outside, so that several bindings of $\bar z$ with
+different values for one $\bar x$ each give a fact rather than one
+arbitrary one.
+\end{rationale}
+
+\subsection{Recursion}
+
+A rule depends on the fact types and types its atoms use, on the types its
+variables range over (unless a positive fact atom of the formula binds the
+variable through a role of its own type), on the supertypes of a derived
+subtype, and on the derived fact types that compute objects of a type it
+depends on (\code{src/logic/derivationDependencies.js}). The dependency
+graph must be acyclic, with one exception: a \emph{semi-derived} fact type
+or subtype may use itself where it occurs \emph{positively}, under an even
+number of negations, outside the left of $\to$, outside $\leftrightarrow$,
+and under no counting quantifier other than $\exists^{\ge n}$. Its population
+is then the least fixpoint of its rule over the stored population.
+
+\begin{rationale}
+\textbf{Transitive closure rather than general recursion.} Reachability is
+what most schemas need recursion for (acyclic rings, ``reports to,
+directly or indirectly''). $\TC$ gives it inside a single formula, with a
+fixed meaning and a uniform reading (``by one or more steps''), without
+stratification. The NORMA importer turns positive linear self-recursion in a
+fully derived fact type into $\TC^{*}$, and the exporter turns it back. The
+remaining general case, positive self-reference in semi-derived rules, has
+the least-fixpoint meaning above. A closure is over binary relations of
+single variables; the tuple-indexed form
+$[\TC_{\bar v,\bar w}\,\varphi](\bar s,\bar t)$ of the draft is not
+implemented.
+\end{rationale}
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Notation in the app}
+\label{sec:notation}
+
+The Constraints tab, the rule editor and every report write formulas the
+same way (\code{src/logic/renderFormula.js}).
+\begin{itemize}
+  \item \textbf{Variables} are named after their type, with spaces removed
+        and later words capitalised ($\vr{StaffMember}$). A subscript is added
+        only when two variables of the same type can be in scope at once
+        somewhere in the formula; otherwise the bare name is used. A
+        variable over an intersection is named after its types:
+        $\vr{Student\&Employee}$.
+  \item \textbf{Fact atoms} are written in reading form, in parentheses,
+        with the primary reading's words around the variables:
+        $\fa{\vr{Person}\ \rd{lives in}\ \vr{City}}$. Type atoms are
+        $\ta{Student}{\vr{Person}}$.
+  \item \textbf{Quantifiers} are written one per variable, $\forall
+        \vr{Person}\ \exists \vr{City}$; a counting quantifier carries its bound
+        as a superscript and may bind several variables:
+        $\exists^{\le 1}\vr{Course}, \vr{Term}$.
+  \item \textbf{Constants} are quoted unless their sort is a number or a
+        truth value: $\vr{Name} \approx \dc{'Smith'}$, $\vr{Credits} \ge \dc{5}$.
+  \item \textbf{Copying} gives plain text with \verb|^{…}| for superscripts
+        and \verb|_{…}| for the variables of $\TC$:
+        \verb|[TC_{Course_2,Course_3} (Course_2 requires Course_3)](Course_1, Course_1)|
+        (with subscript digits where this shows \verb|_2|).
+\end{itemize}
+
+For example, a uniqueness constraint over the first two roles of
+\emph{Student enrols in Course in Term}, a mandatory role and an acyclic
+ring:
+\begin{align*}
+  & \forall\vr{Student}\ \forall\vr{Course}\ \exists^{\le1}\vr{Term}\ \fa{\vr{Student}\ \rd{enrols in}\ \vr{Course}\ \rd{in}\ \vr{Term}} \\
+  & \forall\vr{Person}\ \exists\vr{PersonName}\ \fa{\vr{Person}\ \rd{has}\ \vr{PersonName}} \\
+  & \forall\vr{Course}_1\ \neg[\TC_{\vr{Course}_2,\vr{Course}_3}\ \fa{\vr{Course}_2\ \rd{requires}\ \vr{Course}_3}](\vr{Course}_1,\vr{Course}_1)
+\end{align*}
+
+\begin{rationale}
+\textbf{Readings, not predicate names.} A formula in reading form can be
+read by a modeller who knows the diagram. Arguments still follow the fact
+type's role order, because the primary reading's slots follow it, so the
+reading form and a predicate form $\mathit{enrolsIn}(x,y)$ are the same atom
+written two ways.
+\end{rationale}
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Two representations}
+\label{sec:representations}
+
+The code holds formulas in two forms.
+
+\begin{itemize}
+  \item \textbf{Formula trees} (\code{src/logic/formula.js}) are what
+        \code{formalise} produces and the Constraints tab, the verbalisation
+        and the SQL writer read. Variables are objects compared by identity,
+        with a type (or several); quantifiers and counts may bind several
+        variables. They are built, never stored.
+  \item \textbf{Rule trees} (\code{src/logic/derivationRule.js}) are what the
+        model stores and the rule editor edits: derivation rules, formula
+        constraints, queries, mapping patterns and table rules. Variables have
+        ids and are declared one per quantifier; a part not filled in yet is a
+        hole; an entity variable may be used directly as a data term. A
+        fact type's rule is \code{\{ body, extraVars, terms \}}, a query
+        \code{\{ free, target, body \}}.
+\end{itemize}
+
+\code{ruleFormula} turns a checked rule tree into a formula tree (adding the
+reference-mode atoms of Section~\ref{sec:values}); \code{formulaToRule}
+(\code{src/logic/formulaToRule.js}) turns a formula tree back into a rule
+tree, so that a formalised constraint can be evaluated, rewritten or kept as
+a formula constraint. A counting quantifier of several variables has no rule
+form except for the bounds 0 and 1, where at least one is $\exists\bar y\,\varphi$
+and at most one is $\neg\exists\bar y,\bar y'\,(\varphi\wedge\varphi'\wedge
+\bar y\ne\bar y')$.
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{What FreeFBM does with formulas}
+\label{sec:uses}
+
+\paragraph{Verbalisation.} Every entry's formula is the only input of the
+verbalisation pipeline. The negative mode states the counterexample: $\varphi$
+is rewritten as $\neg X$ with the negation pushed inward ($\forall$ becomes
+$\exists$, $\exists^{\le n}$ becomes $\exists^{>n}$, value comparisons flip)
+and $X$ is said as ``it is impossible that $X$''; a deontic $\Ob(\varphi)$
+becomes $\Fb(X)$. The default mode states missing mandatory and uniqueness
+constraints as $\Diamond X$. See the verbalisation specification.
+
+\paragraph{Population validation and derived populations.} One evaluator,
+in \code{src/logic/derivedPopulation.js}, computes the populations of derived
+elements and evaluates formula constraints, semi-derivation rules and
+queries on the sample population, with counterexamples. A script
+(\code{scripts/population-coverage-check.mjs}) checks that the built-in
+population checks report a constraint exactly when its formula is false, on
+the sample and on mutated populations.
+
+\paragraph{Constraint accounting, equivalence and Fold.} The mapping tools
+build the smallest violation of a formula, carry it across a mapping and
+close it under the other schema's constraints by a chase, which applies
+formulas of the form $\forall\bar y\,(L\to R)$ with positive $L$ and $R$ as
+tuple-generating dependencies.
+
+\paragraph{SQL.} A constraint of a relational schema without a table form is
+written from its formula: a \code{CHECK} when it reads one row, else a query that
+returns the violations, enforced by triggers or assertions per SQL system
+(\code{src/relational/formulaSql.js}). SQL conditions are three-valued; the
+translation keeps them two-valued in both directions: an imported \code{CHECK}
+becomes $\forall t\,N(\varphi)$, with $N$ (``not false'') and $U$ (``not
+true'') expressing SQL's treatment of NULL in \FBM\
+(\code{src/relational/checkFormula.js}), and an exported condition is never
+unknown.
+
+\paragraph{NORMA.} Derivation rules and join paths are read from and written
+to NORMA role paths where they are conjunctive (with negation, disjunction,
+conditions and calculated values as NORMA allows), and kept as informal
+rules holding the formula otherwise.
+
+\subsection{Mappings}
+\label{sec:mappings}
+
+A mapping rule relates a pattern over one schema to a pattern over another.
+Patterns are the fragment of \FBM\ with $\exists$, $\wedge$, fact and type
+atoms, $\neg$, value equalities $x\approx\$y$ and $x\approx\dc{'c'}$ with
+\emph{frontier variables} $\$y$ shared by both sides, table-row atoms
+(shorthand for the column fact atoms of a relational schema) and optional
+parts. Their meaning, key-safety and the accounting of constraints across a
+mapping are defined in \code{docs/logic/schema-mappings.tex}. View mappings
+are derivation rules of a target schema's elements whose formulas read a
+source schema.
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Limits and open points}
+\label{sec:open}
+
+\begin{itemize}
+  \item $\TC$ is over pairs of single variables; tuple-indexed closures are
+        not implemented. The Oracle writer refuses a closure with
+        parameters, since Oracle cannot correlate a recursive \code{WITH}
+        inside a subquery.
+  \item A rule tree's counting quantifier binds one variable; counts of
+        several variables come only from \code{formalise} (frequency and
+        external constraints) and have a rule form only for the bounds 0
+        and 1.
+  \item Entity types with a composite identifier have no data value, so
+        value comparisons and terms reach them only through their parts.
+        Converting between a reference mode and a composite identifier
+        (value functions) is undecided.
+  \item Objectified fact types cannot be derived.
+  \item There are no local definitions (``$\psi$ \textbf{where} $p :=
+        \varphi$''); an auxiliary predicate is a derived fact type.
+  \item $\Ob$ is a marker on a whole constraint, not a modal operator that can
+        be nested; there is no deontic logic beyond it.
+\end{itemize}
+
+% ═════════════════════════════════════════════════════════════════════════════
+\appendix
+\section{Where the logic lives in the code}
+\label{app:code}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+\textbf{Module} & \textbf{Contents} \\
+\midrule
+\code{src/logic/formula.js} & formula trees and their constructors \\
+\code{src/logic/renderFormula.js} & notation: tokens, variable names, copy form \\
+\code{src/logic/constraintFormulas.js} & \code{formalise}: the entries of Section~\ref{sec:constraints}, implicit constraints, objectification, defaults \\
+\code{src/logic/values.js} & data values of variables (\code{valueAccess}, \code{withValues}) \\
+\code{src/logic/dataOperators.js} & sorts, operators, predicates, aggregates, typing, term evaluation \\
+\code{src/utils/datatypeValues.js} & value kinds: parsing, equality, order \\
+\code{src/logic/derivationRule.js} & rule trees, typing of formulas, subtype and entity-type rules \\
+\code{src/logic/factDerivation.js} & fact type rules, F1 and F2 \\
+\code{src/logic/derivationDependencies.js} & dependencies and cycles between rules \\
+\code{src/logic/query.js} & join-path queries, anchoring, the graphical fragment, outer joins \\
+\code{src/logic/formulaConstraint.js} & formula constraints \\
+\code{src/logic/formulaToRule.js} & formula trees back to rule trees \\
+\code{src/logic/modality.js} & where deontic modality is stored \\
+\code{src/logic/derivedPopulation.js} & the evaluator \\
+\code{src/utils/independence.js} & independent types, identified roles \\
+\code{src/verbalisation/negative.js} & counterexample rewrite \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\end{document}

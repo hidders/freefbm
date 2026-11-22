@@ -1,5 +1,5 @@
 // Data operators: the data functions and data predicates of the logic
-// (docs/logic/agg-logic.tex, section "Adding typed terms"), so that derivation
+// (docs/logic/fbm-logic.tex, sections "Data terms" and "Data operators"), so that derivation
 // rules can compute values.
 //
 // The sorts of the logic are the value kinds of src/utils/datatypeValues.js
