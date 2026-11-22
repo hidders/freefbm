@@ -2,6 +2,7 @@ import React from 'react'
 import { SHORTCUT_GROUPS } from '../utils/shortcuts'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { EntityTypeIcon, FactTypeIcon } from './ToolPanel'
+import { LogoMark, Wordmark } from './Logo'
 import SAMPLE_RAW from '../data/sample.ffbm?raw'
 
 export default function WelcomeScreen({ onClose }) {
@@ -73,14 +74,13 @@ export default function WelcomeScreen({ onClose }) {
           onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-muted)' }}
           title="Close">×</button>
         )}
-        <div style={{ marginBottom: 22 }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 600,
-            color: 'var(--col-entity)', letterSpacing: '0.01em', fontStyle: 'italic',
-            marginBottom: 5 }}>
-            FreeFBM
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--ink-muted)', lineHeight: 1.6 }}>
-            Object-Role Modelling 2 — fact-oriented conceptual data modelling
+        <div style={{ marginBottom: 22, display: 'flex', alignItems: 'center', gap: 14 }}>
+          <LogoMark size={64}/>
+          <div>
+            <Wordmark size={32} style={{ display: 'block', marginBottom: 6 }}/>
+            <div style={{ fontSize: 12, color: 'var(--ink-muted)', lineHeight: 1.6 }}>
+              Fact-based modelling: ORM2 schemas, tables, and the mappings between them
+            </div>
           </div>
         </div>
 

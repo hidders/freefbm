@@ -4,9 +4,18 @@ const fs = require('fs')
 
 const isDev = !app.isPackaged
 
+// The app icon (docs/logo/). A packaged app has it from electron-builder; in
+// development the window (Windows, Linux) and the Dock (macOS) take it from
+// build/ so it does not show Electron's own.
+const devIcon = path.join(__dirname, '..', 'build', 'icon.png')
+const hasDevIcon = isDev && fs.existsSync(devIcon)
+
+let mainWin = null
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440, height: 900, minWidth: 960, minHeight: 640,
+    ...(hasDevIcon && process.platform !== 'darwin' ? { icon: devIcon } : {}),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     backgroundColor: '#0d0f0e',
     webPreferences: {
@@ -26,8 +35,52 @@ function createWindow() {
 
   buildMenu(win)
   guardUnsaved(win)
+  mainWin = win
+  win.on('closed', () => { if (mainWin === win) { mainWin = null; filesReady = null } })
   return win
 }
+
+// Model files the operating system asks the app to open: a double-click on a
+// .ffbm file (the installer registers the type, package.json build
+// fileAssociations), Open With, or a file dropped on the Dock icon. macOS
+// sends open-file, also before the app is ready; Windows and Linux start the
+// app with the path as an argument. The page asks for them once it listens
+// (app:readyForFiles) and opens them as File › Open would.
+const MODEL_FILE = /\.(ffbm|orm2|json|orm)$/i
+const pendingFiles = []
+let filesReady = null
+
+function openPath(p) {
+  if (!MODEL_FILE.test(p) || !fs.existsSync(p)) return
+  pendingFiles.push(p)
+  flushFiles()
+}
+
+function flushFiles() {
+  if (!filesReady || filesReady.isDestroyed()) return
+  while (pendingFiles.length) {
+    const p = pendingFiles.shift()
+    try { filesReady.send('app:openPath', { path: p, content: fs.readFileSync(p, 'utf-8') }) }
+    catch (err) { dialog.showErrorBox('Could not open the file', `${p}\n${err.message}`) }
+  }
+  if (mainWin && !mainWin.isDestroyed()) mainWin.focus()
+}
+
+ipcMain.on('app:readyForFiles', (event) => {
+  if (!mainWin || event.sender !== mainWin.webContents) return
+  filesReady = event.sender
+  flushFiles()
+})
+
+app.on('open-file', (event, p) => {
+  event.preventDefault()
+  openPath(p)
+  if (app.isReady() && (!mainWin || mainWin.isDestroyed())) createWindow()
+})
+
+for (const arg of process.argv.slice(1)) if (!arg.startsWith('-')) openPath(path.resolve(arg))
+
+ipcMain.on('app:openGitHub', () => shell.openExternal('https://github.com/hidders/freefbm'))
 
 // Unsaved changes: the page refuses to unload while the model is dirty
 // (hooks/useDocumentState.js), and the question is asked here. Save asks the
@@ -116,7 +169,7 @@ function openWorkbench() {
   if (workbench && !workbench.isDestroyed()) { workbench.focus(); return }
   workbench = new BrowserWindow({
     width: 1280, height: 820, minWidth: 800, minHeight: 500,
-    title: 'Verbalisation Workbench',
+    title: 'Verbalisation workbench — FreeFBM',
     backgroundColor: '#f5f0e8',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -147,7 +200,18 @@ function buildMenu(win) {
   const mm = mappingMenu
   const mItem = (id, label, extra = {}) => ({ id, label: mm.labels?.[id] ?? label, click: mappingAction(id), ...extra })
   const template = [
-    ...(isMac ? [{ role: 'appMenu' }] : []),
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { label: 'About FreeFBM', click: send('menu:about') },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    }] : []),
     {
       label: 'File',
       submenu: [
@@ -258,6 +322,7 @@ function buildMenu(win) {
         { label: 'Keyboard shortcuts', accelerator: 'CmdOrCtrl+/', click: send('menu:shortcuts') },
         { type: 'separator' },
         { label: 'FreeFBM on GitHub', click: () => shell.openExternal('https://github.com/hidders/freefbm') },
+        ...(isMac ? [] : [{ type: 'separator' }, { label: 'About FreeFBM', click: send('menu:about') }]),
       ],
     },
   ]
@@ -383,6 +448,7 @@ ipcMain.handle('dialog:saveRules', async (event, { defaultPath, content }) => {
 })
 
 app.whenReady().then(() => {
+  if (hasDevIcon && process.platform === 'darwin') app.dock?.setIcon(devIcon)
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 })

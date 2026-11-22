@@ -48,6 +48,16 @@
     "appId": "com.hidders.freefbm",
     "productName": "FreeFBM",
     "copyright": "Copyright © 2026 hidders",
+    "fileAssociations": [
+      {
+        "ext": "ffbm",
+        "name": "FreeFBM model",
+        "description": "FreeFBM model",
+        "role": "Editor",
+        "icon": "ffbm",
+        "mimeType": "application/x-freefbm"
+      }
+    ],
     "directories": {
       "output": "release",
       "buildResources": "build"
