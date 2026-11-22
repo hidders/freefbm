@@ -2,6 +2,7 @@
 \usepackage{geometry}
 \geometry{a4paper}
 \usepackage{amssymb}
+\usepackage{stmaryrd}
 \usepackage[dvipsnames]{xcolor}
 \usepackage[colorinlistoftodos,prependcaption]{todonotes}
 
@@ -17,24 +18,20 @@
 \theoremstyle{remark}
 \newtheorem{remark}[theorem]{Remark}
 
-% ── Macros shared with agg-logic.tex ─────────────────────────────────────────
-\newcommand{\DataTypes}{\mathcal{T}}
+% ── Notation of FBM logic (fbm-logic.tex) ────────────────────────────────────
+\definecolor{datacol}{HTML}{2E7D32}
+\newcommand{\FBM}{FBM logic}
 \newcommand{\DataValues}{\mathcal{V}}
-\newcommand{\DomObjects}{\mathcal{O}}
-\newcommand{\DomValues}{\mathcal{O}^{\mathsf{val}}}
-\newcommand{\DomEnts}{\mathcal{O}^{\mathsf{ent}}}
-\newcommand{\Preds}{\mathcal{P}}
-\newcommand{\EntPreds}{\Preds^{\textsf{ent}}}
-\newcommand{\ValPreds}{\Preds^{\textsf{val}}}
-\newcommand{\FactPreds}{\Preds^{\textsf{fact}}}
-\newcommand{\RefSchemes}{\mathcal{R}}
-\newcommand{\sem}[1]{[\![{#1}]\!]}
-\newcommand{\pr}[1]{\mathsf{\textcolor{RoyalBlue}{#1}}}
-\newcommand{\var}[1]{\mathsf{\textcolor{Plum}{#1}}}
-\newcommand{\tp}[1]{\texttt{\textsc{#1}}}
-\newcommand{\dataOp}[1]{\mathbin{\textcolor{ForestGreen}{#1}}}
-\newcommand{\dataVal}[1]{\textcolor{ForestGreen}{#1}}
-\newcommand{\dataEq}{\mathrel{\textcolor{ForestGreen}{\doteq}}}
+\newcommand{\Types}{\mathcal{T}}
+\newcommand{\EntTypes}{\Types^{\mathsf{ent}}}
+\newcommand{\ValTypes}{\Types^{\mathsf{val}}}
+\newcommand{\FactTypes}{\mathcal{F}}
+\newcommand{\pop}{\mathcal{P}}
+\newcommand{\val}{\mathit{val}}
+\newcommand{\sem}[1]{\llbracket #1 \rrbracket}
+\newcommand{\dataVal}[1]{\textcolor{datacol}{#1}}
+% Value equality of FBM logic: data values, not objects.
+\newcommand{\dataEq}{\mathrel{\approx}}
 
 % ── New in this document ─────────────────────────────────────────────────────
 % Frontier (data) variables, shared between the two sides of a mapping rule.
@@ -84,9 +81,10 @@ nullable columns) while keeping three properties:
     that would have to be added to either schema to make it one can be
     reported to the user (\emph{constraint accounting}).
 \end{enumerate}
-The logic is that of \emph{An intermediate sorted logic for ORM2}
-(\texttt{agg-logic.tex}); we reuse its notation and only add what mappings
-need. Aggregation, transitive closure and data functions are deliberately
+The logic is \FBM, the logic underlying FreeFBM
+(\texttt{docs/logic/fbm-logic.tex}); we use its notation and only add what
+mappings need: frontier variables, $\NULL$, optional parts and relational
+atoms. Aggregation, transitive closure and data functions are deliberately
 left out of the mapping language: a rule that needs them is expressed by a
 derived fact type inside one of the schemas, which the mapping then relates
 with a simple rule.
@@ -96,50 +94,56 @@ with a simple rule.
 
 \subsection{Schemas}
 
-A \emph{schema} $S = (V_S, \Sigma_S)$ consists of a vocabulary $V_S =
-(\Preds_S, \delta_S, \sigma_S, \RefSchemes_S)$ as in \texttt{agg-logic.tex}
-and a set $\Sigma_S$ of constraints, which are closed formulas of that
-logic. An \emph{instance} of $S$ is an interpretation $\iota_S$ of $V_S$
-with $\iota_S \models \Sigma_S$. A mapping relates two schemas $S$ and $T$
-whose predicate sets are disjoint, so that an instance of $S$ and an
-instance of $T$ together form an interpretation $\iota_S \cup \iota_T$ of
-the combined vocabulary.
+A \emph{schema} $S = (V_S, \Sigma_S)$ consists of a vocabulary $V_S$ as in
+\FBM\ (Section~2 of \texttt{fbm-logic.tex}): entity types $\EntTypes_S$,
+value types $\ValTypes_S$ (each with a sort), objectified fact types, fact
+types $\FactTypes_S$ whose roles $1,\ldots,n$ are played by types
+$\pi_f(1),\ldots,\pi_f(n)$, subtype links and reference schemes; and a set
+$\Sigma_S$ of constraints, which are closed formulas of \FBM\ (Section~9 of
+that document gives the formula of each graphical constraint). An
+\emph{instance} of $S$ is a population $\pop_S$ of $V_S$ (Section~3) with
+$\pop_S \models \Sigma_S$. A mapping relates two schemas $S$ and $T$ whose
+vocabularies are disjoint, so that an instance of $S$ and an instance of
+$T$ together form a population $\pop_S \cup \pop_T$ of the combined
+vocabulary.
 
 \subsection{Identification schemes}
 
-The vocabulary of \texttt{agg-logic.tex} only has simple reference schemes
-$\RefSchemes(p) = (r, q)$: an entity is identified by one value through one
-binary fact type. Relational keys and ORM2 external uniqueness constraints
-need composite identification, so we generalise.
+\FBM\ identifies an entity by its preferred identifier: a reference mode
+(one value through one binary fact type), a composite identifier, or one
+inherited from a supertype. For mappings we need the composite case in the
+following form.
 
 \begin{definition}
-An \emph{identification scheme} for an entity type $p \in \EntPreds$ is a
-non-empty sequence $(r_1, \ldots, r_k)$ of binary fact types with
-$\sigma(r_i) = (p, q_i)$ and $q_i \in \EntPreds \cup \ValPreds$. A schema
+An \emph{identification scheme} for an entity type $p \in \EntTypes$ is a
+non-empty sequence $(r_1, \ldots, r_k)$ of binary fact types with roles
+played by $(p, q_i)$ and $q_i \in \EntTypes \cup \ValTypes$. A schema
 \emph{uses} it if $\Sigma$ implies that in every instance the relation
-$$\{ (e, o_1, \ldots, o_k) \mid e \in \iota(p),\ (e, o_i) \in \iota(r_i)
+$$\{ (e, o_1, \ldots, o_k) \mid e \in \pop(p),\ (e, o_i) \in \pop(r_i)
   \text{ for } 1 \le i \le k \}$$
-is a total injective function from $\iota(p)$ to $\iota(q_1) \times \cdots
-\times \iota(q_k)$. That is: each $r_i$ is mandatory and functional for
+is a total injective function from $\pop(p)$ to $\pop(q_1) \times \cdots
+\times \pop(q_k)$. That is: each $r_i$ is mandatory and functional for
 $p$, and the $r_i$ together are unique (an external uniqueness constraint,
 the preferred identifier of $p$). We write $\IdSchemes(p)$ for the
 identification scheme used for $p$, if any, and require the graph with an
 edge from $p$ to each $q_i$ to be acyclic.
 \end{definition}
 
-A simple reference scheme $\RefSchemes(p) = (r, q)$ is the special case
-$\IdSchemes(p) = (r)$ with $q \in \ValPreds$. By acyclicity, every entity
+A reference mode $p\ \textit{has}\ q$ is the special case
+$\IdSchemes(p) = (r)$ with $q \in \ValTypes$, and a composite identifier
+over binary fact types is the general case. By acyclicity, every entity
 $e$ of a type with an identification scheme has an \emph{identifying tuple}
 $\ident(e) \in \DataValues^{+}$ of data values, obtained by recursively
 replacing every identifying entity by its own identifying tuple and every
-domain value $o$ by $\rho(o)$. Two entities of the same type are equal if
+value-type instance by its data value. This is how \FBM's populations
+identify entities (Section~3 of \texttt{fbm-logic.tex}). Two entities of the same type are equal if
 and only if their identifying tuples are equal.
 
 \begin{remark}
 ORM2 requires a preferred identifier for every entity type, so in a
 validated FreeFBM schema every entity type has an identification scheme,
 possibly inherited from a supertype. The role order ``entity first'' in
-$\sigma(r_i)$ is for presentation only; FreeFBM allows the identifying role
+$r_i$ is for presentation only; FreeFBM allows the identifying role
 in any position.
 \end{remark}
 
@@ -156,14 +160,20 @@ abbreviation over this encoding (Definition~\ref{def:relatom}).
 
 \subsection{Frontier variables and $\NULL$}
 
-Besides the object variables of \texttt{agg-logic.tex}, which range over
-the domain objects of a type, mapping rules use \emph{frontier variables},
+Besides the object variables of \FBM, which range over the population of
+their type, mapping rules use \emph{frontier variables},
 written $\fv{y}, \fv{y}_1, \ldots$, which range over $\DataValuesN =
 \DataValues \cup \{ \NULL \}$, where $\NULL \notin \DataValues$. Frontier
 variables are the only variables shared by the two sides of a rule, so all
 that passes between two schemas is data values. Within mapping rules
-$\NULL$ is an ordinary constant: $\NULL \dataEq \NULL$ holds (as SQL's
-\texttt{IS NOT DISTINCT FROM}), and the logic stays two-valued.
+$\NULL$ is an ordinary constant: $\fv{y} \dataEq \NULL$ holds when $\fv{y}$
+is $\NULL$ (as SQL's \texttt{IS NOT DISTINCT FROM}), and the logic stays
+two-valued, as \FBM\ does. Frontier variables and $\NULL$ are the only
+additions to \FBM; they occur in mapping rules only, never in a schema's
+constraints. As in \FBM, $\dataEq$ compares data values: $u \dataEq \fv{y}$
+says that the data value $\val(u)$ of $u$ (its own value for a value type,
+its reference value for an entity type with a reference mode) is
+$\fv{y}$.
 
 \section{Patterns}
 \label{sec:patterns}
@@ -174,7 +184,7 @@ A \emph{pattern} over a vocabulary $V$ is a formula built by the grammar
 $$\varphi \;::=\; p(u_1, \ldots, u_n) \;\mid\; q(u) \;\mid\; u \dataEq \fv{y}
   \;\mid\; u \dataEq c \;\mid\; \varphi \wedge \varphi \;\mid\;
   \Opt{\fv{y}}(\varphi) \;\mid\; \neg \exists \bar u\, \varphi$$
-where $p \in \FactPreds$, $q \in \EntPreds \cup \ValPreds$, the $u_i$ are
+where $p \in \FactTypes$, $q \in \EntTypes \cup \ValTypes$, the $u_i$ are
 object variables, $\fv{y}$ is a frontier variable and $c$ a data constant,
 subject to the following conditions.
 \begin{enumerate}
@@ -184,8 +194,9 @@ subject to the following conditions.
     $\Opt{}$ and $\neg\exists$ part together with the variables it shares
     with its context.
   \item[(P2)] \emph{Binding of frontier variables.} A binding atom
-    $u \dataEq \fv{y}$ has a value-type variable $u$, or an entity-type
-    variable whose type has a simple reference scheme. Every frontier
+    $u \dataEq \fv{y}$ has a variable $u$ with a data value in the sense of
+    \FBM: a value-type variable, or an entity-type variable whose type has
+    a (possibly inherited) reference mode. Every frontier
     variable occurring in $\varphi$ occurs in a binding atom at the top
     level, or is the \emph{guard} $\fv{y}$ of exactly one optional part
     $\Opt{\fv{y}}(\varphi')$. A guard occurs in a binding atom inside its
@@ -221,8 +232,7 @@ and is safe by (P3).
 \begin{definition}
 \label{def:relatom}
 Let $R$ be a table entity type with columns $\mathit{col}_1, \ldots,
-\mathit{col}_n$ (binary fact types with $\sigma(\mathit{col}_i) = (R,
-q_i)$). A \emph{relational atom} $R(t_1, \ldots, t_n)$, where each $t_i$ is
+\mathit{col}_n$ (binary fact types with roles played by $(R, q_i)$). A \emph{relational atom} $R(t_1, \ldots, t_n)$, where each $t_i$ is
 a frontier variable $\fv{y}$, a nullable frontier variable $\fv{y}?$, a
 constant $c$, the absence marker $-$, the wildcard $\_$, or an object
 variable $u$ (for a column whose $q_i$ is an entity type), abbreviates
@@ -278,19 +288,21 @@ both patterns. Its meaning is the closed formula
 $$\sem{\varphi \corr \psi} \;:=\; \forall \bar{\fv{y}} \,\big[\,
   \exists \bar x\, \varphi \;\leftrightarrow\; \exists \bar z\, \psi
   \,\big],$$
-where $\forall \bar{\fv{y}}$ ranges over $\DataValuesN$. A \emph{mapping}
+where $\forall \bar{\fv{y}}$ ranges over $\DataValuesN$, and $\forall$,
+$\exists$ over object variables range over the populations of their
+types, as in \FBM. A \emph{mapping}
 $M = (S, T, \Gamma)$ consists of two schemas with disjoint vocabularies and
 a finite set $\Gamma$ of rules from $S$ to $T$. It denotes the relation
-$$\sem{M} \;=\; \{ (\iota_S, \iota_T) \mid \iota_S \models \Sigma_S,\
-  \iota_T \models \Sigma_T,\ \iota_S \cup \iota_T \models
+$$\sem{M} \;=\; \{ (\pop_S, \pop_T) \mid \pop_S \models \Sigma_S,\
+  \pop_T \models \Sigma_T,\ \pop_S \cup \pop_T \models
   \textstyle\bigwedge_{\gamma \in \Gamma} \sem{\gamma} \}.$$
 \end{definition}
 
 \begin{lemma}[Finite range]
-For a rule $\varphi \corr \psi$ and instances $\iota_S, \iota_T$, if
+For a rule $\varphi \corr \psi$ and instances $\pop_S, \pop_T$, if
 $\exists \bar x\,\varphi$ holds for an assignment to $\bar{\fv{y}}$, then
-every $\fv{y}$ is assigned $\NULL$ or the data value of a domain object in
-$\iota_S$; likewise for $\psi$ and $\iota_T$. Hence $\sem{\varphi \corr
+every $\fv{y}$ is assigned $\NULL$ or the data value of an object in
+$\pop_S$; likewise for $\psi$ and $\pop_T$. Hence $\sem{\varphi \corr
 \psi}$ can be decided by evaluating both patterns over finitely many
 assignments.
 \end{lemma}
@@ -299,23 +311,26 @@ assignments.
 By (P2), each $\fv{y}$ occurs in a positive binding atom $u \dataEq
 \fv{y}$ at the top level, or is the guard of an optional part. In the first
 case, and in the present case of the optional part, $u$ ranges over the
-domain objects of $\iota_S$. In the absent case the value is $\NULL$.
+population of its type in $\pop_S$. In the absent case the value is $\NULL$.
 \end{proof}
 
 \begin{proposition}[Inverse]
 Let $M^{-1} = (T, S, \{ \psi \corr \varphi \mid \varphi \corr \psi \in
-\Gamma \})$. Then $\sem{M^{-1}} = \{ (\iota_T, \iota_S) \mid (\iota_S,
-\iota_T) \in \sem{M} \}$.
+\Gamma \})$. Then $\sem{M^{-1}} = \{ (\pop_T, \pop_S) \mid (\pop_S,
+\pop_T) \in \sem{M} \}$.
 \end{proposition}
 
 \begin{proof}
 Immediate, since $\leftrightarrow$ is symmetric.
 \end{proof}
 
-A mapping is meant to relate instances only up to the choice of domain
-entities, which carry no information of their own. We write $\iota \cong
-\iota'$ if there is a bijection between their domain objects that preserves
-types, facts and the data values $\rho$ of domain values. Since the rules
+A mapping is meant to relate instances only up to the choice of entities,
+which carry no information of their own beyond their identifiers. We write
+$\pop \cong \pop'$ if there is a bijection between their objects that
+preserves types, facts and data values. (When every entity type has an
+identification scheme, as in a validated ORM2 schema, entities are their
+identifying tuples and $\cong$ is equality; it matters for surrogate
+identifiers, see the open issues.) Since the rules
 only exchange data values, $\sem{M}$ is closed under $\cong$ on each side.
 The question that matters is therefore whether $\sem{M}$ is a bijection
 \emph{up to} $\cong$.
@@ -355,15 +370,15 @@ what a checker in FreeFBM would mostly use: preferred identifiers, internal
 uniqueness constraints and external uniqueness constraints.
 
 \begin{lemma}[Unique witness]
-If $\varphi$ is key-safe and $\iota \models \Sigma$, then for every
+If $\varphi$ is key-safe and $\pop \models \Sigma$, then for every
 assignment to $\bar{\fv{y}}$ there is at most one assignment to the local
 variables $\bar x$ that satisfies the top level of $\varphi$.
 \end{lemma}
 
 \begin{proof}[Proof sketch]
 By induction on the derivation of $u \in \Det(\varphi)$. (D1) uses that
-$\rho$ is injective on each value type (and on reference values for entity
-types with a simple reference scheme), (D2) the injectivity of
+a value type's instances are its data values (and an entity type with a
+reference mode is identified by its reference value), (D2) the injectivity of
 identification, (D3) and (D4) the key constraints. Optional parts are
 handled the same way relative to their context.
 \end{proof}
@@ -386,9 +401,9 @@ not that row is there.
 \begin{definition}
 Let $\psi$ occur in a rule. An atom occurrence $p(u_1, \ldots, u_n)$ or
 $q(u)$ at the top level of $\psi$, or inside an optional part, \emph{covers}
-the fact $(p, o_1, \ldots, o_n)$ of an instance $\iota$ if some satisfying
-assignment of $\psi$ in $\iota$ maps each $u_i$ to $o_i$. A mapping is
-\emph{$T$-covering} if in every instance $\iota_T$ of $T$, every fact and
+the fact $(p, o_1, \ldots, o_n)$ of an instance $\pop$ if some satisfying
+assignment of $\psi$ in $\pop$ maps each $u_i$ to $o_i$. A mapping is
+\emph{$T$-covering} if in every instance $\pop_T$ of $T$, every fact and
 every object of every type is covered by some atom occurrence in some rule.
 \end{definition}
 
@@ -403,20 +418,20 @@ the target pattern $\psi_\gamma$. $S$-covering is defined symmetrically.
 \begin{conjecture}[Bijection up to isomorphism]
 \label{conj:bijection}
 Let $M$ be key-safe, $S$-covering and $T$-covering, and let every entity
-type occurring in a rule have an identification scheme. If $(\iota_S,
-\iota_T), (\iota_S', \iota_T') \in \sem{M}$, then $\iota_S \cong \iota_S'$
-if and only if $\iota_T \cong \iota_T'$.
+type occurring in a rule have an identification scheme. If $(\pop_S,
+\pop_T), (\pop_S', \pop_T') \in \sem{M}$, then $\pop_S \cong \pop_S'$
+if and only if $\pop_T \cong \pop_T'$.
 \end{conjecture}
 
 \begin{proof}[Proof idea]
-For each rule $\gamma$ let $Y_\gamma(\iota_S)$ be the set of assignments to
+For each rule $\gamma$ let $Y_\gamma(\pop_S)$ be the set of assignments to
 $\bar{\fv{y}}$ satisfying $\exists \bar x\,\varphi_\gamma$. By the
-semantics, $Y_\gamma(\iota_S) = Y_\gamma(\iota_T)$. By coverage every fact
-of $\iota_S$ lies in a match, and by unique witness each match is
+semantics, $Y_\gamma(\pop_S) = Y_\gamma(\pop_T)$. By coverage every fact
+of $\pop_S$ lies in a match, and by unique witness each match is
 determined by its assignment. Identification makes the choice of entities
 consistent across rules: an entity occurring in two matches has the same
-identifying tuple in both. So $\iota_S$ is determined up to $\cong$ by the
-family $(Y_\gamma(\iota_S))_\gamma$, and likewise $\iota_T$.
+identifying tuple in both. So $\pop_S$ is determined up to $\cong$ by the
+family $(Y_\gamma(\pop_S))_\gamma$, and likewise $\pop_T$.
 \todo{Check the identification argument when an entity is determined only
 by (D3) or (D4) and not by its own identification scheme.}
 \end{proof}
@@ -519,8 +534,9 @@ $S_1$-covering holds because of the enumeration constraint; without it a
 row with $c = 3$ would be uncovered. Unfolding the key of $R$ through both
 rules gives three cases: both rows in the first rule (the key of $R_1$),
 both in the second (the key of $R_2$), and one in each, which gives
-$R_1(\fv{a}, \fv{b}) \wedge R_2(\fv{a}, \fv{b}') \to \dataVal{1} \dataEq
-\dataVal{2}$, that is the disjointness. The enumeration needs no
+$\neg(R_1(\fv{a}, \fv{b}) \wedge R_2(\fv{a}, \fv{b}'))$ (a row with
+$c \dataEq \dataVal{1}$ and $c \dataEq \dataVal{2}$ cannot exist), that is
+the disjointness. The enumeration needs no
 counterpart in $S_2$: every row the rules produce has $c \in \{1, 2\}$.
 Nothing is missing on either side.
 \end{example}
@@ -533,8 +549,9 @@ key per rule plus a disjointness between the rules.
 \begin{enumerate}
   \item Prove Conjecture~\ref{conj:bijection}, or find the extra condition
     it needs (see the note in its proof).
-  \item Identification schemes should move into \texttt{agg-logic.tex},
-    replacing or generalising $\RefSchemes$.
+  \item \FBM\ has reference modes and composite identifiers; whether its
+    description should adopt identification schemes and identifying tuples
+    as defined here (Section~\ref{sec:setting}) is open.
   \item Characterise a class of constraints (keys, mandatory, subset,
     exclusion over tree patterns) for which key-safety, coverage and
     accounting are decidable, ideally in polynomial time.
@@ -547,8 +564,9 @@ key per rule plus a disjointness between the rules.
   \item Whether patterns should allow several occurrences of the same
     predicate (self-joins) without restriction; (P1) allows it, but the
     graphical editor needs numbered occurrences.
-  \item The relationship with the derivation rules of
-    \texttt{agg-logic.tex}: a rule with $\psi$ a single atom and $\varphi$
+  \item The relationship with the derivation rules of \FBM\ (Section~11
+of
+    the FBM logic document): a rule with $\psi$ a single atom and $\varphi$
     without negation reads as a derivation rule for that atom, so
     ``derive, then fold'' can reuse the derivation rule syntax.
 \end{enumerate}
