@@ -549,7 +549,7 @@ export const polishLibrary = {
   label: 'Polski',
   functions,
   term: (h, t) => term(h, t),
-  // "ten Przedmiot", "tego Przedmiotu", or bare in a Jeśli … to … sentence.
+  // "ten Przedmiot", "tego Przedmiotu", or bare in a … wtedy i tylko wtedy, gdy … rule.
   // "ten sam Adres e-mail" for the variables in env.same (negative.js).
   refNP: (h, v, c = 'nom') => (h.env.same?.includes(v) ? [kw(DETERMINERS.that(gender(h, v), c, false)), kw(DETERMINERS.same(gender(h, v), c)), noun(h, v, c)]
     : h.env.refStyle === 'bare' ? noun(h, v, c)

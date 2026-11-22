@@ -364,7 +364,7 @@ Geen Vak₁ is een voorkennisvak voor zichzelf, direct of indirect.
 
 # Ring (intransitive)
 ∀ Course₁ ∀ Course₂ ∀ Course₃ (((Course₁ is a prerequisite for Course₂) ∧ (Course₂ is a prerequisite for Course₃)) → ¬(Course₁ is a prerequisite for Course₃))
-Als Vak₁ een voorkennisvak voor Vak₂ is en Vak₂ een voorkennisvak voor Vak₃ is, dan is het niet zo dat Vak₁ een voorkennisvak voor Vak₃ is.
+Als een Vak₁ een voorkennisvak voor een Vak₂ is en dat Vak₂ een voorkennisvak voor een Vak₃ is, dan is het niet zo dat dat Vak₁ een voorkennisvak voor dat Vak₃ is.
 
 # Exclusion
 ∀ Student ∀ Course ¬((Student enrols in Course) ∧ (Student assists in Course))
@@ -372,7 +372,7 @@ Voor elke Student en elk Vak geldt: hoogstens één van de volgende geldt: die S
 
 # Subset
 ∀ StaffMember ∀ Course ((∃ Offering ((StaffMember teaches Offering) ∧ (Offering involves Course))) → (StaffMember is qualified to teach Course))
-Als Medewerker een Vakaanbieding die Vak betreft doceert, dan is Medewerker bevoegd om Vak te doceren.
+Als een Medewerker een Vakaanbieding die een Vak betreft doceert, dan is die Medewerker bevoegd om dat Vak te doceren.
 
 # External uniqueness (preferred identifier)
 ∀ Season ∀ AcademicYear ∃^{≤1} Term ((Term is in Season) ∧ (Term is in AcademicYear))
@@ -588,11 +588,11 @@ Voor elk Jaar geldt: een Studiejaar begint in dat Jaar.
 
 # Implied links (each fact has exactly one nesting instance) · Enrolment nests Student enrols in Course
 ∀ Student ∀ Course ((Student enrols in Course) → ∃^{=1} Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course)))
-Als Student Vak volgt, dan is Student betrokken bij precies één Inschrijving die Vak betreft.
+Als een Student een Vak volgt, dan is die Student betrokken bij precies één Inschrijving die dat Vak betreft.
 
 # Implied links (linked values form a fact) · Enrolment nests Student enrols in Course
 ∀ Student ∀ Course ((∃ Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course))) → (Student enrols in Course))
-Als een Inschrijving Student betreft en Vak betreft, dan volgt Student Vak.
+Als een Inschrijving een Student betreft en een Vak betreft, dan volgt die Student dat Vak.
 
 # Implied links (each nesting instance links exactly one combination) · Enrolment nests Student enrols in Course
 ∀ Enrolment ∃^{=1} Student, Course ((Enrolment involves Student) ∧ (Enrolment involves Course))
@@ -600,11 +600,11 @@ Elke Inschrijving betreft precies één Student en betreft precies één Vak.
 
 # Implied links (each fact has exactly one nesting instance) · Offering nests Course is offered in Term
 ∀ Course ∀ Term ((Course is offered in Term) → ∃^{=1} Offering ((Offering involves Course) ∧ (Offering involves Term)))
-Als Vak in Periode wordt aangeboden, dan is Vak betrokken bij precies één Vakaanbieding die Periode betreft.
+Als een Vak in een Periode wordt aangeboden, dan is dat Vak betrokken bij precies één Vakaanbieding die die Periode betreft.
 
 # Implied links (linked values form a fact) · Offering nests Course is offered in Term
 ∀ Course ∀ Term ((∃ Offering ((Offering involves Course) ∧ (Offering involves Term))) → (Course is offered in Term))
-Als een Vakaanbieding Vak betreft en Periode betreft, dan wordt Vak aangeboden in Periode.
+Als een Vakaanbieding een Vak betreft en een Periode betreft, dan wordt dat Vak aangeboden in die Periode.
 
 # Implied links (each nesting instance links exactly one combination) · Offering nests Course is offered in Term
 ∀ Offering ∃^{=1} Course, Term ((Offering involves Course) ∧ (Offering involves Term))

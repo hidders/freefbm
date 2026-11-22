@@ -364,7 +364,7 @@ Dla każdego Pracownika ten Pracownik ma jakąś Salę jako gabinet wtedy i tylk
 
 # Ring (intransitive)
 ∀ Course₁ ∀ Course₂ ∀ Course₃ (((Course₁ is a prerequisite for Course₂) ∧ (Course₂ is a prerequisite for Course₃)) → ¬(Course₁ is a prerequisite for Course₃))
-Jeśli Przedmiot₁ jest prerekwizytem dla Przedmiotu₂ i Przedmiot₂ jest prerekwizytem dla Przedmiotu₃, to Przedmiot₁ nie jest prerekwizytem dla Przedmiotu₃.
+Jeśli jakiś Przedmiot₁ jest prerekwizytem dla jakiegoś Przedmiotu₂ i ten Przedmiot₂ jest prerekwizytem dla jakiegoś Przedmiotu₃, to ten Przedmiot₁ nie jest prerekwizytem dla tego Przedmiotu₃.
 
 # Exclusion
 ∀ Student ∀ Course ¬((Student enrols in Course) ∧ (Student assists in Course))
@@ -372,7 +372,7 @@ Dla każdego Studenta i każdego Przedmiotu zachodzi co najwyżej jedno z poniż
 
 # Subset
 ∀ StaffMember ∀ Course ((∃ Offering ((StaffMember teaches Offering) ∧ (Offering involves Course))) → (StaffMember is qualified to teach Course))
-Jeśli Pracownik prowadzi jakąś Ofertę, która dotyczy Przedmiotu, to Pracownik ma uprawnienia do nauczania Przedmiotu.
+Jeśli jakiś Pracownik prowadzi jakąś Ofertę, która dotyczy jakiegoś Przedmiotu, to ten Pracownik ma uprawnienia do nauczania tego Przedmiotu.
 
 # External uniqueness (preferred identifier)
 ∀ Season ∀ AcademicYear ∃^{≤1} Term ((Term is in Season) ∧ (Term is in AcademicYear))
@@ -588,11 +588,11 @@ Dla każdego Roku jakiś Rok akademicki zaczyna się w tym Roku.
 
 # Implied links (each fact has exactly one nesting instance) · Enrolment nests Student enrols in Course
 ∀ Student ∀ Course ((Student enrols in Course) → ∃^{=1} Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course)))
-Jeśli Student studiuje Przedmiot, to dokładnie jeden Zapis dotyczy Studenta i dotyczy Przedmiotu.
+Jeśli jakiś Student studiuje jakiś Przedmiot, to dokładnie jeden Zapis dotyczy tego Studenta i dotyczy tego Przedmiotu.
 
 # Implied links (linked values form a fact) · Enrolment nests Student enrols in Course
 ∀ Student ∀ Course ((∃ Enrolment ((Enrolment involves Student) ∧ (Enrolment involves Course))) → (Student enrols in Course))
-Jeśli jakiś Zapis dotyczy Studenta i dotyczy Przedmiotu, to Student studiuje Przedmiot.
+Jeśli jakiś Zapis dotyczy jakiegoś Studenta i dotyczy jakiegoś Przedmiotu, to ten Student studiuje ten Przedmiot.
 
 # Implied links (each nesting instance links exactly one combination) · Enrolment nests Student enrols in Course
 ∀ Enrolment ∃^{=1} Student, Course ((Enrolment involves Student) ∧ (Enrolment involves Course))
@@ -600,11 +600,11 @@ Każdy Zapis dotyczy dokładnie jednego Studenta i dotyczy dokładnie jednego Pr
 
 # Implied links (each fact has exactly one nesting instance) · Offering nests Course is offered in Term
 ∀ Course ∀ Term ((Course is offered in Term) → ∃^{=1} Offering ((Offering involves Course) ∧ (Offering involves Term)))
-Jeśli Przedmiot jest oferowany w Semestrze, to dokładnie jedna Oferta dotyczy Przedmiotu i dotyczy Semestru.
+Jeśli jakiś Przedmiot jest oferowany w jakimś Semestrze, to dokładnie jedna Oferta dotyczy tego Przedmiotu i dotyczy tego Semestru.
 
 # Implied links (linked values form a fact) · Offering nests Course is offered in Term
 ∀ Course ∀ Term ((∃ Offering ((Offering involves Course) ∧ (Offering involves Term))) → (Course is offered in Term))
-Jeśli jakaś Oferta dotyczy Przedmiotu i dotyczy Semestru, to Przedmiot jest oferowany w Semestrze.
+Jeśli jakaś Oferta dotyczy jakiegoś Przedmiotu i dotyczy jakiegoś Semestru, to ten Przedmiot jest oferowany w tym Semestrze.
 
 # Implied links (each nesting instance links exactly one combination) · Offering nests Course is offered in Term
 ∀ Offering ∃^{=1} Course, Term ((Offering involves Course) ∧ (Offering involves Term))

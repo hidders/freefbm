@@ -56,7 +56,7 @@ Każdy Student has jakiś TotalCredits.
 
 # Derivation rule, only derived facts hold · Student has TotalCredits
 ∀ Student ∀ TotalCredits ((Student has TotalCredits) → TotalCredits ≈ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)})
-Jeśli Student has TotalCredits, to TotalCredits wynosi suma Punktacji, które każdy Przedmiot, który Student studiuje ma.
+Jeśli jakiś Student has jakiś TotalCredits, to ten TotalCredits wynosi suma Punktacji, które każdy Przedmiot, który ten Student studiuje ma.
 
 # Derivation rule, every derived fact holds · Course has EnrolmentCount
 ∀ Course ∃ EnrolmentCount (Course has EnrolmentCount)
@@ -64,11 +64,11 @@ Każdy Przedmiot has jakiś EnrolmentCount.
 
 # Derivation rule, only derived facts hold · Course has EnrolmentCount
 ∀ Course ∀ EnrolmentCount ((Course has EnrolmentCount) → EnrolmentCount ≈ Count{Student : (Student enrols in Course)})
-Jeśli Przedmiot has EnrolmentCount, to EnrolmentCount wynosi liczba Studentów, którzy studiują Przedmiot.
+Jeśli jakiś Przedmiot has jakiś EnrolmentCount, to ten EnrolmentCount wynosi liczba Studentów, którzy studiują ten Przedmiot.
 
 # Semi-derivation rule, every derived fact holds · Student has credit load TotalCredits
 ∀ Student ∀ Course ∀ Credits (((Student assists in Course) ∧ (Course is worth Credits)) → ∃ TotalCredits ((Student has credit load TotalCredits) ∧ TotalCredits ≈ (Credits + 5) × 2))
-Jeśli Student asystuje przy Przedmiocie i Przedmiot ma Punktację, to Student has credit load jakiś TotalCredits, który wynosi (Punktacja plus 5) razy 2.
+Jeśli jakiś Student asystuje przy jakimś Przedmiocie i ten Przedmiot ma jakąś Punktację, to ten Student has credit load jakiś TotalCredits, który wynosi (ta Punktacja plus 5) razy 2.
 
 # Uniqueness (deontic) · StaffMember mentors Student
 O(∀ Student ∃^{≤1} StaffMember (StaffMember mentors Student))

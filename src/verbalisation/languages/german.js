@@ -628,7 +628,7 @@ export const germanLibrary = {
   label: 'Deutsch',
   functions,
   term: (h, t) => term(h, t),
-  // "dieser Kurs", "diesen Kurs", or bare in a Wenn … dann … sentence;
+  // "dieser Kurs", "diesen Kurs", or bare in a … genau dann, wenn … rule;
   // "denselben Kurs" for the variables in env.same (negative.js).
   // A bare name reads as a label and stays in the nominative.
   refNP: (h, v, c = 'nom') => (h.env.same?.includes(v) ? [kw(det('same', gender(h, v), c)), noun(h, v, c)]
