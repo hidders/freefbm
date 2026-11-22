@@ -1,4 +1,9 @@
-# FreeFBM
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/banner-on-dark.svg">
+    <img src="docs/logo/banner.svg" alt="FreeFBM" width="420">
+  </picture>
+</h1>
 
 > An Electron application by [hidders](https://github.com/hidders)
 
