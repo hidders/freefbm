@@ -44,6 +44,7 @@
 \newcommand{\corr}{\;\Longleftrightarrow\;}
 \newcommand{\Cov}{\mathsf{Cov}}
 \newcommand{\Det}{\mathsf{Det}}
+\newcommand{\TC}{\mathsf{TC}}
 
 \title{Schema mappings for FreeFBM: tree-pattern correspondences}
 \author{Jan Hidders}
@@ -444,38 +445,308 @@ constraint accounting checks.
 \section{Constraint accounting}
 \label{sec:accounting}
 
-For a mapping satisfying the conditions of
-Conjecture~\ref{conj:bijection}, each predicate of $S$ is definable over
-$T$, with entities replaced by their identifying tuples: an $S$-fact holds
-if and only if some rule match produces it, and the match exists on the $S$
-side if and only if its target pattern holds on the $T$ side. Write
-$\chi^{\to T}$ for the result of rewriting a constraint $\chi$ over $S$ in
-this way, by unfolding every atom through the rules that produce it.
-Every constraint of $\Sigma_S$ then gets one of four statuses with respect
-to $T$:
-\begin{description}
-  \item[native] $\chi^{\to T}$ is (equivalent to) a constraint in
-    $\Sigma_T$, for a relational target typically a \texttt{PRIMARY KEY},
-    \texttt{UNIQUE}, \texttt{FOREIGN KEY}, \texttt{NOT NULL} or
-    \texttt{CHECK};
-  \item[implied] $\Sigma_T \models \chi^{\to T}$, shown syntactically;
-  \item[lost] a counterexample exists: an instance of $T$ violating
-    $\chi^{\to T}$; the user may add $\chi^{\to T}$ to $T$ as a formula
-    constraint or assertion, or mark it deontic;
-  \item[unknown] neither a proof nor a counterexample was found.
-\end{description}
-The same is done for $\Sigma_T$ with respect to $S$, and for the coverage
-conditions $\Cov_S$ and $\Cov_T$, whose missing parts are reported in the
-same way: these are the constraints that ``should have been added if the
-schemas are to be equivalent''.
+Constraint accounting compares the constraints of the two schemas of a
+mapping. Every constraint $\chi \in \Sigma_S$ is checked against $T$: is
+$\chi$ guaranteed by $\Sigma_T$, given the rules, and if not, what does an
+instance of $T$ look like whose image breaks it? The constraints of
+$\Sigma_T$ are checked against $S$ in the same way. A constraint that is
+not guaranteed is one that ``should be added if the schemas are to be
+equivalent''.
 
-\begin{remark}
-Implication between ORM2 constraints is undecidable in general, so the
-statuses are not complete. For keys, mandatory roles, subset and exclusion
-constraints over tree patterns a decision procedure is plausible, and in
-the examples below everything is decided by unfolding plus simple key and
-inclusion reasoning.
-\end{remark}
+\subsection{Statuses}
+
+Write $\mathit{run}_{T \to S}(\pop_T)$ for the population of $S$ that the
+rules give for a population $\pop_T$ of $T$
+(Section~\ref{sec:running} below). The constraint $\chi \in \Sigma_S$ is
+\emph{kept} if $\mathit{run}_{T \to S}(\pop_T) \models \chi$ for every
+instance $\pop_T$ of $T$ that is the image of a population of $S$, and
+\emph{lost} if some instance of $T$ maps to a population of $S$ that
+violates it. A kept constraint is refined by what keeps it. Every
+constraint of $\Sigma_S$ gets one of four statuses:
+\begin{description}
+  \item[native] one constraint of $\Sigma_T$ keeps $\chi$ on its own (for a
+    relational target typically a \texttt{PRIMARY KEY}, \texttt{UNIQUE},
+    \texttt{FOREIGN KEY}, \texttt{NOT NULL} or \texttt{CHECK}), or no
+    constraint is needed at all: $\chi$ holds by how instances are
+    identified, by the subtyping of $T$, or because the rules cannot build a
+    population that breaks it;
+  \item[implied] several constraints of $\Sigma_T$ keep $\chi$ together, or
+    the rules keep it: what $\chi$ is about is built only as part of whole
+    patterns, which satisfy it;
+  \item[lost] there is a counterexample: an instance $\pop_T \models
+    \Sigma_T$ with $\mathit{run}_{T \to S}(\pop_T) \not\models \chi$; the
+    user may add the translation of $\chi$ to $T$ (as a graphical
+    constraint, a formula constraint, a \texttt{CHECK} or an assertion), or
+    mark it deontic;
+  \item[unknown] neither was found, with the reason.
+\end{description}
+
+For a mapping meeting the conditions of Conjecture~\ref{conj:bijection},
+each predicate of $S$ is definable over $T$, with entities replaced by their
+identifying tuples, so $\chi$ has a translation $\chi^{\to T}$ over $T$,
+obtained by unfolding every atom through the rules that produce it, and
+$\chi$ is kept if and only if $\Sigma_T \models \chi^{\to T}$. FreeFBM
+writes $\chi^{\to T}$ in this way only to propose a lost constraint's
+translation. To decide the status it unfolds on populations instead: it
+builds the smallest violations of $\chi$, carries them to $T$, closes them
+under $\Sigma_T$ with a chase, and carries the result back. The rest of
+this section describes the four steps. Implication between \FBM\
+constraints is undecidable in general, so the procedure is bounded and the
+statuses are not complete; Section~\ref{sec:acc-sound} says what each
+status rests on.
+
+\subsection{Populations with labelled nulls}
+
+A violation is built from unknown values. A \emph{labelled null}
+$\bot_1, \bot_2, \ldots$ is a placeholder for a data value of a given value
+type; distinct labelled nulls are not known to be different, and a
+labelled null is not known to differ from any constant. An entity is
+represented by its identifying tuple (Section~\ref{sec:setting}), so an
+entity whose identifier is unknown is a labelled null for a reference mode
+and a tuple of them for a composite identifier. A population with labelled
+nulls $\pop$ stands for every population $h(\pop)$ obtained by a
+\emph{substitution} $h$ that replaces labelled nulls by data values or
+other labelled nulls, as a tableau does in database theory. Merging two
+labelled nulls, or a labelled null and a constant, is such a substitution;
+merging two different constants is impossible. Populations are kept
+aligned: an instance of a subtype is an instance of its supertypes, the
+players of a fact are instances of their types, the reference values of an
+entity are instances of their value types, and identifying facts are not
+stored, as they follow from the identifying tuples.
+
+\subsection{The smallest violations}
+
+A violation of $\chi$ is a model of its \emph{counterexample formula}
+$\neg\chi$, with the negation pushed inwards (it is the formula behind the
+negative verbalisation, ``It is impossible that \ldots''): $\forall$
+becomes $\exists$, $\varphi \to \psi$ becomes $\varphi \wedge \neg\psi$,
+$\exists^{\le n}$ becomes $\exists^{> n}$, $\exists^{\ge n}$ becomes
+$\exists^{\le n-1}$, $\exists^{= n}$ and $\exists^{n..m}$ become ``fewer
+or more'', and $\leftrightarrow$ is first read as two implications. Its
+positive part is then built as a population, by the clauses:
+\begin{itemize}
+  \item $\exists \bar x\,\varphi$: a new labelled null (or tuple of them)
+    for each $x$, then $\varphi$;
+  \item $\exists^{> n} \bar x\,\varphi$ and $\exists^{\ge n} \bar x\,
+    \varphi$: $n+1$ and $n$ copies of $\varphi$, each with new labelled
+    nulls for $\bar x$ (at most 12); $\exists^{\le n}$ builds nothing;
+  \item $\varphi \wedge \psi$: both;
+  \item a fact atom $f(u_1, \ldots, u_n)$: the fact; for an identifying
+    fact, the value is merged into the identified entity's identifying
+    tuple;
+  \item a type atom $p(u)$: the instance;
+  \item $u = v$ and $u \dataEq v$: the two are merged;
+  \item $\varphi \vee \psi$: each disjunct gives its own violation (at most
+    8 in all);
+  \item a closure $[\TC_{x,y}\,\varphi](s, t)$: a path of 1, 2 or 3
+    steps of $\varphi$ from $s$ to $t$, each its own violation, and for
+    $\TC^{*}$ also $s = t$;
+  \item a negated part and $\top$: nothing.
+\end{itemize}
+Negated parts are not built, since the smallest population that satisfies
+them is one without the facts they forbid. Each population built is then
+checked against $\chi$, with the population checks of the Validation panel
+for its kind, and kept only when it really violates $\chi$; when no
+candidate is left, $\chi$ holds by identification (a preferred identifier
+is an example) and is native. A value range has no counterexample formula of
+this kind; its violation is a fact with a value just outside the range,
+tried from a short list of candidates. A comparison with a data term or a
+constant other than $\dataEq$, $\not\dataEq$ makes the constraint unknown.
+
+\begin{example}
+Read the key $\{a\}$ of $R(a, b, c)$ as the uniqueness constraint
+$$\forall a\, \exists^{\le 1} (b, c)\, R(a, b, c).$$
+Its counterexample formula is $\exists a\, \exists^{> 1} (b, c)\, R(a, b, c)$, and the
+smallest violation is
+$$\{ R(\bot_1, \bot_2, \bot_3),\ R(\bot_1, \bot_4, \bot_5) \}.$$
+For the mandatory role $\forall x\, (p(x) \to \exists y\, f(x, y))$ it is
+$\exists x\, (p(x) \wedge \neg \exists y\, f(x, y))$, and the violation is
+$\{ p(\bot_1) \}$.
+\end{example}
+
+\subsection{Running a mapping}
+\label{sec:running}
+
+$\mathit{run}_{S \to T}(\pop)$ matches the $S$-pattern of every rule
+against $\pop$ and builds, for every assignment to the frontier variables
+it finds, the $T$-pattern with those values. An entity of $T$ is built from
+its identifying tuple, so the same values give the same entity across all
+rules; an optional part is built only in its present case, and a negated
+part is checked, not built. A value of $T$ that the frontier variables do
+not determine is a new labelled null (a surrogate key that no rule gives is
+invented from another key instead). On a population with labelled nulls a
+run treats each labelled null as a value equal only to itself. This is the
+canonical solution of data exchange: the least population of $T$ in which
+the rules' right sides hold for every match of their left sides.
+
+A violation $V$ is \emph{carried} when $\mathit{run}_{T \to S}(I_0)$, with
+$I_0 = \mathit{run}_{S \to T}(V)$, still violates $\chi$. When it does not,
+the reason is either that the rules need more than $V$, or that $T$ cannot
+represent the violation. FreeFBM then tries, in this order, until one
+version is carried:
+\begin{enumerate}
+  \item $V$ closed under $S$'s own constraints other than $\chi$ (the chase
+    below, on $S$), so that mandatory roles and subset constraints add what
+    any instance of $S$ around $V$ has;
+  \item $V$ with labelled nulls replaced by the constants that the rules'
+    $S$-patterns test (a discriminator column, say), in up to 12
+    combinations;
+  \item $V$ completed by the rules: each fact of $V$ that an $S$-pattern
+    names gets the rest of the smallest such pattern around it, with new
+    labelled nulls, since everything a mapping relates is made of whole
+    patterns. If no pattern can hold a fact of $V$ (it asks for another
+    constant), or the completion removes the violation, $\chi$ is kept by
+    the rules (implied).
+\end{enumerate}
+When $V$ survives the round trip only as a population that contains $V$
+but no longer violates $\chi$, the structure of $T$ rules it out (native).
+When no version is carried, the status is unknown: the rules carry what
+$\chi$ is about only together with facts that $S$ does not require, a
+coverage question (Section~\ref{sec:coverage}).
+
+\subsection{The chase}
+
+The carried violation $I_0$ is a population of $T$, but not necessarily one
+that satisfies $\Sigma_T$. The \emph{chase} closes it under $\Sigma_T$ by
+adding only what the constraints force, in rounds of the following steps
+until nothing changes:
+\begin{enumerate}
+  \item \emph{Subtyping.} Every instance of a subtype is made an instance
+    of its supertypes (a run builds only the types its rules name).
+  \item \emph{Uniqueness.} For every uniqueness constraint (internal or
+    external, over its join path), two facts or matches that agree on the
+    constrained roles have the rest merged. A merge of two different
+    constants \emph{fails}: no instance of $T$ contains $I_0$.
+  \item \emph{Mandatory roles.} Every instance that does not play a
+    mandatory role gets a fact with new labelled nulls for the other
+    players.
+  \item \emph{Disjunctions.} An instance that plays none of the roles or
+    subtypes of an inclusive-or or exclusive-or gets one of them, and an
+    instance of an entity type that is not independent and plays no role
+    besides its identification (implicit participation) gets one of the
+    roles it may play. Each is a \emph{choice point}.
+  \item \emph{Subset and equality.} For every tuple of the subset side
+    whose projection is missing on the superset side, the facts of that
+    side's join path are added with new labelled nulls (both ways for
+    equality).
+  \item \emph{Formulas as dependencies.} Formula constraints, the
+    subset, equality and or-constraints whose join paths are formula
+    queries, and the rules of semi-derived elements ($\forall \bar y\,
+    (\varphi \to E)$) are read conjunct by conjunct as tuple-generating
+    dependencies $\forall \bar y\, (L \to R)$ with $L$ and $R$ positive
+    existential (fact and type atoms, $\exists$, $\wedge$, $\dataEq$).
+    For every counterexample of the dependency, $R$ is built for its
+    values. When $R$ is a disjunction of positive parts, the choice of
+    part is a choice point.
+\end{enumerate}
+Other constraints are checked, not chased: exclusion, ring, value range,
+value comparison and formula constraints of other shapes, an exclusive-or
+with an instance in two of its parts, and a frequency counted above its
+upper bound. A population that breaks one of these is no instance of $T$,
+and since the chase only adds facts and merges values, nothing it does
+later can mend that; such a break rules the violation out like a failed
+merge.
+
+The chase is bounded (20 rounds and 250 instances and facts; a chase that
+exceeds it is \emph{undecided}). The choice points are explored
+exhaustively: \texttt{chaseBranches} runs the chase once for every
+combination of choices it meets, up to 64 runs, and a violation counts as
+ruled out only when it is ruled out in every run. Two shortcuts keep large
+schemas tractable. First, the uniqueness step alone is run before any
+branching: if it fails, or meets a break that no fact mends, the violation
+is ruled out in every run; and for a constraint that forbids facts
+(uniqueness, exclusion, frequency, ring) a violation that the merges remove
+stays removed, as added facts can only make more values equal. Second, for
+a constraint that asks for facts (mandatory, inclusive-or, participation,
+subset, equality), a run can stop as soon as the violation is gone, as
+long as the rules for the way back have no negation, since more facts keep
+it gone.
+
+\subsection{Reading off the status}
+
+For each carried violation $I_0$ and each run $I$ of the chase:
+\begin{itemize}
+  \item if the chase failed, or a constraint it does not apply is broken
+    in $I$, or $\mathit{run}_{T \to S}(I) \models \chi$, the violation is
+    \emph{ruled out} in that run;
+  \item if $I \models \Sigma_T$ and $\mathit{run}_{T \to S}(I) \not\models
+    \chi$, then $I$ is a \emph{counterexample}, and $\chi$ is lost;
+  \item otherwise (the chase is undecided, too many runs, a constraint of
+    $T$ is involved that is not checked yet) the run is undecided.
+\end{itemize}
+$\chi$ is lost when some run gives a counterexample, which is shown as the
+population $I$ of $T$ together with $\mathit{run}_{T \to S}(I)$. It is kept
+when every carried violation is ruled out in every run, and unknown
+otherwise. Which constraints keep it is found by leaving each out: for
+every constraint that the chase applied (or that failed), the chase is run
+again without it, and the constraint is \emph{needed} if the violation then
+comes back. One needed constraint gives native, several give implied; when
+none is needed on its own but the chase used several, any of them keeps
+$\chi$ (implied); and when the chase used none, the structure of $T$ keeps
+it (native). If the subtyping of $T$ alone removes the violation, it is
+native too.
+
+\begin{example}
+In Example~\ref{ex:horizontal}, take the disjointness of $R_1$ and $R_2$,
+checked against $S_1$. Its counterexample formula is $\exists a\,
+(\exists b\, R_1(a, b) \wedge \exists b'\, R_2(a, b'))$, and the smallest
+violation is $\{ R_1(\bot_1, \bot_2), R_2(\bot_1, \bot_3) \}$. The run to
+$S_1$ gives $R(\bot_1, \bot_2, \dataVal{1})$ and $R(\bot_1, \bot_3,
+\dataVal{2})$. In encoding~B the key $\{a\}$ of $R$ identifies its rows, so
+these are one row with two values for $c$; the uniqueness step for the
+column $c$ merges them, which fails on $\dataVal{1} \neq \dataVal{2}$. The
+violation is ruled out, and leaving that uniqueness constraint out brings
+it back, so the disjointness is native: it is kept by the single-valued
+column $c$, which is the third case of the unfolding in that example. In
+the other direction the key of $R$ is native by identification, as a
+preferred identifier always is.
+\end{example}
+
+\subsection{What the statuses rest on}
+\label{sec:acc-sound}
+
+\emph{Lost} rests on an explicit population: $I$ satisfies every
+constraint of $\Sigma_T$ the chase applies or checks, and its image
+violates $\chi$. Replacing its labelled nulls by distinct values of their
+types gives an instance of $T$ unless some constraint compares them with
+constants (value ranges are not judged on labelled nulls), so a lost
+status may need values chosen with care, but not more facts.
+
+\emph{Kept} rests on the chase being universal, as in data exchange: the
+chase adds only facts and equalities that every instance of $T$ containing
+an image $h(I_0)$ must have, so if some instance $\pop_T \models \Sigma_T$
+contained $h(I_0)$, the chase could be followed inside $\pop_T$, choosing
+at each choice point the alternative $\pop_T$ takes, and would end in a
+run $I$ with $h(I) \subseteq \pop_T$ that does not fail. The argument
+transfers the violation of $\chi$ in $\mathit{run}_{T \to S}(\pop_T)$ back
+to $I$ when that run is monotone (the $T$-patterns have no negation) and
+$\chi$'s violation is preserved by adding facts (it forbids facts); for a
+$\chi$ that asks for facts it is the other way round, and the chase stops
+as soon as the facts are there. The argument assumes that every violation
+of $\chi$ in an image contains one of the smallest violations built above,
+and that $T$-covering holds, so that the facts of $\pop_T$ that matter are
+images of a violation of $S$; where these conditions fail (counts above
+12, closures longer than 3 steps, rules with negation, constraints checked
+but not chased) a kept status is a strong indication rather than a proof.
+Making these conditions precise is open issue~\ref{oi:decidable}.
+
+\emph{Native} and \emph{implied} are a report of the chase that ruled the
+violation out, not a minimal set of premisses: leaving each constraint out
+in turn finds those needed on their own, and only for the first
+violations checked.
+
+\subsection{Other uses of the procedure}
+
+The same steps are used elsewhere in FreeFBM. Proposing the translation of
+a lost constraint adds a candidate translation to $T$ and runs accounting
+for $\chi$ alone, so a proposal says whether it keeps $\chi$. Fold checks
+that the facts it removes are recoverable by running a mapping there and
+back on a \emph{generic population}: a pattern's other side frozen with
+labelled nulls and chased. The equivalence summary of a mapping combines
+accounting on both sides with such round trips. And the contract check of
+a one-way view mapping merges the two schemas and the views into one
+schema, and asks with the same chase whether the source's constraints
+guarantee each constraint of the target.
 
 \section{Examples}
 \label{sec:examples}
@@ -552,9 +823,11 @@ key per rule plus a disjointness between the rules.
   \item \FBM\ has reference modes and composite identifiers; whether its
     description should adopt identification schemes and identifying tuples
     as defined here (Section~\ref{sec:setting}) is open.
-  \item Characterise a class of constraints (keys, mandatory, subset,
-    exclusion over tree patterns) for which key-safety, coverage and
-    accounting are decidable, ideally in polynomial time.
+  \item \label{oi:decidable} Characterise a class of constraints (keys,
+    mandatory, subset, exclusion over tree patterns) for which key-safety,
+    coverage and accounting are decidable, ideally in polynomial time, and
+    the conditions under which the chase of
+    Section~\ref{sec:accounting} decides kept constraints exactly.
   \item Objectified fact types are not covered; in encoding~B they are not
     needed for relational schemas, but ORM2 schemas use them.
   \item Bijective data functions (unit conversion, splitting a name) and
