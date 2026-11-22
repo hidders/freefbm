@@ -1,0 +1,1210 @@
+\documentclass[11pt, a4paper]{article}
+
+% ── Encoding & language ───────────────────────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[british]{babel}
+
+% ── Page geometry ─────────────────────────────────────────────────────────────
+\usepackage[
+  a4paper,
+  top=25mm, bottom=25mm,
+  left=25mm, right=25mm,
+  headheight=14pt
+]{geometry}
+
+% ── Fonts ─────────────────────────────────────────────────────────────────────
+\usepackage{mathptmx}
+\usepackage{microtype}
+
+% ── Colour ────────────────────────────────────────────────────────────────────
+\usepackage[dvipsnames, table]{xcolor}
+\definecolor{headblue}{HTML}{1F4E79}
+\definecolor{ruleblue}{HTML}{2E75B6}
+\definecolor{accentbg}{HTML}{D6E4F0}
+\definecolor{codebg}{HTML}{F5F8FC}
+\definecolor{codefg}{HTML}{1F497D}
+\definecolor{gray1}{HTML}{595959}
+\definecolor{lightgray}{HTML}{CCCCCC}
+
+% ── Section headings ──────────────────────────────────────────────────────────
+\usepackage{titlesec}
+\titleformat{\section}
+  {\color{headblue}\large\bfseries}
+  {\color{headblue}\thesection}{1em}{}
+  [{\color{ruleblue}\titlerule[1pt]}]
+\titleformat{\subsection}
+  {\color{ruleblue}\normalsize\bfseries}
+  {\color{ruleblue}\thesubsection}{1em}{}
+\titleformat{\subsubsection}
+  {\color{gray1}\normalsize\bfseries}
+  {\color{gray1}\thesubsubsection}{1em}{}
+\titlespacing*{\section}{0pt}{18pt}{8pt}
+\titlespacing*{\subsection}{0pt}{12pt}{4pt}
+\titlespacing*{\subsubsection}{0pt}{8pt}{2pt}
+
+% ── Header & footer ───────────────────────────────────────────────────────────
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{%
+  \color{ruleblue}\leaders\hrule height \headrulewidth\hfill}}
+\fancyhead[L]{\small\color{gray1}FreeFBM Verbalisation}
+\fancyhead[R]{\small\color{gray1}Pipeline and Rule Language}
+\fancyfoot[C]{\small\color{gray1}\thepage}
+
+% ── Hyperlinks ────────────────────────────────────────────────────────────────
+\usepackage[
+  colorlinks=true,
+  linkcolor=ruleblue,
+  urlcolor=ruleblue,
+  pdftitle={FreeFBM Verbalisation --- Pipeline and Rule Language v10},
+  bookmarks=true,
+  bookmarksnumbered=true
+]{hyperref}
+
+% ── Tables ────────────────────────────────────────────────────────────────────
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+
+% ── Code listings ─────────────────────────────────────────────────────────────
+\usepackage{listings}
+\lstset{
+  basicstyle=\small\ttfamily\color{codefg},
+  backgroundcolor=\color{codebg},
+  frame=single,
+  framerule=0.4pt,
+  rulecolor=\color{lightgray},
+  breaklines=true,
+  keepspaces=true,
+  columns=flexible,
+  xleftmargin=8pt,
+  xrightmargin=8pt,
+  aboveskip=8pt,
+  belowskip=8pt,
+  showstringspaces=false,
+  tabsize=2,
+}
+
+% ── Note boxes ────────────────────────────────────────────────────────────────
+\usepackage[framemethod=default]{mdframed}
+\newmdenv[
+  backgroundcolor=accentbg,
+  linecolor=ruleblue,
+  linewidth=1pt,
+  innerleftmargin=10pt,
+  innerrightmargin=10pt,
+  innertopmargin=6pt,
+  innerbottommargin=6pt,
+  skipabove=8pt,
+  skipbelow=8pt,
+]{notebox}
+
+% ── Misc ──────────────────────────────────────────────────────────────────────
+\usepackage{parskip}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+\usepackage{enumitem}
+\setlist[itemize]{noitemsep, topsep=4pt, leftmargin=1.5em}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{needspace}
+
+% ── Convenience macros ────────────────────────────────────────────────────────
+\newcommand{\code}[1]{\texttt{\color{codefg}#1}}
+
+% Two-column predicate/helper table
+\newenvironment{predtable}{%
+  \begin{center}
+  \begin{tabular}{>{\leavevmode\ttfamily\color{codefg}\raggedright\arraybackslash}p{0.38\textwidth} p{0.52\textwidth}}
+  \toprule
+  \normalfont\textbf{Syntax} & \textbf{Meaning} \\
+  \midrule
+}{%
+  \bottomrule
+  \end{tabular}
+  \end{center}
+}
+\newcommand{\predrow}[2]{#1 & #2 \\[3pt]}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+% ── Cover page ────────────────────────────────────────────────────────────────
+\begin{titlepage}
+  \vspace*{4cm}
+  \begin{center}
+    {\color{headblue}\fontsize{32}{38}\selectfont\bfseries
+      FreeFBM Verbalisation}\\[0.6em]
+    {\color{gray1}\Large
+      The Pipeline from Formulas to Sentences}\\[0.2em]
+    {\color{gray1}\Large
+      and the Rule Language that Drives It}\\[2.5em]
+    \textcolor{ruleblue}{\rule{0.6\textwidth}{1.5pt}}\\[0.6em]
+    {\color{ruleblue}\large\itshape
+      Design Specification\quad\textperiodcentered\quad Version~10}\\[0.6em]
+    \textcolor{ruleblue}{\rule{0.6\textwidth}{1.5pt}}\\[3cm]
+    {\color{gray1}November 2026\\[0.3em] Describes FreeFBM v1.3.3}
+  \end{center}
+\end{titlepage}
+
+\tableofcontents
+\clearpage
+
+% ═════════════════════════════════════════════════════════════════════════════
+\part{The Pipeline}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Introduction}
+
+This document describes how FreeFBM turns the formulas of its logic into
+sentences in seven natural languages, and the rule language (DSL) in which
+the language-specific part of that process is written. Version~10 replaces
+the DSL specification v9 (October 2026), which was written after the first
+stage of the implementation, when only English existed and the rules were
+still JavaScript objects.
+
+v9 already followed the pipeline stage by stage, with the rule language as
+one stage among others. That turned out to be the right shape: most design
+decisions cut across stages. Whether a variable is introduced as
+\textit{some Course} or referred to as \textit{that Course} is decided by a
+rule, but can only be settled once the sentence has been linearised; a
+negative sentence is a formula rewrite before the rules run, but needs a rule
+of its own to be said; a reading's grammatical cases come from the model's
+lexicon but are used by the language library when it builds a noun phrase.
+This version therefore describes the whole pipeline (Part~I), then the rule
+language as a reference that can be read on its own (Part~II), then the
+languages and the tools (Parts~III and~IV).
+
+Everything described here runs in FreeFBM v1.3.3 (\code{src/verbalisation/}).
+Things that do not exist yet are marked \emph{open} and collected in
+Section~\ref{sec:open}.
+
+\subsection{Starting point}
+
+FreeFBM translates every constraint into a formula of a sorted logic with
+counting quantifiers, transitive closure and aggregation (the logic of
+\code{docs/logic/agg-logic.tex}). The Constraints tab shows these formulas
+and their sentences, side by side if wanted. Verbalisation takes a formula as
+its \emph{only} input. A named constraint and a hand-written formula
+constraint with the same content therefore get the same sentence, and the
+correctness of a sentence depends only on the rules that read the formula,
+not on a translation of constraint types.
+
+\subsection{Design goals}
+
+\begin{itemize}
+  \item \textbf{Formula in, sentence out.} Rules match formula trees; they
+        never see constraint types.
+  \item \textbf{Total.} Every formula gets a sentence. Each language ends
+        every phrase kind with generic rules that accept any node.
+  \item \textbf{Idiomatic where possible.} Idiom rules come first and give
+        NORMA's wording for the common constraints in English, and wording
+        modelled on it in the other languages.
+  \item \textbf{Declarative.} Rules are data: patterns, structural guards and
+        templates, in rule files (\code{.vr}).
+  \item \textbf{Multilingual.} A language is a rule file plus a library; the
+        engine, the rewrites, naming and reading selection are shared, and
+        one model file carries names and readings in several languages.
+  \item \textbf{Traceable and testable.} The engine reports which rules built
+        a sentence, and golden files fix the sentence of every formula of a
+        reference model, in every language and mode.
+\end{itemize}
+
+\subsection{What the pipeline produces}
+
+Two kinds of text are produced through the same machinery:
+
+\begin{itemize}
+  \item \textbf{Constraint sentences} (Constraints tab, workbench): one
+        sentence per formula, in the positive, negative, default or deontic
+        mode (Section~\ref{sec:modes}).
+  \item \textbf{Population sentences} (Population tab, Sentences view): one
+        sentence per fact or instance, built from readings and preferred
+        identifiers with the same reading and noun-phrase helpers
+        (Section~\ref{sec:population}).
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Overview}
+\label{sec:architecture}
+
+\begin{lstlisting}
+FreeFBM model + scope (selection, diagram or whole schema)
+    |
+    v  [0] formalise()            entries {kind, subject, formula}
+    |                             src/logic/constraintFormulas.js
+    v  [1] Mode rewrite           negative: phi -> not X       negative.js
+    v  [2] Variable naming        the names the formula shows  renderFormula
+    v  [3] Normalisation          wildcard rewrite             normalise.js
+    v  [4] Rules, per phrase kind sentence / clause / vp       <lang>.vr
+    |        - reading selection, lexicon, hyphen binding      engine.js, lexicon.js
+    |        - language library: noun phrases, word order,     languages/<lang>.js
+    |          agreement, cases
+Phrase tree (tokens, groups, choices)
+    |
+    v  [5] Linearisation          choices, contraction,        engine.js
+    |                             spacing, capital, full stop
+Sentence (styled tokens + plain text) and a rule trace
+\end{lstlisting}
+
+The entry point is \code{verbalise(formula, ctx, language, options)}
+(\code{engine.js}). \code{ctx} is the context \code{makeContext(state)}
+builds for the formulas (object types, fact types and link fact types by id,
+the name of a type as sentences write it, the live language), and
+\code{language} a compiled language (Section~\ref{sec:languages}). The
+options are \code{negative} (the negative mode) and \code{stats} (a map that
+collects how often each rule matched, was rejected by its guard or failed in
+its template; Section~\ref{sec:tools}). The result holds the tokens (each
+with a style class and a flag for a preceding space), the plain text, the
+trace (the names of the rules that built the sentence, outermost first) and
+the formula actually said (the rewritten one in the negative mode). The
+Constraints tab shows the trace when the pointer rests on a sentence.
+
+Stages [0]--[3] and [5] are shared by all languages; stage [4] is the
+language: its rule file and its library. The boundary between the two halves
+of stage [4] is a design choice per construction: the rules decide
+\emph{what} is said in which order, and the library decides \emph{how} a
+phrase is built in that language (Section~\ref{sec:library-interface}).
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Input: Formulas and Entries}
+\label{sec:logic}
+
+\subsection{Entries}
+
+The function \code{formalise} (with the option \code{wholeSchema}) returns the entries of the scope:
+each a \code{\{kind, subject, formula\}}, or a note instead of a formula when
+a constraint cannot be formalised yet. Besides the explicit constraints there
+are entries for what the model says implicitly: subtype disjointness and
+participation (implicit participation of non-independent entity types),
+implied link fact types of objectified fact types, the uniqueness and
+mandatory roles a preferred identifier implies, derivation rules of derived
+and semi-derived types and fact types, and formula constraints. The default
+entries of Section~\ref{sec:default} are listed in place of the constraint
+that is missing. A deontic constraint's formula is wrapped as $O(\varphi)$
+(\code{modality.js}).
+
+\subsection{Formula nodes}
+
+The formula is a tree built by \code{src/logic/formula.js}. Variables are
+objects compared by identity, each with the type it ranges over (an object
+type or an objectified fact type). A variable over the intersection of
+several types (the direct supertypes of a derived subtype) lists them all.
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{>{\ttfamily\color{codefg}}l X}
+\toprule
+\normalfont\textbf{Node} & \textbf{Meaning} \\
+\midrule
+forall(vars, body) & $\forall x_1 \ldots x_n\,\varphi$ \\
+exists(vars, body) & $\exists x_1 \ldots x_n\,\varphi$ \\
+count(op, n, [m,] vars, body) & counting quantifier $\exists^{\le n}$,
+  $\exists^{\ge n}$, $\exists^{=n}$, $\exists^{n..m}$ over tuples of
+  variables; $\exists^{>n}$ only after the negative rewrite \\
+and(args), or(args) & $n$-ary, flattened \\
+implies(l, r), iff(l, r), not(a) & connectives \\
+true & $\top$ \\
+fact(factId, args) & fact type atom; arguments in the fact type's
+  \code{roles[]} order; the fact type may be a link fact type
+  \code{<id>\_il\_<i>} \\
+type(typeId, x) & type membership, $\mathit{Student}(x)$ \\
+cmp(op, x, y) & object (in)equality $=$, $\neq$ \\
+vcmp(op, s, t) & value comparison $\approx, \not\approx, <, \le, >, \ge$ \\
+dpred(op, args) & data predicate (\code{startsWith}, \ldots) \\
+tc(star, [v,w], body, [s,t]) & $[\mathsf{TC}_{v,w}\,\varphi](s,t)$, with
+  \code{star} the reflexive-transitive closure \\
+obligatory(arg) & $O(\varphi)$, a deontic constraint \\
+possible(arg) & $\Diamond\varphi$, a default entry (Section~\ref{sec:default}) \\
+forbidden(arg) & $F(\chi)$, only after the negative rewrite of $O(\varphi)$ \\
+not(arg, mode: impossible) & $\neg\chi$ as the negative rewrite makes it \\
+wild(type, v) & a wildcard, only after normalisation (Section~\ref{sec:normalisation}) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Data terms are a variable (its value), \code{const(text, quoted)},
+\code{fn(op, args)} for the data operators of \code{dataOperators.js},
+\code{ite(cond, then, else)}, and \code{agg(fn, distinct, vars, cond, term)}
+for $\mathsf{Count}$, $\mathsf{Sum}$, $\mathsf{Avg}$, $\mathsf{Min}$ and
+$\mathsf{Max}$.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Presentation Modes}
+\label{sec:modes}
+
+A mode is a formula, or a formula rewrite, together with a sentence rule
+that reads its top node. The rest of the pipeline does not know about modes.
+
+\subsection{Positive}
+
+The formula as it is: \textit{Each Person has at most one PersonName.}
+
+\subsection{Negative}
+
+As in NORMA, a constraint is said as the situation it rules out
+(\code{negative.js}). The formula $\varphi$ is rewritten to $\neg\chi$, where
+$\chi$ is the counterexample: $\neg\varphi$ with the negation pushed inward.
+$\forall$ becomes $\exists$, $\exists^{\le n}$ becomes $\exists^{>n}$
+(\textit{more than}), $\exists^{\ge n}$ becomes $\exists^{\le n-1}$ or a
+negated $\exists$, an exact count or a range becomes \textit{fewer or more},
+$\wedge$ and $\vee$ swap, $A \to B$ becomes $A \wedge \neg B$, and value
+comparisons flip. The result is the node \code{not(}$\chi$\code{, mode:
+impossible)}, which every language's sentence rule \code{impossible} reads
+as \textit{It is impossible that \ldots}:
+
+\begin{quote}
+\textit{It is impossible that some Person has more than one PersonName.}
+\end{quote}
+
+A formula without a useful counterexample (a derivation rule, a default
+entry) gives no rewrite, and the positive sentence is used, as NORMA does. A
+deontic $O(\varphi)$ becomes $F(\chi)$, \textit{It is forbidden that
+\ldots}. In negative sentences, uniqueness over roles other than the
+subject's is said with \textit{the same} (\code{env.same}): \textit{more than
+one Person has the same Email}.
+
+\subsection{Default}
+\label{sec:default}
+
+NORMA verbalises what the model allows where a constraint is missing:
+\textit{It is possible that more than one Person has the same PersonName.}
+FreeFBM's \code{formalise()} gives these entries as $\Diamond\chi$
+(\code{possible}), for a missing mandatory role (one that is not explicit,
+not identified and not only implicitly mandatory through participation) and
+for a missing uniqueness constraint (each maximal set of roles short of all
+that contains no uniqueness constraint), and lists each in place of the
+missing constraint. The sentence rule \code{possible} reads it.
+
+\subsection{Deontic}
+
+$O(\varphi)$ is said as \textit{It is obligatory that} followed by the
+sentence $\varphi$ would be (\code{sentence(?x)}, so its own idiom rules
+apply): \textit{It is obligatory that there are exactly 3 Buildings.}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Variable Naming}
+
+Variables get exactly the names the formula view shows, computed by
+\code{renderFormula} on the formula after the mode rewrite. A variable is
+named after its type, with a subscript only when two variables of that type
+can be in scope at the same time (\textit{Course}$_1$, \textit{Course}$_2$).
+A sentence and its formula therefore always agree. The engine takes only the
+subscript from these names; the type name itself comes from the language
+(the lexicon entry, Section~\ref{sec:lexicon}), so a Dutch sentence says
+\textit{Vak}$_1$ for \textit{Course}$_1$. Wildcards have no subscript. A
+variable over several types is named after all of them, joined by \code{\&}.
+
+Type names are written as NORMA's option \textit{Object type name display}
+asks (\code{nameStyle.js}): as entered (the default), separated into lower
+case words (\textit{InstructionType} $\to$ \textit{instruction type}), or
+combined with an upper or lower case lead. A reference mode value type is
+written as its two names, the entity type's and the reference mode's.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Normalisation}
+\label{sec:normalisation}
+
+Normalisation is language-independent and copies the formula; variable
+objects are shared with the original so that their names still apply.
+
+\paragraph{Wildcard rewrite.}
+A variable $y$ bound by $\exists$ is replaced by a wildcard when it occurs
+exactly once in the body, as an argument of a fact atom, and the path from
+the $\exists$ to that atom passes only through conjunctions (and nested
+$\exists$). The variable is removed from the quantifier, and a quantifier
+with no variables left disappears. The rewrite runs bottom-up.
+\[
+\exists y\,(A \wedge R(x,y)) \;\leadsto\; A \wedge R(x,\_)
+\qquad\text{when } y \text{ does not occur in } A.
+\]
+Disjunctions are not crossed: with an empty population of $y$'s type,
+$\exists y\,(A \vee R(y))$ is false while $A \vee \exists y\,R(y)$ need not
+be. Negation and the other quantifiers are not crossed either. The rewrite
+turns most mandatory, participation and subset formulas into atoms with
+\textit{some T} arguments: $\forall x\,\exists y\,R(x,y)$ becomes
+$\forall x\,R(x,\_)$, said \textit{Each X R some Y}. A wildcard is written by
+the language's \code{wildNP}: \textit{some}, \textit{no} under a negated atom
+(\code{env.none}), \textit{any} after \textit{No X} or a negated verb.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Readings}
+\label{sec:readings}
+
+\subsection{Reading structure}
+
+A reading of an $n$-ary fact type is a role order (a permutation of
+$0..n-1$) and $n+1$ text fragments; fragment~$k$ precedes the argument of
+role $\mathit{roleOrder}[k]$ and the last fragment follows the last argument.
+The primary reading is \code{readingParts} with the identity role order;
+further readings are \code{alternativeReadings}. A role order may have
+several readings, the first preferred (\code{src/store/readings.js}). Link
+fact types of objectified fact types have readings too (\textit{involves}).
+
+\subsection{Per-language readings and names}
+\label{sec:lexicon}
+
+The model's lexicon (\code{lexicon.js}) gives each element text per
+language. An object type may carry \code{lexicon[lang] = \{name, plural,
+gender, forms\}}: gender is the language's own word class (\textit{de}/\textit{het}
+in Dutch, \textit{m}/\textit{f} in the Romance languages, five genders in
+Polish, \textit{m}/\textit{f}/\textit{n} in German), and \code{forms} the
+name in the other cases (Polish, German). A fact type may carry
+\code{lexicon[lang].readings = [\{roleOrder, parts, subParts?, pluralParts?,
+cases?\}]}:
+
+\begin{itemize}
+  \item \code{subParts}: the subordinate-clause word order (Dutch
+        \textit{\ldots\ dat Student Vak volgt});
+  \item \code{pluralParts}: the reading with a plural subject (\textit{are
+        prerequisites for});
+  \item \code{cases}: the grammatical case of each slot, in reading order
+        (Polish \code{['nom', 'loc']} for \textit{Sala znajduje się w
+        Budynku}).
+\end{itemize}
+
+The live language, the one the element's own name and readings are in (the
+view language, \code{ctx.\allowbreak liveLanguage}), uses the element's own text; its
+lexicon entries only add the extra forms. For another language the
+lexicon's readings replace the element's own, and without any the element's
+own are used. The model file is saved in its base language
+(\code{src/store/viewLanguage.js}).
+
+\subsection{Selection}
+
+Selection happens per atom occurrence, when a rule renders an atom
+(\code{reading()} in \code{engine.js}):
+
+\begin{itemize}
+  \item \textbf{With a subject} (verb phrases): only a reading whose role
+        order starts with the subject's role, with nothing before it, is
+        used. The subject's slot is left out; a second occurrence of the
+        subject is the language's reflexive (\textit{itself}). Without such
+        a reading the verb phrase fails and the caller falls back to a
+        clause.
+  \item \textbf{Without a subject} (clauses): the first reading that starts
+        with a variable not filled by an override is preferred (\textit{that
+        Course has some CourseTitle}), otherwise the primary reading.
+\end{itemize}
+
+The language then shapes the chosen reading for the environment
+(\code{lang.shapeReading}): the plural form with a plural subject, an
+inflected first verb (\code{lang.verbForm}: negated, plural), the
+subordinate or inverted word order in Dutch and German. Shaping may fail,
+which fails the reading.
+
+\subsection{Overrides}
+
+A rule may fill a variable's slot with a phrase of its own: a quantified
+noun phrase (\textit{at most one Email}), a noun phrase with a relative
+clause (\textit{some Offering that involves some Course}), or nothing (the
+gap of an object relative clause, \textit{that some AcademicYear starts
+in}). In languages with cases an override is a function from the slot's
+case to the phrase, so the noun phrase is built in the case the reading
+gives the slot (\textit{jakiegoś Przedmiotu}, \textit{einen Kurs}).
+
+\subsection{Hyphen binding}
+
+As in NORMA, a reading may bind words to a role player with hyphens
+(\code{hyphenBinding.js}), so that the quantifier goes in front of them:
+with \textit{\ldots\ has first- given \ldots}, \textit{each Person has at
+most one first given Name}. A word ending in a hyphen binds itself and the
+words after it up to the player (left binding); a word starting with a hyphen
+binds the words from the player up to itself (right binding,
+\textit{au plus un Nom principal}); a doubled hyphen joins without a space
+(\textit{ex-Partner}). The hyphens are markers only: diagrams show the
+reading as typed, sentences and formulas without them. A reading that binds
+words to its first player does not count as starting with it.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Rules}
+\label{sec:rules}
+
+Stage [4] applies the language's rules. Part~II gives the rule language in
+full; this section gives the model of computation.
+
+\subsection{Phrase kinds}
+
+Every rule belongs to one phrase kind. To build a phrase of a kind for a
+node, the engine tries the rules of that kind in file order and uses the
+first whose pattern matches, whose guard holds and whose template succeeds.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{>{\bfseries}l X l}
+\toprule
+Kind & Produces & Example \\
+\midrule
+sentence & a whole formula; linearisation adds the capital and full stop &
+  \textit{Each Person has some PersonName} \\
+clause & a formula inside a sentence; introduced variables are referred
+  to as \textit{that X} & \textit{some Room is in that Building} \\
+vp & a verb phrase about a subject variable, whose slot is left out &
+  \textit{has at most one Email} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Noun phrases are not a phrase kind: they are built by library functions
+(\code{quantNP}, \code{ref}, \code{np} in the languages with cases), because
+their shape depends on the slot they fill.
+
+\subsection{Failure and totality}
+
+A template \emph{fails} when a sub-phrase it needs cannot be built (a verb
+phrase for a subject that has no reading starting with it, a reading the
+language cannot shape). The engine then tries the next rule. Failure is
+ordinary control flow, and a failed attempt leaves nothing in the trace. The
+last rules of each kind are generic: the clause kind has a rule per node type
+and a final catch-all, and the sentence kind falls back to a clause. Every
+formula therefore gets a sentence, though not always an idiomatic one; the
+coverage tool lists the sentences that needed the catch-all
+(Section~\ref{sec:tools}).
+
+\subsection{Environment}
+\label{sec:env}
+
+Each call carries an environment that templates extend with
+\code{with(key: value) \{ \ldots \}} and that rules, guards and the library
+read. The keys in use:
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{>{\ttfamily\color{codefg}}l X}
+\toprule
+\normalfont\textbf{Key} & \textbf{Meaning} \\
+\midrule
+subject & the subject variable of a verb phrase (\code{?subj} in vp rules) \\
+verb & the form of the subject's verb: \code{plural}, \code{negated}
+  (Romance also \code{ne}); carried over to verb phrases about the same
+  subject only \\
+intro & the variables an \textit{If \ldots\ then \ldots} sentence is about:
+  each is introduced at its first mention as a wildcard is and referred back
+  to after it (Section~\ref{sec:choices}) \\
+refStyle & \code{bare}: references are bare names (derivation rules,
+  \textit{Student is a TeachingAssistant if and only if Student assists in
+  some Course}) \\
+same & variables written \textit{the same X} (negative uniqueness) \\
+none & a wildcard is \textit{no X} (and in Romance the verb is negated) \\
+negative & set under \textit{No X}: wildcards read \textit{any} \\
+form & word order in Dutch and German: main (unset), \code{sub}
+  (verb last), \code{inv} (verb first) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+A clause starts without a subject and verb form, a sentence also without
+\code{subject} and \code{verb}; every other key is inherited.
+
+\subsection{References and wildcards}
+
+Templates never write a variable's determiner themselves; they ask for a
+reference (\code{ref(?x)}, or a slot of a reading) and the language writes
+it: \code{refNP} for an introduced variable (\textit{that Course},
+\textit{dat Vak}, \textit{diesen Kurs}, \textit{the same Email}, or bare),
+\code{wildNP} for a wildcard (\textit{some Course}, \textit{een Vak},
+\textit{jakiegoś Przedmiotu}). This keeps agreement, gender and case in the
+library, and lets the environment change all references of a sub-phrase at
+once.
+
+\subsection{First and later mentions}
+\label{sec:choices}
+
+In an \textit{If \ldots\ then \ldots} sentence the universally quantified
+variables are introduced in the condition. NORMA writes each with
+\textit{some} at its first mention and \textit{that} at every later one:
+
+\begin{quote}
+\textit{If some Staff member teaches some Offering that involves some Course
+then that Staff member is qualified to teach that Course.}
+\end{quote}
+
+The \code{if-then} rule of every language says
+\code{with(intro: ?vs) \{ \ldots \}}. A reference to a variable of
+\code{env.intro} is then a \emph{choice}
+\code{\{choice: v, first, later\}} holding both phrases: \code{first} is the
+language's wildcard phrase, \code{later} its reference phrase, each in the
+slot's case. Which mention is the first is only known when the sentence is
+complete, because rules do not build phrases in reading order (an override
+is built before the reading it fills, a relative clause before its head may
+be chosen, a failed attempt is discarded). Linearisation therefore resolves
+choices: it walks the phrase tree in token order and takes \code{first} at
+the first choice for a variable and \code{later} at the others. Variables
+introduced by their own quantifier (\textit{some Offering}) are not in
+\code{intro}; their later mentions are ordinary references.
+
+This is the one place where a rule's decision is carried through the phrase
+tree to linearisation; the mechanism is general and could serve other
+anaphora (\textit{it}, \textit{they}) later.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Linearisation}
+\label{sec:linearise}
+
+A phrase is a nested list of tokens \code{\{text, cls\}} with a style class:
+\code{kw} (fixed words), \code{type} (object types and variables),
+\code{reading}, \code{const} (values) and \code{punct}; libraries may add
+classes of their own (German \code{relEnd}). Linearisation (\code{linearise}
+in \code{engine.js}):
+
+\begin{enumerate}
+  \item flattens the tree in order, resolving choices
+        (Section~\ref{sec:choices});
+  \item lets the language contract neighbouring tokens
+        (\code{lang.contract}): French \textit{que il} $\to$ \textit{qu'il},
+        Italian \textit{un studente} $\to$ \textit{uno studente} and
+        \textit{in il} $\to$ \textit{nel}, Spanish \textit{y I\ldots} $\to$
+        \textit{e I\ldots}, the German closing comma of a relative clause
+        dropped before punctuation and at the end, and the English relative
+        \textit{that} dropped before a back-reference (\textit{each Course
+        that Student enrols in}, not \textit{that that Student});
+  \item puts a space before every token except attaching punctuation, a
+        token marked \code{glue} and the token after an opening parenthesis;
+  \item capitalises the first letter and adds the full stop.
+\end{enumerate}
+
+Object type names keep their own capitalisation. The Constraints tab colours
+the tokens like the formulas.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Population Sentences}
+\label{sec:population}
+
+The Population tab's Sentences view writes each fact and instance as a
+sentence (\code{population.js}). It does not go through the rules: a
+population row is not a formula. It uses the same helpers
+(\code{phraseKit(ctx, language)} gives the \code{h} the rules get, so
+readings, lexicon, hyphen binding and shaping apply) and the same
+linearisation, with fixed words and phrase shapes from each library's
+\code{population} section (\textit{the}, \textit{with}, \textit{in which},
+\textit{there is}, \textit{is a}, \textit{are referred to by},
+\textit{(derived)}).
+
+An instance is a noun phrase found from its type's preferred identifier as
+the cell holds it: a popular reference mode in the short form
+\textit{Person 'P1'} (with one key line per list, \textit{Persons are
+referred to by PersonNr}), a unit-based one \textit{Mass 12 kg}, a general one
+\textit{Book with ISBN '\ldots'}, a composite identifier through its
+identifying readings (\textit{the Room that is in Building 'MAL' and has
+RoomNr '151'}), an objectified fact type through its nominal reading
+(\textit{the enrolment of Student 'P1' in Course 'DB1'}) or else
+\textit{the Enrolment in which Student 'P1' enrols in Course 'DB1'}. Values
+are quoted unless their datatype is a number or a truth value. A callback
+lets Dutch ask for the subordinate order and Polish and German give each slot
+its case.
+
+% ═════════════════════════════════════════════════════════════════════════════
+\part{The Rule Language}
+\label{part:dsl}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Rule Files}
+\label{sec:syntax}
+
+A language's rules are in a rule file (\code{languages/<lang>.vr}), parsed
+and compiled by \code{rules.js}. A file holds a language declaration and
+rules; \code{\#} starts a comment.
+
+\begin{lstlisting}
+language en "English"
+
+sentence rule each-at-most {
+  # forall x (exists ys R -> count<=n ys R) says no more than
+  # forall x count<=n ys R
+  match:    ForAll([?x], Implies(?a, ?q @ Count(<=, ?n, ?ys, ?c)))
+  guard:    sameUpToWild(?a, ?c, ?ys)
+  template: "each" name(?x) vp(?q, ?x)
+}
+\end{lstlisting}
+
+A rule is written \code{<kind> rule <name> \{ \ldots\ \}} with the fields \code{match}, \code{guard} and \code{template}, and kind \code{sentence}, \code{clause} or
+\code{vp}; the guard is optional. Rules are tried in file order within their
+kind. Names may contain hyphens. Errors carry the line and column.
+
+\subsection{Patterns}
+
+Patterns are compiled to data patterns of \code{match.js}; a formula node
+matches field by field, in order, so a quantifier's variables are bound
+before its body.
+
+\begin{lstlisting}
+_                       anything, binds nothing
+?x                      binds a value; a second occurrence must be the
+                        same value (variables compared by identity)
+?xs*                    in a list: the remaining elements
+?q @ P                  binds the node P matched to ?q
+"text"  12              a string or number
+<= >= = .. < > != ~     operators (also as Unicode: <= is the same as the
+                        less-or-equal sign, ~ the approximately-equal sign)
+[P, ...]                a list of exactly these elements (or a ?tail*)
+{ field: P, ... }       a node with these fields
+ForAll(vars, body)      Exists(vars, body)    Count(op, n, vars, body)
+Not(arg)  And(args)  Or(args)  Implies(l, r)  Iff(l, r)
+Type(T, x)  Cmp(op, l, r)  VCmp(op, l, r)  TC(vars, body, args)
+Fact(?P, {?x, ?y}, ?rest*)
+                        a fact atom over ?P whose arguments include the
+                        bound ?x and ?y, in any roles; without ?rest* no
+                        other arguments are allowed
+Node("dpred")  True     a node of a type; the true node
+\end{lstlisting}
+
+Fact arguments are matched by role, not by position. In a vp rule
+\code{?subj} is bound to the subject before matching starts. Comparisons of
+subformulas (\code{sameUpToWild}, \code{exclusionItems}) use equality up to
+renaming of bound variables, because \code{formalise()} builds each copy of a
+join path with fresh variables.
+
+\subsection{Guards}
+
+A guard is an expression: bindings \code{?x}, strings, numbers,
+\code{true}, \code{false}, \code{null}, lists \code{[a, b]}, field access
+\code{?a.t}, \code{env.verb}, calls \code{f(a, b)} of built-ins and library
+functions, comparisons \code{==}, \code{!=}, \code{<}, \code{>}, \code{<=},
+\code{>=}, membership \code{a in [\ldots]}, and \code{not}, \code{and},
+\code{or}. A guard passes when its value is truthy. Guards test structure;
+they must not build phrases. Whether a phrase can be built is decided by the
+template failing.
+
+\subsection{Templates}
+
+A template is a sequence of items; it fails (gives \code{null}) when an item
+does.
+
+\begin{predtable}
+  \predrow{"words"}{fixed words (class \code{kw})}
+  \predrow{comma colon semicolon}{punctuation, attached to the preceding word}
+  \predrow{f(a, b, key: value)}{a call of a built-in or library function; an argument is a sequence of items, passed as is when it is a single item; a failed argument fails the call}
+  \predrow{(item item \ldots)}{a group}
+  \predrow{if c \{ \ldots \} else \{ \ldots \}}{a choice; \code{else} is optional}
+  \predrow{with(key: value) \{ \ldots \}}{the items with a changed environment (Section~\ref{sec:env})}
+  \predrow{node}{the matched formula}
+\end{predtable}
+
+\subsection{Built-ins}
+
+\begin{predtable}
+  \predrow{name(v)}{the variable's name with subscript, styled as a type}
+  \predrow{typeName(T)}{a type's name in the language}
+  \predrow{ref(v, case: c)}{a reference: \code{refNP}, \code{wildNP} for a wildcard, a choice for a variable of \code{env.intro}}
+  \predrow{sentence(F), clause(F, key: v), vp(F, v, key: v)}{a sub-phrase of that kind, with optional environment changes}
+  \predrow{reading(A, subject: v)}{an atom through a selected reading}
+  \predrow{term(t)}{a data term, through the library's \code{term}}
+  \predrow{kw(text), punct(text)}{a fixed word, punctuation}
+  \predrow{len(xs), any(xs, p), all(xs, p)}{list tests for guards}
+\end{predtable}
+
+Every other name is a library function, called with the phrase helpers
+first: \code{lib.f(h, a, b, \{key: value\})}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{The Library Interface}
+\label{sec:library-interface}
+
+A language is its rule file compiled against its library
+(\code{compileLanguage(src, lib)}): \code{\{id, label, rules, \ldots hooks\}}.
+The library is a JavaScript module with \code{functions} (called from
+guards and templates) and hooks the engine calls:
+
+\begin{predtable}
+  \predrow{refNP(h, v, c)}{a reference to an introduced variable in case \code{c}}
+  \predrow{wildNP(h, w, c)}{a wildcard (also a variable's first mention)}
+  \predrow{reflexive(h, v, c)}{a second occurrence of the subject}
+  \predrow{term(h, t)}{a data term or aggregate as a noun phrase}
+  \predrow{verbForm(h, text)}{the first verb of a reading in \code{env.verb}'s form, or \code{null}}
+  \predrow{pluralise(name)}{a plural by rule, when the lexicon gives none}
+  \predrow{shapeReading(h, r, elided, atom)}{a reading's parts for the environment (word order, verb forms), optionally with changed cases}
+  \predrow{contract(tokens)}{the token-level rewrites of linearisation}
+  \predrow{population}{the fixed words and shapes of population sentences}
+\end{predtable}
+
+The phrase helpers \code{h} give the environment (\code{h.env}), the context,
+\code{h.with(env)}, sub-phrases (\code{h.sentence}, \code{h.clause},
+\code{h.vp}), names (\code{h.name}, \code{h.plural}, \code{h.typeLabel},
+\code{h.subscript}), the lexicon entry and gender of a variable's type
+(\code{h.entry}, \code{h.gender}), \code{h.ref} and \code{h.reading}.
+
+\paragraph{Shared structural tests.}
+\code{structure.js} holds the tests every language uses, so that languages
+differ only in wording:
+
+\begin{predtable}
+  \predrow{rangeSpec(F, x)}{F is a value range on x: a disjunction of $x \approx c$, $x \ge a$, $x \le b$ and intervals with open or closed bounds}
+  \predrow{exclusionItems(F)}{$\neg(A_1 \wedge \ldots \wedge A_n)$, or $\neg(A_i \wedge A_j)$ for every pair of $n \ge 3$ formulas}
+  \predrow{exclusiveOrItems(F)}{$(A_1 \vee \ldots \vee A_n)$ together with \textit{at most one of} them}
+  \predrow{sameUpToWild(A, B, ys)}{A is B with ys replaced by wildcards}
+  \predrow{distributable(ys, args, x)}{$\exists^{=1}\bar y\,\bigwedge R_i(x,y_i)$ with one binary conjunct per $y_i$, which holds exactly when each $\exists^{=1} y_i\,R_i(x,y_i)$ does}
+  \predrow{isComplex(F), isSingular(op, n), subjectOf(F), occurs(F, v)}{small tests}
+\end{predtable}
+
+\paragraph{Shared phrase builders.}
+Each library has its own version of a small set of builders the rules call:
+\code{objectQuantified} (a verb phrase from an atom in F with ?y as object
+filled by a noun phrase, F's other conjuncts a relative clause on ?y),
+\code{anchoredClause} (the same as a clause, the atom anchored at an
+introduced variable), \code{relative} and \code{relativeBody} (\textit{that}
++ verb phrase, else an object gap, else \textit{such that} + clause),
+\code{quantNP}, \code{clauseList}, \code{names}, \code{commaList}.
+
+% ═════════════════════════════════════════════════════════════════════════════
+\part{The Languages}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{English}
+\label{sec:languages}
+\label{sec:english}
+
+English follows NORMA's wording. Its 54 rules, in the order they are tried, by phrase kind.
+
+\needspace{12\baselineskip}
+\paragraph{Sentence rules}
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash\leavevmode\ttfamily\color{codefg}}p{0.3\textwidth} X}
+\toprule
+\normalfont\textbf{Rule} & \textbf{Matches $\to$ example} \\
+\midrule
+impossible, possible & the mode nodes $\to$ \textit{It is impossible that \ldots}, \textit{It is possible that \ldots} \\
+obligatory, forbidden & $O(\varphi)$, $F(\chi)$ $\to$ \textit{It is obligatory that \ldots} \\
+value-range & $\forall x$ (value range) $\to$ \textit{The possible values of Grade are 0 to 100.} \\
+exactly-one-of & exclusive-or $\to$ \textit{For each X, exactly one of the following holds: \ldots} \\
+no & $\forall x\,\neg\varphi$ $\to$ \textit{No Person is a Building.} \\
+each-at-most & frequency $\to$ \textit{Each Student enrols in at most 6 Courses.} \\
+each-that & $\forall x\,(\alpha \to \beta)$ $\to$ \textit{Each Student that enrols in at least 4 Courses is a BusyStudent.} \\
+at-least-one-of & inclusive-or $\to$ \textit{For each X, at least one of the following holds: \ldots} \\
+each & $\forall x\,\varphi$ $\to$ \textit{Each Person has at most one PersonName.} \\
+definition & derivation rules, bare references $\to$ \textit{Student is a TeachingAssistant if and only if Student assists in some Course.} \\
+if-then & $\forall\bar x\,(\alpha\to\beta)$, two or more variables, all in $\alpha$; first and later mentions $\to$ \textit{If some Course$_1$ is a prerequisite for some Course$_2$ and \ldots\ then \ldots} \\
+for-each & $\forall\bar x\,\varphi$ $\to$ \textit{For each Building and RoomNr, at most one Room is in that Building and has that RoomNr.} \\
+clause & anything \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\needspace{12\baselineskip}
+\paragraph{Clause rules}
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash\leavevmode\ttfamily\color{codefg}}p{0.3\textwidth} X}
+\toprule
+\normalfont\textbf{Rule} & \textbf{Matches $\to$ example} \\
+\midrule
+more-than-one-same & negative uniqueness $\to$ \textit{more than one Person has the same Email} \\
+at-most-one-of & exclusion $\to$ \textit{at most one of the following holds: A; B} \\
+not-subject, none, not & \textit{Course$_1$ is not a prerequisite for Course$_3$}; \textit{no Staff coordinates that Course}; \textit{it is not true that A} \\
+and, or, implies, iff, for-each & the connectives \\
+some-subject, some-object & $\exists y$ $\to$ \textit{some Enrolment involves \ldots}, \textit{\ldots\ teaches some Offering that \ldots} \\
+quantified-subject, -object & singular counts \\
+there-are-n-objects, there-are-n-that & cardinality and plural counts $\to$ \textit{there are at least 5 Staff members that coordinate some Course} \\
+there-is-some, there-are-n & generic $\exists$ and counts with \textit{such that} \\
+fact, subject-vp, value-comparison, data-\-predicate, closure, true, unknown & generic, one per node type, and the catch-all \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\needspace{12\baselineskip}
+\paragraph{Verb phrase rules}
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash\leavevmode\ttfamily\color{codefg}}p{0.3\textwidth} X}
+\toprule
+\normalfont\textbf{Rule} & \textbf{Matches $\to$ example} \\
+\midrule
+fact, is-a, value-comparison, same-object, data-predicate & \textit{has some PersonName}, \textit{is a Student}, \textit{is at least 1970}, \ldots \\
+directly-or-indirectly & $[\mathsf{TC}_{v,w}R(v,w)](x,t)$ $\to$ \textit{is a prerequisite for itself, directly or indirectly} \\
+and, or, exactly-one-each & joined verb phrases; \textit{is in exactly one Building and has exactly one RoomNr} \\
+quantified-object, no-object, some-object & \textit{has at most one Email}, \textit{enrols in no Course} \\
+not, none & negated verb phrases (negative mode), \textit{earned no Grade} \\
+\bottomrule
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The library (\code{english.js}) holds a small morphology: \textit{one} for 1,
+plurals by rule keeping a subscript (\textit{Category} $\to$
+\textit{Categories}), \textit{a}/\textit{an}, \textit{who} for personal
+types, \textit{itself}/\textit{themselves}, verb inflection for plural and
+negated subjects (\textit{is}/\textit{are}/\textit{is not},
+\textit{has}/\textit{have}/\textit{does not have}), the wording of data
+operators and aggregates (\textit{the sum of the Credits that each Course
+that Student enrols in is worth}), and the contraction that drops a relative
+\textit{that} before a back-reference.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{The Other Languages}
+
+Each language has a rule file of 53--57 rules that mirrors the English one,
+so that rule names, coverage and golden files line up, and a library that
+supplies what the language needs beyond English.
+
+\subsection{Dutch}
+
+Word order is an environment key, \code{env.form}: main clause (verb
+second), \code{sub} (verb last) and \code{inv} (verb first). Readings are
+written in main-clause order; the subordinate form comes from
+\code{subParts}, else the finite verb, the first word after the subject,
+moves to the end (\textit{Vak is Studiepunten waard} $\to$ \textit{\ldots\
+Vak Studiepunten waard is}), and inversion puts it before the subject. The
+\code{if-then} rule therefore reads \code{"als" clause(?a, form: "sub") comma
+"dan" clause(?c, form: "inv")}, with an \code{if-then-holds} fallback
+\textit{\ldots, dan geldt dat \ldots} for consequents without an inverted
+form. Gender (\textit{de}/\textit{het}) chooses \textit{elke}/\textit{elk}
+and \textit{die}/\textit{dat}:
+
+\begin{quote}
+\textit{Als een Medewerker een Vakaanbieding die een Vak betreft doceert,
+dan is die Medewerker bevoegd om dat Vak te doceren.}
+\end{quote}
+
+\subsection{French, Italian and Spanish}
+
+The Romance languages share one library (\code{romance.js}) parametrised by
+a profile per language (\code{french.js}, \code{italian.js} and \code{spanish.js}). Word order
+is the English one. Gender (\textit{m}/\textit{f}) chooses articles and
+demonstratives (\textit{un}/\textit{une}, \textit{ce}/\textit{cette},
+\textit{quel}/\textit{quella}); negation is a particle before the verb and in
+French \textit{pas} after it (\code{env.verb} \code{negated}, or \code{ne}
+alone before \textit{aucun}); a preposition before a relative gap moves to
+the pronoun (\textit{dans laquelle}, \textit{in cui}, \textit{en la que});
+and the profile's contractions run at linearisation (elision, \textit{uno}
+before \textit{s}+consonant, Italian articulated prepositions, Spanish
+\textit{e} before \textit{i}).
+
+\begin{quote}
+\textit{Si un Membre du personnel enseigne une Offre de cours qui concerne
+un Cours, alors ce Membre du personnel est qualifié pour enseigner ce
+Cours.}
+\end{quote}
+
+\subsection{Polish}
+
+Nouns decline. The lexicon gives a type its nominative singular and plural,
+gender (\textit{mp}, \textit{ma}, \textit{mi}, \textit{f}, \textit{n}) and its
+other case forms; a reading gives each slot a case (nominative for the
+first, accusative for the others by default); a negated verb puts an
+accusative object in the genitive. Because noun phrases depend on their
+slot, the rules pass the \emph{kind} of a noun phrase (\code{"some"},
+\code{"none"}, \code{"each"}, \code{"bare"} or a counting quantifier) to
+\code{np}, \code{anchoredClause} and \code{objectQuantified}, and the library
+builds it in the slot's case. Numbers govern the noun (\textit{jeden
+Przedmiot}, \textit{2 Przedmioty}, \textit{5 Przedmiotów}).
+
+\begin{quote}
+\textit{Jeśli jakiś Pracownik prowadzi jakąś Ofertę, która dotyczy jakiegoś
+Przedmiotu, to ten Pracownik ma uprawnienia do nauczania tego Przedmiotu.}
+\end{quote}
+
+\subsection{German}
+
+German combines Dutch word order (verb second, verb last in subordinate
+clauses, a separable particle joining the verb at the end:
+\textit{teilnimmt}) with Polish-style cases (nominative, genitive, dative,
+accusative per slot; noun phrase kinds \textit{jeder}, \textit{ein},
+\textit{kein}, \textit{dieser}, \textit{derselbe}, counts). The lexicon
+gives gender (else guessed from the ending), plural (else by rule) and case
+forms (else by rule: genitive \textit{-s}/\textit{-es}, weak masculine nouns
+\textit{-en}, dative plural \textit{-n}). Subordinate clauses take commas on
+both sides; the closing one is a \code{relEnd} token that contraction drops
+before punctuation and at the end. A bare name reads as a label and stays in
+the nominative.
+
+\begin{quote}
+\textit{Wenn ein Mitarbeiter ein Kursangebot, das einen Kurs betrifft,
+unterrichtet, dann darf dieser Mitarbeiter diesen Kurs unterrichten.}
+\end{quote}
+
+% ═════════════════════════════════════════════════════════════════════════════
+\part{Tools and Implementation}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Tools}
+\label{sec:tools}
+
+\subsection{Golden tests}
+
+\code{npm run test:verbalisation} (\code{scripts/verbalisation-golden.mjs})
+verbalises every entry of the reference model (the university sample, whole
+schema with the implicit entries: 153 entries) and of the additions in
+\code{tests/verbalisation/extras.mjs} (cardinality ranges, derived and
+semi-derived types and fact types, data terms, aggregates, deontic
+constraints, open bounds, an outer join: 29 entries), in all seven languages
+and in the positive and negative modes, and compares them with
+\code{tests/verbalisation/<sample|extras>.<lang>[.neg].txt}. Each block holds
+the entry's kind, its formula and its sentence. \code{--update} accepts new
+output, so the diff of a rule change shows exactly which sentences it
+affects; \code{--lang=xx} checks one language.
+
+\subsection{Coverage and overlaps}
+
+\code{npm run verbalisation:coverage} (and the workbench) report per
+language which rules the reference sentences use, which never fire, and
+which sentences fell back to a generic rule (\code{analysis.js}, from the
+\code{stats} that \code{verbalise} collects). Overlaps are found statically:
+a rule is overlapped by an earlier one of the same kind whose pattern
+subsumes its own and whose guard is absent or the same, so it is only tried
+when the earlier template fails.
+
+\subsection{Workbench}
+
+View \textrightarrow\ Verbalisation workbench (Cmd+Shift+B) opens a window with the rule file of a
+language in an editor, and next to it the entries of the open model with
+formula, sentence and trace, in the Sentences, Coverage and Overlaps tabs.
+Applied rules are kept per language in local storage and used by the
+Constraints tab of the main window; the windows exchange the model and the
+rules through the main process (\code{workbench.js}).
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Implementation}
+
+\subsection{Files}
+
+\begin{predtable}
+  \predrow{src/\allowbreak logic/\allowbreak constraintFormulas.js}{stage 0: \code{formalise}, \code{makeContext}, default entries}
+  \predrow{src/\allowbreak verbalisation/\allowbreak negative.js}{the negative rewrite}
+  \predrow{src/\allowbreak verbalisation/\allowbreak normalise.js}{the wildcard rewrite}
+  \predrow{src/\allowbreak verbalisation/\allowbreak engine.js}{\code{verbalise}, rule application, helpers, reading selection, choices, linearisation}
+  \predrow{src/\allowbreak verbalisation/\allowbreak match.js}{pattern matcher, equality up to bound variables}
+  \predrow{src/\allowbreak verbalisation/\allowbreak rules.js}{the rule language: parser and compiler}
+  \predrow{src/\allowbreak verbalisation/\allowbreak structure.js}{shared structural tests}
+  \predrow{src/\allowbreak verbalisation/\allowbreak lexicon.js, nameStyle.js, hyphenBinding.js}{lexicon lookup, name display, hyphen binding}
+  \predrow{src/\allowbreak verbalisation/\allowbreak population.js}{population sentences}
+  \predrow{src/\allowbreak verbalisation/\allowbreak analysis.js, workbench.js}{coverage, overlaps, the workbench's shared state}
+  \predrow{src/\allowbreak verbalisation/\allowbreak languages/}{\code{<lang>.vr} and \code{<lang>.js} per language, \code{romance.js}, \code{index.js}}
+\end{predtable}
+
+\subsection{Interpretation, not compilation}
+
+Rules are interpreted. Each parsed pattern, guard and template becomes a
+closure once, when the rule file is loaded; no JavaScript source is
+generated and no user-written code is evaluated in the renderer. Verbalising
+the whole reference model takes milliseconds, so the workbench can
+re-verbalise everything on every change.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Open Questions}
+\label{sec:open}
+
+\begin{itemize}
+  \item \textbf{Remaining \textit{that that}.} After the conjunction
+        \textit{that}, a back-reference still gives \textit{such that that
+        Student} and \textit{it is not true that that Student} in negative
+        sentences, as in NORMA. Dropping the conjunction would lose the
+        reference; rephrasing (\textit{such that the Student}) would give up
+        NORMA's consistent \textit{that}.
+  \item \textbf{Pronouns.} The choice mechanism (Section~\ref{sec:choices})
+        could also write \textit{it} or \textit{they} for a third mention, or
+        for a variable mentioned once before in the same clause.
+  \item \textbf{First mentions under negation.} A variable of \code{intro}
+        whose first mention lies under \textit{it is not true that} would be
+        introduced there; no current formula does this, but the rule could
+        guard against it.
+  \item \textbf{Contraction in the DSL.} Token rewrites (\code{contract})
+        are written in the libraries. A rule kind for them would let rule
+        writers add elisions and the like without JavaScript.
+  \item \textbf{Language files with \code{extends}.} v8's dialect
+        inheritance is not implemented; the Romance languages share a
+        library instead.
+  \item \textbf{Subjunctive.} The negative mode uses the indicative in
+        French, Italian and Spanish (\textit{il est impossible que \ldots\
+        suit}).
+\end{itemize}
+
+% ═════════════════════════════════════════════════════════════════════════════
+\appendix
+
+\section{Worked Examples}
+
+Each example gives the formula as the formula view shows it, the sentence,
+and the rule trace.
+
+\paragraph{Uniqueness without a reading from the constrained role.}
+\[
+\forall \mathit{Course}\;\exists^{\le 1}\mathit{Staff}\;(\mathit{Staff}\ \textsf{coordinates}\ \mathit{Course})
+\]
+\textit{For each Course, at most one Staff member coordinates that Course.}\\
+Trace: \code{sentence:for-each} $\to$ \code{clause:quantified-subject}
+$\to$ \code{vp:fact}. The \code{each} rule failed first, because
+\textit{coordinates} has no reading starting with Course.
+
+\paragraph{Frequency.}
+\[
+\forall \mathit{Student}\,((\exists \mathit{Course}\,(\mathit{Student}\ \textsf{enrols in}\ \mathit{Course})) \to \exists^{\le 6}\mathit{Course}\,(\mathit{Student}\ \textsf{enrols in}\ \mathit{Course}))
+\]
+\textit{Each Student enrols in at most 6 Courses.}\\
+Trace: \code{sentence:each-at-most} $\to$ \code{vp:quantified-object}.
+
+\paragraph{Subset over a join path, positive.}
+\[
+\begin{aligned}\forall \mathit{Staff}\,\forall \mathit{Course}\,(&(\exists \mathit{Offering}\,((\mathit{Staff}\ \textsf{teaches}\ \mathit{Offering}) \wedge (\mathit{Offering}\ \textsf{involves}\ \mathit{Course})))\\ &\to (\mathit{Staff}\ \textsf{is qualified to teach}\ \mathit{Course}))\end{aligned}
+\]
+\textit{If some Staff member teaches some Offering that involves some Course
+then that Staff member is qualified to teach that Course.}\\
+Trace: \code{sentence:if-then} $\to$ \code{clause:some-object} $\to$
+\code{vp:fact} $\to$ \code{clause:fact}. \textit{Staff member} and
+\textit{Course} are in \code{intro}; \textit{Offering}, used twice, keeps its
+own quantifier.
+
+\paragraph{The same, negative.}
+\[
+\neg(\exists \mathit{Staff}\,\exists \mathit{Course}\,((\exists \mathit{Offering}\,(\ldots)) \wedge \neg(\mathit{Staff}\ \textsf{is qualified to teach}\ \mathit{Course})))
+\]
+\textit{It is impossible that there is some Staff member and some Course
+such that that Staff member teaches some Offering that involves that Course
+and that Staff member is not qualified to teach that Course.}
+
+\paragraph{Acyclic ring.}
+\[
+\forall \mathit{Course}_1\;\neg[\mathsf{TC}_{\mathit{Course}_2,\mathit{Course}_3}\,(\mathit{Course}_2\ \textsf{is a prerequisite for}\ \mathit{Course}_3)](\mathit{Course}_1,\mathit{Course}_1)
+\]
+\textit{No Course$_1$ is a prerequisite for itself, directly or indirectly.}\\
+Trace: \code{sentence:no} $\to$ \code{vp:directly-or-indirectly}.
+
+\paragraph{External preferred identifier.}
+\[
+\forall \mathit{Room}\;\exists^{=1}\mathit{Building},\mathit{RoomNr}\,((\mathit{Room}\ \textsf{is in}\ \mathit{Building}) \wedge (\mathit{Room}\ \textsf{has}\ \mathit{RoomNr}))
+\]
+\textit{Each Room is in exactly one Building and has exactly one RoomNr.}\\
+Trace: \code{sentence:each} $\to$ \code{vp:exactly-one-each} $\to$
+\code{vp:quantified-object} (twice).
+
+\paragraph{Default verbalisation.}
+\[
+\Diamond\,\exists \mathit{PersonName}\;\exists^{>1}\mathit{Person}\,(\mathit{Person}\ \textsf{has}\ \mathit{PersonName})
+\]
+\textit{It is possible that more than one Person has the same PersonName.}
+
+\paragraph{Deontic, negative.}
+\[
+F(\exists \mathit{Score}\,((\mathit{Score} \le 0 \vee \mathit{Score} > 100) \wedge \mathit{Score} \le 200))
+\]
+\textit{It is forbidden that some Score is at most 0 or is more than 100 and
+is at most 200.}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Changes from v9}
+
+\begin{itemize}
+  \item The document covers the whole pipeline, with the rule language as
+        Part~II and the languages as Part~III.
+  \item Rules are written in \code{.vr} files with the concrete syntax of
+        Section~\ref{sec:syntax}, parsed and compiled by \code{rules.js};
+        each language is a rule file plus a library with a fixed hook
+        interface (Section~\ref{sec:library-interface}).
+  \item Seven languages: English, Dutch, French, Italian, Spanish, Polish and
+        German, with a per-language lexicon in the model (names, plurals,
+        genders, case forms; readings with subordinate and plural forms and
+        cases) and a view language.
+  \item Presentation modes: negative (a counterexample rewrite), default
+        ($\Diamond$ entries from \code{formalise()}) and deontic
+        ($O$, $F$).
+  \item New environment keys \code{verb}, \code{same}, \code{none},
+        \code{form} and \code{intro}; \textit{If \ldots\ then \ldots}
+        sentences introduce their variables with \textit{some} and refer
+        back with \textit{that}, resolved at linearisation as choices.
+  \item Linearisation contracts tokens per language.
+  \item Hyphen binding, name display styles and population sentences.
+  \item Coverage and overlap reports and the workbench window exist.
+\end{itemize}
+
+\end{document}
