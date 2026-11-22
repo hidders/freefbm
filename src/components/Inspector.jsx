@@ -5050,14 +5050,16 @@ export default function Inspector() {
                   onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
                   style={{ width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '3px 6px', marginBottom: 10,
                     border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg-raised)', color: 'var(--ink-2)' }} />
-                <label style={lbl}>Schema kind</label>
-                <select value={sc.profile} onChange={e => store.setSchemaProfile(sc.id, e.target.value)}
-                  style={{ width: '100%', fontSize: 12, padding: '3px 6px',
-                    border: '1px solid var(--border)', borderRadius: 3,
-                    background: 'var(--bg-raised)', color: 'var(--ink-2)' }}>
-                  <option value="orm2">ORM2</option>
-                  <option value="relational">Relational</option>
-                </select>
+                {sc.profile === 'relational' && (
+                  <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: -4 }}>
+                    Relational schema (tables over an ORM2 schema).{' '}
+                    <button className="ui-btn" onClick={() => store.setSchemaProfile(sc.id, 'orm2')}
+                      title="Show and edit this schema as an ordinary ORM2 schema; it is no longer read-only or drawn as tables"
+                      style={{ fontSize: 10, padding: '1px 6px' }}>
+                      Treat as ORM2
+                    </button>
+                  </div>
+                )}
               </div>
             )
           })()}
