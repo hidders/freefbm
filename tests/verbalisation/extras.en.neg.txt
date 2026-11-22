@@ -56,7 +56,7 @@ It is impossible that some Student does not have any TotalCredits.
 
 # Derivation rule, only derived facts hold · Student has TotalCredits
 ¬(∃ Student ∃ TotalCredits ((Student has TotalCredits) ∧ TotalCredits ≉ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)}))
-It is impossible that there is some Student and some TotalCredits such that that Student has that TotalCredits and that TotalCredits is not the sum of the Credits that each Course that that Student enrols in is worth.
+It is impossible that there is some Student and some TotalCredits such that that Student has that TotalCredits and that TotalCredits is not the sum of the Credits that each Course that Student enrols in is worth.
 
 # Derivation rule, every derived fact holds · Course has EnrolmentCount
 ¬(∃ Course ¬(∃ EnrolmentCount (Course has EnrolmentCount)))

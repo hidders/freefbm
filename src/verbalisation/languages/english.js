@@ -32,7 +32,7 @@ export function plural(name) {
 const article = (word) => (/^[aeiou]/i.test(word) ? 'an' : 'a')
 
 // "who" for types declared personal, else "that".
-const relPron = (h, v) => kw(h.objectType(v)?.isPersonal ? 'who' : 'that')
+const relPron = (h, v) => ({ ...kw(h.objectType(v)?.isPersonal ? 'who' : 'that'), rel: true })
 
 // A, B and C
 export function joinList(items, conj) {
@@ -411,7 +411,7 @@ export const englishLibrary = {
   label: 'English',
   functions,
   term,
-  // "that Course", or "Course" in an If … then … sentence.
+  // "that Course", or "Course" in a derivation rule's … if and only if ….
   // "the same Email" for the variables in env.same (negative.js).
   refNP: (h, v) => (h.env.same?.includes(v) ? [kw('the same'), tok(h.name(v), 'type')] : h.env.refStyle === 'bare' ? tok(h.name(v), 'type') : [kw('that'), tok(h.name(v), 'type')]),
   // A wildcard: "some Course", "any Course" after "No" or a negated verb,
@@ -421,4 +421,10 @@ export const englishLibrary = {
   pluralise: (name) => plural(name),
   reflexive: (h, v) => kw(h.objectType(v)?.isPersonal ? 'themselves' : 'itself'),
   population: englishPopulation,
+  // "each Course that that Student enrols in" → "each Course that Student
+  // enrols in": a relative clause whose subject is another variable
+  // ("that Student") does without its pronoun, as English allows for any
+  // relative clause about an object.
+  contract: (tokens) => tokens.filter((t, i) =>
+    !(t.rel && t.text === 'that' && tokens[i + 1]?.cls === 'kw' && tokens[i + 1].text === 'that')),
 }

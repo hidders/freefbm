@@ -56,7 +56,7 @@ Each Student has some TotalCredits.
 
 # Derivation rule, only derived facts hold · Student has TotalCredits
 ∀ Student ∀ TotalCredits ((Student has TotalCredits) → TotalCredits ≈ Sum{Credits | Course, Credits : (Student enrols in Course) ∧ (Course is worth Credits)})
-If some Student has some TotalCredits then that TotalCredits is the sum of the Credits that each Course that that Student enrols in is worth.
+If some Student has some TotalCredits then that TotalCredits is the sum of the Credits that each Course that Student enrols in is worth.
 
 # Derivation rule, every derived fact holds · Course has EnrolmentCount
 ∀ Course ∃ EnrolmentCount (Course has EnrolmentCount)
