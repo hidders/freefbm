@@ -4,7 +4,8 @@
 // uniqueness and frequency, plus transitive closure [TC_{v,w} φ](s, t) for the
 // acyclic and strongly intransitive rings. Value ranges and value comparisons
 // use value atoms x ≈ c, x < y, … that compare data values under the
-// variable's datatype. Cardinality ranges are not formalised yet. A deontic
+// variable's datatype; cardinality ranges use counting quantifiers over the
+// type's or role's population. A deontic
 // constraint's formula φ is wrapped as O(φ) (modality.js).
 //
 // Atoms use the fact type's primary reading (readingParts), whose slots follow

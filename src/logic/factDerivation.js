@@ -1,5 +1,5 @@
 // Derivation rules of derived and semi-derived fact types
-// (docs/logic/agg-logic.tex, "Derivation Rules").
+// (docs/logic/fbm-logic.tex, "Derivation rules").
 //
 // A fact type p has one variable per role, named after the role's player.
 // Each role is either selected, so its variable is bound to an object of the

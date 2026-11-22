@@ -1,4 +1,4 @@
-// Formula syntax trees for the ORM2 logic (docs/logic/agg-logic.tex).
+// Formula syntax trees for FBM logic, the logic of FreeFBM (docs/logic/fbm-logic.tex).
 //
 // Formulas are plain objects so they can be rendered as a string now and as an
 // indented, nested structure later. Variables are objects compared by
