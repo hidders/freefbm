@@ -9936,40 +9936,25 @@
                 "typeId": "n1792654764379_4"
               },
               "body": {
-                "t": "exists",
-                "v": {
-                  "id": "v1",
-                  "typeId": "n1792595733805_10"
-                },
-                "body": {
-                  "t": "and",
-                  "args": [
-                    {
-                      "t": "fact",
-                      "factId": "f_teaches",
-                      "args": [
-                        "q0",
-                        "v0"
-                      ]
-                    },
-                    {
-                      "t": "fact",
-                      "factId": "n1792654764379_4_il_0",
-                      "args": [
-                        "v0",
-                        "q1"
-                      ]
-                    },
-                    {
-                      "t": "fact",
-                      "factId": "n1792654764379_4_il_1",
-                      "args": [
-                        "v0",
-                        "v1"
-                      ]
-                    }
-                  ]
-                }
+                "t": "and",
+                "args": [
+                  {
+                    "t": "fact",
+                    "factId": "f_teaches",
+                    "args": [
+                      "q0",
+                      "v0"
+                    ]
+                  },
+                  {
+                    "t": "fact",
+                    "factId": "n1792654764379_4_il_0",
+                    "args": [
+                      "v0",
+                      "q1"
+                    ]
+                  }
+                ]
               }
             }
           },

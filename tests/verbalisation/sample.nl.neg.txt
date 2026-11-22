@@ -371,8 +371,8 @@ Het is onmogelijk dat er een Vak₁, een Vak₂ en een Vak₃ is zodanig dat dat
 Het is onmogelijk dat er een Student en een Vak is zodanig dat die Student dat Vak volgt en die Student bij dat Vak assisteert.
 
 # Subset
-¬(∃ StaffMember ∃ Course ((∃ Offering ∃ Term ((StaffMember teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) ∧ ¬(StaffMember is qualified to teach Course)))
-Het is onmogelijk dat er een Medewerker en een Vak is zodanig dat die Medewerker een Vakaanbieding die dat Vak betreft en een Periode betreft doceert en het niet zo is dat die Medewerker bevoegd is om dat Vak te doceren.
+¬(∃ StaffMember ∃ Course ((∃ Offering ((StaffMember teaches Offering) ∧ (Offering involves Course))) ∧ ¬(StaffMember is qualified to teach Course)))
+Het is onmogelijk dat er een Medewerker en een Vak is zodanig dat die Medewerker een Vakaanbieding die dat Vak betreft doceert en het niet zo is dat die Medewerker bevoegd is om dat Vak te doceren.
 
 # External uniqueness (preferred identifier)
 ¬(∃ Season ∃ AcademicYear ∃^{>1} Term ((Term is in Season) ∧ (Term is in AcademicYear)))

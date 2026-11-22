@@ -371,8 +371,8 @@ It is impossible that there is some Course₁, some Course₂ and some Course₃
 It is impossible that there is some Student and some Course such that that Student enrols in that Course and that Student assists in that Course.
 
 # Subset
-¬(∃ StaffMember ∃ Course ((∃ Offering ∃ Term ((StaffMember teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) ∧ ¬(StaffMember is qualified to teach Course)))
-It is impossible that there is some Staff member and some Course such that that Staff member teaches some Offering that involves that Course and involves some Term and that Staff member is not qualified to teach that Course.
+¬(∃ StaffMember ∃ Course ((∃ Offering ((StaffMember teaches Offering) ∧ (Offering involves Course))) ∧ ¬(StaffMember is qualified to teach Course)))
+It is impossible that there is some Staff member and some Course such that that Staff member teaches some Offering that involves that Course and that Staff member is not qualified to teach that Course.
 
 # External uniqueness (preferred identifier)
 ¬(∃ Season ∃ AcademicYear ∃^{>1} Term ((Term is in Season) ∧ (Term is in AcademicYear)))
