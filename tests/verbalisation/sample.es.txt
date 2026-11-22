@@ -371,8 +371,8 @@ Si Curso₁ es un requisito previo de Curso₂ y Curso₂ es un requisito previo
 Para cada Estudiante y cada Curso, como máximo una de las siguientes afirmaciones es cierta: ese Estudiante cursa ese Curso; ese Estudiante asiste en ese Curso.
 
 # Subset
-∀ StaffMember ∀ Course ((∃ Offering ∃ Term ((StaffMember teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) → (StaffMember is qualified to teach Course))
-Si Empleado imparte una Oferta que concierne a Curso y concierne a un Periodo, entonces Empleado está capacitado para impartir Curso.
+∀ StaffMember ∀ Course ((∃ Offering ((StaffMember teaches Offering) ∧ (Offering involves Course))) → (StaffMember is qualified to teach Course))
+Si Empleado imparte una Oferta que concierne a Curso, entonces Empleado está capacitado para impartir Curso.
 
 # External uniqueness (preferred identifier)
 ∀ Season ∀ AcademicYear ∃^{≤1} Term ((Term is in Season) ∧ (Term is in AcademicYear))

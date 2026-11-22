@@ -371,8 +371,8 @@ Es imposible que hay un Curso₁, un Curso₂ y un Curso₃ tales que ese Curso�
 Es imposible que hay un Estudiante y un Curso tales que ese Estudiante cursa ese Curso y ese Estudiante asiste en ese Curso.
 
 # Subset
-¬(∃ StaffMember ∃ Course ((∃ Offering ∃ Term ((StaffMember teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) ∧ ¬(StaffMember is qualified to teach Course)))
-Es imposible que hay un Empleado y un Curso tales que ese Empleado imparte una Oferta que concierne a ese Curso y concierne a un Periodo y ese Empleado no está capacitado para impartir ese Curso.
+¬(∃ StaffMember ∃ Course ((∃ Offering ((StaffMember teaches Offering) ∧ (Offering involves Course))) ∧ ¬(StaffMember is qualified to teach Course)))
+Es imposible que hay un Empleado y un Curso tales que ese Empleado imparte una Oferta que concierne a ese Curso y ese Empleado no está capacitado para impartir ese Curso.
 
 # External uniqueness (preferred identifier)
 ¬(∃ Season ∃ AcademicYear ∃^{>1} Term ((Term is in Season) ∧ (Term is in AcademicYear)))

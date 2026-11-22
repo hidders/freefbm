@@ -85,11 +85,17 @@ export function graphToRule(graph, seq, ctx) {
         return n
       })
       if (parent.has(a.id)) {
-        // The nesting instance d of the fact, through the implied links:
-        // d involves A ∧ d involves B ∧ … (which entails the fact itself).
-        const ils = fact.roles.map((_, ri) => ctx.linkById.get(`${fact.id}_il_${ri}`))
-        if (ils.some(l => !l)) return { error: 'a role of its join path has no implied link yet' }
-        ils.forEach((l, ri) => factParts.push({ factId: l.id, nodes: [a.id, nodes[ri]] }))
+        // The nesting instance d of the fact, through the implied links of
+        // the roles the path uses (linked or at a sequence position):
+        // d involves A ∧ … . A role it doesn't use adds nothing, since every
+        // nesting instance links exactly one combination of values.
+        const seededRoles = new Set((a.seededRoles ?? []).map(normalizeSeeded).filter(s => s.seqPosition != null).map(s => s.roleIndex))
+        for (const ri of fact.roles.keys()) {
+          if (!linkTarget(a.id, ri) && !seededRoles.has(ri)) continue
+          const l = ctx.linkById.get(`${fact.id}_il_${ri}`)
+          if (!l) return { error: 'a role of its join path has no implied link yet' }
+          factParts.push({ factId: l.id, nodes: [a.id, nodes[ri]] })
+        }
       } else {
         factParts.push({ factId: fact.id, nodes })
       }

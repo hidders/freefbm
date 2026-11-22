@@ -371,8 +371,8 @@ If Course₁ is a prerequisite for Course₂ and Course₂ is a prerequisite for
 For each Student and Course, at most one of the following holds: that Student enrols in that Course; that Student assists in that Course.
 
 # Subset
-∀ StaffMember ∀ Course ((∃ Offering ∃ Term ((StaffMember teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) → (StaffMember is qualified to teach Course))
-If Staff member teaches some Offering that involves Course and involves some Term then Staff member is qualified to teach Course.
+∀ StaffMember ∀ Course ((∃ Offering ((StaffMember teaches Offering) ∧ (Offering involves Course))) → (StaffMember is qualified to teach Course))
+If Staff member teaches some Offering that involves Course then Staff member is qualified to teach Course.
 
 # External uniqueness (preferred identifier)
 ∀ Season ∀ AcademicYear ∃^{≤1} Term ((Term is in Season) ∧ (Term is in AcademicYear))

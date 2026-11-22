@@ -371,8 +371,8 @@ Per ogni Dipendente, quel Dipendente ha una Stanza come ufficio se e solo se que
 È impossibile che ci sono uno Studente e un Corso tali che quello Studente frequenta quel Corso e quello Studente è assistente in quel Corso.
 
 # Subset
-¬(∃ StaffMember ∃ Course ((∃ Offering ∃ Term ((StaffMember teaches Offering) ∧ (Offering involves Course) ∧ (Offering involves Term))) ∧ ¬(StaffMember is qualified to teach Course)))
-È impossibile che ci sono un Dipendente e un Corso tali che quel Dipendente insegna un'Offerta che riguarda quel Corso e riguarda un Periodo e quel Dipendente non è abilitato a insegnare quel Corso.
+¬(∃ StaffMember ∃ Course ((∃ Offering ((StaffMember teaches Offering) ∧ (Offering involves Course))) ∧ ¬(StaffMember is qualified to teach Course)))
+È impossibile che ci sono un Dipendente e un Corso tali che quel Dipendente insegna un'Offerta che riguarda quel Corso e quel Dipendente non è abilitato a insegnare quel Corso.
 
 # External uniqueness (preferred identifier)
 ¬(∃ Season ∃ AcademicYear ∃^{>1} Term ((Term is in Season) ∧ (Term is in AcademicYear)))
