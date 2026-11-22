@@ -5,6 +5,7 @@ import { triggerPdfExport } from '../utils/pdfExport'
 import { newModel, openModel, saveModel, fileLabel } from '../utils/fileActions'
 import { LANGUAGES } from '../verbalisation/languages/index.js'
 import { baseOf, modelLanguages } from '../store/viewLanguage.js'
+import { LogoMark, Wordmark } from './Logo'
 import { zoomPercent } from '../utils/viewScale.js'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -108,11 +109,10 @@ export default function Toolbar() {
       borderBottom: '1px solid var(--border-soft)',
       WebkitAppRegion: 'drag',
     }}>
-      <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 24,
-        marginRight: 8, letterSpacing: '0.02em',
-        WebkitAppRegion: 'drag', userSelect: 'none',
-        color: 'var(--accent)' }}>
-        FreeFBM
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 8,
+        WebkitAppRegion: 'drag', userSelect: 'none' }}>
+        <LogoMark size={26}/>
+        <Wordmark size={22}/>
       </span>
 
       <div style={{ display: 'flex', gap: 4, WebkitAppRegion: 'no-drag' }}>

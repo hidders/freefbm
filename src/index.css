@@ -69,6 +69,11 @@
   --formula-sel-bg:  rgba(71,85,105,0.13);
   --formula-hole:    #6b5f4e;  /* ink — unfilled □ (validation flags it) */
 
+  /* The logo's colours (docs/logo/README.md). */
+  --brand-navy:   #1d2b4f;
+  --brand-purple: #7b2d8e;
+  --brand-amber:  #e3a72f;
+
   --accent:       #b45309;
   --accent-light: #d97706;
   --selection:    rgba(180,83,9,0.15);

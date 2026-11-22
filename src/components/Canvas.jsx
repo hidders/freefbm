@@ -1,4 +1,5 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react'
+import EmptyDiagramMark from './EmptyDiagramMark'
 import { createPortal } from 'react-dom'
 import { useOrmStore, useOrmStoreIgnoring, subtypeKindOf } from '../store/ormStore'
 import { mappingOfDiagram } from '../store/storeHelpers'
@@ -1786,6 +1787,7 @@ export default function Canvas() {
       })()}
 
       {/* Minimap overlay */}
+      <EmptyDiagramMark/>
       <Minimap/>
 
       {/* Context menu — rendered via portal at document.body to escape all stacking contexts */}

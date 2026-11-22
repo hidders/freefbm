@@ -29,6 +29,15 @@ export async function openModel() {
   catch (err) { alert(`Failed to open model file.${err?.message ? `\n${err.message}` : ''}`) }
 }
 
+// A file the operating system asked to open ({ path, content }, from the main
+// process: a double-click on a .ffbm file, Open With, the Dock icon).
+export function openModelPath(file) {
+  if (!file) return
+  if (!confirmDiscard('open another file')) return
+  try { openModelFile(file) }
+  catch (err) { alert(`Failed to open model file.${err?.message ? `\n${err.message}` : ''}`) }
+}
+
 // File › Import NORMA .orm…: a NORMA model becomes a new, unsaved model with
 // an import log (openModelFile); Open still imports a .orm file picked there.
 export async function importNormaModel() {

@@ -11,5 +11,6 @@ The mark is a speech bubble that is an objectified fact type: the rounded frame 
 | `banner.svg`, `banner-on-dark.svg` | mark and name with the line "Each fact, said and stated" (README, web page) |
 | `banner-plain.svg` | mark and name only |
 | `slide.svg` | picture for slides: the fact as a diagram, a sentence and a formula |
+| `ffbm.svg`, `ffbm-small.svg` | document icon for .ffbm files (`build/ffbm.icns`, `build/ffbm.ico`; the small one for 16–64 px) |
 
 Colours: navy `#1d2b4f`, purple `#7b2d8e` (light purple `#c79be0` on dark), amber `#e3a72f` in the icon. The name is set in Fraunces Bold ("Free" purple, "FBM" navy), the line in IBM Plex Sans Medium, the app's own fonts; text in the SVGs is converted to outlines, so they need no fonts.

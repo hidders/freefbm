@@ -20,6 +20,7 @@ import DiagramTabs from './components/DiagramTabs'
 import SchemaStrip from './components/SchemaStrip'
 import Sidebar from './components/Sidebar'
 import ShortcutsDialog from './components/ShortcutsDialog'
+import AboutDialog from './components/AboutDialog'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useElectronMenu } from './hooks/useElectronMenu'
 import { useWorkbenchBridge } from './hooks/useWorkbenchBridge'
@@ -286,6 +287,7 @@ export default function App() {
         <DdlExportDialog />
         <DeleteFromSchemaDialog />
         <ShortcutsDialog />
+        <AboutDialog />
       </div>
     </ErrorBoundary>
   )

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useOrmStore, useOrmStoreIgnoring } from '../store/ormStore'
 import { triggerPdfExport } from '../utils/pdfExport'
-import { newModel, openModel, saveModel, importNormaModel } from '../utils/fileActions'
+import { newModel, openModel, openModelPath, saveModel, importNormaModel } from '../utils/fileActions'
 import { removeSelectionFromDiagram, openDeleteFromSchema, canDeleteFromSchema } from '../utils/deleteSelection'
 import { undoRedo } from './useUndoRedo'
 import { textPanelOf } from '../utils/textPanel'
@@ -70,6 +70,7 @@ export function useElectronMenu() {
     on('menu:sidebarBrowser',  () => useOrmStore.getState().showSidebarTab('browser'))
     on('menu:sidebarProblems', () => useOrmStore.getState().showSidebarTab('problems'))
     on('menu:shortcuts', () => useOrmStore.setState({ shortcutsDialog: true }))
+    on('menu:about', () => useOrmStore.setState({ aboutDialog: true }))
 
     on('menu:exportPdf', () => triggerPdfExport(storeRef.current))
 
@@ -162,6 +163,9 @@ export function useElectronMenu() {
     }
     syncMenu(useOrmStore.getState())
     unsubs.push(useOrmStore.subscribe(syncMenu))
+
+    const unOpen = api.onOpenPath?.(file => openModelPath(file))
+    if (unOpen) unsubs.push(unOpen)
 
     return () => unsubs.forEach(u => u())
   }, []) // register once — storeRef.current always holds latest state

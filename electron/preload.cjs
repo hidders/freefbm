@@ -33,13 +33,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
 
+  // Help › About: the project page in the default browser.
+  openGitHub: () => ipcRenderer.send('app:openGitHub'),
+  // A model file the operating system asked to open (double-click, Open With,
+  // dropped on the Dock icon): { path, content }.
+  onOpenPath: (cb) => {
+    const h = (_, file) => cb(file)
+    ipcRenderer.on('app:openPath', h)
+    ipcRenderer.send('app:readyForFiles')
+    return () => ipcRenderer.removeListener('app:openPath', h)
+  },
+
   onMenuEvent: (channel, cb) => {
     const valid = [
       'menu:new', 'menu:open', 'menu:save', 'menu:saveAs',
       'menu:undo', 'menu:redo', 'menu:cut', 'menu:copy', 'menu:paste', 'menu:selectAll',
       'menu:removeFromDiagram', 'menu:deleteFromSchema',
       'menu:zoomIn', 'menu:zoomOut', 'menu:zoomReset',
-      'menu:sidebarBrowser', 'menu:sidebarProblems', 'menu:shortcuts', 'menu:schema', 'menu:mapping',
+      'menu:sidebarBrowser', 'menu:sidebarProblems', 'menu:shortcuts', 'menu:about', 'menu:schema', 'menu:mapping',
       'menu:exportPdf', 'menu:importSql', 'menu:exportSql', 'menu:loadSampleSql', 'menu:exportRowsSql',
       'menu:importNorma', 'menu:exportNorma',
       'app:saveThenClose',
