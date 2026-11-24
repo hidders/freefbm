@@ -426,7 +426,7 @@ export function createSelectionSlice(set, get) {
           isDirty: true,
         }
       })
-      requery.forEach(id => get()._tryAutoGenerateQuery(id))
+      requery.forEach(id => get()._refreshInferredQueries(id))
     },
 
     selectConnected() {

@@ -24,6 +24,7 @@ import {
 import { BASE_LANGUAGE, baseOf, swapLanguage } from '../viewLanguage.js'
 import { makeContext } from '../../logic/constraintFormulas.js'
 import { withRuleForms } from '../../logic/query.js'
+import { withoutInferred } from '../../logic/queryInference.js'
 import { mkGroup, loadGroups, pruneGroups } from '../../utils/groups.js'
 import { mkPropertyDefinition, loadPropertyDefinitions, dropPropertyValues } from '../../utils/customProperties.js'
 import { loadMappings } from '../../mapping/mapping.js'
@@ -985,7 +986,7 @@ export function createModelSlice(set, get) {
           subtypes,
           // Each query graph also carries its formula (query.js), so the file
           // states what every join path means.
-          externalConstraints:  constraints.map(c => withRuleForms(c, ctx)),
+          externalConstraints:  constraints.map(c => withRuleForms(withoutInferred(c), ctx)),
           ...(groups?.length && { groups: pruneGroups(groups, state) }),
           ...(propertyDefinitions?.length && { propertyDefinitions }),
           ...(mappings?.length && { mappings }),

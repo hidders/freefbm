@@ -25,6 +25,7 @@ import { tableRulesOf, checkTableRule } from '../relational/derivedTables.js'
 import { sideContext } from '../mapping/mapping.js'
 import { Formula } from './ConstraintsTab.jsx'
 import { isFormulaQuery, whyNotGraphical, whyNoOuterJoin } from '../logic/query.js'
+import { storedQueryTarget } from '../logic/queryInference.js'
 import { hasTextSelection } from '../utils/textPanel.js'
 import { isFallbackReading } from '../store/viewLanguage.js'
 import { readingList, occurrences, preferredReadings } from '../store/readings.js'
@@ -4257,30 +4258,37 @@ function ExternalConstraintInspector({ c }) {
         </Row>
       )}
 
-      {/* Target Object Type — only for inclusiveOr / exclusiveOr / uniqueness / frequency */}
-      {(c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr' || c.constraintType === 'uniqueness' || c.constraintType === 'frequency') && (
+      {/* Target object type — only for inclusiveOr / exclusiveOr / uniqueness / frequency.
+          Inferred with the queries, chosen by the user, or a stored query's own
+          (then changed by editing the query); logic/queryInference.js. */}
+      {(c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr' || c.constraintType === 'uniqueness' || c.constraintType === 'frequency') && (() => {
+        const fromQuery = (c.queries ?? []).some(q => storedQueryTarget(q))
+        const sfx = c.targetInferred ? ' (inferred)' : ''
+        return (
         <Row>
           <Label>Target object type</Label>
           <select
             value={c.targetObjectTypeId ?? ''}
-            onChange={e => store.updateConstraint(c.id, {
-              targetObjectTypeId: e.target.value || null,
-            })}
+            disabled={fromQuery}
+            title={fromQuery ? 'The target of the stored query: edit the query to change it'
+              : c.targetInferred ? 'Inferred with the queries; choose another to join through it' : undefined}
+            onChange={e => store.setTargetObjectType(c.id, e.target.value || null)}
             style={{ width: '100%', fontSize: 12, padding: '3px 5px',
               background: 'var(--bg-raised)', border: '1px solid var(--border-soft)',
-              borderRadius: 4, color: 'var(--ink-2)' }}>
+              borderRadius: 4, color: 'var(--ink-2)', opacity: fromQuery ? 0.7 : 1 }}>
             <option value="">— none —</option>
             {store.objectTypes.slice().sort((a, b) => a.name.localeCompare(b.name)).map(ot => (
-              <option key={ot.id} value={ot.id}>{ot.name}</option>
+              <option key={ot.id} value={ot.id}>{ot.name}{ot.id === c.targetObjectTypeId ? sfx : ''}</option>
             ))}
             {store.facts.filter(f => f.objectified && f.objectifiedName).slice()
               .sort((a, b) => (a.objectifiedName || '').localeCompare(b.objectifiedName || ''))
               .map(f => (
-                <option key={f.id} value={f.id}>{f.objectifiedName} (nested)</option>
+                <option key={f.id} value={f.id}>{f.objectifiedName} (nested){f.id === c.targetObjectTypeId ? sfx : ''}</option>
               ))}
           </select>
         </Row>
-      )}
+        )
+      })()}
 
       {/* Operator — only for valueComparison */}
       {c.constraintType === 'valueComparison' && (
@@ -4572,7 +4580,7 @@ function ExternalConstraintInspector({ c }) {
             <span/>
             {needsTarget && !hasTarget && (
               <div style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--ink-muted)', fontStyle: 'italic', marginBottom: 1 }}>
-                Set a target object type above to enable query editing.
+                FreeFBM can't infer the queries: set a target object type above, then define them.
               </div>
             )}
             {sequences.map((seq, gi) => {
@@ -4582,11 +4590,14 @@ function ExternalConstraintInspector({ c }) {
               const asFormula = isFormulaQuery(q)
               // A formula outside the graphical fragment can only be edited as a formula.
               const notDrawable = asFormula ? whyNotGraphical(q, seq, makeContext(store)) : null
-              const statusText = asFormula
-                ? 'formula'
+              const statusText = q?.inferred ? 'inferred'
+                : asFormula ? 'formula'
                 : q ? `${atomCount} atom${atomCount !== 1 ? 's' : ''}`
-                : 'Not defined'
-              const graphDisabled = (needsTarget && !hasTarget) || !!gc || !!notDrawable
+                : 'no query'
+              // Both editors need the target first where the kind has one.
+              const editDisabled = (needsTarget && !hasTarget) || !!gc
+              const graphDisabled = editDisabled || !!notDrawable
+              const editTitle = needsTarget && !hasTarget ? 'Set a target object type first' : null
               const qPressed = pressedQueryIndex === gi
               return (
                 <React.Fragment key={gi}>
@@ -4599,7 +4610,7 @@ function ExternalConstraintInspector({ c }) {
                     }}
                     onMouseUp={() => { setPressedQueryIndex(null); store.clearQueryIndexHighlight() }}
                     onMouseLeave={() => { setPressedQueryIndex(null); store.clearQueryIndexHighlight() }}
-                    title={`S${gi + 1}: ${statusText}`}
+                    title={q?.inferred ? `S${gi + 1}: inferred by FreeFBM; editing it stores it` : `S${gi + 1}: ${statusText}`}
                     style={{ fontSize: 10, minWidth: 0, textAlign: 'left', whiteSpace: 'nowrap',
                       overflow: 'hidden', textOverflow: 'ellipsis',
                       cursor: q ? 'default' : 'not-allowed',
@@ -4617,7 +4628,7 @@ function ExternalConstraintInspector({ c }) {
                   </button>
                   <button
                     disabled={graphDisabled}
-                    title={notDrawable ? `Can't be edited on the diagram: ${notDrawable}` : 'Edit the query as a join path on the diagram'}
+                    title={editTitle ?? (notDrawable ? `Can't be edited on the diagram: ${notDrawable}` : 'Edit the query as a join path on the diagram')}
                     onClick={() => store.startQueryEdit(c.id, gi)}
                     style={{ padding: '2px 5px', fontSize: 10, background: 'var(--bg-raised)',
                       border: '1px solid var(--border)', borderRadius: 3,
@@ -4626,16 +4637,16 @@ function ExternalConstraintInspector({ c }) {
                     Diagram
                   </button>
                   <button
-                    disabled={!!gc}
-                    title="Edit the query as a formula of the logic, in the rule editor"
+                    disabled={editDisabled}
+                    title={editTitle ?? 'Edit the query as a formula of the logic, in the rule editor'}
                     onClick={() => store.openRuleEditor({ constraintId: c.id, sequenceIndex: gi })}
                     style={{ padding: '2px 5px', fontSize: 10, background: 'var(--bg-raised)',
                       border: '1px solid var(--border)', borderRadius: 3,
-                      cursor: !gc ? 'pointer' : 'default',
-                      color: 'var(--ink-2)', opacity: !gc ? 1 : 0.4 }}>
+                      cursor: !editDisabled ? 'pointer' : 'default',
+                      color: 'var(--ink-2)', opacity: !editDisabled ? 1 : 0.4 }}>
                     Formula
                   </button>
-                  {q ? (
+                  {q && !q.inferred ? (
                     <button onClick={() => store.clearConstraintQuery(c.id, gi)}
                       title="Clear query"
                       style={{ padding: '2px 6px', fontSize: 10, background: 'var(--bg-raised)',

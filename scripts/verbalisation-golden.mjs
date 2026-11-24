@@ -16,6 +16,7 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { formalise } from '../src/logic/constraintFormulas.js'
+import { withInferredState } from '../src/logic/queryInference.js'
 import { formulaToString } from '../src/logic/renderFormula.js'
 import { verbalise } from '../src/verbalisation/engine.js'
 import { englishLibrary } from '../src/verbalisation/languages/english.js'
@@ -53,7 +54,8 @@ const sample = {
 // The blocks for the entries whose key passes keep; notes (an entry without a
 // formula, say a rule with an error) are listed when withNotes is set.
 function verbaliseAll(state, language, keep, withNotes = false, results = [], stats, negative = false) {
-  const { entries, implicit, ctx } = formalise(state, { wholeSchema: true })
+  // The queries the store would infer (it keeps them; files don't).
+  const { entries, implicit, ctx } = formalise(withInferredState(state), { wholeSchema: true })
   const all = [...entries.flat(), ...implicit.disjointness, ...implicit.participation, ...implicit.impliedLinks]
   const blocks = []
   for (const e of all) {

@@ -159,7 +159,7 @@ export const createSchemaSlice = (set, get) => ({
       }))
       get().setActiveDiagram(built.diagram.id)
       // The queries FreeFBM builds when a constraint is drawn.
-      for (const c of built.constraints) get()._tryAutoGenerateQuery(c.id)
+      for (const c of built.constraints) get()._refreshInferredQueries(c.id)
     } finally {
       set(s => ({ historyBatch: Math.max(0, (s.historyBatch ?? 1) - 1) }))
     }
@@ -230,7 +230,7 @@ export const createSchemaSlice = (set, get) => ({
         isDirty: true,
       }))
       get().setActiveDiagram(built.diagram.id)
-      for (const c of built.constraints) get()._tryAutoGenerateQuery(c.id)
+      for (const c of built.constraints) get()._refreshInferredQueries(c.id)
       if (diagrams) carried = get().carrySchemaDiagrams(built.mapping.id, relSchemaId, built.diagram.id, { layout })
     } finally {
       set(s => ({ historyBatch: Math.max(0, (s.historyBatch ?? 1) - 1) }))
@@ -284,7 +284,7 @@ export const createSchemaSlice = (set, get) => ({
         isDirty: true,
       }))
       get().setActiveDiagram(built.diagram.id)
-      for (const c of built.constraints) get()._tryAutoGenerateQuery(c.id)
+      for (const c of built.constraints) get()._refreshInferredQueries(c.id)
       if (assertions) {
         try { added = carryLost(get, get().mappings.find(m => m.id === g.mapping.id), ormSchemaId, null, { to: unique }) }
         catch (err) { added = [`Constraints the tables don't keep were not added: ${err?.message ?? err}`] }

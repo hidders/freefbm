@@ -267,7 +267,7 @@ const roleSeq = (cols) => cols.map(c => ({ kind: 'role', factId: c.factId ?? c.f
 function addFk(api, schemaId, from, to) {
   const c = { id: uid(), constraintType: 'subset', schemaId, x: 0, y: 0, sequences: [roleSeq(from), roleSeq(to)], queries: [null, null] }
   api.setState(s => ({ constraints: [...s.constraints, c] }))
-  api.getState()._tryAutoGenerateQuery?.(c.id)
+  api.getState()._refreshInferredQueries?.(c.id)
   return c.id
 }
 
@@ -705,7 +705,7 @@ function dropTable(api, S, tableId) {
 const exclusionOf = (api, S, seqs) => {
   const c = { id: uid(), constraintType: 'exclusion', schemaId: S, x: 0, y: 0, sequences: seqs.map(roleSeq), queries: seqs.map(() => null) }
   api.setState(s => ({ constraints: [...s.constraints, c] }))
-  api.getState()._tryAutoGenerateQuery?.(c.id)
+  api.getState()._refreshInferredQueries?.(c.id)
 }
 const slug = (v) => String(v).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'v'
 const listValues = (c) => {
@@ -1107,7 +1107,7 @@ function placeBetween(api, S, factId, a, b) {
 function addRoleConstraint(api, S, type, a, b) {
   const c = { ...mkConstraint(type, 0, 0), schemaId: S, sequences: [[a], [b]].map(q => q.map(([factId, roleIndex]) => ({ kind: 'role', factId, roleIndex }))), queries: [null, null] }
   api.setState(s => ({ constraints: [...s.constraints, c] }))
-  api.getState()._tryAutoGenerateQuery?.(c.id)
+  api.getState()._refreshInferredQueries?.(c.id)
   return c.id
 }
 const isFinite2 = (vt, role) => {
@@ -1431,7 +1431,7 @@ function swapMembers(api, S, is, by, only = () => true) {
     // Join paths name the old members: made again from the new ones.
     return { ...c, sequences, queries: (c.queries ?? sequences.map(() => null)).map((x, i) => ((c.sequences[i] ?? []).some(is) ? null : x)) }
   }) }))
-  for (const id of changed) api.getState()._tryAutoGenerateQuery?.(id)
+  for (const id of changed) api.getState()._refreshInferredQueries?.(id)
 }
 // A constraint whose sequences are single members: a unary's role and the
 // subtype it becomes may stand for each other in it.
@@ -1543,7 +1543,7 @@ const flatten = {
       const c = { ...mkConstraint('uniqueness', 0, 0), schemaId: S, isPreferredIdentifier: u === key, targetObjectTypeId: n.id,
         sequences: [u.roles.map(i => ({ kind: 'role', factId: L[i], roleIndex: 1 }))], queries: [null] }
       api.setState(st => ({ constraints: [...st.constraints, c] }))
-      api.getState()._tryAutoGenerateQuery?.(c.id)
+      api.getState()._refreshInferredQueries?.(c.id)
     }
     // Constraints on F's roles: on the binaries' (one role at a time), else
     // carried as formulas.

@@ -610,7 +610,7 @@ export const createMappingSlice = (set, get) => {
         if (fks.length) {
           set(st => ({ constraints: [...st.constraints, ...fks] }))
           for (const c of fks) {
-            get()._tryAutoGenerateQuery?.(c.id)
+            get()._refreshInferredQueries?.(c.id)
             const tables = new Set(c.sequences.flat().map(m => get().facts.find(f => f.id === m.factId)?.roles.find(r => get().objectTypes.find(o => o.id === r.objectTypeId)?.kind === 'entity')?.objectTypeId))
             for (const d of get().diagrams) if (!d.mappingId && d.schemaId === schemaId && [...tables].every(t => (d.occurrences ?? []).some(o => o.schemaElementId === t))) get().addElementToDiagram(c.id, d.id)
           }

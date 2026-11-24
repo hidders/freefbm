@@ -184,7 +184,7 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
     : supers.length ? ruleVariables(draft, supers, ctx) : formulaVariables(draft, roots, ctx)), [forQuery, forFormula, roots, forFact, fact, draft, supers, ctx])
   const issues = useMemo(() => (forView ? (view && vrule ? checkViewRule(state, view, vrule, draft) : [])
     : forFormula ? (formulaC ? checkFormulaConstraint(formulaC, state, ctx, undefined, draft) : [])
-    : forQuery ? (query ? checkQuery({ ...query, body: draft }, seq, state, ctx) : [])
+    : forQuery ? (query ? checkQuery({ ...query, body: draft }, seq, state, ctx, undefined, { kind: constraint?.constraintType }) : [])
     : forFact ? (fact ? checkFactRule(fact, state, ctx, undefined, draft) : [])
     : checkRule(draft, otId, state, ctx)), [forView, view, vrule, forFormula, formulaC, forQuery, query, seq, forFact, fact, draft, otId, state, ctx])
   const severityAt = useMemo(() => {
@@ -631,7 +631,9 @@ export default function DerivationRuleEditor({ otId, factId, constraintId, seque
             {forFormula
               ? 'A statement of the logic that every population must satisfy, for constraints that have no graphical form. Its variables are all bound by quantifiers.'
               : forQuery
-              ? 'The combinations of objects at the positions for which the formula holds. Each position must play its role in an atom reached through ∃ and ∧ only.'
+              ? `The combinations of objects at the positions for which the formula holds. Each position must play its role in an atom reached through ∃ and ∧ only.${
+                  !constraint.queries?.[sequenceIndex] ? ' The sequence has no query yet: this is a start, with the parts still to be joined.'
+                  : constraint.queries[sequenceIndex].inferred ? ' This query is inferred by FreeFBM; saving it stores it as yours.' : ''}`
               : forFact
               ? semi
                 ? 'Each combination for which the condition holds, with the values of the computed roles, must be a fact.'

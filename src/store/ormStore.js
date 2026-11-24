@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
 import { EMPTY, stampSchemaIds, scopeToSchema } from './storeHelpers'
 import { refusedEdit } from '../mapping/pairLock'
+import { refreshInferredQueries } from '../logic/queryInference.js'
 import { createModelSlice } from './slices/modelSlice'
 import { createElementSlice } from './slices/elementSlice'
 import { createPopulationSlice } from './slices/populationSlice'
@@ -24,6 +25,18 @@ const RELATIONAL_EDITS = ['addTableRule', 'updateTableRules', 'updateTableRule',
   'setTablePrimaryKey', 'addDerivedTable', 'addCarriedConstraint', 'formulaToGraphical', 'applyMappingRun', 'loadSampleRows', 'addSimpleConstraint', 'applyView', 'applyExchangeRun',
   'setViewLanguage', 'addLanguage', 'setBaseLanguage']
 
+// The update with the inferred queries of external constraints brought up to
+// date (logic/queryInference.js) when it changes the constraints, facts or
+// subtypes: inferred queries follow the schema and are never saved.
+function withInferred(prev, next, replace) {
+  if (!next) return next
+  const touches = ['constraints', 'facts', 'subtypes'].some(k => k in next && next[k] !== prev[k])
+  if (!touches) return next
+  const merged = replace ? next : { ...prev, ...next }
+  const constraints = refreshInferredQueries(merged)
+  return constraints === merged.constraints ? next : { ...next, constraints }
+}
+
 export const useOrmStore = create((rawSet, get) => {
   // Every update passes through here so that new elements and diagrams get
   // the active schema's id (stampSchemaIds), whichever action made them.
@@ -42,7 +55,7 @@ export const useOrmStore = create((rawSet, get) => {
       rawSet({ readOnlyNotice: { at: Date.now(), ...refused } })
       return
     }
-    rawSet(next, replace)
+    rawSet(withInferred(prev, next, replace), replace)
   }
   const actions = {
     ...EMPTY(),

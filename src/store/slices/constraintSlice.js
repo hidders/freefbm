@@ -3,10 +3,26 @@ import {
   uid, mkConstraint, mkConstraintOcc, mkOcc,
   addOccIfAbsent, addCOccIfAbsent, patchCOcc, patchCOccById, rmCOcc,
   roleOccRefsKey, syncConstraints, getConstraintDeps, getConstraintQueryDeps,
-  findUniqueLCA, findPathDown, demoteOtherPIsFor, runFactMergePass, withSequences,
+  demoteOtherPIsFor, runFactMergePass, withSequences,
 } from '../storeHelpers'
 import { makeContext } from '../../logic/constraintFormulas.js'
 import { isFormulaQuery, ruleToGraph } from '../../logic/query.js'
+import { refreshInferredQueries, storedQueryTarget, TARGET_KINDS } from '../../logic/queryInference.js'
+
+// c with query q stored for sequence i. The target object type follows a
+// stored query: its target, or the target it was edited with, now the user's.
+function withStoredQuery(c, i, q) {
+  const queries = [...(c.queries || [])]
+  while (queries.length <= i) queries.push(null)
+  queries[i] = q
+  const { targetInferred: _, untranslatedJoin: __, ...rest } = c
+  const out = { ...rest, queries }
+  if (TARGET_KINDS.has(c.constraintType)) {
+    const t = storedQueryTarget(q)
+    if (t) out.targetObjectTypeId = t
+  }
+  return out
+}
 
 export function createConstraintSlice(set, get) {
   return {
@@ -270,305 +286,16 @@ export function createConstraintSlice(set, get) {
           isDirty: true,
         }
       })
-      // After committing, try to auto-generate query/target for supported constraint types
-      get()._tryAutoGenerateQuery(constraintId)
     },
 
-    _tryAutoGenerateQuery(constraintId) {
-      const { constraints, facts, subtypes } = get()
-      const c = constraints.find(c => c.id === constraintId)
-      if (!c) return
-
-      if (['uniqueness', 'ring', 'valueComparison', 'frequency'].includes(c.constraintType)) {
-        const seq = c.sequences?.[0] ?? []
-        const roleMembers = seq.filter(m => m.kind === 'role' && !m.factId?.includes('_il_'))
-        if (roleMembers.length === 0 || roleMembers.length !== seq.length) return
-
-        // Don't overwrite an existing query
-        if (c.queries?.[0] != null) return
-
-        const hasTargetOt = c.constraintType === 'uniqueness' || c.constraintType === 'frequency'
-        const commitQuery = (atoms, links, lcaId) => {
-          set(s => ({
-            constraints: s.constraints.map(con => {
-              if (con.id !== constraintId) return con
-              const queries = [...(con.queries || [])]
-              while (queries.length < 1) queries.push(null)
-              queries[0] = { atoms, links }
-              return { ...con, ...(hasTargetOt && lcaId ? { targetObjectTypeId: lcaId } : {}), queries }
-            }),
-            isDirty: true,
-          }))
-        }
-
-        // ── Case 1 (ring only): both roles in the same fact type ─────────────────
-        // No binary-fact requirement — any arity is allowed here.
-        if (c.constraintType === 'ring' && roleMembers.length === 2
-            && roleMembers[0].factId === roleMembers[1].factId) {
-          const factCopyId = uid()
-          commitQuery(
-            [{ id: factCopyId, kind: 'fact', originalId: roleMembers[0].factId,
-               isOutput: false,
-               seededRoles: roleMembers.map((m, i) => ({ roleIndex: m.roleIndex, seqPosition: i })),
-               dx: 16, dy: 16 }],
-            [],
-            null,
-          )
-          return
-        }
-
-        // ── Case 2: all roles from distinct binary fact types, unique LCA of other-role OTs ─
-        // All roles must be in binary fact types.
-        for (const m of roleMembers) {
-          const f = facts.find(f => f.id === m.factId)
-          if (!f || f.arity !== 2) return
-        }
-        // Each factId must be distinct.
-        const factIds = roleMembers.map(m => m.factId)
-        if (new Set(factIds).size !== factIds.length) return
-
-        // Collect the OT at the OTHER role of each fact.
-        const otherOtIds = []
-        for (const m of roleMembers) {
-          const f = facts.find(f => f.id === m.factId)
-          const otId = f.roles[1 - m.roleIndex]?.objectTypeId
-          if (!otId) return
-          otherOtIds.push(otId)
-        }
-
-        const lcaId = findUniqueLCA(otherOtIds, subtypes)
-        if (!lcaId) return
-        if (hasTargetOt && c.targetObjectTypeId && c.targetObjectTypeId !== lcaId) return
-
-        // Build tree: root OT atom for LCA; per branch a path of subtype edge atoms
-        // from the LCA down to the other-role OT, then the fact atom.
-        const rootAtomId = uid()
-        const atoms = [
-          { id: rootAtomId, kind: 'objectType', originalId: lcaId,
-            isOutput: hasTargetOt, dx: 16, dy: 16 },
-        ]
-        const links = []
-
-        for (let i = 0; i < roleMembers.length; i++) {
-          const m = roleMembers[i]
-          const P = otherOtIds[i]
-          const path = findPathDown(lcaId, P, subtypes)
-          if (path === null) return  // LCA not actually an ancestor — schema inconsistency
-
-          let prevOtAtomId = rootAtomId
-          for (const step of path) {
-            const childOtAtomId = uid()
-            const stAtomId = uid()
-            atoms.push({ id: childOtAtomId, kind: 'objectType', originalId: step.toId,
-              isOutput: false, dx: (i + 2) * 16, dy: (i + 2) * 16 })
-            atoms.push({ id: stAtomId, kind: 'subtype', originalId: step.subtypeId,
-              isOutput: false, dx: (i + 2) * 16, dy: (i + 2) * 16 })
-            links.push({ atomId: stAtomId, roleIndex: 1, variableId: prevOtAtomId })  // supertype end
-            links.push({ atomId: stAtomId, roleIndex: 0, variableId: childOtAtomId }) // subtype end
-            prevOtAtomId = childOtAtomId
-          }
-
-          const factAtomId = uid()
-          atoms.push({ id: factAtomId, kind: 'fact', originalId: m.factId,
-            isOutput: false, seededRoles: [{ roleIndex: m.roleIndex, seqPosition: i }],
-            dx: (i + 3) * 16, dy: (i + 3) * 16 })
-          links.push({ atomId: factAtomId, roleIndex: 1 - m.roleIndex, variableId: prevOtAtomId })
-        }
-
-        commitQuery(atoms, links, lcaId)
-      }
-
-      if (c.constraintType === 'inclusiveOr' || c.constraintType === 'exclusiveOr') {
-        const sequences = c.sequences ?? []
-        if (sequences.length === 0) return
-        const allSubtypes = get().subtypes
-
-        // Helper: regenerate queries for ALL sequences using the given LCA as target OT.
-        // Always regenerates all sequences so every query uses the same LCA.
-        const applyQueries = (targetOtId, buildQuery) => {
-          const newQueries = sequences.map((_, i) => buildQuery(i))
-          set(s => ({
-            constraints: s.constraints.map(con =>
-              con.id !== constraintId ? con : { ...con, targetObjectTypeId: targetOtId, queries: newQueries }
-            ),
-            isDirty: true,
-          }))
-        }
-
-        // ── Rule: every sequence is a single subtype edge or single role; anchor OTs share a unique LCA ──
-        // Anchor OT for a subtype edge = superId; for a role = the OT of that role.
-        const members = sequences.map(seq => {
-          if (seq.length !== 1) return null
-          const m = seq[0]
-          if (m.kind === 'subtype') {
-            const st = allSubtypes.find(s => s.id === m.subtypeId)
-            return st ? { kind: 'subtype', st, anchorOtId: st.superId } : null
-          }
-          if (m.kind === 'role' && !m.factId?.includes('_il_')) {
-            const f = facts.find(f => f.id === m.factId)
-            const otId = f?.roles[m.roleIndex]?.objectTypeId ?? null
-            return otId ? { kind: 'role', m, anchorOtId: otId } : null
-          }
-          return null
-        })
-        if (members.every(mem => mem !== null)) {
-          const lcaId = findUniqueLCA(members.map(mem => mem.anchorOtId), allSubtypes)
-          if (lcaId) {
-            // LCA becomes the target OT; queries no longer contain an atom for it.
-            applyQueries(lcaId, i => {
-              const mem = members[i]
-              if (mem.kind === 'subtype') {
-                const subOtAtomId = uid(), stAtomId = uid()
-                return {
-                  atoms: [
-                    { id: subOtAtomId, kind: 'objectType', originalId: mem.st.subId,
-                      isOutput: false, dx: 16, dy: 16 },
-                    { id: stAtomId, kind: 'subtype', originalId: mem.st.id,
-                      isOutput: true, isSeeded: true, dx: 24, dy: 24 },
-                  ],
-                  links: [
-                    { atomId: stAtomId, roleIndex: 0, variableId: subOtAtomId },
-                  ],
-                }
-              } else {
-                const factAtomId = uid()
-                return {
-                  atoms: [
-                    { id: factAtomId, kind: 'fact', originalId: mem.m.factId,
-                      isOutput: false, seededRoles: [{ roleIndex: mem.m.roleIndex, seqPosition: 0 }],
-                      dx: 16, dy: 16 },
-                  ],
-                  links: [],
-                }
-              }
-            })
-          }
-        }
-      }
-
-      if (['exclusion', 'equality', 'subset'].includes(c.constraintType)) {
-        const sequences = c.sequences ?? []
-        if (sequences.length === 0) return
-
-        const existingQueries = [...(c.queries ?? [])]
-        while (existingQueries.length < sequences.length) existingQueries.push(null)
-        let changed = false
-
-        const allSubtypes = get().subtypes
-
-        for (let i = 0; i < sequences.length; i++) {
-          if (existingQueries[i] != null) continue  // don't overwrite existing query
-
-          const seq = sequences[i]
-
-          // Rule 3: single subtype edge → subtype copy + sub OT copy + super OT copy.
-          // Neither OT copy is isOutput — the result is the sub-type's population, identified by
-          // the subtype copy being isSeeded.
-          if (seq.length === 1 && seq[0].kind === 'subtype') {
-            const st = allSubtypes.find(s => s.id === seq[0].subtypeId)
-            if (st) {
-              const subOtAtomId = uid(), supOtAtomId = uid(), stAtomId = uid()
-              existingQueries[i] = {
-                atoms: [
-                  { id: subOtAtomId, kind: 'objectType', originalId: st.subId,
-                    isOutput: false, dx: 16, dy: 16 },
-                  { id: supOtAtomId, kind: 'objectType', originalId: st.superId,
-                    isOutput: false, dx: 32, dy: 32 },
-                  { id: stAtomId, kind: 'subtype', originalId: st.id,
-                    isSeeded: true, dx: 24, dy: 24 },
-                ],
-                links: [
-                  { atomId: stAtomId, roleIndex: 0, variableId: subOtAtomId },
-                  { atomId: stAtomId, roleIndex: 1, variableId: supOtAtomId },
-                ],
-              }
-              changed = true
-              continue
-            }
-          }
-
-          // Track each member's position within the original seq for seqPosition annotation
-          const roleMembers = seq.reduce((acc, m, seqPos) => {
-            if (m.kind === 'role' && !m.factId?.includes('_il_')) acc.push({ ...m, seqPos })
-            return acc
-          }, [])
-          if (roleMembers.length === 0 || roleMembers.length !== seq.length) continue
-
-          // Rule 0: all roles within the same fact type → fact atom with the sequence roles as output variables
-          const factIds = new Set(roleMembers.map(m => m.factId))
-          if (factIds.size === 1) {
-            const factAtomId = uid()
-            existingQueries[i] = {
-              atoms: [{ id: factAtomId, kind: 'fact', originalId: [...factIds][0],
-                isOutput: false, seededRoles: roleMembers.map(m => ({ roleIndex: m.roleIndex, seqPosition: m.seqPos })),
-                dx: 16, dy: 16 }],
-              links: [],
-            }
-            changed = true
-            continue
-          }
-
-          // Rule 1: all roles in binary fact types; other-role OTs share a unique LCA
-          let allBinary = true
-          for (const m of roleMembers) {
-            const f = facts.find(f => f.id === m.factId)
-            if (!f || f.arity !== 2) { allBinary = false; break }
-          }
-          if (allBinary) {
-            const otherOtIds = []
-            let otValid = true
-            for (const m of roleMembers) {
-              const f = facts.find(f => f.id === m.factId)
-              const otId = f.roles[1 - m.roleIndex]?.objectTypeId
-              if (!otId) { otValid = false; break }
-              otherOtIds.push(otId)
-            }
-            if (otValid) {
-              const lcaId = findUniqueLCA(otherOtIds, allSubtypes)
-              if (lcaId) {
-                const paths = otherOtIds.map(otId => findPathDown(lcaId, otId, allSubtypes))
-                if (paths.every(p => p !== null)) {
-                  const rootAtomId = uid()
-                  // exclusion / equality / subset never designate a target OT — root atom is a plain join variable.
-                  const atoms = [{ id: rootAtomId, kind: 'objectType', originalId: lcaId,
-                    isOutput: false, dx: 16, dy: 16 }]
-                  const links = []
-                  roleMembers.forEach((m, j) => {
-                    let prevOtAtomId = rootAtomId
-                    for (const step of paths[j]) {
-                      const childOtAtomId = uid(), pathStAtomId = uid()
-                      atoms.push({ id: childOtAtomId, kind: 'objectType', originalId: step.toId,
-                        isOutput: false, dx: (j + 2) * 16, dy: (j + 2) * 16 })
-                      atoms.push({ id: pathStAtomId, kind: 'subtype', originalId: step.subtypeId,
-                        isOutput: false, dx: (j + 2) * 16, dy: (j + 2) * 16 })
-                      links.push({ atomId: pathStAtomId, roleIndex: 1, variableId: prevOtAtomId })
-                      links.push({ atomId: pathStAtomId, roleIndex: 0, variableId: childOtAtomId })
-                      prevOtAtomId = childOtAtomId
-                    }
-                    const factAtomId = uid()
-                    atoms.push({ id: factAtomId, kind: 'fact', originalId: m.factId,
-                      isOutput: false, seededRoles: [{ roleIndex: m.roleIndex, seqPosition: m.seqPos }],
-                      dx: (j + 3) * 16, dy: (j + 3) * 16 })
-                    links.push({ atomId: factAtomId, roleIndex: 1 - m.roleIndex, variableId: prevOtAtomId })
-                  })
-                  existingQueries[i] = { atoms, links }
-                  changed = true
-                  continue
-                }
-              }
-            }
-          }
-        }
-
-        if (changed) {
-          set(s => ({
-            constraints: s.constraints.map(con =>
-              con.id !== constraintId ? con : { ...con, queries: existingQueries }
-            ),
-            isDirty: true,
-          }))
-        }
-      }
+    // Brings the inferred queries of external constraints up to date
+    // (logic/queryInference.js). The store's set does this on every change of
+    // constraints, facts or subtypes; code that writes the state directly
+    // (transformations' api.setState) calls this afterwards.
+    _refreshInferredQueries() {
+      const s = get()
+      const constraints = refreshInferredQueries(s)
+      if (constraints !== s.constraints) set({ constraints })
     },
 
     // Cancel (Esc, a click on the background, the Inspector's Cancel) always
@@ -609,16 +336,24 @@ export function createConstraintSlice(set, get) {
       if (!pendingTargetPick) return
       const { constraintId } = pendingTargetPick
       const c = constraints.find(c => c.id === constraintId)
-      if (c) {
-        set(s => ({
-          constraints: s.constraints.map(con =>
-            con.id === constraintId ? { ...con, targetObjectTypeId: objectTypeId } : con
-          ),
-          pendingTargetPick: null,
-        }))
-      } else {
-        set({ pendingTargetPick: null })
-      }
+      set({ pendingTargetPick: null })
+      if (c) get().setTargetObjectType(constraintId, objectTypeId)
+    },
+
+    // The user's choice of target object type (null clears it); inference
+    // then joins through it. A stored query's target can only be changed by
+    // editing the query.
+    setTargetObjectType(constraintId, objectTypeId) {
+      const c = get().constraints.find(c => c.id === constraintId)
+      if (!c || (c.queries ?? []).some(q => storedQueryTarget(q))) return
+      set(s => ({
+        constraints: s.constraints.map(con => {
+          if (con.id !== constraintId) return con
+          const { targetInferred: _, ...rest } = con
+          return { ...rest, targetObjectTypeId: objectTypeId || null }
+        }),
+        isDirty: true,
+      }))
     },
 
     removeConstraintSequencePosition(constraintId, position) {
@@ -638,7 +373,7 @@ export function createConstraintSlice(set, get) {
           isDirty: true,
         }
       })
-      get()._tryAutoGenerateQuery(constraintId)
+      get()._refreshInferredQueries(constraintId)
     },
 
     removeConstraintSequence(constraintId, sequenceIndex) {
@@ -722,7 +457,7 @@ export function createConstraintSlice(set, get) {
 
       const hasExplicitTarget = !!c.targetObjectTypeId
       // ring / valueComparison / exclusion / equality / subset have no output OT concept;
-      // targetObjectTypeId may be set as a side-effect of auto-generation but should not be marked output
+      // targetObjectTypeId is not theirs (logic/queryInference.js), so it is never marked output
       const hasOutputOt = ['uniqueness', 'frequency', 'inclusiveOr', 'exclusiveOr'].includes(c.constraintType)
 
       // Target atom — created first so it is never shared with role variables
@@ -917,10 +652,7 @@ export function createConstraintSlice(set, get) {
         queryEditDraft: null,
         constraints: s.constraints.map(c => {
           if (c.id !== qd.constraintId) return c
-          const queries = [...(c.queries || [])]
-          while (queries.length <= qd.sequenceIndex) queries.push(null)
-          queries[qd.sequenceIndex] = { atoms: qd.atoms, links: qd.links }
-          return { ...c, queries }
+          return withStoredQuery(c, qd.sequenceIndex, { atoms: qd.atoms, links: qd.links })
         }),
         isDirty: true,
       }))
@@ -1158,10 +890,7 @@ export function createConstraintSlice(set, get) {
       set(s => ({
         constraints: s.constraints.map(c => {
           if (c.id !== constraintId) return c
-          const queries = [...(c.queries || [])]
-          while (queries.length <= sequenceIndex) queries.push(null)
-          queries[sequenceIndex] = query
-          return { ...c, queries }
+          return withStoredQuery(c, sequenceIndex, query)
         }),
         isDirty: true,
       }))

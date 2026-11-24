@@ -8,7 +8,8 @@ import { factDerivationIssues, factLabel } from '../logic/factDerivation.js'
 import { derivationGraph, derivationCycles } from '../logic/derivationDependencies.js'
 import { makeContext } from '../logic/constraintFormulas.js'
 import { isFormulaConstraint, checkFormulaConstraint } from '../logic/formulaConstraint.js'
-import { isFormulaQuery, checkQuery, whyNoOuterJoin } from '../logic/query.js'
+import { isFormulaQuery, checkQuery, whyNoOuterJoin, queryRule, joinIssues } from '../logic/query.js'
+import { inferenceEnv, openReason, TARGET_KINDS } from '../logic/queryInference.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
 import { mappingRuleIssues, mappingCoverageIssues } from '../mapping/mappingIssues.js'
 import { tableRuleIssues } from '../relational/derivedTables.js'
@@ -328,6 +329,7 @@ export function runValidation(state, enabledCategories) {
     .filter(Boolean)
   const errors = []
   let ctx = null   // made when a check needs it (constraintFormulas.js makeContext)
+  let infEnv = null   // made when a sequence has no query (queryInference.js)
 
   // ── Derivation Rules ─────────────────────────────────────────────────────────
   if (enabledCategories.has('derivationRules')) {
@@ -675,31 +677,48 @@ export function runValidation(state, enabledCategories) {
         }
       }
 
-      // MissingQueryError: every non-empty role sequence of an external constraint
-      // must have a query (used for query-pattern visualisation and population checks).
+      // Every non-empty role sequence of an external constraint needs a query:
+      // stored, or inferred (logic/queryInference.js). An open one says why
+      // FreeFBM could not infer it.
       if (EXTERNAL_CONSTRAINT_TYPES.has(c.constraintType)) {
         const queries = c.queries ?? []
         for (let i = 0; i < sequences.length; i++) {
           if ((sequences[i] || []).length === 0) continue  // empty sequence — skip
           if (queries[i] != null) continue                  // query present — OK
+          infEnv ??= inferenceEnv(state)
+          const needsTarget = TARGET_KINDS.has(c.constraintType) && !c.targetObjectTypeId
+          const why = openReason(c, i, infEnv)
           errors.push({
             id: `missing-query-${c.id}-${i}`,
             category: 'constraintStructure',
             elementId: c.id,
             elementKind: 'constraint',
-            message: `${label} constraint: sequence ${i + 1} has no query defined`,
+            message: needsTarget
+              ? `${label} constraint: sequence ${i + 1} has no query${why ? ` (${why})` : ''}: set a target object type, then define the query`
+              : `${label} constraint: sequence ${i + 1} has no query${why ? ` (${why})` : ''}: define the query`,
             severity: 'warning',
           })
         }
-        // A query stored as a formula must pass the query checks (query.js).
+        // A stored query must pass the query checks (query.js): all of them
+        // for a formula, the join checks for a graph.
         for (let i = 0; i < sequences.length; i++) {
-          if (!isFormulaQuery(queries[i])) continue
+          const q = queries[i]
+          if (!q || q.inferred) continue
           ctx ??= makeContext(state)
-          const bad = checkQuery(queries[i], sequences[i] ?? [], state, ctx).find(x => x.severity === 'error')
+          const seq = sequences[i] ?? []
+          let issues
+          if (isFormulaQuery(q)) issues = checkQuery(q, seq, state, ctx, undefined, { kind: c.constraintType })
+          else {
+            const rule = queryRule(q, seq, ctx)
+            issues = rule.error ? [] : joinIssues(rule, c.constraintType)
+          }
+          const bad = issues.find(x => x.severity === 'error') ?? issues.find(x => x.severity === 'warning')
           if (bad) errors.push({
             id: `invalid-query-${c.id}-${i}`, category: 'constraintStructure', elementId: c.id, elementKind: 'constraint',
-            message: `${label} constraint: the query formula of sequence ${i + 1} is not valid: ${bad.message}`,
-            severity: 'error',
+            message: bad.severity === 'error'
+              ? `${label} constraint: the query of sequence ${i + 1} is not valid: ${bad.message}`
+              : `${label} constraint: the query of sequence ${i + 1}: ${bad.message}`,
+            severity: bad.severity,
           })
         }
       }
