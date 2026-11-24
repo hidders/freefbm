@@ -55,7 +55,7 @@ export function useElectronMenu() {
     edit('cut', () => { if (!onErd()) useOrmStore.getState().cutSelection() })
     edit('copy', () => { if (!onErd()) useOrmStore.getState().copySelection() })
     edit('paste', () => { if (!onErd()) useOrmStore.getState().pasteClipboard() })
-    edit('selectAll', () => { if (!onErd()) useOrmStore.getState().selectAll() })
+    edit('selectAll', () => useOrmStore.getState().selectAll())
     on('menu:removeFromDiagram', () => { if (!typing()) removeSelectionFromDiagram() })
     on('menu:deleteFromSchema', () => {
       if (canDeleteFromSchema()) openDeleteFromSchema()

@@ -1,6 +1,8 @@
 import { findRefMode } from '../../utils/refMode.js'
+import { isErdDiagram } from '../../relational/erdBoxes.js'
+import { erdSchemasOfDiagram } from '../../relational/face.js'
 import {
-  uid, occOf, inDiag, cInDiag,
+  uid, occOf, inDiag, cInDiag, diagramRuleIds, mappingOfDiagram,
   computeConnectedIds, withSequences,
   mkUniqueness, withMandatoryId,
 } from '../storeHelpers'
@@ -163,6 +165,11 @@ export function createSelectionSlice(set, get) {
       const { objectTypes, facts, constraints, subtypes, diagrams, activeDiagramId } = get()
       const activeDiagram = diagrams.find(d => d.id === activeDiagramId)
 
+      // Schemas drawn as ERD tables (an ERD, or a mapping diagram's relational
+      // sides): of those only the tables are selected, as whole boxes.
+      const erdSchemas = new Set(isErdDiagram(get(), activeDiagram) ? [activeDiagram.schemaId]
+        : activeDiagram ? erdSchemasOfDiagram(get(), activeDiagram) : [])
+      const onErd = (el) => erdSchemas.has(el.schemaId)
       const visible = (id) => inDiag(activeDiagram, id)
 
       const shownILKeys = new Set(activeDiagram?.shownImplicitLinks ?? [])
@@ -173,18 +180,21 @@ export function createSelectionSlice(set, get) {
         .map(key => { const [fid, ri] = key.split(':'); return `${fid}_il_${ri}` })
 
       const ids = [
-        ...objectTypes.filter(o  => visible(o.id)).map(o  => o.id),
-        ...facts       .filter(f  => visible(f.id)).map(f  => f.id),
+        ...objectTypes.filter(o  => visible(o.id) && (!onErd(o) || o.kind === 'entity')).map(o  => o.id),
+        ...facts       .filter(f  => visible(f.id) && !onErd(f)).map(f  => f.id),
         // Constraint positions live in constraintOccurrences, not occurrences
-        ...constraints .filter(c  => activeDiagram && cInDiag(activeDiagram, c.id)).map(c  => c.id),
-        ...subtypes    .filter(st => visible(st.id)).map(st => st.id),
+        ...constraints .filter(c  => activeDiagram && cInDiag(activeDiagram, c.id) && !onErd(c)).map(c  => c.id),
+        ...subtypes    .filter(st => visible(st.id) && !onErd(st)).map(st => st.id),
         ...impliedLinkIds,
       ]
       // Clear occurrence IDs left by an earlier band selection; otherwise moves would
       // act on that stale subset instead of on everything selected here.
+      // On a mapping diagram its rule nodes too.
+      const mapping = activeDiagram?.mappingId ? mappingOfDiagram(get(), activeDiagram) : null
+      const ruleIds = mapping ? [...diagramRuleIds(activeDiagram, mapping)] : []
       set({ multiSelectedIds: ids, multiSelectedOccurrenceIds: [],
             selectedId: null, selectedKind: null, selectedOccurrenceId: null,
-            selectedRole: null, selectedUniqueness: null })
+            selectedRole: null, selectedUniqueness: null, selectedRuleIds: ruleIds })
     },
 
     shiftSelect(id, occurrenceId = null) {

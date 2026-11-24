@@ -16,7 +16,8 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import ContextMenu from './ContextMenu'
-import { growItems } from '../hooks/useContextMenuHandlers'
+import { growItems, connectItem } from '../hooks/useContextMenuHandlers'
+import { layoutMappingDiagram } from '../layout/mappingLayout'
 import { transformItems } from '../relational/transformItems'
 import { removeSelectionFromDiagram } from '../utils/deleteSelection'
 import { useGrowCounts, GrowBadge } from './GrowBadges'
@@ -71,13 +72,14 @@ function FkLine({ fk, route, selected, onDown, onMenu }) {
   )
 }
 
-function TableBox({ box, selectedId, highlighted, onHeaderDown, onRowDown, onMenu, onRowMenu, tint = null, ruleHl = null }) {
+function TableBox({ box, selectedId, multi = false, highlighted, onHeaderDown, onRowDown, onMenu, onRowMenu, tint = null, ruleHl = null }) {
   const { table: t, x, y, w, h } = box
-  const sel = selectedId === t.id
+  const sel = selectedId === t.id || multi
   const hot = !!ruleHl?.typeIds?.includes(t.id)
   const head = 'var(--col-schema-relational)'
   return (
-    <g style={{ fontFamily: FONT }} data-table={t.name} onContextMenu={onMenu ? (e => onMenu(e, t)) : undefined}>
+    <g className="erd-table" style={{ fontFamily: FONT }} data-table={t.name} data-table-id={t.id}
+      data-cx={x + w / 2} data-cy={y + h / 2} onContextMenu={onMenu ? (e => onMenu(e, t)) : undefined}>
       {tint && <rect x={x - 6} y={y - 6} width={w + 12} height={h + 12} rx={9} fill={`var(--map-${tint}-bg)`}
         stroke={`var(--map-${tint})`} strokeOpacity={0.35} strokeWidth={1} style={{ pointerEvents: 'none' }}/>}
       <rect x={x} y={y} width={w} height={h} rx={4} fill="var(--bg-text-panel)"
@@ -137,6 +139,8 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
   const constraints = useOrmStore(s => s.constraints)
   const diagram     = useOrmStore(s => s.diagrams.find(d => d.id === s.activeDiagramId))
   const selectedId  = useOrmStore(s => s.selectedId)
+  const multiIds    = useOrmStore(s => s.multiSelectedIds)
+  const multi       = useMemo(() => new Set(multiIds), [multiIds])
   const sideRuleHl  = useOrmStore(s => (sideSchemaId ? s.ruleHighlight : null))
   const selectedRm  = useOrmStore(s => s.selectedRm)
   const schemaId    = sideSchemaId ?? diagram?.schemaId
@@ -158,16 +162,21 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
   const ruleHl = sideSchemaId ? sideRuleHl : assertionHighlight(hlAssertion)
 
   // While a box is dragged its offset is local; it is stored on mouse up.
-  const [drag, setDrag] = useState(null)  // { id, dx, dy }
+  const [drag, setDrag] = useState(null)  // { ids: Set, dx, dy }
   const dragRef = useRef(null)
   useEffect(() => () => dragRef.current?.cleanup?.(), [])
 
+  // A shift- (or Cmd-) click adds the table to the selection or takes it out;
+  // dragging a selected table moves every selected table drawn here.
   const startDrag = (e, t) => {
     if (e.button !== 0) return
     e.stopPropagation()
     e.preventDefault()
     const store = useOrmStore.getState()
-    store.select(t.id, 'entity')
+    if (e.shiftKey || e.metaKey || e.ctrlKey) { store.shiftSelect(t.id); return }
+    const group = multi.has(t.id) ? [...boxes.keys()].filter(id => multi.has(id)) : [t.id]
+    const ids = new Set(group)
+    if (ids.size < 2) store.select(t.id, 'entity')
     const sx = e.clientX, sy = e.clientY
     const onMove = (ev) => {
       const z = useOrmStore.getState().zoom
@@ -175,7 +184,7 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
       if (!dragRef.current.moved && Math.hypot(dx, dy) < 3 / z) return
       dragRef.current.moved = true
       dragRef.current.dx = dx; dragRef.current.dy = dy
-      setDrag({ id: t.id, dx, dy })
+      setDrag({ ids, dx, dy })
     }
     const cleanup = () => {
       window.removeEventListener('mousemove', onMove)
@@ -186,12 +195,16 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
       const r = dragRef.current
       dragRef.current = null
       setDrag(null)
-      if (!r?.moved) return
+      if (!r?.moved) {
+        // A click on one of several selected tables selects it alone.
+        if (ids.size > 1) useOrmStore.getState().select(t.id, 'entity')
+        return
+      }
       // The first move fixes every shown table where it is drawn now, so the
-      // grid doesn't reflow around the moved one.
+      // grid doesn't reflow around the moved ones.
       const positions = {}
       for (const [id, b] of boxes) positions[id] = { x: b.x, y: b.y }
-      positions[t.id] = { x: Math.round(boxes.get(t.id).x + r.dx), y: Math.round(boxes.get(t.id).y + r.dy) }
+      for (const id of ids) positions[id] = { x: Math.round(boxes.get(id).x + r.dx), y: Math.round(boxes.get(id).y + r.dy) }
       useOrmStore.getState().setErdPositions(diagram.id, positions)
     }
     dragRef.current = { moved: false, dx: 0, dy: 0, cleanup }
@@ -234,7 +247,35 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
     e.stopPropagation()
     setMenu({ x: e.clientX, y: e.clientY, items })
   }
+  // Several tables selected: the multi-selection menu, as on the ORM2 canvas
+  // (on a mapping diagram: moving or copying the selected rule nodes).
+  const openMultiMenu = (e) => {
+    const store = useOrmStore.getState()
+    const tables = [...multi].filter(id => store.objectTypes.some(o => o.id === id && o.kind === 'entity'))
+    const did = store.activeDiagramId
+    const ruleIds = store.selectedRuleIds ?? []
+    const n = ruleIds.length === 1 ? 'rule' : `${ruleIds.length} rules`
+    show(e, onMappingDiagram ? [
+      { label: `Move ${n} to new diagram`, disabled: !ruleIds.length,
+        title: ruleIds.length ? 'Elements still linked to rules that stay here are kept on both diagrams' : 'Select rule nodes too (shift-click or the rubber band)',
+        action: () => useOrmStore.getState().rulesToNewDiagram(did, ruleIds, { move: true, layout: layoutMappingDiagram }) },
+      { label: `Copy ${n} to new diagram`, disabled: !ruleIds.length,
+        action: () => useOrmStore.getState().rulesToNewDiagram(did, ruleIds, { layout: layoutMappingDiagram }) },
+      '---',
+      noDelete,
+    ] : [
+      ...(tables.length === 2 ? [connectItem(store, tables[0], tables[1])] : []),
+      { label: 'Copy selection to new diagram', action: () => useOrmStore.getState().selectionToNewDiagram(false) },
+      { label: 'Move selection to new diagram', title: 'Tables still linked to what stays here are kept on both diagrams',
+        action: () => useOrmStore.getState().selectionToNewDiagram(true) },
+      '---',
+      { label: 'Remove selection from diagram', action: () => removeSelectionFromDiagram() },
+      '---',
+      noDelete,
+    ])
+  }
   const openMenu = (e, t) => {
+    if (multi.size > 1 && multi.has(t.id)) return openMultiMenu(e)
     useOrmStore.getState().select(t.id, 'entity')
     const store = useOrmStore.getState()
     show(e, [...growItems(store, t.id), transformMenu(t.id), ...tableTail(t)])
@@ -273,7 +314,7 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
     [links, boxes, orthogonal])
 
   const shown = drag
-    ? new Map([...boxes].map(([id, b]) => [id, id === drag.id ? { ...b, x: b.x + drag.dx, y: b.y + drag.dy } : b]))
+    ? new Map([...boxes].map(([id, b]) => [id, drag.ids.has(id) ? { ...b, x: b.x + drag.dx, y: b.y + drag.dy } : b]))
     : boxes
   // While dragging, ports are assigned afresh for all lines (they spread along
   // the sides), but only the lines whose ports moved are routed again.
@@ -347,7 +388,7 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
           route={dragRoutes?.get(fk.constraintId) ?? routes.get(fk.constraintId)}/>
       ))}
       {[...shown.values()].map(b => (
-        <TableBox key={b.table.id} box={b} selectedId={selectedId} highlighted={highlighted} tint={tint} ruleHl={ruleHl}
+        <TableBox key={b.table.id} box={b} selectedId={selectedId} multi={multi.has(b.table.id)} highlighted={highlighted} tint={tint} ruleHl={ruleHl}
           onHeaderDown={startDrag} onRowDown={selectColumn} onMenu={openMenu} onRowMenu={openRowMenu}/>
       ))}
       {assertions.length > 0 && (

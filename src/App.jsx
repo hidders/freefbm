@@ -97,10 +97,13 @@ function useKeyboardShortcuts() {
         return
       }
 
-      // The ERD view is read-only: no moving, pasting or tool keys.
+      // The ERD view is read-only: no moving, pasting or tool keys; ⌘A selects its tables.
       {
         const st = useOrmStore.getState()
-        if (isErdDiagram(st, st.diagrams?.find(d => d.id === st.activeDiagramId))) return
+        if (isErdDiagram(st, st.diagrams?.find(d => d.id === st.activeDiagramId))) {
+          if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); store.selectAll() }
+          return
+        }
       }
 
 
