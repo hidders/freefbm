@@ -704,7 +704,7 @@ export function importNorma(xmlText) {
     const atoms = [tAtom], links = []
     roles.forEach((m, i) => {
       atoms.push({ id: `q_${i}`, kind: 'fact', originalId: m.factId, isOutput: false,
-        seededRoles: [{ roleIndex: m.roleIndex, seqPosition: i }], dx: 48 + 16 * i, dy: 48 + 16 * i })
+        seededRoles: [{ roleIndex: m.roleIndex, seqPosition: i }], dx: 16, dy: 16 })
       links.push({ atomId: `q_${i}`, roleIndex: others[i].roleIndex, variableId: 'q_t' })
     })
     return { atoms, links, _target: target }

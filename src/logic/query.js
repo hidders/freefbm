@@ -565,6 +565,14 @@ export function ruleToGraph(rule, seq, ctx, { lenient = false, fixed = [] } = {}
   // Object type atoms need a type; a class of variables whose type is an
   // objectified fact type is shown as that fact type's object.
   for (const a of atoms) if (a.kind === 'objectType' && !a.originalId) return { error: 'a variable has no type' }
+  // Atoms are drawn at an offset from their element; several atoms of one
+  // element (a self-join) are staggered, as the graphical editor does.
+  const perElement = new Map()
+  for (const a of atoms) {
+    const n = (perElement.get(a.originalId) ?? 0) + 1
+    perElement.set(a.originalId, n)
+    a.dx = a.dy = n * 16
+  }
   return { atoms, links, ...(core.rest.length ? { partial: true } : {}) }
 }
 
