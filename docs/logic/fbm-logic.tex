@@ -865,9 +865,18 @@ uniqueness, frequency, inclusive-or and exclusive-or, the target:
 \[
   \{\ \mathit{free}: [q_1,\dots,q_k],\ \mathit{target}: t,\ \mathit{body}: \varphi\ \}.
 \]
-A sequence of roles of one fact type has the implicit query $R(\dots)$; a
-single subtype link has the query $S(t)$. Any other sequence needs a join
-path, which is a query like any other (\code{src/logic/query.js}). Queries
+A query is \emph{stored} (drawn, written or imported), \emph{inferred} or
+\emph{open} (\code{src/logic/queryInference.js}). It is inferred, and never
+saved, when there is exactly one natural join: roles of one fact type give
+$R(\dots)$ (not for external uniqueness and frequency, which then mean an
+internal constraint); a single subtype link gives $S(t)$; roles of different
+binary fact types $R_i$ whose other roles are played by a common supertype
+$T$ (or, with a target chosen by the user, by $T$ or a subtype of it) give
+$\exists t\,\bigwedge_i R_i(q_i, t)$, with $t$ the target for uniqueness and
+frequency; for inclusive-or and exclusive-or the target is the common
+supertype of the roles' players. The target belongs to the query: it is
+inferred with it, chosen by the user, or the stored query's own. Every other
+sequence is open until the user gives its query. Queries
 have the same format as derivation rules (Section~\ref{sec:derivation}),
 and the same evaluator answers both.
 
@@ -876,7 +885,10 @@ sequence member in an atom of the query's \emph{positive conjunctive core},
 the atoms reached from the top through $\exists$ and $\wedge$ only (not under
 $\neg$, $\vee$, $\to$, $\leftrightarrow$, $\forall$ or a counting quantifier);
 a role of an objectified fact type may be played through its link fact
-type. The target must occur in the query.
+type. The target must occur in the query; the query of an external
+uniqueness or frequency constraint has a target, and with a target every
+position is joined to it through the core's atoms and equalities (positions
+of other kinds that are not joined give a warning).
 
 \paragraph{The graphical fragment.} A query whose body is $\exists$ and
 $\wedge$ over fact atoms, type atoms of subtypes and object equalities, with

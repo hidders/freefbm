@@ -1529,10 +1529,15 @@ export function importNorma(xmlText) {
     }
     delete f._normaRoleOrder
   }
-  // Sequences whose join NORMA built itself get the query FreeFBM would build
-  // (openModelFile asks the store for it); the others wait for the translator.
+  // Sequences whose join NORMA built itself get the query FreeFBM infers
+  // (logic/queryInference.js); a constraint whose join path could not be
+  // translated is marked untranslatedJoin, so nothing is inferred in its
+  // place: the user defines the query.
   const pendingJoinIds = constraints.filter(c => c._pendingJoin).map(c => c.id)
-  for (const c of constraints) delete c._pendingJoin
+  for (const c of constraints) {
+    if (c._pendingJoin) c.untranslatedJoin = true
+    delete c._pendingJoin
+  }
 
   let unplaced = 0
   for (const [id, mn] of modelNotes) {

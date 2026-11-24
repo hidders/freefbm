@@ -481,8 +481,8 @@ export function applyFreshRefMode(state, owner, targetVtName, existing, matchFac
 
 // Returns `c` with `sequences` installed and every query whose sequence gained or
 // lost members replaced by null (a query is built for one exact list of members,
-// so it no longer fits). Sequences are matched by index. `changed` tells the
-// caller to re-run query guessing (_tryAutoGenerateQuery) for this constraint.
+// so it no longer fits). Sequences are matched by index. `changed` says that
+// queries were dropped; the store infers what it can again (queryInference.js).
 export function withSequences(c, sequences) {
   const oldSequences = c.sequences || []
   let changed = false
@@ -491,7 +491,9 @@ export function withSequences(c, sequences) {
     if (q != null && (oldSequences[i]?.length ?? 0) !== seq.length) { changed = true; return null }
     return q
   })
-  return { constraint: { ...c, sequences, queries }, changed }
+  // An imported join path that could not be read no longer applies.
+  const { untranslatedJoin: _, ...rest } = c
+  return { constraint: { ...(changed ? rest : c), sequences, queries }, changed }
 }
 
 // Returns the unique minimal common ancestor of all `otIds` in the subtype DAG

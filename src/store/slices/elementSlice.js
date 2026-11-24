@@ -852,7 +852,7 @@ export function createElementSlice(set, get) {
           }),
         }
       })
-      requery.forEach(id => get()._tryAutoGenerateQuery(id))
+      requery.forEach(id => get()._refreshInferredQueries(id))
     },
 
     // Move a role from fromIndex to toIndex, shifting others accordingly.
@@ -1181,7 +1181,7 @@ export function createElementSlice(set, get) {
           }),
         }
       })
-      requery.forEach(id => get()._tryAutoGenerateQuery(id))
+      requery.forEach(id => get()._refreshInferredQueries(id))
     },
 
     updateRole(factId, roleIndex, patch) {
@@ -1665,7 +1665,7 @@ export function createElementSlice(set, get) {
         selectedId: s.selectedId === id ? null : s.selectedId,
         isDirty: true,
       }))
-      requery.forEach(cid => get()._tryAutoGenerateQuery(cid))
+      requery.forEach(cid => get()._refreshInferredQueries(cid))
     },
 
     // Add an already-existing subtype schema element to a specific diagram with pinned occurrence endpoints.

@@ -23,22 +23,6 @@ import { ruleFormula, checkFormula, formulaVariables, upgradeRule, atomFact } fr
 
 const normalizeSeeded = (s) => (typeof s === 'number' ? { roleIndex: s, seqPosition: 0 } : s)
 
-// The graph of a sequence that has no stored query: roles of one fact type,
-// or a single subtype edge. Mirrors the store's automatic query generation.
-export function implicitGraph(seq) {
-  if (seq.length === 1 && seq[0].kind === 'subtype') {
-    return { atoms: [{ id: 's', kind: 'subtype', originalId: seq[0].subtypeId, isSeeded: true }], links: [] }
-  }
-  const roles = seq.filter(m => m.kind === 'role' && !m.factId?.includes('_il_'))
-  if (roles.length === 0 || roles.length !== seq.length) return null
-  if (new Set(roles.map(m => m.factId)).size !== 1) return null
-  return {
-    atoms: [{ id: 'f', kind: 'fact', originalId: roles[0].factId,
-      seededRoles: roles.map((m, i) => ({ roleIndex: m.roleIndex, seqPosition: i })) }],
-    links: [],
-  }
-}
-
 export const hasGraph = (q) => !!(q && (q.atoms || q.copies))
 // A query stored as a formula only, as the rule editor saves it.
 export const isFormulaQuery = (q) => !!(q && !hasGraph(q) && q.body)
@@ -187,8 +171,8 @@ export function graphToRule(graph, seq, ctx) {
 
 const checked = new WeakMap()   // ctx → query → its rule form, or { error }
 
-// The rule form of the query of a sequence: from its graph, from its stored
-// formula, or from the implicit graph when nothing is stored. A stored
+// The rule form of the query of a sequence: from its graph (stored or
+// inferred) or from its stored formula. A stored
 // formula that checkQuery rejects gives { error }.
 export function queryRule(query, seq, ctx) {
   if (isFormulaQuery(query)) {
@@ -200,9 +184,10 @@ export function queryRule(query, seq, ctx) {
     }
     return byQuery.get(query)
   }
-  const graph = hasGraph(query) ? query : implicitGraph(seq ?? [])
-  if (!graph) return { error: 'its role sequence has no join path yet' }
-  return graphToRule(graph, seq, ctx)
+  // A sequence without a query is open (queryInference.js fills in the ones
+  // it can infer).
+  if (!hasGraph(query)) return { error: 'its role sequence has no query yet' }
+  return graphToRule(query, seq, ctx)
 }
 
 // The ids of the variables bound by quantifiers in a rule tree.
@@ -382,7 +367,12 @@ const readingOf = (f, ctx) => {
 // checks, every position must be anchored: the formula must say, positively
 // and through ∃ and ∧ only, that the position's variable plays the role of
 // its sequence member; and the target, if any, must occur in it.
-export function checkQuery(rule, seq, state, ctx, typing = { sorts: new Map(), params: new Map() }) {
+//
+// With the constraint's kind, also: the query of an external uniqueness or
+// frequency constraint has a target, and the positions of a constraint with
+// a target are joined to it (an error); positions of other kinds that are
+// not joined to each other give a warning (a cross product may be meant).
+export function checkQuery(rule, seq, state, ctx, typing = { sorts: new Map(), params: new Map() }, { kind = null } = {}) {
   const body = upgradeRule(rule.body)
   if (!body) return [{ path: [], severity: 'error', message: 'There is no query formula yet' }]
   const roots = queryRoots(rule)
@@ -401,6 +391,43 @@ export function checkQuery(rule, seq, state, ctx, typing = { sorts: new Map(), p
   if (rule.target && !used.has(rule.target.id))
     issues.push({ path: [], severity: 'error',
       message: `The formula does not mention the target ${nameOf.get(rule.target.id) ?? ctx.typeName(rule.target.typeId)}` })
+  if (kind) issues.push(...joinIssues(rule, kind, (id) => nameOf.get(id) ?? id))
+  return issues
+}
+
+// The positions of a query in rule form that its positive conjunctive core
+// does not join to the target, or without a target to the first position.
+export function unjoinedPositions(rule) {
+  const core = conjunctiveCore(upgradeRule(rule.body))
+  const parent = new Map()
+  const find = (x) => { while (parent.has(x) && parent.get(x) !== x) x = parent.get(x); return x }
+  const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(rb, ra) }
+  // Atoms, object equalities and equalities of values (x ≈ y) join.
+  const valueEq = core.rest.map(r => r.node).filter(n => n?.t === 'vcmp' && (n.op === '≈' || n.op === '=')
+    && n.left?.t === 'var' && n.right?.t === 'var')
+  for (const n of [...core.atoms.map(a => a.node), ...valueEq]) {
+    const vars = (n.t === 'fact' ? n.args ?? [] : n.t === 'type' ? [n.arg]
+      : n.t === 'vcmp' ? [n.left.id, n.right.id] : [n.left, n.right]).filter(a => typeof a === 'string')
+    vars.slice(1).forEach(v => union(vars[0], v))
+  }
+  const anchor = rule.target?.id ?? rule.free[0]?.id
+  if (anchor == null) return []
+  return rule.free.map((f, i) => i).filter(i => find(rule.free[i].id) !== find(anchor))
+}
+
+// The join checks of a query of a constraint of the given kind (see checkQuery).
+export function joinIssues(rule, kind, nameOf = (id) => id) {
+  const issues = []
+  const label = kind === 'uniqueness' ? 'an external uniqueness' : 'an external frequency'
+  if ((kind === 'uniqueness' || kind === 'frequency') && !rule.target)
+    issues.push({ path: [], severity: 'error', message: `The query of ${label} constraint needs a target object type, the objects it counts` })
+  const off = unjoinedPositions(rule)
+  if (!off.length) return issues
+  const which = off.map(i => `${nameOf(rule.free[i].id)} (position ${i + 1})`).join(', ')
+  if (rule.target && TARGET_TYPES.has(kind))
+    issues.push({ path: [], severity: 'error', message: `${which} ${off.length === 1 ? 'is' : 'are'} not joined to the target ${nameOf(rule.target.id)}` })
+  else if (!TARGET_TYPES.has(kind))
+    issues.push({ path: [], severity: 'warning', message: `${which} ${off.length === 1 ? 'is' : 'are'} not joined to ${nameOf(rule.free[0].id)}, so the query pairs them in every combination` })
   return issues
 }
 
