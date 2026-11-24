@@ -198,7 +198,7 @@ export default function StatusBar() {
     )
   }
   const hint = relFace
-    ? 'Click a table, column or foreign key to inspect it · Drag a table to move it · Transform… changes the schema'
+    ? 'Click a table, column or foreign key to inspect it · Drag a table to move it · Drag the canvas or Shift+click to select several · Transform… changes the schema'
     : readOnly
       ? 'The ORM2 schema that stores these tables, read-only · Drag to move · Adding or removing any part of a table adds or removes the whole table'
       : constructionHint || selectionHint || toolHint

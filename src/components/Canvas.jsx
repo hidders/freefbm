@@ -877,14 +877,22 @@ export default function Canvas() {
     const isBackground = e.target === svgRef.current || e.target.closest('.canvas-bg')
     if (!isBackground) return
 
-    // ERD view: no tools; a background click clears the selection, a drag pans.
+    // ERD view: no tools; as on an ORM2 diagram a background drag selects
+    // tables by a rubber band (a click clears the selection), and a middle
+    // or Space drag pans.
     {
       const st = useOrmStore.getState()
       if (isErdDiagram(st, st.diagrams.find(d => d.id === st.activeDiagramId))) {
         if (e.button !== 0 && e.button !== 1) return
         e.preventDefault()
-        if (e.button === 0) st.clearSelection()
-        setDragState({ type: 'pan', startX: e.clientX, startY: e.clientY, origX: st.pan.x, origY: st.pan.y })
+        if (e.button === 1 || spaceRef.current) {
+          setDragState({ type: 'pan', startX: e.clientX, startY: e.clientY, origX: st.pan.x, origY: st.pan.y })
+          return
+        }
+        if (!e.shiftKey) st.clearSelection()
+        const { x: wx, y: wy } = screenToWorld(e.clientX, e.clientY)
+        setDragState({ type: 'band', startX: e.clientX, startY: e.clientY, wx, wy, active: false, endWx: wx, endWy: wy, additive: e.shiftKey })
+        setBandRect(null)
         return
       }
     }
@@ -1181,34 +1189,40 @@ export default function Canvas() {
       const diagPos = diag?.implicitLinkPositions ?? {}
       const ids = []
       const occIds = []
-      for (const o of visibleOts) {
-        if (inBand(o.x, o.y)) { ids.push(o.id); if (o.occurrenceId) occIds.push(o.occurrenceId) }
-      }
-      for (const f of visibleFacts) {
-        if (boxInBand(factBounds(f))) { ids.push(f.id); if (f.occurrenceId) occIds.push(f.occurrenceId) }
-      }
-      for (const c of visibleConstraints) {
-        if (inBand(c.x, c.y)) { ids.push(c.id); if (c.constraintOccurrenceId) occIds.push(c.constraintOccurrenceId) }
-      }
-      for (const st of visibleSubtypes) {
-        const sub = visibleOts.find(o => o.id === st.subId) || nestedMap[st.subId]
-        const sup = visibleOts.find(o => o.id === st.superId) || nestedMap[st.superId]
-        if (!sub || !sup) continue
-        if (inBand((sub.x + sup.x) / 2, (sub.y + sup.y) / 2)) ids.push(st.id)
-      }
-      for (const f of visibleFacts) {
-        for (const il of (f.implicitLinks || [])) {
-          const ilKey = `${f.id}:il:${il.roleIndex}`
-          const ilPos = diagPos[ilKey]
-          const role = f.roles[il.roleIndex]
-          const associatedOtid = role?.objectTypeId
-          const associatedOt = visibleOts.find(o => o.id === associatedOtid)
-          const associatedNf = !associatedOt ? visibleFacts.find(ff => ff.id === associatedOtid && ff.objectified) : null
-          const defaultX = (associatedOt || associatedNf) ? Math.round((f.x + (associatedOt || associatedNf).x) / 2) : f.x
-          const defaultY = (associatedOt || associatedNf) ? Math.round((f.y + (associatedOt || associatedNf).y) / 2) : f.y
-          const ilX = ilPos?.x ?? il.x ?? defaultX
-          const ilY = ilPos?.y ?? il.y ?? defaultY
-          if (inBand(ilX, ilY)) ids.push(`${f.id}_il_${il.roleIndex}`)
+      // ERD table boxes (ErdView.jsx: an ERD, or a mapping diagram's relational
+      // sides) whose centre is in the band. An ERD draws nothing else.
+      for (const n of svgRef.current?.querySelectorAll('.erd-table[data-table-id]') ?? [])
+        if (inBand(Number(n.dataset.cx), Number(n.dataset.cy))) ids.push(n.dataset.tableId)
+      if (!isErdDiagram(store, diag)) {
+        for (const o of visibleOts) {
+          if (inBand(o.x, o.y)) { ids.push(o.id); if (o.occurrenceId) occIds.push(o.occurrenceId) }
+        }
+        for (const f of visibleFacts) {
+          if (boxInBand(factBounds(f))) { ids.push(f.id); if (f.occurrenceId) occIds.push(f.occurrenceId) }
+        }
+        for (const c of visibleConstraints) {
+          if (inBand(c.x, c.y)) { ids.push(c.id); if (c.constraintOccurrenceId) occIds.push(c.constraintOccurrenceId) }
+        }
+        for (const st of visibleSubtypes) {
+          const sub = visibleOts.find(o => o.id === st.subId) || nestedMap[st.subId]
+          const sup = visibleOts.find(o => o.id === st.superId) || nestedMap[st.superId]
+          if (!sub || !sup) continue
+          if (inBand((sub.x + sup.x) / 2, (sub.y + sup.y) / 2)) ids.push(st.id)
+        }
+        for (const f of visibleFacts) {
+          for (const il of (f.implicitLinks || [])) {
+            const ilKey = `${f.id}:il:${il.roleIndex}`
+            const ilPos = diagPos[ilKey]
+            const role = f.roles[il.roleIndex]
+            const associatedOtid = role?.objectTypeId
+            const associatedOt = visibleOts.find(o => o.id === associatedOtid)
+            const associatedNf = !associatedOt ? visibleFacts.find(ff => ff.id === associatedOtid && ff.objectified) : null
+            const defaultX = (associatedOt || associatedNf) ? Math.round((f.x + (associatedOt || associatedNf).x) / 2) : f.x
+            const defaultY = (associatedOt || associatedNf) ? Math.round((f.y + (associatedOt || associatedNf).y) / 2) : f.y
+            const ilX = ilPos?.x ?? il.x ?? defaultX
+            const ilY = ilPos?.y ?? il.y ?? defaultY
+            if (inBand(ilX, ilY)) ids.push(`${f.id}_il_${il.roleIndex}`)
+          }
         }
       }
       const finalIds = dragState.additive
