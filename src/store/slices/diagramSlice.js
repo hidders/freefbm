@@ -1280,10 +1280,22 @@ export function createDiagramSlice(set, get) {
       // selectedRole: no-op (sub-element selection, not a whole occurrence)
     },
 
-    getSharedIds() {
+    // Elements drawn more than once (the multi-occurrence shadow), counted
+    // within the scope of the given diagram: on a plain diagram the plain
+    // diagrams of its schema, on a mapping or view diagram the diagrams of
+    // that mapping. An element shown once in its schema and again on a
+    // mapping diagram is not duplicated in either.
+    getSharedIds(diagramId = get().activeDiagramId) {
       const { diagrams } = get()
+      const scopeOf = d => (d.mappingId ? `m:${d.mappingId}` : `s:${d.schemaId ?? ''}`)
+      const own = diagrams.find(d => d.id === diagramId)
+      if (!own) return new Set()
+      const scope = scopeOf(own)
       const counts = {}
-      diagrams.forEach(d => (d.occurrences ?? []).forEach(o => { counts[o.schemaElementId] = (counts[o.schemaElementId] || 0) + 1 }))
+      diagrams.forEach(d => {
+        if (scopeOf(d) !== scope) return
+        ;(d.occurrences ?? []).forEach(o => { counts[o.schemaElementId] = (counts[o.schemaElementId] || 0) + 1 })
+      })
       return new Set(Object.keys(counts).filter(id => counts[id] > 1))
     },
   }
