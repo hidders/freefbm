@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useOrmStore } from '../store/ormStore'
+import { useErdDrag } from '../store/erdDragStore'
 import { useDiagramElements } from '../hooks/useDiagramElements'
 import { mappingOfDiagram, isViewMapping, diagramRuleIds } from '../store/storeHelpers'
 import { viewRuleElements, checkViewRule, viewRuleText, headId, elementName } from '../mapping/views.js'
@@ -67,6 +68,14 @@ function edgePoint(b, px, py) {
   return t >= 1 ? { x: px, y: py } : { x: cx + dx * t, y: cy + dy * t }
 }
 
+// An ERD table end moved by the drag in progress (ErdView.jsx), else itself.
+function draggedEnd(o, d) {
+  if (!o._bounds || !d.ids.has(o.id)) return o
+  const b = o._bounds
+  return { ...o, x: o.x + d.dx, y: o.y + d.dy,
+    _bounds: { left: b.left + d.dx, right: b.right + d.dx, top: b.top + d.dy, bottom: b.bottom + d.dy } }
+}
+
 const centroid = (pts) => (pts.length
   ? { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length }
   : null)
@@ -85,6 +94,8 @@ export function MappingRules({ onRuleContextMenu = null }) {
   const isView = useOrmStore(s => isViewMapping(s, mapping))
   const [hoverId, setHoverId] = useState(null)
   const [drag, setDrag] = useState(null)   // { ids: Set, dx, dy }
+  // Table boxes being dragged on an ERD side: their connectors follow them.
+  const tableDrag = useErdDrag(s => (s.drag && s.drag.diagramId === diagram?.id ? s.drag : null))
   const selectedRuleIds = useOrmStore(s => s.selectedRuleIds)
   const selected = useMemo(() => new Set(selectedRuleIds ?? []), [selectedRuleIds])
   const setByUs = useRef(false)
@@ -166,7 +177,7 @@ export function MappingRules({ onRuleContextMenu = null }) {
       const pos = stored[info.r.id]
       if (pos) return { ...info, x: pos.x, y: pos.y, stored: true }
       const c = {}
-      for (const side of SIDES) c[side] = centroid(info.ends[side].map(g => ({ x: g[0].x, y: g[0].y })))
+      for (const side of SIDES) c[side] = centroid(info.ends[side].map(g => (tableDrag ? draggedEnd(g[0], tableDrag) : g[0])))
       let p = c.source && c.target ? { x: (c.source.x + c.target.x) / 2, y: (c.source.y + c.target.y) / 2 }
         : c.source ? { x: c.source.x + 160, y: c.source.y }
         : c.target ? { x: c.target.x - 160, y: c.target.y }
@@ -175,7 +186,7 @@ export function MappingRules({ onRuleContextMenu = null }) {
       taken.push(p)
       return { ...info, x: p.x, y: p.y, stored: false }
     })
-  }, [rules, diagram?.mappingRulePositions])
+  }, [rules, diagram?.mappingRulePositions, tableDrag])
 
   // The hovered rule's elements are highlighted; else the rule open in the editor.
   const editingRule = !mapping ? null
@@ -242,7 +253,8 @@ export function MappingRules({ onRuleContextMenu = null }) {
         const border = errors ? 'var(--danger)' : warnings ? '#d97706' : 'var(--map-rule)'
         const lines = []
         for (const side of SIDES) {
-          for (const occs of info.ends[side]) {
+          for (const group of info.ends[side]) {
+            const occs = tableDrag ? group.map(o => draggedEnd(o, tableDrag)) : group
             // The occurrence nearest to the node.
             let best = occs[0], bd = Infinity
             for (const o of occs) { const d = (o.x - x) ** 2 + (o.y - y) ** 2; if (d < bd) { bd = d; best = o } }

@@ -14,6 +14,7 @@
 // constraint nodes linked to their tables (ErdAssertions.jsx).
 
 import React, { useMemo, useState, useRef, useEffect } from 'react'
+import { setErdDrag } from '../store/erdDragStore'
 import { createPortal } from 'react-dom'
 import ContextMenu from './ContextMenu'
 import { growItems, connectItem } from '../hooks/useContextMenuHandlers'
@@ -164,7 +165,7 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
   // While a box is dragged its offset is local; it is stored on mouse up.
   const [drag, setDrag] = useState(null)  // { ids: Set, dx, dy }
   const dragRef = useRef(null)
-  useEffect(() => () => dragRef.current?.cleanup?.(), [])
+  useEffect(() => () => { dragRef.current?.cleanup?.(); if (dragRef.current && sideSchemaId) setErdDrag(null) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
 
   // A shift- (or Cmd-) click adds the table to the selection or takes it out;
   // dragging a selected table moves every selected table drawn here.
@@ -185,6 +186,7 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
       dragRef.current.moved = true
       dragRef.current.dx = dx; dragRef.current.dy = dy
       setDrag({ ids, dx, dy })
+      if (sideSchemaId) setErdDrag({ diagramId: diagram.id, schemaId: sideSchemaId, ids, dx, dy })
     }
     const cleanup = () => {
       window.removeEventListener('mousemove', onMove)
@@ -195,6 +197,7 @@ export default function ErdView({ schemaId: sideSchemaId = null, tint = null }) 
       const r = dragRef.current
       dragRef.current = null
       setDrag(null)
+      if (sideSchemaId) setErdDrag(null)
       if (!r?.moved) {
         // A click on one of several selected tables selects it alone.
         if (ids.size > 1) useOrmStore.getState().select(t.id, 'entity')
