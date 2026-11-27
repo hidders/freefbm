@@ -32,6 +32,7 @@ import { projCellKey } from '../utils/populationValidation.js'
 import { findRefMode, findCompositePI, findInheritedPI, identifyingFactIds } from '../utils/refMode.js'
 import { asSide, expandSide, sideContext, sideSchemaId, readingName, checkRule, SIDES } from './mapping.js'
 import { withImplicitRules } from './sameModel.js'
+import { withInheritedIdentifiers } from './inheritedIdentifiers.js'
 
 const keyOf = (cell) => {
   const k = projCellKey(cell)
@@ -485,6 +486,16 @@ function buildSide(side, y, data, pop, ident) {
 // ── Running a mapping ────────────────────────────────────────────────────────
 
 export function runMapping(state, mapping, direction = 'forward') {
+  // Subtypes with an identifier of their own are run as if they inherited
+  // their supertype's (inheritedIdentifiers.js), and the result is given
+  // back in their own cells with the subtype links' mappings.
+  const T = withInheritedIdentifiers(state, [mapping.sourceSchemaId, mapping.targetSchemaId])
+  if (T) {
+    const run = runMapping(T.state, mapping, direction)
+    const b = T.back(run)
+    const log = b.dropped ? [...run.log, { level: 'warning', text: `${b.dropped} subtype instance${b.dropped === 1 ? '' : 's'} left out: nothing gave ${b.dropped === 1 ? 'its' : 'their'} own identifier` }] : run.log
+    return { ...run, populations: b.populations, factPopulations: b.factPopulations, subtypeMappings: b.subtypeMappings, log }
+  }
   const prep = prepareRun(state, mapping, direction)
   const { from, to, ctxs } = prep
   const log = [...prep.log]
@@ -639,14 +650,21 @@ export function withRunApplied(state, run) {
     populations: { ...keep(state.populations), ...run.populations },
     factPopulations: { ...keep(state.factPopulations), ...run.factPopulations },
     nestedEntityMappings: keep(state.nestedEntityMappings),
-    subtypeMappings: keep(state.subtypeMappings),
+    subtypeMappings: { ...keepLinks(state, run.schemaId), ...(run.subtypeMappings ?? {}) },
   }
+}
+
+// The subtype links' mappings, without those of links in schemaId.
+function keepLinks(state, schemaId) {
+  const ids = new Set((state.subtypes ?? []).filter(s => s.schemaId === schemaId).map(s => s.id))
+  return Object.fromEntries(Object.entries(state.subtypeMappings ?? {}).filter(([id]) => !ids.has(id)))
 }
 
 // Runs the mapping there and back, and compares what comes back with the
 // population of the elements the rules name on the starting side.
 export function roundTrip(state, mapping, direction = 'forward') {
   mapping = withImplicitRules(state, mapping)
+  state = withInheritedIdentifiers(state, [mapping.sourceSchemaId, mapping.targetSchemaId])?.state ?? state
   const there = runMapping(state, mapping, direction)
   const mid = { ...state, ...withRunApplied(state, there) }
   const back = runMapping(mid, mapping, direction === 'forward' ? 'backward' : 'forward')

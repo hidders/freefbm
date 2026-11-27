@@ -27,6 +27,9 @@ export function identifiedRoles(state) {
       if (others.length === 1) out.add(`${f.id}:${others[0]}`)
     }
   }
+  // A subtype's own identifier while runs read it as an ordinary key
+  // (src/mapping/inheritedIdentifiers.js).
+  for (const f of (state.facts ?? [])) for (const ri of f.ownIdentifierRoles ?? []) out.add(`${f.id}:${ri}`)
   const factById = new Map((state.facts ?? []).map(f => [f.id, f]))
   for (const c of (state.constraints ?? [])) {
     if (c.constraintType !== 'uniqueness' || !c.isPreferredIdentifier) continue
