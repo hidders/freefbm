@@ -256,13 +256,34 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
   }
   // The columns of a key root's key, as another table holds them.
   const keyColsOf = (root) => (root.surrogate ? [{ ...root.surrogate, generated: null }] : root.natural.map((c, i) => ({ name: c.name, sql: sqlTypeOf(ctx.otById.get(c.vtId)), vtId: c.vtId, leaf: i })))
+  // The key roots whose key a type's table holds: its own key root's, and
+  // for one keyed by its own identifier also the key it shares with its
+  // supertypes (superRoot), which its supertypes' key column holds.
+  const holdsOf = (id) => {
+    const e = entities.get(id)
+    return e.ownKey ? [e.keyRoot, superRootOf(id)].filter(Boolean) : [e.keyRoot]
+  }
+  // For a subtype keyed by its own identifier: the key root that all its
+  // supertypes' tables hold, the most specific first (D below B and C, each
+  // with an identifier of its own below A: A's key, which b and c hold as
+  // a UNIQUE column, so d's a_id can refer to both).
+  const superRootMemo = new Map()
+  function superRootOf(id) {
+    if (superRootMemo.has(id)) return superRootMemo.get(id)
+    superRootMemo.set(id, null)
+    const lists = supersOf(id).filter(s => entities.has(s)).map(holdsOf)
+    const r = lists.length ? (lists[0].find(k => lists.every(l => l.includes(k))) ?? lists[0][0]) : null
+    superRootMemo.set(id, r)
+    return r
+  }
   // Foreign keys from columns holding the key of key root rootId to each
-  // supertype of e with a table keyed by that same key.
+  // supertype of e whose table holds that key (as its primary key, or as
+  // its supertypes' key column).
   const superFks = (e, rootId, cols) => {
     for (const s of supersOf(e.typeId)) {
       const se = entities.get(s)
       if (!se) continue
-      if (se.keyRoot === rootId) e.tableObj.fks.push({ cols, refTypeId: s })
+      if (holdsOf(s).includes(rootId)) e.tableObj.fks.push({ cols, refTypeId: s, refRoot: rootId })
       else warn(`${typeName(e.typeId)} is a subtype of ${typeName(s)}, but its table does not hold ${typeName(s)}'s key, so no foreign key says so`)
     }
   }
@@ -310,7 +331,8 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
       if (e.ownKey) {
         // Its supertypes' key, as a column of its own: each instance is one
         // instance of the supertypes, and no two are the same one.
-        const sup = entities.get(entities.get(e.superId).keyRoot)
+        e.superRoot = superRootOf(e.typeId)
+        const sup = entities.get(e.superRoot)
         const cols = keyColsOf(sup).map(c => addCol({ ...c, notNull: true }))
         e.superCols = cols
         t.uniques.push(cols.map(c => c.name))
@@ -398,6 +420,7 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
     const e = entities.get(fk.refTypeId)
     const root = entities.get(e.keyRoot)
     fk.refTable = e.tableObj.name
+    if (fk.refRoot && fk.refRoot !== e.keyRoot) { fk.refCols = e.superCols.map(c => c.name); continue }
     fk.refCols = root.surrogate ? [root.surrogate.name] : e.keyCols ? e.keyCols.map(c => c.name) : e.naturalCols.map(c => c.name)
   }
   note(`${tables.length} tables: ${tables.filter(t => t.kind === 'entity').length} for entity types, ${tables.filter(t => t.kind === 'subtype').length} for subtypes, ${tables.filter(t => t.kind === 'fact').length} for fact types`)
@@ -577,7 +600,7 @@ function buildRules(plan, rel) {
       let typeAtom = t.kind === 'subtype' ? { t: 'type', typeId: e.typeId, arg: x } : null
       // A subtype keyed by its own identifier also holds its supertypes' key.
       if (e.ownKey) {
-        const sup = plan.entities.get(e.superId).keyRoot
+        const sup = e.superRoot
         const ys = refNames(sup, e.superCols).map(n => (k.names.includes(n) ? `super_${n}` : n))
         identify(osc, plan, x, sup, ys)
         Object.assign(k.args, refArgs(rsc, plan, rel, sup, e.superCols.map(c => ({ table: t.name, name: c.name })), ys))

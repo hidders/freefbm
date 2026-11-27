@@ -59,6 +59,7 @@ export function withInheritedIdentifiers(state, schemaIds) {
 
   // ── The subtypes concerned ──
   const own = new Map()   // typeId → { parts, edges (made inheriting), owner (of the supertypes' identifier), scheme }
+  const cands = new Map()
   for (const t of objectTypes) {
     if (t.kind !== 'entity' || !inScope.has(t.schemaId)) continue
     const ups = subtypes.filter(s => s.subId === t.id)
@@ -66,9 +67,20 @@ export function withInheritedIdentifiers(state, schemaIds) {
     const sch = ownScheme(t)
     if (!sch) continue
     const withOwner = ups.map(e => ({ e, owner: piOwner(e.superId) })).filter(x => x.owner)
-    if (!withOwner.length) continue
-    const owner = withOwner[0].owner
-    own.set(t.id, { parts: partsOf(sch.rm, sch.cp), scheme: sch, edges: withOwner.filter(x => x.owner === owner).map(x => x.e), owner })
+    if (withOwner.length) cands.set(t.id, { sch, withOwner })
+  }
+  // The identifier a type ends up with once every subtype concerned inherits:
+  // through the first link of each (D below B and C, each with its own
+  // identifier below A, inherits A's through both).
+  const rootOwner = (id, seen = new Set()) => {
+    const c = cands.get(id)
+    if (!c || seen.has(id)) return id
+    seen.add(id)
+    return rootOwner(c.withOwner[0].owner, seen)
+  }
+  for (const [id, { sch, withOwner }] of cands) {
+    const owner = rootOwner(withOwner[0].owner)
+    own.set(id, { parts: partsOf(sch.rm, sch.cp), scheme: sch, edges: withOwner.filter(x => rootOwner(x.owner) === owner).map(x => x.e), owner })
   }
   if (!own.size) return null
 
