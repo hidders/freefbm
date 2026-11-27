@@ -45,7 +45,10 @@ function Dialog({ ormSchemaId }) {
     if (t.kind === 'fact') return 'fact type'
     const e = entityOf(t)
     const nested = plan.ctx.factById.get(t.typeId)?.objectified
-    if (t.kind === 'subtype') return `subtype ${typeName(t.typeId)} of ${typeName(e.superId)}`
+    if (t.kind === 'subtype') {
+      const supers = plan.ctx.subtypes.filter(s => s.subId === t.typeId && plan.entities.has(s.superId)).map(s => typeName(s.superId))
+      return `subtype ${typeName(t.typeId)} of ${supers.join(' and ')}${e.ownKey ? ', keyed by its own identifier' : ''}`
+    }
     return `${nested ? 'objectified fact type' : 'entity type'} ${typeName(t.typeId)}`
   }
   const notes = (plan?.log ?? []).filter(l => !/^\d+ tables:/.test(l.text))
@@ -87,7 +90,7 @@ function Dialog({ ormSchemaId }) {
               <tbody>
                 {plan.tables.map(t => {
                   const e = entityOf(t)
-                  const canSurrogate = t.kind === 'entity' && e && !plan.ctx.factById.get(t.typeId)?.objectified
+                  const canSurrogate = (t.kind === 'entity' || e?.ownKey) && e && !plan.ctx.factById.get(t.typeId)?.objectified
                   return (
                     <tr key={t.name} style={{ borderTop: '1px solid var(--border-soft)', verticalAlign: 'top' }}>
                       <td style={{ padding: '3px 6px 3px 0', width: 18 }}>

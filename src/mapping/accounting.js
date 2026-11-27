@@ -53,6 +53,7 @@ import { sideContext, sideSchemaId, SIDES, expandSide, asSide } from './mapping.
 import { plainParts } from '../verbalisation/hyphenBinding.js'
 import { isIndependentType, identifiedRoles } from '../utils/independence.js'
 import { withImplicitRules } from './sameModel.js'
+import { withInheritedIdentifiers } from './inheritedIdentifiers.js'
 
 const isFresh = (v) => typeof v === 'string' && v.startsWith('⊥')
 const keyOf = (cell) => JSON.stringify(projCellKey(cell))
@@ -802,7 +803,10 @@ export function entriesOf(state, schemaId) {
   // types and nested types are left out: no rule carries a lone value, and
   // nested types are not checked yet).
   const participation = (implicit?.participation ?? []).filter(e => e.formula && ctx.otById?.get(e.elementId)?.kind === 'entity')
-  return Object.assign([...entries, ...participation], { ctx })
+  // A subtype's own identifier read as an ordinary key (inheritedIdentifiers.js):
+  // that each instance has one holds by how its instances are identified.
+  const ownIds = new Set(scoped.facts.flatMap(f => (f.ownIdentifierRoles ?? []).map(ri => `${f.id}:mand:${ri}`)))
+  return Object.assign([...entries, ...participation].filter(e => !ownIds.has(e.key)), { ctx })
 }
 
 // A constraint of a relational schema in table terms, or null.
@@ -1369,6 +1373,7 @@ export function accountMapping(state, mapping, options) {
 // result, so that the Mappings tab can show progress and stay responsive.
 export function* accountingSteps(state, mapping, { onlyKeys = null } = {}) {
   mapping = withImplicitRules(state, mapping)
+  state = withInheritedIdentifiers(state, [mapping.sourceSchemaId, mapping.targetSchemaId])?.state ?? state
   const t0 = Date.now()
   const worlds = { source: worldOf(state, mapping.sourceSchemaId), target: worldOf(state, mapping.targetSchemaId) }
   const preps = {
