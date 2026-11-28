@@ -370,6 +370,16 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
       }))
       if (simpleUc(f, a.other)) t.uniques.push(cols.map(c => c.name))
       if (entities.has(player)) t.fks.push({ cols: cols.map(c => c.name), refTypeId: player })
+      // An optional reference of several columns: all filled in or none, or
+      // a row could hold part of a reference, which no rule reads (and which
+      // a foreign key, MATCH SIMPLE, lets through).
+      if (cols.length > 1 && !f.roles[a.own].mandatory) {
+        const qn = cols.map(c => quoteIdent(c.name))
+        let name = `${t.name}_${cols.map(c => c.name).join('_')}_check`.slice(0, 63)
+        for (let i = 2; t.checks.some(x => x.name === name); i++) name = `${name.slice(0, 60)}_${i}`
+        t.checks.push({ name, cond: `(${qn.map(n => `${n} IS NULL`).join(' AND ')}) OR (${qn.map(n => `${n} IS NOT NULL`).join(' AND ')})` })
+        note(`${cols.map(c => c.name).join(', ')} of ${t.name} are filled in together (a CHECK)`)
+      }
       t.parts.push({ fact: f, own: a.own, other: a.other, cols })
     }
     tables.push(t)

@@ -1,0 +1,547 @@
+// Property-based tests of Generate tables (src/relational/rmap.js) against
+// the meaning of its mapping (the Claude doc "Proving Rmap correct: plan and
+// theorem statements"). Random well-formed ORM2 schemas S (phase 1: entity
+// types with reference modes or composite identifiers, value types, unary,
+// binary and ternary fact types with internal uniqueness and mandatory roles,
+// subtypes that inherit their identifier, multiple supertypes under one root)
+// and random legal populations I; for each, Rmap gives T and M, and:
+//
+//   P1  run(S → T, I) satisfies Σ_T                         (totality)
+//   P2  back(run(I)) = I                                    (injectivity on S)
+//   P3  a mutated image J′ that satisfies Σ_T comes back to a legal I′ and
+//       run(back(J′)) = J′                                  (surjectivity, injectivity on T)
+//   Pb  a mutated I′ that breaks Σ_S, and comes back whole, runs to a J′
+//       that breaks Σ_T (one that a run drops part of is related to a
+//       smaller I, which is fine)
+//   Pd  a mutated J′ that breaks Σ_T does not come back to a legal I′ whose
+//       image is J′ again
+//   P4  the equivalence summary does not say "not"
+//   P5  the PostgreSQL DDL accepts the image's rows and refuses each mutated
+//       image that breaks Σ_T (with --pg; needs initdb/pg_ctl/psql)
+//
+// Σ is judged by population validation (resultIssues), which
+// scripts/population-coverage-check.mjs checks against the formulas. A failing
+// schema is shrunk (fact types, types, instances left out while the same
+// property still fails) and saved, with T and the mapping, as an .ffbm file
+// to open in FreeFBM. Mutations change only facts that are not identifying,
+// add no tuple twice, and drop the values nothing uses any more.
+//
+//   node scripts/rmap-property-check.mjs [--runs N] [--seed S] [--mutations K]
+//        [--no-equivalence] [--pg] [--out DIR] [--only P1,P2,…] [--verbose]
+
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { createServer } from 'vite'
+
+const args = process.argv.slice(2)
+const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt }
+const flag = (name) => args.includes(`--${name}`)
+const RUNS = Number(opt('runs', 50))
+const SEED = Number(opt('seed', 1))
+const MUTATIONS = Number(opt('mutations', 6))
+const EQUIV = !flag('no-equivalence')
+const PG = flag('pg')
+const OUT = opt('out', path.join(os.tmpdir(), 'rmap-pbt'))
+const ONLY = opt('only', null)?.split(',')
+const VERBOSE = flag('verbose')
+
+const server = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' })
+const load = (p) => server.ssrLoadModule(p)
+const { useOrmStore } = await load('/src/store/ormStore.js')
+const { resultIssues } = await load('/src/mapping/exchanges.js')
+const { roundTrip, runMapping, withRunApplied } = await load('/src/mapping/runMapping.js')
+const { equivalence } = await load('/src/mapping/equivalence.js')
+const { exportPostgresDdl } = await load('/src/relational/ddlExport.js')
+const { populationSql } = await load('/src/relational/populationSql.js')
+const { identifiedRoles } = await load('/src/utils/independence.js')
+
+// ── Random numbers (reproducible) ───────────────────────────────────────────
+function rng(seed) {
+  let s = (seed * 2654435761) % 2147483648 || 1
+  const r = () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648 }
+  r.int = (lo, hi) => lo + Math.floor(r() * (hi - lo + 1))
+  r.pick = (xs) => xs[Math.floor(r() * xs.length)]
+  r.chance = (p) => r() < p
+  return r
+}
+
+const S = 'sch_S'
+const TEXT = { profileId: 'abstract', datatypeId: 'text', params: {} }
+const INT = { profileId: 'abstract', datatypeId: 'integer', params: {} }
+const clone = (x) => JSON.parse(JSON.stringify(x))
+const key = (c) => JSON.stringify(c)
+
+// ── Schemas ─────────────────────────────────────────────────────────────────
+// A schema is kept as a small description (types, facts, links), turned into
+// a model file by toModel, so that shrinking can leave parts out.
+
+function genSchema(r) {
+  const d = { entities: [], values: [], facts: [] }
+  const vt = (name, dt) => { const v = { id: `vt_${name}`, name, dt }; d.values.push(v); return v.id }
+  const nE = r.int(2, 5)
+  for (let i = 0; i < nE; i++) {
+    const name = `E${i}`
+    const prior = d.entities
+    const e = { id: `ot_${name}`, name, supers: [], independent: r.chance(0.3) }
+    const roll = r()
+    if (prior.length && roll < 0.3) {
+      // A subtype of an earlier type, maybe of two in one hierarchy.
+      const sup = r.pick(prior)
+      e.supers.push(sup.id)
+      const same = prior.filter(p => p.id !== sup.id && rootOf(d, p.id) === rootOf(d, sup.id))
+      if (same.length && r.chance(0.35)) e.supers.push(r.pick(same).id)
+    } else if (prior.some(p => !p.supers.length) && roll < 0.45) {
+      // A composite identifier: an earlier root and a number.
+      const part = r.pick(prior.filter(p => !p.supers.length))
+      e.composite = { partEntity: part.id, partValue: vt(`${name}Code`, TEXT) }
+    } else {
+      e.refMode = vt(`${name}Nr`, TEXT)
+    }
+    d.entities.push(e)
+  }
+  const ents = d.entities
+  const shared = [vt('Name', TEXT), vt('Amount', INT)]
+  const nF = r.int(1, 6)
+  for (let i = 0; i < nF; i++) {
+    const E = r.pick(ents).id
+    const kind = r.pick(['attr', 'attr', 'rel', 'rel', 'unary', 'ternary'])
+    const f = { id: `f${i}`, kind }
+    if (kind === 'attr') {
+      f.players = [E, r.chance(0.5) ? r.pick(shared) : vt(`V${i}`, r.chance(0.5) ? TEXT : INT)]
+      f.ucs = r.pick([[[0]], [[0]], [[1]], [[0], [1]], [[0, 1]]])
+    } else if (kind === 'rel') {
+      f.players = [E, r.pick(ents).id]
+      f.ucs = r.pick([[[0]], [[1]], [[0], [1]], [[0, 1]]])
+    } else if (kind === 'unary') {
+      f.players = [E]
+      f.ucs = [[0]]
+    } else {
+      f.players = [E, r.pick(ents).id, r.pick(shared)]
+      f.ucs = r.pick([[[0, 1, 2]], [[0, 1]]])
+    }
+    f.mandatory = f.players.map((p, k) => p.startsWith('ot_') && kind !== 'unary' && r.chance(0.25) && k === 0)
+    d.facts.push(f)
+  }
+  return d
+}
+
+function rootOf(d, id) {
+  const e = d.entities.find(x => x.id === id)
+  return e?.supers.length ? rootOf(d, e.supers[0]) : id
+}
+
+// The description as a model file.
+function toModel(d, pop) {
+  const objectTypes = [], factTypes = [], subtypes = [], externalConstraints = []
+  const role = (id, ot, extra = {}) => ({ id, objectTypeId: ot, roleName: '', mandatory: false, ...extra })
+  for (const v of d.values) objectTypes.push({ id: v.id, kind: 'value', name: v.name, x: 0, y: 0, schemaId: S, datatypeAssignment: v.dt })
+  for (const e of d.entities) {
+    objectTypes.push({ id: e.id, kind: 'entity', name: e.name, x: 0, y: 0, schemaId: S, isIndependent: e.independent })
+    if (e.refMode) factTypes.push({ id: `${e.id}_ref`, kind: 'fact', x: 0, y: 0, arity: 2, schemaId: S,
+      roles: [role(`${e.id}_r0`, e.id, { mandatory: true }), role(`${e.id}_r1`, e.refMode)], readingParts: ['', 'has', ''],
+      uniqueness: [{ id: `${e.id}_u0`, roles: [0] }, { id: `${e.id}_u1`, roles: [1] }], preferredUniqueness: [[1]] })
+    if (e.composite) {
+      const { partEntity, partValue } = e.composite
+      factTypes.push({ id: `${e.id}_p0`, kind: 'fact', x: 0, y: 0, arity: 2, schemaId: S,
+        roles: [role(`${e.id}_p0r0`, e.id, { mandatory: true }), role(`${e.id}_p0r1`, partEntity)], readingParts: ['', 'is in', ''],
+        uniqueness: [{ id: `${e.id}_p0u`, roles: [0] }] })
+      factTypes.push({ id: `${e.id}_p1`, kind: 'fact', x: 0, y: 0, arity: 2, schemaId: S,
+        roles: [role(`${e.id}_p1r0`, e.id, { mandatory: true }), role(`${e.id}_p1r1`, partValue)], readingParts: ['', 'has', ''],
+        uniqueness: [{ id: `${e.id}_p1u`, roles: [0] }] })
+      externalConstraints.push({ id: `${e.id}_pid`, kind: 'constraint', constraintType: 'uniqueness', x: 0, y: 0, schemaId: S,
+        sequences: [[{ kind: 'role', factId: `${e.id}_p0`, roleIndex: 1 }, { kind: 'role', factId: `${e.id}_p1`, roleIndex: 1 }]],
+        queries: [{ free: [{ id: 'q0', typeId: partEntity }, { id: 'q1', typeId: partValue }], target: { id: 't', typeId: e.id },
+          body: { t: 'and', args: [{ t: 'fact', factId: `${e.id}_p0`, args: ['t', 'q0'] }, { t: 'fact', factId: `${e.id}_p1`, args: ['t', 'q1'] }] } }],
+        targetObjectTypeId: e.id, isPreferredIdentifier: true, frequency: null, exhaustive: true, exclusive: false, subtypeIds: [] })
+    }
+    e.supers.forEach((s, k) => subtypes.push({ id: `st_${e.id}_${k}`, kind: 'subtype', subId: e.id, superId: s, inheritsPreferredIdentifier: k === 0, schemaId: S }))
+  }
+  const name = (id) => d.entities.find(e => e.id === id)?.name ?? d.values.find(v => v.id === id)?.name
+  for (const f of d.facts) {
+    const words = f.kind === 'unary' ? ['', `is p${f.id}`] : f.players.length === 2 ? ['', `r${f.id}`, ''] : ['', `r${f.id}`, 'with', '']
+    factTypes.push({ id: f.id, kind: 'fact', x: 0, y: 0, arity: f.players.length, schemaId: S,
+      roles: f.players.map((p, k) => role(`${f.id}_r${k}`, p, { mandatory: !!f.mandatory[k], roleName: f.players.length > 1 && f.players.filter(q => q === p).length > 1 ? `${name(p).toLowerCase()}${k}` : '' })),
+      readingParts: words, uniqueness: f.ucs.map((u, k) => ({ id: `${f.id}_u${k}`, roles: u })) })
+  }
+  return {
+    version: 3,
+    schema: { schemas: [{ id: S, name: 'S', profile: 'orm2' }], objectTypes, factTypes, subtypes, externalConstraints },
+    diagrams: [{ id: 'd1', name: 'S', schemaId: S, occurrences: [] }], activeDiagramId: 'd1',
+    populations: pop?.populations ?? {}, factPopulations: pop?.factPopulations ?? {},
+  }
+}
+
+// ── Populations ─────────────────────────────────────────────────────────────
+// Cells are the reference values (inherited ones for subtypes), a list of the
+// parts for a composite identifier. Built legal by construction, then
+// repaired by removing objects that miss a mandatory role or, for types that
+// are not independent, play no role besides their identification.
+
+function genPopulation(d, r) {
+  const pops = {}, facts = {}
+  const add = (id, c) => { pops[id] = pops[id] ?? []; if (!pops[id].some(x => key(x) === key(c))) pops[id].push(c) }
+  for (const e of d.entities) {
+    if (e.supers.length) {
+      // Instances of every supertype.
+      const common = (pops[e.supers[0]] ?? []).filter(c => e.supers.every(s => (pops[s] ?? []).some(x => key(x) === key(c))))
+      pops[e.id] = common.filter(() => r.chance(0.6))
+      continue
+    }
+    const n = r.int(0, 4)
+    pops[e.id] = []
+    for (let k = 1; k <= n; k++) {
+      if (e.refMode) { const c = `${e.name.toLowerCase()}k${k}`; add(e.id, c); add(e.refMode, c); facts[`${e.id}_ref`] = [...(facts[`${e.id}_ref`] ?? []), [c, c]] }
+      else {
+        const parts = pops[e.composite.partEntity] ?? []
+        if (!parts.length) continue
+        const c = [r.pick(parts), `c${k}`]
+        if (pops[e.id].some(x => key(x) === key(c))) continue
+        add(e.id, c); add(e.composite.partValue, c[1])
+        facts[`${e.id}_p0`] = [...(facts[`${e.id}_p0`] ?? []), [c, c[0]]]
+        facts[`${e.id}_p1`] = [...(facts[`${e.id}_p1`] ?? []), [c, c[1]]]
+      }
+    }
+  }
+  const effective = (id) => {
+    const out = new Map((pops[id] ?? []).map(c => [key(c), c]))
+    if (!d.entities.some(e => e.id === id)) for (const v of valueCands(id)) out.set(key(v), v)
+    return [...out.values()]
+  }
+  const valueCands = (id) => {
+    const v = d.values.find(x => x.id === id)
+    if (!v) return []
+    return v.dt.datatypeId === 'integer' ? ['1', '2', '3', '4'] : ['a', 'b', 'c', 'd']
+  }
+  for (const f of d.facts) {
+    const cands = f.players.map(effective)
+    const out = []
+    if (cands.every(c => c.length)) for (let t = 0; t < r.int(0, 6); t++) {
+      const tuple = cands.map(c => r.pick(c))
+      if (f.ucs.some(u => out.some(o => u.every(k => key(o[k]) === key(tuple[k]))))) continue
+      out.push(tuple)
+    }
+    facts[f.id] = out
+    f.players.forEach((p, k) => { if (d.values.some(v => v.id === p)) for (const t of out) add(p, t[k]) })
+  }
+  repairPopulation(d, pops, facts)
+  return { populations: pops, factPopulations: facts }
+}
+
+// Removes the instances that break a mandatory role or implicit
+// participation, with everything that uses them, until none do.
+function repairPopulation(d, pops, facts) {
+  const subsOf = (id) => d.entities.filter(e => e.supers.includes(id)).map(e => e.id)
+  const below = (id) => [id, ...subsOf(id).flatMap(below)]
+  const ownFacts = (e) => e.refMode ? [`${e.id}_ref`] : e.composite ? [`${e.id}_p0`, `${e.id}_p1`] : []
+  const remove = (typeId, c) => {
+    const k = key(c)
+    for (const id of below(typeId)) pops[id] = (pops[id] ?? []).filter(x => key(x) !== k)
+    // Only from roles of the types below it; a root's instance goes everywhere.
+    const types = new Set(below(typeId))
+    for (const [fid, ts] of Object.entries(facts)) {
+      const players = playersOf(d, fid)
+      facts[fid] = ts.filter(t => !t.some((x, i) => types.has(players[i]) && key(x) === k))
+    }
+    // Composite identifiers that use it.
+    for (const e of d.entities.filter(x => x.composite && types.has(x.composite.partEntity)))
+      for (const x of [...(pops[e.id] ?? [])]) if (key(x[0]) === k) remove(e.id, x)
+  }
+  for (let round = 0; round < 50; round++) {
+    let changed = false
+    for (const e of d.entities) {
+      const cells = [...(pops[e.id] ?? [])]
+      for (const c of cells) {
+        const k = key(c)
+        const plays = (fid, i) => (facts[fid] ?? []).some(t => key(t[i]) === k)
+        const mandatoryMissed = d.facts.some(f => f.players.some((p, i) => p === e.id && f.mandatory[i] && !plays(f.id, i)))
+        // Implicit participation: some role besides identification, its own or a supertype's/subtype's.
+        const hier = new Set(d.entities.filter(x => rootOf(d, x.id) === rootOf(d, e.id)).map(x => x.id))
+        const playsAny = d.facts.some(f => f.players.some((p, i) => hier.has(p) && plays(f.id, i)))
+          || d.entities.some(x => x.composite && hier.has(x.composite.partEntity) && (facts[`${x.id}_p0`] ?? []).some(t => key(t[1]) === k))
+        const notIndep = !e.independent && !playsAny
+        if (mandatoryMissed || notIndep) { remove(e.id, c); changed = true }
+      }
+    }
+    if (!changed) break
+  }
+  // Values left with nothing using them (a removed instance's reference value).
+  for (const v of d.values) {
+    const used = new Set()
+    for (const [fid, ts] of Object.entries(facts)) playersOf(d, fid).forEach((p, i) => { if (p === v.id) for (const t of ts) used.add(key(t[i])) })
+    for (const e of d.entities) for (const c of pops[e.id] ?? []) {
+      if (e.refMode === v.id) used.add(key(c))
+      if (e.composite?.partValue === v.id) used.add(key(c[1]))
+    }
+    if (pops[v.id]) pops[v.id] = pops[v.id].filter(c => used.has(key(c)))
+  }
+  void ownFacts
+}
+
+function playersOf(d, fid) {
+  const f = d.facts.find(x => x.id === fid)
+  if (f) return f.players
+  for (const e of d.entities) {
+    if (fid === `${e.id}_ref`) return [e.id, e.refMode]
+    if (fid === `${e.id}_p0`) return [e.id, e.composite.partEntity]
+    if (fid === `${e.id}_p1`) return [e.id, e.composite.partValue]
+  }
+  return []
+}
+
+// ── One case ────────────────────────────────────────────────────────────────
+
+const store = () => useOrmStore.getState()
+const brief = (issues, n = 3) => issues.slice(0, n).map(i => i.message ?? i.kind).join('; ') + (issues.length > n ? ` (+${issues.length - n})` : '')
+const lossOf = (rt) => rt.compare.filter(c => c.lost || c.gained).map(c => `${c.name}: ${c.lost ? `lost ${c.lost}` : ''}${c.gained ? ` gained ${c.gained}` : ''} ${c.examples.slice(0, 2).join(', ')}`.trim())
+
+// Generates T and M for a model; null when S is not legal (a generator gap).
+function prepare(model) {
+  store().loadModel(clone(model), null)
+  const sIssues = resultIssues(store(), S)
+  if (sIssues.length) return { illegal: sIssues }
+  store().generateRelationalFromOrm(S, { diagrams: false, assertions: true })
+  const st = store()
+  const m = st.mappings.at(-1)
+  return { st, m, T: m.targetSchemaId }
+}
+
+// The facts of one schema's population that may be changed: not identifying
+// (their tuples are not stored; an instance's cells are its identifier).
+function mutable(st, schemaId) {
+  const ident = new Set([...identifiedRoles(st)].map(k => k.split(':')[0]))
+  return st.facts.filter(f => f.schemaId === schemaId && !ident.has(f.id) && !f.derivationRule && !f.derived)
+}
+
+// A mutation of a schema's population: a tuple removed, a cell changed to
+// another instance of its role's player, or a tuple added.
+function mutate(st, schemaId, r) {
+  const facts = mutable(st, schemaId)
+  if (!facts.length) return null
+  const f = r.pick(facts)
+  const tuples = [...(st.factPopulations[f.id] ?? [])]
+  const cands = (i) => {
+    const p = f.roles[i].objectTypeId
+    const fromFacts = st.facts.filter(g => g.schemaId === schemaId).flatMap(g => (st.factPopulations[g.id] ?? []).flatMap(t => t.filter((_, j) => g.roles[j]?.objectTypeId === p)))
+    return [...new Map([...(st.populations[p] ?? []), ...fromFacts].map(c => [key(c), c])).values()]
+  }
+  const op = tuples.length ? r.pick(['remove', 'change', 'add']) : 'add'
+  let desc
+  if (op === 'remove') { const k = r.int(0, tuples.length - 1); desc = `removed ${key(tuples[k])} from ${f.id}`; tuples.splice(k, 1) }
+  else if (op === 'change') {
+    const k = r.int(0, tuples.length - 1), i = r.int(0, f.roles.length - 1)
+    const c = cands(i).filter(x => key(x) !== key(tuples[k][i]))
+    if (!c.length) return null
+    const t = [...tuples[k]]; t[i] = r.pick(c)
+    if (tuples.some(x => key(x) === key(t))) return null   // a set: no duplicates
+    desc = `changed ${key(tuples[k])} to ${key(t)} in ${f.id}`; tuples[k] = t
+  } else {
+    const t = f.roles.map((_, i) => { const c = cands(i); return c.length ? r.pick(c) : null })
+    if (t.some(x => x == null) || tuples.some(x => key(x) === key(t))) return null
+    desc = `added ${key(t)} to ${f.id}`; tuples.push(t)
+  }
+  return { state: withoutUnusedValues({ ...st, factPopulations: { ...st.factPopulations, [f.id]: tuples } }, schemaId), desc, factId: f.id }
+}
+
+// The state with each value type of a schema holding only the values that a
+// tuple or an instance's identifier uses, so that a removed tuple does not
+// leave a value that plays nothing (an artefact of how mutations are made).
+function withoutUnusedValues(st, schemaId) {
+  const used = new Map()   // value type → Set of values
+  const use = (vt, c) => { if (!used.has(vt)) used.set(vt, new Set()); (Array.isArray(c) ? c.flat(9) : [c]).forEach(x => used.get(vt).add(String(x))) }
+  const ident = new Set(identifiedRoles(st))
+  for (const f of st.facts) {
+    if (f.schemaId !== schemaId) continue
+    const idRole = f.roles.findIndex((_, i) => ident.has(`${f.id}:${i}`))
+    if (idRole >= 0) {
+      // An identifying fact: its values are the identified instances' cells.
+      f.roles.forEach((r, i) => { if (i !== idRole) for (const c of st.populations[f.roles[idRole].objectTypeId] ?? []) use(r.objectTypeId, c) })
+      continue
+    }
+    for (const t of st.factPopulations[f.id] ?? []) f.roles.forEach((r, i) => use(r.objectTypeId, t[i]))
+  }
+  const populations = { ...st.populations }
+  for (const o of st.objectTypes) if (o.schemaId === schemaId && o.kind === 'value' && !o.isIndependent && populations[o.id])
+    populations[o.id] = populations[o.id].filter(c => used.get(o.id)?.has(String(c)))
+  return { ...st, populations }
+}
+
+// The failures of one model: [{ prop, text }].
+function check(model, seed) {
+  const out = []
+  const want = (p) => !ONLY || ONLY.includes(p)
+  let prep
+  try { prep = prepare(model) } catch (err) { return [{ prop: 'crash', text: `Generate tables failed: ${err.stack?.split('\n').slice(0, 3).join(' | ')}` }] }
+  if (prep.illegal) return [{ prop: 'gen', text: `generated population of S is not legal: ${brief(prep.illegal)}` }]
+  const { st, m, T } = prep
+  const fail = (prop, text) => out.push({ prop, text })
+  try {
+    if (want('P1')) { const iss = resultIssues(st, T); if (iss.length) fail('P1', `image breaks Σ_T: ${brief(iss)}`) }
+    if (want('P2')) { const rt = roundTrip(st, m, 'forward'); const l = lossOf(rt); if (l.length) fail('P2', `S → T → S differs: ${l.join('; ')}`) }
+    const r = rng(seed * 7919 + 13)
+    for (let k = 0; k < MUTATIONS; k++) {
+      // Mutations of the image (P3, Pd).
+      if (want('P3') || want('Pd')) {
+        const mu = mutate(st, T, r)
+        if (mu) {
+          const legalT = !resultIssues(mu.state, T).length
+          const back = runMapping(mu.state, m, 'backward')
+          const s2 = { ...mu.state, ...withRunApplied(mu.state, back) }
+          const sIss = resultIssues(s2, S)
+          const rt = roundTrip(mu.state, m, 'backward')
+          const l = lossOf(rt)
+          if (legalT && want('P3')) {
+            if (sIss.length) fail('P3', `legal J′ (${mu.desc}) comes back to an illegal I′: ${brief(sIss)}`)
+            else if (l.length) fail('P3', `legal J′ (${mu.desc}) does not come back: ${l.join('; ')}`)
+          }
+          if (!legalT && want('Pd') && !sIss.length && !l.length)
+            fail('Pd', `illegal J′ (${mu.desc}: ${brief(resultIssues(mu.state, T), 1)}) comes back unchanged through a legal I′`)
+        }
+      }
+      // Mutations of S (Pb, and P1/P2 on legal ones).
+      if (want('Pb') || want('P1') || want('P2')) {
+        const mu = mutate(st, S, r)
+        if (mu) {
+          const sIss = resultIssues(mu.state, S)
+          const there = runMapping(mu.state, m, 'forward')
+          const t2 = { ...mu.state, ...withRunApplied(mu.state, there) }
+          const tIss = resultIssues(t2, T)
+          // Only when I′ is all there in J′: a run there that drops part of I′
+          // (an instance no rule reads on its own) relates it to a smaller I.
+          const whole = sIss.length && !tIss.length && !lossOf(roundTrip(mu.state, m, 'forward')).length
+          if (whole && want('Pb')) fail('Pb', `illegal I′ (${mu.desc}: ${brief(sIss, 1)}) runs to a legal J′`)
+          if (!sIss.length && tIss.length && want('P1')) fail('P1', `legal I′ (${mu.desc}) runs to an illegal J′: ${brief(tIss)}`)
+          if (!sIss.length && want('P2')) { const l = lossOf(roundTrip(mu.state, m, 'forward')); if (l.length) fail('P2', `legal I′ (${mu.desc}) does not come back: ${l.join('; ')}`) }
+        }
+      }
+    }
+    if (EQUIV && want('P4')) {
+      const eq = equivalence(st, m)
+      if (eq.verdict === 'not') {
+        const why = ['source', 'target'].flatMap(X => [...eq.info[X].lost.map(x => `${x.name}: ${x.reason}`), ...eq.info[X].unmapped.map(x => `${x.name} unmapped`), ...eq.constraints[X].lost.map(x => `${x.label ?? x.key} lost`)])
+        fail('P4', `equivalence says not: ${why.slice(0, 4).join('; ')}`)
+      }
+    }
+    if (PG && want('P5')) out.push(...pgCheck(st, T, rng(seed * 31 + 7)))
+  } catch (err) {
+    fail('crash', err.stack?.split('\n').slice(0, 4).join(' | '))
+  }
+  return out
+}
+
+// ── P5: PostgreSQL ──────────────────────────────────────────────────────────
+
+let pg = null
+function pgStart() {
+  if (pg) return pg
+  const bin = ['/usr/lib/postgresql/16/bin', '/opt/homebrew/opt/postgresql@16/bin', '/usr/local/opt/postgresql@16/bin'].find(b => fs.existsSync(path.join(b, 'initdb')))
+  if (!bin) throw new Error('--pg: initdb not found (PostgreSQL 16)')
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rmap-pg-'))
+  const port = String(55432 + Math.floor(Math.random() * 1000))
+  const asUser = process.getuid?.() === 0 ? ['runuser', '-u', 'postgres', '--'] : []
+  if (asUser.length) execFileSync('chown', ['postgres', dir])
+  const run = (cmd, a) => execFileSync(asUser[0] ?? path.join(bin, cmd), asUser.length ? [...asUser.slice(1), path.join(bin, cmd), ...a] : a, { stdio: 'pipe' })
+  run('initdb', ['-D', dir, '-A', 'trust', '-U', 'postgres'])
+  run('pg_ctl', ['-D', dir, '-o', `-p ${port} -k ${dir}`, '-l', path.join(dir, 'log'), '-w', 'start'])
+  pg = { bin, dir, port, run, n: 0 }
+  process.on('exit', () => { try { run('pg_ctl', ['-D', dir, '-m', 'immediate', 'stop']) } catch { /* gone */ } })
+  return pg
+}
+function psql(db, sql) {
+  const p = pgStart()
+  const res = spawnSync(path.join(p.bin, 'psql'), ['-h', p.dir, '-p', p.port, '-U', 'postgres', '-d', db, '-v', 'ON_ERROR_STOP=1', '-q', '-X'], { input: sql, encoding: 'utf8' })
+  return { ok: res.status === 0, err: (res.stderr || '').trim().split('\n')[0] }
+}
+function pgCheck(st, T, r) {
+  const out = []
+  const ddl = exportPostgresDdl(st, T)
+  const sql = typeof ddl === 'string' ? ddl : ddl.sql
+  const fresh = () => { const db = `t${++pgStart().n}`; psql('postgres', `CREATE DATABASE ${db};`); return db }
+  const db = fresh()
+  const made = psql(db, sql)
+  if (!made.ok) return [{ prop: 'P5', text: `DDL refused: ${made.err}` }]
+  const rows = populationSql(st, T, { format: 'insert' })
+  const ins = psql(db, typeof rows === 'string' ? rows : rows.sql)
+  if (!ins.ok) out.push({ prop: 'P5', text: `the image's rows are refused: ${ins.err}` })
+  for (let k = 0; k < MUTATIONS; k++) {
+    const mu = mutate(st, T, r)
+    if (!mu) continue
+    const iss = resultIssues(mu.state, T)
+    // A row with two values in one column cannot be written as SQL rows.
+    if (!iss.length || iss.some(i => i.kind === 'uniquenessViolation' && i.factId === mu.factId && String(i.roleIndices) === '0')) continue
+    const db2 = fresh()
+    psql(db2, sql)
+    const rows2 = populationSql(mu.state, T, { format: 'insert' })
+    const res = psql(db2, typeof rows2 === 'string' ? rows2 : rows2.sql)
+    if (res.ok) out.push({ prop: 'P5', text: `PostgreSQL accepts an illegal J′ (${mu.desc}: ${brief(iss, 1)})` })
+  }
+  return out
+}
+
+// ── Shrinking ───────────────────────────────────────────────────────────────
+
+function shrink(d, pop, seed, prop) {
+  const fails = (dd, pp) => { try { return check(toModel(dd, pp), seed).some(f => f.prop === prop) } catch { return false } }
+  let cur = { d: clone(d), pop: clone(pop) }
+  for (let changed = true, rounds = 0; changed && rounds < 20; rounds++) {
+    changed = false
+    const tries = []
+    cur.d.facts.forEach((_, i) => tries.push(() => { const x = clone(cur); const f = x.d.facts.splice(i, 1)[0]; delete x.pop.factPopulations[f.id]; return x }))
+    cur.d.entities.forEach((e, i) => {
+      if (cur.d.entities.some(o => o.supers.includes(e.id) || o.composite?.partEntity === e.id) || cur.d.facts.some(f => f.players.includes(e.id))) return
+      tries.push(() => { const x = clone(cur); x.d.entities.splice(i, 1); delete x.pop.populations[e.id]; for (const k of Object.keys(x.pop.factPopulations)) if (k.startsWith(`${e.id}_`)) delete x.pop.factPopulations[k]; return x })
+    })
+    for (const [fid, ts] of Object.entries(cur.pop.factPopulations)) ts.forEach((_, i) => {
+      if (/_ref$|_p[01]$/.test(fid)) return
+      tries.push(() => { const x = clone(cur); x.pop.factPopulations[fid].splice(i, 1); return x })
+    })
+    for (const e of cur.d.entities) (cur.pop.populations[e.id] ?? []).forEach((c, i) => tries.push(() => {
+      const x = clone(cur)
+      const k = key(c)
+      for (const o of x.d.entities.filter(o => o.id === e.id || rootOf(x.d, o.id) === e.id)) x.pop.populations[o.id] = (x.pop.populations[o.id] ?? []).filter(y => key(y) !== k)
+      for (const [fid, ts] of Object.entries(x.pop.factPopulations)) x.pop.factPopulations[fid] = ts.filter(t => !t.some(y => key(y) === k || (Array.isArray(y) && key(y[0]) === k)))
+      return x
+    }))
+    for (const t of tries) {
+      const x = t()
+      if (fails(x.d, x.pop)) { cur = x; changed = true; break }
+    }
+  }
+  return cur
+}
+
+// ── Main ────────────────────────────────────────────────────────────────────
+
+fs.mkdirSync(OUT, { recursive: true })
+const counts = {}, firsts = new Map()
+const t0 = Date.now()
+let gaps = 0
+for (let run = 0; run < RUNS; run++) {
+  const seed = SEED + run
+  const r = rng(seed)
+  const d = genSchema(r)
+  const pop = genPopulation(d, r)
+  const fails = check(toModel(d, pop), seed)
+  if (fails.some(f => f.prop === 'gen')) { gaps++; if (VERBOSE) console.log(`seed ${seed}: ${fails[0].text}`); continue }
+  for (const f of fails) {
+    counts[f.prop] = (counts[f.prop] ?? 0) + 1
+    if (VERBOSE) console.log(`seed ${seed} ${f.prop}: ${f.text}`)
+    if (!firsts.has(f.prop)) firsts.set(f.prop, { seed, d, pop, text: f.text })
+  }
+}
+console.log(`\n${RUNS} schemas (seeds ${SEED}–${SEED + RUNS - 1}), ${MUTATIONS} mutations each side, ${((Date.now() - t0) / 1000).toFixed(1)} s${gaps ? `; ${gaps} left out (generated population not legal)` : ''}`)
+if (!firsts.size) console.log('No failures.')
+for (const [prop, f] of firsts) {
+  const small = prop === 'crash' ? { d: f.d, pop: f.pop } : shrink(f.d, f.pop, f.seed, prop)
+  const after = check(toModel(small.d, small.pop), f.seed).find(x => x.prop === prop)
+  const file = path.join(OUT, `${prop}-seed${f.seed}.ffbm`)
+  // With T and the mapping that Generate tables gave (the store holds them after check).
+  let content
+  try { content = store().serialize() } catch { content = JSON.stringify(toModel(small.d, small.pop), null, 1) }
+  fs.writeFileSync(file, content)
+  console.log(`\n${prop}: ${counts[prop]} failing case${counts[prop] === 1 ? '' : 's'}; first at seed ${f.seed}, shrunk to ${small.d.entities.length} entity types and ${small.d.facts.length} fact types → ${file}`)
+  console.log(`  ${(after ?? f).text}`)
+}
+await server.close()
+process.exit(firsts.size ? 1 : 0)

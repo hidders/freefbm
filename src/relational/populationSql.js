@@ -6,7 +6,7 @@
 // <name>_base, as in the DDL. Generated columns (serial, identity) get their
 // values written and their sequences moved past the largest one.
 
-import { relationalModel } from './relationalModel.js'
+import { relationalModel, isKey } from './relationalModel.js'
 import { tableShape, tableRecords } from './records.js'
 import { tableViews } from './viewSql.js'
 import { typeSql } from './ddlExport.js'
@@ -25,7 +25,9 @@ export function fkOrder(tables) {
     if (state.get(t) === 2) return
     if (state.get(t) === 1) { cyclic = true; return }
     state.set(t, 1)
-    for (const fk of t.fks) if (fk.toTable !== t) visit(fk.toTable)
+    // (A subset into columns that are no key is an assertion, checked at
+    // the end of the transaction, not a foreign key.)
+    for (const fk of t.fks) if (fk.toTable !== t && isKey(fk.toTable, fk.to)) visit(fk.toTable)
     state.set(t, 2)
     out.push(t)
   }

@@ -166,13 +166,22 @@ export function exportPostgresDdl(state, schemaId, options = {}) {
   const isStored = (t, cols) => views.get(t.id)?.kind !== 'view' && cols.every(c => !views.get(t.id)?.derivedCols?.has(c.fact.id))
   const storedFks = fks.filter(fk => !badFks.has(fk.constraintId) && isStored(fk.fromTable, fk.from) && isStored(fk.toTable, fk.to))
   for (const fk of fks) if (!storedFks.includes(fk) && !badFks.has(fk.constraintId)) warnings.push(`FOREIGN KEY ${fk.fromTable.name}(${fk.from.map(c => c.name).join(', ')}) → ${fk.toTable.name}(${fk.to.map(c => c.name).join(', ')}) is about a view or a derived column and is not enforced`)
+  // A foreign key on a cycle of foreign keys is DEFERRABLE, so that rows can
+  // be loaded with SET CONSTRAINTS ALL DEFERRED (populationSql.js).
+  const asFks = queries.filter(x => x.technique === 'foreignKey')
+  const edges = [...storedFks.map(fk => [fk.fromTable, fk.toTable]), ...asFks.filter(x => !x.fk.existing).map(x => [x.fk.fromTable, x.fk.toTable])]
+  const reaches = (a, b) => {
+    const seen = new Set([a]), todo = [a]
+    while (todo.length) { const t = todo.pop(); if (t === b) return true; for (const [f, to] of edges) if (f === t && !seen.has(to)) { seen.add(to); todo.push(to) } }
+    return false
+  }
+  const deferrable = (from, to) => (from !== to && reaches(to, from) ? ' DEFERRABLE' : '')
   for (const fk of storedFks) {
     lines.push(`ALTER TABLE ${q(storedName(fk.fromTable))} ADD ${fk.name?.explicit ? `CONSTRAINT ${q(fk.name.name)} ` : ''}FOREIGN KEY (${fk.from.map(c => q(c.name)).join(', ')})`
-      + ` REFERENCES ${q(storedName(fk.toTable))} (${fk.to.map(c => q(c.name)).join(', ')});`)
+      + ` REFERENCES ${q(storedName(fk.toTable))} (${fk.to.map(c => q(c.name)).join(', ')})${deferrable(fk.fromTable, fk.toTable)};`)
   }
   if (storedFks.length) lines.push('')
   // Assertions that are foreign keys (foreignKeyRewrite.js).
-  const asFks = queries.filter(x => x.technique === 'foreignKey')
   if (asFks.some(x => !x.fk.existing)) lines.push('-- Assertions that are foreign keys:', '')
   for (const x of asFks) {
     const { fk } = x
@@ -181,7 +190,7 @@ export function exportPostgresDdl(state, schemaId, options = {}) {
     lines.push(`-- ${x.label}`, `--   ${x.text}`)
     if (fk.addUnique) lines.push(`ALTER TABLE ${q(storedName(fk.toTable))} ADD UNIQUE (${cols(fk.to)});`)
     lines.push(`ALTER TABLE ${q(storedName(fk.fromTable))} ADD ${x.name ? `CONSTRAINT ${q(snakeName(x.name).slice(0, 63))} ` : ''}FOREIGN KEY (${cols(fk.from)})`
-      + ` REFERENCES ${q(storedName(fk.toTable))} (${cols(fk.to)});`, '')
+      + ` REFERENCES ${q(storedName(fk.toTable))} (${cols(fk.to)})${deferrable(fk.fromTable, fk.toTable)};`, '')
   }
   const order = viewOrder(views)
   if (order.length) {

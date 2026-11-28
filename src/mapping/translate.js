@@ -27,6 +27,7 @@ import { checkFormulaConstraint, formulaConstraintEntry } from '../logic/formula
 import { asGraphical, graphicalFields } from './recognise.js'
 import { mkConstraint } from '../store/storeHelpers.js'
 import { withImplicitRules } from './sameModel.js'
+import { isIndependentType } from '../utils/independence.js'
 
 const other = (side) => (side === 'source' ? 'target' : 'source')
 class TranslateError extends Error {}
@@ -68,6 +69,13 @@ export function translateEntry(state, mapping, entry, side) {
       const bindVar = (v, y) => {
         const s = front.get(y) ?? fail(`the rule for ${what} uses a value the constraint does not give`)
         if (types.get(v) && !slotType.has(s)) slotType.set(s, types.get(v))
+        // A value of another value type (another column's type, say): a
+        // variable of its own, equal to the slot by value.
+        if (types.get(v) && slotType.get(s) !== types.get(v)) {
+          if (!ren.has(v)) { const id = `z${++n}`; ren.set(v, id); own.push({ id, typeId: types.get(v) }) }
+          eqs.push({ t: 'vcmp', op: '≈', left: { t: 'var', id: ren.get(v) }, right: { t: 'var', id: s } })
+          return
+        }
         if (ren.has(v) && ren.get(v) !== s) eqs.push({ t: 'vcmp', op: '≈', left: { t: 'var', id: ren.get(v) }, right: { t: 'var', id: s } })
         else ren.set(v, s)
       }
@@ -106,10 +114,20 @@ export function translateEntry(state, mapping, entry, side) {
     }
 
     // E'(slots): an entity's existence on the other side.
-    const entityGuard = (typeId, slots) => {
+    const entityGuard = (typeId, slots, x = null) => {
       const t = ctxX.otById.get(typeId)
       if (!t || t.kind === 'value') return null
       const e = atomics.types.get(typeId)?.[0]
+      if (!e && x && needsCases(typeId)) {
+        // No rule maps it on its own (Rmap gives it no table): an instance
+        // of a type that is not independent plays some role besides its
+        // identification, so it is there when it plays one of those.
+        const plays = playedRoles(typeId)
+        if (plays.length) return orOf(plays.map(({ fact, i }) => {
+          const vars = fact.roles.map((r, k) => (k === i ? x : { typeId: r.objectTypeId }))
+          return tr({ t: 'exists', vars: vars.filter((_, k) => k !== i), body: { t: 'fact', factId: fact.id, args: vars } })
+        }))
+      }
       if (!e) fail(`no mapping rule maps ${t.name} on its own`)
       return withLeaves(e.atomic.key, slots, (front, extra) => andOf([instantiate(e.rule[Y], front, t.name), ...extra]))
     }
@@ -127,10 +145,26 @@ export function translateEntry(state, mapping, entry, side) {
       return k(front, extra)
     }
 
+    // The roles of fact types that an instance of typeId plays besides its
+    // identification: [{ fact, i }].
+    const playedRoles = (typeId) => ctxX.facts.filter(f => f.derivation !== 'derived').flatMap(f => f.roles
+      .map((r, i) => ({ fact: f, i, r }))
+      .filter(({ r, i }) => r.objectTypeId === typeId && !identifying(f.id, i)))
+      .map(({ fact, i }) => ({ fact, i }))
+    const needsCases = (typeId) => {
+      const t = ctxX.otById.get(typeId)
+      return !!t && t.kind !== 'value' && !atomics.types.get(typeId)?.length && !isIndependentType(t, state.schemas) && playedRoles(typeId).length > 0
+    }
     const subOf = (sub, sup) => sub === sup || ctxX.subtypes.some(st => st.subId === sub && subOf(st.superId, sup))
     const conjuncts = (n) => (!n ? [] : n.t === 'and' ? n.args.flatMap(conjuncts) : [n])
+    // (Not an identifying fact: it only equates x's reference values with
+    // others, so it says nothing of x's existence on the other side.)
+    const identifying = (factId, i) => {
+      const f = ctxX.factById.get(factId)
+      return f?.roles.length === 2 && !!schemeParts(f.roles[i]?.objectTypeId, ctxX, els)?.some(q => q.factId === factId && q.entityRoleIndex === i)
+    }
     const playsIn = (atoms, x) => atoms.some(a => a.t === 'fact' && a.args.some((v, i) => v === x
-      && subOf(ctxX.factById.get(a.factId)?.roles[i]?.objectTypeId, x.typeId)))
+      && subOf(ctxX.factById.get(a.factId)?.roles[i]?.objectTypeId, x.typeId) && !identifying(a.factId, i)))
 
     const bind = (x) => {
       const leaves = keyLeaves(x.typeId, ctxX, els) ?? fail(`${ctxX.otById.get(x.typeId)?.name ?? 'a type'} has no reference scheme to carry over`)
@@ -164,11 +198,28 @@ export function translateEntry(state, mapping, entry, side) {
         case 'implies': return { t: 'implies', left: tr(g.left), right: tr(g.right) }
         case 'iff': return { t: 'iff', left: tr(g.left), right: tr(g.right) }
         case 'forall': case 'exists': {
+          // A variable of a type that no rule maps on its own: one case per
+          // role it may play, ∀x φ as ∀x ∀ō (F(x, ō) → φ) for each such F
+          // and ∃x φ as some ∃x ∃ō (F(x, ō) ∧ φ), so that in each case x
+          // ranges over the values of that role's column.
+          const known0 = conjuncts(g.t === 'forall' ? (g.body.t === 'implies' ? g.body.left : null) : g.body)
+          const x = g.vars.find(v => !playsIn(known0, v) && needsCases(v.typeId))
+          if (x) {
+            const cases = playedRoles(x.typeId).map(({ fact, i }) => {
+              const vars = fact.roles.map((r, k) => (k === i ? x : { typeId: r.objectTypeId }))
+              const atom = { t: 'fact', factId: fact.id, args: vars }
+              const more = [...g.vars, ...vars.filter((_, k) => k !== i)]
+              if (g.t === 'exists') return { t: 'exists', vars: more, body: { t: 'and', args: [atom, ...conjuncts(g.body)] } }
+              const [left, right] = g.body.t === 'implies' ? [conjuncts(g.body.left), g.body.right] : [[], g.body]
+              return { t: 'forall', vars: more, body: { t: 'implies', left: { t: 'and', args: [atom, ...left] }, right } }
+            })
+            return (g.t === 'exists' ? orOf : andOf)(cases.map(tr))
+          }
           const slots = g.vars.map(bind)
           // No guard where the formula itself says x is an E: x plays a role
           // of E (or of a subtype of E) in a fact atom of the antecedent.
           const known = conjuncts(g.t === 'forall' ? (g.body.t === 'implies' ? g.body.left : null) : g.body)
-          const guards = g.vars.map((x, i) => (playsIn(known, x) ? null : entityGuard(x.typeId, slots[i]))).filter(Boolean)
+          const guards = g.vars.map((x, i) => (playsIn(known, x) ? null : entityGuard(x.typeId, slots[i], x))).filter(Boolean)
           const body = tr(g.body)
           const vars = declared(slots.flat())
           // ∀ȳ (E'(ȳ) → (ψ → χ)) is written ∀ȳ (E'(ȳ) ∧ ψ → χ).
@@ -183,12 +234,12 @@ export function translateEntry(state, mapping, entry, side) {
           if (g.vars.length !== 1) fail('it counts tuples of several variables')
           const slots = bind(g.vars[0])
           if (slots.length !== 1) fail('it counts entities with a composite identifier')
-          const guard = entityGuard(g.vars[0].typeId, slots)
+          const guard = entityGuard(g.vars[0].typeId, slots, g.vars[0])
           const body = andOf([guard, tr(g.body)])
           const [v] = declared(slots)
           return g.op === '..' ? { t: 'count', op: '..', n: g.n, m: g.m, v, body } : { t: 'count', op: g.op, n: g.n, v, body }
         }
-        case 'type': return entityGuard(g.typeId, slotsOf(g.arg)) ?? { t: 'true' }
+        case 'type': return entityGuard(g.typeId, slotsOf(g.arg), g.arg) ?? { t: 'true' }
         case 'cmp': {
           const a = slotsOf(g.left), b = slotsOf(g.right)
           if (a.length !== b.length) fail('it compares entities with different identifiers')

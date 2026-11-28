@@ -39,13 +39,17 @@ export function carryLost(get, m, schemaId, elementIds, { to = 'the new version'
   do r = gen.next(); while (!r.done)
   const out = []
   let ctx = null
-  for (const x of r.value.sides.source.filter(e => e.status === 'lost')) {
+  // Lost ones, and ones accounting cannot decide (the chase may not end,
+  // say a mandatory role its own type plays): carried when the translation
+  // is found to keep them, which settles the question either way.
+  for (const x of r.value.sides.source.filter(e => e.status === 'lost' || e.status === 'unknown')) {
     const kind = x.entry?.kind ?? 'constraint'
     let what = x.label || (x.entry?.subject ? `${kind} · ${x.entry.subject}` : kind)
     if (!x.label && !x.entry?.subject && x.entry?.formula) {
       try { what = `${kind} ${formulaToString(x.entry.formula, (ctx ??= makeContext(get())))}` } catch { /* the kind alone */ }
     }
     const p = proposeTranslation(get(), m, x, 'source')
+    if (x.status === 'unknown' && (p.error || p.errors?.length || !['native', 'implied'].includes(p.status))) continue
     if (p.error || p.errors?.length || !['native', 'implied'].includes(p.status)) { out.push(`Kept by nothing in ${to}: ${what}${p.error ? ` (${p.error})` : ''}; the Equivalence report says more`); continue }
     get().addCarriedConstraint(m.targetSchemaId, { rule: p.rule, deontic: p.deontic, graphical: p.graphical,
       from: { mappingId: m.id, schemaId: m.sourceSchemaId, text: what } })
