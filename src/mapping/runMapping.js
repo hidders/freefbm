@@ -303,10 +303,17 @@ function altKeysOf(typeId, data) {
   const sch = schemeOf(typeId, data)
   const pref = sch?.kind === 'refMode' ? sch.rm.factId : null
   const keys = []
+  // Keys of its supertypes are keys of it too (a subtype's instance is named
+  // by its supertype's other keys as well).
+  const ups = new Set([typeId])
+  for (let grew = true; grew;) {
+    grew = false
+    for (const st of data.subtypes ?? []) if (ups.has(st.subId) && !ups.has(st.superId)) { ups.add(st.superId); grew = true }
+  }
   for (const f of data.facts) {
     if (f.id === pref || f.roles?.length !== 2) continue
     f.roles.forEach((r, i) => {
-      if (r.objectTypeId !== typeId) return
+      if (!ups.has(r.objectTypeId)) return
       const o = 1 - i
       if ((f.uniqueness ?? []).some(u => u.roles?.length === 1 && u.roles[0] === o)) keys.push([{ factId: f.id, entityRi: i, valueRi: o }])
     })
@@ -317,7 +324,7 @@ function altKeysOf(typeId, data) {
     const seq = c.sequences?.[0] ?? []
     const parts = seq.map(mm => {
       const f = mm?.kind === 'role' && factById.get(mm.factId)
-      return f?.roles?.length === 2 && f.roles[1 - mm.roleIndex]?.objectTypeId === typeId ? { factId: f.id, entityRi: 1 - mm.roleIndex, valueRi: mm.roleIndex } : null
+      return f?.roles?.length === 2 && ups.has(f.roles[1 - mm.roleIndex]?.objectTypeId) ? { factId: f.id, entityRi: 1 - mm.roleIndex, valueRi: mm.roleIndex } : null
     })
     if (parts.length && parts.every(Boolean)) keys.push(parts)
   }
@@ -408,10 +415,21 @@ function buildSide(side, y, data, pop, ident) {
   // another key of the entity type, e.g. a natural key declared UNIQUE:
   // ⟨its values⟩. Its value then fills the reference mode's value variable.
   {
-    for (const v of vars.values()) {
+    // Objectified fact types last: their instances are their facts, which
+    // the stand-ins of their players may give.
+    const nested = (v) => !!lookups(data).factById.get(v.typeId)?.objectified
+    // Rows that own a generated surrogate first: a row whose key only refers
+    // to another table's surrogate (a subtype table's foreign key) takes it
+    // from that row rather than inventing it from a key of its own.
+    const generated = (v) => {
+      const sch = schemeOf(v.typeId, data)
+      return sch?.kind === 'refMode' && !!lookups(data).factById.get(sch.rm.factId)?.roles?.[sch.rm.vtRoleIndex]?.sqlGenerated
+    }
+    const rank = (v) => (nested(v) ? 2 : 0) + (generated(v) ? 0 : 1)
+    for (const v of [...vars.values()].sort((a, b) => rank(a) - rank(b))) {
       if (env.has(v.id)) continue
       const sch = schemeOf(v.typeId, data)
-      if (sch?.kind !== 'refMode') continue
+      if (sch?.kind !== 'refMode' && sch?.kind !== 'composite') continue
       // The same key in every rule (inventKeys, from prepareRun), so that
       // rules giving different keys still invent the same surrogate.
       const keys = pop.inventKeys?.has(v.typeId) ? [pop.inventKeys.get(v.typeId)] : altKeysOf(v.typeId, data)
@@ -424,6 +442,9 @@ function buildSide(side, y, data, pop, ident) {
         env.set(v.id, invent(vals))
         if (!pop.invented) pop.invented = new Map()
         pop.invented.set(v.typeId, key)
+        // A composite identifier is no surrogate: the stand-in only finds
+        // the entity another rule built (withFoundInvented), else it goes.
+        if (sch.kind === 'composite') (pop.standIns ??= new Set()).add(v.typeId)
         outer = true
         break
       }
@@ -518,7 +539,16 @@ export function runMapping(state, mapping, direction = 'forward') {
     const t = ctxs[to].otById.get(typeId)
     log.push({ level: 'note', text: `${t?.name ?? 'An entity type'}: its reference values were invented from another key (⟨…⟩), as nothing gives them` })
   }
-  return { from, to, schemaId: sideSchemaId(mapping, to), populations, factPopulations, rules, counts, log, invented }
+  // A subtype link that does not inherit the identifier (D below A through
+  // B, and also below A directly) says which supertype instance each subtype
+  // instance is: here the same cell.
+  const schemaId = sideSchemaId(mapping, to)
+  const subtypeMappings = {}
+  for (const st of state.subtypes ?? []) {
+    if (st.schemaId !== schemaId || st.inheritsPreferredIdentifier !== false) continue
+    subtypeMappings[st.id] = (populations[st.subId] ?? []).map(c => (Array.isArray(c) ? c : [c]))
+  }
+  return { from, to, schemaId, populations, factPopulations, subtypeMappings, rules, counts, log, invented }
 }
 
 // What a run needs that does not depend on the population: the rules' sides
@@ -633,8 +663,63 @@ export function executeRun(prep, pops, { limit, fresh = null } = {}) {
   for (const [id, m] of pop.types) populations[id] = [...m.values()]
   for (const [id, m] of pop.facts) factPopulations[id] = [...m.values()]
   if (pop.made?.size) dropSubsumed(populations, factPopulations, pop.made)
-  const invented = [...(pop.invented ?? new Map())].map(([typeId, key]) => ({ typeId, key }))
+  const invented = withFoundInvented(populations, factPopulations, [...(pop.invented ?? new Map())].map(([typeId, key]) => ({ typeId, key })), prep.elements, pop.standIns)
+  // The reference values of the entities built are values of their value
+  // type, also when no rule names them (an invented surrogate).
+  for (const id of Object.keys(populations)) {
+    const sch = schemeOf(id, prep.elements)
+    const vt = sch?.kind === 'refMode' ? sch.rm?.vtId : null
+    if (!vt || !populations[id].length) continue
+    const have = new Set((populations[vt] ?? []).map(c => JSON.stringify(c)))
+    const add = populations[id].filter(c => typeof c === 'string' && !have.has(JSON.stringify(c)))
+    if (add.length) populations[vt] = [...(populations[vt] ?? []), ...add]
+  }
   return { populations, factPopulations, matches, invented, log }
+}
+
+// An invented ⟨values⟩ for an entity that another rule built with its real
+// identifier and the same values of that key is that entity: a rule that
+// gives a subtype only its own key (an Rmap table of a subtype with a
+// preferred identifier of its own) and one that gives it both. The invented
+// cells are replaced by the real ones everywhere; returns the invented keys
+// still in use.
+function withFoundInvented(populations, factPopulations, invented, data, standIns = null) {
+  const isInvented = (c) => typeof c === 'string' && c.startsWith('⟨') && c.endsWith('⟩')
+  const rename = new Map()
+  for (const { typeId } of invented) {
+    const invs = (populations[typeId] ?? []).filter(isInvented)
+    if (!invs.length) continue
+    // Any key of the type: the invented one, or another the rules gave it.
+    for (const key of altKeysOf(typeId, data)) {
+      const valsOf = new Map()   // key of a cell → { cell, vals }
+      key.forEach((p, i) => {
+        for (const t of factPopulations[p.factId] ?? []) {
+          const e = t[p.entityRi]
+          const k = JSON.stringify(e)
+          if (!valsOf.has(k)) valsOf.set(k, { cell: e, vals: [] })
+          valsOf.get(k).vals[i] = valueOf(t[p.valueRi])
+        }
+      })
+      const real = new Map()
+      for (const { cell, vals } of valsOf.values())
+        if (!isInvented(cell) && vals.length === key.length && vals.every(v => v != null)) real.set(JSON.stringify(vals), cell)
+      for (const inv of invs) {
+        if (rename.has(inv)) continue
+        const x = valsOf.get(JSON.stringify(inv))
+        if (x && x.vals.length === key.length && x.vals.every(v => v != null) && real.has(JSON.stringify(x.vals))) rename.set(inv, real.get(JSON.stringify(x.vals)))
+      }
+    }
+  }
+  // Stand-ins nothing resolved: the entity is left out, as before.
+  const gone = new Set()
+  for (const typeId of standIns ?? []) for (const c of populations[typeId] ?? []) if (isInvented(c) && !rename.has(c)) gone.add(c)
+  if (!rename.size && !gone.size) return invented
+  const has = (c) => (Array.isArray(c) ? c.some(has) : gone.has(c))
+  const sub = (c) => (Array.isArray(c) ? c.map(sub) : rename.has(c) ? rename.get(c) : c)
+  const uniq = (cells) => [...new Map(cells.map(c => [JSON.stringify(c), c])).values()]
+  for (const [id, cs] of Object.entries(populations)) populations[id] = uniq(cs.filter(c => !has(c)).map(sub))
+  for (const [id, ts] of Object.entries(factPopulations)) factPopulations[id] = uniq(ts.filter(t => !has(t)).map(sub))
+  return invented.filter(({ typeId }) => !standIns?.has(typeId) && (populations[typeId] ?? []).some(isInvented))
 }
 
 const hasNot = (atoms) => (atoms ?? []).some(a => a.t === 'not' || (a.t === 'opt' && hasNot(a.atoms)))
@@ -732,6 +817,11 @@ export function roundTrip(state, mapping, direction = 'forward') {
 function surrogateRenaming(data, ev, invented) {
   if (!invented.length) return null
   const byVt = new Map()   // vtId → Map(original → invented)
+  // The key values, each with the value type it is of: a value that is
+  // itself an invented surrogate (a key holding another table's surrogate)
+  // is renamed first, as the run invents it from that one's invented value.
+  const raw = []
+  const factById = lookups(data).factById
   for (const { typeId, key } of invented) {
     const sch = schemeOf(typeId, data)
     if (sch?.kind !== 'refMode') continue
@@ -740,12 +830,29 @@ function surrogateRenaming(data, ev, invented) {
       for (const t of ev.factTuples(p.factId).tuples ?? []) ix.set(keyOf(t[p.entityRi]), valueOf(t[p.valueRi]))
       return ix
     })
-    const ren = byVt.get(sch.rm.vtId) ?? new Map()
+    const vts = key.map(p => factById.get(p.factId)?.roles[p.valueRi]?.objectTypeId)
     for (const c of ev.population(typeId).instances ?? []) {
       const vals = index.map(ix => ix.get(keyOf(c)))
-      if (typeof c === 'string' && vals.every(v => v != null)) ren.set(c, invent(vals))
+      if (typeof c === 'string' && vals.every(v => v != null)) raw.push({ vt: sch.rm.vtId, c, vals, vts })
     }
-    byVt.set(sch.rm.vtId, ren)
+  }
+  for (let round = 0; round < 4; round++) {
+    const next = new Map()
+    for (const { vt, c, vals, vts } of raw) {
+      const ren = next.get(vt) ?? new Map()
+      ren.set(c, invent(vals.map((v, i) => byVt.get(vts[i])?.get(v) ?? v)))
+      next.set(vt, ren)
+    }
+    // Only one to one: two surrogates with the same key (a broken UNIQUE)
+    // are not the same row, so neither is renamed and both show as lost.
+    for (const ren of next.values()) {
+      const seen = new Map()
+      for (const [, v] of ren) seen.set(v, (seen.get(v) ?? 0) + 1)
+      for (const [c, v] of [...ren]) if (seen.get(v) > 1) ren.delete(c)
+    }
+    byVt.clear()
+    for (const [k, v] of next) byVt.set(k, v)
+    if (!raw.some(r => r.vts.some(t => next.has(t)))) break
   }
   const renameCell = (cell, typeId, depth = 0) => {
     if (cell == null || depth > 8) return cell

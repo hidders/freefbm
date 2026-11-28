@@ -67,7 +67,16 @@ export function translateEntry(state, mapping, entry, side) {
       const own = []
       const types = new Map(ex.vars.map(v => [v.id, v.typeId]))
       const bindVar = (v, y) => {
-        const s = front.get(y) ?? fail(`the rule for ${what} uses a value the constraint does not give`)
+        // A value the constraint does not give (a subtype's row may also
+        // hold its supertypes' keys): ∃ there, as in the rule's own side.
+        if (!front.has(y)) {
+          if (!types.get(v)) fail(`the rule for ${what} uses a value the constraint does not give`)
+          const id = `z${++n}`
+          own.push({ id, typeId: types.get(v) })
+          slotType.set(id, types.get(v))
+          front.set(y, id)
+        }
+        const s = front.get(y)
         if (types.get(v) && !slotType.has(s)) slotType.set(s, types.get(v))
         // A value of another value type (another column's type, say): a
         // variable of its own, equal to the slot by value.
@@ -115,9 +124,17 @@ export function translateEntry(state, mapping, entry, side) {
 
     // E'(slots): an entity's existence on the other side.
     const entityGuard = (typeId, slots, x = null) => {
-      const t = ctxX.otById.get(typeId)
+      const nested = ctxX.factById.get(typeId)?.objectified ? ctxX.factById.get(typeId) : null
+      const t = ctxX.otById.get(typeId) ?? (nested && { ...nested, name: nested.objectifiedName ?? nested.name })
       if (!t || t.kind === 'value') return null
       const e = atomics.types.get(typeId)?.[0]
+      if (!e && nested && x) {
+        // An objectified fact type no rule maps on its own: its instances are
+        // the facts, ∃p̄ (F(p̄) ∧ x is the nesting of F(p̄)).
+        const ps = nested.roles.map(r => ({ typeId: r.objectTypeId }))
+        return tr({ t: 'exists', vars: ps, body: { t: 'and', args: [{ t: 'fact', factId: nested.id, args: ps },
+          ...ps.map((p, i) => ({ t: 'fact', factId: `${nested.id}_il_${i}`, args: [x, p] }))] } })
+      }
       if (!e && x && needsCases(typeId)) {
         // No rule maps it on its own (Rmap gives it no table): an instance
         // of a type that is not independent plays some role besides its
@@ -129,7 +146,7 @@ export function translateEntry(state, mapping, entry, side) {
         }))
       }
       if (!e) fail(`no mapping rule maps ${t.name} on its own`)
-      return withLeaves(e.atomic.key, slots, (front, extra) => andOf([instantiate(e.rule[Y], front, t.name), ...extra]))
+      return withKeyOf(typeId, slots, (ks) => withLeaves(e.atomic.key, ks, (front, extra) => andOf([instantiate(e.rule[Y], front, t.name), ...extra])))
     }
     // Frontier names of a rule's leaves matched to slots; constant leaves
     // become comparisons.
@@ -169,8 +186,88 @@ export function translateEntry(state, mapping, entry, side) {
     const bind = (x) => {
       const leaves = keyLeaves(x.typeId, ctxX, els) ?? fail(`${ctxX.otById.get(x.typeId)?.name ?? 'a type'} has no reference scheme to carry over`)
       const slots = leaves.map(() => newSlot())
+      slotOwner.set(slots, ownerOf(x.typeId))
       env.set(x, slots)
       return slots
+    }
+    // Whose identifier a type's instances are named by: a subtype with a
+    // preferred identifier of its own names them by that one, others by
+    // their supertype's. Slots of an entity are of one owner.
+    const ownerOf = (typeId) => (schemeParts(typeId, ctxX, els) ?? []).map(p => p.factId).join(',') || typeId
+    const slotOwner = new WeakMap()
+    // slots of an entity named by another identifier than typeId's: typeId's
+    // own key, found through the rule of a subtype that names both (an Rmap
+    // row of a subtype with an identifier of its own keeps its supertypes'
+    // keys). { slots, pre: the rule's other side or null, fresh: new slots }.
+    const asKeyOf = (typeId, slots) => {
+      const want = ownerOf(typeId), have = slotOwner.get(slots)
+      if (!have || have === want) return { slots, pre: null, fresh: [] }
+      // Each subtype rule that names two identifiers is a step from one to
+      // the other; the shortest chain of steps (D's own, through B's own,
+      // to A's).
+      const steps = []
+      for (const entries of atomics.types.values()) for (const e of entries) {
+        const keys = [{ typeId: e.atomic.typeId, key: e.atomic.key }, ...(e.atomic.alt ?? [])]
+        for (const a of keys) for (const b of keys) if (a !== b) steps.push({ e, from: a, to: b, a: ownerOf(a.typeId), b: ownerOf(b.typeId) })
+      }
+      const prev = new Map([[have, null]])
+      const todo = [have]
+      while (todo.length && !prev.has(want)) {
+        const o = todo.shift()
+        for (const st of steps) if (st.a === o && !prev.has(st.b)) { prev.set(st.b, st); todo.push(st.b) }
+      }
+      if (!prev.has(want)) return fail(`${ctxX.otById.get(typeId)?.name ?? 'a type'} is named by another identifier there, and no rule names both`)
+      const path = []
+      for (let o = want; prev.get(o); o = prev.get(o).a) path.unshift(prev.get(o))
+      let cur = slots
+      const pres = [], fresh = []
+      for (const { e, from, to } of path) {
+        if (from.key.length !== cur.length) fail('a rule gives a type another identifier than its reference scheme')
+        const next = to.key.map(() => newSlot())
+        const front = new Map(), extra = []
+        const put = (leaf, s) => {
+          if (leaf.y == null) { extra.push({ t: 'vcmp', op: '≈', left: { t: 'var', id: s }, right: { t: 'const', text: leaf.c } }); return }
+          if (front.has(leaf.y) && front.get(leaf.y) !== s) extra.push({ t: 'vcmp', op: '≈', left: { t: 'var', id: front.get(leaf.y) }, right: { t: 'var', id: s } })
+          else front.set(leaf.y, s)
+        }
+        from.key.forEach((leaf, i) => put(leaf, cur[i]))
+        to.key.forEach((leaf, i) => put(leaf, next[i]))
+        pres.push(instantiate(e.rule[Y], front, ctxX.otById.get(e.atomic.typeId)?.name ?? 'a subtype'), ...extra)
+        fresh.push(...next)
+        cur = next
+      }
+      slotOwner.set(cur, want)
+      return { slots: cur, pre: andOf(pres), fresh }
+    }
+    // φ(k̄) with slots read as typeId's key: ∃k̄ (pre ∧ φ(k̄)) when they differ.
+    const withKeyOf = (typeId, slots, k) => {
+      const c = asKeyOf(typeId, slots)
+      if (!c.pre) return k(slots)
+      const body = k(c.slots)
+      return existsAll(declared(c.fresh), andOf([c.pre, body]))
+    }
+    // A count of entities with a composite identifier, for bounds 0 and 1:
+    // at least one is ∃s̄ (E(s̄) ∧ φ), at most one ¬∃s̄ s̄' (E(s̄) ∧ φ ∧
+    // E(s̄') ∧ φ' ∧ s̄ ≉ s̄'), φ' φ translated again over new slots.
+    const countOfComposite = (g) => {
+      const x = g.vars[0]
+      const once = () => {
+        const slots = bind(x)
+        const body = andOf([entityGuard(x.typeId, slots, x), tr(g.body)].filter(Boolean))
+        return { slots, body, vars: declared(slots) }
+      }
+      const atLeastOne = () => { const a = once(); return existsAll(a.vars, a.body) }
+      const atMostOne = () => {
+        const a = once(), b = once()
+        const differ = orOf(a.slots.map((s, i) => ({ t: 'vcmp', op: '≉', left: { t: 'var', id: s }, right: { t: 'var', id: b.slots[i] } })))
+        return { t: 'not', arg: existsAll([...a.vars, ...b.vars], andOf([a.body, b.body, differ])) }
+      }
+      const { op, n } = g
+      if (op === '≥' && n === 1) return atLeastOne()
+      if ((op === '≤' && n === 0) || (op === '<' && n === 1)) return { t: 'not', arg: atLeastOne() }
+      if ((op === '≤' && n === 1) || (op === '<' && n === 2)) return atMostOne()
+      if (op === '=' && n === 1) return andOf([atLeastOne(), atMostOne()])
+      return fail('it counts entities with a composite identifier')
     }
     const declared = (slots) => slots.map(id => ({ id, typeId: slotType.get(id) ?? fail('a value of the constraint has no counterpart in the other schema') }))
 
@@ -232,8 +329,8 @@ export function translateEntry(state, mapping, entry, side) {
         }
         case 'count': {
           if (g.vars.length !== 1) fail('it counts tuples of several variables')
+          if (keyLeaves(g.vars[0].typeId, ctxX, els)?.length > 1) return countOfComposite(g)
           const slots = bind(g.vars[0])
-          if (slots.length !== 1) fail('it counts entities with a composite identifier')
           const guard = entityGuard(g.vars[0].typeId, slots, g.vars[0])
           const body = andOf([guard, tr(g.body)])
           const [v] = declared(slots)
@@ -255,18 +352,24 @@ export function translateEntry(state, mapping, entry, side) {
           for (let e = 0; e < fact.roles.length && fact.roles.length === 2; e++) {
             const p = schemeParts(fact.roles[e].objectTypeId, ctxX, els)?.find(q => q.factId === fact.id && q.entityRoleIndex === e)
             if (!p) continue
-            const es = args[e], vs = args[p.roleIndex]
-            vs.forEach((s, i) => {
-              const t = es[p.from + i]
-              if (!slotType.has(s) && slotType.has(t)) slotType.set(s, slotType.get(t))
-              if (!slotType.has(t) && slotType.has(s)) slotType.set(t, slotType.get(s))
-            })
-            return andOf(vs.map((s, i) => ({ t: 'vcmp', op: '≈', left: { t: 'var', id: es[p.from + i] }, right: { t: 'var', id: s } })))
+            // (The part's value named by its own type's identifier.)
+            return withKeyOf(fact.roles[e].objectTypeId, args[e], (es) => withKeyOf(fact.roles[p.roleIndex].objectTypeId, args[p.roleIndex], (vs) => {
+              vs.forEach((s, i) => {
+                const t = es[p.from + i]
+                if (!slotType.has(s) && slotType.has(t)) slotType.set(s, slotType.get(t))
+                if (!slotType.has(t) && slotType.has(s)) slotType.set(t, slotType.get(s))
+              })
+              return andOf(vs.map((s, i) => ({ t: 'vcmp', op: '≈', left: { t: 'var', id: es[p.from + i] }, right: { t: 'var', id: s } })))
+            }))
           }
           const entry = atomics.facts.get(fact.id)?.[0]
           if (!entry) fail(`no mapping rule maps "${(fact.readingParts ?? []).join(' ').trim()}" on its own`)
-          const leaves = entry.atomic.roles.flat(), slots = args.flat()
-          return withLeaves(leaves, slots, (front, extra) => andOf([instantiate(entry.rule[Y], front, 'a fact type'), ...extra]))
+          const leaves = entry.atomic.roles.flat()
+          // Each argument named by its role player's identifier.
+          const go = (i, done) => (i === args.length
+            ? withLeaves(leaves, done.flat(), (front, extra) => andOf([instantiate(entry.rule[Y], front, 'a fact type'), ...extra]))
+            : withKeyOf(fact.roles[i].objectTypeId, args[i], (ks) => go(i + 1, [...done, ks])))
+          return go(0, [])
         }
         case 'tc': {
           // [TC_{v,w} φ](s, t) over entities with one reference value each:
@@ -288,7 +391,13 @@ export function translateEntry(state, mapping, entry, side) {
         if (u?.length === 1) unique.add(`${fy.id}:${u[0]}`)
     }
     const mandatory = new Set(ctxY.facts.flatMap(fy => (fy.roles ?? []).map((r, i) => (r.mandatory ? `${fy.id}:${i}` : null)).filter(Boolean)))
-    const rule = simplify(tr(f), { unique, mandatory })
+    // ∀x̄ (L ↔ R) as ∀x̄ (L → R) ∧ ∀x̄ (R → L): each direction's values are
+    // then ranged over where its antecedent reads them (a value type of the
+    // other schema may be split over several columns' types).
+    const split = (g) => (g.t === 'forall' && g.body.t === 'iff'
+      ? { t: 'and', args: [{ ...g, body: { t: 'implies', left: g.body.left, right: g.body.right } }, { ...g, body: { t: 'implies', left: g.body.right, right: g.body.left } }] }
+      : g.t === 'and' ? { ...g, args: g.args.map(split) } : g)
+    const rule = simplify(tr(split(f)), { unique, mandatory })
     return { rule, deontic }
   } catch (e) {
     if (e instanceof TranslateError) return { error: e.message }

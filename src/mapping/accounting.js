@@ -54,6 +54,7 @@ import { plainParts } from '../verbalisation/hyphenBinding.js'
 import { isIndependentType, identifiedRoles } from '../utils/independence.js'
 import { withImplicitRules } from './sameModel.js'
 import { withInheritedIdentifiers } from './inheritedIdentifiers.js'
+import { finiteCases } from './fold.js'
 
 const isFresh = (v) => typeof v === 'string' && v.startsWith('⊥')
 const keyOf = (cell) => JSON.stringify(projCellKey(cell))
@@ -104,6 +105,22 @@ const playerOf = (w, factId, ri) => w.ctx.factById.get(factId)?.roles[ri]?.objec
 
 // An instance of a type, with what keeps the stored populations aligned: the
 // supertypes have it too, and its reference values are values of their types.
+// The keys of a list of cells or tuples, kept with the list (rebuilt when
+// it was changed elsewhere): chased populations grow to hundreds of facts.
+const listKeys = new WeakMap()
+function keysOfList(list, keyFn) {
+  let e = listKeys.get(list)
+  if (!e || e.n !== list.length) { e = { n: list.length, set: new Set(list.map(keyFn)) }; listKeys.set(list, e) }
+  return e
+}
+const tupleKey = (t) => JSON.stringify(t.map(keyOf))
+function pushNew(list, item, k, keyFn) {
+  const e = keysOfList(list, keyFn)
+  if (e.set.has(k)) return false
+  list.push(item); e.set.add(k); e.n = list.length
+  return true
+}
+
 function addInst(w, pops, typeId, cell) {
   if (cell == null || !typeId) return
   // An instance of an objectified fact type without an identifier of its
@@ -113,9 +130,7 @@ function addInst(w, pops, typeId, cell) {
     if (f?.objectified && Array.isArray(cell) && schemeOf(typeId, w.els)?.parts?.every(p => w.ctx.factById.get(p.factId)?._link)) { addTuple(w, pops, typeId, cell); return }
   }
   const list = pops.populations[typeId] ?? (pops.populations[typeId] = [])
-  const k = keyOf(cell)
-  if (list.some(c => keyOf(c) === k)) return
-  list.push(cell)
+  if (!pushNew(list, cell, keyOf(cell), keyOf)) return
   for (const sup of w.supers.get(typeId) ?? []) addInst(w, pops, sup, cell)
   if (w.ctx.otById.get(typeId)?.kind !== 'entity') return
   const sch = schemeOf(typeId, w.els)
@@ -131,13 +146,17 @@ function addTuple(w, pops, factId, tuple) {
   f.roles.forEach((r, i) => addInst(w, pops, r.objectTypeId, tuple[i]))
   if (isIdentifying(w, factId)) return
   const list = pops.factPopulations[factId] ?? (pops.factPopulations[factId] = [])
-  const k = JSON.stringify(tuple.map(keyOf))
-  if (!list.some(t => JSON.stringify(t.map(keyOf)) === k)) list.push(tuple)
+  pushNew(list, tuple, tupleKey(tuple), tupleKey)
 }
 
 // A new instance of a type that equals no other: a labelled null, or for a
 // composite identifier a combination of them.
 function freshCell(w, pops, typeId, fresh, depth = 0) {
+  // Looking for a finite model: an instance there already plays the role.
+  if (fresh.reuse) {
+    const have = pops.populations[typeId] ?? (w.ctx.factById.get(typeId)?.objectified ? pops.factPopulations[typeId] : null)
+    if (have?.length) return have[0]
+  }
   const ot = w.ctx.otById.get(typeId)
   if (!ot) {
     // An instance of an objectified fact type without an identifier of its
@@ -332,6 +351,8 @@ function tooMany(i, w) {
 
 function issuesOf(w, pops, constraintId) {
   const active = new Set(Object.entries(pops.populations).filter(([, v]) => v.length).map(([k]) => k))
+  // (Instances of an objectified fact type are its facts.)
+  for (const [k, v] of Object.entries(pops.factPopulations)) if (v.length && w.ctx.factById.get(k)?.objectified) active.add(k)
   const facts = w.els.facts.filter(f => pops.factPopulations[f.id]?.length || f.roles.some(r => active.has(r.objectTypeId)))
   const factIds = new Set(facts.map(f => f.id))
   // Preferred identifiers always: they say how instances are identified.
@@ -452,8 +473,10 @@ function project(shape, ev) {
   const out = []
   for (const e of ev.population(shape.joinType).instances ?? []) {
     let acc = [[]]
-    for (const ix of index) acc = acc.flatMap(xs => (ix.get(keyOf(e)) ?? []).map(v => [...xs, v]))
-    out.push(...acc.slice(0, 20).map(vals => Object.assign(vals, { entity: e })))
+    // (At most 20 combinations per entity: a chased population may give an
+    // entity many values per part, and their product would not end.)
+    for (const ix of index) acc = acc.flatMap(xs => (ix.get(keyOf(e)) ?? []).map(v => [...xs, v])).slice(0, 20)
+    out.push(...acc.map(vals => Object.assign(vals, { entity: e })))
   }
   return out
 }
@@ -517,7 +540,8 @@ function uniquenessOf(w) {
 // Implicit participation per entity type that is not independent: the roles
 // besides its identification that its instances may play (its own and its
 // supertypes' first), as { key: 'part:<typeId>', typeId, roles: [{ factId,
-// roleIndex }] }. Nested (objectified) types are left out.
+// roleIndex }] }. Objectified fact types count too (their instances are
+// the facts; the link fact types identify them).
 function participationOf(w) {
   if (w.participation) return w.participation
   const identified = identifiedRoles(w.els)
@@ -541,6 +565,15 @@ function participationOf(w) {
     const sub = []
     for (const [s, sups] of w.supers) if (sups.includes(t.id)) for (const f of w.ctx.facts) f.roles.forEach((r, i) => { if (r.objectTypeId === s && !identified.has(`${f.id}:${i}`)) sub.push({ factId: f.id, roleIndex: i }) })
     out.push({ key: `part:${t.id}`, typeId: t.id, roles, also: sub })
+  }
+  for (const n of w.ctx.facts) {
+    if (!n.objectified || n.objectifiedKind === 'value' || n.isIndependent || n.derivation === 'derived') continue
+    const roles = []
+    for (const f of w.ctx.facts) {
+      if (f.derivation === 'derived') continue
+      f.roles.forEach((r, i) => { if (r.objectTypeId === n.id && !identified.has(`${f.id}:${i}`)) roles.push({ factId: f.id, roleIndex: i, own: true }) })
+    }
+    out.push({ key: `part:${n.id}`, typeId: n.id, roles, also: [] })
   }
   return (w.participation = out)
 }
@@ -687,6 +720,8 @@ function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds =
     }
     if (!tgds) return { pops, fired, failed: null, branching, points }
     // Mandatory roles, subset and equality constraints: add what they ask for.
+    // (Over copies of the instances: adding a fact may add instances, to the
+    // very lists the evaluator gives.)
     const ev = evaluatorOf(w, pops)
     let added = false
     for (const f of w.ctx.facts) {
@@ -695,7 +730,7 @@ function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds =
         const key = `${f.id}:mand:${i}`
         if (!r.mandatory || isDeonticMandatory(r) || disabled.has(key)) return
         const played = new Set((ev.factTuples(f.id).tuples ?? []).map(t => keyOf(t[i])))
-        for (const e of ev.population(r.objectTypeId).instances ?? []) {
+        for (const e of [...(ev.population(r.objectTypeId).instances ?? [])]) {
           if (played.has(keyOf(e))) continue
           addTuple(w, pops, f.id, f.roles.map((q, j) => (j === i ? e : freshCell(w, pops, q.objectTypeId, fresh))))
           fired.add(key)
@@ -738,7 +773,7 @@ function chase(w, start, fresh, { disabled = new Set(), tgds = true, maxRounds =
       // From the facts as they are now (mandatory roles may just have added some).
       // (The evaluator gives the tuples of identifying facts too.)
       for (const m of [...p.roles, ...p.also]) for (const t of [...(pops.factPopulations[m.factId] ?? []), ...(ev.factTuples(m.factId).tuples ?? [])]) played.add(keyOf(t[m.roleIndex]))
-      for (const e of ev.population(p.typeId).instances ?? []) {
+      for (const e of [...(ev.population(p.typeId).instances ?? [])]) {
         if (played.has(keyOf(e))) continue
         if (!p.roles.length && !p.also.length) return { pops, fired: fired.add(p.key), failed: p.key, points }
         if (!p.roles.length) { branching = true; continue }
@@ -822,10 +857,11 @@ export function entriesOf(state, schemaId) {
     selectedInternalFrequency: null, selectedValueRange: null, selectedCardinalityRange: null,
   }
   const { entries, implicit, ctx } = formalise(scoped, { wholeSchema: true })
-  // Implicit participation of entity types that are not independent (value
-  // types and nested types are left out: no rule carries a lone value, and
-  // nested types are not checked yet).
-  const participation = (implicit?.participation ?? []).filter(e => e.formula && ctx.otById?.get(e.elementId)?.kind === 'entity')
+  // Implicit participation of entity types and objectified fact types that
+  // are not independent (value types are left out: no rule carries a lone
+  // value).
+  const nested = new Set(scoped.facts.filter(f => f.objectified && f.objectifiedKind !== 'value').map(f => f.id))
+  const participation = (implicit?.participation ?? []).filter(e => e.formula && (ctx.otById?.get(e.elementId)?.kind === 'entity' || nested.has(e.elementId)))
   // A subtype's own identifier read as an ordinary key (inheritedIdentifiers.js):
   // that each instance has one holds by how its instances are identified.
   const ownIds = new Set(scoped.facts.flatMap(f => (f.ownIdentifierRoles ?? []).map(ri => `${f.id}:mand:${ri}`)))
@@ -1185,12 +1221,17 @@ export function contains(w, b, a, invented = []) {
   // A cell's key with the wild parts (also inside composite identifiers) as *.
   const kw = (c, typeId, depth = 0) => {
     if (wild.has(typeId)) return '*'
+    // (A table keyed by another table's invented surrogate, a subtype's.)
+    const own = schemeOf(typeId, w.els)
+    if (own?.kind === 'refMode' && wild.has(own.rm.vtId)) return '*'
     const sch = depth < 4 && Array.isArray(c) ? schemeOf(typeId, w.els) : null
     if (sch?.kind === 'composite') return `[${c.map((x, i) => kw(x, playerOf(w, sch.parts[i]?.factId, sch.parts[i]?.roleIndex), depth + 1)).join(',')}]`
     return keyOf(c)
   }
   for (const [id, cells] of Object.entries(a.populations)) {
     if (wild.has(id)) continue
+    const sch = schemeOf(id, w.els)
+    if (sch?.kind === 'refMode' && wild.has(sch.rm.vtId)) { if (cells.length && !(b.populations[id] ?? []).length) return false; continue }
     const have = new Set((b.populations[id] ?? []).map(c => kw(c, id)))
     if (cells.some(c => !have.has(kw(c, id)))) return false
   }
@@ -1262,7 +1303,21 @@ function accountEntry(entry, A, B, run, fresh) {
   const carried = [], keptByRules = []
   for (const V0 of cands.slice(0, 4)) {
     let I0 = carriedBack(V0)
-    if (I0) { carried.push({ V: V0, I0 }); continue }
+    if (I0) {
+      carried.push({ V: V0, I0 })
+      // Completed by the side's own constraints too (in the cases that
+      // finish): the bare violation may break a constraint of the other side
+      // only because it leaves out facts this side asks for (an or-constraint
+      // that a column's NOT NULL boolean reads).
+      let more = 0
+      for (const ch of chaseBranches(A, V0, fresh, { disabled: new Set([entry.key]) }, 8)) {
+        if (more >= 2) break
+        if (ch.failed || ch.exceeded || sizeOf(ch.pops) === sizeOf(V0) || !violations(A, ch.pops, match).length) continue
+        const I1 = carriedBack(ch.pops)
+        if (I1) { carried.push({ V: ch.pops, I0: I1 }); more++ }
+      }
+      continue
+    }
     let V = V0
     // Every way the side's own constraints complete it (a disjunction, such
     // as the roles a type that is not independent may play, is a choice:
@@ -1338,6 +1393,15 @@ function accountEntry(entry, A, B, run, fresh) {
         // A constraint that asks for facts, gone already: more facts keep it
         // gone, as long as the way back has no negation.
         if (positive && run.monotoneBack && gone(ch.pops)) return { killed: { I0, ch } }
+        // A finite model all the same: the roles the chase asks to be played
+        // by instances there already (a mandatory role its own type plays,
+        // say), legal and still breaking the constraint once carried back.
+        const reuse = Object.assign((t) => fresh(t), { types: fresh.types, reuse: true })
+        for (const ch2 of chaseBranches(B, I0, reuse, {}, 16)) {
+          if (ch2.exceeded || ch2.failed || issuesOf(B, ch2.pops).length) continue
+          const back = backOf(ch2.pops)
+          if (violations(A, back, match).length) return { lost: { I: ch2.pops, V, back } }
+        }
         return { undecided: 'The other schema’s constraints keep adding facts (the chase stopped).' }
       }
       if (ch.failed || ch.stopped) return { killed: { I0, ch } }
@@ -1345,6 +1409,13 @@ function accountEntry(entry, A, B, run, fresh) {
       const back = backOf(ch.pops)
       if (violations(A, back, match).length && !bad.length) return { lost: { I: ch.pops, V, back } }
       if (bad.length) {
+        // A labelled null of a type with few values (a boolean, a list of
+        // values) may be the value that mends it: each of them tried.
+        for (const I of finiteCases(B, ch.pops)) {
+          if (I === ch.pops || issuesOf(B, I).length) continue
+          const back2 = backOf(I)
+          if (violations(A, back2, match).length) return { lost: { I, V, back: back2 } }
+        }
         // I breaks a constraint the chase does not apply.
         const k = bad.find(i => isKilling(i, B))
         if (k) return { killed: { I0, ch: { ...ch, failed: issueKey(k) } } }

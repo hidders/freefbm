@@ -112,6 +112,7 @@ function atomicOf(side, ctx, els) {
   const facts = ex.atoms.filter(a => a.t === 'fact')
   const used = new Set()   // identifying atoms
   const partVars = new Set()  // variables that are reference parts of another
+  const alts = new Map()      // variable → [{ typeId, key }]: supertypes' identifiers it names
   const memo = new Map()
   const keyOfVar = (id, depth = 0) => {
     if (memo.has(id)) return memo.get(id)
@@ -137,6 +138,20 @@ function atomicOf(side, ctx, els) {
     return out
   }
   for (const v of ex.vars) keyOfVar(v.id)
+  // A subtype with an identifier of its own may also name its supertypes'
+  // identifiers (an Rmap row of its table keeps them): those atoms are about
+  // the entity's identity too, not content.
+  for (const v of ex.vars) {
+    if (ctx.otById.get(v.typeId)?.kind !== 'entity' || !memo.get(v.id)) continue
+    for (const sup of supertypesOf(v.typeId, els)) {
+      const parts = schemeParts(sup, ctx, els) ?? []
+      const found = parts.map(p => facts.find(x => x.factId === p.factId && x.args[p.entityRoleIndex] === v.id && x.args[p.roleIndex] && keyOfVar(x.args[p.roleIndex])))
+      if (!parts.length || !found.every(Boolean)) continue
+      found.forEach((a, i) => { used.add(a); partVars.add(a.args[parts[i].roleIndex]) })
+      if (!alts.has(v.id)) alts.set(v.id, [])
+      alts.get(v.id).push({ typeId: sup, key: found.flatMap((a, i) => keyOfVar(a.args[parts[i].roleIndex])) })
+    }
+  }
   const content = facts.filter(a => !used.has(a))
   const types = ex.atoms.filter(a => a.t === 'type' && vars.get(a.arg)?.typeId !== a.typeId)
   if (content.length === 1 && !types.length) {
@@ -155,7 +170,7 @@ function atomicOf(side, ctx, els) {
       && !facts.some(a => used.has(a) && a.args.some((x, i) => x === v.id && !at(v.typeId, ctx.factById.get(a.factId)?.roles[i]?.objectTypeId))))
     if (roots.length !== 1 || !roots[0]) return null
     const key = keyOfVar(roots[0].id)
-    return key ? { kind: 'entity', typeId: typed ? typed.typeId : roots[0].typeId, key } : null
+    return key ? { kind: 'entity', typeId: typed ? typed.typeId : roots[0].typeId, key, ...(alts.has(roots[0].id) ? { alt: alts.get(roots[0].id) } : {}) } : null
   }
   return null
 }

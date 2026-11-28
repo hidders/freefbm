@@ -1846,7 +1846,7 @@ export function computePopulationIssues(rawData) {
 
       const tupleClassKey = (rawV, si) => {
         const otIds = posOtIds(si)
-        const cells = Array.isArray(rawV) ? rawV : [rawV]
+        const cells = otIds.length === 1 || !Array.isArray(rawV) ? [rawV] : rawV   // (one position: the cell itself, a list for a composite identifier)
         const reps = cells.map((v, p) => {
           const otId = otIds[p]; if (!otId) return null
           const k = projCellKey(v); if (k === null) return null
@@ -1901,7 +1901,7 @@ export function computePopulationIssues(rawData) {
       })
       const tupleClassKey = (rawV, si) => {
         const otIds = posOtIds(si)
-        const cells = Array.isArray(rawV) ? rawV : [rawV]
+        const cells = otIds.length === 1 || !Array.isArray(rawV) ? [rawV] : rawV   // (one position: the cell itself, a list for a composite identifier)
         const reps = cells.map((v, p) => {
           const otId = otIds[p]; if (!otId) return null
           const k = projCellKey(v); if (k === null) return null
@@ -2510,7 +2510,7 @@ function _buildSetRows(data, constraintId, allowedTypes, selectedLcaIds = null) 
   })
 
   const tupleClassKey = (rawV, si) => {
-    const cells = Array.isArray(rawV) ? rawV : [rawV]
+    const cells = (seqs[si] ?? []).length === 1 || !Array.isArray(rawV) ? [rawV] : rawV   // (one position: the cell itself)
     const reps = cells.map((v, p) => {
       const otId = posOtId(si, p); if (!otId) return null
       const k = projCellKey(v); if (k === null) return null
@@ -3139,7 +3139,7 @@ export function computeUniquenessProjection(data, constraintId) {
     if (queryResult) {
       const raw = []
       for (const rawVal of queryResult.values) {
-        const vals = Array.isArray(rawVal) ? rawVal : [rawVal]
+        const vals = (con.sequences?.[0] ?? []).length === 1 || !Array.isArray(rawVal) ? [rawVal] : rawVal   // (one position: the cell itself)
         const norms = vals.map(projCellKey)
         if (norms.some(n => n === null)) continue
         const key = JSON.stringify(norms)

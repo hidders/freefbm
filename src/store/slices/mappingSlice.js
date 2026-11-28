@@ -34,28 +34,44 @@ import { occurrenceRoleLinks } from '../../diagram/roleLinks.js'
 export function carryLost(get, m, schemaId, elementIds, { to = 'the new version' } = {}) {
   const keys = new Set(entriesOf(get(), schemaId).filter(e => !e.possible && (!elementIds || elementIds.has(e.elementId))).map(e => e.key))
   if (!keys.size) return []
-  const gen = accountingSteps(get(), m, { onlyKeys: keys })
-  let r
-  do r = gen.next(); while (!r.done)
+  const accounted = (onlyKeys) => {
+    const gen = accountingSteps(get(), m, { onlyKeys })
+    let r
+    do r = gen.next(); while (!r.done)
+    return r.value.sides.source
+  }
   const out = []
+  const undecided = new Set()
+  let added = 0
+  carryEach(accounted(keys))
+  // The undecided ones again once the others are carried: with those, the
+  // other side may have a finite counterexample (or keep them).
+  if (added && undecided.size) carryEach(accounted(undecided).filter(x => x.status === 'lost'))
+  return out
+
+  function carryEach(xs) {
   let ctx = null
   // Lost ones, and ones accounting cannot decide (the chase may not end,
   // say a mandatory role its own type plays): carried when the translation
   // is found to keep them, which settles the question either way.
-  for (const x of r.value.sides.source.filter(e => e.status === 'lost' || e.status === 'unknown')) {
+  for (const x of xs.filter(e => e.status === 'lost' || e.status === 'unknown')) {
     const kind = x.entry?.kind ?? 'constraint'
     let what = x.label || (x.entry?.subject ? `${kind} · ${x.entry.subject}` : kind)
     if (!x.label && !x.entry?.subject && x.entry?.formula) {
       try { what = `${kind} ${formulaToString(x.entry.formula, (ctx ??= makeContext(get())))}` } catch { /* the kind alone */ }
     }
     const p = proposeTranslation(get(), m, x, 'source')
-    if (x.status === 'unknown' && (p.error || p.errors?.length || !['native', 'implied'].includes(p.status))) continue
-    if (p.error || p.errors?.length || !['native', 'implied'].includes(p.status)) { out.push(`Kept by nothing in ${to}: ${what}${p.error ? ` (${p.error})` : ''}; the Equivalence report says more`); continue }
+    if (x.status === 'unknown' && (p.error || p.errors?.length || !['native', 'implied'].includes(p.status))) { undecided.add(x.key); continue }
+    // A lost one whose translation accounting could not check (the chase
+    // did not end) is carried all the same: without it, it is lost for sure.
+    const unchecked = x.status === 'lost' && !p.error && !p.errors?.length && p.status === 'unknown'
+    if (!unchecked && (p.error || p.errors?.length || !['native', 'implied'].includes(p.status))) { out.push(`Kept by nothing in ${to}: ${what}${p.error ? ` (${p.error})` : ''}; the Equivalence report says more`); continue }
     get().addCarriedConstraint(m.targetSchemaId, { rule: p.rule, deontic: p.deontic, graphical: p.graphical,
       from: { mappingId: m.id, schemaId: m.sourceSchemaId, text: what } })
-    out.push(`Added ${p.graphical ? GRAPHICAL_NAME[p.graphical.constraintType] : 'a formula constraint'} to ${to} for ${what}`)
+    out.push(`Added ${p.graphical ? GRAPHICAL_NAME[p.graphical.constraintType] : 'a formula constraint'} to ${to} for ${what}${unchecked ? ' (whether it keeps it could not be checked)' : ''}`)
+    added++
   }
-  return out
+  }
 }
 
 // Whether any type or fact type of a schema has a population.

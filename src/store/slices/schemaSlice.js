@@ -8,6 +8,7 @@ import { guessOrmSchema } from '../../relational/guessOrm.js'
 import { generateRelational } from '../../relational/rmap.js'
 import { runMapping, withRunApplied } from '../../mapping/runMapping.js'
 import { carryLost } from './mappingSlice.js'
+import { numberInvented } from '../../mapping/exchanges.js'
 
 // Several schemas in one file (workbench plan, step 2). The schemas are listed
 // in `schemas`; elements and diagrams point to theirs with `schemaId`. The
@@ -297,7 +298,8 @@ export const createSchemaSlice = (set, get) => ({
       if (hasPop) {
         try {
           const run = runMapping(now, g.mapping, 'forward')
-          set(s => ({ ...withRunApplied(s, run) }))
+          // (Surrogates the run invents, ⟨…⟩, numbered 1, 2, … as a database would.)
+          set(s => { const s2 = { ...s, ...withRunApplied(s, run) }; return { ...s2, ...numberInvented(s2, schema.id) } })
           const rows = built.objectTypes.filter(o => o.kind === 'entity').reduce((n, o) => n + (run.populations?.[o.id]?.length ?? 0), 0)
           carried = { rows, problems: run.log.filter(l => l.level !== 'note') }
         } catch (err) {
