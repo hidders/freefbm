@@ -54,6 +54,7 @@ import { plainParts } from '../verbalisation/hyphenBinding.js'
 import { isIndependentType, identifiedRoles } from '../utils/independence.js'
 import { withImplicitRules } from './sameModel.js'
 import { withInheritedIdentifiers } from './inheritedIdentifiers.js'
+import { finiteCases } from './fold.js'
 
 const isFresh = (v) => typeof v === 'string' && v.startsWith('⊥')
 const keyOf = (cell) => JSON.stringify(projCellKey(cell))
@@ -151,6 +152,11 @@ function addTuple(w, pops, factId, tuple) {
 // A new instance of a type that equals no other: a labelled null, or for a
 // composite identifier a combination of them.
 function freshCell(w, pops, typeId, fresh, depth = 0) {
+  // Looking for a finite model: an instance there already plays the role.
+  if (fresh.reuse) {
+    const have = pops.populations[typeId] ?? (w.ctx.factById.get(typeId)?.objectified ? pops.factPopulations[typeId] : null)
+    if (have?.length) return have[0]
+  }
   const ot = w.ctx.otById.get(typeId)
   if (!ot) {
     // An instance of an objectified fact type without an identifier of its
@@ -1292,7 +1298,21 @@ function accountEntry(entry, A, B, run, fresh) {
   const carried = [], keptByRules = []
   for (const V0 of cands.slice(0, 4)) {
     let I0 = carriedBack(V0)
-    if (I0) { carried.push({ V: V0, I0 }); continue }
+    if (I0) {
+      carried.push({ V: V0, I0 })
+      // Completed by the side's own constraints too (in the cases that
+      // finish): the bare violation may break a constraint of the other side
+      // only because it leaves out facts this side asks for (an or-constraint
+      // that a column's NOT NULL boolean reads).
+      let more = 0
+      for (const ch of chaseBranches(A, V0, fresh, { disabled: new Set([entry.key]) }, 8)) {
+        if (more >= 2) break
+        if (ch.failed || ch.exceeded || sizeOf(ch.pops) === sizeOf(V0) || !violations(A, ch.pops, match).length) continue
+        const I1 = carriedBack(ch.pops)
+        if (I1) { carried.push({ V: ch.pops, I0: I1 }); more++ }
+      }
+      continue
+    }
     let V = V0
     // Every way the side's own constraints complete it (a disjunction, such
     // as the roles a type that is not independent may play, is a choice:
@@ -1368,6 +1388,15 @@ function accountEntry(entry, A, B, run, fresh) {
         // A constraint that asks for facts, gone already: more facts keep it
         // gone, as long as the way back has no negation.
         if (positive && run.monotoneBack && gone(ch.pops)) return { killed: { I0, ch } }
+        // A finite model all the same: the roles the chase asks to be played
+        // by instances there already (a mandatory role its own type plays,
+        // say), legal and still breaking the constraint once carried back.
+        const reuse = Object.assign((t) => fresh(t), { types: fresh.types, reuse: true })
+        for (const ch2 of chaseBranches(B, I0, reuse, {}, 16)) {
+          if (ch2.exceeded || ch2.failed || issuesOf(B, ch2.pops).length) continue
+          const back = backOf(ch2.pops)
+          if (violations(A, back, match).length) return { lost: { I: ch2.pops, V, back } }
+        }
         return { undecided: 'The other schema’s constraints keep adding facts (the chase stopped).' }
       }
       if (ch.failed || ch.stopped) return { killed: { I0, ch } }
@@ -1375,6 +1404,13 @@ function accountEntry(entry, A, B, run, fresh) {
       const back = backOf(ch.pops)
       if (violations(A, back, match).length && !bad.length) return { lost: { I: ch.pops, V, back } }
       if (bad.length) {
+        // A labelled null of a type with few values (a boolean, a list of
+        // values) may be the value that mends it: each of them tried.
+        for (const I of finiteCases(B, ch.pops)) {
+          if (I === ch.pops || issuesOf(B, I).length) continue
+          const back2 = backOf(I)
+          if (violations(A, back2, match).length) return { lost: { I, V, back: back2 } }
+        }
         // I breaks a constraint the chase does not apply.
         const k = bad.find(i => isKilling(i, B))
         if (k) return { killed: { I0, ch: { ...ch, failed: issueKey(k) } } }

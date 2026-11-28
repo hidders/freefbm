@@ -246,6 +246,29 @@ export function translateEntry(state, mapping, entry, side) {
       const body = k(c.slots)
       return existsAll(declared(c.fresh), andOf([c.pre, body]))
     }
+    // A count of entities with a composite identifier, for bounds 0 and 1:
+    // at least one is ∃s̄ (E(s̄) ∧ φ), at most one ¬∃s̄ s̄' (E(s̄) ∧ φ ∧
+    // E(s̄') ∧ φ' ∧ s̄ ≉ s̄'), φ' φ translated again over new slots.
+    const countOfComposite = (g) => {
+      const x = g.vars[0]
+      const once = () => {
+        const slots = bind(x)
+        const body = andOf([entityGuard(x.typeId, slots, x), tr(g.body)].filter(Boolean))
+        return { slots, body, vars: declared(slots) }
+      }
+      const atLeastOne = () => { const a = once(); return existsAll(a.vars, a.body) }
+      const atMostOne = () => {
+        const a = once(), b = once()
+        const differ = orOf(a.slots.map((s, i) => ({ t: 'vcmp', op: '≉', left: { t: 'var', id: s }, right: { t: 'var', id: b.slots[i] } })))
+        return { t: 'not', arg: existsAll([...a.vars, ...b.vars], andOf([a.body, b.body, differ])) }
+      }
+      const { op, n } = g
+      if (op === '≥' && n === 1) return atLeastOne()
+      if ((op === '≤' && n === 0) || (op === '<' && n === 1)) return { t: 'not', arg: atLeastOne() }
+      if ((op === '≤' && n === 1) || (op === '<' && n === 2)) return atMostOne()
+      if (op === '=' && n === 1) return andOf([atLeastOne(), atMostOne()])
+      return fail('it counts entities with a composite identifier')
+    }
     const declared = (slots) => slots.map(id => ({ id, typeId: slotType.get(id) ?? fail('a value of the constraint has no counterpart in the other schema') }))
 
     const term = (t) => {
@@ -306,8 +329,8 @@ export function translateEntry(state, mapping, entry, side) {
         }
         case 'count': {
           if (g.vars.length !== 1) fail('it counts tuples of several variables')
+          if (keyLeaves(g.vars[0].typeId, ctxX, els)?.length > 1) return countOfComposite(g)
           const slots = bind(g.vars[0])
-          if (slots.length !== 1) fail('it counts entities with a composite identifier')
           const guard = entityGuard(g.vars[0].typeId, slots, g.vars[0])
           const body = andOf([guard, tr(g.body)])
           const [v] = declared(slots)
@@ -368,7 +391,13 @@ export function translateEntry(state, mapping, entry, side) {
         if (u?.length === 1) unique.add(`${fy.id}:${u[0]}`)
     }
     const mandatory = new Set(ctxY.facts.flatMap(fy => (fy.roles ?? []).map((r, i) => (r.mandatory ? `${fy.id}:${i}` : null)).filter(Boolean)))
-    const rule = simplify(tr(f), { unique, mandatory })
+    // ∀x̄ (L ↔ R) as ∀x̄ (L → R) ∧ ∀x̄ (R → L): each direction's values are
+    // then ranged over where its antecedent reads them (a value type of the
+    // other schema may be split over several columns' types).
+    const split = (g) => (g.t === 'forall' && g.body.t === 'iff'
+      ? { t: 'and', args: [{ ...g, body: { t: 'implies', left: g.body.left, right: g.body.right } }, { ...g, body: { t: 'implies', left: g.body.right, right: g.body.left } }] }
+      : g.t === 'and' ? { ...g, args: g.args.map(split) } : g)
+    const rule = simplify(tr(split(f)), { unique, mandatory })
     return { rule, deontic }
   } catch (e) {
     if (e instanceof TranslateError) return { error: e.message }

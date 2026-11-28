@@ -147,6 +147,44 @@ function genSchema(r) {
       d.facts.push(g)
     }
   }
+  // External constraints: inclusive-/exclusive-or over roles of one player,
+  // exclusion, subset and equality between roles (or role pairs) with the
+  // same players, and an external uniqueness over the far roles of two
+  // binaries sharing a player (its query and target inferred by the store).
+  d.ext = []
+  const roles = d.facts.flatMap(f => f.players.map((p, i) => ({ fid: f.id, i, p })))
+    .filter(x => !d.values.some(v => v.id === x.p))
+  const nX = r.int(0, 3)
+  for (let k = 0; k < nX; k++) {
+    const kind = r.pick(['or', 'or', 'set', 'set', 'pair', 'uc'])
+    const id = `x${k}`
+    if (kind === 'or' || kind === 'set') {
+      const a = r.pick(roles)
+      const others = roles.filter(x => x.p === a.p && x.fid !== a.fid)
+      if (!a || !others.length) continue
+      const b = r.pick(others)
+      const seqs = [[{ fid: a.fid, i: a.i }], [{ fid: b.fid, i: b.i }]]
+      if (kind === 'or') d.ext.push({ id, type: r.chance(0.4) ? 'exclusiveOr' : 'inclusiveOr', player: a.p, seqs })
+      else d.ext.push({ id, type: r.pick(['exclusion', 'subset', 'subset', 'equality']), seqs })
+    } else if (kind === 'pair') {
+      const bins = d.facts.filter(f => f.players.length === 2)
+      const f = r.pick(bins)
+      if (!f) continue
+      const same = bins.filter(g => g.id !== f.id && [...g.players].sort().join() === [...f.players].sort().join())
+      if (!same.length) continue
+      const g = r.pick(same)
+      const j0 = g.players[0] === f.players[0] ? 0 : 1
+      d.ext.push({ id, type: r.pick(['exclusion', 'subset', 'equality']), seqs: [[{ fid: f.id, i: 0 }, { fid: f.id, i: 1 }], [{ fid: g.id, i: j0 }, { fid: g.id, i: 1 - j0 }]] })
+    } else {
+      const bins = d.facts.filter(f => f.players.length === 2)
+      const pairs = []
+      for (const f of bins) for (const g of bins) if (f.id < g.id) for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++)
+        if (f.players[i] === g.players[j] && d.entities.some(e => e.id === f.players[i])) pairs.push({ f, i, g, j })
+      if (!pairs.length) continue
+      const { f, i, g, j } = r.pick(pairs)
+      d.ext.push({ id, type: 'uniqueness', target: f.players[i], near: [{ fid: f.id, i }, { fid: g.id, i: j }], seqs: [[{ fid: f.id, i: 1 - i }, { fid: g.id, i: 1 - j }]] })
+    }
+  }
   return d
 }
 
@@ -208,6 +246,10 @@ function toModel(d, pop) {
       readingParts: words, uniqueness: f.ucs.map((u, k) => ({ id: `${f.id}_u${k}`, roles: u })),
       ...(f.objectified ? { objectified: true, objectifiedKind: 'entity', objectifiedName: `O${f.id}`, isIndependent: !!f.independent, objectifiedIdentifier: f.identifier ?? null } : {}) })
   }
+  for (const x of d.ext ?? []) externalConstraints.push({ id: x.id, kind: 'constraint', constraintType: x.type, x: 0, y: 0, schemaId: S,
+    sequences: x.seqs.map(q => q.map(({ fid, i }) => ({ kind: 'role', factId: fid, roleIndex: i }))), queries: x.seqs.map(() => null),
+    targetObjectTypeId: x.target ?? null, isPreferredIdentifier: false, frequency: null,
+    exhaustive: x.type === 'inclusiveOr' || x.type === 'exclusiveOr', exclusive: x.type === 'exclusiveOr', subtypeIds: [] })
   if (pop?.factPopulations) pop = { ...pop, factPopulations: cascadeNested(d, clone(pop.factPopulations)) }
   return {
     version: 3,
@@ -329,6 +371,48 @@ function repairPopulation(d, pops, facts, objs) {
   }
   for (let round = 0; round < 50; round++) {
     let changed = false
+    cascadeNested(d, facts)
+    // External constraints: tuples out of the second sequence (or the
+    // subset side), and objects out that play none of an or-constraint's roles.
+    for (const x of d.ext ?? []) {
+      const proj = (q, t) => key(q.map(s => t[s.i]))
+      const projOf = (q) => new Set((facts[q[0].fid] ?? []).map(t => proj(q, t)))
+      const keepOnly = (q, keep) => {
+        const ts = facts[q[0].fid] ?? []
+        facts[q[0].fid] = ts.filter(t => keep(proj(q, t)))
+        if (facts[q[0].fid].length !== ts.length) changed = true
+      }
+      const [A, B] = x.seqs
+      if (x.type === 'uniqueness') {
+        // At most one instance of the target per combination of far values.
+        const [a, b] = x.near
+        const farA = new Map()
+        for (const t of facts[a.fid] ?? []) { const k = key(t[a.i]); farA.set(k, [...(farA.get(k) ?? []), key(t[1 - a.i])]) }
+        const seen = new Map()
+        const ts = facts[b.fid] ?? []
+        facts[b.fid] = ts.filter(t => {
+          const e = key(t[b.i]), combos = (farA.get(e) ?? []).map(va => `${va}|${key(t[1 - b.i])}`)
+          if (combos.some(c => seen.has(c) && seen.get(c) !== e)) return false
+          combos.forEach(c => seen.set(c, e))
+          return true
+        })
+        if (facts[b.fid].length !== ts.length) changed = true
+        continue
+      }
+      if (x.type === 'exclusion' || x.type === 'exclusiveOr') { const inA = projOf(A); keepOnly(B, k => !inA.has(k)) }
+      if (x.type === 'subset' || x.type === 'equality') { const inB = projOf(B); keepOnly(A, k => inB.has(k)) }
+      if (x.type === 'equality') { const inA = projOf(A); keepOnly(B, k => inA.has(k)) }
+      if (x.type === 'inclusiveOr' || x.type === 'exclusiveOr') {
+        const played = new Set(x.seqs.flatMap(q => [...projOf(q)]))
+        const o = objectifiedOf(d, x.player)
+        if (o) {
+          const ts = facts[o.id] ?? []
+          facts[o.id] = ts.filter(t => played.has(key([t])))
+          if (facts[o.id].length !== ts.length) changed = true
+        } else for (const [rk, c] of Object.entries({ ...(objs[x.player] ?? {}) }))
+          if (objs[x.player]?.[rk] !== undefined && !played.has(key([c]))) { remove(x.player, rk); changed = true }
+      }
+    }
     cascadeNested(d, facts)
     // Instances of objectified fact types that miss a mandatory role, or play
     // nothing while not independent: their tuples out.
@@ -577,7 +661,8 @@ function shrink(d, pop, seed, prop) {
   for (let changed = true, rounds = 0; changed && rounds < 20; rounds++) {
     changed = false
     const tries = []
-    cur.d.facts.forEach((f0, i) => cur.d.facts.some(g => g.players.includes(f0.id)) || tries.push(() => { const x = clone(cur); const f = x.d.facts.splice(i, 1)[0]; delete x.pop.factPopulations[f.id]; return x }))
+    cur.d.facts.forEach((f0, i) => cur.d.facts.some(g => g.players.includes(f0.id)) || tries.push(() => { const x = clone(cur); const f = x.d.facts.splice(i, 1)[0]; delete x.pop.factPopulations[f.id]; x.d.ext = (x.d.ext ?? []).filter(c => ![...c.seqs.flat(), ...(c.near ?? [])].some(s => s.fid === f.id)); return x }))
+    ;(cur.d.ext ?? []).forEach((_, i) => tries.push(() => { const x = clone(cur); x.d.ext.splice(i, 1); return x }))
     cur.d.entities.forEach((e, i) => {
       if (cur.d.entities.some(o => o.supers.includes(e.id) || o.composite?.partEntity === e.id) || cur.d.facts.some(f => f.players.includes(e.id))) return
       tries.push(() => { const x = clone(cur); x.d.entities.splice(i, 1); delete x.pop.populations[e.id]; delete x.pop.objs[e.id]; for (const k of Object.keys(x.pop.factPopulations)) if (k.startsWith(`${e.id}_`)) delete x.pop.factPopulations[k]; return x })
