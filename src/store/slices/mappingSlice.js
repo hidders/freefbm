@@ -50,10 +50,13 @@ export function carryLost(get, m, schemaId, elementIds, { to = 'the new version'
     }
     const p = proposeTranslation(get(), m, x, 'source')
     if (x.status === 'unknown' && (p.error || p.errors?.length || !['native', 'implied'].includes(p.status))) continue
-    if (p.error || p.errors?.length || !['native', 'implied'].includes(p.status)) { out.push(`Kept by nothing in ${to}: ${what}${p.error ? ` (${p.error})` : ''}; the Equivalence report says more`); continue }
+    // A lost one whose translation accounting could not check (the chase
+    // did not end) is carried all the same: without it, it is lost for sure.
+    const unchecked = x.status === 'lost' && !p.error && !p.errors?.length && p.status === 'unknown'
+    if (!unchecked && (p.error || p.errors?.length || !['native', 'implied'].includes(p.status))) { out.push(`Kept by nothing in ${to}: ${what}${p.error ? ` (${p.error})` : ''}; the Equivalence report says more`); continue }
     get().addCarriedConstraint(m.targetSchemaId, { rule: p.rule, deontic: p.deontic, graphical: p.graphical,
       from: { mappingId: m.id, schemaId: m.sourceSchemaId, text: what } })
-    out.push(`Added ${p.graphical ? GRAPHICAL_NAME[p.graphical.constraintType] : 'a formula constraint'} to ${to} for ${what}`)
+    out.push(`Added ${p.graphical ? GRAPHICAL_NAME[p.graphical.constraintType] : 'a formula constraint'} to ${to} for ${what}${unchecked ? ' (whether it keeps it could not be checked)' : ''}`)
   }
   return out
 }

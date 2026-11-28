@@ -209,37 +209,64 @@ export function withInheritedIdentifiers(state, schemaIds) {
     for (const [id, o] of own) {
       const m = new Map()
       toOwn.set(id, m)
-      const vals = new Map()   // canon key → [part cells]
+      // canon key → the own cells it has: one, unless a population that
+      // breaks the own identifier's uniqueness gives it several (each is
+      // then an instance, so that validation sees the break).
+      const vals = new Map()   // canon key → [[values of part k]]
       o.parts.forEach((p, k) => {
         for (const t of F[p.factId] ?? []) {
           const ck = keyOf(t[p.entityRi])
-          if (!vals.has(ck)) vals.set(ck, [])
-          vals.get(ck)[k] = t[p.ri]
+          if (!vals.has(ck)) vals.set(ck, o.parts.map(() => []))
+          const list = vals.get(ck)[k]
+          if (!list.some(c => keyOf(c) === keyOf(t[p.ri]))) list.push(t[p.ri])
         }
       })
-      for (const [ck, cells] of vals) if (cells.length === o.parts.length && cells.every(c => c !== undefined)) m.set(ck, o.parts.length === 1 ? cells[0] : cells)
+      for (const [ck, lists] of vals) {
+        if (lists.some(l => !l.length)) continue
+        const combos = lists.reduce((acc, l) => acc.flatMap(a => l.map(c => [...a, c])), [[]])
+        m.set(ck, combos.map(cs => (o.parts.length === 1 ? cs[0] : cs)))
+      }
     }
-    const ownOf = (typeId, canon) => {
+    // Every own cell of an instance (usually one), [] when nothing gave it.
+    const ownsOf = (typeId, canon) => {
       const h = holderOf(typeId)
-      return h ? toOwn.get(h).get(keyOf(canon)) : canon
+      return h ? toOwn.get(h).get(keyOf(canon)) ?? [] : [canon]
     }
+    const ownOf = (typeId, canon) => ownsOf(typeId, canon)[0]
     const identifying = new Set([...own.values()].flatMap(o => o.parts.map(p => p.factId)))
     const populations = {}, factPopulations = {}, subtypeMappings = {}
     let dropped = 0
+    const canonsOf = new Map()   // type → the copy's cell of each of its cells
     for (const [id, cells] of Object.entries(P)) {
-      if (!holderOf(id)) { populations[id] = cells; continue }
-      const out = []
-      for (const c of cells) { const x = ownOf(id, c); if (x === undefined) dropped++; else out.push(x) }
+      if (!holderOf(id)) { populations[id] = cells; canonsOf.set(id, cells); continue }
+      const out = [], canons = []
+      for (const c of cells) {
+        const xs = ownsOf(id, c)
+        if (!xs.length) dropped++
+        for (const x of xs) { out.push(x); canons.push(c) }
+      }
       populations[id] = out
+      canonsOf.set(id, canons)
       if (own.has(id)) {
         const o = own.get(id)
         for (const e of o.edges) {
-          subtypeMappings[e.id] = cells.filter(c => ownOf(id, c) !== undefined).map(c => {
+          subtypeMappings[e.id] = canons.map(c => {
             const s = ownOf(e.superId, c) ?? c
             return Array.isArray(s) ? s : [s]
           })
         }
       }
+    }
+    // Other links that do not inherit the identifier (D below B, which has
+    // one of its own, and also below A): their rows again, from the cells.
+    for (const st of subtypes) {
+      if (st.inheritsPreferredIdentifier !== false || madeInheriting.has(st.id) || subtypeMappings[st.id]) continue
+      const canons = canonsOf.get(st.subId)
+      if (!canons) continue
+      subtypeMappings[st.id] = canons.map(c => {
+        const x = ownOf(st.superId, c) ?? c
+        return Array.isArray(x) ? x : [x]
+      })
     }
     for (const [id, tuples] of Object.entries(F)) {
       // Tuples of an own identifier follow from the cells again.
@@ -247,7 +274,7 @@ export function withInheritedIdentifiers(state, schemaIds) {
       const f = factById.get(id)
       const hs = f?.roles.map(r => holderOf(r.objectTypeId)) ?? []
       if (!hs.some(Boolean)) { factPopulations[id] = tuples; continue }
-      factPopulations[id] = tuples.map(t => t.map((c, i) => (hs[i] ? ownOf(f.roles[i].objectTypeId, c) : c))).filter(t => t.every(c => c !== undefined))
+      factPopulations[id] = tuples.flatMap(t => t.reduce((acc, c, i) => acc.flatMap(a => (hs[i] ? ownsOf(f.roles[i].objectTypeId, c) : [c]).map(x => [...a, x])), [[]]))
     }
     return { populations, factPopulations, subtypeMappings, dropped }
   }

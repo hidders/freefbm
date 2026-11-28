@@ -93,6 +93,9 @@ function genSchema(r) {
       e.supers.push(sup.id)
       const same = prior.filter(p => p.id !== sup.id && rootOf(d, p.id) === rootOf(d, sup.id))
       if (same.length && r.chance(0.35)) e.supers.push(r.pick(same).id)
+      // A preferred identifier of its own: its instances are its own cells,
+      // and subtypeMappings say which supertype instance each one is.
+      if (r.chance(0.35)) { e.refMode = vt(`${name}Nr`, TEXT); e.ownId = true }
     } else if (prior.some(p => !p.supers.length) && roll < 0.45) {
       // A composite identifier: an earlier root and a number.
       const part = r.pick(prior.filter(p => !p.supers.length))
@@ -157,7 +160,7 @@ function toModel(d, pop) {
           body: { t: 'and', args: [{ t: 'fact', factId: `${e.id}_p0`, args: ['t', 'q0'] }, { t: 'fact', factId: `${e.id}_p1`, args: ['t', 'q1'] }] } }],
         targetObjectTypeId: e.id, isPreferredIdentifier: true, frequency: null, exhaustive: true, exclusive: false, subtypeIds: [] })
     }
-    e.supers.forEach((s, k) => subtypes.push({ id: `st_${e.id}_${k}`, kind: 'subtype', subId: e.id, superId: s, inheritsPreferredIdentifier: k === 0, schemaId: S }))
+    e.supers.forEach((s, k) => subtypes.push({ id: `st_${e.id}_${k}`, kind: 'subtype', subId: e.id, superId: s, inheritsPreferredIdentifier: !e.ownId && k === 0, schemaId: S }))
   }
   const name = (id) => d.entities.find(e => e.id === id)?.name ?? d.values.find(v => v.id === id)?.name
   for (const f of d.facts) {
@@ -170,7 +173,7 @@ function toModel(d, pop) {
     version: 3,
     schema: { schemas: [{ id: S, name: 'S', profile: 'orm2' }], objectTypes, factTypes, subtypes, externalConstraints },
     diagrams: [{ id: 'd1', name: 'S', schemaId: S, occurrences: [] }], activeDiagramId: 'd1',
-    populations: pop?.populations ?? {}, factPopulations: pop?.factPopulations ?? {},
+    ...(pop?.objs ? materialise(d, pop) : { populations: pop?.populations ?? {}, factPopulations: pop?.factPopulations ?? {} }),
   }
 }
 
@@ -182,28 +185,40 @@ function toModel(d, pop) {
 
 function genPopulation(d, r) {
   const pops = {}, facts = {}
+  // objs[entity] maps each object (by the key of its root type's cell) to its
+  // cell in that entity type: its own identifier's value for a subtype with
+  // one, else the cell of the type it inherits its identifier from.
+  const objs = {}
   const add = (id, c) => { pops[id] = pops[id] ?? []; if (!pops[id].some(x => key(x) === key(c))) pops[id].push(c) }
   for (const e of d.entities) {
+    objs[e.id] = {}
     if (e.supers.length) {
-      // Instances of every supertype.
-      const common = (pops[e.supers[0]] ?? []).filter(c => e.supers.every(s => (pops[s] ?? []).some(x => key(x) === key(c))))
-      pops[e.id] = common.filter(() => r.chance(0.6))
+      // Objects of every supertype.
+      let n = 0
+      for (const rk of Object.keys(objs[e.supers[0]] ?? {})) {
+        if (!e.supers.every(s => objs[s]?.[rk] !== undefined) || !r.chance(0.6)) continue
+        if (e.ownId) {
+          const c = `${e.name.toLowerCase()}k${++n}`
+          objs[e.id][rk] = c; add(e.refMode, c); facts[`${e.id}_ref`] = [...(facts[`${e.id}_ref`] ?? []), [c, c]]
+        } else objs[e.id][rk] = objs[e.supers[0]][rk]
+      }
+      pops[e.id] = Object.values(objs[e.id])
       continue
     }
     const n = r.int(0, 4)
-    pops[e.id] = []
     for (let k = 1; k <= n; k++) {
-      if (e.refMode) { const c = `${e.name.toLowerCase()}k${k}`; add(e.id, c); add(e.refMode, c); facts[`${e.id}_ref`] = [...(facts[`${e.id}_ref`] ?? []), [c, c]] }
+      if (e.refMode) { const c = `${e.name.toLowerCase()}k${k}`; objs[e.id][key(c)] = c; add(e.refMode, c); facts[`${e.id}_ref`] = [...(facts[`${e.id}_ref`] ?? []), [c, c]] }
       else {
-        const parts = pops[e.composite.partEntity] ?? []
+        const parts = Object.values(objs[e.composite.partEntity] ?? {})
         if (!parts.length) continue
         const c = [r.pick(parts), `c${k}`]
-        if (pops[e.id].some(x => key(x) === key(c))) continue
-        add(e.id, c); add(e.composite.partValue, c[1])
+        if (objs[e.id][key(c)] !== undefined) continue
+        objs[e.id][key(c)] = c; add(e.composite.partValue, c[1])
         facts[`${e.id}_p0`] = [...(facts[`${e.id}_p0`] ?? []), [c, c[0]]]
         facts[`${e.id}_p1`] = [...(facts[`${e.id}_p1`] ?? []), [c, c[1]]]
       }
     }
+    pops[e.id] = Object.values(objs[e.id])
   }
   const effective = (id) => {
     const out = new Map((pops[id] ?? []).map(c => [key(c), c]))
@@ -226,43 +241,64 @@ function genPopulation(d, r) {
     facts[f.id] = out
     f.players.forEach((p, k) => { if (d.values.some(v => v.id === p)) for (const t of out) add(p, t[k]) })
   }
-  repairPopulation(d, pops, facts)
-  return { populations: pops, factPopulations: facts }
+  repairPopulation(d, pops, facts, objs)
+  return { populations: pops, factPopulations: facts, objs }
+}
+
+// The model's populations from objs: each entity type's cells, and for each
+// subtype link that does not inherit the identifier, the supertype cell of
+// each of the subtype's instances (subtypeMappings, row by row).
+function materialise(d, pop) {
+  const populations = { ...pop.populations }, subtypeMappings = {}
+  for (const e of d.entities) {
+    const objs = pop.objs[e.id] ?? {}
+    populations[e.id] = Object.values(objs)
+    e.supers.forEach((s, k) => {
+      if (!e.ownId && k === 0) return
+      subtypeMappings[`st_${e.id}_${k}`] = Object.keys(objs).map(rk => {
+        const c = pop.objs[s]?.[rk]
+        return Array.isArray(c) ? c : [c]
+      })
+    })
+  }
+  return { populations, factPopulations: pop.factPopulations, subtypeMappings }
 }
 
 // Removes the instances that break a mandatory role or implicit
 // participation, with everything that uses them, until none do.
-function repairPopulation(d, pops, facts) {
+function repairPopulation(d, pops, facts, objs) {
   const subsOf = (id) => d.entities.filter(e => e.supers.includes(id)).map(e => e.id)
-  const below = (id) => [id, ...subsOf(id).flatMap(below)]
-  const ownFacts = (e) => e.refMode ? [`${e.id}_ref`] : e.composite ? [`${e.id}_p0`, `${e.id}_p1`] : []
-  const remove = (typeId, c) => {
-    const k = key(c)
-    for (const id of below(typeId)) pops[id] = (pops[id] ?? []).filter(x => key(x) !== k)
-    // Only from roles of the types below it; a root's instance goes everywhere.
-    const types = new Set(below(typeId))
-    for (const [fid, ts] of Object.entries(facts)) {
-      const players = playersOf(d, fid)
-      facts[fid] = ts.filter(t => !t.some((x, i) => types.has(players[i]) && key(x) === k))
+  const below = (id) => [...new Set([id, ...subsOf(id).flatMap(below)])]
+  // An object (by root key) out of a type and every type below it, with the
+  // tuples that use its cell there.
+  const remove = (typeId, rk) => {
+    for (const id of below(typeId)) {
+      const c = objs[id]?.[rk]
+      if (c === undefined) continue
+      delete objs[id][rk]
+      pops[id] = Object.values(objs[id])
+      for (const [fid, ts] of Object.entries(facts)) {
+        const players = playersOf(d, fid)
+        facts[fid] = ts.filter(t => !t.some((x, i) => players[i] === id && key(x) === key(c)))
+      }
+      // Composite identifiers that use it.
+      for (const e of d.entities.filter(x => x.composite && x.composite.partEntity === id))
+        for (const [rk2, x] of Object.entries(objs[e.id] ?? {})) if (key(x[0]) === key(c)) remove(e.id, rk2)
     }
-    // Composite identifiers that use it.
-    for (const e of d.entities.filter(x => x.composite && types.has(x.composite.partEntity)))
-      for (const x of [...(pops[e.id] ?? [])]) if (key(x[0]) === k) remove(e.id, x)
   }
   for (let round = 0; round < 50; round++) {
     let changed = false
     for (const e of d.entities) {
-      const cells = [...(pops[e.id] ?? [])]
-      for (const c of cells) {
-        const k = key(c)
-        const plays = (fid, i) => (facts[fid] ?? []).some(t => key(t[i]) === k)
-        const mandatoryMissed = d.facts.some(f => f.players.some((p, i) => p === e.id && f.mandatory[i] && !plays(f.id, i)))
+      for (const [rk, c] of Object.entries({ ...(objs[e.id] ?? {}) })) {
+        if (objs[e.id]?.[rk] === undefined) continue
+        const plays = (fid, i, cell) => (facts[fid] ?? []).some(t => key(t[i]) === key(cell))
+        const mandatoryMissed = d.facts.some(f => f.players.some((p, i) => p === e.id && f.mandatory[i] && !plays(f.id, i, c)))
         // Implicit participation: some role besides identification, its own or a supertype's/subtype's.
-        const hier = new Set(d.entities.filter(x => rootOf(d, x.id) === rootOf(d, e.id)).map(x => x.id))
-        const playsAny = d.facts.some(f => f.players.some((p, i) => hier.has(p) && plays(f.id, i)))
-          || d.entities.some(x => x.composite && hier.has(x.composite.partEntity) && (facts[`${x.id}_p0`] ?? []).some(t => key(t[1]) === k))
+        const hier = d.entities.filter(x => rootOf(d, x.id) === rootOf(d, e.id) && objs[x.id]?.[rk] !== undefined).map(x => x.id)
+        const playsAny = d.facts.some(f => f.players.some((p, i) => hier.includes(p) && plays(f.id, i, objs[p][rk])))
+          || d.entities.some(x => x.composite && hier.includes(x.composite.partEntity) && (facts[`${x.id}_p0`] ?? []).some(t => key(t[1]) === key(objs[x.composite.partEntity][rk])))
         const notIndep = !e.independent && !playsAny
-        if (mandatoryMissed || notIndep) { remove(e.id, c); changed = true }
+        if (mandatoryMissed || notIndep) { remove(e.id, rk); changed = true }
       }
     }
     if (!changed) break
@@ -277,7 +313,6 @@ function repairPopulation(d, pops, facts) {
     }
     if (pops[v.id]) pops[v.id] = pops[v.id].filter(c => used.has(key(c)))
   }
-  void ownFacts
 }
 
 function playersOf(d, fid) {
@@ -491,19 +526,24 @@ function shrink(d, pop, seed, prop) {
     cur.d.facts.forEach((_, i) => tries.push(() => { const x = clone(cur); const f = x.d.facts.splice(i, 1)[0]; delete x.pop.factPopulations[f.id]; return x }))
     cur.d.entities.forEach((e, i) => {
       if (cur.d.entities.some(o => o.supers.includes(e.id) || o.composite?.partEntity === e.id) || cur.d.facts.some(f => f.players.includes(e.id))) return
-      tries.push(() => { const x = clone(cur); x.d.entities.splice(i, 1); delete x.pop.populations[e.id]; for (const k of Object.keys(x.pop.factPopulations)) if (k.startsWith(`${e.id}_`)) delete x.pop.factPopulations[k]; return x })
+      tries.push(() => { const x = clone(cur); x.d.entities.splice(i, 1); delete x.pop.populations[e.id]; delete x.pop.objs[e.id]; for (const k of Object.keys(x.pop.factPopulations)) if (k.startsWith(`${e.id}_`)) delete x.pop.factPopulations[k]; return x })
     })
     for (const [fid, ts] of Object.entries(cur.pop.factPopulations)) ts.forEach((_, i) => {
       if (/_ref$|_p[01]$/.test(fid)) return
       tries.push(() => { const x = clone(cur); x.pop.factPopulations[fid].splice(i, 1); return x })
     })
-    for (const e of cur.d.entities) (cur.pop.populations[e.id] ?? []).forEach((c, i) => tries.push(() => {
+    for (const e of cur.d.entities.filter(o => !o.supers.length)) for (const rk of Object.keys(cur.pop.objs[e.id] ?? {})) tries.push(() => {
+      // An object out of its hierarchy, with the tuples using any of its cells.
       const x = clone(cur)
-      const k = key(c)
-      for (const o of x.d.entities.filter(o => o.id === e.id || rootOf(x.d, o.id) === e.id)) x.pop.populations[o.id] = (x.pop.populations[o.id] ?? []).filter(y => key(y) !== k)
-      for (const [fid, ts] of Object.entries(x.pop.factPopulations)) x.pop.factPopulations[fid] = ts.filter(t => !t.some(y => key(y) === k || (Array.isArray(y) && key(y[0]) === k)))
+      const cells = []
+      for (const o of x.d.entities.filter(o => rootOf(x.d, o.id) === e.id)) {
+        const c = x.pop.objs[o.id]?.[rk]
+        if (c === undefined) continue
+        cells.push(key(c)); delete x.pop.objs[o.id][rk]
+      }
+      for (const [fid, ts] of Object.entries(x.pop.factPopulations)) x.pop.factPopulations[fid] = ts.filter(t => !t.some(y => cells.includes(key(y)) || (Array.isArray(y) && cells.includes(key(y[0])))))
       return x
-    }))
+    })
     for (const t of tries) {
       const x = t()
       if (fails(x.d, x.pop)) { cur = x; changed = true; break }
