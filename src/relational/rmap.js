@@ -9,7 +9,8 @@
 //     columns (NOT NULL when the entity's role is mandatory, UNIQUE when the
 //     other role is unique too, a foreign key when its player has a table).
 //     Of a one-to-one fact type, the side with the mandatory role absorbs it.
-//   - A unary fact type becomes a boolean column of its player's table.
+//   - A unary fact type becomes a boolean NOT NULL column of its player's
+//     table, with a rule for true (the fact) and one for false (no fact).
 //   - Any other fact type (many-to-many, n-ary, unique on a value role,
 //     objectified) gets a table of its own, keyed by its first uniqueness
 //     constraint.
@@ -350,7 +351,10 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
     for (const a of absorbed.get(e.typeId) ?? []) {
       const f = a.fact
       if (a.other == null) {
-        const c = addCol({ name: readingWords(f) || snake(f.readingParts?.join(' ')) || 'flag', sql: 'boolean', notNull: false })
+        // NOT NULL: true when the row's instance plays the unary, false when
+        // it does not (a rule each), so that every row says one of the two
+        // and no value is left that no rule reads.
+        const c = addCol({ name: readingWords(f) || snake(f.readingParts?.join(' ')) || 'flag', sql: 'boolean', notNull: true })
         t.parts.push({ fact: f, own: 0, other: null, cols: [c] })
         continue
       }
@@ -626,6 +630,13 @@ function buildRules(plan, rel) {
       const relArgs = { ...k.args }
       if (p.other == null) {
         relArgs[rel.col(t.name, p.cols[0].name)] = { k: 'const', text: 'true' }
+        // The rows with false: instances that do not play it.
+        const nsc = scope(), nrsc = scope()
+        const nk = rowKey(e, nrsc)
+        const nx = nsc.mk(f.roles[0].objectTypeId)
+        identify(nsc, plan, nx, f.roles[0].objectTypeId, nk.names)
+        nsc.atoms.push({ t: 'not', arg: { t: 'fact', factId: f.id, args: [nx] } })
+        push(`${factLabel(f, typeName)}: false`, nsc, null, nrsc, { t: 'rel', tableId: rel.table(t.name), args: { ...nk.args, [rel.col(t.name, p.cols[0].name)]: { k: 'const', text: 'false' } } })
       } else {
         const player = f.roles[p.other].objectTypeId
         const ys = refNames(player, p.cols)

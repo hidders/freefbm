@@ -30,7 +30,7 @@ import { worldOf, genericPopulation, genericInstance, contains, accountingSteps,
 import { prepareRun, executeRun } from './runMapping.js'
 import { finiteCases } from './fold.js'
 import { expandSide, asSide, readingName, SIDES } from './mapping.js'
-import { uncoveredElements } from './mappingIssues.js'
+import { uncoveredElements, valuesText } from './mappingIssues.js'
 import { translateEntry } from './translate.js'
 import { asGraphical } from './recognise.js'
 import { isIndependentType } from '../utils/independence.js'
@@ -160,8 +160,10 @@ export function* equivalenceSteps(state, mapping) {
     ]
     const unmappedIds = new Set(unmapped.map(x => x.id))
     const checked = [...rules, ...types.filter(t => !unmappedIds.has(t.id))]
+    // Roles the rules read only with constants, while they may hold others.
+    const partly = u.values.map(v => ({ id: `${v.factId}:${v.roleIndex}`, name: readingName(wX.ctx.factById.get(v.factId), wX.ctx), ok: false, reason: valuesText(v) }))
     info[X] = { rules, types, unmapped,
-      lost: checked.filter(r => r.ok === false), unchecked: checked.filter(r => r.ok == null) }
+      lost: [...checked.filter(r => r.ok === false), ...partly], unchecked: checked.filter(r => r.ok == null) }
   }
 
   // 2. Constraints.
