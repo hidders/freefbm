@@ -316,6 +316,14 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
           t.pk = uc.flatMap(i => nat.slice(...ranges[i]).map(c => c.name))
           t.uniques.push(nat.map(c => c.name))
         }
+        // Its other uniqueness constraints: UNIQUE over their roles' columns.
+        const colsOf = (u) => [...u].sort((a, b) => a - b).flatMap(i => nat.slice(...ranges[i]).map(c => c.name))
+        const have = (cols) => [t.pk, ...t.uniques].some(k => k && k.length === cols.length && k.every(c => cols.includes(c)))
+        for (const u of (nf.uniqueness ?? []).map(x => x.roles ?? [])) {
+          if (!u.length || u.length >= nf.roles.length) continue
+          const cols = colsOf(u)
+          if (!have(cols)) t.uniques.push(cols)
+        }
         if (!uc) warn(`${typeName(nf.id)} has no uniqueness constraint; its table is keyed by all its columns`)
       }
       // Parts of the identifier that are entity types with a table: foreign keys.

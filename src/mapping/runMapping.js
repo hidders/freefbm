@@ -415,7 +415,10 @@ function buildSide(side, y, data, pop, ident) {
   // another key of the entity type, e.g. a natural key declared UNIQUE:
   // ⟨its values⟩. Its value then fills the reference mode's value variable.
   {
-    for (const v of vars.values()) {
+    // Objectified fact types last: their instances are their facts, which
+    // the stand-ins of their players may give.
+    const nested = (v) => !!lookups(data).factById.get(v.typeId)?.objectified
+    for (const v of [...vars.values()].sort((a, b) => nested(a) - nested(b))) {
       if (env.has(v.id)) continue
       const sch = schemeOf(v.typeId, data)
       if (sch?.kind !== 'refMode' && sch?.kind !== 'composite') continue

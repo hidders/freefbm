@@ -19,8 +19,10 @@
 // identifier, and the cells at roles they play) become the supertype cells
 // the mappings name. `back(pops)` turns a population of that copy (such as a
 // run's result) back: own cells again, subtypeMappings rebuilt, the
-// identifying tuples dropped. Null when nothing needs it. Cells nested inside
-// composite identifiers are left as they are.
+// identifying tuples dropped. Null when nothing needs it. The cells of an
+// objectified fact type without an identifier of its own are its tuples, so
+// they are turned over part by part (nested); cells nested inside composite
+// identifiers are left as they are.
 
 import { findRefMode, findCompositePI } from '../utils/refMode.js'
 import { projCellKey } from '../utils/populationValidation.js'
@@ -155,18 +157,39 @@ export function withInheritedIdentifiers(state, schemaIds) {
     }
     return toCanon.get(h).get(keyOf(cell))
   }
+  const factById = new Map((state.facts ?? []).map(f => [f.id, f]))
+  // An objectified fact type whose instances are its tuples, with a role
+  // whose cells change: its cells change part by part.
+  const nestedMemo = new Map()
+  const nestedOf = (id) => {
+    if (nestedMemo.has(id)) return nestedMemo.get(id)
+    nestedMemo.set(id, null)
+    const f = factById.get(id)
+    const out = f?.objectified && !otById.has(id) && !findRefMode(f, facts, objectTypes) && !findCompositePI(f, facts, objectTypes, constraints)
+      && f.roles.some(r => changes(r.objectTypeId)) ? f : null
+    nestedMemo.set(id, out)
+    return out
+  }
+  const changes = (typeId) => !!holderOf(typeId) || !!nestedOf(typeId)
+  // The copy's cell of a cell of a type, undefined when it has none.
+  const convert = (typeId, cell) => {
+    if (holderOf(typeId)) return canonOf(typeId, cell)
+    const nf = nestedOf(typeId)
+    if (!nf || !Array.isArray(cell)) return cell
+    const parts = nf.roles.map((r, i) => convert(r.objectTypeId, cell[i]))
+    return parts.some(c => c === undefined) ? undefined : parts
+  }
   const populations = {}
   for (const [id, cells] of Object.entries(state.populations ?? {})) {
-    if (!holderOf(id)) { populations[id] = cells; continue }
-    populations[id] = cells.map(c => canonOf(id, c)).filter(c => c !== undefined)
+    if (!changes(id)) { populations[id] = cells; continue }
+    populations[id] = cells.map(c => convert(id, c)).filter(c => c !== undefined)
   }
-  const factById = new Map((state.facts ?? []).map(f => [f.id, f]))
   const factPopulations = {}
   for (const [id, tuples] of Object.entries(state.factPopulations ?? {})) {
     const f = factById.get(id)
-    const hs = f?.roles.map(r => holderOf(r.objectTypeId)) ?? []
+    const hs = f?.roles.map(r => changes(r.objectTypeId)) ?? []
     if (!hs.some(Boolean)) { factPopulations[id] = tuples; continue }
-    factPopulations[id] = tuples.map(t => t.map((c, i) => (hs[i] ? canonOf(f.roles[i].objectTypeId, c) : c))).filter(t => t.every(c => c !== undefined))
+    factPopulations[id] = tuples.map(t => t.map((c, i) => (hs[i] ? convert(f.roles[i].objectTypeId, c) : c))).filter(t => t.every(c => c !== undefined))
   }
   // The own identifier's facts, stored.
   for (const [id, o] of own) {
@@ -233,15 +256,22 @@ export function withInheritedIdentifiers(state, schemaIds) {
       return h ? toOwn.get(h).get(keyOf(canon)) ?? [] : [canon]
     }
     const ownOf = (typeId, canon) => ownsOf(typeId, canon)[0]
+    // Every cell of a type that a cell of the copy stands for (nested).
+    const backOf = (typeId, cell) => {
+      if (holderOf(typeId)) return ownsOf(typeId, cell)
+      const nf = nestedOf(typeId)
+      if (!nf || !Array.isArray(cell)) return [cell]
+      return nf.roles.reduce((acc, r, i) => acc.flatMap(a => backOf(r.objectTypeId, cell[i]).map(x => [...a, x])), [[]])
+    }
     const identifying = new Set([...own.values()].flatMap(o => o.parts.map(p => p.factId)))
     const populations = {}, factPopulations = {}, subtypeMappings = {}
     let dropped = 0
     const canonsOf = new Map()   // type → the copy's cell of each of its cells
     for (const [id, cells] of Object.entries(P)) {
-      if (!holderOf(id)) { populations[id] = cells; canonsOf.set(id, cells); continue }
+      if (!changes(id)) { populations[id] = cells; canonsOf.set(id, cells); continue }
       const out = [], canons = []
       for (const c of cells) {
-        const xs = ownsOf(id, c)
+        const xs = backOf(id, c)
         if (!xs.length) dropped++
         for (const x of xs) { out.push(x); canons.push(c) }
       }
@@ -272,9 +302,9 @@ export function withInheritedIdentifiers(state, schemaIds) {
       // Tuples of an own identifier follow from the cells again.
       if (identifying.has(id)) continue
       const f = factById.get(id)
-      const hs = f?.roles.map(r => holderOf(r.objectTypeId)) ?? []
+      const hs = f?.roles.map(r => changes(r.objectTypeId)) ?? []
       if (!hs.some(Boolean)) { factPopulations[id] = tuples; continue }
-      factPopulations[id] = tuples.flatMap(t => t.reduce((acc, c, i) => acc.flatMap(a => (hs[i] ? ownsOf(f.roles[i].objectTypeId, c) : [c]).map(x => [...a, x])), [[]]))
+      factPopulations[id] = tuples.flatMap(t => t.reduce((acc, c, i) => acc.flatMap(a => (hs[i] ? backOf(f.roles[i].objectTypeId, c) : [c]).map(x => [...a, x])), [[]]))
     }
     return { populations, factPopulations, subtypeMappings, dropped }
   }

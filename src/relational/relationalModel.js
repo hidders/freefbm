@@ -69,7 +69,26 @@ export function relationalModel(state, schemaId) {
   const fks = []
   const notExported = [], unwritten = []
   const skip = (c, text) => { notExported.push(text); unwritten.push(c) }
+  // A sequence whose query names more than its own columns (a join path,
+  // such as a row that must also have another column filled in) is no key
+  // or foreign key: it is written from its formula.
+  const factsOf = (n, out = new Set()) => {
+    if (!n || typeof n !== 'object') return out
+    if (Array.isArray(n)) { n.forEach(x => factsOf(x, out)); return out }
+    if (n.t === 'fact' && n.factId) out.add(n.factId)
+    for (const v of Object.values(n)) if (v && typeof v === 'object') factsOf(v, out)
+    return out
+  }
+  const plainQueries = (c) => (c.queries ?? []).every((q, i) => {
+    if (!q?.body) return true
+    const own = new Set((c.sequences?.[i] ?? []).map(m => m?.factId))
+    return [...factsOf(q.body)].every(id => own.has(id))
+  })
   for (const c of constraints) {
+    if ((c.constraintType === 'uniqueness' || c.constraintType === 'subset') && !plainQueries(c)) {
+      skip(c, `${c.constraintType === 'subset' ? 'subset' : 'external uniqueness'} constraint ${c.id} (a join path)`)
+      continue
+    }
     if (c.constraintType === 'uniqueness') {
       const cols = asColumns(c.sequences?.[0])
       if (!cols) { skip(c, `external uniqueness constraint ${c.id} (not over the columns of one table)`); continue }

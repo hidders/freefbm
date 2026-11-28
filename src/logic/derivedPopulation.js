@@ -295,6 +295,9 @@ export function makePopulationEvaluator(rawData) {
             const vs = []
             let b = n
             while (b.t === 'exists') { vs.push({ id: b.v.id, typeIds: [b.v.typeId] }); b = b.body }
+            // ∃x̄ (φ ∧ ∃ȳ ψ) is ∃x̄ȳ (φ ∧ ψ) (ȳ named nowhere else): the facts
+            // inside bind x̄ too.
+            b = liftExists(b, vs, env)
             const conjuncts = b.t === 'and' ? b.args : [b]
             if (conjuncts.some(c => c.t === 'fact' && atomFact(ctx, c.factId) && c.args.some(id => vs.some(v => v.id === id))))
               return solve(b, vs, env, 1).length > 0
@@ -372,6 +375,26 @@ export function makePopulationEvaluator(rawData) {
     // variables from the fact type's tuples; other variables range over
     // their type.
     // With limit, it stops after that many.
+    // A conjunction with the ∃ of its conjuncts taken out to vs (each
+    // conjunct's own bound variables, when no other part names them).
+    const liftExists = (b, vs, env) => {
+      const conjuncts = b.t === 'and' ? b.args : [b]
+      if (!conjuncts.some(c => c.t === 'exists')) return b
+      const out = []
+      let lifted = false
+      conjuncts.forEach((c, k) => {
+        let x = c
+        const ys = []
+        while (x.t === 'exists') { ys.push({ id: x.v.id, typeIds: [x.v.typeId] }); x = x.body }
+        if (!ys.length) { out.push(c); return }
+        const rest = JSON.stringify(conjuncts.filter((_, j) => j !== k))
+        if (ys.some(y => env.has(y.id) || vs.some(v => v.id === y.id) || rest.includes(`"${y.id}"`))) { out.push(c); return }
+        vs.push(...ys)
+        out.push(...(x.t === 'and' ? x.args : [x]))
+        lifted = true
+      })
+      return lifted ? liftExists({ t: 'and', args: out }, vs, env) : b
+    }
     const solve = (formula, vs, env0 = new Map(), limit = 0) => {
       const conjuncts = formula.t === 'and' ? formula.args : [formula]
       const atoms = conjuncts.filter(c => c.t === 'fact' && atomFact(ctx, c.factId))
@@ -381,7 +404,10 @@ export function makePopulationEvaluator(rawData) {
         if (state.failure || (limit && out.length >= limit)) return
         const open = vs.filter(v => !env.has(v.id))
         if (!open.length) { if (holds(formula, env)) out.push(env); return }
-        const atom = atoms.find(a => a.args.some(id => typeIdsOf.has(id) && !env.has(id)))
+        // An atom joined to what is bound first (through an index), so that
+        // atoms of separate parts are not scanned one inside the other.
+        const pending = atoms.filter(a => a.args.some(id => typeIdsOf.has(id) && !env.has(id)))
+        const atom = pending.find(a => a.args.some(id => id != null && env.has(id))) ?? pending[0]
         if (atom) {
           const fact = atomFact(ctx, atom.factId)
           const r = factTuples(atom.factId)

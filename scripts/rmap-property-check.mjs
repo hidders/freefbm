@@ -3,7 +3,8 @@
 // theorem statements"). Random well-formed ORM2 schemas S (phase 1: entity
 // types with reference modes or composite identifiers, value types, unary,
 // binary and ternary fact types with internal uniqueness and mandatory roles,
-// subtypes that inherit their identifier, multiple supertypes under one root)
+// subtypes that inherit their identifier or have one of their own, multiple
+// supertypes under one root, objectified fact types playing roles)
 // and random legal populations I; for each, Rmap gives T and M, and:
 //
 //   P1  run(S → T, I) satisfies Σ_T                         (totality)
@@ -27,7 +28,7 @@
 // add no tuple twice, and drop the values nothing uses any more.
 //
 //   node scripts/rmap-property-check.mjs [--runs N] [--seed S] [--mutations K]
-//        [--no-equivalence] [--pg] [--out DIR] [--only P1,P2,…] [--save] [--verbose]
+//        [--no-equivalence] [--pg] [--out DIR] [--only P1,P2,…] [--save] [--no-shrink] [--verbose]
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -47,6 +48,7 @@ const OUT = opt('out', path.join(os.tmpdir(), 'rmap-pbt'))
 const ONLY = opt('only', null)?.split(',')
 const SAVE = flag('save')
 const VERBOSE = flag('verbose')
+const SHRINK = !flag('no-shrink')
 
 const server = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' })
 const load = (p) => server.ssrLoadModule(p)
@@ -128,7 +130,43 @@ function genSchema(r) {
     f.mandatory = f.players.map((p, k) => p.startsWith('ot_') && kind !== 'unary' && r.chance(0.25) && k === 0)
     d.facts.push(f)
   }
+  // Objectified fact types: some binaries between entity types and ternaries,
+  // identified through their link fact types (an instance's cell is the
+  // tuple), each playing in a fact type or two of its own.
+  for (const f of [...d.facts]) {
+    if (!(f.kind === 'rel' || f.kind === 'ternary') || !r.chance(0.35)) continue
+    f.objectified = true
+    f.independent = r.chance(0.4)
+    if (r.chance(0.3)) f.identifier = [...f.ucs].sort((a, b) => a.length - b.length)[0]
+    const n = r.int(1, 2)
+    for (let j = 0; j < n; j++) {
+      const g = { id: `${f.id}n${j}`, kind: r.pick(['attr', 'rel']) }
+      if (g.kind === 'attr') { g.players = [f.id, r.chance(0.5) ? r.pick(shared) : vt(`V${f.id}n${j}`, INT)]; g.ucs = r.pick([[[0]], [[0]], [[0, 1]]]) }
+      else { g.players = r.chance(0.5) ? [f.id, r.pick(ents).id] : [r.pick(ents).id, f.id]; g.ucs = r.pick([[[0]], [[1]], [[0, 1]]]) }
+      g.mandatory = g.players.map(p => p === f.id && r.chance(0.3))
+      d.facts.push(g)
+    }
+  }
   return d
+}
+
+const objectifiedOf = (d, id) => d.facts.find(f => f.id === id && f.objectified)
+
+// Drops the tuples that use an instance of an objectified fact type that is
+// no longer there (its tuple removed), until none do.
+function cascadeNested(d, facts) {
+  for (let changed = true; changed;) {
+    changed = false
+    for (const g of d.facts) {
+      const before = (facts[g.id] ?? []).length
+      facts[g.id] = (facts[g.id] ?? []).filter(t => t.every((c, i) => {
+        const o = objectifiedOf(d, g.players[i])
+        return !o || (facts[o.id] ?? []).some(x => key(x) === key(c))
+      }))
+      if (facts[g.id].length !== before) changed = true
+    }
+  }
+  return facts
 }
 
 function rootOf(d, id) {
@@ -162,13 +200,15 @@ function toModel(d, pop) {
     }
     e.supers.forEach((s, k) => subtypes.push({ id: `st_${e.id}_${k}`, kind: 'subtype', subId: e.id, superId: s, inheritsPreferredIdentifier: !e.ownId && k === 0, schemaId: S }))
   }
-  const name = (id) => d.entities.find(e => e.id === id)?.name ?? d.values.find(v => v.id === id)?.name
+  const name = (id) => d.entities.find(e => e.id === id)?.name ?? d.values.find(v => v.id === id)?.name ?? (objectifiedOf(d, id) ? `O${id}` : id)
   for (const f of d.facts) {
     const words = f.kind === 'unary' ? ['', `is p${f.id}`] : f.players.length === 2 ? ['', `r${f.id}`, ''] : ['', `r${f.id}`, 'with', '']
     factTypes.push({ id: f.id, kind: 'fact', x: 0, y: 0, arity: f.players.length, schemaId: S,
       roles: f.players.map((p, k) => role(`${f.id}_r${k}`, p, { mandatory: !!f.mandatory[k], roleName: f.players.length > 1 && f.players.filter(q => q === p).length > 1 ? `${name(p).toLowerCase()}${k}` : '' })),
-      readingParts: words, uniqueness: f.ucs.map((u, k) => ({ id: `${f.id}_u${k}`, roles: u })) })
+      readingParts: words, uniqueness: f.ucs.map((u, k) => ({ id: `${f.id}_u${k}`, roles: u })),
+      ...(f.objectified ? { objectified: true, objectifiedKind: 'entity', objectifiedName: `O${f.id}`, isIndependent: !!f.independent, objectifiedIdentifier: f.identifier ?? null } : {}) })
   }
+  if (pop?.factPopulations) pop = { ...pop, factPopulations: cascadeNested(d, clone(pop.factPopulations)) }
   return {
     version: 3,
     schema: { schemas: [{ id: S, name: 'S', profile: 'orm2' }], objectTypes, factTypes, subtypes, externalConstraints },
@@ -221,6 +261,7 @@ function genPopulation(d, r) {
     pops[e.id] = Object.values(objs[e.id])
   }
   const effective = (id) => {
+    if (objectifiedOf(d, id)) return facts[id] ?? []
     const out = new Map((pops[id] ?? []).map(c => [key(c), c]))
     if (!d.entities.some(e => e.id === id)) for (const v of valueCands(id)) out.set(key(v), v)
     return [...out.values()]
@@ -288,6 +329,19 @@ function repairPopulation(d, pops, facts, objs) {
   }
   for (let round = 0; round < 50; round++) {
     let changed = false
+    cascadeNested(d, facts)
+    // Instances of objectified fact types that miss a mandatory role, or play
+    // nothing while not independent: their tuples out.
+    for (const o of d.facts.filter(f => f.objectified)) {
+      facts[o.id] = (facts[o.id] ?? []).filter(t => {
+        const plays = (g, i) => (facts[g.id] ?? []).some(x => key(x[i]) === key(t))
+        const missed = d.facts.some(g => g.players.some((p, i) => p === o.id && g.mandatory[i] && !plays(g, i)))
+        const none = !o.independent && !d.facts.some(g => g.players.some((p, i) => p === o.id && plays(g, i)))
+        if (missed || none) { changed = true; return false }
+        return true
+      })
+    }
+    cascadeNested(d, facts)
     for (const e of d.entities) {
       for (const [rk, c] of Object.entries({ ...(objs[e.id] ?? {}) })) {
         if (objs[e.id]?.[rk] === undefined) continue
@@ -523,7 +577,7 @@ function shrink(d, pop, seed, prop) {
   for (let changed = true, rounds = 0; changed && rounds < 20; rounds++) {
     changed = false
     const tries = []
-    cur.d.facts.forEach((_, i) => tries.push(() => { const x = clone(cur); const f = x.d.facts.splice(i, 1)[0]; delete x.pop.factPopulations[f.id]; return x }))
+    cur.d.facts.forEach((f0, i) => cur.d.facts.some(g => g.players.includes(f0.id)) || tries.push(() => { const x = clone(cur); const f = x.d.facts.splice(i, 1)[0]; delete x.pop.factPopulations[f.id]; return x }))
     cur.d.entities.forEach((e, i) => {
       if (cur.d.entities.some(o => o.supers.includes(e.id) || o.composite?.partEntity === e.id) || cur.d.facts.some(f => f.players.includes(e.id))) return
       tries.push(() => { const x = clone(cur); x.d.entities.splice(i, 1); delete x.pop.populations[e.id]; delete x.pop.objs[e.id]; for (const k of Object.keys(x.pop.factPopulations)) if (k.startsWith(`${e.id}_`)) delete x.pop.factPopulations[k]; return x })
@@ -565,7 +619,9 @@ for (let run = 0; run < RUNS; run++) {
   const pop = genPopulation(d, r)
   // --save: every generated schema S with its population, as seed<n>.ffbm.
   if (SAVE) fs.writeFileSync(path.join(OUT, `seed${seed}.ffbm`), JSON.stringify(toModel(d, pop), null, 1))
+  const t1 = Date.now()
   const fails = check(toModel(d, pop), seed)
+  if (VERBOSE && Date.now() - t1 > 20000) console.log(`seed ${seed} took ${((Date.now() - t1) / 1000).toFixed(0)} s`)
   if (fails.some(f => f.prop === 'gen')) { gaps++; if (VERBOSE) console.log(`seed ${seed}: ${fails[0].text}`); continue }
   for (const f of fails) {
     counts[f.prop] = (counts[f.prop] ?? 0) + 1
@@ -576,7 +632,7 @@ for (let run = 0; run < RUNS; run++) {
 console.log(`\n${RUNS} schemas (seeds ${SEED}–${SEED + RUNS - 1}), ${MUTATIONS} mutations each side, ${((Date.now() - t0) / 1000).toFixed(1)} s${gaps ? `; ${gaps} left out (generated population not legal)` : ''}`)
 if (!firsts.size) console.log('No failures.')
 for (const [prop, f] of firsts) {
-  const small = prop === 'crash' ? { d: f.d, pop: f.pop } : shrink(f.d, f.pop, f.seed, prop)
+  const small = prop === 'crash' || !SHRINK ? { d: f.d, pop: f.pop } : shrink(f.d, f.pop, f.seed, prop)
   const after = check(toModel(small.d, small.pop), f.seed).find(x => x.prop === prop)
   const file = path.join(OUT, `${prop}-seed${f.seed}.ffbm`)
   // With T and the mapping that Generate tables gave (the store holds them after check).

@@ -124,9 +124,17 @@ export function translateEntry(state, mapping, entry, side) {
 
     // E'(slots): an entity's existence on the other side.
     const entityGuard = (typeId, slots, x = null) => {
-      const t = ctxX.otById.get(typeId)
+      const nested = ctxX.factById.get(typeId)?.objectified ? ctxX.factById.get(typeId) : null
+      const t = ctxX.otById.get(typeId) ?? (nested && { ...nested, name: nested.objectifiedName ?? nested.name })
       if (!t || t.kind === 'value') return null
       const e = atomics.types.get(typeId)?.[0]
+      if (!e && nested && x) {
+        // An objectified fact type no rule maps on its own: its instances are
+        // the facts, ∃p̄ (F(p̄) ∧ x is the nesting of F(p̄)).
+        const ps = nested.roles.map(r => ({ typeId: r.objectTypeId }))
+        return tr({ t: 'exists', vars: ps, body: { t: 'and', args: [{ t: 'fact', factId: nested.id, args: ps },
+          ...ps.map((p, i) => ({ t: 'fact', factId: `${nested.id}_il_${i}`, args: [x, p] }))] } })
+      }
       if (!e && x && needsCases(typeId)) {
         // No rule maps it on its own (Rmap gives it no table): an instance
         // of a type that is not independent plays some role besides its
