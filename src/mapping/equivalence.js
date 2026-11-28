@@ -26,7 +26,7 @@
 // { verdict, info: { source, target }, constraints: { source, target },
 //   accounting, ms }, see summarise.
 
-import { worldOf, genericPopulation, genericInstance, contains, accountingSteps, isIdentifyingLink } from './accounting.js'
+import { worldOf, genericPopulation, genericInstance, contains, accountingSteps, isIdentifyingLink, restrictToNulls } from './accounting.js'
 import { prepareRun, executeRun } from './runMapping.js'
 import { finiteCases } from './fold.js'
 import { expandSide, asSide, readingName, SIDES } from './mapping.js'
@@ -74,6 +74,9 @@ function ruleComesBack(wX, rule, X, preps) {
     start = { populations: {}, factPopulations: {} }
     for (const id of named.typeIds) if (pops.populations[id]) start.populations[id] = pops.populations[id]
     for (const id of named.factIds) if (pops.factPopulations[id]) start.factPopulations[id] = pops.factPopulations[id]
+    // A chase cut short leaves a frontier that breaks the constraints (a
+    // foreign key to a row not added yet): only what it started from counts.
+    if (g.exceeded) start = restrictToNulls(start, g.seed)
     const there = executeRun(preps.there, pops)
     back = executeRun(preps.back, there)
     if (!contains(wX, back, start, back.invented)) break
@@ -101,7 +104,8 @@ function instanceComesBack(wX, typeId, preps) {
   const g = genericInstance(wX, typeId)
   if (g.error) return { ok: null, reason: g.error }
   for (const pops of finiteCases(wX, g.pops)) {
-    const start = { populations: { [typeId]: pops.populations[typeId] ?? [] }, factPopulations: {} }
+    let start = { populations: { [typeId]: pops.populations[typeId] ?? [] }, factPopulations: {} }
+    if (g.exceeded) start = restrictToNulls(start, g.seed)
     const there = executeRun(preps.there, pops)
     const back = executeRun(preps.back, there)
     if (!contains(wX, back, start, back.invented)) return { ok: false, reason: 'an instance that plays no other mapped role does not come back' }

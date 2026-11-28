@@ -1079,6 +1079,20 @@ function instantiate(w, pops, side, seed, t, fresh, S) {
 // constraints: what any population with those matches must contain. Used by
 // Fold (fold.js) to test whether a mapping still carries them. { pops } or
 // { error }.
+// The labelled nulls a population holds (a Set of ⊥n).
+export function labelledNullsOf(pops) {
+  return new Set(JSON.stringify(pops).match(/⊥\d+/g) ?? [])
+}
+
+// Only the instances and tuples of `part` whose labelled nulls are all in
+// `nulls`: what a chase that was cut short started from, without the
+// frontier it left unfinished (whose foreign keys, say, are not there yet).
+export function restrictToNulls(part, nulls) {
+  const ok = (x) => (JSON.stringify(x).match(/⊥\d+/g) ?? []).every(n => nulls.has(n))
+  const pick = (m) => Object.fromEntries(Object.entries(m ?? {}).map(([k, v]) => [k, v.filter(ok)]))
+  return { ...part, populations: pick(part.populations), factPopulations: pick(part.factPopulations) }
+}
+
 export function genericPopulation(w, patterns) {
   let n = 0
   const fresh = (typeId) => { const v = `⊥${++n}`; if (typeId) fresh.types.set(v, typeId); return v }
@@ -1086,9 +1100,10 @@ export function genericPopulation(w, patterns) {
   const pops = emptyPops()
   try {
     for (const p of patterns) instantiate(w, pops, expandSide(asSide(p), w.ctx), { args: [] }, [], fresh, new Subst())
+    const seed = labelledNullsOf(pops)
     const r = chase(w, pops, fresh)
     if (r.failed) return { error: 'the constraints of the other schema rule out such a population' }
-    return { pops: r.pops, exceeded: !!r.exceeded }
+    return { pops: r.pops, exceeded: !!r.exceeded, seed }
   } catch (err) {
     if (err instanceof Unsupported) return { error: err.message }
     throw err
@@ -1105,9 +1120,10 @@ export function genericInstance(w, typeId) {
   const pops = emptyPops()
   try {
     const cell = freshCell(w, pops, typeId, fresh)
+    const seed = labelledNullsOf(pops)
     const r = chase(w, pops, fresh)
     if (r.failed) return { error: 'the schema’s constraints rule out such a population' }
-    return { pops: r.pops, cell }
+    return { pops: r.pops, cell, exceeded: !!r.exceeded, seed }
   } catch (err) {
     if (err instanceof Unsupported) return { error: err.message }
     throw err

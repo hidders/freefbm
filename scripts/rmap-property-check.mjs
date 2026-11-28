@@ -27,7 +27,7 @@
 // add no tuple twice, and drop the values nothing uses any more.
 //
 //   node scripts/rmap-property-check.mjs [--runs N] [--seed S] [--mutations K]
-//        [--no-equivalence] [--pg] [--out DIR] [--only P1,P2,…] [--verbose]
+//        [--no-equivalence] [--pg] [--out DIR] [--only P1,P2,…] [--save] [--verbose]
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -45,6 +45,7 @@ const EQUIV = !flag('no-equivalence')
 const PG = flag('pg')
 const OUT = opt('out', path.join(os.tmpdir(), 'rmap-pbt'))
 const ONLY = opt('only', null)?.split(',')
+const SAVE = flag('save')
 const VERBOSE = flag('verbose')
 
 const server = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' })
@@ -522,6 +523,8 @@ for (let run = 0; run < RUNS; run++) {
   const r = rng(seed)
   const d = genSchema(r)
   const pop = genPopulation(d, r)
+  // --save: every generated schema S with its population, as seed<n>.ffbm.
+  if (SAVE) fs.writeFileSync(path.join(OUT, `seed${seed}.ffbm`), JSON.stringify(toModel(d, pop), null, 1))
   const fails = check(toModel(d, pop), seed)
   if (fails.some(f => f.prop === 'gen')) { gaps++; if (VERBOSE) console.log(`seed ${seed}: ${fails[0].text}`); continue }
   for (const f of fails) {
