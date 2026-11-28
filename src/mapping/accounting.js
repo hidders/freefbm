@@ -1221,12 +1221,17 @@ export function contains(w, b, a, invented = []) {
   // A cell's key with the wild parts (also inside composite identifiers) as *.
   const kw = (c, typeId, depth = 0) => {
     if (wild.has(typeId)) return '*'
+    // (A table keyed by another table's invented surrogate, a subtype's.)
+    const own = schemeOf(typeId, w.els)
+    if (own?.kind === 'refMode' && wild.has(own.rm.vtId)) return '*'
     const sch = depth < 4 && Array.isArray(c) ? schemeOf(typeId, w.els) : null
     if (sch?.kind === 'composite') return `[${c.map((x, i) => kw(x, playerOf(w, sch.parts[i]?.factId, sch.parts[i]?.roleIndex), depth + 1)).join(',')}]`
     return keyOf(c)
   }
   for (const [id, cells] of Object.entries(a.populations)) {
     if (wild.has(id)) continue
+    const sch = schemeOf(id, w.els)
+    if (sch?.kind === 'refMode' && wild.has(sch.rm.vtId)) { if (cells.length && !(b.populations[id] ?? []).length) return false; continue }
     const have = new Set((b.populations[id] ?? []).map(c => kw(c, id)))
     if (cells.some(c => !have.has(kw(c, id)))) return false
   }

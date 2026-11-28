@@ -28,7 +28,7 @@
 // add no tuple twice, and drop the values nothing uses any more.
 //
 //   node scripts/rmap-property-check.mjs [--runs N] [--seed S] [--mutations K]
-//        [--no-equivalence] [--pg] [--out DIR] [--only P1,P2,…] [--save] [--no-shrink] [--verbose]
+//        [--no-equivalence] [--pg] [--out DIR] [--only P1,P2,…] [--save] [--no-shrink] [--surrogates never|composite|always] [--verbose]
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -49,11 +49,12 @@ const ONLY = opt('only', null)?.split(',')
 const SAVE = flag('save')
 const VERBOSE = flag('verbose')
 const SHRINK = !flag('no-shrink')
+const SURROGATES = opt('surrogates', null)   // never | composite | always (else random per seed)
 
-const server = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' })
+const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'error' })
 const load = (p) => server.ssrLoadModule(p)
 const { useOrmStore } = await load('/src/store/ormStore.js')
-const { resultIssues } = await load('/src/mapping/exchanges.js')
+const { resultIssues, numberInvented } = await load('/src/mapping/exchanges.js')
 const { roundTrip, runMapping, withRunApplied } = await load('/src/mapping/runMapping.js')
 const { equivalence } = await load('/src/mapping/equivalence.js')
 const { exportPostgresDdl } = await load('/src/relational/ddlExport.js')
@@ -471,11 +472,11 @@ const brief = (issues, n = 3) => issues.slice(0, n).map(i => i.message ?? i.kind
 const lossOf = (rt) => rt.compare.filter(c => c.lost || c.gained).map(c => `${c.name}: ${c.lost ? `lost ${c.lost}` : ''}${c.gained ? ` gained ${c.gained}` : ''} ${c.examples.slice(0, 2).join(', ')}`.trim())
 
 // Generates T and M for a model; null when S is not legal (a generator gap).
-function prepare(model) {
+function prepare(model, sur = { mode: 'never', overrides: {} }) {
   store().loadModel(clone(model), null)
   const sIssues = resultIssues(store(), S)
   if (sIssues.length) return { illegal: sIssues }
-  store().generateRelationalFromOrm(S, { diagrams: false, assertions: true })
+  store().generateRelationalFromOrm(S, { diagrams: false, assertions: true, surrogates: sur.mode, overrides: sur.overrides })
   const st = store()
   const m = st.mappings.at(-1)
   return { st, m, T: m.targetSchemaId }
@@ -542,11 +543,11 @@ function withoutUnusedValues(st, schemaId) {
 }
 
 // The failures of one model: [{ prop, text }].
-function check(model, seed) {
+function check(model, seed, sur) {
   const out = []
   const want = (p) => !ONLY || ONLY.includes(p)
   let prep
-  try { prep = prepare(model) } catch (err) { return [{ prop: 'crash', text: `Generate tables failed: ${err.stack?.split('\n').slice(0, 3).join(' | ')}` }] }
+  try { prep = prepare(model, sur) } catch (err) { return [{ prop: 'crash', text: `Generate tables failed: ${err.stack?.split('\n').slice(0, 3).join(' | ')}` }] }
   if (prep.illegal) return [{ prop: 'gen', text: `generated population of S is not legal: ${brief(prep.illegal)}` }]
   const { st, m, T } = prep
   const fail = (prop, text) => out.push({ prop, text })
@@ -579,7 +580,8 @@ function check(model, seed) {
         if (mu) {
           const sIss = resultIssues(mu.state, S)
           const there = runMapping(mu.state, m, 'forward')
-          const t2 = { ...mu.state, ...withRunApplied(mu.state, there) }
+          const t1 = { ...mu.state, ...withRunApplied(mu.state, there) }
+          const t2 = { ...t1, ...numberInvented(t1, T) }   // (invented surrogates numbered, as a database would)
           const tIss = resultIssues(t2, T)
           // Only when I′ is all there in J′: a run there that drops part of I′
           // (an instance no rule reads on its own) relates it to a smaller I.
@@ -656,7 +658,7 @@ function pgCheck(st, T, r) {
 // ── Shrinking ───────────────────────────────────────────────────────────────
 
 function shrink(d, pop, seed, prop) {
-  const fails = (dd, pp) => { try { return check(toModel(dd, pp), seed).some(f => f.prop === prop) } catch { return false } }
+  const fails = (dd, pp) => { try { return check(toModel(dd, pp), seed, dd.sur).some(f => f.prop === prop) } catch { return false } }
   let cur = { d: clone(d), pop: clone(pop) }
   for (let changed = true, rounds = 0; changed && rounds < 20; rounds++) {
     changed = false
@@ -702,15 +704,20 @@ for (let run = 0; run < RUNS; run++) {
   const r = rng(seed)
   const d = genSchema(r)
   const pop = genPopulation(d, r)
+  // Surrogates (decision Q4): never, for composite identifiers, or always,
+  // with an override for a type now and then. (Drawn after the schema and
+  // its population, so that a seed gives the same schema as before.)
+  d.sur = { mode: SURROGATES ?? r.pick(['never', 'never', 'composite', 'always']), overrides: {} }
+  for (const e of d.entities) if (!e.supers.length && r.chance(0.15)) d.sur.overrides[e.id] = r.chance(0.5)
   // --save: every generated schema S with its population, as seed<n>.ffbm.
   if (SAVE) fs.writeFileSync(path.join(OUT, `seed${seed}.ffbm`), JSON.stringify(toModel(d, pop), null, 1))
   const t1 = Date.now()
-  const fails = check(toModel(d, pop), seed)
+  const fails = check(toModel(d, pop), seed, d.sur)
   if (VERBOSE && Date.now() - t1 > 20000) console.log(`seed ${seed} took ${((Date.now() - t1) / 1000).toFixed(0)} s`)
   if (fails.some(f => f.prop === 'gen')) { gaps++; if (VERBOSE) console.log(`seed ${seed}: ${fails[0].text}`); continue }
   for (const f of fails) {
     counts[f.prop] = (counts[f.prop] ?? 0) + 1
-    if (VERBOSE) console.log(`seed ${seed} ${f.prop}: ${f.text}`)
+    if (VERBOSE) console.log(`seed ${seed} ${f.prop} [surrogates ${d.sur.mode}${Object.keys(d.sur.overrides).length ? ' +' + JSON.stringify(d.sur.overrides) : ''}]: ${f.text}`)
     if (!firsts.has(f.prop)) firsts.set(f.prop, { seed, d, pop, text: f.text })
   }
 }
@@ -718,7 +725,7 @@ console.log(`\n${RUNS} schemas (seeds ${SEED}–${SEED + RUNS - 1}), ${MUTATIONS
 if (!firsts.size) console.log('No failures.')
 for (const [prop, f] of firsts) {
   const small = prop === 'crash' || !SHRINK ? { d: f.d, pop: f.pop } : shrink(f.d, f.pop, f.seed, prop)
-  const after = check(toModel(small.d, small.pop), f.seed).find(x => x.prop === prop)
+  const after = check(toModel(small.d, small.pop), f.seed, small.d.sur).find(x => x.prop === prop)
   const file = path.join(OUT, `${prop}-seed${f.seed}.ffbm`)
   // With T and the mapping that Generate tables gave (the store holds them after check).
   let content

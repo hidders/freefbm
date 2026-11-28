@@ -241,12 +241,50 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
   }
   for (const e of entities.values()) if (e.keyRoot !== e.typeId) e.surrogate = entities.get(e.keyRoot).surrogate
 
+  // The columns that hold a type's natural key: one per leaf of the key,
+  // except that a part of a composite identifier whose player has a
+  // surrogate is held by that surrogate (one column for the player's
+  // leaves, with a foreign key to it), as every reference to it is. Items
+  // { from, to } give the leaves of keyOf(typeId) a column holds; sur is the
+  // player a surrogate column stands for.
+  const natItem = (key, i) => ({ from: i, to: i + 1, sur: null, name: key[i].name, sql: sqlTypeOf(ctx.otById.get(key[i].vtId)), vtId: key[i].vtId, leaf: i, roleRanges: key[i].roleRanges ?? [] })
+  const heldMemo = new Map()
+  function heldOf(typeId) {
+    if (heldMemo.has(typeId)) return heldMemo.get(typeId)
+    const key = keyOf(typeId)
+    const sch = ctx.otById.get(typeId)?.kind === 'value' ? null : schemeOf(typeId, els)
+    let out = null
+    if (sch?.kind === 'composite') {
+      out = []
+      let from = 0
+      for (const p of sch.parts) {
+        const player = ctx.factById.get(p.factId)?.roles[p.roleIndex]?.objectTypeId
+        const n = keyOf(player).length
+        const pe = entities.get(player), pr = pe && entities.get(pe.keyRoot)
+        if (pr?.surrogate) out.push({ from, to: from + n, sur: player, name: pr.surrogate.name, sql: 'integer', leaf: null })
+        else for (const it of heldOf(player)) out.push(it.sur ? { ...it, from: from + it.from, to: from + it.to } : natItem(key, from + it.from))
+        from += n
+      }
+    }
+    if (!out) out = key.map((_, i) => natItem(key, i))
+    heldMemo.set(typeId, out)
+    return out
+  }
+  // The columns of items holding the leaves [a, b).
+  const colRange = (items, [a, b]) => {
+    const i = items.findIndex(it => it.from >= a), j = items.findIndex(it => it.from >= b)
+    return [i < 0 ? items.length : i, j < 0 ? items.length : j]
+  }
+  const colOf = ({ from, to, sur, roleRanges, ...c }) => c
+  // Foreign keys from the surrogate columns among columns holding a natural
+  // key to the tables they stand for.
+  const surFks = (t, items, cols) => items.forEach((it, i) => { if (it.sur) t.fks.push({ cols: [cols[i].name], refTypeId: it.sur }) })
   // The columns that refer to a player: its surrogate or its natural key.
   const refCols = (typeId) => {
     const e = entities.get(typeId)
     const root = e && entities.get(e.keyRoot)
     if (root?.surrogate) return [{ name: root.surrogate.name, sql: 'integer', leaf: null }]
-    return keyOf(typeId).map((c, i) => ({ name: c.name, sql: sqlTypeOf(ctx.otById.get(c.vtId)), vtId: c.vtId, leaf: i }))
+    return heldOf(typeId).map(colOf)
   }
 
   // ── Tables ──
@@ -256,7 +294,7 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
     return specs
   }
   // The columns of a key root's key, as another table holds them.
-  const keyColsOf = (root) => (root.surrogate ? [{ ...root.surrogate, generated: null }] : root.natural.map((c, i) => ({ name: c.name, sql: sqlTypeOf(ctx.otById.get(c.vtId)), vtId: c.vtId, leaf: i })))
+  const keyColsOf = (root) => (root.surrogate ? [{ ...root.surrogate, generated: null }] : heldOf(root.typeId).map(colOf))
   // The key roots whose key a type's table holds: its own key root's, and
   // for one keyed by its own identifier also the key it shares with its
   // supertypes (superRoot), which its supertypes' key column holds.
@@ -302,7 +340,7 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
     }
     if (t.kind === 'entity' || e.ownKey) {
       if (e.surrogate) { const s = addCol({ ...e.surrogate, notNull: true, generated: 'identity' }); t.pk = [s.name] }
-      const nat = e.natural.map((c, i) => addCol({ name: c.name, sql: sqlTypeOf(ctx.otById.get(c.vtId)), notNull: true, vtId: c.vtId, leaf: i, ranges: [...valueRangeOf(c.vtId), ...(c.roleRanges ?? [])] }))
+      const nat = heldOf(e.typeId).map(it => addCol({ ...colOf(it), notNull: true, ranges: it.sur ? [] : [...valueRangeOf(it.vtId), ...it.roleRanges] }))
       e.naturalCols = nat
       if (e.surrogate) t.uniques.push(nat.map(c => c.name)); else t.pk = nat.map(c => c.name)
       // An objectified fact type: keyed by its uniqueness constraint.
@@ -310,7 +348,7 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
       if (nf) {
         const ranges = []
         let from = 0
-        for (const r of nf.roles) { const n = keyOf(r.objectTypeId).length; ranges.push([from, from + n]); from += n }
+        for (const r of nf.roles) { const n = keyOf(r.objectTypeId).length; ranges.push(colRange(heldOf(e.typeId), [from, from + n])); from += n }
         const uc = [...(nf.objectifiedIdentifier ? [nf.objectifiedIdentifier] : []), ...(nf.preferredUniqueness ?? []), ...(nf.uniqueness ?? []).map(u => u.roles ?? [])].filter(u => u.length).sort((a, b) => a.length - b.length)[0]
         if (uc && uc.length < nf.roles.length) {
           t.pk = uc.flatMap(i => nat.slice(...ranges[i]).map(c => c.name))
@@ -328,14 +366,16 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
       }
       // Parts of the identifier that are entity types with a table: foreign keys.
       const sch = schemeOf(e.typeId, els)
-      if (sch?.kind === 'composite' && !e.surrogate) {
+      if (sch?.kind === 'composite') {
         let from = 0
         for (const p of sch.parts) {
           const player = ctx.factById.get(p.factId)?.roles[p.roleIndex]?.objectTypeId
           const n = keyOf(player).length
-          if (entities.has(player) && !entities.get(entities.get(player).root).surrogate) t.fks.push({ cols: nat.slice(from, from + n).map(c => c.name), refTypeId: player })
+          const pe = entities.get(player)
+          if (pe && !entities.get(pe.keyRoot).surrogate) t.fks.push({ cols: nat.slice(...colRange(heldOf(e.typeId), [from, from + n])).map(c => c.name), refTypeId: player })
           from += n
         }
+        surFks(t, heldOf(e.typeId), nat)
       }
       if (e.ownKey) {
         // Its supertypes' key, as a column of its own: each instance is one
@@ -378,6 +418,7 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
       }))
       if (simpleUc(f, a.other)) t.uniques.push(cols.map(c => c.name))
       if (entities.has(player)) t.fks.push({ cols: cols.map(c => c.name), refTypeId: player })
+      else if (!isValue) surFks(t, heldOf(player), cols)
       // An optional reference of several columns: all filled in or none, or
       // a row could hold part of a reference, which no rule reads (and which
       // a foreign key, MATCH SIMPLE, lets through).
@@ -412,6 +453,7 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
       })
       t.roleCols.push(cols)
       if (entities.has(role.objectTypeId)) t.fks.push({ cols: cols.map(c => c.name), refTypeId: role.objectTypeId })
+      else if (ctx.otById.get(role.objectTypeId)?.kind !== 'value') surFks(t, heldOf(role.objectTypeId), cols)
     })
     const ucs = [...(f.preferredUniqueness ?? []), ...(f.uniqueness ?? []).map(u => u.roles ?? [])].filter(u => u.length)
     const keyOfUc = (u) => [...new Set(u)].flatMap(i => t.roleCols[i].map(c => c.name))
@@ -448,7 +490,7 @@ export function planRelational(state, ormSchemaId, { surrogates = 'never', overr
   note(`${tables.length} tables: ${tables.filter(t => t.kind === 'entity').length} for entity types, ${tables.filter(t => t.kind === 'subtype').length} for subtypes, ${tables.filter(t => t.kind === 'fact').length} for fact types`)
   const nSur = [...entities.values()].filter(e => e.root === e.typeId && e.surrogate).length
   if (nSur) note(`${nSur} surrogate key${nSur === 1 ? '' : 's'} (generated as identity); natural keys stay UNIQUE`)
-  return { tables, entities, keyOf, refCols, ctx, els, log, skipped }
+  return { tables, entities, keyOf, heldOf, refCols, ctx, els, log, skipped }
 }
 
 const CHECK_KINDS = { inclusiveOr: 'An inclusive-or', exclusiveOr: 'An exclusive-or', exclusion: 'An exclusion', equality: 'An equality', subset: 'A subset constraint' }
@@ -574,14 +616,29 @@ function identify(sc, plan, id, typeId, names) {
 function refArgs(rsc, plan, rel, typeId, cols, names) {
   const e = plan.entities.get(typeId)
   const root = e && plan.entities.get(e.keyRoot)
-  if (!root?.surrogate) return Object.fromEntries(cols.map((c, i) => [rel.col(c.table, c.name), { k: 'fv', y: names[i] }]))
+  if (!root?.surrogate) return heldArgs(rsc, plan, rel, cols, plan.heldOf(typeId), names)
+  return { [rel.col(cols[0].table, cols[0].name)]: { k: 'var', v: joinRoot(rsc, plan, rel, typeId, names) } }
+}
+// The row of a type's key root with the natural key names; its surrogate
+// variable.
+function joinRoot(rsc, plan, rel, typeId, names) {
+  const root = plan.entities.get(plan.entities.get(typeId).keyRoot)
   const rootCol = rel.colObj(root.tableObj.name, root.surrogate.name)
   const s = rsc.mk(rootCol.vt.id)
   rsc.atoms.push({ t: 'rel', tableId: rel.table(root.tableObj.name), args: {
     [rootCol.fact.id]: { k: 'var', v: s },
-    ...Object.fromEntries(root.naturalCols.map((c, i) => [rel.col(root.tableObj.name, c.name), { k: 'fv', y: names[i] }])),
+    ...heldArgs(rsc, plan, rel, root.naturalCols.map(c => ({ table: root.tableObj.name, name: c.name })), plan.heldOf(root.typeId), names),
   } })
-  return { [rel.col(cols[0].table, cols[0].name)]: { k: 'var', v: s } }
+  return s
+}
+// Args for columns holding a natural key (items from heldOf): a leaf's
+// frontier name, or a part's surrogate joined through its row.
+function heldArgs(rsc, plan, rel, cols, items, names) {
+  return Object.fromEntries(cols.map((c, i) => {
+    const it = items[i]
+    const arg = it.sur ? { k: 'var', v: joinRoot(rsc, plan, rel, it.sur, names.slice(it.from, it.to)) } : { k: 'fv', y: names[it.from] }
+    return [rel.col(c.table, c.name), arg]
+  }))
 }
 
 function buildRules(plan, rel) {
@@ -597,19 +654,25 @@ function buildRules(plan, rel) {
   const rowKey = (e, rsc) => {
     const t = e.tableObj
     const root = plan.entities.get(e.keyRoot)
-    const ys = root.naturalCols.map(c => c.name)
-    if (t.kind === 'entity' || e.ownKey) return { names: ys, args: Object.fromEntries(e.naturalCols.map((c, i) => [rel.col(t.name, c.name), { k: 'fv', y: ys[i] }])) }
-    if (!root.surrogate) return { names: ys, args: Object.fromEntries(e.keyCols.map((c, i) => [rel.col(t.name, c.name), { k: 'fv', y: ys[i] }])) }
+    const ys = plan.keyOf(e.keyRoot).map(c => c.name)
+    const own = (cols) => heldArgs(rsc, plan, rel, cols.map(c => ({ table: t.name, name: c.name })), plan.heldOf(e.keyRoot), ys)
+    if (t.kind === 'entity' || e.ownKey) return { names: ys, args: own(e.naturalCols) }
+    if (!root.surrogate) return { names: ys, args: own(e.keyCols) }
     return { names: ys, args: refArgs(rsc, plan, rel, e.keyRoot, [{ table: t.name, name: e.keyCols[0].name }], ys) }
   }
   // The frontier names for a player referred to by columns: the columns'
   // names, or for a surrogate, names after the column for its natural key.
+  const viaSurrogate = (col, typeId) => {
+    const key = plan.keyOf(typeId)
+    const base = col.name.replace(/_(s?id)$/, '')
+    return key.map(c => (key.length === 1 ? col.name : `${base}_${c.name}`))
+  }
   const refNames = (player, cols) => {
     const e = plan.entities.get(player)
-    if (!(e && plan.entities.get(e.keyRoot).surrogate)) return cols.map(c => c.name)
-    const key = plan.keyOf(player)
-    const base = cols[0].name.replace(/_(s?id)$/, '')
-    return key.map(c => (key.length === 1 ? cols[0].name : `${base}_${c.name}`))
+    if (e && plan.entities.get(e.keyRoot).surrogate) return viaSurrogate(cols[0], player)
+    const out = plan.heldOf(player).flatMap((it, i) => (it.sur ? viaSurrogate(cols[i], it.sur) : [cols[i].name]))
+    const seen = new Set()
+    return out.map(n => { let m = n; for (let k = 2; seen.has(m); k++) m = `${n}_${k}`; seen.add(m); return m })
   }
   for (const e of plan.entities.values()) {
     const t = e.tableObj

@@ -418,7 +418,15 @@ function buildSide(side, y, data, pop, ident) {
     // Objectified fact types last: their instances are their facts, which
     // the stand-ins of their players may give.
     const nested = (v) => !!lookups(data).factById.get(v.typeId)?.objectified
-    for (const v of [...vars.values()].sort((a, b) => nested(a) - nested(b))) {
+    // Rows that own a generated surrogate first: a row whose key only refers
+    // to another table's surrogate (a subtype table's foreign key) takes it
+    // from that row rather than inventing it from a key of its own.
+    const generated = (v) => {
+      const sch = schemeOf(v.typeId, data)
+      return sch?.kind === 'refMode' && !!lookups(data).factById.get(sch.rm.factId)?.roles?.[sch.rm.vtRoleIndex]?.sqlGenerated
+    }
+    const rank = (v) => (nested(v) ? 2 : 0) + (generated(v) ? 0 : 1)
+    for (const v of [...vars.values()].sort((a, b) => rank(a) - rank(b))) {
       if (env.has(v.id)) continue
       const sch = schemeOf(v.typeId, data)
       if (sch?.kind !== 'refMode' && sch?.kind !== 'composite') continue
@@ -656,6 +664,16 @@ export function executeRun(prep, pops, { limit, fresh = null } = {}) {
   for (const [id, m] of pop.facts) factPopulations[id] = [...m.values()]
   if (pop.made?.size) dropSubsumed(populations, factPopulations, pop.made)
   const invented = withFoundInvented(populations, factPopulations, [...(pop.invented ?? new Map())].map(([typeId, key]) => ({ typeId, key })), prep.elements, pop.standIns)
+  // The reference values of the entities built are values of their value
+  // type, also when no rule names them (an invented surrogate).
+  for (const id of Object.keys(populations)) {
+    const sch = schemeOf(id, prep.elements)
+    const vt = sch?.kind === 'refMode' ? sch.rm?.vtId : null
+    if (!vt || !populations[id].length) continue
+    const have = new Set((populations[vt] ?? []).map(c => JSON.stringify(c)))
+    const add = populations[id].filter(c => typeof c === 'string' && !have.has(JSON.stringify(c)))
+    if (add.length) populations[vt] = [...(populations[vt] ?? []), ...add]
+  }
   return { populations, factPopulations, matches, invented, log }
 }
 
@@ -799,6 +817,11 @@ export function roundTrip(state, mapping, direction = 'forward') {
 function surrogateRenaming(data, ev, invented) {
   if (!invented.length) return null
   const byVt = new Map()   // vtId → Map(original → invented)
+  // The key values, each with the value type it is of: a value that is
+  // itself an invented surrogate (a key holding another table's surrogate)
+  // is renamed first, as the run invents it from that one's invented value.
+  const raw = []
+  const factById = lookups(data).factById
   for (const { typeId, key } of invented) {
     const sch = schemeOf(typeId, data)
     if (sch?.kind !== 'refMode') continue
@@ -807,12 +830,29 @@ function surrogateRenaming(data, ev, invented) {
       for (const t of ev.factTuples(p.factId).tuples ?? []) ix.set(keyOf(t[p.entityRi]), valueOf(t[p.valueRi]))
       return ix
     })
-    const ren = byVt.get(sch.rm.vtId) ?? new Map()
+    const vts = key.map(p => factById.get(p.factId)?.roles[p.valueRi]?.objectTypeId)
     for (const c of ev.population(typeId).instances ?? []) {
       const vals = index.map(ix => ix.get(keyOf(c)))
-      if (typeof c === 'string' && vals.every(v => v != null)) ren.set(c, invent(vals))
+      if (typeof c === 'string' && vals.every(v => v != null)) raw.push({ vt: sch.rm.vtId, c, vals, vts })
     }
-    byVt.set(sch.rm.vtId, ren)
+  }
+  for (let round = 0; round < 4; round++) {
+    const next = new Map()
+    for (const { vt, c, vals, vts } of raw) {
+      const ren = next.get(vt) ?? new Map()
+      ren.set(c, invent(vals.map((v, i) => byVt.get(vts[i])?.get(v) ?? v)))
+      next.set(vt, ren)
+    }
+    // Only one to one: two surrogates with the same key (a broken UNIQUE)
+    // are not the same row, so neither is renamed and both show as lost.
+    for (const ren of next.values()) {
+      const seen = new Map()
+      for (const [, v] of ren) seen.set(v, (seen.get(v) ?? 0) + 1)
+      for (const [c, v] of [...ren]) if (seen.get(v) > 1) ren.delete(c)
+    }
+    byVt.clear()
+    for (const [k, v] of next) byVt.set(k, v)
+    if (!raw.some(r => r.vts.some(t => next.has(t)))) break
   }
   const renameCell = (cell, typeId, depth = 0) => {
     if (cell == null || depth > 8) return cell
