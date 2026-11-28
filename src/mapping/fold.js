@@ -111,6 +111,7 @@ function atomicOf(side, ctx, els) {
   }
   const facts = ex.atoms.filter(a => a.t === 'fact')
   const used = new Set()   // identifying atoms
+  const partVars = new Set()  // variables that are reference parts of another
   const memo = new Map()
   const keyOfVar = (id, depth = 0) => {
     if (memo.has(id)) return memo.get(id)
@@ -127,6 +128,7 @@ function atomicOf(side, ctx, els) {
           const sub = a && keyOfVar(a.args[p.roleIndex], depth + 1)
           if (!sub) { out = null; break }
           used.add(a)
+          partVars.add(a.args[p.roleIndex])
           out.push(...sub)
         }
       }
@@ -149,6 +151,7 @@ function atomicOf(side, ctx, els) {
     // (A subtype's instance plays its supertype's identifying role.)
     const at = (typeId, playerId) => typeId === playerId || supertypesOf(typeId, els).has(playerId)
     const roots = typed ? [vars.get(typed.arg)] : ex.vars.filter(v => ctx.otById.get(v.typeId)?.kind === 'entity'
+      && !partVars.has(v.id)
       && !facts.some(a => used.has(a) && a.args.some((x, i) => x === v.id && !at(v.typeId, ctx.factById.get(a.factId)?.roles[i]?.objectTypeId))))
     if (roots.length !== 1 || !roots[0]) return null
     const key = keyOfVar(roots[0].id)

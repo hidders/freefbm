@@ -397,6 +397,23 @@ function issueMatcher(entry) {
   if ((m = k.match(/^([^:]+):([a-z]+)$/)) && entry.kind?.startsWith('Ring')) return (i) => i.kind === 'ringViolation' && i.constraintId === m[1] && i.ringType === m[2]
   return null
 }
+// Whether a violation that starts as I0 (on the other side) is gone from the
+// way back of a chased population P: no violation names the labelled nulls
+// the first one names, and none of those was merged away. With no labelled
+// null to follow, no violation at all.
+const NULL_RE = /⊥\d+/g
+function violationGone(A, I0, backOf, match) {
+  const first = violations(A, backOf(I0), match)
+  const nulls = new Set(first.flatMap(i => String(i.message ?? '').match(NULL_RE) ?? []))
+  return (P) => {
+    const now = violations(A, backOf(P), match)
+    if (!nulls.size) return !now.length
+    const text = JSON.stringify(P)
+    for (const n of nulls) if (!new RegExp(`${n}(?!\\d)`).test(text)) return false
+    return !now.some(i => (String(i.message ?? '').match(NULL_RE) ?? []).some(n => nulls.has(n)))
+  }
+}
+
 const violations = (w, pops, match) => (match.evaluate ? match.evaluate(w, pops) : issuesOf(w, pops, match.constraintId ?? null).filter(match))
 
 // ── The chase ────────────────────────────────────────────────────────────────
@@ -552,10 +569,16 @@ function tgdsOf(w) {
     if (!semi && !(isFormulaConstraint(c) || ((c.constraintType === 'subset' || c.constraintType === 'equality') && !simple(c)) || (isOr && hasFormulaQueries(c)))) continue
     let rule
     try { rule = formulaToRule(withoutIff(e.formula)) } catch { continue }
-    const vars = []
-    let n = rule
-    while (n?.t === 'forall') { vars.push(n.v); n = n.body }
-    for (const part of n?.t === 'and' ? n.args : [n]) {
+    // ∀ȳ over a conjunction, at any depth (∀x φ ∧ ∀y ψ, as carried
+    // constraints may be): each conjunct with the variables over it.
+    const parts = []
+    const split = (n, vars) => {
+      if (n?.t === 'forall') split(n.body, [...vars, n.v])
+      else if (n?.t === 'and') n.args.forEach(a => split(a, vars))
+      else parts.push({ vars, part: n })
+    }
+    split(rule, [])
+    for (const { vars, part } of parts) {
       // L → R, L → R1 ∨ … ∨ Rn, or R1 ∨ … ∨ Rn (a choice of R).
       const left = part?.t === 'implies' ? part.left : { t: 'true' }
       const right = part?.t === 'implies' ? part.right : part
@@ -1225,12 +1248,19 @@ function accountEntry(entry, A, B, run, fresh) {
     let I0 = carriedBack(V0)
     if (I0) { carried.push({ V: V0, I0 }); continue }
     let V = V0
-    const ch = chase(A, V0, fresh, { disabled: new Set([entry.key]) })
-    if (!ch.exceeded && !ch.failed && violations(A, ch.pops, match).length) {
-      V = ch.pops
-      I0 = carriedBack(V)
-      if (I0) { carried.push({ V, I0 }); continue }
+    // Every way the side's own constraints complete it (a disjunction, such
+    // as the roles a type that is not independent may play, is a choice:
+    // the first alternative may be the one that removes the violation).
+    let found = false
+    for (const ch of chaseBranches(A, V0, fresh, { disabled: new Set([entry.key]) }, 16)) {
+      // (One the chase did not finish is still a candidate: whether it is a
+      // counterexample is decided on the other side.)
+      if (ch.failed || !violations(A, ch.pops, match).length) continue
+      if (V === V0) V = ch.pops
+      I0 = carriedBack(ch.pops)
+      if (I0) { carried.push({ V: ch.pops, I0 }); found = true; break }
     }
+    if (found) continue
     // With labelled nulls replaced by constants the rules test.
     const withConsts = (W) => {
       let some = false
@@ -1273,7 +1303,12 @@ function accountEntry(entry, A, B, run, fresh) {
     }
     // For a constraint that asks for facts, a case can stop once they are
     // there: more facts keep the violation gone.
-    const until = positive && run.monotoneBack ? (P) => !violations(A, backOf(P), match).length : null
+    // (The violation is the one about the labelled nulls it started with:
+    // instances the chase adds may in turn ask for facts, without end when a
+    // mandatory role is played by its own type, and the facts asked of them
+    // are the chase's business, not this violation's.)
+    const gone = violationGone(A, I0, backOf, match)
+    const until = positive && run.monotoneBack ? gone : null
     const branches = chaseBranches(B, I0, fresh, { until })
     const outs = branches.map(ch => {
       if (ch.exceeded) {
@@ -1286,7 +1321,7 @@ function accountEntry(entry, A, B, run, fresh) {
         if (k) return { killed: { I0, ch: { ...ch, failed: issueKey(k) } } }
         // A constraint that asks for facts, gone already: more facts keep it
         // gone, as long as the way back has no negation.
-        if (positive && run.monotoneBack && !violations(A, backOf(ch.pops), match).length) return { killed: { I0, ch } }
+        if (positive && run.monotoneBack && gone(ch.pops)) return { killed: { I0, ch } }
         return { undecided: 'The other schema’s constraints keep adding facts (the chase stopped).' }
       }
       if (ch.failed || ch.stopped) return { killed: { I0, ch } }

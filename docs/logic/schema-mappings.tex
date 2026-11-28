@@ -416,28 +416,93 @@ $$\forall \bar u\, \big( p(\bar u) \to \textstyle\bigvee_{(\gamma, a)}
 with the disjunction over all rules $\gamma$ and occurrences $a$ of $p$ in
 the target pattern $\psi_\gamma$. $S$-covering is defined symmetrically.
 
-\begin{conjecture}[Bijection up to isomorphism]
-\label{conj:bijection}
-Let $M$ be key-safe, $S$-covering and $T$-covering, and let every entity
-type occurring in a rule have an identification scheme. If $(\pop_S,
-\pop_T), (\pop_S', \pop_T') \in \sem{M}$, then $\pop_S \cong \pop_S'$
-if and only if $\pop_T \cong \pop_T'$.
-\end{conjecture}
+An earlier version of this document conjectured that key-safety and
+coverage of both sides are enough for $\sem{M}$ to be a bijection up to
+$\cong$. That is false: key-safety lets (D3) and (D4) determine a variable
+through a uniqueness constraint, and the identity of such a variable does
+not pass through the frontier.
 
-\begin{proof}[Proof idea]
-For each rule $\gamma$ let $Y_\gamma(\pop_S)$ be the set of assignments to
-$\bar{\fv{y}}$ satisfying $\exists \bar x\,\varphi_\gamma$. By the
-semantics, $Y_\gamma(\pop_S) = Y_\gamma(\pop_T)$. By coverage every fact
-of $\pop_S$ lies in a match, and by unique witness each match is
-determined by its assignment. Identification makes the choice of entities
-consistent across rules: an entity occurring in two matches has the same
-identifying tuple in both. So $\pop_S$ is determined up to $\cong$ by the
-family $(Y_\gamma(\pop_S))_\gamma$, and likewise $\pop_T$.
-\todo{Check the identification argument when an entity is determined only
-by (D3) or (D4) and not by its own identification scheme.}
+\begin{example}[Key-safe and covering, yet not injective]
+\label{ex:notinjective}
+$S$ has the entity type Person, identified by PersonNr, and the fact type
+Person has PersonName, unique on both roles. Rule $\gamma_1$ maps the
+existence of a Person, $\exists p\, \exists n\, (\mathit{nr}(p, n) \wedge
+n \dataEq \fv{a})$, to a row $A(\fv{a})$ of $T$; rule $\gamma_2$ maps a
+name, $\exists p\, \exists m\, (\mathit{name}(p, m) \wedge m \dataEq
+\fv{b})$, to a row $B(\fv{b})$. In $\gamma_2$ the Person $p$ is
+determined by (D3) from the name, so both rules are key-safe, and every
+fact of $S$ is covered. Two instances of $S$ that swap the names of two
+persons give the same sets $Y_{\gamma_1}$ and $Y_{\gamma_2}$, so they are
+related to the same instance of $T$ although they are not isomorphic.
+\end{example}
+
+What is missing is that the facts are covered by occurrences whose objects
+the frontier values fix through identification.
+
+\begin{definition}
+An atom occurrence at the top level of a pattern $\varphi$, or inside an
+optional part, is \emph{identified} if all its variables are determined by
+(D1) and (D2) alone, starting from $\emptyset$, or from $D \cup \{
+\fv{y} \}$ inside an optional part $\Opt{\fv{y}}(\varphi')$. A mapping
+has \emph{identified $T$-coverage} if in every instance $\pop_T$ of $T$
+every fact and every object of every type is covered by an identified atom
+occurrence of some rule; identified $S$-coverage is defined symmetrically.
+\end{definition}
+
+Identified coverage implies coverage. It holds for the rules that Generate
+tables (Rmap) writes without surrogates, where every variable is reached
+from the frontier through reference schemes and primary keys; with
+surrogates, a row is found only through the UNIQUE constraint of its
+natural key, which is (D3), and identified coverage fails (see the open
+issues).
+
+\begin{theorem}[Bijection up to isomorphism]
+\label{thm:bijection}
+Let $M$ be key-safe with identified $S$-coverage and identified
+$T$-coverage, let every entity type occurring in a rule have an
+identification scheme, and let identification be acyclic. If $(\pop_S,
+\pop_T), (\pop_S', \pop_T') \in \sem{M}$ and all four satisfy their
+schemas' identification constraints, then $\pop_S \cong \pop_S'$ if and
+only if $\pop_T \cong \pop_T'$.
+\end{theorem}
+
+\begin{proof}
+Replace every entity of a population by its identifying tuple,
+recursively (the canonical form, well defined because identification is
+acyclic and injective): each population is isomorphic to its canonical
+form, and two populations are isomorphic if and only if their canonical
+forms are equal. So it suffices to show, for canonical populations, that
+$\pop_T = \pop_T'$ implies $\pop_S = \pop_S'$ (the other direction is
+symmetric).
+
+For each rule $\gamma$ let $Y_\gamma(\pop_S)$ be the set of assignments
+to $\bar{\fv{y}}$ satisfying $\exists \bar x\, \varphi_\gamma$. By the
+semantics, $Y_\gamma(\pop_S) = Y_\gamma(\pop_T)$. Let $a$ be an identified
+occurrence in $\varphi_\gamma$. Following the derivation of its variables
+by (D1) and (D2), the canonical object of each variable is computed from
+the frontier values alone: a value type's instance is the data value it
+is compared with, and an entity is the tuple of the canonical objects of
+its identifying parts. So $a$ defines a function $f_a$ from frontier
+assignments to canonical facts (or objects), the same for every
+population. We show
+$$\pop_S \;=\; \bigcup_{\gamma} \ \bigcup_{a \text{ identified in }
+  \varphi_\gamma} f_a\big(Y_\gamma(\pop_S)\big).$$
+For $\subseteq$: every fact and object of $\pop_S$ is covered by an
+identified occurrence $a$ of some $\gamma$, under a satisfying assignment
+whose frontier part $\bar{\fv{y}}$ is in $Y_\gamma(\pop_S)$, and its image
+is $f_a(\bar{\fv{y}})$. For $\supseteq$: each $\bar{\fv{y}} \in
+Y_\gamma(\pop_S)$ has a satisfying assignment of $\varphi_\gamma$, which
+maps $a$ to a fact of $\pop_S$, and that fact is $f_a(\bar{\fv{y}})$.
+Since the right-hand side depends only on the sets $Y_\gamma(\pop_S) =
+Y_\gamma(\pop_T)$, $\pop_S$ is a function of $\pop_T$.
+
+Negated parts (P3) need nothing: they cover nothing and only restrict the
+sets $Y_\gamma$, which both sides share. Key-safety is not used for
+injectivity itself; it is what makes the construction of one side from the
+other (unique witness) well defined.
 \end{proof}
 
-The conjecture gives injectivity. Totality, meaning that every instance of
+The theorem gives injectivity. Totality, meaning that every instance of
 $S$ has a corresponding instance of $T$, additionally requires that the
 instance built from the rules satisfies $\Sigma_T$. That is exactly what
 constraint accounting checks.
@@ -481,7 +546,7 @@ constraint of $\Sigma_S$ gets one of four statuses:
   \item[unknown] neither was found, with the reason.
 \end{description}
 
-For a mapping meeting the conditions of Conjecture~\ref{conj:bijection},
+For a mapping meeting the conditions of Theorem~\ref{thm:bijection},
 each predicate of $S$ is definable over $T$, with entities replaced by their
 identifying tuples, so $\chi$ has a translation $\chi^{\to T}$ over $T$,
 obtained by unfolding every atom through the rules that produce it, and
@@ -770,7 +835,7 @@ in $R_1(d, a) \wedge R_2(d, b)$'', which in ORM2 is an external uniqueness
 constraint and the preferred identifier of the type of $d$. $S_2$-covering
 needs every $d$ in $R_1$ to also be in $R_2$ and vice versa, and every $d$
 in $R_3$ to be in $R_1$. With these three constraints added to $S_2$, the
-mapping satisfies the conditions of Conjecture~\ref{conj:bijection}.
+mapping satisfies the conditions of Theorem~\ref{thm:bijection} (the external uniqueness constraint is the preferred identifier, so $d$ is determined by (D2)).
 \end{example}
 
 \begin{example}[Foreign key to cross table]
@@ -818,8 +883,10 @@ key per rule plus a disjointness between the rules.
 \section{Open issues}
 
 \begin{enumerate}
-  \item Prove Conjecture~\ref{conj:bijection}, or find the extra condition
-    it needs (see the note in its proof).
+  \item Theorem~\ref{thm:bijection} needs identified coverage, which rules
+    out entities found only through a uniqueness constraint ((D3), (D4)).
+    Whether a weaker condition suffices, for instance when the uniqueness
+    constraint is a key of a type without other identification, is open.
   \item \FBM\ has reference modes and composite identifiers; whether its
     description should adopt identification schemes and identifying tuples
     as defined here (Section~\ref{sec:setting}) is open.
@@ -834,6 +901,8 @@ key per rule plus a disjointness between the rules.
     surrogate identifiers generated on one side only: in the latter case
     the round trip holds up to renaming of the generated values, which
     should be a weaker notion of $\cong$ that also renames those values.
+    Such mappings do not have identified coverage, so
+    Theorem~\ref{thm:bijection} does not apply to them.
   \item Whether patterns should allow several occurrences of the same
     predicate (self-joins) without restriction; (P1) allows it, but the
     graphical editor needs numbered occurrences.
