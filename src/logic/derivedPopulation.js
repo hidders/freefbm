@@ -299,6 +299,26 @@ export function makePopulationEvaluator(rawData) {
             if (conjuncts.some(c => c.t === 'fact' && atomFact(ctx, c.factId) && c.args.some(id => vs.some(v => v.id === id))))
               return solve(b, vs, env, 1).length > 0
           }
+          // ∀x̄ (∃z̄ φ → ψ) with fact atoms in φ: go through the bindings of
+          // φ (solve) rather than every combination of x̄'s instances.
+          if (n.t === 'forall') {
+            const vs = []
+            let b = n
+            while (b.t === 'forall') { vs.push({ id: b.v.id, typeIds: [b.v.typeId] }); b = b.body }
+            if (b.t === 'implies') {
+              let l = b.left
+              const zs = []
+              while (l.t === 'exists') { zs.push({ id: l.v.id, typeIds: [l.v.typeId] }); l = l.body }
+              const conjuncts = l.t === 'and' ? l.args : [l]
+              const right = JSON.stringify(b.right)
+              const all = [...vs, ...zs]
+              if (all.every(v => !env.has(v.id)) && zs.every(z => !right.includes(`"${z.id}"`))
+                && conjuncts.some(c => c.t === 'fact' && atomFact(ctx, c.factId) && c.args.some(id => vs.some(v => v.id === id)))) {
+                for (const e of solve(l, all, env)) if (!holds(b.right, e)) return false
+                return true
+              }
+            }
+          }
           let count = 0
           for (const cell of domain(n.v.typeId)) {
             const inner = new Map(env).set(n.v.id, { cell, key: keyOf(cell), typeIds: [n.v.typeId] })
@@ -768,6 +788,31 @@ export function makePopulationEvaluator(rawData) {
   // A closed formula (a formula constraint): { holds, counterexamples } or
   // { error }. Its leading ∀ variables are solved for where the rest fails,
   // which gives the counterexamples ([Map varId → cell], at most limit).
+  // The bindings of vs under which body is false. For φ → ψ with fact atoms
+  // in φ (under ∃z̄), the bindings of φ without ψ, rather than every
+  // combination of vs's instances.
+  const counterexamplesOf = (ev, body, vs) => {
+    if (body.t === 'implies') {
+      let l = body.left
+      const zs = []
+      while (l.t === 'exists') { zs.push({ id: l.v.id, typeIds: [l.v.typeId] }); l = l.body }
+      const conjuncts = l.t === 'and' ? l.args : [l]
+      const right = JSON.stringify(body.right)
+      if (zs.every(z => !right.includes(`"${z.id}"`) && !vs.some(v => v.id === z.id))
+        && conjuncts.some(c => c.t === 'fact' && atomFact(ctx, c.factId) && c.args.some(id => vs.some(v => v.id === id)))) {
+        const out = [], seen = new Set()
+        for (const env of ev.solve(l, [...vs, ...zs])) {
+          const k = JSON.stringify(vs.map(v => env.get(v.id)?.key))
+          if (seen.has(k)) continue
+          seen.add(k)
+          if (!ev.holds(body.right, env)) out.push(env)
+          if (ev.state.failure) break
+        }
+        return out
+      }
+    }
+    return ev.solve({ t: 'not', arg: body }, vs)
+  }
   const closedFormula = (rule, typing = { sorts: new Map(), params: new Map() }, limit = 5) => {
     const ev = makeEval(typing)
     let body = rule
@@ -777,7 +822,7 @@ export function makePopulationEvaluator(rawData) {
       const h = ev.holds(body, new Map())
       return ev.state.failure ? { error: ev.state.failure } : { holds: h, counterexamples: [] }
     }
-    const envs = ev.solve({ t: 'not', arg: body }, vs.map(v => ({ id: v.id, typeIds: [v.typeId] })))
+    const envs = counterexamplesOf(ev, body, vs.map(v => ({ id: v.id, typeIds: [v.typeId] })))
     if (ev.state.failure) return { error: ev.state.failure }
     return { holds: envs.length === 0, total: envs.length, vars: vs,
       counterexamples: envs.slice(0, limit).map(env => new Map(vs.map(v => [v.id, env.get(v.id)?.cell]))) }
