@@ -11,7 +11,7 @@ import { isFormulaConstraint, checkFormulaConstraint } from '../logic/formulaCon
 import { isFormulaQuery, checkQuery, whyNoOuterJoin, queryRule, joinIssues } from '../logic/query.js'
 import { inferenceEnv, openReason, TARGET_KINDS } from '../logic/queryInference.js'
 import { plainParts } from '../verbalisation/hyphenBinding.js'
-import { mappingRuleIssues, mappingCoverageIssues } from '../mapping/mappingIssues.js'
+import { mappingRuleIssues, mappingCoverageIssues, valuesText } from '../mapping/mappingIssues.js'
 import { tableRuleIssues } from '../relational/derivedTables.js'
 import { readingName } from '../mapping/mapping.js'
 
@@ -846,6 +846,17 @@ export function runValidation(state, enabledCategories) {
         const ot = i.kind === 'type' ? objectTypes.find(o => o.id === i.elementId) : null
         const f = i.kind === 'fact' ? facts.find(x => x.id === i.elementId) : null
         const what = ot ? `Entity type ${ot.name}` : `Fact type "${readingName(f, { otById: otByIdAll })}"`
+        if (i.kind === 'values') {
+          errors.push({
+            id: `mapping-coverage-${i.mapping.id}-${i.elementId}-${i.roleIndex}`,
+            category: 'mappingCoverage',
+            elementId: i.elementId,
+            elementKind: 'fact',
+            message: `${what}: in ${i.mapping.name}, ${valuesText(i)}`,
+            severity: 'warning',
+          })
+          continue
+        }
         errors.push({
           id: `mapping-coverage-${i.mapping.id}-${i.elementId}`,
           category: 'mappingCoverage',
